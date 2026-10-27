@@ -7,7 +7,24 @@ use crate::css::support::checked_grammar_declaration as checked;
 use crate::css::support::important_declaration as declaration;
 use crate::css::support::named_property::invalid_named_value_at as assert_invalid;
 use crate::css::support::selected_grammar as grammar;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::numeric::{
+    CssCalculation, CssLength, CssLengthPercentage, CssNonNegative, CssNumeric,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssExpansionError, CssInitialValueRef,
+    CssKnownPropertyValueRef, CssPropertyKindRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::{CssAutoOr, CssBoxSideKind, CssFourSides, CssSidePair};
+use surgeist_css::values::layout::{
+    CssScrollSnapAlignment, CssScrollSnapAxis, CssScrollSnapStop, CssScrollSnapStrictness,
+    CssScrollSnapType,
+};
 
 fn assert_four_expansion(result: Result<CssExpansion, CssExpansionError>) {
     let CssExpansion::Contributions(values) = result.unwrap() else {
@@ -119,7 +136,11 @@ fn every_selected_scroll_snap_name_has_known_identity_and_accepts_its_ordinary_g
         );
         assert_eq!(parsed.importance(), CssImportance::Important);
         assert_eq!(
-            parsed.value_components().serialize().unwrap().as_css(),
+            parsed
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
 
@@ -131,7 +152,11 @@ fn every_selected_scroll_snap_name_has_known_identity_and_accepts_its_ordinary_g
         assert_eq!(constructed.importance(), CssImportance::Important);
         assert!(constructed.parsed_value().is_none());
         assert_eq!(
-            constructed.value_components().serialize().unwrap().as_css(),
+            constructed
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
     }
@@ -276,7 +301,7 @@ fn stable_terminals_have_noninherited_fixed_initials_and_one_contribution() {
             .1;
         let source = declaration(name, value);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("one terminal expansion for {name}")
         };
@@ -323,7 +348,7 @@ fn axis_shorthands_expose_exact_logical_member_order_and_expand_to_two() {
             .1;
         let source = declaration(name, value);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("two axis contributions for {name}")
         };
@@ -361,7 +386,7 @@ fn stable_globals_and_pending_reentry_keep_original_occurrence_and_strict_gramma
         ] {
             let source = declaration(name, text);
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("symbolic CSS-wide value for {name}")
             };
@@ -372,7 +397,7 @@ fn stable_globals_and_pending_reentry_keep_original_occurrence_and_strict_gramma
             }
         }
         let source = declaration(name, "var(--snap)");
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending substitution for {name}")
         };
         assert!(handle.source().same_occurrence(&source));
@@ -381,21 +406,20 @@ fn stable_globals_and_pending_reentry_keep_original_occurrence_and_strict_gramma
         } else {
             "auto auto auto"
         };
-        assert!(matches!(
+        assert!(
             handle
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
-        assert_eq!(
-            handle
-                .reenter(parse_component_values("var(--again)").unwrap())
-                .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .replacement_error()
+                .is_some()
         );
-        let components = parse_component_values(replacement).unwrap();
+        assert!(
+            handle
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
+                .unwrap_err()
+                .is_residual_substitution()
+        );
+        let components = CssComponentValues::parse(&CssParser::default(), replacement).unwrap();
         let CssContributions::Longhands(values) = handle.reenter(components.clone()).unwrap()
         else {
             panic!("completed replacement for {name}")
@@ -408,24 +432,27 @@ fn stable_globals_and_pending_reentry_keep_original_occurrence_and_strict_gramma
     }
 }
 
-fn length(text: &str) -> CssSpecifiedLength {
-    let components = parse_component_values(text).unwrap();
+fn length(text: &str) -> CssNumeric<CssLength> {
+    let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let [component] = components.items() else {
         panic!("one length: {text}")
     };
-    CssSpecifiedLength::try_from_component(component.clone()).unwrap()
+    CssNumeric::<CssLength>::try_from_component(component.clone()).unwrap()
 }
 
-fn padding(text: &str) -> CssScrollPaddingValue {
+fn padding(text: &str) -> CssAutoOr<CssNumeric<CssLengthPercentage, CssNonNegative>> {
     if text == "auto" {
-        CssScrollPaddingValue::Auto
+        CssAutoOr::Auto
     } else {
-        let components = parse_component_values(text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let [component] = components.items() else {
             panic!("one padding value: {text}")
         };
-        CssScrollPaddingValue::LengthPercentage(
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component(component.clone()).unwrap(),
+        CssAutoOr::Value(
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
+                component.clone(),
+            )
+            .unwrap(),
         )
     }
 }
@@ -446,10 +473,16 @@ fn snap_models_retain_optional_components_and_serialize_selected_keywords() {
         )
     );
     assert_eq!(value.as_css(), "BlOcK PrOxImItY");
-    assert_eq!(value.value().serialize_specified().unwrap(), "block");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "block"
+    );
     assert_eq!(
         CssScrollSnapType::axis(CssScrollSnapAxis::X, None)
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "x"
     );
@@ -458,12 +491,14 @@ fn snap_models_retain_optional_components_and_serialize_selected_keywords() {
             CssScrollSnapAxis::Y,
             Some(CssScrollSnapStrictness::Mandatory)
         )
-        .serialize_specified()
+        .serialize_specified(Default::default())
         .unwrap(),
         "y mandatory"
     );
     assert_eq!(
-        CssScrollSnapType::None.serialize_specified().unwrap(),
+        CssScrollSnapType::None
+            .serialize_specified(Default::default())
+            .unwrap(),
         "none"
     );
 
@@ -473,30 +508,42 @@ fn snap_models_retain_optional_components_and_serialize_selected_keywords() {
     else {
         panic!("typed snap alignment")
     };
-    assert_eq!(value.value().block(), CssScrollSnapAlignment::Start);
+    assert_eq!(value.value().first(), &CssScrollSnapAlignment::Start);
     assert_eq!(
-        value.value().authored_inline(),
-        Some(CssScrollSnapAlignment::Start)
+        value.value().authored_second(),
+        Some(&CssScrollSnapAlignment::Start)
     );
-    assert_eq!(value.value().inline(), CssScrollSnapAlignment::Start);
-    assert_eq!(value.value().serialize_specified().unwrap(), "start");
-    let one = CssScrollSnapAlign::new(CssScrollSnapAlignment::End, None);
-    assert_eq!(one.authored_inline(), None);
-    assert_eq!(one.inline(), CssScrollSnapAlignment::End);
-    assert_eq!(one.serialize_specified().unwrap(), "end");
+    assert_eq!(value.value().second(), &CssScrollSnapAlignment::Start);
     assert_eq!(
-        CssScrollSnapStop::Always.serialize_specified().unwrap(),
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "start"
+    );
+    let one = CssSidePair::new(CssScrollSnapAlignment::End, None);
+    assert_eq!(one.authored_second(), None);
+    assert_eq!(one.second(), &CssScrollSnapAlignment::End);
+    assert_eq!(one.serialize_specified(Default::default()).unwrap(), "end");
+    assert_eq!(
+        CssScrollSnapStop::Always
+            .serialize_specified(Default::default())
+            .unwrap(),
         "always"
     );
 
-    let components =
-        CssComponentValues::try_new(vec![CssComponentValue::try_token("-2px").unwrap()]).unwrap();
+    let components = CssComponentValues::try_new(
+        vec![CssComponentValue::try_token("-2px").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     assert!(matches!(
         components.items()[0].origin(),
         CssValueOrigin::Programmatic
     ));
-    let constructed = parse_property_value_for_grammar(
-        grammar("scroll-margin-top"),
+    let constructed = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(grammar("scroll-margin-top")),
         components.clone(),
         CssImportance::Normal,
     )
@@ -512,70 +559,104 @@ fn snap_models_retain_optional_components_and_serialize_selected_keywords() {
         value.value().origin(),
         CssValueOrigin::Programmatic
     ));
-    assert_eq!(value.value().serialize_specified().unwrap(), "-2px");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "-2px"
+    );
 }
 
 #[test]
 fn pair_and_four_side_models_keep_authored_cardinality_and_role_order() {
-    let pair = CssScrollPaddingPair::new(padding("auto"), None);
-    assert!(pair.authored_end().is_none());
-    assert_eq!(pair.end(), pair.start());
-    assert_eq!(pair.serialize_specified().unwrap(), "auto");
-    let margin = CssScrollMarginPair::new(length("1px"), Some(length("2px")));
-    assert_eq!(margin.start().serialize_specified().unwrap(), "1px");
+    let pair = CssSidePair::new(padding("auto"), None);
+    assert!(pair.authored_second().is_none());
+    assert_eq!(pair.second(), pair.first());
+    assert_eq!(
+        pair.serialize_specified(Default::default()).unwrap(),
+        "auto"
+    );
+    let margin = CssSidePair::new(length("1px"), Some(length("2px")));
     assert_eq!(
         margin
-            .authored_end()
+            .first()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "1px"
+    );
+    assert_eq!(
+        margin
+            .authored_second()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "2px"
     );
-    assert_eq!(margin.end().serialize_specified().unwrap(), "2px");
+    assert_eq!(
+        margin
+            .second()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "2px"
+    );
 
-    let two = CssScrollMarginShorthand::try_new(
-        CssScrollSideKind::Logical,
-        vec![length("1px"), length("2px")],
-    )
-    .unwrap();
-    assert_eq!(two.kind(), CssScrollSideKind::Logical);
-    assert_eq!(two.authored_values().len(), 2);
+    let two =
+        CssFourSides::try_new(CssBoxSideKind::Logical, vec![length("1px"), length("2px")]).unwrap();
+    assert_eq!(two.kind(), CssBoxSideKind::Logical);
+    assert_eq!(two.authored().len(), 2);
     for (role, expected) in ["1px", "2px", "1px", "2px"].into_iter().enumerate() {
         assert_eq!(
-            two.role(role).unwrap().serialize_specified().unwrap(),
+            two.assigned()
+                .get(role)
+                .copied()
+                .unwrap()
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected
         );
     }
-    assert!(two.role(4).is_none());
-    let three = CssScrollPaddingShorthand::try_new(
-        CssScrollSideKind::Physical,
+    let three = CssFourSides::try_new(
+        CssBoxSideKind::Physical,
         vec![padding("1px"), padding("2px"), padding("3px")],
     )
     .unwrap();
-    assert_eq!(three.authored_values().len(), 3);
+    assert_eq!(three.authored().len(), 3);
     for (role, expected) in ["1px", "2px", "3px", "2px"].into_iter().enumerate() {
         assert_eq!(
-            three.role(role).unwrap().serialize_specified().unwrap(),
+            three
+                .assigned()
+                .get(role)
+                .copied()
+                .unwrap()
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected
         );
     }
-    assert!(CssScrollMarginShorthand::try_new(CssScrollSideKind::Physical, vec![]).is_none());
     assert!(
-        CssScrollPaddingShorthand::try_new(CssScrollSideKind::Logical, vec![padding("auto"); 5])
-            .is_none()
+        CssFourSides::<CssAutoOr<CssNumeric<CssLengthPercentage, CssNonNegative>>>::try_new(
+            CssBoxSideKind::Physical,
+            vec![]
+        )
+        .is_none()
     );
+    assert!(CssFourSides::try_new(CssBoxSideKind::Logical, vec![padding("auto"); 5]).is_none());
 }
 
 #[test]
 fn canonical_pair_and_quad_compression_compares_values_across_distinct_origins() {
     let parsed = length("1px");
     let programmatic =
-        CssSpecifiedLength::try_from_component(CssComponentValue::try_token("1px").unwrap())
+        CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_token("1px").unwrap())
             .unwrap();
-    assert_ne!(parsed, programmatic, "origins are retained in owned values");
-    let pair = CssScrollMarginPair::new(parsed.clone(), Some(programmatic.clone()));
-    assert_eq!(pair.authored_end(), Some(&programmatic));
-    assert_eq!(pair.serialize_specified().unwrap(), "1px");
+    assert_eq!(
+        parsed, programmatic,
+        "equality ignores the origins owned values retain"
+    );
+    let pair = CssSidePair::new(parsed.clone(), Some(programmatic.clone()));
+    assert_eq!(pair.authored_second(), Some(&programmatic));
+    assert_eq!(pair.serialize_specified(Default::default()).unwrap(), "1px");
 
     for (values, expected) in [
         (vec!["1px", "1px", "1px", "1px"], "1px"),
@@ -584,12 +665,14 @@ fn canonical_pair_and_quad_compression_compares_values_across_distinct_origins()
         (vec!["1px", "2px", "3px", "4px"], "1px 2px 3px 4px"),
     ] {
         let authored = values.into_iter().map(length).collect();
-        let quad =
-            CssScrollMarginShorthand::try_new(CssScrollSideKind::Physical, authored).unwrap();
-        assert_eq!(quad.serialize_specified().unwrap(), expected);
+        let quad = CssFourSides::try_new(CssBoxSideKind::Physical, authored).unwrap();
+        assert_eq!(
+            quad.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
-    let logical = CssScrollMarginShorthand::try_new(
-        CssScrollSideKind::Logical,
+    let logical = CssFourSides::try_new(
+        CssBoxSideKind::Logical,
         vec![
             parsed.clone(),
             length("2px"),
@@ -598,9 +681,12 @@ fn canonical_pair_and_quad_compression_compares_values_across_distinct_origins()
         ],
     )
     .unwrap();
-    assert_eq!(logical.serialize_specified().unwrap(), "logical 1px 2px");
-    let padding = CssScrollPaddingShorthand::try_new(
-        CssScrollSideKind::Physical,
+    assert_eq!(
+        logical.serialize_specified(Default::default()).unwrap(),
+        "logical 1px 2px"
+    );
+    let padding = CssFourSides::try_new(
+        CssBoxSideKind::Physical,
         vec![
             padding("auto"),
             padding("5%"),
@@ -609,102 +695,106 @@ fn canonical_pair_and_quad_compression_compares_values_across_distinct_origins()
         ],
     )
     .unwrap();
-    assert_eq!(padding.serialize_specified().unwrap(), "auto 5%");
+    assert_eq!(
+        padding.serialize_specified(Default::default()).unwrap(),
+        "auto 5%"
+    );
 }
 
 #[test]
 fn pair_and_quad_serialization_charge_each_authored_child_under_one_budget() {
-    let pair = CssScrollMarginPair::new(length("1px"), Some(length("2px")));
-    assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 2, 7))
+    // One aggregate node plus each authored child.
+    let pair = CssSidePair::new(length("1px"), Some(length("2px")));
+    assert!(
+        pair.serialize_specified(CssSerializationLimits::new(2, 3, 7))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
+    );
+    assert!(
+        pair.serialize_specified(CssSerializationLimits::new(3, 2, 7))
+            .unwrap_err()
+            .is_projection_node_limit()
+    );
+    assert!(
+        pair.serialize_specified(CssSerializationLimits::new(3, 3, 6))
+            .unwrap_err()
+            .is_byte_limit()
     );
     assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 1, 7))
-            .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
-    );
-    assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 6))
-            .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
-    );
-    assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 7))
+        pair.serialize_specified(CssSerializationLimits::new(3, 3, 7))
             .unwrap(),
         "1px 2px"
     );
-    let compressed_pair = CssScrollMarginPair::new(length("1px"), Some(length("1px")));
+    let compressed_pair = CssSidePair::new(length("1px"), Some(length("1px")));
     assert_eq!(
         compressed_pair
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 3))
+            .serialize_specified(CssSerializationLimits::new(3, 3, 3))
             .unwrap(),
         "1px"
     );
-    let quad = CssScrollMarginShorthand::try_new(
-        CssScrollSideKind::Logical,
+    let quad = CssFourSides::try_new(
+        CssBoxSideKind::Logical,
         vec![length("1px"), length("1px"), length("1px"), length("1px")],
     )
     .unwrap();
-    assert_eq!(quad.serialize_specified().unwrap(), "logical 1px");
     assert_eq!(
-        quad.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(4, 5, 64))
+        quad.serialize_specified(Default::default()).unwrap(),
+        "logical 1px"
+    );
+    assert!(
+        quad.serialize_specified(CssSerializationLimits::new(4, 5, 64))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
+    );
+    assert!(
+        quad.serialize_specified(CssSerializationLimits::new(5, 4, 64))
+            .unwrap_err()
+            .is_projection_node_limit()
     );
     assert_eq!(
-        quad.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(5, 4, 64))
-            .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
-    );
-    assert_eq!(
-        quad.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(5, 5, 11))
+        quad.serialize_specified(CssSerializationLimits::new(5, 5, 11))
             .unwrap(),
         "logical 1px"
     );
-    assert_eq!(
-        quad.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(5, 5, 10))
+    assert!(
+        quad.serialize_specified(CssSerializationLimits::new(5, 5, 10))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }
 
 #[test]
 fn math_pair_captures_both_authored_trees_with_one_input_budget() {
     // Each authored calc() has a function, sum, and two numeric leaves, so
-    // each tree costs four input nodes even if it simplifies to one length.
+    // each tree costs four input nodes even if it simplifies to one length;
+    // the pair's aggregate adds one more.
     let math = |text| {
-        CssSpecifiedLength::try_from_calculation(
-            CssLengthCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap(),
+        CssNumeric::<CssLength>::try_from_calculation(
+            CssCalculation::<CssLength>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap()
     };
     let first = math("calc(1px + 2px)");
     let second = math("calc(3px + 4px)");
-    let ample_projection_and_bytes = CssSpecifiedValueSerializationLimits::new(4, 64, 64);
+    let ample_projection_and_bytes = CssSerializationLimits::new(4, 64, 64);
     first
-        .serialize_specified_with_limits(ample_projection_and_bytes)
+        .serialize_specified(ample_projection_and_bytes)
         .unwrap();
     second
-        .serialize_specified_with_limits(ample_projection_and_bytes)
+        .serialize_specified(ample_projection_and_bytes)
         .unwrap();
-    let pair = CssScrollMarginPair::new(first, Some(second));
-    assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(7, 64, 64))
+    let pair = CssSidePair::new(first, Some(second));
+    assert!(
+        pair.serialize_specified(CssSerializationLimits::new(8, 64, 64))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
     assert!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(8, 64, 64))
+        pair.serialize_specified(CssSerializationLimits::new(9, 64, 64))
             .is_ok()
     );
 }
@@ -726,33 +816,35 @@ fn four_side_authored_values_expand_selected_mode_footprint() {
         ));
         for value in [valid, "initial", "inherit", "unset"] {
             let source = declaration(name, value);
-            assert_four_expansion(expand_declaration(&source));
+            assert_four_expansion(source.expand());
         }
         let source = declaration(name, "var(--inset)");
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("four-side substitution remains pending")
         };
         assert!(handle.source().same_occurrence(&source));
-        assert!(matches!(
+        assert!(
             handle
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
-        assert_eq!(
-            handle
-                .reenter(parse_component_values("var(--again)").unwrap())
-                .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .replacement_error()
+                .is_some()
         );
-        let replacement = parse_component_values(valid).unwrap();
+        assert!(
+            handle
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
+                .unwrap_err()
+                .is_residual_substitution()
+        );
+        let replacement = CssComponentValues::parse(&CssParser::default(), valid).unwrap();
         assert_four_contributions(handle.reenter(replacement.clone()));
 
-        let pending_report = parse_sheet(&format!(".a{{{name}:var(--inset)}}"));
+        let pending_report = CssParser::default().parse_sheet(format!(".a{{{name}:var(--inset)}}"));
         assert!(pending_report.is_clean());
-        let pending_normalized = normalize_sheet(pending_report.syntax()).unwrap();
+        let pending_normalized = pending_report
+            .syntax()
+            .normalize(Default::default())
+            .unwrap();
         let pending_item = pending_normalized
             .items()
             .iter()
@@ -763,10 +855,11 @@ fn four_side_authored_values_expand_selected_mode_footprint() {
             .expect("pending four-side declaration retained");
         assert!(matches!(pending_item.expansion(), CssExpansion::Pending(_)));
 
-        let report = parse_sheet(&format!(".a{{color:red;{name}:{valid};color:blue}}"));
+        let report =
+            CssParser::default().parse_sheet(format!(".a{{color:red;{name}:{valid};color:blue}}"));
         assert!(report.is_clean(), "{name}: {:?}", report.diagnostics());
         let syntax = report.syntax().clone();
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         assert_eq!(
             normalized
                 .items()

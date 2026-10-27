@@ -2,12 +2,37 @@
 //! Values4 custom-ident and selected Selectors4 attachment/context contracts.
 //! New typed APIs establish functional behavior without absent-symbol RED.
 //! Limits tariffs follow the adopted shared writer convention, not spec mandates.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::ExpectedRejection;
 use crate::css::support::sole_declaration as declaration;
 use CssPseudoElementSegment::{PseudoClass as P, PseudoElement as E};
-use surgeist_css::*;
-type Limits = CssSpecifiedValueSerializationLimits;
-type LimitKind = CssSpecifiedValueSerializationErrorKind;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::{CssRule, CssSheet};
+use surgeist_css::selector::{
+    CssCompoundSelectorArgument, CssNamespaceContext, CssPartName, CssPartNameList, CssPseudoClass,
+    CssPseudoElement, CssPseudoElementSegment, CssPseudoElementSequence, CssPseudoSelectorList,
+    CssPseudoSelectorListItem, CssSelector, CssSelectorList,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::CssCustomIdent;
+use surgeist_css::values::view_transition::{
+    CssViewTransitionIdent, CssViewTransitionName, CssViewTransitionNameSelector,
+};
+type Limits = CssSerializationLimits;
+type LimitKind = SerializationFailure;
 
 fn ident(text: &str) -> CssViewTransitionIdent {
     CssViewTransitionIdent::try_new(CssCustomIdent::try_new(text).unwrap()).unwrap()
@@ -32,10 +57,14 @@ fn value(declaration: &CssDeclaration) -> &CssViewTransitionName {
     else {
         panic!("typed name wrapper")
     };
-    wrapper.name()
+    wrapper.value()
 }
 fn selector(source: &str) -> CssSelector {
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean(), "{source}: {report:?}");
     report.into_validation_result().unwrap().unwrap()
 }
@@ -52,7 +81,11 @@ fn rejected(source: &str) {
     );
 }
 fn rejected_as(source: &str, expected: &ExpectedRejection) {
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.syntax().is_none(), "{source}: {report:?}");
     expected.assert_first(&report);
 }
@@ -63,7 +96,11 @@ fn suffix_list(value: &CssSelector) -> &CssPseudoSelectorList {
     list
 }
 fn retained(source: &str) -> CssSelector {
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(!report.is_clean(), "{source}: {report:?}");
     assert!(
         report
@@ -124,14 +161,16 @@ fn checked_property_ident_excludes_its_keywords_without_changing_generic_ident()
         assert_eq!(domain.as_str(), decoded);
         assert_eq!(
             CssViewTransitionName::Custom(domain)
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             specified
         );
     }
     assert_ne!(ident("Card"), ident("card"));
     assert_eq!(
-        CssViewTransitionName::None.serialize_specified().unwrap(),
+        CssViewTransitionName::None
+            .serialize_specified(Default::default())
+            .unwrap(),
         "none"
     );
 }
@@ -155,10 +194,10 @@ fn ordinary_wrapper_global_alternatives_and_intrinsic_metadata_share_one_propert
         assert_eq!(source.known().unwrap().property(), property);
         assert_eq!(value(&source), &expected);
         assert_eq!(
-            source.to_specified_css().unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             format!(
                 "view-transition-name: {};",
-                expected.serialize_specified().unwrap()
+                expected.serialize_specified(Default::default()).unwrap()
             )
         );
     }
@@ -230,9 +269,12 @@ fn parsed_value_window_and_checked_origins_remain_truthful_with_unicode() {
         (27, 32),
     );
     assert!(region.source().same_snapshot(parsed_name.source()));
-    let parsed = parse_component_values(r"\43 ard").unwrap();
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::ViewTransitionName),
+    let parsed = CssComponentValues::parse(&CssParser::default(), r"\43 ard").unwrap();
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(
+            CssKnownProperty::ViewTransitionName,
+        )),
         parsed.clone(),
         CssImportance::Important,
     )
@@ -246,12 +288,20 @@ fn parsed_value_window_and_checked_origins_remain_truthful_with_unicode() {
         (0, 7),
         (0, 7),
     );
-    let space = parse_component_values(" ").unwrap().items()[0].clone();
-    let mixed =
-        CssComponentValues::try_new(vec![space, CssComponentValue::try_ident("Card").unwrap()])
-            .unwrap();
-    let mixed_checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::ViewTransitionName),
+    let space = CssComponentValues::parse(&CssParser::default(), " ")
+        .unwrap()
+        .items()[0]
+        .clone();
+    let mixed = CssComponentValues::try_new(
+        vec![space, CssComponentValue::try_ident("Card").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
+    let mixed_checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(
+            CssKnownProperty::ViewTransitionName,
+        )),
         mixed.clone(),
         CssImportance::Normal,
     )
@@ -272,7 +322,7 @@ fn parsed_value_window_and_checked_origins_remain_truthful_with_unicode() {
 #[test]
 fn invalid_property_values_drop_only_their_occurrence_with_original_responsible_token() {
     let source = "/*😀*/view-transition-name:AUTO;color:red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     let [sibling] = report.syntax().as_slice() else {
         panic!("valid later declaration survives")
     };
@@ -285,10 +335,16 @@ fn invalid_property_values_drop_only_their_occurrence_with_original_responsible_
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
     assert_eq!(diagnostic.error().position().byte_offset().value(), 29);
     assert_eq!(diagnostic.error().position().column().value(), 27);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("typed grammar error")
-    };
-    assert_eq!(detail.property(), CssKnownProperty::ViewTransitionName);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "typed grammar error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::ViewTransitionName
+    );
     assert_eq!(detail.encountered().unwrap().authored(), "AUTO");
     assert!(report.into_validation_result().is_err());
     // VT1 §3.1: none | <custom-ident>, a single identifier other than
@@ -307,18 +363,18 @@ fn invalid_property_values_drop_only_their_occurrence_with_original_responsible_
         ("f(card)", rejected.clone().at("f(")),
         ("initial card", rejected.clone()),
     ] {
-        let components = parse_component_values(invalid).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), invalid).unwrap();
         let before = components.clone();
-        let error = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::ViewTransitionName),
+        let error = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                CssKnownProperty::ViewTransitionName,
+            )),
             components.clone(),
             CssImportance::Normal,
         )
         .unwrap_err();
-        let CssPropertyValueErrorKind::Grammar(detail) = error.kind() else {
-            panic!("{invalid}: grammar failure: {error:?}")
-        };
-        expected.assert_kind(detail);
+        expected.assert_checked(&error);
         assert_eq!(components, before);
     }
 }
@@ -328,7 +384,7 @@ fn pending_property_reentry_is_strict_repeatable_and_preserves_source_and_replac
     for pending_css in ["var(--tag)", "env(tag)", "attr(data-tag)"] {
         let source = declaration(&format!("view-transition-name:{pending_css}!important"));
         assert!(source.known().unwrap().substitution_dependent().is_some());
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("pending name")
         };
         // VT1 §3.1: none | <custom-ident>, excluding auto; Values 4 §4.2
@@ -342,29 +398,22 @@ fn pending_property_reentry_is_strict_repeatable_and_preserves_source_and_replac
             ("var(--again)", None),
             ("env(again)", None),
         ] {
-            let replacement = parse_component_values(invalid).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), invalid).unwrap();
             let before = replacement.clone();
             let error = pending.reenter(replacement.clone()).unwrap_err();
             match token {
                 Some(token) => {
-                    let CssExpansionErrorKind::InvalidReplacement(failure) = error.kind() else {
+                    let Some(failure) = error.replacement_error() else {
                         panic!("{invalid}: invalid replacement: {error:?}")
                     };
-                    let CssPropertyValueErrorKind::Grammar(detail) = failure.kind() else {
-                        panic!("{invalid}: grammar failure: {failure:?}")
-                    };
-                    rejected.clone().at(token).assert_kind(detail);
+                    rejected.clone().at(token).assert_checked(failure);
                 }
-                None => assert_eq!(
-                    error.kind(),
-                    &CssExpansionErrorKind::ResidualSubstitution,
-                    "{invalid}"
-                ),
+                None => assert!(error.is_residual_substitution(), "{invalid}"),
             }
             assert_eq!(replacement, before);
             assert!(pending.source().same_occurrence(&source));
         }
-        let replacement = parse_component_values(r"\43 ard").unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), r"\43 ard").unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
             else {
@@ -384,14 +433,16 @@ fn pending_property_reentry_is_strict_repeatable_and_preserves_source_and_replac
             };
             assert_eq!(actual, &name("Card"));
         }
-        let recovered = parse_component_values("var(--tag").unwrap();
-        assert_eq!(
-            pending.reenter(recovered).unwrap_err().kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+        let recovered = CssComponentValues::parse(&CssParser::default(), "var(--tag").unwrap();
+        assert!(
+            pending
+                .reenter(recovered)
+                .unwrap_err()
+                .is_residual_substitution()
         );
         assert!(
             pending
-                .reenter(parse_component_values("none").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "none").unwrap())
                 .is_ok()
         );
     }
@@ -416,14 +467,23 @@ fn every_typed_pseudo_argument_branch_is_distinct_and_checked_readmission_retain
             assert_eq!(segments(&parsed), &[E(element.clone())]);
             let checked_sequence = CssPseudoElementSequence::try_new(vec![element]).unwrap();
             assert_eq!(checked_sequence.segments(), segments(&parsed));
-            let checked_list = CssSelectorList::try_new(vec![parsed.clone()]).unwrap();
+            let checked_list =
+                CssSelectorList::try_new(vec![parsed.clone()], Default::default()).unwrap();
             assert_eq!(checked_list.selectors(), &[parsed]);
-            assert_eq!(checked_list.to_specified_css().unwrap(), css);
+            assert_eq!(
+                checked_list
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                css
+            );
         }
     }
     let root = selector("::VIEW-TRANSITION");
     assert_eq!(segments(&root), &[E(CssPseudoElement::ViewTransition)]);
-    assert_eq!(root.to_specified_css().unwrap(), "::view-transition");
+    assert_eq!(
+        root.serialize_specified(Default::default()).unwrap(),
+        "::view-transition"
+    );
     assert_ne!(
         selector("::view-transition-old(Card)"),
         selector("::view-transition-old(card)")
@@ -461,22 +521,28 @@ fn malformed_names_reject_and_implicit_function_eof_is_retained_but_not_clean() 
         );
     }
     let source = "::view-transition-old(Card";
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert_eq!(
         report
             .syntax()
             .as_ref()
             .unwrap()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         "::view-transition-old(Card)"
     );
     assert!(!report.is_clean());
-    assert!(report.diagnostics().iter().any(|d| matches!(
-        d.error().kind(),
-        ErrorKind::UnexpectedEnd(_)
-    ) && d.error().position().byte_offset().value()
-        == source.len()));
+    assert!(
+        report
+            .diagnostics()
+            .iter()
+            .any(|d| d.error().code() == CssErrorCode::UnexpectedEnd
+                && d.error().position().byte_offset().value() == source.len())
+    );
     assert!(report.into_validation_result().is_err());
 }
 
@@ -578,7 +644,7 @@ fn typed_parent_child_edges_and_tree_abiding_receivers_keep_names_symbolic() {
     }
     assert_eq!(
         selector("::view-transition-group(A)::view-transition-image-pair(B)")
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         "::view-transition-group(A)::view-transition-image-pair(B)"
     );
@@ -613,13 +679,15 @@ fn retained_invalid_logical_items_require_actual_suffix_permission_inclusion() {
         "::view-transition-old(Card):is(:NoPe(&))"
     );
     assert_eq!(
-        named.to_specified_css().unwrap(),
+        named.serialize_specified(Default::default()).unwrap(),
         "::view-transition-old(Card):is(:NoPe(&))"
     );
     let detached = CssSelector::PseudoClass(CssPseudoClass::Is(suffix_list(&named).clone()));
-    assert_eq!(
-        detached.to_specified_css().unwrap_err().kind(),
-        LimitKind::UnrepresentableValue
+    assert!(
+        detached
+            .serialize_specified(Default::default())
+            .unwrap_err()
+            .is_unrepresentable_value()
     );
 }
 
@@ -627,13 +695,13 @@ fn retained_invalid_logical_items_require_actual_suffix_permission_inclusion() {
 fn supports_lexical_snapshot_keeps_function_opener_closer_and_identifier_spans_separate() {
     let source =
         "/*😀*/@supports selector(::view-transition-old(Δa)){.x{view-transition-name:Card}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("one actual Supports rule")
     };
     let condition = rule.condition();
-    let CssSupportsConditionKind::Selector(semantic) = condition.kind() else {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Selector(semantic)) = condition.kind() else {
         panic!("typed selector probe")
     };
     assert_eq!(
@@ -667,16 +735,17 @@ fn supports_lexical_snapshot_keeps_function_opener_closer_and_identifier_spans_s
         (47, 49),
     );
     parsed_range(inner.1.closing_origin(), source, (52, 53), (49, 50));
-    let reused = CssSupportsCondition::try_from_components(
-        CssComponentValues::try_new(condition.components().to_vec()).unwrap(),
+    let reused = CssCondition::<CssSupportsLeaf>::try_from_components(
+        CssComponentValues::try_new(condition.components().to_vec(), Default::default()).unwrap(),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(&reused, condition);
     let sheet = CssSheet::try_from_rules(report.syntax().rules().to_vec()).unwrap();
     assert_eq!(sheet.rules(), report.syntax().rules());
     assert_eq!(
-        sheet.to_specified_css().unwrap(),
+        sheet.serialize_specified(Default::default()).unwrap(),
         "@supports selector(::view-transition-old(Δa)) { .x { view-transition-name: Card; } }"
     );
 }
@@ -685,10 +754,16 @@ fn supports_lexical_snapshot_keeps_function_opener_closer_and_identifier_spans_s
 fn real_nested_scoped_rules_normalize_and_recover_whole_invalid_selector_units() {
     let source = ".p{view-transition-name:Card;@scope(.s){&::view-transition-new(Card):only-child{view-transition-name:none}}}";
     let expected = ".p { view-transition-name: Card; @scope (.s) { &::view-transition-new(Card):only-child { view-transition-name: none; } } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
-    assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let values: Vec<_> = normalized
         .items()
         .iter()
@@ -699,7 +774,7 @@ fn real_nested_scoped_rules_normalize_and_recover_whole_invalid_selector_units()
         .collect();
     assert_eq!(values, vec![name("Card"), CssViewTransitionName::None]);
     let bad_source = "::view-transition-group(Card) > .bad{view-transition-name:Card}.after{view-transition-name:none}";
-    let bad = parse_sheet(bad_source);
+    let bad = CssParser::default().parse_sheet(bad_source);
     let [CssRule::Style(after)] = bad.syntax().rules() else {
         panic!("only later rule survives")
     };
@@ -725,9 +800,7 @@ fn proposed_scalar_and_selector_list_tariffs_are_cumulative_atomic_and_repeatabl
     let scalar = name("A B");
     let expected = r"A\ B";
     assert_eq!(
-        scalar
-            .serialize_specified_with_limits(Limits::new(1, 1, 4))
-            .unwrap(),
+        scalar.serialize_specified(Limits::new(1, 1, 4)).unwrap(),
         expected
     );
     for (limits, cause) in [
@@ -736,17 +809,14 @@ fn proposed_scalar_and_selector_list_tariffs_are_cumulative_atomic_and_repeatabl
         (Limits::new(1, 1, 3), LimitKind::ByteLimit),
     ] {
         assert_eq!(
-            scalar
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&scalar.serialize_specified(limits).unwrap_err()),
             cause
         );
         assert_eq!(scalar, name("A B"));
     }
     assert_eq!(
         CssViewTransitionName::None
-            .serialize_specified_with_limits(Limits::new(1, 1, 4))
+            .serialize_specified(Limits::new(1, 1, 4))
             .unwrap(),
         "none"
     );
@@ -756,40 +826,41 @@ fn proposed_scalar_and_selector_list_tariffs_are_cumulative_atomic_and_repeatabl
     ];
     let css = "::view-transition-old(Card), ::view-transition";
     let fit = Limits::new(6, 6, css.len());
-    let list = CssSelectorList::try_new_with_limits(members.clone(), fit).unwrap();
+    let list = CssSelectorList::try_new(members.clone(), fit).unwrap();
     let before = list.clone();
-    assert_eq!(list.to_specified_css_with_limits(fit).unwrap(), css);
+    assert_eq!(list.serialize_specified(fit).unwrap(), css);
     for (limits, cause) in [
         (Limits::new(5, 6, css.len()), LimitKind::InputNodeLimit),
         (Limits::new(6, 5, css.len()), LimitKind::ProjectionNodeLimit),
         (Limits::new(6, 6, css.len() - 1), LimitKind::ByteLimit),
     ] {
         for member in &members {
-            assert!(member.to_specified_css_with_limits(limits).is_ok());
+            assert!(member.serialize_specified(limits).is_ok());
         }
-        let error = CssSelectorList::try_new_with_limits(members.clone(), limits).unwrap_err();
-        let CssSelectorConstructionErrorKind::Specified(error) = error.kind() else {
+        let error = CssSelectorList::try_new(members.clone(), limits).unwrap_err();
+        let Some(error) = error.serialization_error() else {
             panic!("shared specified cause")
         };
-        assert_eq!(error.kind(), cause);
+        assert_eq!(serialization_failure(error), cause);
         assert_eq!(
-            list.to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&list.serialize_specified(limits).unwrap_err()),
             cause
         );
         assert_eq!(list, before);
     }
-    assert_eq!(list.to_specified_css_with_limits(fit).unwrap(), css);
+    assert_eq!(list.serialize_specified(fit).unwrap(), css);
 }
 
 #[test]
 fn checked_pending_components_obey_the_real_256_ceiling_and_keep_leaf_origins() {
     let accepted = format!("{}var(--tag){}", "f(".repeat(255), ")".repeat(255));
-    let components = parse_component_values(&accepted).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), &accepted).unwrap();
     let before = components.clone();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::ViewTransitionName),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(
+            CssKnownProperty::ViewTransitionName,
+        )),
         components.clone(),
         CssImportance::Normal,
     )
@@ -803,15 +874,19 @@ fn checked_pending_components_obey_the_real_256_ceiling_and_keep_leaf_origins() 
     );
     assert_eq!(declaration.value_components(), &before);
     let rejected = format!("{}var(--tag){}", "f(".repeat(256), ")".repeat(256));
-    assert_eq!(
-        parse_component_values(&rejected).unwrap_err().kind(),
-        CssComponentValueErrorKind::NestingLimit
+    assert!(
+        CssComponentValues::parse(&CssParser::default(), &rejected)
+            .unwrap_err()
+            .is_nesting_limit()
     );
-    let CssExpansion::Pending(pending) = expand_declaration(&declaration).unwrap() else {
+    let CssExpansion::Pending(pending) = declaration.expand().unwrap() else {
         panic!("deep authored pending name")
     };
-    let replacement =
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("Card").unwrap()]).unwrap();
+    let replacement = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("Card").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("valid bounded replacement")
     };

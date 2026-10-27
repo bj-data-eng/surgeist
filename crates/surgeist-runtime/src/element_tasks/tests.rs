@@ -23,7 +23,7 @@ fn session(dom: Dom) -> DomSession {
                 reports: 32,
                 storage_bytes: 16 * 1024 * 1024,
                 work: 1_000_000,
-                css_input: surgeist_css::CssUtf16InputLimits::default(),
+                css_input: surgeist_css::source::CssUtf16InputLimits::default(),
             },
             element_tasks: limits(),
             hosted: DomHostedRuntimeLimits {
@@ -1157,7 +1157,7 @@ fn session_bootstrap_distinguishes_actual_nonempty_raw_transfer_from_empty_or_re
                 reports: 8,
                 storage_bytes: 16 * 1024 * 1024,
                 work: 1_000_000,
-                css_input: surgeist_css::CssUtf16InputLimits::default(),
+                css_input: surgeist_css::source::CssUtf16InputLimits::default(),
             },
             element_tasks: self::limits(),
             hosted: DomHostedRuntimeLimits {

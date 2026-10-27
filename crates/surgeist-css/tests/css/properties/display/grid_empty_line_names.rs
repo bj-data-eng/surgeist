@@ -2,10 +2,13 @@
 //! https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#typedef-line-names
 //! Empty groups are authored components, not absent components or empty tracks.
 
-use surgeist_css::{
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::common::CssIdent;
+use surgeist_css::values::layout::{
     CssGridAutoTrackComponent, CssGridGeneralTrackComponent, CssGridLineName, CssGridLineNames,
-    CssGridTrackRepeatComponent, CssIdent, CssImportance, CssKnownPropertyValueRef,
-    parse_style_attribute,
+    CssGridTrackRepeatComponent,
 };
 
 #[test]
@@ -22,7 +25,7 @@ fn construction_preserves_an_empty_line_name_group() {
 #[test]
 fn explicit_tracks_retain_both_empty_groups_and_importance() {
     let source = "grid-template-columns: [] 2px [/* end */] !important; color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [declaration, _sibling] = report.syntax().as_slice() else {
         panic!("both declarations retained");
@@ -51,7 +54,7 @@ fn explicit_tracks_retain_both_empty_groups_and_importance() {
 fn repetition_preserves_empty_groups_in_authored_graph() {
     for count in ["2", "auto-fill", "auto-fit"] {
         let source = format!("grid-template-columns: repeat({count}, [] 2px [])");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let CssKnownPropertyValueRef::GridTemplateColumns(value) = report.syntax()[0]
             .known()
@@ -93,7 +96,7 @@ fn repetition_preserves_empty_groups_in_authored_graph() {
 fn empty_groups_do_not_replace_required_tracks_or_admit_reserved_names() {
     for value in ["[]", "repeat(2, [])", "[auto] 2px", "[span] 2px"] {
         let source = format!("grid-template-columns: {value}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(!report.is_clean(), "{source}");
         assert_eq!(report.syntax().len(), 1, "only the color sibling remains");
         let diagnostics = report.diagnostics().to_vec();

@@ -6,19 +6,33 @@
 
 use crate::css::support::serialization_limits::assert_limits_with_zero as budget;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::{
-    CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
+use surgeist_css::CssParser;
+use surgeist_css::color::CssColor;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::numeric::{CssCalculation, CssLengthPercentage, CssNumeric};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::text::{
+    CssTextDecoration, CssTextDecorationLine, CssTextDecorationLineComponent,
+    CssTextDecorationStyle, CssTextDecorationThickness, CssTextIndent, CssVerticalAlign,
 };
 
-fn length(text: &str) -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_component(CssComponentValue::try_token(text).unwrap())
-        .unwrap()
+fn length(text: &str) -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_component(
+        CssComponentValue::try_token(text).unwrap(),
+    )
+    .unwrap()
 }
 
-fn calculation(text: &str) -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_calculation(
-        CssLengthPercentageCalculation::try_from_components(parse_component_values(text).unwrap())
-            .unwrap(),
+fn calculation(text: &str) -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_calculation(
+        CssCalculation::<CssLengthPercentage>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
@@ -39,9 +53,12 @@ macro_rules! check {
     ($value:expr, $input:expr, $projection:expr, $expected:expr) => {{
         let value = $value;
         let expected: &str = $expected;
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         budget(expected, $input, $projection, |limits| {
-            value.serialize_specified_with_limits(limits)
+            value.serialize_specified(limits)
         });
     }};
 }
@@ -61,8 +78,12 @@ fn indent_flags_emit_in_grammar_order_with_exact_cumulative_costs() {
             CssTextIndent::new(length("-2.5%"), hanging, each_line)
         );
         assert_eq!(value.length().origin(), &CssValueOrigin::Programmatic);
-        let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) =
-            value.length().literal_component().unwrap().view()
+        let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) = value
+            .length()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap()
+            .view()
         else {
             panic!("retained authored percentage")
         };
@@ -86,7 +107,7 @@ fn every_indent_permutation_reenters_the_same_semantic_value() {
         let value = parsed!(&format!("text-indent:{text}"), TextIndent);
         assert_eq!(value, expected);
         assert_eq!(
-            value.serialize_specified().unwrap(),
+            value.serialize_specified(Default::default()).unwrap(),
             "-1px hanging each-line"
         );
     }
@@ -100,13 +121,18 @@ fn every_indent_permutation_reenters_the_same_semantic_value() {
         "1px sideways",
     ] {
         let source = format!("text-indent:{text}; color:blue");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(!report.is_clean(), "{source}");
         let [sibling] = report.syntax().as_slice() else {
             panic!("only valid sibling")
         };
         assert_eq!(sibling.known().unwrap().property(), CssKnownProperty::Color);
-        assert!(validate_style_attribute(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_err()
+        );
     }
 }
 
@@ -261,7 +287,7 @@ fn decoration_order_is_line_thickness_style_color_and_all_fields_stay_explicit()
         TextDecoration
     );
     assert_eq!(
-        parsed.serialize_specified().unwrap(),
+        parsed.serialize_specified(Default::default()).unwrap(),
         "underline overline -1px wavy currentcolor"
     );
     let reparsed = parsed!(
@@ -351,13 +377,16 @@ fn shared_numeric_projection_preserves_symbolic_origins_and_exact_budgets() {
         "text-decoration-thickness:calc(40% - 20px)",
         TextDecorationThickness
     );
-    assert_eq!(mixed.serialize_specified().unwrap(), "calc(40% - 20px)");
+    assert_eq!(
+        mixed.serialize_specified(Default::default()).unwrap(),
+        "calc(40% - 20px)"
+    );
     assert_eq!(
         parsed!(
             "text-decoration-thickness:calc(-20px + 40%)",
             TextDecorationThickness
         )
-        .serialize_specified()
+        .serialize_specified(Default::default())
         .unwrap(),
         "calc(40% - 20px)"
     );
@@ -369,19 +398,21 @@ fn rounding_and_failed_serialization_keep_exact_coefficients_units_and_origins()
     let value = parsed!(source, TextDecorationThickness);
     let before = value.clone();
     check!(&value, 1, 1, "0%");
-    assert_eq!(
+    assert!(
         value
-            .serialize_specified_with_limits(L::new(1, 1, 1))
+            .serialize_specified(L::new(1, 1, 1))
             .unwrap_err()
-            .kind(),
-        K::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
     let CssTextDecorationThickness::Length(retained) = value else {
         panic!("numeric thickness")
     };
-    let CssComponentValueRef::Token(CssValueTokenRef::Percentage(token)) =
-        retained.literal_component().unwrap().view()
+    let CssComponentValueRef::Token(CssValueTokenRef::Percentage(token)) = retained
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("percentage")
     };
@@ -398,18 +429,20 @@ fn rounding_and_failed_serialization_keep_exact_coefficients_units_and_origins()
         source[..start].encode_utf16().count()
     );
     let huge = CssTextDecorationThickness::Length(length("1e999px"));
-    assert_eq!(
-        huge.serialize_specified_with_limits(L::new(1, 1, 16))
+    assert!(
+        huge.serialize_specified(L::new(1, 1, 16))
             .unwrap_err()
-            .kind(),
-        K::ByteLimit
+            .is_byte_limit()
     );
     let CssTextDecorationThickness::Length(huge) = huge else {
         unreachable!()
     };
     assert_eq!(huge.origin(), &CssValueOrigin::Programmatic);
-    let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
-        huge.literal_component().unwrap().view()
+    let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) = huge
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("dimension")
     };
@@ -425,12 +458,11 @@ fn a_late_aggregate_failure_returns_no_partial_css_and_does_not_mutate_children(
     );
     let before = value.clone();
     let expected = "underline blink -10px solid currentcolor";
-    assert_eq!(
+    assert!(
         value
-            .serialize_specified_with_limits(L::new(7, 7, expected.len() - 1))
+            .serialize_specified(L::new(7, 7, expected.len() - 1))
             .unwrap_err()
-            .kind(),
-        K::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
     assert_eq!(
@@ -440,5 +472,8 @@ fn a_late_aggregate_failure_returns_no_partial_css_and_does_not_mutate_children(
             CssTextDecorationLineComponent::Underline
         ]
     );
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }

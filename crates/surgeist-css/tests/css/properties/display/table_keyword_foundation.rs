@@ -5,8 +5,24 @@
 //! unselected left/right caption values. Their rejection below is specific to
 //! this selected profile, not a judgment that they are invalid in every CSS UA.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_checked_matches_diagnostic;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContributions, CssLonghandValueRef, CssPropertyKindRef,
+    CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
+use surgeist_css::values::table::{
+    CssBorderCollapse, CssCaptionSide, CssEmptyCells, CssTableLayout,
+};
 
 type Property = CssKnownProperty;
 
@@ -37,15 +53,12 @@ impl TableKeyword {
         }
     }
 
-    fn serialize(
-        self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
+    fn serialize(self, limits: CssSerializationLimits) -> Result<String, CssSerializationError> {
         match self {
-            Self::BorderCollapse(value) => value.serialize_specified_with_limits(limits),
-            Self::CaptionSide(value) => value.serialize_specified_with_limits(limits),
-            Self::EmptyCells(value) => value.serialize_specified_with_limits(limits),
-            Self::TableLayout(value) => value.serialize_specified_with_limits(limits),
+            Self::BorderCollapse(value) => value.serialize_specified(limits),
+            Self::CaptionSide(value) => value.serialize_specified(limits),
+            Self::EmptyCells(value) => value.serialize_specified(limits),
+            Self::TableLayout(value) => value.serialize_specified(limits),
         }
     }
 }
@@ -112,32 +125,33 @@ fn table_keywords_serialize_all_eight_values_with_atomic_resource_limits() {
         (TableKeyword::TableLayout(CssTableLayout::Fixed), "fixed"),
     ] {
         assert_eq!(
-            value
-                .serialize(CssSpecifiedValueSerializationLimits::default())
-                .unwrap(),
+            value.serialize(CssSerializationLimits::default()).unwrap(),
             text
         );
         assert_eq!(
             value
-                .serialize(CssSpecifiedValueSerializationLimits::new(1, 1, text.len()))
+                .serialize(CssSerializationLimits::new(1, 1, text.len()))
                 .unwrap(),
             text
         );
         for (limits, expected) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, text.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(0, 1, text.len()),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, text.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(1, 0, text.len()),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, text.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(1, 1, text.len() - 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(value.serialize(limits).unwrap_err().kind(), expected);
+            assert_eq!(
+                serialization_failure(&value.serialize(limits).unwrap_err()),
+                expected
+            );
         }
     }
 }
@@ -190,7 +204,7 @@ fn declaration(property: Property, value: &str, importance: CssImportance) -> Cs
         ""
     };
     let source = format!("{}:{value}{suffix}", property.canonical_name());
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
         panic!("one parsed declaration: {source}")
@@ -209,19 +223,19 @@ fn assert_authored_keyword(source: &CssDeclaration, expected: TableKeyword, auth
             TableKeyword::BorderCollapse(expected),
             CssKnownPropertyValueRef::BorderCollapse(value),
         ) => {
-            assert_eq!(value.collapse(), &expected);
+            assert_eq!(value.value(), &expected);
             assert_eq!(value.as_css(), authored);
         }
         (TableKeyword::CaptionSide(expected), CssKnownPropertyValueRef::CaptionSide(value)) => {
-            assert_eq!(value.side(), &expected);
+            assert_eq!(value.value(), &expected);
             assert_eq!(value.as_css(), authored);
         }
         (TableKeyword::EmptyCells(expected), CssKnownPropertyValueRef::EmptyCells(value)) => {
-            assert_eq!(value.cells(), &expected);
+            assert_eq!(value.value(), &expected);
             assert_eq!(value.as_css(), authored);
         }
         (TableKeyword::TableLayout(expected), CssKnownPropertyValueRef::TableLayout(value)) => {
-            assert_eq!(value.layout(), &expected);
+            assert_eq!(value.value(), &expected);
             assert_eq!(value.as_css(), authored);
         }
         other => panic!("property/value coupling changed: {other:?}"),
@@ -230,7 +244,7 @@ fn assert_authored_keyword(source: &CssDeclaration, expected: TableKeyword, auth
 
 fn one_longhand(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).expect("selected table longhand expands")
+        source.expand().expect("selected table longhand expands")
     else {
         panic!("one completed longhand contribution")
     };
@@ -297,16 +311,18 @@ fn table_keywords_from_parsed_and_checked_construction_contribute_once() {
         assert!(parsed_items.items()[0].replacement_components().is_none());
         expected.assert_payload(parsed_items.items()[0].ordinary_value().unwrap().view());
 
-        let components = CssComponentValues::try_new(vec![
-            CssComponentValue::try_token(keyword).expect("one identifier token"),
-        ])
+        let components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_token(keyword).expect("one identifier token")],
+            Default::default(),
+        )
         .unwrap();
         assert!(matches!(
             components.items()[0].origin(),
             CssValueOrigin::Programmatic
         ));
-        let constructed = parse_property_value(
-            CssPropertyNameRef::Known(property),
+        let constructed = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components.clone(),
             CssImportance::Important,
         )
@@ -360,7 +376,7 @@ fn table_keywords_keep_globals_symbolic_and_reenter_pending_values_strictly() {
         ] {
             let source = declaration(property, text, CssImportance::Important);
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).expect("CSS-wide table value")
+                source.expand().expect("CSS-wide table value")
             else {
                 panic!("global table longhand")
             };
@@ -374,23 +390,26 @@ fn table_keywords_keep_globals_symbolic_and_reenter_pending_values_strictly() {
         }
 
         let source = declaration(property, "var(--table-keyword)", CssImportance::Important);
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("table property substitution remains pending")
         };
         assert!(handle.source().same_occurrence(&source));
-        let invalid = parse_component_values(&format!("{valid} {valid}")).unwrap();
-        assert!(matches!(
-            handle.reenter(invalid).unwrap_err().kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
-        assert_eq!(
+        let invalid =
+            CssComponentValues::parse(&CssParser::default(), format!("{valid} {valid}")).unwrap();
+        assert!(
             handle
-                .reenter(parse_component_values("var(--again)").unwrap())
+                .reenter(invalid)
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .replacement_error()
+                .is_some()
         );
-        let replacement = parse_component_values(valid).unwrap();
+        assert!(
+            handle
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
+                .unwrap_err()
+                .is_residual_substitution()
+        );
+        let replacement = CssComponentValues::parse(&CssParser::default(), valid).unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(values) = handle
                 .reenter(replacement.clone())
@@ -416,7 +435,7 @@ fn table_keywords_keep_globals_symbolic_and_reenter_pending_values_strictly() {
 
 #[test]
 fn table_keyword_normalization_keeps_source_order_after_declaration_recovery() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         ".a{border-collapse:collapse;caption-side:top;",
         "caption-side:top bottom;empty-cells:hide;table-layout:fixed!important}"
     ));
@@ -424,7 +443,10 @@ fn table_keyword_normalization_keeps_source_order_after_declaration_recovery() {
         panic!("one invalid compound caption-side declaration")
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let normalized = normalize_sheet(report.syntax()).expect("four supported table terminals");
+    let normalized = report
+        .syntax()
+        .normalize(Default::default())
+        .expect("four supported table terminals");
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -481,7 +503,7 @@ fn table_keyword_invalid_values_and_unselected_caption_extension_recover_atomica
             "color:red;{}:{invalid};color:blue",
             property.canonical_name()
         );
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         let [diagnostic] = report.diagnostics() else {
             panic!("one invalid table declaration: {source}")
         };
@@ -496,7 +518,11 @@ fn table_keyword_invalid_values_and_unselected_caption_extension_recover_atomica
             Property::Color
         );
         assert_eq!(
-            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics(),
             "{source}"
         );

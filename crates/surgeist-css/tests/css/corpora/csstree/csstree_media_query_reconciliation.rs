@@ -1,9 +1,10 @@
 //! Independently derived MQ5 and Syntax expectations for original CSSTree inputs.
 
 use serde_json::Value;
-use surgeist_css::{
-    CssMediaConditionKind, CssMediaQuery, CssUnknownMediaFeatureReason, CssUnknownMediaFeatureRef,
-    parse_media_query,
+use surgeist_css::CssParser;
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{
+    CssMediaLeaf, CssMediaQuery, CssUnknownMediaFeatureReason, CssUnknownMediaFeatureRef,
 };
 
 use crate::css::support::csstree::adapters::{EntryPoint, Extractor};
@@ -19,7 +20,7 @@ fn reconciliation() -> Reconciliation {
 fn typed_node_reconciles(row: &Value) -> Result<(), String> {
     let id = text(row, "id");
     let input = text(row, "input");
-    let report = parse_media_query(input);
+    let report = CssMediaQuery::parse(&CssParser::default(), input);
     assert_eq!(
         report.clone().into_validation_result().is_ok(),
         row["clean"].as_bool().unwrap(),
@@ -28,7 +29,10 @@ fn typed_node_reconciles(row: &Value) -> Result<(), String> {
     match (text(row, "node"), report.syntax()) {
         ("Never", CssMediaQuery::Never(_)) => {}
         (expected, CssMediaQuery::Condition(condition)) => match (expected, condition.kind()) {
-            ("Condition.UnknownFeature", CssMediaConditionKind::UnknownFeature(feature)) => {
+            (
+                "Condition.UnknownFeature",
+                CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(feature)),
+            ) => {
                 assert_eq!(feature.name(), text(row, "feature_name"), "{id}");
                 let reason = match text(row, "feature_reason") {
                     "UnknownName" => CssUnknownMediaFeatureReason::UnknownName,
@@ -43,14 +47,19 @@ fn typed_node_reconciles(row: &Value) -> Result<(), String> {
                     "{id}: feature form"
                 );
             }
-            ("Condition.GeneralEnclosed", CssMediaConditionKind::GeneralEnclosed(enclosed)) => {
+            (
+                "Condition.GeneralEnclosed",
+                CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(enclosed)),
+            ) => {
                 assert_eq!(enclosed.authored(), Some(input), "{id}");
             }
-            ("Condition.And", CssMediaConditionKind::And(operands)) => {
+            ("Condition.And", CssConditionKind::And(operands)) => {
                 let expected = row["enclosed_operands"].as_array().unwrap();
                 assert_eq!(operands.conditions().len(), expected.len(), "{id}");
                 for (operand, authored) in operands.conditions().iter().zip(expected) {
-                    let CssMediaConditionKind::GeneralEnclosed(enclosed) = operand.kind() else {
+                    let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(enclosed)) =
+                        operand.kind()
+                    else {
                         panic!("{id}: expected opaque operand");
                     };
                     assert_eq!(enclosed.authored(), authored.as_str(), "{id}");

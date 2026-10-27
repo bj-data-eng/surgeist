@@ -3,9 +3,12 @@
 use super::combinators::{Combinator, Tail, commit, fill, keyword, parse_group};
 use super::property_input::Parser;
 use super::values::{next_is_delim, next_is_ident, parse_angle_value, parse_length_percentage};
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
-use crate::numeric::NumericInputContext;
-use crate::*;
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::numeric::expression::NumericInputContext;
+use crate::values::transform::{
+    CssCoordBox, CssOffset, CssOffsetAnchor, CssOffsetPath, CssOffsetPathKind, CssOffsetPathValue,
+    CssOffsetPosition, CssOffsetRotate, CssOffsetRotateModifier, CssRay, CssRaySize,
+};
 use cssparser::Token;
 
 fn next_keyword<'i, 't>(input: &mut Parser<'i, 't>) -> Option<String> {
@@ -41,7 +44,7 @@ fn next_path<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
     next_is_ident(input, "none") || next_coord_box(input).is_some() || next_path_kind(input)
 }
 
-pub(super) fn parse_offset_path<'i, 't>(
+pub(crate) fn parse_offset_path<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssOffsetPath, ParseError<'i, Error>> {
@@ -138,7 +141,7 @@ fn parse_ray<'i, 't>(
     Ok(CssRay::new(angle, size, contain, position))
 }
 
-pub(super) fn parse_offset_position<'i, 't>(
+pub(crate) fn parse_offset_position<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssOffsetPosition, ParseError<'i, Error>> {
@@ -156,7 +159,7 @@ pub(super) fn parse_offset_position<'i, 't>(
     }
     super::position::parse_full_position(input, numeric).map(CssOffsetPosition::Position)
 }
-pub(super) fn parse_offset_anchor<'i, 't>(
+pub(crate) fn parse_offset_anchor<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssOffsetAnchor, ParseError<'i, Error>> {
@@ -181,7 +184,7 @@ fn take_modifier<'i, 't>(
     }
     Ok(modifier)
 }
-pub(super) fn parse_offset_rotate<'i, 't>(
+pub(crate) fn parse_offset_rotate<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssOffsetRotate, ParseError<'i, Error>> {
@@ -192,7 +195,7 @@ pub(super) fn parse_offset_rotate<'i, 't>(
     let angle = if modifier.is_some() {
         match input.try_parse(|input| parse_angle_value(input, numeric)) {
             Ok(value) => Some(value),
-            Err(error) if crate::error::property::is_resource_parse_error(&error) => {
+            Err(error) if crate::diagnostic::error::property::is_resource_parse_error(&error) => {
                 return Err(error);
             }
             Err(_) => None,
@@ -207,7 +210,7 @@ pub(super) fn parse_offset_rotate<'i, 't>(
         .map_err(|_| unexpected_at(input.current_source_location()))
 }
 
-pub(super) fn parse_offset<'i, 't>(
+pub(crate) fn parse_offset<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssOffset, ParseError<'i, Error>> {

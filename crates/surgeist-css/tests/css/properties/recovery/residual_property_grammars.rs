@@ -1,8 +1,22 @@
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssValueTokenRef};
+use surgeist_css::declaration::CssGlobalKeyword;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+};
+use surgeist_css::values::box_model::{CssBreakBetween, CssBreakInside};
+use surgeist_css::values::common::{CssAutoOr, CssBoxEdgeKeyword};
+use surgeist_css::values::content::CssQuotes;
+use surgeist_css::values::effects::CssClip;
+use surgeist_css::values::table::{
+    CssBorderCollapse, CssCaptionSide, CssEmptyCells, CssTableLayout,
+};
+use surgeist_css::values::text::CssTextSpacingAdjustment;
 
 #[test]
 fn css2_residual_properties_retain_typed_values() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "border-collapse: collapse; ",
         "border-spacing: 2px 3px; ",
         "caption-side: bottom; ",
@@ -68,7 +82,7 @@ fn css2_residual_properties_retain_typed_values() {
     else {
         panic!("expected border-collapse");
     };
-    assert_eq!(border_collapse.collapse(), &CssBorderCollapse::Collapse);
+    assert_eq!(border_collapse.value(), &CssBorderCollapse::Collapse);
     assert_eq!(border_collapse.as_css(), "collapse");
 
     let CssKnownPropertyValueRef::BorderSpacing(border_spacing) = report.syntax()[1]
@@ -80,12 +94,20 @@ fn css2_residual_properties_retain_typed_values() {
         panic!("expected border-spacing");
     };
     assert!(exact_dimension(
-        border_spacing.spacing().horizontal().literal_component(),
+        border_spacing
+            .value()
+            .first()
+            .literal()
+            .map(|literal| literal.component()),
         "2",
         "px"
     ));
     assert!(exact_dimension(
-        border_spacing.spacing().vertical().literal_component(),
+        border_spacing
+            .value()
+            .second()
+            .literal()
+            .map(|literal| literal.component()),
         "3",
         "px"
     ));
@@ -98,7 +120,7 @@ fn css2_residual_properties_retain_typed_values() {
     else {
         panic!("expected caption-side");
     };
-    assert_eq!(caption_side.side(), &CssCaptionSide::Bottom);
+    assert_eq!(caption_side.value(), &CssCaptionSide::Bottom);
 
     let CssKnownPropertyValueRef::Clip(clip) = report.syntax()[3]
         .known()
@@ -108,14 +130,14 @@ fn css2_residual_properties_retain_typed_values() {
     else {
         panic!("expected clip");
     };
-    let CssClip::Rect(rect) = clip.clip() else {
+    let CssClip::Rect(rect) = clip.value() else {
         panic!("expected clipping rectangle");
     };
-    assert!(matches!(rect.top(), CssClipEdge::Auto));
+    assert!(matches!(rect.top(), CssAutoOr::Auto));
     assert!(matches!(
         rect.left(),
-        CssClipEdge::Length(length)
-            if exact_dimension(length.literal_component(), "-1", "px")
+        CssAutoOr::Value(length)
+            if exact_dimension(length.literal().map(|literal| literal.component()), "-1", "px")
     ));
 
     let CssKnownPropertyValueRef::EmptyCells(empty_cells) = report.syntax()[4]
@@ -126,7 +148,7 @@ fn css2_residual_properties_retain_typed_values() {
     else {
         panic!("expected empty-cells");
     };
-    assert_eq!(empty_cells.cells(), &CssEmptyCells::Hide);
+    assert_eq!(empty_cells.value(), &CssEmptyCells::Hide);
 
     for index in [5, 11] {
         let value = report.syntax()[index]
@@ -136,10 +158,16 @@ fn css2_residual_properties_retain_typed_values() {
             .unwrap();
         match value {
             CssKnownPropertyValueRef::Orphans(value) => {
-                assert_eq!(value.minimum().literal(), Some(3));
+                assert_eq!(
+                    value.value().literal().and_then(|literal| literal.value()),
+                    Some(3)
+                );
             }
             CssKnownPropertyValueRef::Widows(value) => {
-                assert_eq!(value.minimum().literal(), Some(4));
+                assert_eq!(
+                    value.value().literal().and_then(|literal| literal.value()),
+                    Some(4)
+                );
             }
             _ => panic!("expected a page-line minimum"),
         }
@@ -180,7 +208,7 @@ fn css2_residual_properties_retain_typed_values() {
     else {
         panic!("expected quotes");
     };
-    let CssQuotes::Pairs(pairs) = quotes.quotes() else {
+    let CssQuotes::Pairs(pairs) = quotes.value() else {
         panic!("expected quotation pairs");
     };
     assert_eq!(pairs.pairs().len(), 2);
@@ -195,7 +223,7 @@ fn css2_residual_properties_retain_typed_values() {
     else {
         panic!("expected table-layout");
     };
-    assert_eq!(table_layout.layout(), &CssTableLayout::Fixed);
+    assert_eq!(table_layout.value(), &CssTableLayout::Fixed);
 
     let CssKnownPropertyValueRef::WordSpacing(word_spacing) = report.syntax()[12]
         .known()
@@ -206,18 +234,22 @@ fn css2_residual_properties_retain_typed_values() {
         panic!("expected word-spacing");
     };
     assert_eq!(
-        word_spacing.spacing().serialize_specified().unwrap(),
+        word_spacing
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "-0.25em"
     );
     assert!(matches!(
-        word_spacing.spacing(),
+        word_spacing.value(),
         CssTextSpacingAdjustment::LengthPercentage(_)
     ));
     let component = word_spacing
-        .spacing()
+        .value()
         .length_percentage()
         .unwrap()
-        .literal_component()
+        .literal()
+        .map(|literal| literal.component())
         .unwrap();
     assert!(
         matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) if number.representation() == "-0.25" && unit == "em")
@@ -243,7 +275,7 @@ fn css2_residual_keyword_numeric_list_and_separator_domains_are_complete() {
     ] {
         for value in values {
             let source = format!("{property}: {value}");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             assert_eq!(report.syntax().len(), 1, "{source}");
         }
@@ -270,7 +302,7 @@ fn css2_residual_keyword_numeric_list_and_separator_domains_are_complete() {
         "word-spacing: -2em",
         "word-spacing: calc(1em - 2px)",
     ] {
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 1, "{source}");
     }
@@ -304,7 +336,7 @@ fn css2_residual_globals_and_substitutions_remain_whole_property_branches() {
     for property in PROPERTIES {
         for (keyword, expected) in GLOBALS {
             let source = format!("{property}: {keyword}");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             assert!(matches!(
                 report.syntax()[0].known().unwrap().declared_value(),
@@ -313,7 +345,7 @@ fn css2_residual_globals_and_substitutions_remain_whole_property_branches() {
         }
 
         let source = format!("{property}: var(--residual, initial)");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert!(matches!(
             report.syntax()[0].known().unwrap().declared_value(),
@@ -352,7 +384,7 @@ fn css2_residual_invalid_values_drop_exact_declaration_and_keep_sibling() {
     ] {
         let invalid = format!("{property}: {value}");
         let source = format!("{invalid}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
@@ -381,11 +413,14 @@ fn css2_residual_invalid_values_drop_exact_declaration_and_keep_sibling() {
             invalid.len() + 1,
             "{source}",
         );
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("{source}: expected property-specific error");
-        };
+        let detail = diagnostic.error();
         assert_eq!(
-            detail.property().canonical_name(),
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "{source}: expected property-specific error"
+        );
+        assert_eq!(
+            detail.known_property().unwrap().canonical_name(),
             property.strip_prefix("page-").unwrap_or(property),
             "{source}",
         );
@@ -395,7 +430,9 @@ fn css2_residual_invalid_values_drop_exact_declaration_and_keep_sibling() {
         );
 
         assert_eq!(
-            surgeist_css::validate_style_attribute(&source)
+            surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect_err("strict validation rejects recovered residual syntax")
                 .diagnostics(),
             report.diagnostics(),
@@ -406,12 +443,12 @@ fn css2_residual_invalid_values_drop_exact_declaration_and_keep_sibling() {
 
 #[test]
 fn css2_residual_eof_and_non_bmp_recovery_preserve_exact_coordinates() {
-    let clean_eof = parse_style_attribute("table-layout: fixed");
+    let clean_eof = CssParser::default().parse_block_contents("table-layout: fixed");
     assert!(clean_eof.is_clean(), "{:?}", clean_eof.diagnostics());
     assert_eq!(clean_eof.syntax().len(), 1);
 
     let invalid_eof_source = "quotes: \"open\"";
-    let invalid_eof = parse_style_attribute(invalid_eof_source);
+    let invalid_eof = CssParser::default().parse_block_contents(invalid_eof_source);
     let [diagnostic] = invalid_eof.diagnostics() else {
         panic!("odd quote at EOF must recover exactly once");
     };
@@ -426,14 +463,13 @@ fn css2_residual_eof_and_non_bmp_recovery_preserve_exact_coordinates() {
         diagnostic.span().end().byte_offset().value(),
         invalid_eof_source.len()
     );
-    assert!(matches!(
-        diagnostic.error().kind(),
-        ErrorKind::InvalidPropertyValue(detail)
-            if detail.property() == CssKnownProperty::Quotes
-    ));
+    assert!(
+        (diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
+            && diagnostic.error().known_property().unwrap() == CssKnownProperty::Quotes)
+    );
 
     let accepted = "--😀: 1; word-spacing: 10%; color: red";
-    let accepted_report = parse_style_attribute(accepted);
+    let accepted_report = CssParser::default().parse_block_contents(accepted);
     assert!(
         accepted_report.is_clean(),
         "{:?}",
@@ -449,24 +485,30 @@ fn css2_residual_eof_and_non_bmp_recovery_preserve_exact_coordinates() {
         panic!("accepted percentage word spacing")
     };
     assert_eq!(
-        accepted_spacing.spacing().serialize_specified().unwrap(),
+        accepted_spacing
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "10%"
     );
 
     let source = "--😀: 1; word-spacing: 1fr; color: red";
-    let [offending] = surgeist_css::parse_component_values("1fr")
-        .unwrap()
-        .items()
-        .to_vec()
-        .try_into()
-        .unwrap();
+    let [offending] = surgeist_css::component::CssComponentValues::parse(
+        &surgeist_css::CssParser::default(),
+        "1fr",
+    )
+    .unwrap()
+    .items()
+    .to_vec()
+    .try_into()
+    .unwrap();
     assert!(matches!(
         offending.view(),
-        surgeist_css::CssComponentValueRef::Token(
-            surgeist_css::CssValueTokenRef::Dimension { unit, .. }
+        surgeist_css::component::CssComponentValueRef::Token(
+            surgeist_css::component::CssValueTokenRef::Dimension { unit, .. }
         ) if unit == "fr"
     ));
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("unsupported dimension must recover exactly once");
@@ -491,11 +533,10 @@ fn css2_residual_eof_and_non_bmp_recovery_preserve_exact_coordinates() {
         declaration_end
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert!(matches!(
-        diagnostic.error().kind(),
-        ErrorKind::InvalidPropertyValue(detail)
-            if detail.property() == CssKnownProperty::WordSpacing
-    ));
+    assert!(
+        (diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
+            && diagnostic.error().known_property().unwrap() == CssKnownProperty::WordSpacing)
+    );
     assert_eq!(
         report.syntax()[1].known().unwrap().property(),
         CssKnownProperty::Color
@@ -515,7 +556,7 @@ fn box_edge_keyword_value_exposes_every_o_box3_branch_and_rejects_adjacent_gramm
     ] {
         let value = CssBoxEdgeKeyword::from_keyword(authored).expect("known box edge keyword");
         assert_eq!(value, expected);
-        assert_eq!(value.as_css_str(), authored);
+        assert_eq!(value.as_str(), authored);
         assert_eq!(
             CssBoxEdgeKeyword::from_keyword(&authored.to_ascii_uppercase()),
             Some(expected)
@@ -530,9 +571,9 @@ fn box_edge_keyword_value_exposes_every_o_box3_branch_and_rejects_adjacent_gramm
 }
 
 fn exact_dimension(
-    component: Option<&surgeist_css::CssComponentValue>,
+    component: Option<&surgeist_css::component::CssComponentValue>,
     representation: &str,
     expected_unit: &str,
 ) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
 }

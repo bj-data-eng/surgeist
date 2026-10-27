@@ -2,31 +2,41 @@
 //! survivor occurrence order. Expectations come from the declaration winner
 //! contract, independently of authored-list construction or serialization.
 
-use surgeist_css::*;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::declaration::{
+    CssDeclarationBlockError, CssImportance, CssInvalidKeyframeSourceReason,
+    CssSpecifiedDeclarationBlock, CssSpecifiedDeclarationEntry, CssSpecifiedDeclarationValueRef,
+};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 fn entries(source: &str) -> Vec<CssSpecifiedDeclarationEntry> {
-    let report = CssParserContext::new(CssParserMode::Standards)
-        .with_svg_glyph_orientation_vertical()
-        .parse_style_attribute(source);
+    let report = CssParser::new(
+        CssParserContext::new(CssParserMode::Standards).with_svg_glyph_orientation_vertical(),
+        Default::default(),
+    )
+    .parse_block_contents(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax())
+    CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
         .unwrap()
         .entries()
         .to_vec()
 }
 
 fn select(candidates: Vec<CssSpecifiedDeclarationEntry>) -> Vec<CssSpecifiedDeclarationEntry> {
-    CssSpecifiedDeclarationBlock::try_select_winning_entries_with_limits(
+    CssSpecifiedDeclarationBlock::try_select_winning_entries(
         candidates,
-        CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, 0),
+        CssSerializationLimits::new(usize::MAX, usize::MAX, 0),
     )
     .unwrap()
 }
 
 fn text(selected: &[CssSpecifiedDeclarationEntry]) -> String {
-    CssSpecifiedDeclarationBlock::try_from_entries(selected)
+    CssSpecifiedDeclarationBlock::try_from_entries(selected, Default::default())
         .unwrap()
-        .serialize_cssom()
+        .serialize_cssom(Default::default())
         .unwrap()
 }
 
@@ -39,11 +49,11 @@ fn same_entry(actual: &CssSpecifiedDeclarationEntry, expected: &CssSpecifiedDecl
     assert_eq!(actual.source().position(), expected.source().position());
 }
 
-fn resource(error: &CssDeclarationBlockError) -> CssSpecifiedValueSerializationErrorKind {
-    let CssDeclarationBlockErrorKind::Serialization(cause) = error.kind() else {
+fn resource(error: &CssDeclarationBlockError) -> SerializationFailure {
+    let Some(cause) = error.serialization() else {
         panic!("expected native resource cause: {error:?}");
     };
-    cause.kind()
+    serialization_failure(cause)
 }
 
 #[test]
@@ -162,9 +172,12 @@ fn deleted_shorthand_member_stays_absent_and_selected_importance_controls_winner
     assert_eq!(selected[0].member_ordinal(), 3);
     assert_eq!(selected[0].source().importance(), CssImportance::Important);
     assert_eq!(
-        CssSpecifiedDeclarationBlock::try_from_entries(&selected)
+        CssSpecifiedDeclarationBlock::try_from_entries(&selected, Default::default())
             .unwrap()
-            .property_value(CssPropertyNameRef::Known(CssKnownProperty::MarginTop))
+            .property_value(
+                CssPropertyNameRef::Known(CssKnownProperty::MarginTop),
+                Default::default()
+            )
             .unwrap(),
         None
     );
@@ -192,10 +205,14 @@ fn pending_bulk_members_reconstruct_only_when_the_original_occurrence_is_complet
         assert!(source.same_occurrence(expected.source()));
     }
     let selected = select(vec![bulk[2].clone()]);
-    let block = CssSpecifiedDeclarationBlock::try_from_entries(&selected).unwrap();
+    let block =
+        CssSpecifiedDeclarationBlock::try_from_entries(&selected, Default::default()).unwrap();
     assert_eq!(
         block
-            .property_value(CssPropertyNameRef::Known(CssKnownProperty::MarginInline))
+            .property_value(
+                CssPropertyNameRef::Known(CssKnownProperty::MarginInline),
+                Default::default()
+            )
             .unwrap(),
         None
     );
@@ -211,10 +228,14 @@ fn colliding_bulk_and_singleton_ordinals_do_not_merge_distinct_pending_occurrenc
     let selected = select(vec![first[0].clone(), second[1].clone()]);
     same_entry(&selected[0], &first[0]);
     same_entry(&selected[1], &second[1]);
-    let block = CssSpecifiedDeclarationBlock::try_from_entries(&selected).unwrap();
+    let block =
+        CssSpecifiedDeclarationBlock::try_from_entries(&selected, Default::default()).unwrap();
     assert_eq!(
         block
-            .property_value(CssPropertyNameRef::Known(CssKnownProperty::MarginInline))
+            .property_value(
+                CssPropertyNameRef::Known(CssKnownProperty::MarginInline),
+                Default::default()
+            )
             .unwrap(),
         None
     );
@@ -222,9 +243,12 @@ fn colliding_bulk_and_singleton_ordinals_do_not_merge_distinct_pending_occurrenc
     same_entry(&selected[0], &first[1]);
     same_entry(&selected[1], &second[0]);
     assert_eq!(
-        CssSpecifiedDeclarationBlock::try_from_entries(&selected)
+        CssSpecifiedDeclarationBlock::try_from_entries(&selected, Default::default())
             .unwrap()
-            .property_value(CssPropertyNameRef::Known(CssKnownProperty::MarginInline))
+            .property_value(
+                CssPropertyNameRef::Known(CssKnownProperty::MarginInline),
+                Default::default()
+            )
             .unwrap(),
         None
     );
@@ -259,64 +283,59 @@ fn symbolic_longhands_and_selected_svg_priority_keep_their_original_alternatives
 fn selection_does_not_certify_domains_or_relax_strict_duplicate_validation() {
     let source = entries("opacity:.5!important;animation-name:k");
     let duplicate = vec![source[0].clone(), source[0].clone()];
-    assert!(matches!(
-        CssSpecifiedDeclarationBlock::try_from_entries(&duplicate)
+    assert!(
+        CssSpecifiedDeclarationBlock::try_from_entries(&duplicate, Default::default())
             .unwrap_err()
-            .kind(),
-        CssDeclarationBlockErrorKind::DuplicateTerminal
-    ));
+            .is_duplicate_terminal()
+    );
     let selected = select(duplicate);
     assert_eq!(selected.len(), 1);
-    assert!(matches!(
-        CssSpecifiedDeclarationBlock::try_from_keyframe_entries(&selected)
+    assert!(
+        CssSpecifiedDeclarationBlock::try_from_keyframe_entries(&selected, Default::default())
             .unwrap_err()
-            .kind(),
-        CssDeclarationBlockErrorKind::InvalidKeyframeSource {
-            reason: CssInvalidKeyframeSourceReason::Importance
-        }
-    ));
+            .invalid_keyframe_source()
+            == Some(CssInvalidKeyframeSourceReason::Importance)
+    );
     let selected = select(vec![source[1].clone()]);
-    assert!(matches!(
-        CssSpecifiedDeclarationBlock::try_from_keyframe_entries(&selected)
+    assert!(
+        CssSpecifiedDeclarationBlock::try_from_keyframe_entries(&selected, Default::default())
             .unwrap_err()
-            .kind(),
-        CssDeclarationBlockErrorKind::InvalidKeyframeSource {
-            reason: CssInvalidKeyframeSourceReason::Property
-        }
-    ));
+            .invalid_keyframe_source()
+            == Some(CssInvalidKeyframeSourceReason::Property)
+    );
     for constructor in [
         CssSpecifiedDeclarationBlock::try_from_page_entries,
         CssSpecifiedDeclarationBlock::try_from_margin_entries,
     ] {
-        assert!(matches!(
-            constructor(&selected).unwrap_err().kind(),
-            CssDeclarationBlockErrorKind::InvalidPageSource
-        ));
+        assert!(
+            constructor(&selected, Default::default())
+                .unwrap_err()
+                .is_invalid_page_source()
+        );
     }
     same_entry(&selected[0], &source[1]);
 }
 
 #[test]
 fn empty_selection_admits_only_aggregate_work_and_emits_no_bytes() {
-    let exact = CssSpecifiedValueSerializationLimits::new(1, 1, 0);
+    let exact = CssSerializationLimits::new(1, 1, 0);
     assert!(
-        CssSpecifiedDeclarationBlock::try_select_winning_entries_with_limits(vec![], exact)
+        CssSpecifiedDeclarationBlock::try_select_winning_entries(vec![], exact)
             .unwrap()
             .is_empty()
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 1, 0),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(0, 1, 0),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 0, 0),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(1, 0, 0),
+            SerializationFailure::ProjectionNodeLimit,
         ),
     ] {
         let error =
-            CssSpecifiedDeclarationBlock::try_select_winning_entries_with_limits(vec![], limits)
-                .unwrap_err();
+            CssSpecifiedDeclarationBlock::try_select_winning_entries(vec![], limits).unwrap_err();
         assert_eq!(resource(&error), kind);
         assert!(error.declaration().is_none());
         assert_eq!(error.authored_ordinal(), None);
@@ -334,27 +353,25 @@ fn losing_candidates_consume_the_whole_budget_with_real_entry_attribution_and_re
     candidates.extend(std::iter::repeat_n(loser.clone(), 8));
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(18, 10, 0),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(18, 10, 0),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(19, 9, 0),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(19, 9, 0),
+            SerializationFailure::ProjectionNodeLimit,
         ),
     ] {
-        let error = CssSpecifiedDeclarationBlock::try_select_winning_entries_with_limits(
-            candidates.clone(),
-            limits,
-        )
-        .unwrap_err();
+        let error =
+            CssSpecifiedDeclarationBlock::try_select_winning_entries(candidates.clone(), limits)
+                .unwrap_err();
         assert_eq!(resource(&error), kind);
         assert!(error.declaration().unwrap().same_occurrence(loser.source()));
         assert_eq!(error.authored_ordinal(), Some(1));
         assert_eq!(error.member_ordinal(), Some(3));
     }
-    let selected = CssSpecifiedDeclarationBlock::try_select_winning_entries_with_limits(
+    let selected = CssSpecifiedDeclarationBlock::try_select_winning_entries(
         candidates,
-        CssSpecifiedValueSerializationLimits::new(19, 10, 0),
+        CssSerializationLimits::new(19, 10, 0),
     )
     .unwrap();
     assert_eq!(selected.len(), 1);
@@ -368,9 +385,9 @@ fn custom_name_character_count_does_not_change_structural_selection_allowance() 
     for name in ["--x".to_owned(), format!("--{}", "x".repeat(2048))] {
         let candidates = entries(&format!("{name}:var(--v)/**/ retained"));
         let original = candidates[0].clone();
-        let selected = CssSpecifiedDeclarationBlock::try_select_winning_entries_with_limits(
+        let selected = CssSpecifiedDeclarationBlock::try_select_winning_entries(
             candidates,
-            CssSpecifiedValueSerializationLimits::new(3, 2, 0),
+            CssSerializationLimits::new(3, 2, 0),
         )
         .unwrap();
         same_entry(&selected[0], &original);

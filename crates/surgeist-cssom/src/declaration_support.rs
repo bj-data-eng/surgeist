@@ -4,7 +4,10 @@ use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
-use surgeist_css::*;
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::property::CssPropertyGrammar;
+use surgeist_css::rule::font_face::{CssFontFaceDescriptor, CssFontFaceDescriptorKind};
+use surgeist_css::rule::page::{CssPageDescriptor, CssPageDescriptorKind};
 
 /// The composed owner either guarantees every checked form or decides the whole declaration.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

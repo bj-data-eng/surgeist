@@ -1,7 +1,10 @@
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssColor;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::border::{CssBorder, CssLineStyle, CssLineWidth};
 
 fn checked_color(value: &str) -> CssColor {
-    let report = parse_style_attribute(&format!("border-top-color:{value}"));
+    let report = CssParser::default().parse_block_contents(format!("border-top-color:{value}"));
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let Some(CssKnownPropertyValueRef::BorderTopColor(color)) =
         report.syntax()[0].known().unwrap().property_value()
@@ -28,12 +31,12 @@ fn logical_current<'a>(name: &str, value: CssKnownPropertyValueRef<'a>) -> &'a C
 #[test]
 fn six_logical_wrappers_expose_the_shared_checked_triple_and_preserve_omission() {
     let expected = CssBorder::try_new(
-        Some(CssBorderWidth::Thin),
-        Some(CssBorderStyle::Solid),
+        Some(CssLineWidth::Thin),
+        Some(CssLineStyle::Solid),
         Some(checked_color("red")),
     )
     .unwrap();
-    let omitted = CssBorder::try_new(None, Some(CssBorderStyle::Solid), None).unwrap();
+    let omitted = CssBorder::try_new(None, Some(CssLineStyle::Solid), None).unwrap();
     for name in [
         "border-block-start",
         "border-block-end",
@@ -46,7 +49,7 @@ fn six_logical_wrappers_expose_the_shared_checked_triple_and_preserve_omission()
             ("red solid thin", &expected, "thin solid red"),
             ("solid", &omitted, "solid"),
         ] {
-            let report = parse_style_attribute(&format!("{name}:{authored}"));
+            let report = CssParser::default().parse_block_contents(format!("{name}:{authored}"));
             assert!(report.is_clean(), "{name}: {:?}", report.diagnostics());
             let value = report.syntax()[0]
                 .known()
@@ -55,9 +58,13 @@ fn six_logical_wrappers_expose_the_shared_checked_triple_and_preserve_omission()
                 .unwrap();
             let current = logical_current(name, value);
             assert_eq!(current, model, "{name}:{authored}");
-            assert_eq!(current.serialize_specified().unwrap(), canonical);
+            assert_eq!(
+                current.serialize_specified(Default::default()).unwrap(),
+                canonical
+            );
         }
-        let report = parse_style_attribute(&format!("{name}:oklch(50% 0.2 30deg) solid 1e100px"));
+        let report = CssParser::default()
+            .parse_block_contents(format!("{name}:oklch(50% 0.2 30deg) solid 1e100px"));
         assert!(report.is_clean(), "{name}: {:?}", report.diagnostics());
         let value = report.syntax()[0]
             .known()
@@ -66,7 +73,7 @@ fn six_logical_wrappers_expose_the_shared_checked_triple_and_preserve_omission()
             .unwrap();
         let current = logical_current(name, value);
         assert_eq!(
-            current.serialize_specified().unwrap(),
+            current.serialize_specified(Default::default()).unwrap(),
             format!("1{}px solid oklch(0.5 0.2 30)", "0".repeat(100))
         );
     }

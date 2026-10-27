@@ -1,12 +1,13 @@
 //! Fonts 4 section 13.2: equal retained endpoints use the shorter form.
 //! Rounding two different retained numbers to the same text is not equality.
 
+use crate::css::support::failure_classes::SerializationFailure as ErrorKind;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::ordinary_font_face_descriptor as ordinary;
-use surgeist_css::{
-    CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Value, CssFontFaceStyle,
-    CssSpecifiedValueSerializationErrorKind as ErrorKind,
-    CssSpecifiedValueSerializationLimits as Limits,
-};
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind as Kind;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorValue as Value;
+use surgeist_css::serialization::CssSerializationLimits as Limits;
+use surgeist_css::values::font::CssFontFaceStyle;
 
 // Both retained endpoints consume visits, including the endpoint suppressed in
 // output. Only the returned shorter text consumes the final output byte budget.
@@ -16,10 +17,13 @@ macro_rules! assert_shortened {
         let before = value.clone();
         let expected = $expected;
         let nodes = $nodes;
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(nodes, nodes, expected.len()))
+                .serialize_specified(Limits::new(nodes, nodes, expected.len()))
                 .unwrap(),
             expected
         );
@@ -38,10 +42,7 @@ macro_rules! assert_shortened {
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind
             );
             assert_eq!(value, before);
@@ -110,9 +111,9 @@ fn different_retained_endpoints_are_not_collapsed_after_rounding() {
         let value = ordinary(source, kind);
         let before = value.clone();
         let output = match &value {
-            Value::FontWeight(value) => value.serialize_specified().unwrap(),
-            Value::FontWidth(value) => value.serialize_specified().unwrap(),
-            Value::FontStyle(value) => value.serialize_specified().unwrap(),
+            Value::FontWeight(value) => value.serialize_specified(Default::default()).unwrap(),
+            Value::FontWidth(value) => value.serialize_specified(Default::default()).unwrap(),
+            Value::FontStyle(value) => value.serialize_specified(Default::default()).unwrap(),
             _ => panic!("unexpected descriptor"),
         };
         assert_eq!(output, expected, "{source}");

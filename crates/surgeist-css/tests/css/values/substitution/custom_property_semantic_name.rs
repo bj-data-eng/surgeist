@@ -2,7 +2,9 @@
 
 use std::collections::HashSet;
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::{CssCustomPropertyName, CssImportance};
+use surgeist_css::property::{CssPropertyNameRef, CssPropertyTextTarget};
 
 #[test]
 fn semantic_names_preserve_supplied_characters_without_trimming_or_tokenization() {
@@ -82,9 +84,9 @@ fn nul_is_retained_in_identity_and_identifier_output_replaces_it_only_on_output(
     assert_eq!(name.as_str().as_bytes(), b"--a\0Z");
     let replaced = CssCustomPropertyName::try_from_decoded("--a�Z").unwrap();
     assert_ne!(name, replaced);
-    let report = parse_property_value_text(
+    let report = CssParser::default().parse_property_value(
         "RAW",
-        CssPropertyNameRef::Custom(&name),
+        CssPropertyTextTarget::Property(CssPropertyNameRef::Custom(&name)),
         CssImportance::Normal,
     );
     assert!(report.is_clean());
@@ -92,7 +94,10 @@ fn nul_is_retained_in_identity_and_identifier_output_replaces_it_only_on_output(
     assert_eq!(declaration.custom().unwrap().name(), &name);
     assert!(declaration.position().is_none());
     assert!(declaration.parsed_name().is_none());
-    assert_eq!(declaration.to_specified_css().unwrap(), "--a�Z: RAW;");
+    assert_eq!(
+        declaration.serialize_specified(Default::default()).unwrap(),
+        "--a�Z: RAW;"
+    );
     assert_eq!(
         declaration.custom().unwrap().name().as_str().as_bytes(),
         b"--a\0Z"
@@ -107,9 +112,9 @@ fn owned_semantic_names_compose_real_value_origins_and_parsed_name_equality_afte
     };
     let report = {
         let input = "MiXeD".to_owned();
-        parse_property_value_text(
+        CssParser::default().parse_property_value(
             &input,
-            CssPropertyNameRef::Custom(&name),
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Custom(&name)),
             CssImportance::Important,
         )
     };
@@ -120,12 +125,12 @@ fn owned_semantic_names_compose_real_value_origins_and_parsed_name_equality_afte
         "MiXeD"
     );
     assert_eq!(
-        declaration.to_specified_css().unwrap(),
+        declaration.serialize_specified(Default::default()).unwrap(),
         "--bad\\ name: MiXeD !important;"
     );
     let parsed = {
         let input = "--bad\\ name:MiXeD".to_owned();
-        parse_declaration_block_contents(&input)
+        CssParser::default().parse_block_contents(&input)
     };
     let parsed = &parsed.syntax().as_slice()[0];
     assert_eq!(parsed.custom().unwrap().name(), &name);

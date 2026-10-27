@@ -4,27 +4,46 @@
 use crate::css::support::color_and_selector_fixtures::{
     assert_selector_input_rejected, assert_strict_validation_rejects,
 };
-use surgeist_css::*;
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
+use surgeist_css::component::{CssComponentValueLimits, CssValueOrigin};
+use surgeist_css::declaration::CssSpecifiedDeclarationBlock;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix, CssStyleAncestor};
+use surgeist_css::selector::{
+    CssCompoundSelector, CssNamespaceConstraint, CssNamespaceContext, CssParsedStyleSelectors,
+    CssPseudoClass, CssPseudoSelectorListItem, CssSelector, CssSelectorCombinator,
+    CssStyleSelector, CssStyleSelectorContext, CssStyleSelectorList,
+};
+use surgeist_css::serialization::CssRuleGraphInput;
+use surgeist_css::{CssParser, CssParserContext};
 
 fn clean(source: &str, context: CssStyleSelectorContext) -> CssParsedStyleSelectors {
-    parse_style_selector_list(source, &CssNamespaceContext::default(), context)
-        .into_validation_result()
-        .unwrap()
-        .expect("complete valid selector list")
+    CssParsedStyleSelectors::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+        context,
+    )
+    .into_validation_result()
+    .unwrap()
+    .expect("complete valid selector list")
 }
 
 fn ordinary(parsed: &CssParsedStyleSelectors) -> &CssStyleSelectorList {
-    let CssAdmittedStyleSelectors::Ordinary(list) = parsed.selectors() else {
-        panic!("ordinary nesting domain")
-    };
-    list
+    assert!(
+        !matches!(parsed.context(), CssStyleSelectorContext::Scoped(_)),
+        "ordinary nesting domain"
+    );
+    parsed.selectors()
 }
 
-fn scoped(parsed: &CssParsedStyleSelectors) -> &CssScopedStyleSelectorList {
-    let CssAdmittedStyleSelectors::Scoped(list) = parsed.selectors() else {
-        panic!("scope anchor domain")
-    };
-    list
+fn scoped(parsed: &CssParsedStyleSelectors) -> &CssStyleSelectorList {
+    assert!(
+        matches!(parsed.context(), CssStyleSelectorContext::Scoped(_)),
+        "scope anchor domain"
+    );
+    parsed.selectors()
 }
 
 fn compound(selector: &CssSelector) -> &CssCompoundSelector {
@@ -64,7 +83,8 @@ fn ordinary_and_nested_inputs_preserve_explicit_and_implicit_anchor_meaning() {
     let source = "> .child, + .sibling, .implicit";
     assert_selector_input_rejected(
         source,
-        parse_style_selector_list(
+        CssParsedStyleSelectors::parse(
+            &CssParser::default(),
             source,
             &CssNamespaceContext::default(),
             CssStyleSelectorContext::Ordinary,
@@ -92,9 +112,9 @@ fn scope_body_anchors_do_not_become_nesting_anchors_when_a_style_ancestor_exists
         let parsed = clean("&:is(&.child, .other), > &&.next, .implicit", context);
         assert_eq!(parsed.context(), context);
         let [
-            CssScopedStyleSelector::Selector(first),
-            CssScopedStyleSelector::Relative(next),
-            CssScopedStyleSelector::Selector(implicit),
+            CssStyleSelector::Selector(first),
+            CssStyleSelector::Relative(next),
+            CssStyleSelector::Selector(implicit),
         ] = scoped(&parsed).selectors()
         else {
             panic!("scope-context members")
@@ -132,13 +152,14 @@ fn scoped_relative_names_reuse_the_supplied_namespace_environment() {
         Some(CssNamespacePrefix::try_new("svg").unwrap()),
         CssNamespaceName::new("urn:svg"),
     )]);
-    let report = parse_style_selector_list(
+    let report = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
         "> svg|leaf&",
         &namespaces,
         CssStyleSelectorContext::Scoped(CssStyleAncestor::Absent),
     );
     assert!(report.is_clean(), "{report:?}");
-    let [CssScopedStyleSelector::Relative(relative)] =
+    let [CssStyleSelector::Relative(relative)] =
         scoped(report.syntax().as_ref().unwrap()).selectors()
     else {
         panic!("one scoped relative name")
@@ -164,10 +185,15 @@ fn namespace_aware_relative_payload_survives_input_drop_with_one_genuine_occurre
     ]);
     let parsed = {
         let input = RAW.to_owned();
-        parse_style_selector_list(&input, &namespaces, CssStyleSelectorContext::Nested)
-            .into_validation_result()
-            .unwrap()
-            .unwrap()
+        CssParsedStyleSelectors::parse(
+            &CssParser::default(),
+            &input,
+            &namespaces,
+            CssStyleSelectorContext::Nested,
+        )
+        .into_validation_result()
+        .unwrap()
+        .unwrap()
     };
     assert_eq!(parsed.origin().source().as_str(), RAW);
     assert_eq!(parsed.origin().span().start().byte_offset().value(), 0);
@@ -210,11 +236,15 @@ fn namespace_aware_relative_payload_survives_input_drop_with_one_genuine_occurre
     );
     assert_eq!(origin.span().start().line().value(), 1);
     assert_eq!(origin.span().start().column().value(), 16);
-    let default_type =
-        parse_style_selector_list("leaf", &namespaces, CssStyleSelectorContext::Nested)
-            .into_validation_result()
-            .unwrap()
-            .unwrap();
+    let default_type = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
+        "leaf",
+        &namespaces,
+        CssStyleSelectorContext::Nested,
+    )
+    .into_validation_result()
+    .unwrap()
+    .unwrap();
     assert_eq!(
         compound(ordinary(&default_type).selectors()[0].selector())
             .type_selector()
@@ -224,7 +254,8 @@ fn namespace_aware_relative_payload_survives_input_drop_with_one_genuine_occurre
     );
     assert_selector_input_rejected(
         RAW,
-        parse_style_selector_list(
+        CssParsedStyleSelectors::parse(
+            &CssParser::default(),
             RAW,
             &CssNamespaceContext::default(),
             CssStyleSelectorContext::Nested,
@@ -251,12 +282,18 @@ fn complete_input_failure_is_atomic_and_reports_original_responsible_positions()
         ] {
             assert_selector_input_rejected(
                 source,
-                parse_style_selector_list(source, &CssNamespaceContext::default(), context),
+                CssParsedStyleSelectors::parse(
+                    &CssParser::default(),
+                    source,
+                    &CssNamespaceContext::default(),
+                    context,
+                ),
             );
         }
     }
     let source = "/*😀*/\r\n/*é*/:unknown(x)";
-    let report = parse_style_selector_list(
+    let report = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
         source,
         &CssNamespaceContext::default(),
         CssStyleSelectorContext::Nested,
@@ -271,7 +308,7 @@ fn complete_input_failure_is_atomic_and_reports_original_responsible_positions()
     assert_eq!(error.position().byte_offset().value(), 17);
     assert_eq!(error.position().line().value(), 1);
     assert_eq!(error.position().column().value(), 6);
-    assert!(matches!(error.kind(), ErrorKind::InvalidSelector(_)));
+    assert!(error.code() == CssErrorCode::InvalidSelector);
 }
 
 #[test]
@@ -280,7 +317,8 @@ fn forgiving_and_implicit_eof_recovery_remain_admitted_with_diagnostics() {
         CssStyleSelectorContext::Nested,
         CssStyleSelectorContext::Scoped(CssStyleAncestor::Absent),
     ] {
-        let report = parse_style_selector_list(
+        let report = CssParsedStyleSelectors::parse(
+            &CssParser::default(),
             ":is(.ok, :unknown(x), &.kept:unknown())",
             &CssNamespaceContext::default(),
             context,
@@ -299,7 +337,12 @@ fn forgiving_and_implicit_eof_recovery_remain_admitted_with_diagnostics() {
                 .any(|d| d.action() == CssRecoveryAction::PreserveInvalidSelectorListItem)
         );
         assert_strict_validation_rejects(report);
-        let eof = parse_style_selector_list(":is(.ok", &CssNamespaceContext::default(), context);
+        let eof = CssParsedStyleSelectors::parse(
+            &CssParser::default(),
+            ":is(.ok",
+            &CssNamespaceContext::default(),
+            context,
+        );
         assert!(eof.syntax().is_some());
         assert!(
             eof.diagnostics()
@@ -311,7 +354,12 @@ fn forgiving_and_implicit_eof_recovery_remain_admitted_with_diagnostics() {
         let lexical = ":is(.ok, [x=\"bad\n\"])";
         assert_selector_input_rejected(
             lexical,
-            parse_style_selector_list(lexical, &CssNamespaceContext::default(), context),
+            CssParsedStyleSelectors::parse(
+                &CssParser::default(),
+                lexical,
+                &CssNamespaceContext::default(),
+                context,
+            ),
         );
     }
 }
@@ -327,21 +375,31 @@ fn bounded_failure_distinguishes_resource_from_syntax_and_allows_unchanged_retry
         for (limits, expected) in [
             (
                 CssComponentValueLimits::try_new(256, usize::MAX, source.len() - 1).unwrap(),
-                CssComponentValueErrorKind::ByteLimit,
+                ComponentFailure::ByteLimit,
             ),
             (
                 CssComponentValueLimits::try_new(256, 1, source.len()).unwrap(),
-                CssComponentValueErrorKind::ComponentLimit,
+                ComponentFailure::ComponentLimit,
             ),
             (
                 CssComponentValueLimits::try_new(0, usize::MAX, source.len()).unwrap(),
-                CssComponentValueErrorKind::NestingLimit,
+                ComponentFailure::NestingLimit,
             ),
         ] {
-            let failure =
-                parse_style_selector_list_with_limits(source, &namespaces, context, limits);
+            let failure = CssParsedStyleSelectors::parse(
+                &CssParser::new(CssParserContext::default(), limits),
+                source,
+                &namespaces,
+                context,
+            );
             assert!(failure.syntax().is_none());
-            assert!(failure.diagnostics().iter().any(|d| matches!(d.error().kind(), ErrorKind::InvalidComponentValue(error) if error.kind() == expected)), "{failure:?}");
+            assert!(
+                failure.diagnostics().iter().any(|d| d
+                    .error()
+                    .component_error()
+                    .is_some_and(|error| component_failure(error) == expected)),
+                "{failure:?}"
+            );
             assert!(
                 failure
                     .diagnostics()
@@ -349,11 +407,14 @@ fn bounded_failure_distinguishes_resource_from_syntax_and_allows_unchanged_retry
                     .all(|d| d.action() != CssRecoveryAction::RejectInput),
                 "resource is not an ordinary selector syntax no-op: {failure:?}"
             );
-            let retry = parse_style_selector_list_with_limits(
+            let retry = CssParsedStyleSelectors::parse(
+                &CssParser::new(
+                    CssParserContext::default(),
+                    CssComponentValueLimits::try_new(256, 100, source.len()).unwrap(),
+                ),
                 source,
                 &namespaces,
                 context,
-                CssComponentValueLimits::try_new(256, 100, source.len()).unwrap(),
             );
             assert!(retry.is_clean(), "{retry:?}");
             assert_eq!(
@@ -362,7 +423,8 @@ fn bounded_failure_distinguishes_resource_from_syntax_and_allows_unchanged_retry
             );
             assert_eq!(
                 retry.syntax(),
-                parse_style_selector_list(source, &namespaces, context).syntax()
+                CssParsedStyleSelectors::parse(&CssParser::default(), source, &namespaces, context)
+                    .syntax()
             );
         }
     }
@@ -375,19 +437,29 @@ fn component_allowance_covers_all_members_descendants_and_root_trivia_once() {
     let source = ":is(.a), :is(.b)";
     let context = CssStyleSelectorContext::Nested;
     let namespaces = CssNamespaceContext::default();
-    let fail = parse_style_selector_list_with_limits(
+    let fail = CssParsedStyleSelectors::parse(
+        &CssParser::new(
+            CssParserContext::default(),
+            CssComponentValueLimits::try_new(1, 9, source.len()).unwrap(),
+        ),
         source,
         &namespaces,
         context,
-        CssComponentValueLimits::try_new(1, 9, source.len()).unwrap(),
     );
     assert!(fail.syntax().is_none());
-    assert!(fail.diagnostics().iter().any(|d| matches!(d.error().kind(), ErrorKind::InvalidComponentValue(error) if error.kind() == CssComponentValueErrorKind::ComponentLimit)));
-    let pass = parse_style_selector_list_with_limits(
+    assert!(fail.diagnostics().iter().any(|d| {
+        d.error()
+            .component_error()
+            .is_some_and(|error| error.is_component_limit())
+    }));
+    let pass = CssParsedStyleSelectors::parse(
+        &CssParser::new(
+            CssParserContext::default(),
+            CssComponentValueLimits::try_new(1, 10, source.len()).unwrap(),
+        ),
         source,
         &namespaces,
         context,
-        CssComponentValueLimits::try_new(1, 10, source.len()).unwrap(),
     );
     assert!(pass.is_clean(), "{pass:?}");
     assert_eq!(
@@ -397,20 +469,28 @@ fn component_allowance_covers_all_members_descendants_and_root_trivia_once() {
 }
 
 #[test]
-fn admitted_carriers_feed_checked_edited_views_without_constructing_authored_rules() {
+fn admitted_carriers_feed_rule_graph_inputs_without_constructing_authored_rules() {
     let declarations = CssSpecifiedDeclarationBlock::try_from_declarations(
-        parse_declaration_block_contents("").syntax(),
+        CssParser::default().parse_block_contents("").syntax(),
+        Default::default(),
     )
     .unwrap();
+    let namespaces = CssNamespaceContext::default();
     let parsed = clean(".Consumer > .leaf", CssStyleSelectorContext::Ordinary);
-    let view = CssEditedRuleView::try_style(ordinary(&parsed), &declarations, &[]).unwrap();
-    assert_eq!(view.serialize_cssom().unwrap(), ".Consumer > .leaf { }");
-    assert!(view.parsed_rule().is_none());
+    let input = CssRuleGraphInput::style(ordinary(&parsed), &declarations, &[]);
+    assert_eq!(
+        input
+            .serialize_cssom(&namespaces, CssStyleAncestor::Absent, Default::default())
+            .unwrap(),
+        ".Consumer > .leaf { }"
+    );
     let parsed = clean(
         "&.scoped",
         CssStyleSelectorContext::Scoped(CssStyleAncestor::Present),
     );
-    let view = CssEditedRuleView::try_scoped_style(scoped(&parsed), &declarations, &[]).unwrap();
-    assert_eq!(view.to_specified_css().unwrap(), "&.scoped { }");
-    assert!(view.parsed_rule().is_none());
+    let input = CssRuleGraphInput::style(scoped(&parsed), &declarations, &[]);
+    assert_eq!(
+        input.serialize_specified(Default::default()).unwrap(),
+        "&.scoped { }"
+    );
 }

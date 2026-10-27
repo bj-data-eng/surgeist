@@ -9,8 +9,19 @@ use crate::css::support::named_property::{
     assert_checked_value_rejected_at, assert_invalid_replacement_at,
 };
 use crate::css::support::serialization_limits::assert_limits as primitive;
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssCalculation, CssLength, CssNonNegative, CssNumber, CssNumeric};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownPropertyValueRef,
+    CssLonghandContributions, CssLonghandValueRef, CssPropertyKindRef, CssPropertyTarget,
+};
+use surgeist_css::values::text::{
+    CssLineBreak, CssTabSize, CssTextTransform, CssTextTransformCase, CssTextTransformSet,
+    CssVerticalAlign, CssWordSpaceTransform, CssWrapBoundary, CssWrapInside,
+};
 
 fn fronts(p: P, text: &str) -> [CssDeclaration; 3] {
     [
@@ -36,8 +47,7 @@ fn declared(source: &CssDeclaration) -> CssLonghandValueRef<'_> {
     }
 }
 fn contributions(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("complete ordinary")
     };
@@ -123,9 +133,7 @@ fn transform_constructor_rejects_empty_and_all_nonempty_sets_retain_authored_get
         assert_eq!(set.full_width(), width);
         assert_eq!(set.full_size_kana(), kana);
         let value = CssTextTransform::Transforms(set);
-        primitive(css, work, work, |l| {
-            value.serialize_specified_with_limits(l)
-        });
+        primitive(css, work, work, |l| value.serialize_specified(l));
         for source in fronts(P::TextTransform, css) {
             let CssLonghandValueRef::TextTransform(actual) = declared(&source) else {
                 panic!("transform")
@@ -141,7 +149,7 @@ fn transform_exclusive_branches_are_distinct_single_keyword_values() {
         (CssTextTransform::None, "none"),
         (CssTextTransform::MathAuto, "math-auto"),
     ] {
-        primitive(css, 1, 1, |l| value.serialize_specified_with_limits(l));
+        primitive(css, 1, 1, |l| value.serialize_specified(l));
         for source in fronts(P::TextTransform, css) {
             let CssLonghandValueRef::TextTransform(actual) = declared(&source) else {
                 panic!("exclusive typed transform")
@@ -161,7 +169,7 @@ fn every_finite_wrap_inside_state_has_typed_wrapper_projection_and_primitive_cos
         (CssWrapInside::Auto, "auto"),
         (CssWrapInside::Avoid, "avoid"),
     ] {
-        primitive(css, 1, 1, |l| value.serialize_specified_with_limits(l));
+        primitive(css, 1, 1, |l| value.serialize_specified(l));
         for source in fronts(P::WrapInside, css) {
             let CssLonghandValueRef::WrapInside(actual) = declared(&source) else {
                 panic!("inside")
@@ -181,7 +189,7 @@ fn shared_boundary_states_preserve_distinct_before_and_after_property_wrappers()
         (CssWrapBoundary::Line, "line"),
         (CssWrapBoundary::Flex, "flex"),
     ] {
-        primitive(css, 1, 1, |l| value.serialize_specified_with_limits(l));
+        primitive(css, 1, 1, |l| value.serialize_specified(l));
         for p in [P::WrapBefore, P::WrapAfter] {
             for source in fronts(p, css) {
                 let actual = match declared(&source) {
@@ -204,7 +212,7 @@ fn every_line_break_state_has_typed_projection_and_exact_keyword_provider() {
         (CssLineBreak::Strict, "strict"),
         (CssLineBreak::Anywhere, "anywhere"),
     ] {
-        primitive(css, 1, 1, |l| value.serialize_specified_with_limits(l));
+        primitive(css, 1, 1, |l| value.serialize_specified(l));
         for source in fronts(P::LineBreak, css) {
             let CssLonghandValueRef::LineBreak(actual) = declared(&source) else {
                 panic!("line break")
@@ -239,9 +247,7 @@ fn five_word_space_states_are_constructible_without_empty_or_flag_only_payloads(
             2,
         ),
     ] {
-        primitive(css, work, work, |l| {
-            value.serialize_specified_with_limits(l)
-        });
+        primitive(css, work, work, |l| value.serialize_specified(l));
         for source in fronts(P::WordSpaceTransform, css) {
             let CssLonghandValueRef::WordSpaceTransform(actual) = declared(&source) else {
                 panic!("word space")
@@ -291,14 +297,17 @@ fn all_nine_metadata_initials_have_source_defined_typed_branches_and_inheritance
                 assert_eq!(*v, CssWordSpaceTransform::None)
             }
             (P::TabSize, CssLonghandValueRef::TabSize(CssTabSize::Number(v))) => {
-                assert_eq!(v.serialize_specified().unwrap(), "8");
+                assert_eq!(v.serialize_specified(Default::default()).unwrap(), "8");
                 assert!(v.calculation().is_none());
                 assert_eq!(v.origin(), &CssValueOrigin::Programmatic);
             }
             (P::TextIndent, CssLonghandValueRef::TextIndent(v)) => {
                 assert!(!v.hanging());
                 assert!(!v.each_line());
-                assert_eq!(v.length().serialize_specified().unwrap(), "0");
+                assert_eq!(
+                    v.length().serialize_specified(Default::default()).unwrap(),
+                    "0"
+                );
                 assert!(v.length().calculation().is_none());
                 assert_eq!(v.length().origin(), &CssValueOrigin::Programmatic);
             }
@@ -331,7 +340,7 @@ fn tab_literal_zero_prefers_number_and_explicit_dimensions_retain_length_and_ori
                 CssTabSize::Number(v) if is_number => {
                     assert!(v.calculation().is_none());
                     assert_eq!(
-                        v.literal_component(),
+                        v.literal().map(|literal| literal.component()),
                         Some(&source.value_components().items()[0])
                     );
                     assert_eq!(v.origin(), source.value_components().items()[0].origin());
@@ -339,32 +348,35 @@ fn tab_literal_zero_prefers_number_and_explicit_dimensions_retain_length_and_ori
                 CssTabSize::Length(v) if !is_number => {
                     assert!(v.calculation().is_none());
                     assert_eq!(
-                        v.literal_component(),
+                        v.literal().map(|literal| literal.component()),
                         Some(&source.value_components().items()[0])
                     );
                     assert_eq!(v.origin(), source.value_components().items()[0].origin());
                 }
                 _ => panic!("authored number/length distinction"),
             }
-            primitive(css, 1, 1, |l| tab.serialize_specified_with_limits(l));
+            primitive(css, 1, 1, |l| tab.serialize_specified(l));
             contributions(&source);
         }
     }
     let number = CssTabSize::Number(
-        CssSpecifiedNonNegativeNumber::try_from_component(
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
             CssComponentValue::try_number("0").unwrap(),
         )
         .unwrap(),
     );
     let length = CssTabSize::Length(
-        CssSpecifiedNonNegativeLength::try_from_component(
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component(
             CssComponentValue::try_dimension("0", "px").unwrap(),
         )
         .unwrap(),
     );
     assert_ne!(number, length);
-    assert_eq!(number.serialize_specified().unwrap(), "0");
-    assert_eq!(length.serialize_specified().unwrap(), "0px");
+    assert_eq!(number.serialize_specified(Default::default()).unwrap(), "0");
+    assert_eq!(
+        length.serialize_specified(Default::default()).unwrap(),
+        "0px"
+    );
 }
 #[test]
 fn tab_math_retains_pure_root_graph_origins_and_deferred_negative_ranges() {
@@ -381,52 +393,64 @@ fn tab_math_retains_pure_root_graph_origins_and_deferred_negative_ranges() {
             };
             let components = match tab {
                 CssTabSize::Number(v) if is_number => {
-                    assert!(v.literal_component().is_none());
+                    assert!(v.literal().map(|literal| literal.component()).is_none());
                     assert_eq!(v.origin(), source.value_components().items()[0].origin());
                     v.calculation().unwrap().components()
                 }
                 CssTabSize::Length(v) if !is_number => {
-                    assert!(v.literal_component().is_none());
+                    assert!(v.literal().map(|literal| literal.component()).is_none());
                     assert_eq!(v.origin(), source.value_components().items()[0].origin());
                     v.calculation().unwrap().components()
                 }
                 _ => panic!("pure root typed branch"),
             };
             assert_eq!(components, source.value_components());
-            assert_eq!(tab.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                tab.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             contributions(&source);
         }
     }
     let number = CssTabSize::Number(
-        CssSpecifiedNonNegativeNumber::try_from_calculation(
-            CssNumberCalculation::try_from_components(parse_component_values("calc(-1)").unwrap())
-                .unwrap(),
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(
+            CssCalculation::<CssNumber>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), "calc(-1)").unwrap(),
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap(),
     );
     let length = CssTabSize::Length(
-        CssSpecifiedNonNegativeLength::try_from_calculation(
-            CssLengthCalculation::try_from_components(
-                parse_component_values("calc(-1px)").unwrap(),
+        CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(
+            CssCalculation::<CssLength>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), "calc(-1px)").unwrap(),
+                Default::default(),
             )
             .unwrap(),
         )
         .unwrap(),
     );
-    assert_eq!(number.serialize_specified().unwrap(), "calc(-1)");
-    assert_eq!(length.serialize_specified().unwrap(), "calc(-1px)");
+    assert_eq!(
+        number.serialize_specified(Default::default()).unwrap(),
+        "calc(-1)"
+    );
+    assert_eq!(
+        length.serialize_specified(Default::default()).unwrap(),
+        "calc(-1px)"
+    );
     let math = CssTabSize::Length(
-        CssSpecifiedNonNegativeLength::try_from_calculation(
-            CssLengthCalculation::try_from_components(
-                parse_component_values("calc(1px + 2em)").unwrap(),
+        CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(
+            CssCalculation::<CssLength>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), "calc(1px + 2em)").unwrap(),
+                Default::default(),
             )
             .unwrap(),
         )
         .unwrap(),
     );
-    primitive("calc(2em + 1px)", 4, 5, |l| {
-        math.serialize_specified_with_limits(l)
-    });
+    primitive("calc(2em + 1px)", 4, 5, |l| math.serialize_specified(l));
     for text in ["-1", "-1e-999", "-1px", "-1e-999px", "calc(1%)"] {
         // Text 3 tab-size = <number [0,inf]> | <length [0,inf]>: each whole
         // value is out of range or of another type.
@@ -440,11 +464,11 @@ fn tab_math_retains_pure_root_graph_origins_and_deferred_negative_ranges() {
 fn tab_reentry_borrows_the_supplied_numeric_children_and_preserves_original_occurrence() {
     for pending in ["var(--tab)", "env(tab)", "attr(data-tab *)"] {
         let source = checked(P::TabSize, pending, true);
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending")
         };
         for text in ["0", "0PX", "calc(-1)", "CALC(1PX + 2EM)"] {
-            let replacement = parse_component_values(text).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             let snapshot = replacement.clone();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
@@ -456,8 +480,9 @@ fn tab_reentry_borrows_the_supplied_numeric_children_and_preserves_original_occu
             assert!(item.source().same_occurrence(&source));
             assert_eq!(item.source().importance(), CssImportance::Important);
             assert_eq!(item.replacement_components(), Some(&replacement));
-            let reference = parse_property_value_for_grammar(
-                P::TabSize.grammar(),
+            let reference = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(P::TabSize.grammar()),
                 replacement.clone(),
                 CssImportance::Normal,
             )
@@ -476,13 +501,17 @@ fn tab_reentry_borrows_the_supplied_numeric_children_and_preserves_original_occu
         }
         assert_invalid_replacement_at(
             &handle
-                .reenter(parse_component_values("-1e-999").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "-1e-999").unwrap())
                 .unwrap_err(),
             P::TabSize,
             "-1e-999",
             "-1e-999",
         );
-        assert!(handle.reenter(parse_component_values("8").unwrap()).is_ok());
+        assert!(
+            handle
+                .reenter(CssComponentValues::parse(&CssParser::default(), "8").unwrap())
+                .is_ok()
+        );
     }
 }
 #[test]
@@ -493,7 +522,10 @@ fn indent_flags_and_vertical_signed_numeric_models_have_typed_projections() {
         };
         assert!(v.hanging());
         assert!(v.each_line());
-        assert_eq!(v.length().serialize_specified().unwrap(), "0%");
+        assert_eq!(
+            v.length().serialize_specified(Default::default()).unwrap(),
+            "0%"
+        );
         contributions(&source);
     }
     for source in fronts(P::VerticalAlign, "-1px") {
@@ -501,7 +533,7 @@ fn indent_flags_and_vertical_signed_numeric_models_have_typed_projections() {
         else {
             panic!("vertical signed length")
         };
-        assert_eq!(v.serialize_specified().unwrap(), "-1px");
+        assert_eq!(v.serialize_specified(Default::default()).unwrap(), "-1px");
         assert_eq!(v.origin(), source.value_components().items()[0].origin());
         contributions(&source);
     }

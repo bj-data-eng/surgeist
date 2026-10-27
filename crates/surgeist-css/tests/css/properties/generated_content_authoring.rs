@@ -1,7 +1,21 @@
 //! Generated content, lists and counters (CSS Generated Content 3, Lists 3)
 //! keep authored shapes through the public parser and constructors.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::numeric::{CssInteger, CssNumeric, CssNumericLiteral};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::rule::counter_style::CssCounterStyleName;
+use surgeist_css::selector::{CssPseudoElement, CssSelector};
+use surgeist_css::values::common::{CssIdent, CssUrl};
+use surgeist_css::values::content::{
+    CssContentAlternativeItem, CssContentCounter, CssContentCounterName, CssContentCounters,
+    CssContentString, CssContentValue, CssContentValueItem, CssCounterChangeValue,
+    CssCounterChangesValue, CssCounterStyleValue, CssCounterSymbolValue, CssGeneratedContent,
+    CssGeneratedContentBodyRef, CssListStylePosition, CssListStyleTypeValue, CssListStyleValue,
+    CssSymbolsSystem,
+};
+use surgeist_css::values::image::{CssColorStopListItem, CssGradient, CssImage, CssImageValue};
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;
@@ -85,7 +99,12 @@ fn list_counter_and_content_models_preserve_authored_shapes() {
     assert!(matches!(list_style.image(), Some(CssImageValue::Url(_))));
     let counter_change = CssCounterChangeValue::new(
         counter_name.clone(),
-        Some(CssIntegerValue::Literal(CssIntegerLiteral::from_i32(4))),
+        Some(
+            CssNumeric::<CssInteger>::try_from_literal(CssNumericLiteral::<CssInteger>::from_i32(
+                4,
+            ))
+            .unwrap(),
+        ),
     );
     assert_eq!(counter_change.name(), &counter_name);
     assert_integer_literal(counter_change.value().unwrap(), "4");
@@ -316,7 +335,14 @@ fn content_attribute_reference_retains_pending_authored_components() {
         assert!(declaration.known().unwrap().property_value().is_none());
         let components = declaration.value_components();
         assert!(!components.items().is_empty());
-        assert_eq!(components.serialize().unwrap().as_css().trim(), authored);
+        assert_eq!(
+            components
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css()
+                .trim(),
+            authored
+        );
         assert!(components.items().iter().all(|component| matches!(
             component.origin(),
             CssValueOrigin::Parsed(origin) if origin.source().as_str() == input.as_str()
@@ -490,15 +516,13 @@ fn parses_counter_change_values_symbolically() {
 
 #[test]
 fn public_api_exposes_generated_content_list_style_and_counter_values() {
-    let sheet = parse_sheet(
-        r#"
+    let sheet = CssParser::default().parse_sheet(r#"
             .chapter::before {
                 content: "Chapter " counter(section, upper-roman) counters(item, ".", lower-alpha) open-quote;
                 list-style: url(marker.svg) inside square;
                 counter-reset: section 1 page -1 item;
             }
-        "#,
-    )
+        "#)
     .expect("clean parse report");
 
     let style = style_rule(&sheet.rules()[0]);
@@ -687,6 +711,12 @@ fn content_accepts_generated_lists_replacement_and_symbols_style() {
                 assert!(generated.alternative().is_none());
             }
         }
-        assert_eq!(wrapper.value().serialize_specified().unwrap(), expected);
+        assert_eq!(
+            wrapper
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
 }

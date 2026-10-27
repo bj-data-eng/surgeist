@@ -7,7 +7,19 @@
 
 use crate::css::support::declaration_color as color_of;
 use surgeist_color::PredefinedColorSpace;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssColorAlphaScalarRef, CssColorComponent, CssColorHue, CssColorNumberLiteral,
+    CssColorPercentageLiteral, CssColorSyntax, CssHslColor, CssHwbColor, CssLabColor, CssLchColor,
+    CssParsedColorAlphaRef, CssPredefinedColor, CssRgbColor,
+};
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::numeric::{CssCalculation, CssCalculationType, CssNumber, CssPercentage};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssLonghandContribution, CssLonghandValueRef,
+};
 
 const FAMILIES: [&str; 8] = ["rgb", "hsl", "hwb", "lab", "lch", "oklab", "oklch", "srgb"];
 
@@ -29,34 +41,43 @@ fn component(text: &str, programmatic: bool) -> CssColorComponent {
                 .unwrap()
                 .strip_suffix(')')
                 .unwrap();
-            CssComponentValues::try_new(vec![
-                CssComponentValue::try_function(
-                    "calc",
-                    CssComponentValues::try_new(vec![
-                        CssComponentValue::try_token(argument).unwrap(),
-                    ])
+            CssComponentValues::try_new(
+                vec![
+                    CssComponentValue::try_function(
+                        "calc",
+                        CssComponentValues::try_new(
+                            vec![CssComponentValue::try_token(argument).unwrap()],
+                            Default::default(),
+                        )
+                        .unwrap(),
+                    )
                     .unwrap(),
-                )
-                .unwrap(),
-            ])
+                ],
+                Default::default(),
+            )
             .unwrap()
         } else {
-            parse_component_values(text).unwrap()
+            CssComponentValues::parse(&CssParser::default(), text).unwrap()
         };
         return if text.contains('%') {
             CssColorComponent::PercentageCalculation(
-                CssPercentageCalculation::try_from_components(values).unwrap(),
+                CssCalculation::<CssPercentage>::try_from_components(values, Default::default())
+                    .unwrap(),
             )
         } else {
             CssColorComponent::NumberCalculation(
-                CssNumberCalculation::try_from_components(values).unwrap(),
+                CssCalculation::<CssNumber>::try_from_components(values, Default::default())
+                    .unwrap(),
             )
         };
     }
     let token = if programmatic {
         CssComponentValue::try_token(text).unwrap()
     } else {
-        parse_component_values(text).unwrap().items()[0].clone()
+        CssComponentValues::parse(&CssParser::default(), text)
+            .unwrap()
+            .items()[0]
+            .clone()
     };
     if text.ends_with('%') {
         CssColorComponent::Percentage(CssColorPercentageLiteral::try_from_component(token).unwrap())
@@ -129,9 +150,15 @@ fn spelling(family: &str, alpha: Option<&str>) -> String {
 }
 fn declaration(family: &str, alpha: Option<&str>) -> CssDeclaration {
     let source = format!("color:{}", spelling(family, alpha));
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert_eq!(validate_style_attribute(&source).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
     report.syntax()[0].clone()
 }
 fn authored<'a>(color: &'a CssColor, family: &str) -> Option<&'a CssColorComponent> {
@@ -371,7 +398,13 @@ fn omitted_missing_and_calculated_alphas_keep_distinct_unresolved_branches() {
                         Some(text),
                     ) => {
                         assert!(std::ptr::eq(view, raw));
-                        assert_eq!(view.components().serialize().unwrap().as_css(), text);
+                        assert_eq!(
+                            view.components()
+                                .serialize_tokens(Default::default())
+                                .unwrap()
+                                .as_css(),
+                            text
+                        );
                         assert_eq!(view.result_type(), CssCalculationType::Number);
                         assert_eq!(
                             matches!(view.origin(), CssValueOrigin::Programmatic),
@@ -384,7 +417,13 @@ fn omitted_missing_and_calculated_alphas_keep_distinct_unresolved_branches() {
                         Some(text),
                     ) => {
                         assert!(std::ptr::eq(view, raw));
-                        assert_eq!(view.components().serialize().unwrap().as_css(), text);
+                        assert_eq!(
+                            view.components()
+                                .serialize_tokens(Default::default())
+                                .unwrap()
+                                .as_css(),
+                            text
+                        );
                         assert_eq!(view.result_type(), CssCalculationType::Percentage);
                         assert_eq!(
                             matches!(view.origin(), CssValueOrigin::Programmatic),
@@ -440,7 +479,7 @@ fn legacy_rgb_and_hsl_payloads_expose_the_same_intrinsic_direct_alpha() {
             "150%",
         ),
     ] {
-        let report = parse_style_attribute(&format!("color:{source}"));
+        let report = CssParser::default().parse_block_contents(format!("color:{source}"));
         assert!(report.is_clean());
         assert_scalar(
             color_of(&report.syntax()[0]),
@@ -475,16 +514,11 @@ fn assert_expansion(expansion: &CssExpansion, family: &str, text: &str, source: 
 fn expanded_and_normalized_transport_preserves_raw_alpha_and_exact_parsed_view() {
     for family in FAMILIES {
         let declaration = declaration(family, Some("150%"));
-        assert_expansion(
-            &expand_declaration(&declaration).unwrap(),
-            family,
-            "150%",
-            &declaration,
-        );
+        assert_expansion(&declaration.expand().unwrap(), family, "150%", &declaration);
         let source = format!(".a{{color:{}}}", spelling(family, Some("150%")));
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean());
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let items: Vec<_> = normalized
             .items()
             .iter()
@@ -512,10 +546,13 @@ fn reading_parsed_alpha_keeps_specified_text_and_raw_graph_unchanged() {
     ] {
         let owner = color_of(&declaration(family, Some(text))).clone();
         let before = owner.clone();
-        let output = owner.to_specified_css().unwrap();
+        let output = owner.serialize_specified(Default::default()).unwrap();
         assert_eq!(output, expected);
         let _ = view(&owner, family);
-        assert_eq!(owner.to_specified_css().unwrap(), output);
+        assert_eq!(
+            owner.serialize_specified(Default::default()).unwrap(),
+            output
+        );
         assert_eq!(owner, before);
     }
 }

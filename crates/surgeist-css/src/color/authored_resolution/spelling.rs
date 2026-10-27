@@ -4,12 +4,13 @@
 //! Number syntax is the existing number owner's cursor. No typed value is
 //! formatted, rounded, or routed through the source-color lexer.
 
-use super::super::protocol::{
-    AuthoredName, AuthoredNumber, CssColorBank, CssColorOperationOwner, CssColorProtocolError,
-    CssColorSlot, Data, RecordRange,
+use crate::color::controlled::protocol::{
+    AuthoredName, AuthoredNumber, ColorProtocolError, Data, RecordRange,
 };
+use crate::color::controlled::{CssColorBank, CssColorOperationOwner, CssColorSlot};
+use crate::component::CssNumericTokenRef;
+use crate::numeric::CssNumericUnit;
 use crate::tokenization::number::{Layout, NumberCursor, Part, Step};
-use crate::{CssNumericTokenRef, CssNumericUnit};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Action {
@@ -87,42 +88,42 @@ impl<'css> NumberSpelling<'css> {
             NumberState::Done { record } => Action::Done { record },
         }
     }
-    pub(super) fn read_byte(&mut self) -> Result<(), CssColorProtocolError> {
+    pub(super) fn read_byte(&mut self) -> Result<(), ColorProtocolError> {
         let Action::ReadByte { offset } = self.action() else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         let byte = *self
             .representation
             .as_bytes()
             .get(offset)
-            .ok_or(CssColorProtocolError::WrongIndex)?;
+            .ok_or(ColorProtocolError::WrongIndex)?;
         if !byte.is_ascii() {
-            return Err(CssColorProtocolError::Input);
+            return Err(ColorProtocolError::Input);
         }
         self.lookahead[self.filled] = Some(char::from(byte));
         self.filled += 1;
         Ok(())
     }
-    pub(super) fn compute(&mut self) -> Result<(), CssColorProtocolError> {
+    pub(super) fn compute(&mut self) -> Result<(), ColorProtocolError> {
         if self.action() != Action::Compute {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         self.end
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         match self
             .cursor
             .step(self.lookahead)
-            .map_err(|_| CssColorProtocolError::Overflow)?
+            .map_err(|_| ColorProtocolError::Overflow)?
         {
             Step::Transition => self.state = NumberState::Compute,
             Step::Consume(part) => {
                 let next = self
                     .offset
                     .checked_add(1)
-                    .ok_or(CssColorProtocolError::Overflow)?;
+                    .ok_or(ColorProtocolError::Overflow)?;
                 if next > self.representation.len() || self.filled == 0 {
-                    return Err(CssColorProtocolError::WrongIndex);
+                    return Err(ColorProtocolError::WrongIndex);
                 }
                 self.offset = next;
                 self.lookahead = [self.lookahead[1], self.lookahead[2], None];
@@ -141,14 +142,14 @@ impl<'css> NumberSpelling<'css> {
             }
             Step::Done(layout) => {
                 if self.offset != self.representation.len() || layout.mantissa_digits == 0 {
-                    return Err(CssColorProtocolError::Input);
+                    return Err(ColorProtocolError::Input);
                 }
                 self.state = NumberState::Header(layout);
             }
         }
         Ok(())
     }
-    fn data(&self) -> Result<Data<'css>, CssColorProtocolError> {
+    fn data(&self) -> Result<Data<'css>, ColorProtocolError> {
         match self.state {
             NumberState::Digit { exponent, value } => Ok(Data::NumberDigit { exponent, value }),
             NumberState::Header(layout) => Ok(Data::AuthoredNumber(AuthoredNumber {
@@ -162,16 +163,16 @@ impl<'css> NumberSpelling<'css> {
                 percentage: self.percentage,
                 site: self.site,
             })),
-            _ => Err(CssColorProtocolError::WrongAction),
+            _ => Err(ColorProtocolError::WrongAction),
         }
     }
-    pub(super) fn record(&self, index: usize) -> Result<CssColorSlot<'css>, CssColorProtocolError> {
+    pub(super) fn record(&self, index: usize) -> Result<CssColorSlot<'css>, ColorProtocolError> {
         if self.action() != (Action::Append { index }) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         self.end
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         Ok(CssColorSlot::new(
             self.owner,
             self.phase,
@@ -183,9 +184,9 @@ impl<'css> NumberSpelling<'css> {
         &mut self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         if self.action() != (Action::Append { index }) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         slot.qualify(self.owner, self.phase, index, CssColorBank::Algorithm)?;
         let same = match (self.data()?, slot.data) {
@@ -210,12 +211,12 @@ impl<'css> NumberSpelling<'css> {
             _ => false,
         };
         if !same {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         }
         self.end = self
             .end
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         self.state = match self.state {
             NumberState::Digit { .. } => NumberState::Fill,
             NumberState::Header(_) => NumberState::Done { record: index },
@@ -282,46 +283,46 @@ impl<'css> NameSpelling<'css> {
             NameState::Done { record } => Action::Done { record },
         }
     }
-    pub(super) fn read_byte(&mut self) -> Result<(), CssColorProtocolError> {
+    pub(super) fn read_byte(&mut self) -> Result<(), ColorProtocolError> {
         let Action::ReadByte { offset } = self.action() else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         if self.filled == self.encoded.len() {
-            return Err(CssColorProtocolError::Input);
+            return Err(ColorProtocolError::Input);
         }
         let byte = *self
             .name
             .as_bytes()
             .get(offset)
-            .ok_or(CssColorProtocolError::WrongIndex)?;
+            .ok_or(ColorProtocolError::WrongIndex)?;
         let next = self
             .offset
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         self.encoded[self.filled] = byte;
         self.filled += 1;
         self.offset = next;
         match std::str::from_utf8(&self.encoded[..self.filled]) {
             Ok(text) => {
-                let value = text.chars().next().ok_or(CssColorProtocolError::Input)?;
+                let value = text.chars().next().ok_or(ColorProtocolError::Input)?;
                 self.state = NameState::Unit(value);
             }
             Err(error) if error.error_len().is_none() => {}
-            Err(_) => return Err(CssColorProtocolError::Input),
+            Err(_) => return Err(ColorProtocolError::Input),
         }
         Ok(())
     }
-    pub(super) fn compute(&mut self) -> Result<(), CssColorProtocolError> {
+    pub(super) fn compute(&mut self) -> Result<(), ColorProtocolError> {
         if self.action() != Action::Compute {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         if self.filled != 0 {
-            return Err(CssColorProtocolError::Input);
+            return Err(ColorProtocolError::Input);
         }
         self.state = NameState::Header;
         Ok(())
     }
-    fn data(&self) -> Result<Data<'css>, CssColorProtocolError> {
+    fn data(&self) -> Result<Data<'css>, ColorProtocolError> {
         match self.state {
             NameState::Unit(value) => Ok(Data::NameUnit(value)),
             NameState::Header => Ok(Data::AuthoredName(AuthoredName {
@@ -332,16 +333,16 @@ impl<'css> NameSpelling<'css> {
                 },
                 site: self.site,
             })),
-            _ => Err(CssColorProtocolError::WrongAction),
+            _ => Err(ColorProtocolError::WrongAction),
         }
     }
-    pub(super) fn record(&self, index: usize) -> Result<CssColorSlot<'css>, CssColorProtocolError> {
+    pub(super) fn record(&self, index: usize) -> Result<CssColorSlot<'css>, ColorProtocolError> {
         if self.action() != (Action::Append { index }) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         self.end
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         Ok(CssColorSlot::new(
             self.owner,
             self.phase,
@@ -353,9 +354,9 @@ impl<'css> NameSpelling<'css> {
         &mut self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         if self.action() != (Action::Append { index }) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         slot.qualify(self.owner, self.phase, index, CssColorBank::Algorithm)?;
         let same = match (self.data()?, slot.data) {
@@ -366,12 +367,12 @@ impl<'css> NameSpelling<'css> {
             _ => false,
         };
         if !same {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         }
         self.end = self
             .end
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         self.state = match self.state {
             NameState::Unit(_) => {
                 self.filled = 0;
@@ -400,8 +401,8 @@ pub(crate) fn authored_hue_degrees<E>(
     mut charge: impl FnMut() -> Result<(), E>,
 ) -> Result<f64, E> {
     use super::super::literal::{LiteralAction, LiteralConversion};
-    use super::super::protocol::RecordTable;
-    let protocol = |error: CssColorProtocolError| -> f64 {
+    use crate::color::controlled::protocol::RecordTable;
+    let protocol = |error: ColorProtocolError| -> f64 {
         unreachable!("an admitted checked number completes its own protocol: {error:?}")
     };
     let owner = CssColorOperationOwner::new();
@@ -464,7 +465,7 @@ pub(crate) fn authored_hue_degrees<E>(
                     value.value
                 });
             }
-            LiteralAction::Stopped => Err(CssColorProtocolError::WrongAction),
+            LiteralAction::Stopped => Err(ColorProtocolError::WrongAction),
         };
         if let Err(error) = step {
             return Ok(protocol(error));
@@ -475,9 +476,9 @@ pub(crate) fn authored_hue_degrees<E>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::color::controlled::protocol::RecordTable;
     use crate::color::literal::{LiteralAction, LiteralConversion};
-    use crate::color::protocol::RecordTable;
-    use crate::{CssComponentValue, CssComponentValueRef, CssValueTokenRef};
+    use crate::component::{CssComponentValue, CssComponentValueRef, CssValueTokenRef};
 
     #[test]
     fn original_authored_numbers_reach_exact_conversion_without_color_tokens() {
@@ -496,7 +497,9 @@ mod tests {
             ("1e9999", None, f64::MAX),
             (
                 "1.9e308",
-                Some(CssNumericUnit::Angle(crate::CssAngleUnit::Gradians)),
+                Some(CssNumericUnit::Angle(
+                    crate::numeric::CssAngleUnit::Gradians,
+                )),
                 1.71e308,
             ),
         ] {
@@ -571,7 +574,7 @@ mod tests {
     }
     #[test]
     fn original_decoded_unicode_name_is_read_once_into_real_name_units() {
-        let name = crate::CssColorProfileName::try_new("--é🍕").unwrap();
+        let name = crate::color::CssColorProfileName::try_new("--é🍕").unwrap();
         let owner = CssColorOperationOwner::new();
         let phase = owner.current_phase();
         let next = owner.prepare_advance(phase).unwrap();

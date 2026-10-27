@@ -5,14 +5,45 @@
 //! contracts; these tests do not impose used repetition or layout behavior.
 
 use crate::css::support::authored_property::{checked, parsed};
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::{
     assert_checked_closure_rejected, assert_numeric_rejected,
 };
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{
+    CssCalculation, CssInteger, CssLengthPercentage, CssNonNegative, CssNumeric, CssPositive,
+};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssLonghandContributions,
+    CssLonghandValueRef, CssPropertyKindRef, CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
+use surgeist_css::values::common::CssIdent;
+use surgeist_css::values::layout::{
+    CssColumnCount, CssGrid, CssGridAutoFlowAxis, CssGridAutoFlowMode, CssGridAutoTrackComponent,
+    CssGridFixedRepeatComponent, CssGridFixedRepeatContent, CssGridFixedSize,
+    CssGridGeneralTrackComponent, CssGridGeneralTrackList, CssGridIntegerFixedRepeat,
+    CssGridIntegerTrackRepeat, CssGridLineName, CssGridLineNames, CssGridNameRepeat,
+    CssGridSubgridComponent, CssGridTemplate, CssGridTemplateAreaCell, CssGridTemplateAreaName,
+    CssGridTemplateAreaRow, CssGridTemplateAreaTrack, CssGridTrackBreadth, CssGridTrackBreadthKind,
+    CssGridTrackList, CssGridTrackRepeatComponent, CssGridTrackRepeatContent, CssGridTrackSize,
+    CssGridTrackSizeList,
+};
 
-type Limits = CssSpecifiedValueSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Limits = CssSerializationLimits;
+type Kind = SerializationFailure;
 
 const EXPLICIT: [P; 3] = [
     P::GridTemplateRows,
@@ -53,8 +84,7 @@ fn template(source: &CssDeclaration) -> &CssGridTemplate {
 }
 
 fn complete(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("complete terminals");
     };
@@ -80,19 +110,16 @@ fn context(
     assert_eq!(item.replacement_components(), replacement);
 }
 
-fn output(
-    value: CssLonghandValueRef<'_>,
-    limits: Limits,
-) -> Result<String, CssSpecifiedValueSerializationError> {
+fn output(value: CssLonghandValueRef<'_>, limits: Limits) -> Result<String, CssSerializationError> {
     match value {
         CssLonghandValueRef::GridTemplateRows(v) | CssLonghandValueRef::GridTemplateColumns(v) => {
-            v.serialize_specified_with_limits(limits)
+            v.serialize_specified(limits)
         }
-        CssLonghandValueRef::GridTemplateAreas(v) => v.serialize_specified_with_limits(limits),
+        CssLonghandValueRef::GridTemplateAreas(v) => v.serialize_specified(limits),
         CssLonghandValueRef::GridAutoRows(v) | CssLonghandValueRef::GridAutoColumns(v) => {
-            v.serialize_specified_with_limits(limits)
+            v.serialize_specified(limits)
         }
-        CssLonghandValueRef::GridAutoFlow(v) => v.serialize_specified_with_limits(limits),
+        CssLonghandValueRef::GridAutoFlow(v) => v.serialize_specified(limits),
         _ => panic!("Grid terminal"),
     }
 }
@@ -134,7 +161,7 @@ fn auto() -> CssGridTrackSize {
 }
 fn size_px(text: &str) -> CssGridTrackSize {
     CssGridTrackSize::from_breadth(CssGridTrackBreadth::from_length_percentage(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
             CssComponentValue::try_dimension(text, "px").unwrap(),
         )
         .unwrap(),
@@ -150,10 +177,15 @@ fn fixed_content() -> CssGridFixedRepeatContent {
     )])
     .unwrap()
 }
-fn calculation(text: &str) -> CssPositiveIntegerValue {
-    CssPositiveIntegerValue::Calculation(
-        CssIntegerCalculation::try_from_components(parse_component_values(text).unwrap()).unwrap(),
+fn integer_calculation(text: &str) -> CssCalculation<CssInteger> {
+    CssCalculation::<CssInteger>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+        Default::default(),
     )
+    .unwrap()
+}
+fn calculation(text: &str) -> CssNumeric<CssInteger, CssPositive> {
+    CssNumeric::<CssInteger, CssPositive>::try_from_calculation(integer_calculation(text)).unwrap()
 }
 fn row(cells: &[&str]) -> CssGridTemplateAreaRow {
     CssGridTemplateAreaRow::try_new(
@@ -200,8 +232,8 @@ fn find_function_optional<'a>(
     }
     None
 }
-fn original_math(value: &CssPositiveIntegerValue, components: &CssComponentValues) {
-    let CssPositiveIntegerValue::Calculation(value) = value else {
+fn original_math(value: &CssNumeric<CssInteger, CssPositive>, components: &CssComponentValues) {
+    let Some(value) = value.calculation() else {
         panic!("symbolic function count");
     };
     let root = find_function(components, "calc");
@@ -224,7 +256,10 @@ fn axis_initials_and_shorthand_members_expose_complete_typed_contracts() {
     assert!(none.general_list().is_none());
     assert!(none.auto_list().is_none());
     assert!(none.subgrid_components().is_none());
-    assert_eq!(none.serialize_specified().unwrap(), "none");
+    assert_eq!(
+        none.serialize_specified(Default::default()).unwrap(),
+        "none"
+    );
     for property in [P::GridTemplateRows, P::GridTemplateColumns] {
         let CssPropertyKindRef::Longhand(metadata) = property.metadata().unwrap().kind() else {
             panic!("longhand");
@@ -271,56 +306,59 @@ fn axis_initials_and_shorthand_members_expose_complete_typed_contracts() {
     assert!(template.area_rows().is_none());
     assert!(template.area_columns().is_none());
     assert_eq!(
-        CssGrid::template(template).serialize_specified().unwrap(),
+        CssGrid::template(template)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "none / none"
     );
 }
 
 #[test]
-fn counted_repeat_constructors_normalize_bare_roots_without_evaluating_functions() {
+fn counted_repeat_counts_normalize_bare_roots_without_evaluating_functions() {
+    // Values 4 §10.12: a bare root is an ordinary token, so `[1,∞]` applies
+    // when the count is admitted rather than being deferred like math.
     for text in ["0", "-0", "-1", "-999999999999999999999999999999"] {
-        let count = calculation(text);
-        assert!(CssGridIntegerTrackRepeat::try_new(count.clone(), track_content()).is_none());
-        assert!(CssGridIntegerFixedRepeat::try_new(count.clone(), fixed_content()).is_none());
-        assert!(CssGridNameRepeat::try_new(count, vec![names(&[])]).is_none());
+        let original = integer_calculation(text);
+        let origin = original.components().items()[0].origin().clone();
+        let error = assert_numeric_rejected(
+            CssNumeric::<CssInteger, CssPositive>::try_from_calculation(original),
+            NumericFailure::OutOfRange,
+        );
+        assert_eq!(error.origin(), Some(&origin));
     }
     for text in ["+0007", "2147483648", "999999999999999999999999999999"] {
-        let count = calculation(text);
-        let CssPositiveIntegerValue::Calculation(original) = &count else {
-            unreachable!();
-        };
+        let original = integer_calculation(text);
         let component = original.components().items()[0].clone();
-        let track = CssGridIntegerTrackRepeat::try_new(count.clone(), track_content()).unwrap();
-        let fixed = CssGridIntegerFixedRepeat::try_new(count.clone(), fixed_content()).unwrap();
+        let count = CssNumeric::<CssInteger, CssPositive>::try_from_calculation(original).unwrap();
+        let track = CssGridIntegerTrackRepeat::new(count.clone(), track_content());
+        let fixed = CssGridIntegerFixedRepeat::new(count.clone(), fixed_content());
         let name = CssGridNameRepeat::try_new(count, vec![names(&[])]).unwrap();
         for value in [track.count(), fixed.count(), name.count().unwrap()] {
-            let CssPositiveIntegerValue::Literal(value) = value else {
+            let Some(value) = value.literal() else {
                 panic!("normalized ordinary positive token");
             };
             // The source of the constructor's calculation is retained, rather
             // than a new numeric token being fabricated from a machine count.
-            assert_eq!(value.integer().component(), &component);
-            let CssValueOrigin::Parsed(origin) = value.integer().origin() else {
+            assert_eq!(value.component(), &component);
+            let CssValueOrigin::Parsed(origin) = value.origin() else {
                 panic!("parsed count origin");
             };
             assert_eq!(origin.source().as_str(), text);
             assert_eq!(origin.span().start().byte_offset().value(), 0);
             assert_eq!(origin.span().end().byte_offset().value(), text.len());
-            assert_eq!(value.integer().numeric().representation(), text);
+            assert_eq!(value.numeric().representation(), text);
         }
     }
     for text in ["calc(2)", "calc(1.5)", "calc(0)", "calc(-1)"] {
         let count = calculation(text);
-        let CssPositiveIntegerValue::Calculation(original) = &count else {
+        let Some(original) = &count.calculation() else {
             unreachable!();
         };
         for value in [
-            CssGridIntegerTrackRepeat::try_new(count.clone(), track_content())
-                .unwrap()
+            CssGridIntegerTrackRepeat::new(count.clone(), track_content())
                 .count()
                 .clone(),
-            CssGridIntegerFixedRepeat::try_new(count.clone(), fixed_content())
-                .unwrap()
+            CssGridIntegerFixedRepeat::new(count.clone(), fixed_content())
                 .count()
                 .clone(),
             CssGridNameRepeat::try_new(count.clone(), vec![names(&[])])
@@ -329,8 +367,8 @@ fn counted_repeat_constructors_normalize_bare_roots_without_evaluating_functions
                 .unwrap()
                 .clone(),
         ] {
-            assert_eq!(value.serialize_specified().unwrap(), text);
-            let CssPositiveIntegerValue::Calculation(retained) = value else {
+            assert_eq!(value.serialize_specified(Default::default()).unwrap(), text);
+            let Some(retained) = value.calculation() else {
                 panic!("function graph remains symbolic");
             };
             assert_eq!(retained.components(), original.components());
@@ -338,44 +376,42 @@ fn counted_repeat_constructors_normalize_bare_roots_without_evaluating_functions
         }
     }
     for (text, kind) in [
-        ("1.5", CssNumericConstructionErrorKind::RootDomainMismatch),
-        (
-            "calc(1px)",
-            CssNumericConstructionErrorKind::RootDomainMismatch,
-        ),
-        (
-            "calc(1 +)",
-            CssNumericConstructionErrorKind::MalformedExpression,
-        ),
-        ("1 2", CssNumericConstructionErrorKind::MultipleValues),
+        ("1.5", NumericFailure::RootDomainMismatch),
+        ("calc(1px)", NumericFailure::RootDomainMismatch),
+        ("calc(1 +)", NumericFailure::MalformedExpression),
+        ("1 2", NumericFailure::MultipleValues),
     ] {
         assert_numeric_rejected(
-            CssIntegerCalculation::try_from_components(parse_component_values(text).unwrap()),
+            CssCalculation::<CssInteger>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+                Default::default(),
+            ),
             kind,
         );
     }
     for value in [
-        CssIntegerCalculation::literal(0),
-        CssIntegerCalculation::literal(-2),
+        CssCalculation::<CssInteger>::literal(0),
+        CssCalculation::<CssInteger>::literal(-2),
     ] {
-        assert!(
-            CssGridIntegerTrackRepeat::try_new(
-                CssPositiveIntegerValue::Calculation(value),
-                track_content()
-            )
-            .is_none()
+        let error = assert_numeric_rejected(
+            CssNumeric::<CssInteger, CssPositive>::try_from_calculation(value),
+            NumericFailure::OutOfRange,
         );
+        assert_eq!(error.origin(), Some(&CssValueOrigin::Programmatic));
     }
-    let programmatic = CssPositiveIntegerValue::Calculation(CssIntegerCalculation::literal(2));
-    let track = CssGridIntegerTrackRepeat::try_new(programmatic.clone(), track_content()).unwrap();
-    let fixed = CssGridIntegerFixedRepeat::try_new(programmatic.clone(), fixed_content()).unwrap();
+    let programmatic = CssNumeric::<CssInteger, CssPositive>::try_from_calculation(
+        CssCalculation::<CssInteger>::literal(2),
+    )
+    .unwrap();
+    let track = CssGridIntegerTrackRepeat::new(programmatic.clone(), track_content());
+    let fixed = CssGridIntegerFixedRepeat::new(programmatic.clone(), fixed_content());
     let name = CssGridNameRepeat::try_new(programmatic, vec![names(&[])]).unwrap();
     for count in [track.count(), fixed.count(), name.count().unwrap()] {
-        let CssPositiveIntegerValue::Literal(count) = count else {
+        let Some(count) = count.literal() else {
             panic!("programmatic positive bare root");
         };
-        assert_eq!(count.integer().numeric().representation(), "2");
-        assert_eq!(count.integer().origin(), &CssValueOrigin::Programmatic);
+        assert_eq!(count.numeric().representation(), "2");
+        assert_eq!(count.origin(), &CssValueOrigin::Programmatic);
     }
 }
 
@@ -418,7 +454,7 @@ fn every_repeat_role_retains_parsed_function_children_and_exact_count_origins() 
                         }
                     };
                     original_math(count, source.value_components());
-                    assert_eq!(value.serialize_specified().unwrap(), css);
+                    assert_eq!(value.serialize_specified(Default::default()).unwrap(), css);
                     let projected = complete(&source);
                     assert_eq!(projected_axis(&projected, 0), value);
                     let projected_count = match mode {
@@ -463,17 +499,17 @@ fn every_repeat_role_retains_parsed_function_children_and_exact_count_origins() 
             else {
                 panic!("ordinary repeat");
             };
-            let CssPositiveIntegerValue::Literal(count) = value.count() else {
+            let Some(count) = value.count().literal() else {
                 panic!("ordinary count");
             };
-            let CssValueOrigin::Parsed(origin) = count.integer().origin() else {
+            let CssValueOrigin::Parsed(origin) = count.origin() else {
                 panic!("parsed exact token");
             };
             let text = origin.source().as_str();
             let start = text.find("+0007").unwrap();
             assert_eq!(origin.span().start().byte_offset().value(), start);
             assert_eq!(origin.span().end().byte_offset().value(), start + 5);
-            assert_eq!(count.integer().numeric().representation(), "+0007");
+            assert_eq!(count.numeric().representation(), "+0007");
         }
     }
 }
@@ -501,7 +537,12 @@ fn subgrid_views_keep_long_ordered_lists_empty_groups_and_one_automatic_repeat()
     spelling.insert(8, r"repeat(auto-fill, [] [a\ b])".to_owned());
     let expected = format!("subgrid {}", spelling.join(" "));
     let programmatic = CssGridTrackList::try_subgrid(components.clone()).unwrap();
-    assert_eq!(programmatic.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        programmatic
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     for property in [P::GridTemplateRows, P::GridTemplateColumns] {
         for source in fronts(property, &expected) {
             let value = axis(&source);
@@ -574,32 +615,36 @@ fn area_constructors_validate_the_matrix_and_preserve_authored_optional_fields()
     // Two cell columns with one authored explicit track are valid: matrix
     // validity does not impose a used track-count equality.
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         r#"[] "a a" [end end] [start] "b b" auto / 1px"#
     );
     assert_eq!(
         CssGrid::template(value.clone()).template_value(),
         Some(&value)
     );
-    assert_eq!(
-        CssGridTemplate::try_areas(vec![], None).unwrap_err(),
-        CssGridTemplateAreaError::MissingRows
+    assert!(
+        CssGridTemplate::try_areas(vec![], None)
+            .unwrap_err()
+            .is_missing_rows()
     );
     let inconsistent = vec![
         CssGridTemplateAreaTrack::new(row(&["a", "a"]), None, None, None),
         CssGridTemplateAreaTrack::new(row(&["b"]), None, None, None),
     ];
-    assert_eq!(
-        CssGridTemplate::try_areas(inconsistent, None).unwrap_err(),
-        CssGridTemplateAreaError::InconsistentWidths
+    assert!(
+        CssGridTemplate::try_areas(inconsistent, None)
+            .unwrap_err()
+            .is_inconsistent_widths()
     );
     let diagonal = vec![
         CssGridTemplateAreaTrack::new(row(&["a", "."]), None, None, None),
         CssGridTemplateAreaTrack::new(row(&[".", "a"]), None, None, None),
     ];
     assert_eq!(
-        CssGridTemplate::try_areas(diagonal, None).unwrap_err(),
-        CssGridTemplateAreaError::NonRectangular("a".to_owned())
+        CssGridTemplate::try_areas(diagonal, None)
+            .unwrap_err()
+            .non_rectangular_area(),
+        Some("a")
     );
 }
 
@@ -670,7 +715,7 @@ fn area_branch_views_and_effective_boundaries_keep_defaults_order_and_numeric_ch
             // Values 4 specified math sorts percentages before dimensions;
             // the graph above still retains the authored operand order.
             assert_eq!(
-                value.serialize_specified().unwrap(),
+                value.serialize_specified(Default::default()).unwrap(),
                 r#"[top] "a a" [end end] [start] "b b" calc(2% + 1px) [bottom] / 10px"#
             );
         }
@@ -683,7 +728,9 @@ fn area_branch_views_and_effective_boundaries_keep_defaults_order_and_numeric_ch
                 assert!(value.area_rows().unwrap()[1].before().is_none());
                 let values = complete(&source);
                 assert_eq!(
-                    projected_axis(&values, 0).serialize_specified().unwrap(),
+                    projected_axis(&values, 0)
+                        .serialize_specified(Default::default())
+                        .unwrap(),
                     expected
                 );
                 assert!(projected_axis(&values, 1).is_none());
@@ -768,7 +815,7 @@ fn every_grid_alternative_projects_source_defined_axes_and_implicit_defaults() {
     assert_eq!(value.auto_tracks(), Some(&implicit));
     assert_eq!(value.explicit_tracks(), Some(&explicit));
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "subgrid [] / auto-flow dense 3px auto"
     );
 }
@@ -776,10 +823,14 @@ fn every_grid_alternative_projects_source_defined_axes_and_implicit_defaults() {
 #[test]
 fn recovered_numeric_children_remain_recovered_through_projection_and_typed_composition() {
     let css = r#".a{grid:"a" "b" calc(2px"#;
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(!report.is_clean());
     assert_eq!(
-        validate_sheet(css).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(css)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     let CssRule::Style(rule) = &report.syntax().rules()[0] else {
@@ -819,23 +870,24 @@ fn recovered_numeric_children_remain_recovered_through_projection_and_typed_comp
         original
     );
     assert_eq!(
-        source.to_specified_css().unwrap(),
+        source.serialize_specified(Default::default()).unwrap(),
         r#"grid: "a" "b" calc(2px);"#
     );
-    assert_checked_closure_rejected(parse_property_value_for_grammar(
-        P::Grid.grammar(),
+    assert_checked_closure_rejected(CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(P::Grid.grammar()),
         source.value_components().clone(),
         CssImportance::Normal,
     ));
     let before = report.clone();
-    let normalized = normalize_report(&report).unwrap();
+    let normalized = report.normalize(Default::default()).unwrap();
     assert!(!normalized.is_clean());
     assert_eq!(normalized.diagnostics(), report.diagnostics());
     assert_eq!(report, before);
 
     // Reusing a parser-admitted Integer child is typed composition. It retains
     // recovery; it cannot turn that child's original components into clean CSS.
-    let count_report = parse_style_attribute("column-count:calc(2");
+    let count_report = CssParser::default().parse_block_contents("column-count:calc(2");
     assert!(!count_report.is_clean());
     let count_source = &count_report.syntax()[0];
     let CssKnownPropertyValueRef::ColumnCount(value) =
@@ -843,28 +895,34 @@ fn recovered_numeric_children_remain_recovered_through_projection_and_typed_comp
     else {
         panic!("integer provider");
     };
-    let CssColumnCount::Count(count) = value.count() else {
+    let CssColumnCount::Count(count) = value.value() else {
         panic!("count");
     };
     original_math(count, count_source.value_components());
-    let repeat = CssGridIntegerTrackRepeat::try_new(count.clone(), track_content()).unwrap();
+    let repeat = CssGridIntegerTrackRepeat::new(count.clone(), track_content());
     original_math(repeat.count(), count_source.value_components());
     let repeated = CssGridTrackList::general(
         CssGridGeneralTrackList::try_new(vec![CssGridGeneralTrackComponent::Repeat(repeat)])
             .unwrap(),
     );
     assert_eq!(
-        repeated.serialize_specified().unwrap(),
+        repeated.serialize_specified(Default::default()).unwrap(),
         "repeat(calc(2), auto)"
     );
     let name = CssGridNameRepeat::try_new(count.clone(), vec![names(&[])]).unwrap();
     original_math(name.count().unwrap(), count_source.value_components());
-    let fixed = CssGridIntegerFixedRepeat::try_new(count.clone(), fixed_content()).unwrap();
+    let fixed = CssGridIntegerFixedRepeat::new(count.clone(), fixed_content());
     original_math(fixed.count(), count_source.value_components());
-    let CssPositiveIntegerValue::Calculation(count) = count else {
+    let Some(count) = count.calculation() else {
         panic!("calculation");
     };
-    assert!(CssIntegerCalculation::try_from_components(count.components().clone()).is_err());
+    assert!(
+        CssCalculation::<CssInteger>::try_from_components(
+            count.components().clone(),
+            Default::default()
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -876,24 +934,19 @@ fn pending_retries_keep_new_borrowed_payloads_and_original_replacement_identity(
         P::Grid,
     ] {
         for source in fronts(property, "var(--grid)") {
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("pending");
             };
             for _ in 0..2 {
                 for invalid in ["junk", "initial/*", "var(--residual)"] {
-                    let components = parse_component_values(invalid).unwrap();
+                    let components =
+                        CssComponentValues::parse(&CssParser::default(), invalid).unwrap();
                     let before = components.clone();
                     let error = handle.reenter(components.clone()).unwrap_err();
                     if invalid.starts_with("var") {
-                        assert!(matches!(
-                            error.kind(),
-                            CssExpansionErrorKind::ResidualSubstitution
-                        ));
+                        assert!(error.is_residual_substitution());
                     } else {
-                        assert!(matches!(
-                            error.kind(),
-                            CssExpansionErrorKind::InvalidReplacement(_)
-                        ));
+                        assert!(error.replacement_error().is_some());
                     }
                     assert_eq!(components, before);
                     assert!(handle.source().same_occurrence(&source));
@@ -904,7 +957,7 @@ fn pending_retries_keep_new_borrowed_payloads_and_original_replacement_identity(
             } else {
                 r#""a" calc(2px) / 1px"#
             };
-            let replacement = parse_component_values(text).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             let before = replacement.clone();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
@@ -948,14 +1001,13 @@ fn pending_retries_keep_new_borrowed_payloads_and_original_replacement_identity(
                 "calc(2px)"
             };
             for _ in 0..2 {
-                assert_eq!(
+                assert!(
                     output(
                         ordinary.view(),
                         Limits::new(usize::MAX, usize::MAX, expected.len() - 1)
                     )
                     .unwrap_err()
-                    .kind(),
-                    Kind::ByteLimit
+                    .is_byte_limit()
                 );
             }
             assert_eq!(
@@ -990,17 +1042,13 @@ fn new_branch_provider_limits_are_exact_atomic_and_cumulative_at_declaration_bou
             let before = source.clone();
             let serialize = |limits| match source.known().unwrap().property_value().unwrap() {
                 CssKnownPropertyValueRef::GridTemplateRows(v) => {
-                    v.value().serialize_specified_with_limits(limits)
+                    v.value().serialize_specified(limits)
                 }
                 CssKnownPropertyValueRef::GridTemplateColumns(v) => {
-                    v.value().serialize_specified_with_limits(limits)
+                    v.value().serialize_specified(limits)
                 }
-                CssKnownPropertyValueRef::GridTemplate(v) => {
-                    v.value().serialize_specified_with_limits(limits)
-                }
-                CssKnownPropertyValueRef::Grid(v) => {
-                    v.value().serialize_specified_with_limits(limits)
-                }
+                CssKnownPropertyValueRef::GridTemplate(v) => v.value().serialize_specified(limits),
+                CssKnownPropertyValueRef::Grid(v) => v.value().serialize_specified(limits),
                 _ => unreachable!(),
             };
             assert_eq!(
@@ -1010,11 +1058,7 @@ fn new_branch_provider_limits_are_exact_atomic_and_cumulative_at_declaration_bou
             let declaration = format!("{}: {text} !important;", property.canonical_name());
             assert_eq!(
                 source
-                    .to_specified_css_with_limits(Limits::new(
-                        nodes + 2,
-                        nodes + 2,
-                        declaration.len()
-                    ))
+                    .serialize_specified(Limits::new(nodes + 2, nodes + 2, declaration.len()))
                     .unwrap(),
                 declaration
             );
@@ -1036,18 +1080,20 @@ fn new_branch_provider_limits_are_exact_atomic_and_cumulative_at_declaration_bou
                 ),
             ] {
                 for _ in 0..2 {
-                    assert_eq!(serialize(limits).unwrap_err().kind(), kind);
+                    assert_eq!(serialization_failure(&serialize(limits).unwrap_err()), kind);
                     assert_eq!(
-                        source
-                            .to_specified_css_with_limits(declaration_limits)
-                            .unwrap_err()
-                            .kind(),
+                        serialization_failure(
+                            &source.serialize_specified(declaration_limits).unwrap_err()
+                        ),
                         kind
                     );
                     assert_eq!(source, before);
                 }
             }
-            assert_eq!(source.to_specified_css().unwrap(), declaration);
+            assert_eq!(
+                source.serialize_specified(Default::default()).unwrap(),
+                declaration
+            );
         }
     }
 }
@@ -1055,29 +1101,26 @@ fn new_branch_provider_limits_are_exact_atomic_and_cumulative_at_declaration_bou
 #[test]
 fn area_and_subgrid_siblings_share_sheet_byte_budget_and_normalization_terminals() {
     let css = r#".a{grid:"a"!important;grid-template:subgrid [] / none;grid-template-columns:none;grid:var(--g)}.b{grid:"b" / 1px}"#;
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(report.is_clean());
     let before = report.clone();
     let expected = ".a { grid: \"a\" !important; grid-template: subgrid [] / none; grid-template-columns: none; grid: var(--g); }\n.b { grid: \"b\" / 1px; }";
     let exact = Limits::new(usize::MAX, usize::MAX, expected.len());
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
     for _ in 0..2 {
         let error = report
             .syntax()
-            .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
+            .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
             .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(Kind::ByteLimit)
-        );
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(1));
     }
     // 6+3+1+one whole pending+6 = 17 terminal work units, five declarations.
     let limits = CssNormalizationLimits::try_new(1, 2, 5, 17).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), limits).unwrap();
+    let normalized = report.syntax().normalize(limits).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -1118,17 +1161,13 @@ fn area_and_subgrid_siblings_share_sheet_byte_budget_and_normalization_terminals
         }
     }
     for _ in 0..2 {
-        let error = normalize_sheet_with_limits(
-            report.syntax(),
-            CssNormalizationLimits::try_new(1, 2, 5, 16).unwrap(),
-        )
-        .unwrap_err();
+        let error = report
+            .syntax()
+            .normalize(CssNormalizationLimits::try_new(1, 2, 5, 16).unwrap())
+            .unwrap_err();
         assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded {
-                resource: CssNormalizationResource::Contributions,
-                limit: 16
-            }
+            error.exhausted_limit(),
+            Some((CssNormalizationResource::Contributions, 16))
         );
         assert_eq!(error.declaration_order(), Some(4));
         assert!(
@@ -1139,9 +1178,9 @@ fn area_and_subgrid_siblings_share_sheet_byte_budget_and_normalization_terminals
         );
     }
     assert_eq!(report, before);
-    assert!(normalize_sheet_with_limits(report.syntax(), limits).is_ok());
+    assert!(report.syntax().normalize(limits).is_ok());
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
 }

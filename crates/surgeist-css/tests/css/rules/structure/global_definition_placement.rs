@@ -12,7 +12,15 @@ use crate::css::support::descriptor_phases;
 use crate::css::support::rules::normalized_rule_contexts as rule_contexts;
 use descriptor_phases::*;
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{CssRuleContext, CssRuleContextKindRef};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::counter_style::{CssCounterStyleSystem, CssCounterSymbol};
+use surgeist_css::rule::font_face::CssFontFaceSource;
+use surgeist_css::rule::keyframes::CssKeyframesName;
+use surgeist_css::source::CssSourcePosition;
 
 const COUNTER: &str = "@counter-style Tick { system: cyclic; symbols: \"x\"; }";
 const FONT: &str = "@font-face { font-family: Audit; src: local(Audit); }";
@@ -76,7 +84,7 @@ fn assert_payload(context: &CssRuleContext, source: &str, expected: &str) {
                 source,
                 "font-family:",
                 rule.descriptors()
-                    .effective(surgeist_css::CssFontFaceDescriptorKind::FontFamily)
+                    .effective(surgeist_css::rule::font_face::CssFontFaceDescriptorKind::FontFamily)
                     .unwrap()
                     .position()
                     .unwrap(),
@@ -118,9 +126,9 @@ fn assert_wrapped_definition(
     expected: &str,
 ) {
     let source = format!("/*😀*/\n{prefix}before{{}} {definition} after{{}}{suffix}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let contexts = rule_contexts(&normalized);
     let mut expected_kinds = groups.to_vec();
     expected_kinds.extend(["style", expected, "style"]);
@@ -224,13 +232,13 @@ fn admitted_counter_recovers_bad_descriptor_without_dropping_definition_or_neigh
         let source = format!(
             "{prefix}{{before{{}}@counter-style Tick{{system:cyclic;unknown-descriptor:0;symbols:\"x\"}}after{{}}}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [diagnostic] = report.diagnostics() else {
             panic!("one local recovery: {report:?}")
         };
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDescriptor);
         assert_position(&source, "unknown-descriptor:", diagnostic.span().start());
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let contexts = rule_contexts(&normalized);
         assert_eq!(contexts.len(), 4);
         assert_position(&source, "before{}", contexts[1].position().unwrap());
@@ -256,13 +264,13 @@ fn scoped_font_and_keyframes_keep_valid_payload_after_local_recovery() {
         ),
     ] {
         let source = format!("@scope (.host){{before{{}}{definition}after{{}}}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [diagnostic] = report.diagnostics() else {
             panic!("one local recovery: {report:?}")
         };
         assert_eq!(diagnostic.action(), action);
         assert_position(&source, marker, diagnostic.span().start());
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let contexts = rule_contexts(&normalized);
         assert_eq!(contexts.len(), 4);
         assert_position(&source, "before{}", contexts[1].position().unwrap());
@@ -284,12 +292,12 @@ fn style_ancestors_reject_definitions_through_nested_scope_and_groups() {
             ),
         ] {
             let source = format!("{prefix}before{{}}{definition}after{{}}{suffix}");
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             let [diagnostic] = report.diagnostics() else {
                 panic!("one misplaced definition: {report:?}")
             };
             assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
-            let normalized = normalize_sheet(report.syntax()).unwrap();
+            let normalized = report.syntax().normalize(Default::default()).unwrap();
             let contexts = rule_contexts(&normalized);
             assert!(!contexts.iter().any(|c| matches!(
                 c.kind(),
@@ -320,12 +328,12 @@ fn reserved_definition_names_drop_locally_at_top_level_and_inside_media_and_scop
     ] {
         for (prefix, suffix) in [("", ""), ("@media all{", "}"), ("@scope (.host){", "}")] {
             let source = format!("{prefix}before{{}}{invalid}after{{}}{suffix}");
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             let [diagnostic] = report.diagnostics() else {
                 panic!("one invalid name: {report:?}")
             };
             assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
-            let normalized = normalize_sheet(report.syntax()).unwrap();
+            let normalized = report.syntax().normalize(Default::default()).unwrap();
             let contexts = rule_contexts(&normalized);
             assert!(!contexts.iter().any(|c| matches!(
                 c.kind(),
@@ -347,7 +355,7 @@ fn nested_definition_admission_does_not_reopen_import_or_namespace_phase() {
     let source = format!(
         "@import 'early.css';@namespace svg 'urn:svg';@media all{{{COUNTER}}}@import 'late.css';@namespace late 'urn:late';tail{{}}"
     );
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let [
         CssRule::Import(_),
         CssRule::Namespace(_),

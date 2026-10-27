@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 use std::path::Path;
-use surgeist_css::{CssKnownProperty, CssSvgGlyphOrientationVerticalDeclaration};
+use surgeist_css::property::{CssKnownProperty, CssSvgGlyphOrientationVerticalDeclaration};
 
 const OUTPUT: &str = "crates/surgeist-cssom/src/generated_property_reflections.rs";
 const API: &str = "api/crates/surgeist-cssom.txt";

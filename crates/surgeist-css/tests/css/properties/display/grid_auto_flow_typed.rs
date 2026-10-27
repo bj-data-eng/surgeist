@@ -2,12 +2,22 @@
 //! axis/dense ordering; Grid 3 (2026-01-21) §2.3 and the recorded WebKit choice
 //! supply symbolic normal and bare dense without choosing a layout direction.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_checked_value_rejected;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::normalize::{CssNormalizationLimits, CssNormalizationResource};
+use surgeist_css::property::{
+    CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValueRef,
+    CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::layout::{CssGridAutoFlow, CssGridAutoFlowAxis, CssGridAutoFlowMode};
 
 fn parsed(value: &str) -> CssDeclaration {
     let source = format!("grid-auto-flow: {value}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     report.syntax()[0].clone()
 }
@@ -35,7 +45,7 @@ fn direct_construction_covers_six_distinct_states_with_canonical_text() {
         ),
     ];
     for (index, (value, css)) in cases.into_iter().enumerate() {
-        assert_eq!(value.serialize_specified().unwrap(), css);
+        assert_eq!(value.serialize_specified(Default::default()).unwrap(), css);
         for (other_index, (other, _)) in cases.into_iter().enumerate() {
             if index != other_index {
                 assert_ne!(value, other, "distinct authored states");
@@ -72,7 +82,13 @@ fn parsed_keyword_orders_canonicalize_without_losing_authored_slice() {
         };
         assert_eq!(wrapper.as_css(), authored);
         assert_eq!(*wrapper.value(), state);
-        assert_eq!(wrapper.value().serialize_specified().unwrap(), expected);
+        assert_eq!(
+            wrapper
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
 }
 
@@ -125,33 +141,33 @@ fn canonical_serializer_charges_each_keyword_and_exact_output_bytes() {
     let value = CssGridAutoFlow::explicit_axis(CssGridAutoFlowAxis::Column, true);
     for (limits, error) in [
         (
-            CssSpecifiedValueSerializationLimits::new(1, 2, 12),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(1, 2, 12),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 1, 12),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(2, 1, 12),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 2, 11),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(2, 2, 11),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             error
         );
     }
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 12))
+            .serialize_specified(CssSerializationLimits::new(2, 2, 12))
             .unwrap(),
         "column dense"
     );
-    assert_eq!(value.serialize_specified().unwrap(), "column dense");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "column dense"
+    );
 }
 
 #[test]
@@ -172,27 +188,22 @@ fn invalid_keyword_combinations_are_rejected_by_the_public_grammar() {
 
 #[test]
 fn normalization_charges_one_terminal_contribution_for_dense() {
-    let report = parse_sheet(".p{grid-auto-flow:dense}");
+    let report = CssParser::default().parse_sheet(".p{grid-auto-flow:dense}");
     assert!(report.is_clean());
     let original = report.syntax().clone();
-    let error = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(1, 1, 1, 0).unwrap(),
-    )
-    .unwrap_err();
+    let error = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(1, 1, 1, 0).unwrap())
+        .unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 0,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 0))
     );
     assert_eq!(report.syntax(), &original);
     assert!(
-        normalize_sheet_with_limits(
-            report.syntax(),
-            CssNormalizationLimits::try_new(1, 1, 1, 1).unwrap(),
-        )
-        .is_ok()
+        report
+            .syntax()
+            .normalize(CssNormalizationLimits::try_new(1, 1, 1, 1).unwrap())
+            .is_ok()
     );
 }

@@ -1,19 +1,34 @@
 //! Authored @font-face font-width contracts from CSS Fonts 4 WD 2026-09-07 §4.4.
 
-use surgeist_css::*;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::numeric::{CssNonNegative, CssNumeric, CssPercentage};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::source::CssSourcePosition;
+use surgeist_css::values::font::{CssFontFaceWidth, CssFontWidth, CssFontWidthKeyword};
 
 fn percent(text: &str) -> CssFontWidth {
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let [component] = values.items() else {
         panic!("one percentage")
     };
     CssFontWidth::Percentage(
-        CssSpecifiedNonNegativePercentage::try_from_component(component.clone()).unwrap(),
+        CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(component.clone()).unwrap(),
     )
 }
 
 fn raw(text: &str) -> CssFontFaceWidth {
-    let report = parse_font_face_descriptor_value(text, CssFontFaceDescriptorKind::FontWidth);
+    let report = CssAuthoredFontFaceDescriptorValue::parse(
+        &CssParser::default(),
+        text,
+        CssFontFaceDescriptorKind::FontWidth,
+    );
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let Some(CssAuthoredFontFaceDescriptorValue::Ordinary(CssFontFaceDescriptorValue::FontWidth(
         value,
@@ -26,7 +41,7 @@ fn raw(text: &str) -> CssFontFaceWidth {
 
 fn sheet(name: &str, text: &str) -> (CssFontFaceWidth, CssSourcePosition) {
     let source = format!("@font-face{{font-family:Demo;src:url(face);{name}:{text}}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("font-face rule")
@@ -49,17 +64,17 @@ fn sheet(name: &str, text: &str) -> (CssFontFaceWidth, CssSourcePosition) {
 
 #[test]
 fn explicit_auto_and_omission_have_distinct_authored_states() {
-    assert_eq!(
-        CssFontFaceDescriptorKind::FontWidth.css_name(),
-        "font-width"
-    );
+    assert_eq!(CssFontFaceDescriptorKind::FontWidth.as_str(), "font-width");
     let auto = CssFontFaceWidth::Auto;
-    assert_eq!(auto.serialize_specified().unwrap(), "auto");
+    assert_eq!(
+        auto.serialize_specified(Default::default()).unwrap(),
+        "auto"
+    );
     assert_eq!(raw("auto"), auto);
     for name in ["font-width", "font-stretch", "FONT-WIDTH", "FONT-STRETCH"] {
         assert_eq!(sheet(name, "auto").0, auto);
     }
-    let report = parse_sheet("@font-face{font-family:Demo;src:url(face)}");
+    let report = CssParser::default().parse_sheet("@font-face{font-family:Demo;src:url(face)}");
     assert!(report.is_clean());
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("font-face rule")
@@ -79,15 +94,24 @@ fn checked_ranges_preserve_mixed_values_descending_order_and_authored_arity() {
         end: Some(percent("75%")),
     };
     assert_ne!(single, repeated);
-    assert_eq!(single.serialize_specified().unwrap(), "75%");
-    assert_eq!(repeated.serialize_specified().unwrap(), "75%");
+    assert_eq!(
+        single.serialize_specified(Default::default()).unwrap(),
+        "75%"
+    );
+    assert_eq!(
+        repeated.serialize_specified(Default::default()).unwrap(),
+        "75%"
+    );
     assert_eq!(raw("75%"), single);
     assert_eq!(raw("75% 75%"), repeated);
     let mixed = CssFontFaceWidth::Range {
         start: CssFontWidth::Keyword(Expanded),
         end: Some(percent("62.5%")),
     };
-    assert_eq!(mixed.serialize_specified().unwrap(), "expanded 62.5%");
+    assert_eq!(
+        mixed.serialize_specified(Default::default()).unwrap(),
+        "expanded 62.5%"
+    );
     assert_eq!(raw("expanded 62.5%"), mixed);
     assert_eq!(sheet("font-width", "expanded 62.5%").0, mixed);
 
@@ -98,7 +122,10 @@ fn checked_ranges_preserve_mixed_values_descending_order_and_authored_arity() {
         ("125% condensed", "125% condensed"),
     ] {
         let actual = raw(text);
-        assert_eq!(actual.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            actual.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(sheet("font-stretch", text).0, actual);
     }
     let descending = CssFontFaceWidth::Range {
@@ -130,7 +157,12 @@ fn raw_and_sheet_parsing_preserve_numeric_origin_and_descriptor_name_position() 
     };
     for component in [&start, &end] {
         assert!(matches!(component.origin(), CssValueOrigin::Parsed(_)));
-        assert!(component.literal_component().is_some());
+        assert!(
+            component
+                .literal()
+                .map(|literal| literal.component())
+                .is_some()
+        );
     }
     let CssValueOrigin::Parsed(start_origin) = start.origin() else {
         panic!("start retains sheet source")
@@ -151,16 +183,19 @@ fn raw_and_sheet_parsing_preserve_numeric_origin_and_descriptor_name_position() 
             expected
         );
     }
-    assert_eq!(start.serialize_specified().unwrap(), "62.5%");
-    assert_eq!(end.serialize_specified().unwrap(), "75%");
+    assert_eq!(
+        start.serialize_specified(Default::default()).unwrap(),
+        "62.5%"
+    );
+    assert_eq!(end.serialize_specified(Default::default()).unwrap(), "75%");
     assert_ne!(
         start,
-        CssSpecifiedNonNegativePercentage::try_from_component(
+        CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
             CssComponentValue::try_token("62.5%").unwrap()
         )
         .unwrap()
     );
-    let programmatic = CssSpecifiedNonNegativePercentage::try_from_component(
+    let programmatic = CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
         CssComponentValue::try_token("62.5%").unwrap(),
     )
     .unwrap();
@@ -195,9 +230,9 @@ fn percentage_math_endpoints_remain_deferred_in_raw_and_sheet_values() {
             panic!("percentage literal end")
         };
         assert!(start.calculation().is_some());
-        assert!(start.literal_component().is_none());
+        assert!(start.literal().map(|literal| literal.component()).is_none());
         assert!(end.calculation().is_none());
-        assert_eq!(end.serialize_specified().unwrap(), "125%");
+        assert_eq!(end.serialize_specified(Default::default()).unwrap(), "125%");
         assert!(matches!(start.origin(), CssValueOrigin::Parsed(_)));
         assert!(matches!(end.origin(), CssValueOrigin::Parsed(_)));
     }
@@ -222,7 +257,7 @@ fn percentage_math_endpoints_remain_deferred_in_raw_and_sheet_values() {
 #[test]
 fn aliases_share_ordered_occurrences_and_last_valid_projection() {
     let source = "@font-face{font-stretch:condensed 125%;font-width:auto;FONT-STRETCH:125% 75%;font-width:expanded condensed}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("font-face rule")
@@ -239,7 +274,7 @@ fn aliases_share_ordered_occurrences_and_last_valid_projection() {
             };
             Some((
                 item.position().unwrap().byte_offset().value(),
-                value.serialize_specified().unwrap(),
+                value.serialize_specified(Default::default()).unwrap(),
             ))
         })
         .collect::<Vec<_>>();
@@ -264,7 +299,7 @@ fn aliases_share_ordered_occurrences_and_last_valid_projection() {
     assert_eq!(
         ordinary_face!(rule.descriptors(), FontWidth)
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "expanded condensed"
     );
@@ -274,7 +309,7 @@ fn aliases_share_ordered_occurrences_and_last_valid_projection() {
 fn descriptor_serializer_charges_two_endpoints_under_one_budget() {
     let auto = CssFontFaceWidth::Auto;
     assert_eq!(
-        auto.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 4))
+        auto.serialize_specified(CssSerializationLimits::new(1, 1, 4))
             .unwrap(),
         "auto"
     );
@@ -284,29 +319,26 @@ fn descriptor_serializer_charges_two_endpoints_under_one_budget() {
     };
     assert_eq!(
         range
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 3, 8))
+            .serialize_specified(CssSerializationLimits::new(3, 3, 8))
             .unwrap(),
         "75% 125%"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, 8),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(2, 3, 8),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, 8),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(3, 2, 8),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, 7),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(3, 3, 7),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            range
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&range.serialize_specified(limits).unwrap_err()),
             kind
         );
     }

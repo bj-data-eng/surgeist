@@ -1,5 +1,6 @@
 use std::cell::Cell;
-use surgeist_css::{CssParserContext, CssPropertyGrammar};
+use surgeist_css::property::CssPropertyGrammar;
+use surgeist_css::{CssParser, CssParserContext};
 use surgeist_cssom::*;
 
 fn limits() -> CssomDeclarationRequestLimits {
@@ -77,8 +78,8 @@ fn properties(
     let mut batch = store
         .batch(CssomEditGuard::from_snapshot(&store.snapshot()))
         .unwrap();
-    let declarations = parser
-        .parse_declaration_block_contents(source)
+    let declarations = CssParser::new(parser, Default::default())
+        .parse_block_contents(source)
         .into_parts()
         .0;
     let ticket = batch
@@ -222,7 +223,7 @@ fn one_svg_spelling_preserves_independent_and_legacy_grammar_contexts() {
     };
     assert_eq!(
         entries.entries()[0].property_name(),
-        surgeist_css::CssSvgGlyphOrientationVerticalDeclaration::metadata().property()
+        surgeist_css::property::CssSvgGlyphOrientationVerticalDeclaration::metadata().property()
     );
     let (mut legacy_store, legacy_style) = properties("", false, false, false);
     drop(

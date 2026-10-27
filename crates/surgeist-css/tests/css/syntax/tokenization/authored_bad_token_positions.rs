@@ -10,12 +10,16 @@
 use std::ops::Range;
 
 use crate::css::support::authored_syntax::assert_position_at as assert_position;
-use surgeist_css::{
-    CssComponentValueErrorKind, CssDeclarationList, CssErrorCode, CssKnownProperty,
-    CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssTokenKind, CssValueOrigin, ErrorKind,
-    parse_component_values, parse_sheet, parse_style_attribute, validate_sheet,
-    validate_style_attribute,
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::CssDeclarationList;
+use surgeist_css::diagnostic::{
+    CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, CssTokenKind,
 };
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::CssRule;
 
 struct ExpectedToken {
     property: Option<CssKnownProperty>,
@@ -51,20 +55,16 @@ fn assert_diagnostic(diagnostic: &CssRecoveryDiagnostic, expected: &ExpectedToke
         "responsible-token correction must not shorten the recovery unit",
     );
 
-    let token = match (diagnostic.error().kind(), expected.property) {
-        (ErrorKind::InvalidPropertyValue(detail), Some(property)) => {
-            assert_eq!(
-                diagnostic.error().code(),
-                CssErrorCode::InvalidPropertyValue
-            );
-            assert_eq!(detail.property(), property);
-            detail.encountered().expect("responsible bad token")
+    let error = diagnostic.error();
+    let token = match (error.code(), expected.property) {
+        (CssErrorCode::InvalidPropertyValue, Some(property)) => {
+            assert_eq!(error.known_property(), Some(property));
+            error.encountered().expect("responsible bad token")
         }
-        (ErrorKind::UnexpectedToken(detail), None) => {
-            assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedToken);
-            detail.encountered()
+        (CssErrorCode::UnexpectedToken, None) => {
+            error.encountered().expect("responsible unexpected token")
         }
-        (kind, property) => panic!("unexpected declaration error {kind:?} for {property:?}"),
+        (_, property) => panic!("unexpected declaration error {error:?} for {property:?}"),
     };
     assert_eq!(token.kind(), expected.kind);
     // Check the diagnosed defect before spelling: an end cursor can also make
@@ -74,7 +74,7 @@ fn assert_diagnostic(diagnostic: &CssRecoveryDiagnostic, expected: &ExpectedToke
 }
 
 fn assert_rejected_attribute(source: &str, expected: ExpectedToken, retained: &[CssKnownProperty]) {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(!report.is_clean());
     assert_retained_known(report.syntax(), retained);
     let [diagnostic] = report.diagnostics() else {
@@ -83,7 +83,10 @@ fn assert_rejected_attribute(source: &str, expected: ExpectedToken, retained: &[
             report.diagnostics()
         );
     };
-    let failure = validate_style_attribute(source).expect_err("recovery is not clean validation");
+    let failure = CssParser::default()
+        .parse_block_contents(source)
+        .into_validation_result()
+        .expect_err("recovery is not clean validation");
     assert_eq!(failure.first(), diagnostic);
     assert_eq!(failure.diagnostics(), report.diagnostics());
     assert_diagnostic(diagnostic, &expected);
@@ -91,16 +94,17 @@ fn assert_rejected_attribute(source: &str, expected: ExpectedToken, retained: &[
     // The independently positioned component failure already owns the complete
     // bad token. Both public views must refer to the same literal source bytes;
     // neither parser's output supplies the expected coordinate for the other.
-    let component = parse_component_values(source).expect_err("the bad component is intrinsic");
+    let component = CssComponentValues::parse(&CssParser::default(), source)
+        .expect_err("the bad component is intrinsic");
     let expected_component_kind = match expected.kind {
-        CssTokenKind::BadUrl => CssComponentValueErrorKind::BadUrl,
-        CssTokenKind::BadString => CssComponentValueErrorKind::BadString,
+        CssTokenKind::BadUrl => ComponentFailure::BadUrl,
+        CssTokenKind::BadString => ComponentFailure::BadString,
         CssTokenKind::CloseParenthesis | CssTokenKind::CloseSquareBracket => {
-            CssComponentValueErrorKind::UnmatchedClosingDelimiter
+            ComponentFailure::UnmatchedClosingDelimiter
         }
         _ => panic!("this regression covers only bad declaration-value tokens"),
     };
-    assert_eq!(component.kind(), expected_component_kind);
+    assert_eq!(component_failure(&component), expected_component_kind);
     let CssValueOrigin::Parsed(origin) = component.origin() else {
         panic!("the responsible token retains parsed source provenance");
     };
@@ -112,11 +116,13 @@ fn assert_rejected_attribute(source: &str, expected: ExpectedToken, retained: &[
 }
 
 fn assert_clean_attribute(source: &str, expected_count: usize) {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{source:?}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), expected_count);
     assert_eq!(
-        validate_style_attribute(source),
+        CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result(),
         Ok(report.syntax().clone())
     );
 }
@@ -276,7 +282,7 @@ fn corpus_mismatched_custom_closer_reports_its_original_byte_without_wrapper_clo
 #[test]
 fn bad_url_in_style_rule_keeps_the_declaration_span_and_later_rule() {
     let source = ".x{background-image:url(a - b.png);color:red;}.after{width:2px;}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(!report.is_clean());
     let [CssRule::Style(first), CssRule::Style(after)] = report.syntax().rules() else {
         panic!("both style rules must survive declaration recovery");
@@ -289,7 +295,10 @@ fn bad_url_in_style_rule_keeps_the_declaration_span_and_later_rule() {
             report.diagnostics()
         );
     };
-    let failure = validate_sheet(source).expect_err("one recovery prevents clean validation");
+    let failure = CssParser::default()
+        .parse_sheet(source)
+        .into_validation_result()
+        .expect_err("one recovery prevents clean validation");
     assert_eq!(failure.diagnostics(), report.diagnostics());
     assert_diagnostic(
         diagnostic,
@@ -302,7 +311,12 @@ fn bad_url_in_style_rule_keeps_the_declaration_span_and_later_rule() {
         },
     );
     let clean_source = ".x{background-image:url(a-b.png);color:red;}.after{width:2px;}";
-    let clean = parse_sheet(clean_source);
+    let clean = CssParser::default().parse_sheet(clean_source);
     assert!(clean.is_clean(), "{:?}", clean.diagnostics());
-    assert_eq!(validate_sheet(clean_source), Ok(clean.syntax().clone()));
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(clean_source)
+            .into_validation_result(),
+        Ok(clean.syntax().clone())
+    );
 }

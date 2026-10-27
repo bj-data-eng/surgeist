@@ -7,7 +7,24 @@
 //! functional tests once those APIs exist, rather than compile-failure RED.
 
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssPropertyKindRef,
+};
+use surgeist_css::values::background::{
+    CssBackgroundAttachment, CssBackgroundBox, CssBackgroundRepeat, CssBackgroundRepeatStyle,
+    CssBackgroundSize,
+};
+use surgeist_css::values::common::CssAutoOr;
 
 struct Case {
     property: CssKnownProperty,
@@ -64,8 +81,9 @@ fn authored(case: &Case) -> CssDeclaration {
 }
 
 fn completed(source: &CssDeclaration) -> CssLonghandContribution {
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(source).expect("selected background list longhand must expand")
+    let CssExpansion::Contributions(CssContributions::Longhands(items)) = source
+        .expand()
+        .expect("selected background list longhand must expand")
     else {
         panic!("completed longhand contribution")
     };
@@ -131,32 +149,29 @@ fn pending_lists_reenter_strictly_repeatably_with_replacement_origins() {
             "{}:var(--layer)!important",
             case.property.canonical_name()
         ));
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("substitution-dependent longhand is pending")
         };
         assert!(pending.source().same_occurrence(&source));
         for invalid in case.invalid {
             let error = pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err();
-            assert!(matches!(
-                error.kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
+            assert!(error.replacement_error().is_some());
         }
         for residual in ["var(--again)", "env(layer)", "attr(layer)"] {
-            assert_eq!(
+            assert!(
                 pending
-                    .reenter(parse_component_values(residual).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), residual).unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
         }
-        let parsed = parse_component_values(case.replacement).unwrap();
-        let programmatic = CssComponentValues::try_new(vec![
-            CssComponentValue::try_ident(case.programmatic).unwrap(),
-        ])
+        let parsed = CssComponentValues::parse(&CssParser::default(), case.replacement).unwrap();
+        let programmatic = CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident(case.programmatic).unwrap()],
+            Default::default(),
+        )
         .unwrap();
         for replacement in [parsed, programmatic] {
             for _ in 0..2 {
@@ -176,7 +191,7 @@ fn pending_lists_reenter_strictly_repeatably_with_replacement_origins() {
                 );
             }
         }
-        let global = parse_component_values("revert-layer").unwrap();
+        let global = CssComponentValues::parse(&CssParser::default(), "revert-layer").unwrap();
         let CssContributions::Longhands(items) = pending.reenter(global.clone()).unwrap() else {
             panic!("completed global replacement")
         };
@@ -202,9 +217,9 @@ fn normalization_preserves_ordered_runs_and_one_unit_per_longhand_or_pending_gro
         ".b{background-origin:border-box,content-box; background-clip:content-box,padding-box;",
         "background-attachment:fixed,local; background-size:var(--layer)}"
     );
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -247,13 +262,10 @@ fn normalization_preserves_ordered_runs_and_one_unit_per_longhand_or_pending_gro
     };
     assert!(handle.source().same_occurrence(pending.source()));
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 5).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+    let error = report.syntax().normalize(limits).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 5,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 5))
     );
     assert_eq!(error.declaration_order(), Some(5));
     assert_eq!(
@@ -275,27 +287,31 @@ fn parsed_lists_preserve_exact_ordered_size_repeat_box_and_attachment_payloads()
                 let [
                     CssBackgroundSize::Cover,
                     CssBackgroundSize::Explicit {
-                        width: CssBackgroundSizeComponent::Length(width),
-                        height: Some(CssBackgroundSizeComponent::Auto),
+                        width: CssAutoOr::Value(width),
+                        height: Some(CssAutoOr::Auto),
                     },
                     CssBackgroundSize::Explicit {
-                        width: CssBackgroundSizeComponent::Length(last),
+                        width: CssAutoOr::Value(last),
                         height: None,
                     },
-                ] = value.sizes().sizes()
+                ] = value.value().sizes()
                 else {
                     panic!("cover, explicit width/auto, then width with omitted second component")
                 };
-                assert!(matches!(width.literal_component().unwrap().view(),
+                assert!(
+                    matches!(width.literal().map(|literal| literal.component()).unwrap().view(),
                     CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
-                    if number.representation() == "10" && unit == "px"));
-                assert!(matches!(last.literal_component().unwrap().view(),
+                    if number.representation() == "10" && unit == "px")
+                );
+                assert!(
+                    matches!(last.literal().map(|literal| literal.component()).unwrap().view(),
                     CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
-                    if number.representation() == "50"));
+                    if number.representation() == "50")
+                );
                 assert!(matches!(width.origin(), CssValueOrigin::Parsed(_)));
             }
             CssKnownPropertyValueRef::BackgroundRepeat(value) => assert_eq!(
-                value.repeats().repeats(),
+                value.value().repeats(),
                 &[
                     CssBackgroundRepeat::RepeatX,
                     CssBackgroundRepeat::Axes {
@@ -305,15 +321,15 @@ fn parsed_lists_preserve_exact_ordered_size_repeat_box_and_attachment_payloads()
                 ]
             ),
             CssKnownPropertyValueRef::BackgroundOrigin(value) => assert_eq!(
-                value.boxes().boxes(),
+                value.value().boxes(),
                 &[CssBackgroundBox::BorderBox, CssBackgroundBox::ContentBox]
             ),
             CssKnownPropertyValueRef::BackgroundClip(value) => assert_eq!(
-                value.boxes().boxes(),
+                value.value().boxes(),
                 &[CssBackgroundBox::ContentBox, CssBackgroundBox::PaddingBox]
             ),
             CssKnownPropertyValueRef::BackgroundAttachment(value) => assert_eq!(
-                value.attachments().attachments(),
+                value.value().attachments(),
                 &[
                     CssBackgroundAttachment::Fixed,
                     CssBackgroundAttachment::Local
@@ -331,15 +347,15 @@ fn parsed_lists_preserve_exact_ordered_size_repeat_box_and_attachment_payloads()
     let [
         CssBackgroundSize::Contain,
         CssBackgroundSize::Explicit {
-            width: CssBackgroundSizeComponent::Length(width),
-            height: Some(CssBackgroundSizeComponent::Auto),
+            width: CssAutoOr::Value(width),
+            height: Some(CssAutoOr::Auto),
         },
-    ] = value.sizes().sizes()
+    ] = value.value().sizes()
     else {
         panic!("contain and one symbolic explicit size")
     };
     assert!(width.calculation().is_some());
-    assert!(width.literal_component().is_none());
+    assert!(width.literal().map(|literal| literal.component()).is_none());
 }
 
 #[test]
@@ -350,7 +366,7 @@ fn invalid_lists_drop_only_the_declaration_with_structured_property_diagnostics(
                 "{}:{invalid}; background-image:none",
                 case.property.canonical_name()
             );
-            let report = parse_style_attribute(&css);
+            let report = CssParser::default().parse_block_contents(&css);
             let [diagnostic] = report.diagnostics() else {
                 panic!("one invalid-list diagnostic")
             };
@@ -359,10 +375,13 @@ fn invalid_lists_drop_only_the_declaration_with_structured_property_diagnostics(
                 CssErrorCode::InvalidPropertyValue
             );
             assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-            let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-                panic!("structured property diagnostic")
-            };
-            assert_eq!(detail.property(), case.property);
+            let detail = diagnostic.error();
+            assert_eq!(
+                detail.code(),
+                CssErrorCode::InvalidPropertyValue,
+                "structured property diagnostic"
+            );
+            assert_eq!(detail.known_property().unwrap(), case.property);
             let [sibling] = report.syntax().as_slice() else {
                 panic!("only valid sibling retained")
             };
@@ -371,7 +390,11 @@ fn invalid_lists_drop_only_the_declaration_with_structured_property_diagnostics(
                 CssKnownProperty::BackgroundImage
             );
             assert_eq!(
-                validate_style_attribute(&css).unwrap_err().diagnostics(),
+                CssParser::default()
+                    .parse_block_contents(&css)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 report.diagnostics()
             );
         }

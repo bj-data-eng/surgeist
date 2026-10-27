@@ -2,11 +2,25 @@
 use crate::parser_resources::check_resource_diagnostics;
 use crate::{model::State, *};
 use std::sync::atomic::Ordering;
-use surgeist_css::*;
-use surgeist_css::{
-    CssCounterStyleRule, CssCustomMediaRule, CssFontFaceRule, CssFontFeatureValuesRule,
-    CssKeyframesRule, CssPageRule, CssRule,
+use surgeist_css::component::CssComponentValueLimits;
+use surgeist_css::declaration::{
+    CssDeclaration, CssDeclarationBlockError, CssDeclarationList, CssSpecifiedDeclarationBlock,
 };
+use surgeist_css::diagnostic::CssRecoveryDiagnostic;
+use surgeist_css::query::media::{CssCustomMediaBody, CssMediaQueryList};
+use surgeist_css::rule::CssSheet;
+use surgeist_css::rule::counter_style::CssCounterStyleRule;
+use surgeist_css::rule::font_face::CssFontFaceRule;
+use surgeist_css::rule::font_face::{CssFontFaceDescriptor, CssSpecifiedFontFaceDeclarationBlock};
+use surgeist_css::rule::font_feature_values::CssFontFeatureValuesRule;
+use surgeist_css::rule::font_feature_values::{
+    CssFontFeatureValueIndex, CssFontFeatureValueKind, CssFontFeatureValueRef,
+    CssFontFeatureValuesItem,
+};
+use surgeist_css::rule::keyframes::CssKeyframesRule;
+use surgeist_css::rule::page::CssPageRule;
+use surgeist_css::rule::{CssCustomMediaRule, CssRule};
+use surgeist_css::{CssParser, CssParserContext};
 
 impl State {
     pub(crate) fn allocate(&mut self, limits: &CssomLimits) -> Result<u64, CssomError> {
@@ -58,16 +72,10 @@ impl State {
         let selected_font_face = if let CssomBlockData::FontFace(authored) = &data {
             let entries = font_winners(authored.occurrences().cloned().collect());
             Some(
-                match CssSpecifiedFontFaceDeclarationBlock::try_from_entries_with_limits(
-                    &entries, limits.css,
-                ) {
+                match CssSpecifiedFontFaceDeclarationBlock::try_from_entries(&entries, limits.css) {
                     Ok(selected) => CssomProjection::Available(selected),
-                    Err(CssFontFaceDeclarationBlockError::Serialization(error))
-                        if resource_kind(error.kind()) =>
-                    {
-                        return Err(CssomError::FontFace(
-                            CssFontFaceDeclarationBlockError::Serialization(error),
-                        ));
+                    Err(error) if error.is_resource_limit() => {
+                        return Err(CssomError::FontFace(error));
                     }
                     Err(error) => CssomProjection::Unavailable(error),
                 },
@@ -97,12 +105,10 @@ impl State {
         limits: &CssomLimits,
     ) -> Result<CssomBlockId, CssomError> {
         check_declarations(declarations.iter(), limits)?;
-        let selected = projection(
-            CssSpecifiedDeclarationBlock::try_from_declarations_with_limits(
-                declarations,
-                limits.css,
-            ),
-        )?;
+        let selected = projection(CssSpecifiedDeclarationBlock::try_from_declarations(
+            declarations,
+            limits.css,
+        ))?;
         self.block_record(
             CssomBlockData::Properties {
                 domain: CssomPropertyDomain::Ordinary,
@@ -115,7 +121,7 @@ impl State {
             limits,
         )
     }
-    fn ordinary_children(
+    fn rule_children(
         &mut self,
         rules: &[CssRule],
         parent: &CssomRuleId,
@@ -125,26 +131,7 @@ impl State {
         let list = self.list(limits)?;
         for rule in rules {
             let id = self.adopt(
-                CssomAuthoredRule::Ordinary(rule.clone()),
-                CssomParent::Rule(parent.clone()),
-                depth + 1,
-                limits,
-            )?;
-            self.lists.get_mut(&list).expect("new list").push(id);
-        }
-        Ok(list)
-    }
-    fn scoped_children(
-        &mut self,
-        rules: &[CssScopedRule],
-        parent: &CssomRuleId,
-        depth: usize,
-        limits: &CssomLimits,
-    ) -> Result<CssomRuleListId, CssomError> {
-        let list = self.list(limits)?;
-        for rule in rules {
-            let id = self.adopt(
-                CssomAuthoredRule::Scoped(rule.clone()),
+                CssomAuthoredRule::Rule(rule.clone()),
                 CssomParent::Rule(parent.clone()),
                 depth + 1,
                 limits,
@@ -171,12 +158,11 @@ impl State {
             serial: self.allocate(limits)?,
         };
         let data = match &authored {
-            CssomAuthoredRule::Ordinary(v) => self.ordinary_data(v, &id, depth, limits)?,
-            CssomAuthoredRule::Scoped(v) => self.scoped_data(v, &id, depth, limits)?,
+            CssomAuthoredRule::Rule(v) => self.rule_data(v, &id, depth, limits)?,
             CssomAuthoredRule::Keyframe(v) => {
                 check_declarations(v.declarations().iter().map(|v| v.source()), limits)?;
                 let selected = projection(
-                    CssSpecifiedDeclarationBlock::try_from_keyframe_declarations_with_limits(
+                    CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(
                         v.declarations(),
                         limits.css,
                     ),
@@ -204,10 +190,7 @@ impl State {
             CssomAuthoredRule::SupportsTestChild(v) => CssomRuleData::SupportsTestChild(v.clone()),
             CssomAuthoredRule::Margin(v) => {
                 check_declarations(v.declarations().properties().iter(), limits)?;
-                let selected = projection(
-                    v.declarations()
-                        .try_specified_properties_with_limits(limits.css),
-                )?;
+                let selected = projection(v.declarations().try_specified_properties(limits.css))?;
                 let block = self.block_record(
                     CssomBlockData::Properties {
                         domain: CssomPropertyDomain::Margin,
@@ -248,9 +231,9 @@ impl State {
         limits: &CssomLimits,
     ) -> Result<CssomRuleData, CssomError> {
         check_declarations(v.declarations().properties().iter(), limits)?;
-        let selected = match v.declarations().try_specified_with_limits(limits.css) {
+        let selected = match v.declarations().try_specified(limits.css) {
             Ok(v) => CssomProjection::Available(v),
-            Err(e) if page_resource(&e) => return Err(CssomError::Page(e)),
+            Err(e) if e.is_resource_limit() => return Err(CssomError::Page(e)),
             Err(e) => CssomProjection::Unavailable(e),
         };
         let block = self.block_record(
@@ -422,7 +405,7 @@ impl State {
             query,
         })
     }
-    fn ordinary_data(
+    fn rule_data(
         &mut self,
         v: &CssRule,
         id: &CssomRuleId,
@@ -434,43 +417,43 @@ impl State {
                 self.named_supports_data(v.name(), v.body(), id, depth, limits)?
             }
             CssRule::Style(v) => CssomRuleData::Style {
-                selectors: CssomSelectors::Ordinary(v.selectors().clone()),
+                selectors: v.selectors().clone(),
                 block: self.ordinary_block(v.declarations(), id, limits)?,
-                children: self.ordinary_children(v.rules(), id, depth, limits)?,
+                children: self.rule_children(v.rules(), id, depth, limits)?,
             },
             CssRule::NestedDeclarations(v) => CssomRuleData::NestedDeclarations {
                 block: self.ordinary_block(v.declarations(), id, limits)?,
             },
             CssRule::Media(v) => CssomRuleData::Group {
                 prelude: CssomGroupPrelude::Media(self.media_list(v.query().clone(), limits)?),
-                children: self.ordinary_children(v.rules(), id, depth, limits)?,
+                children: self.rule_children(v.rules(), id, depth, limits)?,
             },
             CssRule::Supports(v) => CssomRuleData::Group {
                 prelude: CssomGroupPrelude::Supports(v.condition().clone()),
-                children: self.ordinary_children(v.rules(), id, depth, limits)?,
+                children: self.rule_children(v.rules(), id, depth, limits)?,
             },
             CssRule::Container(v) => CssomRuleData::Group {
                 prelude: CssomGroupPrelude::Container(v.prelude().clone()),
-                children: self.ordinary_children(v.rules(), id, depth, limits)?,
+                children: self.rule_children(v.rules(), id, depth, limits)?,
             },
             CssRule::LayerBlock(v) => CssomRuleData::Group {
                 prelude: CssomGroupPrelude::Layer(v.name().cloned()),
-                children: self.ordinary_children(v.rules(), id, depth, limits)?,
+                children: self.rule_children(v.rules(), id, depth, limits)?,
             },
             CssRule::When(v) => CssomRuleData::Group {
                 prelude: CssomGroupPrelude::When(v.condition().clone()),
-                children: self.ordinary_children(v.rules(), id, depth, limits)?,
+                children: self.rule_children(v.rules(), id, depth, limits)?,
             },
             CssRule::Else(v) => CssomRuleData::Group {
                 prelude: CssomGroupPrelude::Else(v.condition().cloned()),
-                children: self.ordinary_children(v.rules(), id, depth, limits)?,
+                children: self.rule_children(v.rules(), id, depth, limits)?,
             },
             CssRule::Scope(v) => CssomRuleData::Group {
                 prelude: CssomGroupPrelude::Scope {
                     start: v.root().cloned(),
                     end: v.limit().cloned(),
                 },
-                children: self.scoped_children(v.rules().rules(), id, depth, limits)?,
+                children: self.rule_children(v.rules().rules(), id, depth, limits)?,
             },
             CssRule::Page(v) => self.page_data(v, id, depth, limits)?,
             CssRule::Keyframes(v) => self.keyframes_data(v, id, depth, limits)?,
@@ -494,100 +477,31 @@ impl State {
                 input: None,
             },
             _ => CssomRuleData::Leaf {
-                current: CssomAuthoredRule::Ordinary(v.clone()),
-            },
-        })
-    }
-    fn scoped_data(
-        &mut self,
-        v: &CssScopedRule,
-        id: &CssomRuleId,
-        depth: usize,
-        limits: &CssomLimits,
-    ) -> Result<CssomRuleData, CssomError> {
-        Ok(match v {
-            CssScopedRule::SupportsCondition(v) => {
-                self.named_supports_data(v.name(), v.body(), id, depth, limits)?
-            }
-            CssScopedRule::Style(v) => CssomRuleData::Style {
-                selectors: CssomSelectors::Scoped(v.selectors().clone()),
-                block: self.ordinary_block(v.declarations(), id, limits)?,
-                children: self.ordinary_children(v.rules(), id, depth, limits)?,
-            },
-            CssScopedRule::NestedDeclarations(v) => CssomRuleData::NestedDeclarations {
-                block: self.ordinary_block(v.declarations(), id, limits)?,
-            },
-            CssScopedRule::Media(v) => CssomRuleData::Group {
-                prelude: CssomGroupPrelude::Media(self.media_list(v.query().clone(), limits)?),
-                children: self.scoped_children(v.rules().rules(), id, depth, limits)?,
-            },
-            CssScopedRule::Supports(v) => CssomRuleData::Group {
-                prelude: CssomGroupPrelude::Supports(v.condition().clone()),
-                children: self.scoped_children(v.rules().rules(), id, depth, limits)?,
-            },
-            CssScopedRule::Container(v) => CssomRuleData::Group {
-                prelude: CssomGroupPrelude::Container(v.prelude().clone()),
-                children: self.scoped_children(v.rules().rules(), id, depth, limits)?,
-            },
-            CssScopedRule::LayerBlock(v) => CssomRuleData::Group {
-                prelude: CssomGroupPrelude::Layer(v.name().cloned()),
-                children: self.scoped_children(v.rules().rules(), id, depth, limits)?,
-            },
-            CssScopedRule::When(v) => CssomRuleData::Group {
-                prelude: CssomGroupPrelude::When(v.condition().clone()),
-                children: self.scoped_children(v.rules().rules(), id, depth, limits)?,
-            },
-            CssScopedRule::Else(v) => CssomRuleData::Group {
-                prelude: CssomGroupPrelude::Else(v.condition().cloned()),
-                children: self.scoped_children(v.rules().rules(), id, depth, limits)?,
-            },
-            CssScopedRule::Scope(v) => CssomRuleData::Group {
-                prelude: CssomGroupPrelude::Scope {
-                    start: v.root().cloned(),
-                    end: v.limit().cloned(),
-                },
-                children: self.scoped_children(v.rules().rules(), id, depth, limits)?,
-            },
-            CssScopedRule::Page(v) => self.page_data(v, id, depth, limits)?,
-            CssScopedRule::Keyframes(v) => self.keyframes_data(v, id, depth, limits)?,
-            CssScopedRule::CounterStyle(v) => self.counter_data(v, id, limits)?,
-            CssScopedRule::FontFace(v) => self.font_data(v, id, limits)?,
-            CssScopedRule::FontFeatureValues(v) => self.features_data(v, limits)?,
-            CssScopedRule::CustomMedia(v) => self.custom_media_data(v, limits)?,
-            _ => CssomRuleData::Leaf {
-                current: CssomAuthoredRule::Scoped(v.clone()),
+                current: CssomAuthoredRule::Rule(v.clone()),
             },
         })
     }
 }
 
-pub(crate) fn resource_kind(kind: CssSpecifiedValueSerializationErrorKind) -> bool {
-    matches!(
-        kind,
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
-            | CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
-            | CssSpecifiedValueSerializationErrorKind::ByteLimit
-            | CssSpecifiedValueSerializationErrorKind::CapacityOverflow
-    )
-}
-pub(crate) fn declaration_resource(e: &CssDeclarationBlockError) -> bool {
-    matches!(e.kind(),CssDeclarationBlockErrorKind::Serialization(e) if resource_kind(e.kind()))
-}
-fn page_resource(e: &CssPageProjectionError) -> bool {
-    match e {
-        CssPageProjectionError::Resource(e) => resource_kind(e.kind()),
-        CssPageProjectionError::Properties(e) => declaration_resource(e),
-        _ => false,
-    }
-}
 pub(crate) fn projection(
     result: Result<CssSpecifiedDeclarationBlock, CssDeclarationBlockError>,
 ) -> Result<CssomProjection<CssSpecifiedDeclarationBlock, CssDeclarationBlockError>, CssomError> {
     match result {
         Ok(v) => Ok(CssomProjection::Available(v)),
-        Err(e) if declaration_resource(&e) => Err(CssomError::Declaration(e)),
+        Err(e) if e.is_resource_limit() => Err(CssomError::Declaration(e)),
         Err(e) => Ok(CssomProjection::Unavailable(e)),
     }
+}
+/// Component limits that bound only the output bytes of `serialize_tokens`;
+/// the structural limits keep their defaults.
+pub(crate) fn token_byte_limits(max_bytes: usize) -> CssComponentValueLimits {
+    let defaults = CssComponentValueLimits::default();
+    CssComponentValueLimits::try_new(
+        defaults.max_nesting_depth(),
+        defaults.max_components(),
+        max_bytes,
+    )
+    .expect("the default nesting depth is valid")
 }
 pub(crate) fn check_declarations<'a>(
     declarations: impl IntoIterator<Item = &'a CssDeclaration>,
@@ -614,14 +528,8 @@ pub(crate) fn check_declarations<'a>(
         }
         // Charge raw component output even when symbolic expansion cannot select
         // a footprint. No semantic wrapper or parse round trip is involved.
-        if let Err(e) = values.serialize_with_limit(limits.max_input_bytes)
-            && matches!(
-                e.kind(),
-                CssComponentValueErrorKind::NestingLimit
-                    | CssComponentValueErrorKind::ComponentLimit
-                    | CssComponentValueErrorKind::ByteLimit
-                    | CssComponentValueErrorKind::CapacityOverflow
-            )
+        if let Err(e) = values.serialize_tokens(token_byte_limits(limits.max_input_bytes))
+            && e.is_resource_limit()
         {
             return Err(CssomError::Component(e));
         }
@@ -639,7 +547,7 @@ pub(crate) fn parse(
             maximum: limits.max_input_bytes,
         });
     }
-    let report = context.parse_sheet(source);
+    let report = CssParser::new(context, Default::default()).parse_sheet(source);
     check_resource_diagnostics(report.diagnostics())?;
     Ok(report.into_parts())
 }

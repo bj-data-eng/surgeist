@@ -3,14 +3,24 @@
 //! existed; these are functional tests alongside the new API, not regression RED.
 //! #1298 revises #554's identity folding: Transforms2 §5's computed value is an
 //! angle with an axis, so full turns and zero axes keep their authored form.
-use surgeist_css::*;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::numeric::{
+    CssAngle, CssAngleUnit, CssCalculation, CssNumber, CssNumeric, CssNumericLiteral,
+};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::transform::{CssRotate, CssRotateAxis, CssRotateValues};
 
-type Limits = CssSpecifiedValueSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Limits = CssSerializationLimits;
+type Kind = SerializationFailure;
 
 fn parsed(text: &str) -> CssRotate {
     let source = format!("rotate:{text}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Rotate(value) = report.syntax()[0]
         .known()
@@ -22,12 +32,16 @@ fn parsed(text: &str) -> CssRotate {
     };
     value.value().clone()
 }
-fn number(text: &str) -> CssSpecifiedNumber {
-    CssSpecifiedNumber::try_from_component(CssComponentValue::try_number(text).unwrap()).unwrap()
+fn number(text: &str) -> CssNumeric<CssNumber> {
+    CssNumeric::<CssNumber>::try_from_component(CssComponentValue::try_number(text).unwrap())
+        .unwrap()
 }
 fn ordinary(angle: &str, unit: CssAngleUnit, axis: Option<CssRotateAxis>) -> CssRotate {
     CssRotate::Value(CssRotateValues::new(
-        CssAngleValue::from_literal(CssAngleLiteral::try_new(angle, unit).unwrap()),
+        CssNumeric::<CssAngle>::try_from_literal(
+            CssNumericLiteral::<CssAngle>::try_new(angle, unit).unwrap(),
+        )
+        .unwrap(),
         axis,
     ))
 }
@@ -40,7 +54,11 @@ fn vector(angle: &str, axis: [&str; 3]) -> CssRotate {
 }
 fn output(input: &str, expected: &str) {
     let value = parsed(input);
-    assert_eq!(value.serialize_specified().unwrap(), expected, "{input}");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected,
+        "{input}"
+    );
     // Returned CSS is accepted through the actual typed grammar again.
     parsed(expected);
 }
@@ -118,13 +136,13 @@ fn wpt_rotate_parsing_valid_specified_values() {
 #[test]
 fn property_and_transform_function_paths_agree_on_equivalent_rotations() {
     fn declaration(source: &str) -> String {
-        let report = parse_declaration(source);
+        let report = CssDeclaration::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         report
             .syntax()
             .as_ref()
             .unwrap()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap()
     }
     for angle in [
@@ -204,7 +222,7 @@ fn exact_literal_axis_classification_survives_huge_and_subrounding_coefficients(
         let value = vector("30", axis);
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(6, 7, expected.len()))
+                .serialize_specified(Limits::new(6, 7, expected.len()))
                 .unwrap(),
             expected
         );
@@ -236,12 +254,11 @@ fn exact_full_turn_literals_keep_their_coefficient_and_unit() {
             CssAngleUnit::Turns,
         ),
     ] {
-        assert_eq!(
+        assert!(
             ordinary(coefficient, unit, None)
-                .serialize_specified_with_limits(Limits::new(2, 3, 4))
+                .serialize_specified(Limits::new(2, 3, 4))
                 .unwrap_err()
-                .kind(),
-            Kind::ByteLimit
+                .is_byte_limit()
         );
     }
     output("360.000001deg", "360.000001deg");
@@ -253,7 +270,10 @@ fn exact_full_turn_literals_keep_their_coefficient_and_unit() {
 }
 
 fn output_value(value: CssRotate, expected: &str) {
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     parsed(expected);
 }
 
@@ -265,35 +285,37 @@ fn general_vector_rejects_only_proved_nonzero_components_that_round_to_zero() {
         ["1e-400", "2e-400", "0"],
     ] {
         let value = vector("30", axis);
-        assert_eq!(
-            value.serialize_specified().unwrap_err().kind(),
-            Kind::UnrepresentableValue
+        assert!(
+            value
+                .serialize_specified(Default::default())
+                .unwrap_err()
+                .is_unrepresentable_value()
         );
     }
     for input in ["calc(.00000001) 1 0 30deg", "1 calc(-.00000001) 0 30deg"] {
-        assert_eq!(
-            parsed(input).serialize_specified().unwrap_err().kind(),
-            Kind::UnrepresentableValue
+        assert!(
+            parsed(input)
+                .serialize_specified(Default::default())
+                .unwrap_err()
+                .is_unrepresentable_value()
         );
     }
-    assert_eq!(
+    assert!(
         parsed("calc(1 / 2097152) 1 0 30deg")
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap_err()
-            .kind(),
-        Kind::UnrepresentableValue
+            .is_unrepresentable_value()
     );
     output("calc(1 / 1048576) 1 0 30deg", "calc(0.000001) 1 0 30deg");
     // The surviving components are still rounded independently, not normalized.
     output("1.23456789 2.34567891 0 30deg", "1.234568 2.345679 0 30deg");
     output(".0000005 1 0 30deg", "0.000001 1 0 30deg");
     output("-.0000005 1 0 30deg", "-0.000001 1 0 30deg");
-    assert_eq!(
+    assert!(
         vector("30", ["1e400", "1", "0"])
-            .serialize_specified_with_limits(Limits::new(6, 6, 20))
+            .serialize_specified(Limits::new(6, 6, 20))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
 }
 
@@ -316,19 +338,17 @@ fn symbolic_and_nonfinite_axis_math_is_retained_without_parallel_axis_guesses() 
     output("calc(1e-400) 0 0 30deg", "x 30deg");
     output("calc(1e-400 * 1) 0 0 30deg", "calc(0) 0 0 30deg");
     output("calc(5e-7) 1 0 30deg", "calc(0.000001) 1 0 30deg");
-    assert_eq!(
+    assert!(
         parsed("calc(5e-7 * 1) 1 0 30deg")
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap_err()
-            .kind(),
-        Kind::UnrepresentableValue
+            .is_unrepresentable_value()
     );
-    assert_eq!(
+    assert!(
         parsed("calc(4e-7) 1 0 30deg")
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap_err()
-            .kind(),
-        Kind::UnrepresentableValue
+            .is_unrepresentable_value()
     );
 }
 
@@ -346,9 +366,7 @@ fn symbolic_angle_negation_preserves_the_typed_calculation() {
 fn limits_charge_authored_children_and_derived_sign_work() {
     let positive = vector("45", ["2", "0", "0"]);
     assert_eq!(
-        positive
-            .serialize_specified_with_limits(Limits::new(6, 6, 7))
-            .unwrap(),
+        positive.serialize_specified(Limits::new(6, 6, 7)).unwrap(),
         "x 45deg"
     );
     for (limits, kind) in [
@@ -357,32 +375,26 @@ fn limits_charge_authored_children_and_derived_sign_work() {
         (Limits::new(6, 6, 6), Kind::ByteLimit),
     ] {
         assert_eq!(
-            positive
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&positive.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
     let negative = vector("45", ["-2", "0", "0"]);
     assert_eq!(
-        negative
-            .serialize_specified_with_limits(Limits::new(6, 7, 8))
-            .unwrap(),
+        negative.serialize_specified(Limits::new(6, 7, 8)).unwrap(),
         "x -45deg"
     );
-    assert_eq!(
+    assert!(
         negative
-            .serialize_specified_with_limits(Limits::new(6, 6, 8))
+            .serialize_specified(Limits::new(6, 6, 8))
             .unwrap_err()
-            .kind(),
-        Kind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
     // A zero axis emits its authored children; no identity replacement is derived.
     let zero_axis = vector("45", ["0", "0", "0"]);
     assert_eq!(
         zero_axis
-            .serialize_specified_with_limits(Limits::new(6, 6, 11))
+            .serialize_specified(Limits::new(6, 6, 11))
             .unwrap(),
         "0 0 0 45deg"
     );
@@ -392,16 +404,13 @@ fn limits_charge_authored_children_and_derived_sign_work() {
         (Limits::new(6, 6, 10), Kind::ByteLimit),
     ] {
         assert_eq!(
-            zero_axis
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&zero_axis.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
     assert_eq!(
         CssRotate::None
-            .serialize_specified_with_limits(Limits::new(1, 1, 4))
+            .serialize_specified(Limits::new(1, 1, 4))
             .unwrap(),
         "none"
     );
@@ -413,9 +422,7 @@ fn zero_axis_children_are_emitted_with_their_ordinary_work_and_bytes() {
     // nodes. Five literal projections and three angle scalar nodes: 8.
     let value = parsed("0 0 0 calc(15deg + 15deg)");
     assert_eq!(
-        value
-            .serialize_specified_with_limits(Limits::new(9, 8, 17))
-            .unwrap(),
+        value.serialize_specified(Limits::new(9, 8, 17)).unwrap(),
         "0 0 0 calc(30deg)"
     );
     for (limits, kind) in [
@@ -424,52 +431,51 @@ fn zero_axis_children_are_emitted_with_their_ordinary_work_and_bytes() {
         (Limits::new(9, 8, 16), Kind::ByteLimit),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
     let huge = format!("0 0 0 1{}deg", "0".repeat(400));
     assert_eq!(
         vector("1e400", ["0", "0", "0"])
-            .serialize_specified_with_limits(Limits::new(6, 6, huge.len()))
+            .serialize_specified(Limits::new(6, 6, huge.len()))
             .unwrap(),
         huge
     );
-    assert_eq!(
+    assert!(
         vector("1e400", ["0", "0", "0"])
-            .serialize_specified_with_limits(Limits::new(6, 6, huge.len() - 1))
+            .serialize_specified(Limits::new(6, 6, huge.len() - 1))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(
         parsed("z 45deg")
-            .serialize_specified_with_limits(Limits::new(3, 3, 5))
+            .serialize_specified(Limits::new(3, 3, 5))
             .unwrap(),
         "45deg"
     );
-    assert_eq!(
+    assert!(
         parsed("z 45deg")
-            .serialize_specified_with_limits(Limits::new(2, 3, 5))
+            .serialize_specified(Limits::new(2, 3, 5))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
 }
 
 #[test]
 fn checked_number_and_angle_math_share_canonical_output_with_parser_admission() {
-    let axis = CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(parse_component_values("calc(-1 - 1)").unwrap())
-            .unwrap(),
+    let axis = CssNumeric::<CssNumber>::try_from_calculation(
+        CssCalculation::<CssNumber>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), "calc(-1 - 1)").unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap();
-    let angle = CssAngleValue::try_from_calculation(
-        CssAngleCalculation::try_from_components(
-            parse_component_values("calc(15deg + 15deg)").unwrap(),
+    let angle = CssNumeric::<CssAngle>::try_from_calculation(
+        CssCalculation::<CssAngle>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), "calc(15deg + 15deg)").unwrap(),
+            Default::default(),
         )
         .unwrap(),
     )
@@ -480,10 +486,13 @@ fn checked_number_and_angle_math_share_canonical_output_with_parser_admission() 
         angle,
         Some(CssRotateAxis::Vector([axis, number("0"), number("0")])),
     ));
-    assert_eq!(value.serialize_specified().unwrap(), "x calc(-30deg)");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "x calc(-30deg)"
+    );
     assert_eq!(
         parsed("calc(-1 - 1) 0 0 calc(15deg + 15deg)")
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "x calc(-30deg)"
     );
@@ -500,7 +509,7 @@ fn checked_number_and_angle_math_share_canonical_output_with_parser_admission() 
 #[test]
 fn success_and_failure_preserve_non_ascii_source_origins_and_operands() {
     let source = "/*😀*/rotate:0 0 -2 calc(15deg + 15deg)";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean());
     let CssKnownPropertyValueRef::Rotate(value) = report.syntax()[0]
         .known()
@@ -529,13 +538,15 @@ fn success_and_failure_preserve_non_ascii_source_origins_and_operands() {
         parsed_origin.span().end().byte_offset().value(),
         opener_start + "calc(".len()
     );
-    assert_eq!(value.serialize_specified().unwrap(), "calc(-30deg)");
     assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "calc(-30deg)"
+    );
+    assert!(
         value
-            .serialize_specified_with_limits(Limits::new(1, 1, 1))
+            .serialize_specified(Limits::new(1, 1, 1))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
     assert_eq!(values.angle().origin(), &origin);
     assert_eq!(format!("{value:?}"), before);
@@ -548,13 +559,13 @@ fn rotate3d_classifies_operation_free_axis_leaves_from_their_exact_coefficients(
     // 5e-7 is a nonzero component emitted with its exact six-place text (#1297).
     // rotate3d()'s own zero-axis and full-turn replacement is unchanged here.
     fn declaration(source: &str) -> String {
-        let report = parse_declaration(source);
+        let report = CssDeclaration::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         report
             .syntax()
             .as_ref()
             .unwrap()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap()
     }
     for (input, expected) in [

@@ -1,6 +1,18 @@
 //! Color 5 WD20260908 §8 preserves one input; function nodes compose within 256 levels.
 use crate::css::support::color_and_selector_fixtures::named_color as named;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssAbsoluteColorEligibility, CssAbsoluteColorExclusion, CssColor, CssColorComponent,
+    CssColorNumberLiteral, CssColorSyntax, CssContrastColor, CssLightDarkColor, CssRgbColor,
+    CssSystemColor,
+};
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssFeatureKind, CssSupportStatus, feature_metadata};
+use surgeist_css::numeric::{CssCalculation, CssPercentage};
+use surgeist_css::values::image::{
+    CssColorStopList, CssColorStopListItem, CssGradient, CssGradientColorStop, CssImageValue,
+    CssLightDarkImage, CssLinearGradient,
+};
 
 fn contrast(color: CssColor) -> CssColor {
     CssColor::from_contrast_color(CssContrastColor::try_new(color).unwrap())
@@ -8,14 +20,17 @@ fn contrast(color: CssColor) -> CssColor {
 
 fn numeric_color(depth: usize, alpha: bool) -> CssColor {
     let text = format!("{}50%{}", "calc(".repeat(depth), ")".repeat(depth));
-    let raw = parse_component_values(&text).unwrap();
+    let raw = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
     assert_eq!(raw.nesting_depth() as usize, depth);
     let calculation = CssColorComponent::PercentageCalculation(
-        CssPercentageCalculation::try_from_components(raw).unwrap(),
+        CssCalculation::<CssPercentage>::try_from_components(raw, Default::default()).unwrap(),
     );
     let zero = CssColorComponent::Number(
         CssColorNumberLiteral::try_from_component(
-            parse_component_values("0").unwrap().items()[0].clone(),
+            CssComponentValues::parse(&CssParser::default(), "0")
+                .unwrap()
+                .items()[0]
+                .clone(),
         )
         .unwrap(),
     );
@@ -51,7 +66,9 @@ fn checked_payload_retains_independent_input_and_exposes_one_semantic_accessor()
         CssContrastColor::try_new(named("blue")).unwrap()
     );
     assert_eq!(
-        contrast(named("red")).to_specified_css().unwrap(),
+        contrast(named("red"))
+            .serialize_specified(Default::default())
+            .unwrap(),
         "contrast-color(red)"
     );
 }
@@ -62,9 +79,10 @@ fn checked_chains_admit_256_wrappers_and_reject_the_next() {
     for _ in 0..256 {
         value = contrast(value);
     }
-    assert_eq!(
-        CssContrastColor::try_new(value).unwrap_err(),
-        CssColorConstructionError::NestingLimit
+    assert!(
+        CssContrastColor::try_new(value)
+            .unwrap_err()
+            .is_nesting_limit()
     );
 }
 
@@ -80,16 +98,21 @@ fn constructor_counts_the_complete_numeric_channel_and_alpha_subtrees() {
         } else {
             "contrast-color(rgb(127.5, 0, 0))"
         };
-        assert_eq!(value.to_specified_css().unwrap(), expected);
         assert_eq!(
-            CssContrastColor::try_new(value).unwrap_err(),
-            CssColorConstructionError::NestingLimit
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert!(
+            CssContrastColor::try_new(value)
+                .unwrap_err()
+                .is_nesting_limit()
         );
         // Existing RGB construction permits its own 256-level subtree, but
         // enclosing that independently valid child adds the forbidden 257th level.
-        assert_eq!(
-            CssContrastColor::try_new(numeric_color(255, alpha)).unwrap_err(),
-            CssColorConstructionError::NestingLimit
+        assert!(
+            CssContrastColor::try_new(numeric_color(255, alpha))
+                .unwrap_err()
+                .is_nesting_limit()
         );
     }
 }
@@ -105,15 +128,18 @@ fn contrast_depth_composes_with_both_light_dark_branches_and_gradient_images() {
         (named("blue"), child.clone()),
     ] {
         let pair = CssColor::from_light_dark(CssLightDarkColor::try_new(light, dark).unwrap());
-        assert_eq!(
-            CssContrastColor::try_new(pair).unwrap_err(),
-            CssColorConstructionError::NestingLimit
+        assert!(
+            CssContrastColor::try_new(pair)
+                .unwrap_err()
+                .is_nesting_limit()
         );
     }
     let pair =
         CssColor::from_light_dark(CssLightDarkColor::try_new(named("red"), named("blue")).unwrap());
     assert_eq!(
-        contrast(pair).to_specified_css().unwrap(),
+        contrast(pair)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "contrast-color(light-dark(red, blue))"
     );
     let stops = CssColorStopList::try_new(vec![
@@ -125,9 +151,10 @@ fn contrast_depth_composes_with_both_light_dark_branches_and_gradient_images() {
     ])
     .unwrap();
     let image = CssImageValue::Gradient(CssGradient::Linear(CssLinearGradient::new(None, stops)));
-    assert_eq!(
-        CssLightDarkImage::try_new(image, CssImageValue::None).unwrap_err(),
-        CssImageConstructionError::NestingLimit
+    assert!(
+        CssLightDarkImage::try_new(image, CssImageValue::None)
+            .unwrap_err()
+            .is_nesting_limit()
     );
 }
 
@@ -149,7 +176,12 @@ fn metadata_identifies_the_complete_dated_authored_production_and_registered_con
         "background:contrast-color(red)",
         "mask-image:linear-gradient(contrast-color(red), blue)",
     ] {
-        assert!(validate_style_attribute(source).is_ok());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(source)
+                .into_validation_result()
+                .is_ok()
+        );
     }
     assert_eq!(
         feature_metadata("ext.value.color-mix")

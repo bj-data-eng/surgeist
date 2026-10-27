@@ -1127,7 +1127,7 @@ fn checked_add(a: CssNumericType, b: CssNumericType) -> Result<CssNumericType, F
             transfer(a, axis)?;
         }
         _ if a.powers != b.powers && (a.powers[6] != 0 || b.powers[6] != 0) => {
-            for axis in &super::DIMENSIONS[..6] {
+            for axis in &crate::numeric::expression::DIMENSIONS[..6] {
                 transfer(a, *axis)?;
                 transfer(b, *axis)?;
                 if a.hinted(*axis).expect("preflighted hint").powers

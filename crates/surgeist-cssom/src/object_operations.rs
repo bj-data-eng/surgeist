@@ -1,6 +1,6 @@
 //! One-operation publication and explicitly staged object edits.
 use crate::*;
-use surgeist_css::CssRecoveryDiagnostic;
+use surgeist_css::diagnostic::CssRecoveryDiagnostic;
 
 /// A successful CSSOM publication and its standard return value.
 ///

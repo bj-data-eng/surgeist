@@ -6,7 +6,24 @@
 //! authored identity it reports, so an unrelated earlier failure cannot
 //! satisfy it.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword};
+use surgeist_css::diagnostic::{CssError, CssErrorCode, CssRecoveryAction};
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationExpressionRef, CssCalculationValueRef, CssInteger, CssLength,
+    CssLengthPercentage, CssNonNegative, CssNumber, CssNumeric,
+};
+use surgeist_css::property::{CssKnownDeclaration, CssKnownProperty};
+use surgeist_css::query::media::CssMediaLength;
+use surgeist_css::rule::{
+    CssContainerRule, CssLayerBlockRule, CssMediaRule, CssRule, CssStyleRule,
+};
+use surgeist_css::selector::{CssPseudoElement, CssPseudoElementSegment, CssPseudoElementSequence};
+use surgeist_css::source::CssSourcePosition;
+use surgeist_css::values::font::CssFontWeightRange;
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 
@@ -51,7 +68,9 @@ pub fn source_position(line: u32, column: u32) -> CssSourcePosition {
         "\n".repeat(line as usize),
         " ".repeat(column as usize)
     );
-    let error = parse_sheet(&source).expect_err("an unknown at-rule is diagnosed");
+    let error = CssParser::default()
+        .parse_sheet(&source)
+        .expect_err("an unknown at-rule is diagnosed");
     let position = error.position();
     assert_eq!(
         (
@@ -110,7 +129,9 @@ pub fn declaration_property(declaration: &CssDeclaration) -> Option<CssKnownProp
 
 /// The first declaration of `property` in the first style rule of a clean sheet.
 pub fn declaration(input: &str, property: CssKnownProperty) -> CssDeclaration {
-    let sheet = parse_sheet(input).expect("clean stylesheet");
+    let sheet = CssParser::default()
+        .parse_sheet(input)
+        .expect("clean stylesheet");
     style_rule(&sheet.rules()[0])
         .declarations()
         .iter()
@@ -121,7 +142,9 @@ pub fn declaration(input: &str, property: CssKnownProperty) -> CssDeclaration {
 
 /// The sole declaration of the sole style rule of a clean sheet.
 pub fn single_declaration(input: &str) -> CssDeclaration {
-    let sheet = parse_sheet(input).expect("clean stylesheet");
+    let sheet = CssParser::default()
+        .parse_sheet(input)
+        .expect("clean stylesheet");
     let [rule] = sheet.rules() else {
         panic!("{input} should parse exactly one rule");
     };
@@ -141,13 +164,15 @@ pub fn parse_single_declaration(property_name: &str, authored_value: &str) -> Cs
     single_declaration(&declaration_sheet(property_name, authored_value))
 }
 
-pub fn weight_number(spelling: &str) -> CssFontWeightNumber {
-    CssFontWeightNumber::try_from_component(CssComponentValue::try_number(spelling).unwrap())
-        .expect("valid exact font weight")
+pub fn weight_number(spelling: &str) -> CssNumeric<CssNumber, CssFontWeightRange> {
+    CssNumeric::<CssNumber, CssFontWeightRange>::try_from_component(
+        CssComponentValue::try_number(spelling).unwrap(),
+    )
+    .expect("valid exact font weight")
 }
 
-pub fn nonnegative_number(spelling: &str) -> CssSpecifiedNonNegativeNumber {
-    CssSpecifiedNonNegativeNumber::try_from_component(
+pub fn nonnegative_number(spelling: &str) -> CssNumeric<CssNumber, CssNonNegative> {
+    CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
         CssComponentValue::try_number(spelling).unwrap(),
     )
     .unwrap()
@@ -174,8 +199,8 @@ pub fn assert_length_literal(
     assert_eq!(unit, expected_unit);
 }
 
-pub fn assert_integer_literal(value: &CssIntegerValue, expected: &str) {
-    let CssIntegerValue::Literal(integer) = value else {
+pub fn assert_integer_literal(value: &CssNumeric<CssInteger>, expected: &str) {
+    let Some(integer) = value.literal() else {
         panic!("expected exact integer literal")
     };
     assert_eq!(integer.numeric().representation(), expected);
@@ -220,55 +245,68 @@ pub fn exact_percentage(component: Option<&CssComponentValue>, representation: &
     )
 }
 
-pub fn signed_length(css: &str) -> CssSpecifiedLength {
-    let components = parse_component_values(css).unwrap();
+pub fn signed_length(css: &str) -> CssNumeric<CssLength> {
+    let components = CssComponentValues::parse(&CssParser::default(), css).unwrap();
     if css.contains('(') {
-        CssSpecifiedLength::try_from_calculation(
-            CssLengthCalculation::try_from_components(components).unwrap(),
+        CssNumeric::<CssLength>::try_from_calculation(
+            CssCalculation::<CssLength>::try_from_components(components, Default::default())
+                .unwrap(),
         )
         .unwrap()
     } else {
-        CssSpecifiedLength::try_from_component(CssComponentValue::try_token(css).unwrap()).unwrap()
+        CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_token(css).unwrap())
+            .unwrap()
     }
 }
 
-pub fn nonnegative_length(css: &str) -> CssSpecifiedNonNegativeLength {
-    let components = parse_component_values(css).unwrap();
+pub fn nonnegative_length(css: &str) -> CssNumeric<CssLength, CssNonNegative> {
+    let components = CssComponentValues::parse(&CssParser::default(), css).unwrap();
     if css.contains('(') {
-        CssSpecifiedNonNegativeLength::try_from_calculation(
-            CssLengthCalculation::try_from_components(components).unwrap(),
+        CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(
+            CssCalculation::<CssLength>::try_from_components(components, Default::default())
+                .unwrap(),
         )
         .unwrap()
     } else {
-        CssSpecifiedNonNegativeLength::try_from_component(
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component(
             CssComponentValue::try_token(css).unwrap(),
         )
         .unwrap()
     }
 }
 
-pub fn signed_length_percentage(css: &str) -> CssSpecifiedLengthPercentage {
-    let components = parse_component_values(css).unwrap();
+pub fn signed_length_percentage(css: &str) -> CssNumeric<CssLengthPercentage> {
+    let components = CssComponentValues::parse(&CssParser::default(), css).unwrap();
     if css.contains('(') {
-        CssSpecifiedLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+        CssNumeric::<CssLengthPercentage>::try_from_calculation(
+            CssCalculation::<CssLengthPercentage>::try_from_components(
+                components,
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap()
     } else {
-        CssSpecifiedLengthPercentage::try_from_component(CssComponentValue::try_token(css).unwrap())
-            .unwrap()
+        CssNumeric::<CssLengthPercentage>::try_from_component(
+            CssComponentValue::try_token(css).unwrap(),
+        )
+        .unwrap()
     }
 }
 
-pub fn nonnegative_length_percentage(css: &str) -> CssSpecifiedNonNegativeLengthPercentage {
-    let components = parse_component_values(css).unwrap();
+pub fn nonnegative_length_percentage(css: &str) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
+    let components = CssComponentValues::parse(&CssParser::default(), css).unwrap();
     if css.contains('(') {
-        CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
+            CssCalculation::<CssLengthPercentage>::try_from_components(
+                components,
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap()
     } else {
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
             CssComponentValue::try_token(css).unwrap(),
         )
         .unwrap()
@@ -302,25 +340,30 @@ pub enum ExpectedErrorKind {
 
 impl ExpectedErrorKind {
     #[track_caller]
-    fn assert_matches(&self, actual: &ErrorKind, label: &str) {
-        let matched = match (self, actual) {
-            (Self::UnexpectedToken, ErrorKind::UnexpectedToken(_))
-            | (Self::InvalidSelector, ErrorKind::InvalidSelector(_)) => true,
-            (Self::InvalidPropertyValue { property }, ErrorKind::InvalidPropertyValue(detail)) => {
-                Some(detail.property()) == expected_property(property, label)
+    fn assert_matches(&self, actual: &CssError, label: &str) {
+        let matched = match self {
+            Self::UnexpectedToken => actual.code() == CssErrorCode::UnexpectedToken,
+            Self::InvalidSelector => actual.code() == CssErrorCode::InvalidSelector,
+            Self::InvalidPropertyValue { property } => {
+                actual.code() == CssErrorCode::InvalidPropertyValue
+                    && actual.known_property() == expected_property(property, label)
             }
-            (Self::InvalidColorSyntax { encountered }, ErrorKind::InvalidColorSyntax(detail)) => {
-                detail
-                    .encountered()
-                    .is_some_and(|token| token.authored() == *encountered)
+            Self::InvalidColorSyntax { encountered } => {
+                actual.code() == CssErrorCode::InvalidColorSyntax
+                    && actual
+                        .encountered()
+                        .is_some_and(|token| token.authored() == *encountered)
             }
-            (Self::UnknownAtRule { name }, ErrorKind::UnknownAtRule(detail)) => {
-                *name == detail.name().as_str()
+            Self::UnknownAtRule { name } => {
+                actual.code() == CssErrorCode::UnknownAtRule
+                    && actual.at_rule().is_some_and(|rule| rule.as_str() == *name)
             }
-            (Self::UnknownProperty { name }, ErrorKind::UnknownProperty(detail)) => {
-                *name == detail.name().as_str()
+            Self::UnknownProperty { name } => {
+                actual.code() == CssErrorCode::UnknownProperty
+                    && actual
+                        .property_name()
+                        .is_some_and(|property| property.as_str() == *name)
             }
-            _ => false,
         };
         assert!(
             matched,
@@ -341,9 +384,11 @@ fn expected_property(name: &str, label: &str) -> Option<CssKnownProperty> {
 
 /// The first diagnostic of `input`, which must match `expected_error`.
 #[track_caller]
-pub fn assert_sheet_rejected(input: &str, expected_error: &ExpectedErrorKind) -> Error {
-    let error = parse_sheet(input).expect_err("invalid CSS must report a diagnostic");
-    expected_error.assert_matches(error.kind(), input);
+pub fn assert_sheet_rejected(input: &str, expected_error: &ExpectedErrorKind) -> CssError {
+    let error = CssParser::default()
+        .parse_sheet(input)
+        .expect_err("invalid CSS must report a diagnostic");
+    expected_error.assert_matches(&error, input);
     error
 }
 
@@ -355,9 +400,11 @@ pub struct RejectedSheetCase {
 
 impl RejectedSheetCase {
     #[track_caller]
-    pub fn assert_rejects(&self) -> Error {
-        let error = parse_sheet(self.input).expect_err("invalid CSS must report a diagnostic");
-        self.expected_error.assert_matches(error.kind(), self.label);
+    pub fn assert_rejects(&self) -> CssError {
+        let error = CssParser::default()
+            .parse_sheet(self.input)
+            .expect_err("invalid CSS must report a diagnostic");
+        self.expected_error.assert_matches(&error, self.label);
         error
     }
 }
@@ -372,11 +419,11 @@ pub struct RejectedDeclarationCase {
 
 impl RejectedDeclarationCase {
     #[track_caller]
-    pub fn assert_rejects(&self) -> Error {
+    pub fn assert_rejects(&self) -> CssError {
         let css = declaration_sheet(self.property_name, self.authored_value);
         let error = assert_sheet_rejected(&css, &self.expected_error);
         assert_eq!(
-            matches!(error.kind(), ErrorKind::UnknownProperty(_)),
+            error.code() == CssErrorCode::UnknownProperty,
             !self.property_name_should_be_recognized,
             "{} property-name recognition mismatch",
             self.label,
@@ -446,8 +493,8 @@ pub fn assert_rejects_sheets(cases: &[RejectedSheetCase]) {
 /// inside a block's contents without discarding the enclosing rule. Returns
 /// that diagnostic.
 #[track_caller]
-pub fn assert_drops_sole_declaration(input: &str) -> Error {
-    let report = parse_sheet(input);
+pub fn assert_drops_sole_declaration(input: &str) -> CssError {
+    let report = CssParser::default().parse_sheet(input);
     let [diagnostic] = report.diagnostics() else {
         panic!(
             "{input}: exactly one diagnostic: {:?}",
@@ -478,7 +525,7 @@ pub fn assert_drops_sole_declaration(input: &str) -> Error {
 /// `selector` token.
 #[track_caller]
 pub fn assert_drops_invalid_keyframe_block(input: &str, selector: &str) {
-    let report = parse_sheet(input);
+    let report = CssParser::default().parse_sheet(input);
     assert_eq!(
         report.diagnostics().len(),
         1,
@@ -569,69 +616,51 @@ impl Rejection {
     }
 }
 
-/// The identity a diagnostic kind names.
-fn rejection_names(kind: &ErrorKind) -> Option<String> {
-    let name = match kind {
-        ErrorKind::InvalidPropertyValue(detail) => detail.property().canonical_name(),
-        ErrorKind::UnknownProperty(detail) => detail.name().as_str(),
-        ErrorKind::UnsupportedProperty(detail) => detail.name().as_str(),
-        ErrorKind::UnknownAtRule(detail) => detail.name().as_str(),
-        ErrorKind::UnsupportedAtRule(detail) => detail.name().as_str(),
-        ErrorKind::InvalidAtRulePlacement(detail) => detail.name().as_str(),
-        ErrorKind::InvalidAtRulePrelude(detail) | ErrorKind::InvalidAtRuleBody(detail) => {
-            detail.name().as_str()
+/// The identity a diagnostic names.
+fn rejection_names(error: &CssError) -> Option<String> {
+    let name = match error.code() {
+        CssErrorCode::InvalidPropertyValue => error.known_property()?.canonical_name(),
+        CssErrorCode::UnknownProperty | CssErrorCode::UnsupportedProperty => {
+            error.property_name()?.as_str()
         }
-        ErrorKind::UnknownDescriptor(detail) => detail.descriptor().as_str(),
-        ErrorKind::UnsupportedDescriptor(detail) => detail.descriptor().as_str(),
-        ErrorKind::InvalidDescriptorValue(detail) => detail.descriptor().as_str(),
+        CssErrorCode::UnknownAtRule
+        | CssErrorCode::UnsupportedAtRule
+        | CssErrorCode::InvalidAtRulePlacement
+        | CssErrorCode::InvalidAtRulePrelude
+        | CssErrorCode::InvalidAtRuleBody => error.at_rule()?.as_str(),
+        CssErrorCode::UnknownDescriptor
+        | CssErrorCode::UnsupportedDescriptor
+        | CssErrorCode::InvalidDescriptorValue => error.descriptor()?.as_str(),
         _ => return None,
     };
     Some(name.to_owned())
 }
 
-/// The responsible authored token a diagnostic kind reports.
-fn rejection_token(kind: &ErrorKind) -> Option<String> {
-    let token = match kind {
-        ErrorKind::UnexpectedToken(detail) => Some(detail.encountered()),
-        ErrorKind::InvalidDeclarationAnnotation(detail) => Some(detail.encountered()),
-        ErrorKind::InvalidAtRulePrelude(detail) | ErrorKind::InvalidAtRuleBody(detail) => {
-            detail.encountered()
-        }
-        ErrorKind::InvalidQualifiedRule(detail) => detail.encountered(),
-        ErrorKind::InvalidSelector(detail) => detail.encountered(),
-        ErrorKind::InvalidMediaQuery(detail) => detail.encountered(),
-        ErrorKind::InvalidPropertyValue(detail) => detail.encountered(),
-        ErrorKind::InvalidDescriptorValue(detail) => detail.encountered(),
-        ErrorKind::InvalidColorSyntax(detail) => detail.encountered(),
-        _ => None,
-    };
-    token.map(|token| token.authored().to_owned())
-}
-
 /// Asserts that `error` is the expected typed rejection of `input`.
 #[track_caller]
-pub fn assert_rejection_matches(input: &str, error: &Error, expected: Rejection) {
+pub fn assert_rejection_matches(input: &str, error: &CssError, expected: Rejection) {
     assert_eq!(
         (
             error.code(),
-            rejection_names(error.kind()),
-            rejection_token(error.kind())
+            rejection_names(error),
+            error.encountered().map(|token| token.authored().to_owned())
         ),
         (
             expected.code,
             expected.names.map(str::to_owned),
             expected.encountered.map(str::to_owned)
         ),
-        "{input}: unexpected rejection {:?}",
-        error.kind()
+        "{input}: unexpected rejection {error:?}"
     );
 }
 
 /// Asserts that the first diagnostic of the stylesheet `input` is the
 /// expected typed rejection, and returns it.
 #[track_caller]
-pub fn assert_rejection(input: &str, expected: Rejection) -> Error {
-    let error = parse_sheet(input).expect_err("invalid CSS must report a diagnostic");
+pub fn assert_rejection(input: &str, expected: Rejection) -> CssError {
+    let error = CssParser::default()
+        .parse_sheet(input)
+        .expect_err("invalid CSS must report a diagnostic");
     assert_rejection_matches(input, &error, expected);
     error
 }

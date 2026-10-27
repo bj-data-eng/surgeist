@@ -1,8 +1,18 @@
 //! Public semantic accessors preserve authored identity and symbolic branches.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueTokenRef};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::box_model::CssOverflow;
+use surgeist_css::values::layout::{
+    CssAlignmentPosition, CssAlignmentValue, CssBaselinePosition, CssOverflowPosition,
+};
 
 fn parsed(property: CssKnownProperty, css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("{}:{css}", property.canonical_name()));
+    let report =
+        CssParser::default().parse_block_contents(format!("{}:{css}", property.canonical_name()));
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
     report.syntax()[0].clone()
 }
@@ -22,9 +32,10 @@ fn all_keeps_only_global_and_substitution_dependent_declared_values() {
         assert_eq!(known.grammar(), CssKnownProperty::All.grammar());
         assert_eq!(known.global(), Some(keyword));
         assert_eq!(known.property_value(), None);
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::All),
-            parse_component_values(css).unwrap(),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::All)),
+            CssComponentValues::parse(&CssParser::default(), css).unwrap(),
             CssImportance::Normal,
         )
         .unwrap();
@@ -35,7 +46,11 @@ fn all_keeps_only_global_and_substitution_dependent_declared_values() {
     let known = declaration.known().unwrap();
     assert!(known.substitution_dependent().is_some());
     assert_eq!(known.property_value(), None);
-    assert!(!parse_style_attribute("all:normal").is_clean());
+    assert!(
+        !CssParser::default()
+            .parse_block_contents("all:normal")
+            .is_clean()
+    );
 }
 
 #[test]
@@ -113,7 +128,7 @@ fn sole_semantic_values_preserve_authored_trivia_exact_numbers_and_omission() {
     assert_eq!(first.name().as_str(), "chapter");
     assert!(first.value().is_none());
     assert_eq!(second.name().as_str(), "section");
-    let Some(CssIntegerValue::Literal(integer)) = second.value() else {
+    let Some(integer) = second.value().and_then(|value| value.literal()) else {
         panic!("exact integer");
     };
     assert_eq!(integer.numeric().representation(), "-9007199254740993");
@@ -124,8 +139,12 @@ fn sole_semantic_values_preserve_authored_trivia_exact_numbers_and_omission() {
     else {
         panic!("factor wrapper");
     };
-    let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) =
-        value.factor().literal_component().unwrap().view()
+    let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) = value
+        .value()
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("exact number");
     };

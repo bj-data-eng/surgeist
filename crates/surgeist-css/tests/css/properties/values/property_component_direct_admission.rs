@@ -4,8 +4,22 @@
 
 use crate::css::support::property_expectations;
 
+use crate::css::support::property_admission::GrammarFacts;
 use property_expectations::{BoundaryOutcome, CatalogExpectation};
-use surgeist_css::*;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssCustomPropertyName, CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyTextTarget,
+};
+use surgeist_css::rule::keyframes::CssKeyframeDeclarationList;
+use surgeist_css::rule::{CssBlockContext, CssBlockFragment};
+use surgeist_css::values::box_model::CssMarginValue;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 #[test]
 fn common_authored_property_records_match_typed_source_and_checked_admission() {
@@ -16,15 +30,16 @@ fn common_authored_property_records_match_typed_source_and_checked_admission() {
         if case.wrapper.is_none() {
             continue;
         }
-        let source = parse_property_value_text(
+        let source = CssParser::default().parse_property_value(
             authored,
-            CssPropertyNameRef::Known(case.property),
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(case.property)),
             CssImportance::Normal,
         );
         assert!(source.is_clean(), "{}: {source:?}", case.name);
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(case.property),
-            parse_component_values(authored).unwrap(),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(case.property)),
+            CssComponentValues::parse(&CssParser::default(), authored).unwrap(),
             CssImportance::Normal,
         )
         .unwrap_or_else(|error| panic!("{}: {error:?}", case.name));
@@ -33,18 +48,20 @@ fn common_authored_property_records_match_typed_source_and_checked_admission() {
             case.assert_wrapper(known, known.property_value().unwrap(), authored);
         }
         if let Some(CatalogExpectation::Grammar { boundary, .. }) = &case.catalog {
-            let source = parse_property_value_text(
+            let source = CssParser::default().parse_property_value(
                 boundary.authored,
-                CssPropertyNameRef::Known(case.property),
+                CssPropertyTextTarget::Property(CssPropertyNameRef::Known(case.property)),
                 CssImportance::Normal,
             );
-            let checked = parse_component_values(boundary.authored).map(|values| {
-                parse_property_value(
-                    CssPropertyNameRef::Known(case.property),
-                    values,
-                    CssImportance::Normal,
-                )
-            });
+            let checked =
+                CssComponentValues::parse(&CssParser::default(), boundary.authored).map(|values| {
+                    CssDeclaration::try_from_components(
+                        &CssParser::default(),
+                        CssPropertyTarget::Property(CssPropertyNameRef::Known(case.property)),
+                        values,
+                        CssImportance::Normal,
+                    )
+                });
             match boundary.outcome {
                 BoundaryOutcome::Rejected => {
                     assert!(source.syntax().is_none(), "{}: {source:?}", case.name);
@@ -67,10 +84,11 @@ fn common_authored_property_records_match_typed_source_and_checked_admission() {
 #[test]
 fn checked_math_preserves_whitespace_and_exact_decimal_spelling() {
     let source = "calc(1.0000000000000000001px + 2%)";
-    let values = parse_component_values(source).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let original = values.clone();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Width),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
         values,
         CssImportance::Normal,
     )
@@ -86,24 +104,28 @@ fn checked_math_preserves_whitespace_and_exact_decimal_spelling() {
             if number.representation() == "1.0000000000000000001" && unit == "px"
     ));
     for source in ["calc(1px+ 2%)", "calc(1px +2%)"] {
-        let values = parse_component_values(source).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         assert!(
-            parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Width),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
                 values,
-                CssImportance::Normal,
+                CssImportance::Normal
             )
             .is_err(),
             "math operators require actual authored whitespace: {source}"
         );
         assert!(
-            parse_property_value_text(
-                source,
-                CssPropertyNameRef::Known(CssKnownProperty::Width),
-                CssImportance::Normal,
-            )
-            .syntax()
-            .is_none()
+            CssParser::default()
+                .parse_property_value(
+                    source,
+                    CssPropertyTextTarget::Property(CssPropertyNameRef::Known(
+                        CssKnownProperty::Width
+                    )),
+                    CssImportance::Normal
+                )
+                .syntax()
+                .is_none()
         );
     }
 }
@@ -111,41 +133,49 @@ fn checked_math_preserves_whitespace_and_exact_decimal_spelling() {
 #[test]
 fn checked_context_retains_property_quirks_and_page_restrictions() {
     let context = CssParserContext::new(CssParserMode::Quirks);
-    let width = context
-        .parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Width),
-            parse_component_values("7").unwrap(),
-            CssImportance::Normal,
-        )
-        .expect("the named width owner grants quirky unitless lengths");
+    let width = CssDeclaration::try_from_components(
+        &CssParser::new(context, Default::default()),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
+        CssComponentValues::parse(&CssParser::default(), "7").unwrap(),
+        CssImportance::Normal,
+    )
+    .expect("the named width owner grants quirky unitless lengths");
     let CssKnownPropertyValueRef::Width(value) = width.known().unwrap().property_value().unwrap()
     else {
         panic!("typed width");
     };
-    assert_eq!(value.value().serialize_specified().unwrap(), "7px");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "7px"
+    );
     assert_eq!(width.parser_context(), context);
     assert!(
-        context
-            .parse_page_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::MarginTop),
-                parse_component_values("7").unwrap(),
-                CssImportance::Normal,
-            )
-            .is_err(),
+        CssDeclaration::try_from_components(
+            &CssParser::new(context, Default::default()),
+            CssPropertyTarget::PageProperty(CssPropertyNameRef::Known(CssKnownProperty::MarginTop)),
+            CssComponentValues::parse(&CssParser::default(), "7").unwrap(),
+            CssImportance::Normal
+        )
+        .is_err(),
         "Page margins do not acquire nonzero unitless element grammar"
     );
-    let recovered = parse_component_values("future(").unwrap();
+    let recovered = CssComponentValues::parse(&CssParser::default(), "future(").unwrap();
     assert!(
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Width),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
             recovered.clone(),
-            CssImportance::Normal,
+            CssImportance::Normal
         )
         .is_err()
     );
     let custom = CssCustomPropertyName::try_new("--tokens").unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Custom(&custom),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Custom(&custom)),
         recovered.clone(),
         CssImportance::Normal,
     )
@@ -160,28 +190,32 @@ fn rejected_checked_values_keep_the_responsible_token_summary() {
         (CssKnownProperty::Width, "not-a-width"),
         (CssKnownProperty::Color, "not-a-color"),
     ] {
-        let source = parse_property_value_text(
+        let source = CssParser::default().parse_property_value(
             text,
-            CssPropertyNameRef::Known(property),
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(property)),
             CssImportance::Normal,
         );
         assert!(source.syntax().is_none());
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(property),
-            parse_component_values(text).unwrap(),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             CssImportance::Normal,
         )
         .expect_err("the identifier is outside the selected value grammar");
-        let CssPropertyValueErrorKind::Grammar(checked) = checked.kind() else {
-            panic!("a grammar rejection");
-        };
-        for kind in [source.diagnostics()[0].error().kind(), checked] {
-            let encountered = match kind {
-                ErrorKind::InvalidPropertyValue(detail) => detail.encountered(),
-                ErrorKind::InvalidColorSyntax(detail) => detail.encountered(),
-                _ => panic!("property or color grammar owns this rejection: {kind:?}"),
-            }
-            .expect("the responsible actual token qualifies the grammar error");
+        assert!(checked.code().is_some(), "a grammar rejection: {checked:?}");
+        let rejections: [&dyn GrammarFacts; 2] = [source.diagnostics()[0].error(), &checked];
+        for kind in rejections {
+            assert!(
+                matches!(
+                    kind.grammar_code(),
+                    Some(CssErrorCode::InvalidPropertyValue | CssErrorCode::InvalidColorSyntax)
+                ),
+                "property or color grammar owns this rejection: {kind:?}"
+            );
+            let encountered = kind
+                .responsible_token()
+                .expect("the responsible actual token qualifies the grammar error");
             assert_eq!(encountered.kind(), CssTokenKind::Ident);
             assert_eq!(encountered.authored(), text);
         }
@@ -196,30 +230,39 @@ fn checked_error_summaries_keep_programmatic_and_escaped_mixed_origins() {
             "not-a-width",
         ),
         (
-            parse_component_values(r"\6e ot-a-width").unwrap().items()[0].clone(),
+            CssComponentValues::parse(&CssParser::default(), r"\6e ot-a-width")
+                .unwrap()
+                .items()[0]
+                .clone(),
             r"\6e ot-a-width",
         ),
     ] {
         let origin = component.origin().clone();
-        let unrelated = parse_component_values("/*different snapshot*/").unwrap();
-        let values =
-            CssComponentValues::try_new(vec![unrelated.items()[0].clone(), component]).unwrap();
+        let unrelated =
+            CssComponentValues::parse(&CssParser::default(), "/*different snapshot*/").unwrap();
+        let values = CssComponentValues::try_new(
+            vec![unrelated.items()[0].clone(), component],
+            Default::default(),
+        )
+        .unwrap();
         drop(unrelated);
-        let error = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Width),
+        let error = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
             values,
             CssImportance::Normal,
         )
         .expect_err("a rejected identifier retains its own diagnostic identity");
-        let CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail)) =
-            error.kind()
-        else {
-            panic!("the width grammar owns this rejection: {error:?}");
-        };
+        let detail = &error;
+        assert_eq!(
+            detail.code(),
+            Some(CssErrorCode::InvalidPropertyValue),
+            "the width grammar owns this rejection: {error:?}"
+        );
         let encountered = detail.encountered().expect("responsible identifier");
         assert_eq!(encountered.kind(), CssTokenKind::Ident);
         assert_eq!(encountered.authored(), expected);
-        assert_eq!(error.origin(), &CssSerializedOrigin::Token(origin.clone()));
+        assert_eq!(error.origin(), CssSerializedOrigin::Token(origin.clone()));
         if let CssValueOrigin::Parsed(expected) = origin {
             let CssSerializedOrigin::Token(CssValueOrigin::Parsed(actual)) = error.origin() else {
                 panic!("the real identifier snapshot survives input destruction");
@@ -233,28 +276,34 @@ fn checked_error_summaries_keep_programmatic_and_escaped_mixed_origins() {
 #[test]
 fn trivia_does_not_replace_the_responsible_token_in_checked_errors() {
     let spelling = "123456789012345678901234567890";
-    let comment = parse_component_values("/*different snapshot*/").unwrap();
-    let number = parse_component_values(spelling).unwrap();
+    let comment =
+        CssComponentValues::parse(&CssParser::default(), "/*different snapshot*/").unwrap();
+    let number = CssComponentValues::parse(&CssParser::default(), spelling).unwrap();
     let expected = number.items()[0].origin().clone();
-    let values =
-        CssComponentValues::try_new(vec![comment.items()[0].clone(), number.items()[0].clone()])
-            .unwrap();
+    let values = CssComponentValues::try_new(
+        vec![comment.items()[0].clone(), number.items()[0].clone()],
+        Default::default(),
+    )
+    .unwrap();
     drop(comment);
     drop(number);
-    let error = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Display),
+    let error = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Display)),
         values,
         CssImportance::Normal,
     )
     .expect_err("display requires its keyword grammar");
-    let CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail)) = error.kind()
-    else {
-        panic!("display grammar rejection: {error:?}");
-    };
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        Some(CssErrorCode::InvalidPropertyValue),
+        "display grammar rejection: {error:?}"
+    );
     let encountered = detail.encountered().expect("the actual numeric token");
     assert_eq!(encountered.kind(), CssTokenKind::Number);
     assert_eq!(encountered.authored(), spelling);
-    assert_eq!(error.origin(), &CssSerializedOrigin::Token(expected));
+    assert_eq!(error.origin(), CssSerializedOrigin::Token(expected));
 }
 
 #[test]
@@ -263,20 +312,23 @@ fn raw_root_delimiters_keep_precedence_over_unadmitted_bad_url_tokens() {
         ("1px!url(a b)", "!", 3, CssTokenKind::Delim),
         ("url(a b);", ";", 8, CssTokenKind::Semicolon),
     ] {
-        let report = parse_property_value_text(
+        let report = CssParser::default().parse_property_value(
             source,
-            CssPropertyNameRef::Known(CssKnownProperty::Width),
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
             CssImportance::Normal,
         );
         assert!(report.syntax().is_none());
         let [diagnostic] = report.diagnostics() else {
             panic!("one raw input failure: {report:?}");
         };
-        let ErrorKind::UnexpectedToken(detail) = diagnostic.error().kind() else {
-            panic!("root boundary owns rejection: {diagnostic:?}");
-        };
-        assert_eq!(detail.encountered().kind(), kind);
-        assert_eq!(detail.encountered().authored(), responsible);
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::UnexpectedToken,
+            "root boundary owns rejection: {diagnostic:?}"
+        );
+        assert_eq!(detail.encountered().unwrap().kind(), kind);
+        assert_eq!(detail.encountered().unwrap().authored(), responsible);
         assert_eq!(diagnostic.error().position().byte_offset().value(), offset);
         assert_eq!(diagnostic.action(), CssRecoveryAction::RejectInput);
         assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
@@ -287,7 +339,7 @@ fn raw_root_delimiters_keep_precedence_over_unadmitted_bad_url_tokens() {
 #[test]
 fn source_bad_url_keeps_property_error_context_and_later_independent_declaration() {
     let source = "width:1px url(a b);color:red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     let [declaration] = &report.syntax()[..] else {
         panic!("only the following color declaration survives: {report:?}");
     };
@@ -298,10 +350,13 @@ fn source_bad_url_keeps_property_error_context_and_later_independent_declaration
     let [diagnostic] = report.diagnostics() else {
         panic!("one invalid width declaration: {report:?}");
     };
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("the property grammar owns lexical rejection: {diagnostic:?}");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Width);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "the property grammar owns lexical rejection: {diagnostic:?}"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Width);
     assert_eq!(detail.encountered().unwrap().kind(), CssTokenKind::BadUrl);
     assert_eq!(diagnostic.error().position().byte_offset().value(), 10);
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
@@ -309,7 +364,7 @@ fn source_bad_url_keeps_property_error_context_and_later_independent_declaration
 
 #[test]
 fn source_name_and_keyframe_policy_rejections_precede_payload_grammar() {
-    let report = parse_style_attribute("unknown:url(a b);color:red");
+    let report = CssParser::default().parse_block_contents("unknown:url(a b);color:red");
     assert_eq!(report.syntax().len(), 1);
     assert_eq!(
         report.syntax()[0].known().unwrap().property(),
@@ -320,7 +375,11 @@ fn source_name_and_keyframe_policy_rejections_precede_payload_grammar() {
     };
     assert_eq!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
     assert_eq!(diagnostic.error().position().byte_offset().value(), 0);
-    let report = parse_keyframe_declaration_block("{animation-name:url(a b);color:red}");
+    let report = CssBlockFragment::<CssKeyframeDeclarationList>::parse(
+        &CssParser::default(),
+        "{animation-name:url(a b);color:red}",
+        &CssBlockContext::default(),
+    );
     let block = report.syntax().as_ref().expect("retained keyframe body");
     assert_eq!(block.body().len(), 1);
     assert_eq!(
@@ -330,10 +389,16 @@ fn source_name_and_keyframe_policy_rejections_precede_payload_grammar() {
     let [diagnostic] = report.diagnostics() else {
         panic!("one forbidden keyframe property: {report:?}");
     };
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("keyframe property policy owns rejection: {diagnostic:?}");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::AnimationName);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "keyframe property policy owns rejection: {diagnostic:?}"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::AnimationName
+    );
     // Source diagnostics qualify an inferred property rejection with the real
     // name token; the later malformed value does not acquire ownership.
     let encountered = detail.encountered().expect("responsible property name");
@@ -346,40 +411,44 @@ fn source_name_and_keyframe_policy_rejections_precede_payload_grammar() {
 fn separately_owned_tokens_keep_their_lexical_boundaries_and_original_snapshots() {
     for (first, second) in [("1", "px"), ("au", "to")] {
         let (values, first_origin) = {
-            let first = parse_component_values(first).unwrap();
-            let second = parse_component_values(second).unwrap();
+            let first = CssComponentValues::parse(&CssParser::default(), first).unwrap();
+            let second = CssComponentValues::parse(&CssParser::default(), second).unwrap();
             let first_origin = first.items()[0].origin().clone();
             (
-                CssComponentValues::try_new(vec![
-                    first.items()[0].clone(),
-                    second.items()[0].clone(),
-                ])
+                CssComponentValues::try_new(
+                    vec![first.items()[0].clone(), second.items()[0].clone()],
+                    Default::default(),
+                )
                 .unwrap(),
                 first_origin,
             )
         };
-        let error = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Width),
+        let error = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
             values,
             CssImportance::Normal,
         )
         .expect_err("two independently supplied tokens must not become 1px or auto");
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail))
-                if detail.property() == CssKnownProperty::Width
-        ));
-        assert_eq!(error.origin(), &CssSerializedOrigin::Token(first_origin));
+        assert!(
+            (error.code() == Some(CssErrorCode::InvalidPropertyValue)
+                && error.known_property().unwrap() == CssKnownProperty::Width)
+        );
+        assert_eq!(error.origin(), CssSerializedOrigin::Token(first_origin));
     }
     let values = {
-        let left = parse_component_values("1px").unwrap();
-        let right = parse_component_values("2px").unwrap();
-        CssComponentValues::try_new(vec![left.items()[0].clone(), right.items()[0].clone()])
-            .unwrap()
+        let left = CssComponentValues::parse(&CssParser::default(), "1px").unwrap();
+        let right = CssComponentValues::parse(&CssParser::default(), "2px").unwrap();
+        CssComponentValues::try_new(
+            vec![left.items()[0].clone(), right.items()[0].clone()],
+            Default::default(),
+        )
+        .unwrap()
     };
     let before = values.clone();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Margin),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Margin)),
         values,
         CssImportance::Important,
     )
@@ -392,14 +461,17 @@ fn separately_owned_tokens_keep_their_lexical_boundaries_and_original_snapshots(
     };
     for (actual, expected) in value
         .value()
-        .assigned_values()
+        .assigned()
         .iter()
         .zip(["1px", "2px", "1px", "2px"])
     {
         let CssMarginValue::LengthPercentage(actual) = actual else {
             panic!("explicit length margin");
         };
-        assert_eq!(actual.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            actual.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     assert_eq!(declaration.importance(), CssImportance::Important);
     assert!(declaration.parsed_value().is_none());

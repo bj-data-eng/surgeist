@@ -118,9 +118,11 @@ fn color_currentcolor_without_palette_is_unavailable_and_reclaims_partial_constr
     assert_eq!(
         failure.reason(),
         HtmlParseFailureReason::Stop(HtmlParseStop::ColorProcessing(
-            HtmlColorProcessingError::Unavailable(surgeist_css::CssColorUnavailable::Palette(
-                surgeist_css::CssSystemColor::CanvasText
-            ))
+            HtmlColorProcessingError::Unavailable(
+                surgeist_css::color::CssColorUnavailable::Palette(
+                    surgeist_css::color::CssSystemColor::CanvasText
+                )
+            )
         ))
     );
     assert_eq!(failure.cleanup_error(), None);
@@ -354,21 +356,24 @@ fn color_utf16_reference_default_and_generated_history_keep_distinct_actual_valu
 // factor16 bounds fixed grammar/evaluation/slot handoffs around these requests;
 // reserve/copy allowance is included in per-action compiled slot/layout cost.
 fn matrix_limits() -> HtmlParseLimits {
-    use surgeist_css::{
-        CssColorOperation, CssColorSerialization, CssColorSlot, CssColorTransformation,
+    use surgeist_color::Serialization;
+    use surgeist_css::color::controlled::{
+        CssColorParse, CssColorSlot, CssColorTransform, CssUsedColorCheckpoint,
     };
     let register = [
-        CssColorOperation::register_bytes(),
-        CssColorSerialization::register_bytes(),
-        CssColorTransformation::register_bytes(),
+        CssColorParse::register_bytes(),
+        Serialization::register_bytes(),
+        CssColorTransform::register_bytes(),
     ]
     .into_iter()
     .max()
     .unwrap() as u64;
+    // A transformation has no separate action: its frame charges only the
+    // register and the resulting checkpoint.
     let guard = [
-        CssColorOperation::action_bytes(),
-        CssColorSerialization::action_bytes(),
-        CssColorTransformation::action_bytes(),
+        CssColorParse::action_bytes(),
+        Serialization::action_bytes(),
+        std::mem::size_of::<CssUsedColorCheckpoint<'_>>(),
     ]
     .into_iter()
     .max()

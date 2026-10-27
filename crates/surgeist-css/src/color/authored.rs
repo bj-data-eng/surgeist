@@ -11,14 +11,31 @@ use super::grammar::{
     Leaf, ProfileSpace, RawComponent, Recipe, RecipeKind,
 };
 use super::keywords::ColorFunction as F;
-use super::protocol::{
-    CssColorBank, CssColorOperationOwner, CssColorProtocolError, CssColorSlot, Data, LexicalTable,
-};
 use super::syntax_pass::{SyntaxAction, SyntaxPass};
-use crate::error::ErrorKind;
-use crate::numeric::{CalculationRoot, NumericInputContext};
+use crate::color::controlled::protocol::{ColorProtocolError, Data, LexicalTable};
+use crate::color::controlled::{CssColorBank, CssColorOperationOwner, CssColorSlot};
+use crate::color::{
+    CssAlphaColor, CssColor, CssColorComponent, CssColorConstructionError, CssColorHue,
+    CssColorInterpolation, CssColorMix, CssColorMixComponent, CssColorMixPercentage,
+    CssColorMixWeight, CssColorProfileName, CssContrastColor, CssCustomColor, CssDeviceCmykColor,
+    CssHexColor, CssHslColor, CssHwbColor, CssLabColor, CssLchColor, CssLightDarkColor,
+    CssNamedColor, CssPredefinedColor, CssProfileColorExpression, CssRelativeColor,
+    CssRelativeColorEnvironment, CssRelativeColorExpression, CssRelativeColorFunction,
+    CssRelativeColorResultDomain, CssRelativeCustomColor, CssRgbColor,
+};
+use crate::component::values::CssComponentValueErrorKind;
+use crate::component::{
+    CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueRef, CssHashFlag,
+    CssNumericTokenRef, CssValueOrigin, CssValueTokenRef,
+};
+use crate::diagnostic::error::ErrorKind;
+use crate::numeric::expression::CssCalculationExpression;
+use crate::numeric::expression::{CalculationRoot, NumericInputContext};
+use crate::numeric::{
+    CssAngle, CssCalculation, CssCalculationType, CssHintedNumber, CssNumber,
+    CssNumericConstructionError, CssPercentage,
+};
 use crate::tokenization::tokenizer::{NameKind, NumberKind, Span, Token, TokenKind};
-use crate::*;
 
 type Result<T> = std::result::Result<T, ColorInputFailure>;
 
@@ -31,7 +48,7 @@ pub(crate) struct ColorInputFailure {
 }
 fn invalid_color(component: Option<&str>) -> ColorInputFailure {
     ColorInputFailure {
-        kind: crate::error::color_syntax_kind(component),
+        kind: crate::diagnostic::error::color_syntax_kind(component),
         path: Box::new([]),
         closing: false,
     }
@@ -94,23 +111,21 @@ impl<'a, 'owner> Events<'a, 'owner> {
         &mut self,
         data: Data<'owner>,
         original: Option<&'a CssComponentValue>,
-    ) -> std::result::Result<usize, CssColorProtocolError> {
+    ) -> std::result::Result<usize, ColorProtocolError> {
         let index = self.slots.len();
-        index
-            .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+        index.checked_add(1).ok_or(ColorProtocolError::Overflow)?;
         self.slots
             .try_reserve(1)
-            .map_err(|_| CssColorProtocolError::Overflow)?;
+            .map_err(|_| ColorProtocolError::Overflow)?;
         self.originals
             .try_reserve(1)
-            .map_err(|_| CssColorProtocolError::Overflow)?;
+            .map_err(|_| ColorProtocolError::Overflow)?;
         self.paths
             .try_reserve(1)
-            .map_err(|_| CssColorProtocolError::Overflow)?;
+            .map_err(|_| ColorProtocolError::Overflow)?;
         self.closing
             .try_reserve(1)
-            .map_err(|_| CssColorProtocolError::Overflow)?;
+            .map_err(|_| ColorProtocolError::Overflow)?;
         self.slots
             .push(CssColorSlot::new(self.owner, self.phase, index, data));
         self.originals.push(original);
@@ -118,7 +133,7 @@ impl<'a, 'owner> Events<'a, 'owner> {
         self.closing.push(false);
         Ok(index)
     }
-    fn name(&mut self, value: &str) -> std::result::Result<Span, CssColorProtocolError> {
+    fn name(&mut self, value: &str) -> std::result::Result<Span, ColorProtocolError> {
         let start = self.slots.len();
         for unit in value.chars() {
             self.append(Data::NameUnit(unit), None)?;
@@ -133,7 +148,7 @@ impl<'a, 'owner> Events<'a, 'owner> {
         value: CssNumericTokenRef<'_>,
         kind: NumberKind,
         unit: &str,
-    ) -> std::result::Result<TokenKind, CssColorProtocolError> {
+    ) -> std::result::Result<TokenKind, ColorProtocolError> {
         use crate::tokenization::number::{NumberCursor, Part, Step};
         let spelling = value.representation().as_bytes();
         let start = self.slots.len();
@@ -149,7 +164,7 @@ impl<'a, 'owner> Events<'a, 'owner> {
             });
             match cursor
                 .step(window)
-                .map_err(|_| CssColorProtocolError::Overflow)?
+                .map_err(|_| ColorProtocolError::Overflow)?
             {
                 Step::Consume(part) => {
                     match part {
@@ -173,16 +188,14 @@ impl<'a, 'owner> Events<'a, 'owner> {
                         }
                         Part::Sign | Part::Point | Part::Exponent | Part::ExponentSign => {}
                     }
-                    offset = offset
-                        .checked_add(1)
-                        .ok_or(CssColorProtocolError::Overflow)?;
+                    offset = offset.checked_add(1).ok_or(ColorProtocolError::Overflow)?;
                 }
                 Step::Transition => {}
                 Step::Done(layout) => break layout,
             }
         };
         if offset != spelling.len() {
-            return Err(CssColorProtocolError::Input);
+            return Err(ColorProtocolError::Input);
         }
         let digits = Span {
             start,
@@ -201,15 +214,13 @@ impl<'a, 'owner> Events<'a, 'owner> {
         kind: TokenKind,
         original: &'a CssComponentValue,
         path: &[usize],
-    ) -> std::result::Result<(), CssColorProtocolError> {
+    ) -> std::result::Result<(), ColorProtocolError> {
         let start = self.slots.len();
-        let end = start
-            .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+        let end = start.checked_add(1).ok_or(ColorProtocolError::Overflow)?;
         let mut retained = Vec::new();
         retained
             .try_reserve(path.len())
-            .map_err(|_| CssColorProtocolError::Overflow)?;
+            .map_err(|_| ColorProtocolError::Overflow)?;
         retained.extend_from_slice(path);
         self.append(
             Data::Token(Token {
@@ -224,7 +235,7 @@ impl<'a, 'owner> Events<'a, 'owner> {
     fn project(
         &mut self,
         root: &'a CssComponentValue,
-    ) -> std::result::Result<(), CssColorProtocolError> {
+    ) -> std::result::Result<(), ColorProtocolError> {
         enum Visit<'a> {
             Item(&'a CssComponentValue),
             Items(&'a [CssComponentValue], usize),
@@ -234,7 +245,7 @@ impl<'a, 'owner> Events<'a, 'owner> {
         let mut pending = Vec::new();
         pending
             .try_reserve(1)
-            .map_err(|_| CssColorProtocolError::Overflow)?;
+            .map_err(|_| ColorProtocolError::Overflow)?;
         pending.push(Visit::Item(root));
         while let Some(visit) = pending.pop() {
             match visit {
@@ -242,15 +253,13 @@ impl<'a, 'owner> Events<'a, 'owner> {
                     if let Some((first, rest)) = items.split_first() {
                         pending
                             .try_reserve(2)
-                            .map_err(|_| CssColorProtocolError::Overflow)?;
+                            .map_err(|_| ColorProtocolError::Overflow)?;
                         pending.push(Visit::Items(
                             rest,
-                            index
-                                .checked_add(1)
-                                .ok_or(CssColorProtocolError::Overflow)?,
+                            index.checked_add(1).ok_or(ColorProtocolError::Overflow)?,
                         ));
                         path.try_reserve(1)
-                            .map_err(|_| CssColorProtocolError::Overflow)?;
+                            .map_err(|_| ColorProtocolError::Overflow)?;
                         path.push(index);
                         pending.push(Visit::Item(first));
                     }
@@ -264,7 +273,7 @@ impl<'a, 'owner> Events<'a, 'owner> {
                         let mut retained = Vec::new();
                         retained
                             .try_reserve_exact(path.len())
-                            .map_err(|_| CssColorProtocolError::Overflow)?;
+                            .map_err(|_| ColorProtocolError::Overflow)?;
                         retained.extend_from_slice(&path);
                         self.eof = Some(EndSite { path: retained });
                     }
@@ -276,7 +285,7 @@ impl<'a, 'owner> Events<'a, 'owner> {
                             let units = self.name(function.name())?;
                             pending
                                 .try_reserve(2)
-                                .map_err(|_| CssColorProtocolError::Overflow)?;
+                                .map_err(|_| ColorProtocolError::Overflow)?;
                             pending.push(Visit::Close(
                                 item,
                                 ')',
@@ -299,7 +308,7 @@ impl<'a, 'owner> Events<'a, 'owner> {
                             };
                             pending
                                 .try_reserve(2)
-                                .map_err(|_| CssColorProtocolError::Overflow)?;
+                                .map_err(|_| ColorProtocolError::Overflow)?;
                             pending.push(Visit::Close(
                                 item,
                                 close,
@@ -347,7 +356,7 @@ impl<'a, 'owner> Events<'a, 'owner> {
                                 units: self.name(value)?,
                                 closed: true,
                             },
-                            CssValueTokenRef::Url(_) => return Err(CssColorProtocolError::Input),
+                            CssValueTokenRef::Url(_) => return Err(ColorProtocolError::Input),
                         },
                     };
                     self.token(kind, item, &path)?;
@@ -375,7 +384,7 @@ pub(crate) fn construct_component(
         ))
     };
     let protocol = |error| {
-        if error == CssColorProtocolError::Overflow {
+        if error == ColorProtocolError::Overflow {
             capacity()
         } else {
             invalid_color(None)
@@ -423,7 +432,7 @@ pub(crate) fn construct_component(
                     && let Some(end) = events.eof.take()
                 {
                     return Err(ColorInputFailure {
-                        kind: crate::error::color_syntax_kind(component),
+                        kind: crate::diagnostic::error::color_syntax_kind(component),
                         path: end.path.into_boxed_slice(),
                         closing: true,
                     });
@@ -432,7 +441,7 @@ pub(crate) fn construct_component(
                     &events,
                     source.start,
                     &[],
-                    crate::error::color_syntax_kind(component),
+                    crate::diagnostic::error::color_syntax_kind(component),
                 ));
             }
             GrammarAction::Stopped => return Err(invalid_color(None)),
@@ -492,7 +501,7 @@ pub(crate) fn construct_component(
                     &events,
                     site,
                     &[],
-                    crate::error::color_syntax_kind(component),
+                    crate::diagnostic::error::color_syntax_kind(component),
                 ));
             }
             SyntaxAction::Stopped => return Err(invalid_color(None)),
@@ -590,7 +599,7 @@ impl Builder<'_, '_, '_> {
             .and_then(|path| path.strip_prefix(&[0]))
             .unwrap_or(&[]);
         let kind = error.component_error().map_or_else(
-            || crate::error::color_syntax_kind(None),
+            || crate::diagnostic::error::color_syntax_kind(None),
             |component| ErrorKind::InvalidComponentValue(Box::new(component.clone())),
         );
         match site {
@@ -615,7 +624,7 @@ impl Builder<'_, '_, '_> {
             return Ok(CssColorComponent::None);
         }
         if matches!(raw.view(), CssComponentValueRef::Token(_)) {
-            return crate::color_scalar::component(raw.clone()).map_err(component_failure);
+            return crate::color::color_scalar::component(raw.clone()).map_err(component_failure);
         }
         let expression = self.numeric(index, CalculationRoot::NumberPercentage)?;
         Ok(match expression.result_type() {
@@ -623,14 +632,16 @@ impl Builder<'_, '_, '_> {
                 if expression.as_ref().numeric_type().percent_hint().is_some() =>
             {
                 CssColorComponent::HintedNumberCalculation(
-                    CssHintedNumberCalculation::from_expression(expression),
+                    CssCalculation::<CssHintedNumber>::from_expression(expression),
                 )
             }
-            CssCalculationType::Number => CssColorComponent::NumberCalculation(
-                CssNumberCalculation::from_expression(expression),
-            ),
+            CssCalculationType::Number => {
+                CssColorComponent::NumberCalculation(CssCalculation::<CssNumber>::from_expression(
+                    expression,
+                ))
+            }
             CssCalculationType::Percentage => CssColorComponent::PercentageCalculation(
-                CssPercentageCalculation::from_expression(expression),
+                CssCalculation::<CssPercentage>::from_expression(expression),
             ),
             _ => return Err(self.invalid()),
         })
@@ -642,7 +653,7 @@ impl Builder<'_, '_, '_> {
             return Ok(CssColorHue::None);
         }
         if matches!(raw.view(), CssComponentValueRef::Token(_)) {
-            return crate::color_scalar::hue(raw.clone()).map_err(component_failure);
+            return crate::color::color_scalar::hue(raw.clone()).map_err(component_failure);
         }
         let domain = self
             .component_record(index)?
@@ -651,11 +662,13 @@ impl Builder<'_, '_, '_> {
             .domain();
         if domain == super::channels::Domain::Degrees {
             Ok(CssColorHue::AngleCalculation(
-                CssAngleCalculation::from_expression(self.numeric(index, CalculationRoot::Angle)?),
+                CssCalculation::<CssAngle>::from_expression(
+                    self.numeric(index, CalculationRoot::Angle)?,
+                ),
             ))
         } else {
             Ok(CssColorHue::NumberCalculation(
-                CssNumberCalculation::from_expression(
+                CssCalculation::<CssNumber>::from_expression(
                     self.numeric(index, CalculationRoot::Number)?,
                 ),
             ))
@@ -701,11 +714,11 @@ impl Builder<'_, '_, '_> {
                         self.events,
                         site,
                         &[],
-                        crate::error::color_syntax_kind(None),
+                        crate::diagnostic::error::color_syntax_kind(None),
                     )
                 })
         } else {
-            CssColorMixWeight::try_calculation(CssPercentageCalculation::from_expression(
+            CssColorMixWeight::try_calculation(CssCalculation::<CssPercentage>::from_expression(
                 self.numeric(index, CalculationRoot::Percentage)?,
             ))
             .map_err(component_failure)
@@ -736,11 +749,8 @@ impl Builder<'_, '_, '_> {
         error: CssColorConstructionError,
         recipe: Recipe,
     ) -> ColorInputFailure {
-        if matches!(
-            error,
-            CssColorConstructionError::CapacityOverflow | CssColorConstructionError::NestingLimit
-        ) {
-            let kind = if error == CssColorConstructionError::CapacityOverflow {
+        if error.is_capacity_overflow() || error.is_nesting_limit() {
+            let kind = if error.is_capacity_overflow() {
                 CssComponentValueErrorKind::CapacityOverflow
             } else {
                 CssComponentValueErrorKind::NestingLimit
@@ -1091,20 +1101,7 @@ impl Builder<'_, '_, '_> {
         components.reverse();
         CssColorMix::try_new(interpolation, components)
             .map(CssColor::from_color_mix)
-            .map_err(|error| {
-                let error = match error {
-                    CssColorMixConstructionError::EmptyComponents => {
-                        CssColorConstructionError::EmptyComponents
-                    }
-                    CssColorMixConstructionError::NestingLimit => {
-                        CssColorConstructionError::NestingLimit
-                    }
-                    CssColorMixConstructionError::CapacityOverflow => {
-                        CssColorConstructionError::CapacityOverflow
-                    }
-                };
-                self.construction_error(error, recipe)
-            })
+            .map_err(|error| self.construction_error(error, recipe))
     }
 }
 
@@ -1114,7 +1111,17 @@ impl Builder<'_, '_, '_> {
 /// `tests/css/color/color_authored_source_modes.rs`.
 #[cfg(test)]
 mod tests {
-    use crate::*;
+
+    use crate::color::{CssColor, CssColorComponent};
+    use crate::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+
+    use crate::declaration::{CssDeclaration, CssImportance};
+
+    use crate::property::{
+        CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyValueError,
+    };
+
+    use crate::diagnostic::CssRecoveryAction;
 
     fn color_of(declaration: &CssDeclaration) -> CssColor {
         let Some(CssKnownPropertyValueRef::Color(value)) =
@@ -1127,18 +1134,23 @@ mod tests {
 
     fn checked(
         values: CssComponentValues,
-    ) -> std::result::Result<CssDeclaration, CssPropertyValueParseError> {
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
+    ) -> std::result::Result<CssDeclaration, CssPropertyValueError> {
+        crate::declaration::CssDeclaration::try_from_components(
+            &crate::CssParser::default(),
+            crate::property::CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                CssKnownProperty::Color,
+            )),
             values,
             CssImportance::Normal,
         )
     }
 
     fn parsed(text: &str) -> std::result::Result<CssColor, String> {
-        let report = parse_property_value_text(
+        let report = crate::CssParser::default().parse_property_value(
             text,
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
+            crate::property::CssPropertyTextTarget::Property(CssPropertyNameRef::Known(
+                CssKnownProperty::Color,
+            )),
             CssImportance::Normal,
         );
         // CSS Syntax 3 (CRD 2026-10-01) §5.5.10 closes an unclosed function at
@@ -1158,7 +1170,7 @@ mod tests {
     }
 
     fn components(text: &str) -> std::result::Result<CssColor, String> {
-        checked(parse_component_values(text).unwrap())
+        checked(crate::component::values::parse_component_values(text).unwrap())
             .map(|declaration| color_of(&declaration))
             .map_err(|error| format!("{error:?}"))
     }
@@ -1205,14 +1217,17 @@ mod tests {
     #[test]
     fn genuine_programmatic_components_keep_exact_tokens_without_reparse() {
         let supplied = CssComponentValue::try_number("+000000001.250e-01").unwrap();
-        let arguments = CssComponentValues::try_new(vec![
-            supplied.clone(),
-            CssComponentValue::try_number("2").unwrap(),
-            CssComponentValue::try_number("3").unwrap(),
-        ])
+        let arguments = CssComponentValues::try_new(
+            vec![
+                supplied.clone(),
+                CssComponentValue::try_number("2").unwrap(),
+                CssComponentValue::try_number("3").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap();
         let root = CssComponentValue::try_function("RGB", arguments).unwrap();
-        let values = CssComponentValues::try_new(vec![root]).unwrap();
+        let values = CssComponentValues::try_new(vec![root], Default::default()).unwrap();
         let value = color_of(&checked(values).unwrap());
         let CssColorComponent::Number(number) = &value.rgb_value().unwrap().channels()[0] else {
             panic!("number");

@@ -1,6 +1,16 @@
 use std::sync::Arc;
-use surgeist_css::*;
-use surgeist_css::{CssFontFaceRule as AuthoredFontFaceRule, CssRule as AuthoredRule};
+use surgeist_css::component::{CssBlockKind, CssComponentValue, CssComponentValues};
+use surgeist_css::query::supports::{
+    CssSupportsConditionName, CssSupportsLeaf, CssSupportsTestBody,
+};
+use surgeist_css::query::{CssCondition, CssConditionKind, CssWhenLeaf};
+use surgeist_css::rule::CssRule as AuthoredRule;
+use surgeist_css::rule::CssSheet;
+use surgeist_css::rule::font_face::CssFontFaceRule as AuthoredFontFaceRule;
+use surgeist_css::rule::font_face::{CssFontFaceDescriptor, CssFontFaceDescriptorKind};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::source::CssUtf16InputLimits;
+use surgeist_css::{CssParseReport, CssParser, CssParserContext};
 use surgeist_cssom::*;
 
 fn inputs(name: &str) -> CssomSheetInputs {
@@ -16,8 +26,8 @@ fn inputs(name: &str) -> CssomSheetInputs {
 fn parsed(text: &str) -> CssParseReport<CssSheet> {
     let mut units = Vec::with_capacity(4096);
     units.extend(text.encode_utf16());
-    CssParserContext::default()
-        .parse_sheet_utf16_with_limits(Arc::new(units), CssUtf16InputLimits::default(), || {
+    CssParser::new(CssParserContext::default(), Default::default())
+        .parse_sheet_utf16(Arc::new(units), CssUtf16InputLimits::default(), || {
             Ok::<_, ()>(())
         })
         .unwrap()
@@ -66,9 +76,10 @@ fn independently_constructed_font_strings_keep_their_actual_semantic_leaf_source
         let value = rule.descriptors().effective(kind).unwrap().value().clone();
         // Fresh descriptor/rule/sheet owners have no enclosing source, so only
         // the actual semantic leaf can retain and charge the original backing.
-        let rule = AuthoredFontFaceRule::new(surgeist_css::CssFontFaceDescriptors::new(vec![
-            CssFontFaceDescriptor::new(value),
-        ]));
+        let rule =
+            AuthoredFontFaceRule::new(surgeist_css::rule::font_face::CssFontFaceDescriptors::new(
+                vec![CssFontFaceDescriptor::new(value)],
+            ));
         let graph = CssSheet::try_from_rules(vec![AuthoredRule::FontFace(rule)]).unwrap();
         assert!(graph.parse_source().is_none());
         let mut short = owner(bytes - 1);
@@ -210,58 +221,71 @@ fn hidden_lexical_roots_and_terminators_cannot_bypass_atomic_typed_admission() {
             .map(|s| CssComponentValue::try_token(s).unwrap())
             .collect()
     }
-    let parsed = parse_component_values("/* terminator-only source */;").unwrap();
+    let parsed =
+        CssComponentValues::parse(&CssParser::default(), "/* terminator-only source */;").unwrap();
     let mut components = tokens("x : y");
     components.push(parsed.items().last().unwrap().clone());
-    let body =
-        CssSupportsTestBody::try_from_components(CssComponentValues::try_new(components).unwrap())
-            .unwrap();
-    let named = surgeist_css::CssSupportsConditionRule::try_new(
+    let body = CssSupportsTestBody::try_from_components(
+        CssComponentValues::try_new(components, Default::default()).unwrap(),
+        Default::default(),
+    )
+    .unwrap();
+    let named = surgeist_css::rule::CssSupportsConditionRule::try_new(
         CssSupportsConditionName::try_new("--test").unwrap(),
         body,
+        Default::default(),
     )
     .unwrap();
 
-    let parsed = parse_component_values("/* hidden supports sibling */(x:y)").unwrap();
+    let parsed =
+        CssComponentValues::parse(&CssParser::default(), "/* hidden supports sibling */(x:y)")
+            .unwrap();
     let first = CssComponentValue::try_block(
         CssBlockKind::Parenthesis,
-        CssComponentValues::try_new(tokens("x : y")).unwrap(),
+        CssComponentValues::try_new(tokens("x : y"), Default::default()).unwrap(),
     )
     .unwrap();
     let mut components = vec![first];
     components.extend(tokens("and"));
     components.push(parsed.items().last().unwrap().clone());
-    let parent = CssSupportsCondition::try_from_components(
-        CssComponentValues::try_new(components).unwrap(),
+    let parent = CssCondition::<CssSupportsLeaf>::try_from_components(
+        CssComponentValues::try_new(components, Default::default()).unwrap(),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap();
-    let CssSupportsConditionKind::And(list) = parent.kind() else {
+    let CssConditionKind::And(list) = parent.kind() else {
         panic!("and");
     };
-    let supports = surgeist_css::CssSupportsRule::try_new(
+    let supports = surgeist_css::rule::CssSupportsRule::try_new(
         list.conditions()[0].clone(),
         vec![],
         &CssNamespaceContext::default(),
     )
     .unwrap();
 
-    let parsed = parse_component_values("/* hidden when sibling */media(height)").unwrap();
+    let parsed = CssComponentValues::parse(
+        &CssParser::default(),
+        "/* hidden when sibling */media(height)",
+    )
+    .unwrap();
     let first = CssComponentValue::try_function(
         "media",
-        CssComponentValues::try_new(tokens("width")).unwrap(),
+        CssComponentValues::try_new(tokens("width"), Default::default()).unwrap(),
     )
     .unwrap();
     let mut components = vec![first];
     components.extend(tokens("and"));
     components.push(parsed.items().last().unwrap().clone());
-    let parent =
-        CssWhenCondition::try_from_components(CssComponentValues::try_new(components).unwrap())
-            .unwrap();
-    let CssWhenConditionKind::And(list) = parent.kind() else {
+    let parent = CssCondition::<CssWhenLeaf>::try_from_components(
+        CssComponentValues::try_new(components, Default::default()).unwrap(),
+        Default::default(),
+    )
+    .unwrap();
+    let CssConditionKind::And(list) = parent.kind() else {
         panic!("and");
     };
-    let when = surgeist_css::CssWhenRule::try_new(
+    let when = surgeist_css::rule::CssWhenRule::try_new(
         list.conditions()[0].clone(),
         vec![],
         &CssNamespaceContext::default(),

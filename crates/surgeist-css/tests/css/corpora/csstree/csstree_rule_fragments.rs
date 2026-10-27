@@ -5,10 +5,12 @@
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-a-rule
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/
-use surgeist_css::{
-    CssDeclarationList, CssErrorCode, CssKnownPropertyValueRef, CssNamespaceContext,
-    CssRecoveryAction, CssRule, CssSelector, CssStyleSelector, parse_rule,
-};
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssDeclarationList;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{CssNamespaceContext, CssSelector, CssStyleSelector};
 
 type ExpectedDiagnostic = (&'static str, &'static str, usize, u32, u32);
 type ExpectedRule = (
@@ -334,7 +336,11 @@ fn rule_corpus_preserves_outer_admission_inner_recovery_and_typed_content() {
         let inputs: Vec<_> = cases.iter().filter(|c| c["id"] == id).collect();
         assert_eq!(inputs.len(), 1, "{id}");
         let input = inputs[0]["input"].as_str().unwrap();
-        let report = parse_rule(input, &CssNamespaceContext::default());
+        let report = CssRule::parse(
+            &CssParser::default(),
+            input,
+            &CssNamespaceContext::default(),
+        );
         assert_eq!(report.syntax().is_some(), retained, "{id}: {report:?}");
         assert_eq!(
             report.is_clean(),

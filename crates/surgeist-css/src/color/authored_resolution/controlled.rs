@@ -1,20 +1,66 @@
 //! Admitted typed feeding, path backing and the canonical reached resolver.
+//!
+//! This controlled authored protocol is crate-private (#1286, #1353 5.7): its
+//! only driver is the ordinary [`resolve_authored_color`](super::ordinary::resolve_authored_color)
+//! front. It classifies the shared resolver's pending work with the same
+//! typed classification as the public source parse.
 
-use super::{
-    lowering::{Action as FeedAction, Lowering},
-    path::{PathState, PreparedSite},
-    position::Position,
-    site::SiteRecord,
-    *,
+use super::lowering::Action as FeedAction;
+use super::lowering::Lowering;
+use super::path::{PathState, PreparedSite};
+use super::position::Position;
+use super::site::SiteRecord;
+use crate::color::CssColor;
+#[cfg(test)]
+use crate::color::authored_resolution::path::CssColorPathInspectionLayout;
+use crate::color::authored_resolution::path::{
+    CssColorPathBuffer, CssColorPathCapacityObservation, CssColorPathHandle,
+    CssColorPathReservationLayout, CssColorPathReservationStatus,
 };
+use crate::color::component::SyntaxFailure;
+use crate::color::controlled::bounded::Pending;
+use crate::color::controlled::protocol::{ColorProtocolError, Data};
+use crate::color::controlled::{
+    CssColorBank, CssColorFactRead, CssColorKernel, CssColorOperationOwner, CssColorSlot, bounded,
+};
+use crate::color::grammar::Site;
+use crate::color::operation as core;
+use crate::color::{CssColorComponentPath, CssColorPathStep};
 use crate::color::{
-    bounded, component::SyntaxFailure, grammar::Site, operation as core, protocol::Data, *,
+    CssColorError, CssColorFactDefect, CssColorFactIdentity, CssColorFacts,
+    CssColorStandardFailureKind,
 };
-use crate::{CssColor, CssValueOrigin};
+use crate::component::CssValueOrigin;
 use std::mem::size_of;
 
+/// A failure of the private authored protocol: a reached semantic failure, or
+/// a protocol inconsistency in the crate's own driver.
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) enum AuthoredError {
+    Color(CssColorError),
+    Protocol(ColorProtocolError),
+}
+impl From<ColorProtocolError> for AuthoredError {
+    fn from(error: ColorProtocolError) -> Self {
+        Self::Protocol(error)
+    }
+}
+impl From<CssColorError> for AuthoredError {
+    fn from(error: CssColorError) -> Self {
+        Self::Color(error)
+    }
+}
+impl From<core::Error> for AuthoredError {
+    fn from(error: core::Error) -> Self {
+        match bounded::classify(error) {
+            Ok(error) => Self::Color(error),
+            Err(defect) => Self::Protocol(defect),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CssAuthoredColorObservation {
+pub(crate) enum CssAuthoredColorObservation {
     ColorHeader,
     ColorPayload,
     Child(CssColorPathStep),
@@ -33,7 +79,7 @@ pub enum CssAuthoredColorObservation {
     NumericByte { offset: usize },
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CssAuthoredColorActionDescription<'css> {
+pub(crate) enum CssAuthoredColorActionDescription<'css> {
     ReadAuthored {
         path: CssColorPathHandle<'css>,
         observation: CssAuthoredColorObservation,
@@ -67,7 +113,7 @@ pub enum CssAuthoredColorActionDescription<'css> {
 }
 /// Actual payload extents, in addition to the admitted continuation and guard.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CssAuthoredColorActionLayout {
+pub(crate) struct CssAuthoredColorActionLayout {
     pub authored_read_bytes: usize,
     pub slot_read_bytes: usize,
     pub slot_write_bytes: usize,
@@ -77,17 +123,10 @@ pub struct CssAuthoredColorActionLayout {
     pub result_bytes: usize,
     pub kernel: CssColorKernel,
 }
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CssAuthoredColorInitializationLayout {
-    pub owner_bytes: usize,
-    pub register_bytes: usize,
-    pub root_reference_bytes: usize,
-    pub fact_identity_bytes: usize,
-    pub path_header_bytes: usize,
-}
 /// Actual retained backing and fixed cleanup work; inspection allocates nothing.
+#[cfg(test)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CssAuthoredColorCleanupLayout {
+pub(crate) struct CssAuthoredColorCleanupLayout {
     pub register_bytes: usize,
     pub path_header_bytes: usize,
     pub path_len: usize,
@@ -97,35 +136,35 @@ pub struct CssAuthoredColorCleanupLayout {
 /// Standard invalidity owns its actual path allocation exactly once.
 #[derive(Debug, Eq, PartialEq)]
 pub struct CssAuthoredColorStandardFailure {
+    /// The canonical reason the authored color is standard-invalid.
     pub kind: CssColorStandardFailureKind,
+    /// The path from the authored root color to the component that failed.
     pub path: CssColorComponentPath,
+    /// The origin of the failing component, when it has one.
     pub origin: Option<CssValueOrigin>,
 }
+/// The result of resolving an authored color: a used color or a standard failure.
 #[derive(Debug, PartialEq)]
 pub enum CssAuthoredColorOutcome {
+    /// The authored color resolved to this used color.
     Used(surgeist_color::Color),
+    /// The authored color is standard-invalid; the failure owns its component path.
     StandardFailure(CssAuthoredColorStandardFailure),
 }
-/// A completed controlled result retains the actual CSS anchor and phase.
-pub struct CssAuthoredColorCheckpoint<'css, 'authored, 'facts> {
-    pub(super) owner: &'css CssColorOperationOwner,
-    pub(super) phase: usize,
-    pub(super) root: &'authored CssColor,
-    pub(super) facts: &'facts CssColorFacts<'facts>,
-    pub(super) outcome: CssAuthoredColorOutcome,
+/// A completed controlled result; it borrows neither the anchor nor the path.
+pub(crate) struct CssAuthoredColorCheckpoint<'authored, 'facts> {
+    root: &'authored CssColor,
+    facts: &'facts CssColorFacts<'facts>,
+    outcome: CssAuthoredColorOutcome,
 }
-impl<'authored, 'facts> CssAuthoredColorCheckpoint<'_, 'authored, 'facts> {
-    pub const fn authored(&self) -> &'authored CssColor {
+impl<'authored, 'facts> CssAuthoredColorCheckpoint<'authored, 'facts> {
+    #[cfg(test)]
+    pub(crate) const fn authored(&self) -> &'authored CssColor {
         self.root
     }
-    pub const fn facts(&self) -> &'facts CssColorFacts<'facts> {
-        self.facts
-    }
-    pub const fn outcome(&self) -> &CssAuthoredColorOutcome {
+    #[cfg(test)]
+    pub(crate) const fn outcome(&self) -> &CssAuthoredColorOutcome {
         &self.outcome
-    }
-    pub fn is_current(&self) -> bool {
-        self.owner.current_phase() == self.phase
     }
     pub(super) fn into_parts(
         self,
@@ -135,23 +174,6 @@ impl<'authored, 'facts> CssAuthoredColorCheckpoint<'_, 'authored, 'facts> {
         CssAuthoredColorOutcome,
     ) {
         (self.root, self.facts, self.outcome)
-    }
-}
-/// Cleanup observations retain neither the exclusive path borrow nor CSS anchor.
-pub struct CssAuthoredColorRecovery<'authored, 'facts> {
-    root: &'authored CssColor,
-    facts: &'facts CssColorFacts<'facts>,
-    observation: Option<CssColorPathCapacityObservation>,
-}
-impl<'authored, 'facts> CssAuthoredColorRecovery<'authored, 'facts> {
-    pub const fn authored(&self) -> &'authored CssColor {
-        self.root
-    }
-    pub const fn facts(&self) -> &'facts CssColorFacts<'facts> {
-        self.facts
-    }
-    pub const fn capacity_observation(&self) -> Option<CssColorPathCapacityObservation> {
-        self.observation
     }
 }
 #[expect(
@@ -176,7 +198,7 @@ enum Gate {
 /// One controller lends the actual three CSS banks and a separate path buffer.
 /// AST borrows in bank records are shortened to the CSS anchor's lifetime; the
 /// original root/fact references remain independently available after cleanup.
-pub struct CssAuthoredColorOperation<'path, 'css, 'authored: 'css, 'facts> {
+pub(crate) struct CssAuthoredColorOperation<'path, 'css, 'authored: 'css, 'facts> {
     root: &'authored CssColor,
     facts: &'facts CssColorFacts<'facts>,
     expected: CssColorFactIdentity,
@@ -197,19 +219,20 @@ pub struct CssAuthoredColorOperation<'path, 'css, 'authored: 'css, 'facts> {
 impl<'path, 'css, 'authored: 'css, 'facts>
     CssAuthoredColorOperation<'path, 'css, 'authored, 'facts>
 {
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
-    pub fn resolve_authored(
+    pub(crate) fn resolve_authored(
         owner: &'css mut CssColorOperationOwner,
         root: &'authored CssColor,
         facts: &'facts CssColorFacts<'facts>,
         expected: CssColorFactIdentity,
         path: &'path mut CssColorPathBuffer,
-    ) -> Result<Self, CssColorOperationError> {
+    ) -> Result<Self, AuthoredError> {
         if facts.identity() != expected {
-            return Err(CssColorOperationError::Facts(CssColorFactError::Foreign));
+            return Err(
+                CssColorError::from(crate::color::bounded::ColorErrorKind::Facts(
+                    CssColorFactDefect::Foreign,
+                ))
+                .into(),
+            );
         }
         let path = PathState::initialize(owner, path)?;
         let work = Work::Feed(Lowering::start(path.owner(), path.phase(), root));
@@ -234,24 +257,9 @@ impl<'path, 'css, 'authored: 'css, 'facts>
         result.plan()?;
         Ok(result)
     }
-    pub const fn register_bytes() -> usize {
-        size_of::<Self>()
-    }
-    pub const fn action_bytes() -> usize {
-        size_of::<CssAuthoredColorAction<'_, 'path, 'css, 'authored, 'facts>>()
-    }
-    pub const fn initialization_layout() -> CssAuthoredColorInitializationLayout {
-        CssAuthoredColorInitializationLayout {
-            owner_bytes: size_of::<CssColorOperationOwner>(),
-            register_bytes: Self::register_bytes(),
-            root_reference_bytes: size_of::<&CssColor>(),
-            fact_identity_bytes: size_of::<CssColorFactIdentity>(),
-            path_header_bytes: size_of::<CssColorPathBuffer>(),
-        }
-    }
-    /// Admit this fixed observation before retirement. A numerical failure has
-    /// already transferred its path to the recipient and reports zero here.
-    pub fn cleanup_layout(&self) -> CssAuthoredColorCleanupLayout {
+    /// Admit this fixed observation before retirement.
+    #[cfg(test)]
+    pub(crate) fn cleanup_layout(&self) -> CssAuthoredColorCleanupLayout {
         let (path_len, path_capacity_bytes, owned_origin_bytes) = match &self.outcome {
             Some(CssAuthoredColorOutcome::StandardFailure(failure)) => (
                 failure.path.steps().len(),
@@ -265,14 +273,14 @@ impl<'path, 'css, 'authored: 'css, 'facts>
             _ => self.path.retained_layout(),
         };
         CssAuthoredColorCleanupLayout {
-            register_bytes: Self::register_bytes(),
+            register_bytes: size_of::<Self>(),
             path_header_bytes: size_of::<CssColorPathBuffer>(),
             path_len,
             path_capacity_bytes,
             owned_origin_bytes,
         }
     }
-    pub fn bank_length(&self, bank: CssColorBank) -> usize {
+    pub(crate) fn bank_length(&self, bank: CssColorBank) -> usize {
         match &self.work {
             Work::Feed(cursor) => match bank {
                 CssColorBank::Algorithm => cursor.algorithm_end(),
@@ -311,23 +319,16 @@ impl<'path, 'css, 'authored: 'css, 'facts>
                     A::Compute(cursor.kernel())
                 }
             },
-            Work::Resolve(cursor) => match bounded::description(cursor) {
-                CssColorActionDescription::ReadSlot { bank, index } => A::ReadSlot { bank, index },
-                CssColorActionDescription::AppendSlot { bank, index } => {
-                    A::AppendSlot { bank, index }
+            Work::Resolve(cursor) => match bounded::pending(cursor) {
+                Pending::ReadSlot { bank, index } => A::ReadSlot { bank, index },
+                Pending::AppendSlot { bank, index } => A::AppendSlot { bank, index },
+                Pending::UpdateSlot { bank, index } => A::UpdateSlot { bank, index },
+                Pending::ReadFact(fact) => A::ReadFact(fact),
+                Pending::Compute(kernel) => A::Compute(kernel),
+                Pending::Complete => A::Compute(CssColorKernel::Transition),
+                Pending::ReadInput { .. } | Pending::Stopped => {
+                    unreachable!("authored canonical resolution reads no source input")
                 }
-                CssColorActionDescription::UpdateSlot { bank, index } => {
-                    A::UpdateSlot { bank, index }
-                }
-                CssColorActionDescription::ReadFact(fact) => A::ReadFact(fact),
-                CssColorActionDescription::Compute(kernel) => A::Compute(kernel),
-                CssColorActionDescription::UsedReady
-                | CssColorActionDescription::StandardFailed => {
-                    A::Compute(CssColorKernel::Transition)
-                }
-                _ => unreachable!(
-                    "authored canonical resolution cannot lex or serialize source input"
-                ),
             },
             Work::Ready => A::Ready,
         }
@@ -341,7 +342,7 @@ impl<'path, 'css, 'authored: 'css, 'facts>
             observation,
         }
     }
-    pub fn action(&self) -> CssAuthoredColorActionDescription<'css> {
+    pub(crate) fn action(&self) -> CssAuthoredColorActionDescription<'css> {
         use CssAuthoredColorActionDescription as A;
         if self.stopped || self.abandoned {
             return A::Stopped;
@@ -365,7 +366,7 @@ impl<'path, 'css, 'authored: 'css, 'facts>
                 | CssAuthoredColorActionDescription::ReadFact(_)
         )
     }
-    fn plan(&mut self) -> Result<(), CssColorProtocolError> {
+    fn plan(&mut self) -> Result<(), ColorProtocolError> {
         if self.stopped || self.abandoned {
             return Ok(());
         }
@@ -399,7 +400,7 @@ impl<'path, 'css, 'authored: 'css, 'facts>
                         return Ok(());
                     }
                 }
-                Ok(Site::Source(_)) => return Err(CssColorProtocolError::WrongSlot),
+                Ok(Site::Source(_)) => return Err(ColorProtocolError::WrongSlot),
                 Err(_) => None,
             },
             Work::Ready => None,
@@ -421,7 +422,7 @@ impl<'path, 'css, 'authored: 'css, 'facts>
         self.gate = Gate::Work;
         Ok(())
     }
-    fn align(&mut self, pos: Position) -> Result<(), CssColorProtocolError> {
+    fn align(&mut self, pos: Position) -> Result<(), ColorProtocolError> {
         let len = self.path.handle().length();
         if self.position.is_some_and(|old| old.site == pos.site) {
             if len > pos.depth {
@@ -429,19 +430,19 @@ impl<'path, 'css, 'authored: 'css, 'facts>
                 return Ok(());
             }
             if len != pos.depth {
-                return Err(CssColorProtocolError::WrongSlot);
+                return Err(ColorProtocolError::WrongSlot);
             }
         } else if let Some(edge) = pos.edge {
             let parent = pos
                 .depth
                 .checked_sub(1)
-                .ok_or(CssColorProtocolError::WrongSlot)?;
+                .ok_or(ColorProtocolError::WrongSlot)?;
             if len > parent {
                 self.gate = Gate::Truncate(parent);
                 return Ok(());
             }
             if len < parent {
-                return Err(CssColorProtocolError::WrongSlot);
+                return Err(ColorProtocolError::WrongSlot);
             }
             self.gate = if self.reserved {
                 Gate::Append(edge)
@@ -455,18 +456,14 @@ impl<'path, 'css, 'authored: 'css, 'facts>
                 return Ok(());
             }
             if len != pos.depth {
-                return Err(CssColorProtocolError::WrongSlot);
+                return Err(ColorProtocolError::WrongSlot);
             }
         }
         self.position = Some(pos);
         self.target = None;
         self.plan()
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
-    fn after(&mut self) -> Result<(), CssColorOperationError> {
+    fn after(&mut self) -> Result<(), AuthoredError> {
         if !matches!(self.work, Work::Ready) {
             self.banks = [
                 self.bank_length(CssColorBank::Algorithm),
@@ -479,28 +476,13 @@ impl<'path, 'css, 'authored: 'css, 'facts>
         }
         self.plan().map_err(Into::into)
     }
-    fn fail(&mut self, error: core::Error) -> CssColorOperationError {
+    fn fail(&mut self, error: core::Error) -> AuthoredError {
         self.stopped = true;
-        match error {
-            core::Error::Numerical {
-                error,
-                site: Site::Authored { record },
-            } => {
-                assert_eq!(
-                    self.path.prepared_site(),
-                    Some(record),
-                    "numerical action owns its actual prepared reached site"
-                );
-                let PreparedSite { path, origin, .. } = self.path.take_site();
-                CssColorOperationError::Numerical {
-                    error,
-                    site: CssColorResolutionSite::Authored { path, origin },
-                }
-            }
-            error => error.into(),
-        }
+        error.into()
     }
-    pub fn next_action(&mut self) -> CssAuthoredColorAction<'_, 'path, 'css, 'authored, 'facts> {
+    pub(crate) fn next_action(
+        &mut self,
+    ) -> CssAuthoredColorAction<'_, 'path, 'css, 'authored, 'facts> {
         let description = self.action();
         CssAuthoredColorAction {
             operation: self,
@@ -510,15 +492,17 @@ impl<'path, 'css, 'authored: 'css, 'facts>
             attempted: false,
         }
     }
-    pub fn abandon(&mut self) {
+    pub(crate) fn abandon(&mut self) {
         self.abandoned = true;
     }
-    pub fn recover(
+    /// Retires an abandoned operation and returns its buffer's outstanding
+    /// reservation observation, if any; it borrows neither anchor nor path.
+    pub(crate) fn recover(
         slot: &mut Option<Self>,
-    ) -> Result<CssAuthoredColorRecovery<'authored, 'facts>, CssColorProtocolError> {
-        let op = slot.as_ref().ok_or(CssColorProtocolError::EmptySlot)?;
+    ) -> Result<Option<CssColorPathCapacityObservation>, ColorProtocolError> {
+        let op = slot.as_ref().ok_or(ColorProtocolError::EmptySlot)?;
         if !op.abandoned {
-            return Err(CssColorProtocolError::Terminal);
+            return Err(ColorProtocolError::Terminal);
         }
         let mut op = slot
             .take()
@@ -532,26 +516,18 @@ impl<'path, 'css, 'authored: 'css, 'facts>
                     .site,
             );
         }
-        Ok(CssAuthoredColorRecovery {
-            root: op.root,
-            facts: op.facts,
-            observation: op.path.recover(),
-        })
+        Ok(op.path.recover())
     }
-    pub fn take(
+    pub(crate) fn take(
         slot: &mut Option<Self>,
-    ) -> Result<CssAuthoredColorCheckpoint<'css, 'authored, 'facts>, CssColorProtocolError> {
-        let op = slot.as_ref().ok_or(CssColorProtocolError::EmptySlot)?;
+    ) -> Result<CssAuthoredColorCheckpoint<'authored, 'facts>, ColorProtocolError> {
+        let op = slot.as_ref().ok_or(ColorProtocolError::EmptySlot)?;
         if op.stopped || op.abandoned || !matches!(op.work, Work::Ready) {
-            return Err(CssColorProtocolError::Terminal);
+            return Err(ColorProtocolError::Terminal);
         }
         let op = slot.take().expect("preflight proved a completed operation");
-        let owner = op.path.owner();
-        let phase = op.path.phase();
         op.path.recover();
         Ok(CssAuthoredColorCheckpoint {
-            owner,
-            phase,
             root: op.root,
             facts: op.facts,
             outcome: op.outcome.expect("ready owns its outcome"),
@@ -559,7 +535,7 @@ impl<'path, 'css, 'authored: 'css, 'facts>
     }
 }
 /// A pending action has one completion. Dropping it abandons without useful work.
-pub struct CssAuthoredColorAction<'step, 'path, 'css, 'authored: 'css, 'facts> {
+pub(crate) struct CssAuthoredColorAction<'step, 'path, 'css, 'authored: 'css, 'facts> {
     operation: &'step mut CssAuthoredColorOperation<'path, 'css, 'authored, 'facts>,
     description: CssAuthoredColorActionDescription<'css>,
     issued: bool,
@@ -569,49 +545,40 @@ pub struct CssAuthoredColorAction<'step, 'path, 'css, 'authored: 'css, 'facts> {
 impl<'path, 'css, 'authored: 'css, 'facts>
     CssAuthoredColorAction<'_, 'path, 'css, 'authored, 'facts>
 {
-    pub const fn description(&self) -> CssAuthoredColorActionDescription<'css> {
+    pub(crate) const fn description(&self) -> CssAuthoredColorActionDescription<'css> {
         self.description
     }
     /// Fixed snapshot only; the separate inspection layout admits reading steps.
-    pub fn path_handle(&self) -> CssColorPathHandle<'css> {
+    #[cfg(test)]
+    pub(crate) fn path_handle(&self) -> CssColorPathHandle<'css> {
         self.operation.path.handle()
     }
-    /// A view cannot survive consumption of its guard.
-    ///
-    /// ```compile_fail
-    /// use surgeist_css::CssAuthoredColorOperation;
-    /// fn retain_view(op: &mut CssAuthoredColorOperation<'_, '_, '_, '_>) {
-    ///     let action = op.next_action();
-    ///     let handle = action.path_handle();
-    ///     let view = action.path_view(handle).unwrap();
-    ///     action.read_authored().unwrap();
-    ///     assert!(view.is_empty());
-    /// }
-    /// ```
-    pub fn path_inspection_layout(
+    #[cfg(test)]
+    pub(crate) fn path_inspection_layout(
         &self,
         handle: CssColorPathHandle<'css>,
-    ) -> Result<CssColorPathInspectionLayout, CssColorProtocolError> {
+    ) -> Result<CssColorPathInspectionLayout, ColorProtocolError> {
         self.operation.path.inspection_layout(handle)
     }
-    pub fn path_view(
+    #[cfg(test)]
+    pub(crate) fn path_view(
         &self,
         handle: CssColorPathHandle<'css>,
-    ) -> Result<&[CssColorPathStep], CssColorProtocolError> {
+    ) -> Result<&[CssColorPathStep], ColorProtocolError> {
         self.operation.path.view(handle)
     }
-    pub fn reservation_layout(
+    pub(crate) fn reservation_layout(
         &self,
-    ) -> Result<CssColorPathReservationLayout, CssColorProtocolError> {
+    ) -> Result<CssColorPathReservationLayout, ColorProtocolError> {
         if !matches!(
             self.description,
             CssAuthoredColorActionDescription::ReservePath { .. }
         ) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         self.operation.path.reservation_layout()
     }
-    pub fn layout(&self) -> Result<CssAuthoredColorActionLayout, CssColorProtocolError> {
+    pub(crate) fn layout(&self) -> Result<CssAuthoredColorActionLayout, ColorProtocolError> {
         use CssAuthoredColorActionDescription as A;
         let mut result = CssAuthoredColorActionLayout {
             authored_read_bytes: 0,
@@ -620,7 +587,7 @@ impl<'path, 'css, 'authored: 'css, 'facts>
             fact_records: [0; 3],
             path_read_bytes: 0,
             path_write_bytes: 0,
-            result_bytes: size_of::<Result<(), CssColorOperationError>>(),
+            result_bytes: size_of::<Result<(), AuthoredError>>(),
             kernel: CssColorKernel::Transition,
         };
         match self.description {
@@ -668,14 +635,7 @@ impl<'path, 'css, 'authored: 'css, 'facts>
         }
         Ok(result)
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
-    fn complete(
-        &mut self,
-        result: Result<(), CssColorOperationError>,
-    ) -> Result<(), CssColorOperationError> {
+    fn complete(&mut self, result: Result<(), AuthoredError>) -> Result<(), AuthoredError> {
         self.completed = true;
         if result.is_err() {
             self.operation.stopped = true;
@@ -687,33 +647,25 @@ impl<'path, 'css, 'authored: 'css, 'facts>
         }
         result
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
-    pub fn read_authored(mut self) -> Result<(), CssColorOperationError> {
+    pub(crate) fn read_authored(mut self) -> Result<(), AuthoredError> {
         if !matches!(
             self.description,
             CssAuthoredColorActionDescription::ReadAuthored { .. }
         ) {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         }
         let result = match &mut self.operation.work {
             Work::Feed(cursor) => cursor.read_authored().map_err(Into::into),
-            _ => Err(CssColorProtocolError::WrongAction.into()),
+            _ => Err(ColorProtocolError::WrongAction.into()),
         };
         self.complete(result)
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
-    pub fn read_slot(
+    pub(crate) fn read_slot(
         mut self,
         bank: CssColorBank,
         index: usize,
         slot: &CssColorSlot<'css>,
-    ) -> Result<(), CssColorOperationError> {
+    ) -> Result<(), AuthoredError> {
         if self.description == (CssAuthoredColorActionDescription::ReadSite { index })
             && bank == CssColorBank::Algorithm
         {
@@ -725,7 +677,7 @@ impl<'path, 'css, 'authored: 'css, 'facts>
                     bank,
                 )?;
                 let Data::AuthoredSite(site) = slot.data else {
-                    return Err(CssColorProtocolError::WrongSlot);
+                    return Err(ColorProtocolError::WrongSlot);
                 };
                 let SiteRecord {
                     edge,
@@ -750,83 +702,71 @@ impl<'path, 'css, 'authored: 'css, 'facts>
             return result.map_err(Into::into);
         }
         if self.description != (CssAuthoredColorActionDescription::ReadSlot { bank, index }) {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         }
         let result = match &mut self.operation.work {
             Work::Feed(cursor) => cursor.read(bank, index, slot).map_err(Into::into),
             Work::Resolve(cursor) => cursor.read_slot(bank, index, slot),
-            Work::Ready => Err(CssColorProtocolError::WrongAction.into()),
+            Work::Ready => Err(ColorProtocolError::WrongAction.into()),
         };
         let result = result.map_err(|e| self.operation.fail(e));
         self.complete(result)
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
-    pub fn record(&mut self) -> Result<CssColorSlot<'css>, CssColorOperationError> {
+    pub(crate) fn record(&mut self) -> Result<CssColorSlot<'css>, AuthoredError> {
         if self.issued {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         }
         let (bank, index) = match self.description {
             CssAuthoredColorActionDescription::AppendSlot { bank, index }
             | CssAuthoredColorActionDescription::UpdateSlot { bank, index } => (bank, index),
-            _ => return Err(CssColorProtocolError::WrongAction.into()),
+            _ => return Err(ColorProtocolError::WrongAction.into()),
         };
         let result = match &mut self.operation.work {
             Work::Feed(cursor) => cursor.record(bank, index).map_err(Into::into),
             Work::Resolve(cursor) => cursor.pending_record(bank, index),
-            Work::Ready => Err(CssColorProtocolError::WrongAction.into()),
+            Work::Ready => Err(ColorProtocolError::WrongAction.into()),
         };
         let result = result.map_err(|e| self.operation.fail(e));
         self.issued = result.is_ok();
         result
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
-    pub fn written(
+    pub(crate) fn written(
         mut self,
         bank: CssColorBank,
         index: usize,
         slot: &CssColorSlot<'css>,
-    ) -> Result<(), CssColorOperationError> {
+    ) -> Result<(), AuthoredError> {
         if !self.issued
             || !matches!(self.description,CssAuthoredColorActionDescription::AppendSlot {bank:b,index:i}|CssAuthoredColorActionDescription::UpdateSlot {bank:b,index:i} if bank==b&&index==i)
         {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         }
         let result = match &mut self.operation.work {
             Work::Feed(cursor) => cursor.written(bank, index, slot).map_err(Into::into),
             Work::Resolve(cursor) => cursor.written(bank, index, slot),
-            Work::Ready => Err(CssColorProtocolError::WrongAction.into()),
+            Work::Ready => Err(ColorProtocolError::WrongAction.into()),
         };
         let result = result.map_err(|e| self.operation.fail(e));
         self.complete(result)
     }
-    pub fn reserve_path(
+    pub(crate) fn reserve_path(
         &mut self,
-    ) -> Result<CssColorPathCapacityObservation, CssColorProtocolError> {
+    ) -> Result<CssColorPathCapacityObservation, ColorProtocolError> {
         if self.attempted
             || !matches!(
                 self.description,
                 CssAuthoredColorActionDescription::ReservePath { .. }
             )
         {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         let result = self.operation.path.reserve();
         self.attempted = result.is_ok();
         result
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
-    pub fn capacity_observed(mut self) -> Result<(), CssColorOperationError> {
+    pub(crate) fn capacity_observed(mut self) -> Result<(), AuthoredError> {
         if !self.attempted {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         }
         let status = self.operation.path.capacity_observed()?;
         self.completed = true;
@@ -838,17 +778,13 @@ impl<'path, 'css, 'authored: 'css, 'facts>
         self.operation.align(
             self.operation
                 .target
-                .ok_or(CssColorProtocolError::WrongAction)?,
+                .ok_or(ColorProtocolError::WrongAction)?,
         )?;
         Ok(())
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
-    pub fn append_path(mut self) -> Result<(), CssColorOperationError> {
+    pub(crate) fn append_path(mut self) -> Result<(), AuthoredError> {
         let CssAuthoredColorActionDescription::AppendPath(step) = self.description else {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         };
         self.operation.path.append(step)?;
         self.operation.reserved = false;
@@ -857,48 +793,36 @@ impl<'path, 'css, 'authored: 'css, 'facts>
         self.operation.plan()?;
         Ok(())
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
-    pub fn truncate_path(mut self) -> Result<(), CssColorOperationError> {
+    pub(crate) fn truncate_path(mut self) -> Result<(), AuthoredError> {
         let CssAuthoredColorActionDescription::TruncatePath(length) = self.description else {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         };
         self.operation.path.truncate(length)?;
         self.completed = true;
         self.operation.align(
             self.operation
                 .target
-                .ok_or(CssColorProtocolError::WrongAction)?,
+                .ok_or(ColorProtocolError::WrongAction)?,
         )?;
         Ok(())
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
-    pub fn prepare_site(mut self) -> Result<(), CssColorOperationError> {
+    pub(crate) fn prepare_site(mut self) -> Result<(), AuthoredError> {
         if self.description != CssAuthoredColorActionDescription::PrepareSite {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         }
         let site = self
             .operation
             .position
-            .ok_or(CssColorProtocolError::WrongAction)?
+            .ok_or(ColorProtocolError::WrongAction)?
             .site;
         self.operation.path.prepare(site, self.operation.origin)?;
         self.operation.gate = Gate::Work;
         self.completed = true;
         Ok(())
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
-    pub fn restore_site(mut self) -> Result<(), CssColorOperationError> {
+    pub(crate) fn restore_site(mut self) -> Result<(), AuthoredError> {
         if self.description != CssAuthoredColorActionDescription::RestoreSite {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         }
         self.operation.path.restore()?;
         self.operation.restore = false;
@@ -906,14 +830,10 @@ impl<'path, 'css, 'authored: 'css, 'facts>
         self.operation.plan()?;
         Ok(())
     }
-    #[expect(
-        clippy::result_large_err,
-        reason = "The common CSS error propagates an admitted owned path and actual origin inline without allocation on failure"
-    )]
-    pub fn compute(mut self) -> Result<(), CssColorOperationError> {
+    pub(crate) fn compute(mut self) -> Result<(), AuthoredError> {
         use CssAuthoredColorActionDescription as A;
         if !matches!(self.description, A::Compute(_) | A::ReadFact(_)) {
-            return Err(CssColorProtocolError::WrongAction.into());
+            return Err(ColorProtocolError::WrongAction.into());
         }
         let result = match &mut self.operation.work {
             Work::Feed(cursor) => match cursor.action() {
@@ -943,7 +863,7 @@ impl<'path, 'css, 'authored: 'css, 'facts>
                 _ => cursor.compute().map_err(Into::into),
             },
             Work::Resolve(cursor) => cursor.compute(),
-            Work::Ready => Err(CssColorProtocolError::WrongAction.into()),
+            Work::Ready => Err(ColorProtocolError::WrongAction.into()),
         };
         let result = result.map_err(|error| self.operation.fail(error));
         if result.is_ok()

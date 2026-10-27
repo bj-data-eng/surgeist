@@ -14,15 +14,18 @@
 //! govern the broader informative quoting note in section 2.1.1:
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-prop
 
-use surgeist_css::{
-    CssExplicitFont, CssFontFaceFamily, CssFontFamilyList, CssFontFamilyName,
-    CssFontFamilyNameKind, CssFontLocalName, CssFontSize, CssFontValue, CssGenericFontFamily,
-    CssImportance, CssKnownPropertyValueRef, CssSystemFont, parse_style_attribute,
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::rule::font_face::{CssFontFaceFamily, CssFontLocalName};
+use surgeist_css::values::font::{
+    CssExplicitFont, CssFontFamilyList, CssFontFamilyName, CssFontFamilyNameKind, CssFontSize,
+    CssFontValue, CssGenericFontFamily, CssSystemFont,
 };
 
 fn parsed_name(authored: &str) -> CssFontFamilyName {
     let source = format!("font-family:{authored}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::FontFamily(value) = report.syntax()[0]
         .known()
@@ -32,7 +35,7 @@ fn parsed_name(authored: &str) -> CssFontFamilyName {
     else {
         panic!("expected font-family");
     };
-    let [name] = value.families().families() else {
+    let [name] = value.value().families() else {
         panic!("expected one family name: {source}");
     };
     name.clone()
@@ -279,7 +282,7 @@ fn system_spellings_in_literal_names_and_whole_shorthands() {
                 );
             }
             let source = format!("font:{spelling}");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.is_clean(), "{source}: {report:?}");
             let CssKnownPropertyValueRef::Font(value) = report.syntax()[0]
                 .known()
@@ -289,7 +292,7 @@ fn system_spellings_in_literal_names_and_whole_shorthands() {
             else {
                 panic!("expected whole system-font shorthand");
             };
-            assert_eq!(value.font(), &CssFontValue::System(system));
+            assert_eq!(value.value(), &CssFontValue::System(system));
         }
     }
     for (authored, tokens) in [
@@ -329,7 +332,7 @@ fn current_property_and_font_values() {
     let authored_family = r#""", A B, GeNeRiC(KAI), SYSTEM-UI"#;
     let authored_font = format!("medium {authored_family}");
     let source = format!("font-family:{authored_family}!important;font:{authored_font}!important");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2);
     for declaration in report.syntax().iter() {
@@ -343,7 +346,7 @@ fn current_property_and_font_values() {
     else {
         panic!("expected current font-family");
     };
-    assert_eq!(family_value.families(), &list);
+    assert_eq!(family_value.value(), &list);
     assert_eq!(family_value.as_css(), authored_family);
     let CssKnownPropertyValueRef::Font(font_value) = report.syntax()[1]
         .known()
@@ -353,7 +356,7 @@ fn current_property_and_font_values() {
     else {
         panic!("expected current font shorthand");
     };
-    assert_eq!(font_value.font(), &CssFontValue::Explicit(font));
+    assert_eq!(font_value.value(), &CssFontValue::Explicit(font));
     assert_eq!(font_value.as_css(), authored_font);
     println!("current property and font values: ok");
 }

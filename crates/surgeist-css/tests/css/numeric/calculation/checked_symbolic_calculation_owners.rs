@@ -1,44 +1,78 @@
 //! Checked typed calculations retain symbolic values across authored consumers.
 //! Checked assembly rejection is covered by typed_sum_construction.
-use surgeist_css::CssCalculationSumOperator as Op;
-use surgeist_css::*;
-type Calculation = CssLengthPercentageCalculation;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::numeric::CssCalculationSumOperator as Op;
+use surgeist_css::numeric::{
+    CssCalculation, CssLength, CssLengthPercentage, CssNonNegative, CssNumeric,
+    CssNumericConstructionError,
+};
+use surgeist_css::values::background::{CssBackgroundSize, CssBackgroundSizeList};
+use surgeist_css::values::border::{CssBorder, CssLineWidth, CssOutline};
+use surgeist_css::values::common::{CssAutoOr, CssSidePair};
+use surgeist_css::values::effects::{CssDropShadow, CssFilterBlur, CssShadow};
+use surgeist_css::values::image::CssRadialEllipseSize;
+use surgeist_css::values::layout::{CssGridTrackBreadth, CssGridTrackSize};
+use surgeist_css::values::position::{
+    CssHorizontalPosition, CssPhysicalPosition, CssVerticalPosition,
+};
+use surgeist_css::values::shape::{
+    CssEllipseRadii, CssEllipseRadius, CssInsetShapeOffsets, CssPolygonPoint,
+};
+use surgeist_css::values::text::CssTextIndent;
+use surgeist_css::values::transform::CssTranslateValues;
+type Calculation = CssCalculation<CssLengthPercentage>;
 fn operand(source: &str) -> Calculation {
-    Calculation::try_from_components(parse_component_values(source).unwrap()).unwrap()
+    Calculation::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+        Default::default(),
+    )
+    .unwrap()
 }
-fn pure(value: Calculation) -> Result<CssSpecifiedLength, CssNumericConstructionError> {
-    CssSpecifiedLength::try_from_calculation(CssLengthCalculation::try_from_components(
+fn pure(value: Calculation) -> Result<CssNumeric<CssLength>, CssNumericConstructionError> {
+    CssNumeric::<CssLength>::try_from_calculation(CssCalculation::<CssLength>::try_from_components(
         value.components().clone(),
+        Default::default(),
     )?)
 }
 fn nonnegative_pure(
     value: Calculation,
-) -> Result<CssSpecifiedNonNegativeLength, CssNumericConstructionError> {
-    CssSpecifiedNonNegativeLength::try_from_calculation(CssLengthCalculation::try_from_components(
-        value.components().clone(),
-    )?)
+) -> Result<CssNumeric<CssLength, CssNonNegative>, CssNumericConstructionError> {
+    CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(
+        CssCalculation::<CssLength>::try_from_components(
+            value.components().clone(),
+            Default::default(),
+        )?,
+    )
 }
-fn lp(value: Calculation) -> Result<CssSpecifiedLengthPercentage, CssNumericConstructionError> {
-    CssSpecifiedLengthPercentage::try_from_calculation(value)
+fn lp(value: Calculation) -> Result<CssNumeric<CssLengthPercentage>, CssNumericConstructionError> {
+    CssNumeric::<CssLengthPercentage>::try_from_calculation(value)
 }
 fn nonnegative_lp(
     value: Calculation,
-) -> Result<CssSpecifiedNonNegativeLengthPercentage, CssNumericConstructionError> {
-    CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(value)
+) -> Result<CssNumeric<CssLengthPercentage, CssNonNegative>, CssNumericConstructionError> {
+    CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(value)
 }
-fn zero_length() -> CssSpecifiedLength {
-    CssSpecifiedLength::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap()
-}
-fn zero_nonnegative_length() -> CssSpecifiedNonNegativeLength {
-    CssSpecifiedNonNegativeLength::try_from_component(CssComponentValue::try_number("0").unwrap())
+fn zero_length() -> CssNumeric<CssLength> {
+    CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_number("0").unwrap())
         .unwrap()
 }
-fn zero_lp() -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_component(CssComponentValue::try_number("0").unwrap())
-        .unwrap()
+fn zero_nonnegative_length() -> CssNumeric<CssLength, CssNonNegative> {
+    CssNumeric::<CssLength, CssNonNegative>::try_from_component(
+        CssComponentValue::try_number("0").unwrap(),
+    )
+    .unwrap()
 }
-fn zero_nonnegative_lp() -> CssSpecifiedNonNegativeLengthPercentage {
-    CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+fn zero_lp() -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_component(
+        CssComponentValue::try_number("0").unwrap(),
+    )
+    .unwrap()
+}
+fn zero_nonnegative_lp() -> CssNumeric<CssLengthPercentage, CssNonNegative> {
+    CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
         CssComponentValue::try_number("0").unwrap(),
     )
     .unwrap()
@@ -67,11 +101,15 @@ fn admitted(value: Calculation) -> Vec<CssComponentValues> {
 }
 #[test]
 fn signed_first_operands_and_later_subtraction_remain_symbolic() {
-    let first = Calculation::try_sum(operand("-1px"), []).unwrap();
-    let sum = Calculation::try_sum(first, [(Op::Subtract, operand("2px"))]).unwrap();
+    let first = Calculation::try_sum(operand("-1px"), [], Default::default()).unwrap();
+    let sum =
+        Calculation::try_sum(first, [(Op::Subtract, operand("2px"))], Default::default()).unwrap();
     for components in admitted(sum) {
         assert_eq!(
-            components.serialize().unwrap().as_css(),
+            components
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             "calc(calc(-1px) - 2px)"
         );
     }
@@ -80,7 +118,7 @@ fn signed_first_operands_and_later_subtraction_remain_symbolic() {
 fn pure_readmission_preserves_typed_child_components_and_original_snapshots() {
     let child = operand("calc(10% / 10% * 1px)");
     let original = child.components().clone();
-    let sum = Calculation::try_sum(child, []).unwrap();
+    let sum = Calculation::try_sum(child, [], Default::default()).unwrap();
     for components in admitted(sum).into_iter().skip(1) {
         let CssComponentValueRef::Function(outer) = components.items()[0].view() else {
             panic!("outer calc")
@@ -113,7 +151,7 @@ fn checked_owners() -> Vec<CheckedOwner> {
         ("border", |v| {
             nonnegative_pure(v)
                 .ok()
-                .and_then(|v| CssBorder::try_new(Some(CssBorderWidth::Length(v)), None, None))
+                .and_then(|v| CssBorder::try_new(Some(CssLineWidth::Length(v)), None, None))
                 .is_some()
         }),
         ("shadow x", |v| {
@@ -177,12 +215,12 @@ fn checked_owners() -> Vec<CheckedOwner> {
         ("shape length percentage", |v| nonnegative_lp(v).is_ok()),
         ("corner horizontal", |v| {
             nonnegative_lp(v)
-                .map(|v| CssCornerRadiusValue::new(v, Some(zero_nonnegative_lp())))
+                .map(|v| CssSidePair::new(v, Some(zero_nonnegative_lp())))
                 .is_ok()
         }),
         ("corner vertical", |v| {
             nonnegative_lp(v)
-                .map(|v| CssCornerRadiusValue::new(zero_nonnegative_lp(), Some(v)))
+                .map(|v| CssSidePair::new(zero_nonnegative_lp(), Some(v)))
                 .is_ok()
         }),
         ("radial ellipse horizontal", |v| {
@@ -209,12 +247,12 @@ fn checked_owners() -> Vec<CheckedOwner> {
         }),
         ("border spacing horizontal", |v| {
             nonnegative_pure(v)
-                .map(|v| CssBorderSpacing::new(v, zero_nonnegative_length()))
+                .map(|v| CssSidePair::new(v, Some(zero_nonnegative_length())))
                 .is_ok()
         }),
         ("border spacing vertical", |v| {
             nonnegative_pure(v)
-                .map(|v| CssBorderSpacing::new(zero_nonnegative_length(), v))
+                .map(|v| CssSidePair::new(zero_nonnegative_length(), Some(v)))
                 .is_ok()
         }),
         ("ellipse horizontal", |v| {
@@ -258,7 +296,7 @@ fn checked_owners() -> Vec<CheckedOwner> {
         ("outline", |v| {
             nonnegative_pure(v)
                 .ok()
-                .and_then(|v| CssOutline::try_new(Some(CssOutlineWidth::Length(v)), None, None))
+                .and_then(|v| CssOutline::try_new(Some(CssLineWidth::Length(v)), None, None))
                 .is_some()
         }),
         ("background width", |v| {
@@ -266,7 +304,7 @@ fn checked_owners() -> Vec<CheckedOwner> {
                 .ok()
                 .and_then(|v| {
                     CssBackgroundSizeList::try_new(vec![CssBackgroundSize::Explicit {
-                        width: CssBackgroundSizeComponent::Length(v),
+                        width: CssAutoOr::Value(v),
                         height: None,
                     }])
                 })
@@ -277,8 +315,8 @@ fn checked_owners() -> Vec<CheckedOwner> {
                 .ok()
                 .and_then(|v| {
                     CssBackgroundSizeList::try_new(vec![CssBackgroundSize::Explicit {
-                        width: CssBackgroundSizeComponent::Auto,
-                        height: Some(CssBackgroundSizeComponent::Length(v)),
+                        width: CssAutoOr::Auto,
+                        height: Some(CssAutoOr::Value(v)),
                     }])
                 })
                 .is_some()
@@ -300,23 +338,35 @@ fn grid_track_accepts(calculation: Calculation, mode: u8) -> bool {
         2 => CssGridTrackSize::try_minmax(breadth, CssGridTrackBreadth::auto()).unwrap(),
         _ => CssGridTrackSize::try_minmax(CssGridTrackBreadth::auto(), breadth).unwrap(),
     };
-    size.serialize_specified().is_ok()
+    size.serialize_specified(Default::default()).is_ok()
 }
 #[test]
 fn checked_length_owners_admit_valid_typed_symbolic_subtraction() {
-    let sum = Calculation::try_sum(operand("2px"), [(Op::Subtract, operand("1px"))]).unwrap();
+    let sum = Calculation::try_sum(
+        operand("2px"),
+        [(Op::Subtract, operand("1px"))],
+        Default::default(),
+    )
+    .unwrap();
     // Both spacing properties now consume the checked length-percentage owner
     // directly; preserve the same symbolic subtraction admission at that boundary.
     for name in ["word-spacing", "letter-spacing"] {
-        use surgeist_css::*;
-        let declaration = parse_property_value_for_grammar(
-            CssPropertyGrammar::from_name(name).unwrap(),
+        use surgeist_css::declaration::{CssDeclaration, CssImportance};
+
+        use surgeist_css::CssParser;
+        use surgeist_css::property::{
+            CssKnownPropertyValueRef, CssPropertyGrammar, CssPropertyTarget,
+        };
+
+        let declaration = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(CssPropertyGrammar::from_name(name).unwrap()),
             sum.components().clone(),
             CssImportance::Normal,
         )
         .unwrap();
         let spacing = match declaration.known().unwrap().property_value().unwrap() {
-            CssKnownPropertyValueRef::WordSpacing(value) => value.spacing(),
+            CssKnownPropertyValueRef::WordSpacing(value) => value.value(),
             CssKnownPropertyValueRef::LetterSpacing(value) => value.value(),
             _ => panic!("spacing owner"),
         };
@@ -329,7 +379,10 @@ fn checked_length_owners_admit_valid_typed_symbolic_subtraction() {
                 .components(),
             sum.components()
         );
-        assert_eq!(spacing.serialize_specified().unwrap(), "calc(1px)");
+        assert_eq!(
+            spacing.serialize_specified(Default::default()).unwrap(),
+            "calc(1px)"
+        );
     }
     let rejected: Vec<_> = checked_owners()
         .into_iter()

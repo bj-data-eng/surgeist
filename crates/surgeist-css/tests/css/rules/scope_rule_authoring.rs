@@ -1,7 +1,15 @@
 //! `@scope` (Cascade 6) roots, limits and scoped rules through the public
 //! stylesheet parser and constructors.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
+    CssFontFaceSource,
+};
+use surgeist_css::rule::{CssRule, CssScopeRule};
+use surgeist_css::selector::{
+    CssPseudoClass, CssPseudoElement, CssSelector, CssSelectorCombinator, CssStyleSelector,
+};
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;
@@ -15,38 +23,39 @@ fn scope_rule(rule: &CssRule) -> &CssScopeRule {
 
 #[test]
 fn scope_rule_parser_accepts_roots_limits_and_scoped_style_rules() {
-    let sheet = parse_sheet(
-        r#"
+    let sheet = CssParser::default()
+        .parse_sheet(
+            r#"
             @scope (.card, [data-scope]) to (.stop, .boundary) {
                 .title, > .action { color: black; }
                 &:hover { color: red; }
                 :scope .note { color: blue; }
             }
         "#,
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
 
     let scope = scope_rule(&sheet.rules()[0]);
     assert_eq!(scope.root().unwrap().selectors().len(), 2);
     assert_eq!(scope.limit().unwrap().selectors().len(), 2);
 
     let [
-        CssScopedRule::Style(first),
-        CssScopedRule::Style(anchored),
-        CssScopedRule::Style(scope_pseudo),
+        CssRule::Style(first),
+        CssRule::Style(anchored),
+        CssRule::Style(scope_pseudo),
     ] = scope.rules().rules()
     else {
         panic!("expected three scoped style rules");
     };
     let selectors = first.selectors().selectors();
-    assert!(matches!(selectors[0], CssScopedStyleSelector::Selector(_)));
-    assert!(matches!(selectors[1], CssScopedStyleSelector::Relative(_)));
-    let CssScopedStyleSelector::Relative(relative) = &selectors[1] else {
+    assert!(matches!(selectors[0], CssStyleSelector::Selector(_)));
+    assert!(matches!(selectors[1], CssStyleSelector::Relative(_)));
+    let CssStyleSelector::Relative(relative) = &selectors[1] else {
         panic!("expected relative selector");
     };
     assert_eq!(relative.combinator(), CssSelectorCombinator::Child);
 
-    let [CssScopedStyleSelector::Selector(CssSelector::Compound(selector))] =
+    let [CssStyleSelector::Selector(CssSelector::Compound(selector))] =
         anchored.selectors().selectors()
     else {
         panic!("expected authored scope anchor selector");
@@ -54,7 +63,7 @@ fn scope_rule_parser_accepts_roots_limits_and_scoped_style_rules() {
     assert!(selector.has_scope_anchor());
     assert_eq!(selector.pseudo_classes(), &[CssPseudoClass::Hover]);
 
-    let [CssScopedStyleSelector::Selector(CssSelector::Complex(selector))] =
+    let [CssStyleSelector::Selector(CssSelector::Complex(selector))] =
         scope_pseudo.selectors().selectors()
     else {
         panic!("expected authored :scope complex selector");
@@ -64,13 +73,14 @@ fn scope_rule_parser_accepts_roots_limits_and_scoped_style_rules() {
 
 #[test]
 fn scope_rule_parser_accepts_pseudo_elements_in_scoped_style_rules() {
-    let sheet = parse_sheet("@scope (.card) { .label::before { color: red; } }")
+    let sheet = CssParser::default()
+        .parse_sheet("@scope (.card) { .label::before { color: red; } }")
         .expect("clean parse report");
     let scope = scope_rule(&sheet.rules()[0]);
-    let [CssScopedRule::Style(style)] = scope.rules().rules() else {
+    let [CssRule::Style(style)] = scope.rules().rules() else {
         panic!("expected scoped style rule");
     };
-    let [CssScopedStyleSelector::Selector(CssSelector::Compound(selector))] =
+    let [CssStyleSelector::Selector(CssSelector::Compound(selector))] =
         style.selectors().selectors()
     else {
         panic!("expected compound scoped style selector");
@@ -85,13 +95,14 @@ fn scope_rule_parser_accepts_pseudo_elements_in_scoped_style_rules() {
 
 #[test]
 fn scope_rule_parser_accepts_limit_only_and_empty_prelude_scope() {
-    let sheet = parse_sheet(
-        r#"
+    let sheet = CssParser::default()
+        .parse_sheet(
+            r#"
             @scope to (.stop) { .title { color: black; } }
             @scope { > .item { color: red; } }
         "#,
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
 
     let limit_only = scope_rule(&sheet.rules()[0]);
     assert!(limit_only.root().is_none());
@@ -100,19 +111,20 @@ fn scope_rule_parser_accepts_limit_only_and_empty_prelude_scope() {
     let anonymous = scope_rule(&sheet.rules()[1]);
     assert!(anonymous.root().is_none());
     assert!(anonymous.limit().is_none());
-    let [CssScopedRule::Style(rule)] = anonymous.rules().rules() else {
+    let [CssRule::Style(rule)] = anonymous.rules().rules() else {
         panic!("expected scoped style rule");
     };
     assert!(matches!(
         rule.selectors().selectors(),
-        [CssScopedStyleSelector::Relative(_)]
+        [CssStyleSelector::Relative(_)]
     ));
 }
 
 #[test]
 fn scope_rule_parser_keeps_nested_scoped_group_rules_scoped() {
-    let sheet = parse_sheet(
-        r#"
+    let sheet = CssParser::default()
+        .parse_sheet(
+            r#"
             @scope (.card) {
                 @media screen {
                     @container (inline-size > 30rem) {
@@ -126,39 +138,36 @@ fn scope_rule_parser_keeps_nested_scoped_group_rules_scoped() {
                 @layer reset;
             }
         "#,
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
 
     let scope = scope_rule(&sheet.rules()[0]);
-    let [
-        CssScopedRule::Media(media),
-        CssScopedRule::LayerStatement(_),
-    ] = scope.rules().rules()
-    else {
+    let [CssRule::Media(media), CssRule::LayerStatement(_)] = scope.rules().rules() else {
         panic!("expected scoped media and layer statement");
     };
-    let [CssScopedRule::Container(container)] = media.rules().rules() else {
+    let [CssRule::Container(container)] = media.rules() else {
         panic!("expected scoped container");
     };
-    let [CssScopedRule::LayerBlock(layer)] = container.rules().rules() else {
+    let [CssRule::LayerBlock(layer)] = container.rules() else {
         panic!("expected scoped layer block");
     };
-    let [CssScopedRule::Scope(nested_scope)] = layer.rules().rules() else {
+    let [CssRule::Scope(nested_scope)] = layer.rules() else {
         panic!("expected nested scope rule");
     };
-    let [CssScopedRule::Style(style)] = nested_scope.rules().rules() else {
+    let [CssRule::Style(style)] = nested_scope.rules().rules() else {
         panic!("expected scoped relative style rule");
     };
     assert!(matches!(
         style.selectors().selectors(),
-        [CssScopedStyleSelector::Relative(_)]
+        [CssStyleSelector::Relative(_)]
     ));
 }
 
 #[test]
 fn public_api_exposes_layer_scope_and_scoped_rule_structure() {
-    let sheet = parse_sheet(
-        r#"
+    let sheet = CssParser::default()
+        .parse_sheet(
+            r#"
             @layer reset, theme.components;
             @layer theme {
                 .button:hover::before { content: "x"; }
@@ -174,8 +183,8 @@ fn public_api_exposes_layer_scope_and_scoped_rule_structure() {
                 @layer scoped.order;
             }
         "#,
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
 
     let [
         CssRule::LayerStatement(statement),
@@ -225,20 +234,17 @@ fn public_api_exposes_layer_scope_and_scoped_rule_structure() {
     assert_eq!(scope.root().unwrap().selectors().len(), 2);
     assert_eq!(scope.limit().unwrap().selectors().len(), 1);
     let [
-        CssScopedRule::Style(scoped_style),
-        CssScopedRule::Media(scoped_media),
-        CssScopedRule::LayerStatement(scoped_layer_statement),
+        CssRule::Style(scoped_style),
+        CssRule::Media(scoped_media),
+        CssRule::LayerStatement(scoped_layer_statement),
     ] = scope.rules().rules()
     else {
         panic!("expected scoped style, scoped media, and scoped layer statement");
     };
 
     let scoped_selectors = scoped_style.selectors().selectors();
-    assert!(matches!(
-        scoped_selectors[0],
-        CssScopedStyleSelector::Selector(_)
-    ));
-    let CssScopedStyleSelector::Relative(relative_action) = &scoped_selectors[1] else {
+    assert!(matches!(scoped_selectors[0], CssStyleSelector::Selector(_)));
+    let CssStyleSelector::Relative(relative_action) = &scoped_selectors[1] else {
         panic!("expected relative scoped selector");
     };
     assert_eq!(relative_action.combinator(), CssSelectorCombinator::Child);
@@ -247,14 +253,13 @@ fn public_api_exposes_layer_scope_and_scoped_rule_structure() {
         scoped_layer_statement.names().names()[0].components(),
         &["scoped".to_owned(), "order".to_owned()]
     );
-    let [CssScopedRule::LayerBlock(scoped_layer)] = scoped_media.rules().rules() else {
+    let [CssRule::LayerBlock(scoped_layer)] = scoped_media.rules() else {
         panic!("expected scoped layer nested inside scoped media");
     };
-    let [CssScopedRule::Style(nested_scoped_style)] = scoped_layer.rules().rules() else {
+    let [CssRule::Style(nested_scoped_style)] = scoped_layer.rules() else {
         panic!("expected scoped style rule inside scoped layer");
     };
-    let [CssScopedStyleSelector::Relative(relative_icon)] =
-        nested_scoped_style.selectors().selectors()
+    let [CssStyleSelector::Relative(relative_icon)] = nested_scoped_style.selectors().selectors()
     else {
         panic!("expected nested scoped-only relative selector");
     };
@@ -271,16 +276,17 @@ fn public_api_exposes_layer_scope_and_scoped_rule_structure() {
 
 #[test]
 fn nested_style_rule_parser_accepts_layer_and_scope_groups() {
-    let sheet = parse_sheet(
-        r#"
+    let sheet = CssParser::default()
+        .parse_sheet(
+            r#"
             .card {
                 color: black;
                 @layer components { & > .title { color: red; } }
                 @scope (.title) { > .icon { color: blue; } }
             }
         "#,
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
 
     let [CssRule::Style(parent)] = sheet.rules() else {
         panic!("expected authored parent");
@@ -291,7 +297,7 @@ fn nested_style_rule_parser_accepts_layer_and_scope_groups() {
     let layer = layer_block_rule(layer);
     assert!(matches!(layer.rules(), [CssRule::Style(_)]));
     let scope = scope_rule(scope);
-    assert!(matches!(scope.rules().rules(), [CssScopedRule::Style(_)]));
+    assert!(matches!(scope.rules().rules(), [CssRule::Style(_)]));
 }
 
 #[test]
@@ -336,29 +342,28 @@ fn scope_rule_parser_rejects_malformed_scope_syntax() {
 
 #[test]
 fn scope_rule_parser_retains_global_font_definition() {
-    let sheet =
-        parse_sheet("@scope (.card) { @font-face { font-family: Test; src: local(Test); } }")
-            .expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet("@scope (.card) { @font-face { font-family: Test; src: local(Test); } }")
+        .expect("clean parse report");
     let [CssRule::Scope(scope)] = sheet.rules() else {
         panic!("scope")
     };
-    let [CssScopedRule::FontFace(font)] = scope.rules().rules() else {
+    let [CssRule::FontFace(font)] = scope.rules().rules() else {
         panic!("font definition")
     };
     assert_eq!(face_value!(font.descriptors(), FontFamily).as_str(), "Test");
     assert!(
         matches!(face_value!(font.descriptors(), Src).sources(), [CssFontFaceSource::Local(name)] if name.as_str() == "Test")
     );
-    let with_neighbors = parse_sheet("@scope (.card) { .ok { color: black; } @font-face { font-family: Test; src: local(Test); } } .after { color: blue; }").expect("clean parse report");
+    let with_neighbors = CssParser::default().parse_sheet("@scope (.card) { .ok { color: black; } @font-face { font-family: Test; src: local(Test); } } .after { color: blue; }").expect("clean parse report");
     let [CssRule::Scope(scope), CssRule::Style(after)] = with_neighbors.rules() else {
         panic!("scope and later style")
     };
-    let [CssScopedRule::Style(before), CssScopedRule::FontFace(font)] = scope.rules().rules()
-    else {
+    let [CssRule::Style(before), CssRule::FontFace(font)] = scope.rules().rules() else {
         panic!("style and global font definition")
     };
     assert!(
-        matches!(before.selectors().selectors(), [CssScopedStyleSelector::Selector(CssSelector::Class(name))] if name == "ok")
+        matches!(before.selectors().selectors(), [CssStyleSelector::Selector(CssSelector::Class(name))] if name == "ok")
     );
     assert!(
         matches!(after.selectors().selectors()[0].selector(), CssSelector::Class(name) if name == "after")

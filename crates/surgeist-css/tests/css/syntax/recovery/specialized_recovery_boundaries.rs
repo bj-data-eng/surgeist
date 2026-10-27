@@ -1,7 +1,10 @@
-use surgeist_css::{CssErrorCode, CssRecoveryAction, CssRule, ErrorKind, parse_sheet};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::CssRule;
 
 fn actions(source: &str) -> Vec<CssRecoveryAction> {
-    parse_sheet(source)
+    CssParser::default()
+        .parse_sheet(source)
         .diagnostics()
         .iter()
         .map(|diagnostic| diagnostic.action())
@@ -9,7 +12,7 @@ fn actions(source: &str) -> Vec<CssRecoveryAction> {
 }
 
 fn assert_implicit_closures(source: &str, expected: usize) {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let eof = source.len();
     let implicit = report
         .diagnostics()
@@ -28,10 +31,13 @@ fn assert_implicit_closures(source: &str, expected: usize) {
         assert_eq!(diagnostic.error().position().byte_offset().value(), eof);
         assert_eq!(diagnostic.span().start().byte_offset().value(), eof);
         assert_eq!(diagnostic.span().end().byte_offset().value(), eof);
-        let ErrorKind::UnexpectedEnd(detail) = diagnostic.error().kind() else {
-            panic!("expected typed unexpected-end detail")
-        };
-        assert_eq!(detail.expectation().as_str(), "valid CSS syntax");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::UnexpectedEnd,
+            "expected typed unexpected-end detail"
+        );
+        assert_eq!(detail.expectation().unwrap().as_str(), "valid CSS syntax");
     }
 }
 
@@ -81,7 +87,7 @@ fn specialized_boundary_final_rule_blocks_retain_with_one_exact_eof_closure() {
     ];
 
     for source in sources {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert_eq!(report.syntax().rules().len(), 1, "{source}");
         assert_implicit_closures(source, 1);
     }
@@ -90,7 +96,7 @@ fn specialized_boundary_final_rule_blocks_retain_with_one_exact_eof_closure() {
 #[test]
 fn specialized_boundary_nested_eof_closures_are_innermost_to_outermost() {
     let source = "@keyframes fade{from{--v:f(x";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     assert!(matches!(report.syntax().rules(), [CssRule::Keyframes(_)]));
     assert_implicit_closures(source, 3);
@@ -107,7 +113,7 @@ fn specialized_boundary_nested_eof_closures_are_innermost_to_outermost() {
 #[test]
 fn specialized_boundary_nested_components_allocate_one_closure_each() {
     let source = ".x{--v:f(g([x";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     let [CssRule::Style(rule)] = report.syntax().rules() else {
         panic!("expected retained style rule")
@@ -120,7 +126,7 @@ fn specialized_boundary_nested_components_allocate_one_closure_each() {
 fn specialized_boundary_balanced_declaration_components_each_get_one_eof_closure() {
     for opener in ["f(", "(", "[", "{"] {
         let source = format!(".x{{--v:{opener}x");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::Style(rule)] = report.syntax().rules() else {
             panic!("expected retained style rule for {source}")
         };
@@ -130,14 +136,17 @@ fn specialized_boundary_balanced_declaration_components_each_get_one_eof_closure
 
     let descriptor = "@font-face{font-family:Demo;src:local(Demo";
     assert!(matches!(
-        parse_sheet(descriptor).syntax().rules(),
+        CssParser::default()
+            .parse_sheet(descriptor)
+            .syntax()
+            .rules(),
         [CssRule::FontFace(_)]
     ));
     assert_implicit_closures(descriptor, 2);
 
     let format = "@font-face{font-family:Demo;src:url(face) format(\"woff2\"";
     assert!(matches!(
-        parse_sheet(format).syntax().rules(),
+        CssParser::default().parse_sheet(format).syntax().rules(),
         [CssRule::FontFace(_)]
     ));
     assert_implicit_closures(format, 2);
@@ -150,7 +159,7 @@ fn font_source_descriptor_components_observe_the_exact_nesting_limit() {
         "f(".repeat(255),
         ")".repeat(255),
     );
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(
         report
             .diagnostics()
@@ -165,7 +174,7 @@ fn font_source_descriptor_components_observe_the_exact_nesting_limit() {
             ")".repeat(depth),
         );
         let first_over_limit = source.match_indices("f(").nth(255).unwrap().0;
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let diagnostic = report
             .diagnostics()
             .iter()
@@ -184,7 +193,7 @@ fn font_source_descriptor_components_observe_the_exact_nesting_limit() {
 fn counter_style_descriptor_components_observe_eof_and_exact_nesting_boundaries() {
     let eof = "@counter-style eof{system:additive;additive-symbols:1 I;negative:\"-\"";
     assert!(matches!(
-        parse_sheet(eof).syntax().rules(),
+        CssParser::default().parse_sheet(eof).syntax().rules(),
         [CssRule::CounterStyle(_)]
     ));
     assert_implicit_closures(eof, 1);
@@ -195,7 +204,7 @@ fn counter_style_descriptor_components_observe_eof_and_exact_nesting_boundaries(
             "f(".repeat(depth),
             ")".repeat(depth),
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(matches!(
             report.syntax().rules().last(),
             Some(CssRule::Style(_))
@@ -216,7 +225,7 @@ fn counter_style_descriptor_components_observe_eof_and_exact_nesting_boundaries(
 #[test]
 fn specialized_boundary_misleading_delimiters_do_not_change_eof_allocation() {
     let source = ".x{--v:f(\") }\"/* ] } */x";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     let [CssRule::Style(rule)] = report.syntax().rules() else {
         panic!("expected retained style rule")
@@ -228,7 +237,7 @@ fn specialized_boundary_misleading_delimiters_do_not_change_eof_allocation() {
 #[test]
 fn specialized_boundary_retained_import_media_component_gets_one_eof_closure() {
     let source = "@import \"theme.css\" (width:1px";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     assert!(matches!(report.syntax().rules(), [CssRule::Import(_)]));
     assert_implicit_closures(source, 1);
@@ -247,7 +256,7 @@ fn specialized_boundary_nonrepresentable_eof_cases_do_not_gain_component_closure
     ];
 
     for source in cases {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let retained_closures = report
             .diagnostics()
             .iter()
@@ -268,7 +277,7 @@ fn eof_string_keeps_its_content_and_reports_string_and_rule_closures() {
     // Syntax 3 §4.3.5 returns the accumulated string token at EOF, rather
     // than a bad-string token. Both that string and its enclosing rule close.
     let source = ".x{content:\"unterminated";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Style(rule)] = report.syntax().rules() else {
         panic!("a string reaching EOF remains representable authored content");
     };
@@ -276,7 +285,7 @@ fn eof_string_keeps_its_content_and_reports_string_and_rule_closures() {
         panic!("one retained content declaration");
     };
     assert_eq!(
-        declaration.to_specified_css().unwrap(),
+        declaration.serialize_specified(Default::default()).unwrap(),
         "content: \"unterminated\";"
     );
     assert_implicit_closures(source, 2);
@@ -285,7 +294,7 @@ fn eof_string_keeps_its_content_and_reports_string_and_rule_closures() {
 #[test]
 fn specialized_boundary_legacy_tokens_are_clean_and_keep_rule_order() {
     let source = "<!-- .before{color:red} --> .middle{color:blue} <!-- .after{color:black}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let names = report
         .syntax()
         .rules()
@@ -294,7 +303,7 @@ fn specialized_boundary_legacy_tokens_are_clean_and_keep_rule_order() {
             let CssRule::Style(style) = rule else {
                 panic!("expected style rule")
             };
-            let surgeist_css::CssSelector::Class(name) =
+            let surgeist_css::selector::CssSelector::Class(name) =
                 style.selectors().selectors()[0].selector()
             else {
                 panic!("expected class selector")
@@ -312,7 +321,7 @@ fn specialized_boundary_legacy_tokens_are_clean_and_keep_rule_order() {
 fn specialized_boundary_selector_depth_is_exact_at_255_256_and_257() {
     for depth in [255, 256] {
         let source = nested_selector(depth, true);
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             report.is_clean(),
             "depth {depth}: {:?}",
@@ -322,7 +331,7 @@ fn specialized_boundary_selector_depth_is_exact_at_255_256_and_257() {
     }
 
     let source = nested_selector(257, true);
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.syntax().rules().is_empty());
     let [diagnostic] = report.diagnostics() else {
         panic!(
@@ -338,12 +347,15 @@ fn specialized_boundary_selector_depth_is_exact_at_255_256_and_257() {
         diagnostic.error().position().byte_offset().value(),
         ":is(".len() * 256 + 1
     );
-    let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-        panic!("expected typed nesting-limit detail")
-    };
-    assert_eq!(detail.limit(), 256);
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.enclosing_production().as_str(),
+        detail.code(),
+        CssErrorCode::NestingLimit,
+        "expected typed nesting-limit detail"
+    );
+    assert_eq!(detail.nesting_limit().unwrap(), 256);
+    assert_eq!(
+        detail.production().unwrap().as_str(),
         "baseline.selector.complex"
     );
 }
@@ -356,7 +368,7 @@ fn namespace_context_survives_selector_depth_boundaries() {
         source.push_str("svg|leaf");
         source.push_str(&")".repeat(depth));
         source.push_str("{color:red}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             report.is_clean(),
             "depth {depth}: {:?}",
@@ -373,7 +385,7 @@ fn namespace_context_survives_selector_depth_boundaries() {
     source.push_str("svg|leaf");
     source.push_str(&")".repeat(257));
     source.push_str("{color:red}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(matches!(report.syntax().rules(), [CssRule::Namespace(_)]));
     let [diagnostic] = report.diagnostics() else {
         panic!("expected one selector nesting diagnostic")
@@ -386,7 +398,7 @@ fn namespace_context_survives_selector_depth_boundaries() {
 fn specialized_boundary_media_depth_is_exact_at_255_256_and_257() {
     for depth in [255, 256] {
         let source = nested_media(depth, true);
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_eq!(report.syntax().rules().len(), 1);
         assert!(
             report.is_clean(),
@@ -401,7 +413,7 @@ fn specialized_boundary_media_depth_is_exact_at_255_256_and_257() {
     }
 
     let source = nested_media(257, true);
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let [diagnostic] = report.diagnostics() else {
         panic!(
             "expected one media nesting diagnostic: {:?}",
@@ -419,12 +431,15 @@ fn specialized_boundary_media_depth_is_exact_at_255_256_and_257() {
         diagnostic.error().position().byte_offset().value(),
         "@media ".len() + 256
     );
-    let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-        panic!("expected typed nesting-limit detail")
-    };
-    assert_eq!(detail.limit(), 256);
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.enclosing_production().as_str(),
+        detail.code(),
+        CssErrorCode::NestingLimit,
+        "expected typed nesting-limit detail"
+    );
+    assert_eq!(detail.nesting_limit().unwrap(), 256);
+    assert_eq!(
+        detail.production().unwrap().as_str(),
         "official.media.query-list-core"
     );
 }
@@ -433,7 +448,7 @@ fn specialized_boundary_media_depth_is_exact_at_255_256_and_257() {
 fn specialized_boundary_supports_depth_is_exact_at_255_256_and_257() {
     for depth in [255, 256] {
         let source = nested_supports(depth, true);
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             report.is_clean(),
             "depth {depth}: {:?}",
@@ -443,19 +458,22 @@ fn specialized_boundary_supports_depth_is_exact_at_255_256_and_257() {
     }
 
     let source = nested_supports(257, true);
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.syntax().rules().is_empty());
     let [diagnostic] = report.diagnostics() else {
         panic!("expected one supports nesting diagnostic")
     };
     assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
     assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
-    let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-        panic!("expected typed nesting-limit detail")
-    };
-    assert_eq!(detail.limit(), 256);
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.enclosing_production().as_str(),
+        detail.code(),
+        CssErrorCode::NestingLimit,
+        "expected typed nesting-limit detail"
+    );
+    assert_eq!(detail.nesting_limit().unwrap(), 256);
+    assert_eq!(
+        detail.production().unwrap().as_str(),
         "baseline.rule.supports"
     );
 }
@@ -471,7 +489,7 @@ fn specialized_boundary_eof_over_limit_has_only_the_limit_action() {
         nested_supports(257, false),
         declaration,
     ] {
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_eq!(
             report
                 .diagnostics()

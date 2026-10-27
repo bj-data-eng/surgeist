@@ -1,25 +1,41 @@
 //! Public specified-value contracts from CSS Box Alignment 3 WD 2026-01-30
 //! §§8.1, 8.2, and 8.4.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_declaration_rejected as rejected;
 use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as parsed,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueTokenRef};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssCalculation, CssLengthPercentage, CssNonNegative, CssNumeric};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyGrammar,
+    CssPropertyKindRef, CssPropertyNameRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::CssSidePair;
+use surgeist_css::values::layout::CssGapValue;
 
-fn scalar(text: &str) -> CssSpecifiedNonNegativeLengthPercentage {
-    let components = parse_component_values(text).expect("valid component syntax");
+fn scalar(text: &str) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
+    let components =
+        CssComponentValues::parse(&CssParser::default(), text).expect("valid component syntax");
     if text.starts_with("calc(") {
-        CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(components)
-                .expect("length-percentage math"),
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
+            CssCalculation::<CssLengthPercentage>::try_from_components(
+                components,
+                Default::default(),
+            )
+            .expect("length-percentage math"),
         )
         .expect("checked deferred math")
     } else {
         let [component] = components.items() else {
             panic!("one scalar: {text}")
         };
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(component.clone())
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(component.clone())
             .expect("checked nonnegative scalar")
     }
 }
@@ -48,7 +64,7 @@ fn column_value(declaration: &CssDeclaration) -> CssGapValue {
     wrapper.value().clone()
 }
 
-fn gap_value(declaration: &CssDeclaration) -> CssGapShorthand {
+fn gap_value(declaration: &CssDeclaration) -> CssSidePair<CssGapValue> {
     let CssKnownPropertyValueRef::Gap(wrapper) = declaration
         .known()
         .expect("known gap")
@@ -62,7 +78,12 @@ fn gap_value(declaration: &CssDeclaration) -> CssGapShorthand {
 
 #[test]
 fn typed_longhands_preserve_normal_and_exact_nonnegative_numeric_values() {
-    assert_eq!(CssGapValue::Normal.serialize_specified().unwrap(), "normal");
+    assert_eq!(
+        CssGapValue::Normal
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "normal"
+    );
     for (name, extract) in [
         ("row-gap", row_value as fn(&CssDeclaration) -> CssGapValue),
         (
@@ -80,13 +101,17 @@ fn typed_longhands_preserve_normal_and_exact_nonnegative_numeric_values() {
             ("999999999999999999999999px", "999999999999999999999999px"),
         ] {
             let direct = CssGapValue::LengthPercentage(scalar(text));
-            assert_eq!(direct.serialize_specified().unwrap(), canonical, "{text}");
+            assert_eq!(
+                direct.serialize_specified(Default::default()).unwrap(),
+                canonical,
+                "{text}"
+            );
             if text == "1.0000000000000000000001px" {
                 let CssGapValue::LengthPercentage(scalar) = &direct else {
                     panic!("numeric gap")
                 };
                 assert!(matches!(
-                    scalar.literal_component().unwrap().view(),
+                    scalar.literal().map(|literal| literal.component()).unwrap().view(),
                     CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
                         if number.representation() == "1.0000000000000000000001" && unit == "px"
                 ));
@@ -94,7 +119,10 @@ fn typed_longhands_preserve_normal_and_exact_nonnegative_numeric_values() {
             for source in [parsed(name, text), checked(name, text)] {
                 let actual = extract(&source);
                 assert_eq!(actual, direct, "{name}:{text}");
-                assert_eq!(actual.serialize_specified().unwrap(), canonical);
+                assert_eq!(
+                    actual.serialize_specified(Default::default()).unwrap(),
+                    canonical
+                );
             }
         }
     }
@@ -124,24 +152,45 @@ fn typed_shorthand_preserves_authored_arity_and_independent_row_column_values() 
     ] {
         for source in [parsed("gap", text), checked("gap", text)] {
             let actual = gap_value(&source);
-            assert_eq!(actual.row().serialize_specified().unwrap(), row);
-            assert_eq!(actual.column().serialize_specified().unwrap(), column);
-            assert_eq!(actual.authored_column().is_some(), has_authored_column);
-            assert_eq!(actual.serialize_specified().unwrap(), text);
+            assert_eq!(
+                actual
+                    .first()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                row
+            );
+            assert_eq!(
+                actual
+                    .second()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                column
+            );
+            assert_eq!(actual.authored_second().is_some(), has_authored_column);
+            assert_eq!(
+                actual.serialize_specified(Default::default()).unwrap(),
+                text
+            );
         }
     }
 
-    let omitted = CssGapShorthand::new(CssGapValue::LengthPercentage(scalar("1px")), None);
-    let explicit = CssGapShorthand::new(
+    let omitted = CssSidePair::new(CssGapValue::LengthPercentage(scalar("1px")), None);
+    let explicit = CssSidePair::new(
         CssGapValue::LengthPercentage(scalar("1px")),
         Some(CssGapValue::LengthPercentage(scalar("1px"))),
     );
-    assert_eq!(omitted.row(), omitted.column());
-    assert!(omitted.authored_column().is_none());
-    assert_eq!(omitted.serialize_specified().unwrap(), "1px");
-    assert_eq!(explicit.serialize_specified().unwrap(), "1px 1px");
+    assert_eq!(omitted.first(), omitted.second());
+    assert!(omitted.authored_second().is_none());
+    assert_eq!(
+        omitted.serialize_specified(Default::default()).unwrap(),
+        "1px"
+    );
+    assert_eq!(
+        explicit.serialize_specified(Default::default()).unwrap(),
+        "1px"
+    );
     assert_ne!(omitted, explicit);
-    assert_ne!(omitted, CssGapShorthand::new(CssGapValue::Normal, None));
+    assert_ne!(omitted, CssSidePair::new(CssGapValue::Normal, None));
 }
 
 #[test]
@@ -168,14 +217,16 @@ fn negative_literals_and_non_gap_tokens_are_invalid_but_math_remains_symbolic() 
     for name in ["row-gap", "column-gap", "gap"] {
         for value in ["calc(1px + 2%)", "calc(1px - 2px)"] {
             assert!(
-                parse_style_attribute(&format!("{name}:{value}")).is_clean(),
+                CssParser::default()
+                    .parse_block_contents(format!("{name}:{value}"))
+                    .is_clean(),
                 "{name}:{value}"
             );
             checked(name, value);
         }
     }
     let deferred = CssGapValue::LengthPercentage(scalar("calc(1px - 2px)"));
-    assert!(deferred.serialize_specified().is_ok());
+    assert!(deferred.serialize_specified(Default::default()).is_ok());
     let CssGapValue::LengthPercentage(number) = deferred else {
         unreachable!()
     };
@@ -245,7 +296,7 @@ fn parsed_aliases_keep_exact_authored_name_and_typed_canonical_identity() {
     };
     let source = parsed("all", "initial");
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&source).expect("all expands symbolically")
+        source.expand().expect("all expands symbolically")
     else {
         panic!("all has a universal reset")
     };
@@ -268,63 +319,64 @@ fn one_value_and_two_value_serializers_charge_actual_authored_structure() {
     let normal = CssGapValue::Normal;
     assert_eq!(
         normal
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 6))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 6))
             .unwrap(),
         "normal"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 1, 6),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(0, 1, 6),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 0, 6),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(1, 0, 6),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 1, 5),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(1, 1, 5),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            normal
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&normal.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
 
-    let one = CssGapShorthand::new(CssGapValue::Normal, None);
-    assert_eq!(one.serialize_specified().unwrap(), "normal");
-    let two = CssGapShorthand::new(
+    let one = CssSidePair::new(CssGapValue::Normal, None);
+    assert_eq!(
+        one.serialize_specified(Default::default()).unwrap(),
+        "normal"
+    );
+    let two = CssSidePair::new(
         CssGapValue::LengthPercentage(scalar("1px")),
         Some(CssGapValue::LengthPercentage(scalar("2%"))),
     );
-    assert_eq!(two.serialize_specified().unwrap(), "1px 2%");
     assert_eq!(
-        two.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 3, 6))
+        two.serialize_specified(Default::default()).unwrap(),
+        "1px 2%"
+    );
+    assert_eq!(
+        two.serialize_specified(CssSerializationLimits::new(3, 3, 6))
             .unwrap(),
         "1px 2%"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, 6),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(2, 3, 6),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, 6),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(3, 2, 6),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, 5),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(3, 3, 5),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            two.serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&two.serialize_specified(limits).unwrap_err()),
             kind
         );
     }

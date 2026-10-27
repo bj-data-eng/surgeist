@@ -7,13 +7,18 @@
 //! && reorders complete groups, not individual tokens inside a group.
 
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssPropertyKindRef,
+};
 
 fn reject_interrupted(property: &str, value: &str) {
     let prefix = "/* 🦀 */ ";
     let unit = format!("{property}: {value};");
     let source = format!("{prefix}{unit} color: blue");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(!report.is_clean(), "{source}: interrupted group accepted");
     assert_eq!(
         report.syntax().len(),
@@ -49,7 +54,11 @@ fn reject_interrupted(property: &str, value: &str) {
         source[..byte].encode_utf16().count()
     );
     assert_eq!(
-        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
 }
@@ -102,11 +111,13 @@ fn complete_box_length_groups_allow_all_color_inset_group_orders() {
         "calc(1px + 2em) calc(-2px) red, inset 0 0 0 -1px",
     ] {
         let source = format!("box-shadow:{value}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 1);
         assert_eq!(
-            validate_style_attribute(&source),
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result(),
             Ok(report.syntax().clone())
         );
     }
@@ -124,10 +135,12 @@ fn complete_drop_shadow_length_groups_allow_color_before_or_after() {
             "calc(1px + 2em) -2px 0 red",
         ] {
             let source = format!("{property}:drop-shadow({value})");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             assert_eq!(
-                validate_style_attribute(&source),
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result(),
                 Ok(report.syntax().clone())
             );
         }
@@ -161,7 +174,7 @@ fn ordinary_box_shadow_expands_once_without_losing_source_or_importance() {
     ] {
         let source = declaration(css);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("one completed box-shadow")
         };
@@ -178,29 +191,28 @@ fn ordinary_box_shadow_expands_once_without_losing_source_or_importance() {
 #[test]
 fn pending_box_shadow_reentry_is_strict_and_reusable() {
     let source = declaration("box-shadow:var(--shadow)!important");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending box-shadow")
     };
     for invalid in ["", "1px red 2px", "1px 2px -3px", "none,1px 2px"] {
-        assert!(matches!(
+        assert!(
             pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
     }
     for residual in ["var(--again)", "env(shadow)", "attr(shadow)"] {
-        assert_eq!(
+        assert!(
             pending
-                .reenter(parse_component_values(residual).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), residual).unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
     }
     for text in ["none", "red 1px 2px", "initial"] {
-        let replacement = parse_component_values(text).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
         else {
             panic!("completed replacement")

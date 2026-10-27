@@ -1,8 +1,19 @@
 //! Logical1 WD20251204 §§2–3; source-authored page selector goldens.
 //! Authored page selectors retain their logical classification until progression is known.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::ExpectedRejection;
 use crate::css::support::rules::normalized_pages as pages;
-use surgeist_css::*;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 #[test]
 fn logical_page_pseudos_retain_symbolic_spelling_without_becoming_physical_sides() {
@@ -17,7 +28,7 @@ fn logical_page_pseudos_retain_symbolic_spelling_without_becoming_physical_sides
         for mode in [CssParserMode::Standards, CssParserMode::Quirks] {
             let context = CssParserContext::new(mode);
             let source = format!("@page :{pseudo}{{margin-left:-1px!important}}");
-            let report = context.parse_sheet(&source);
+            let report = CssParser::new(context, Default::default()).parse_sheet(&source);
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             let [CssRule::Page(page)] = report.syntax().rules() else {
                 panic!("logical page retained")
@@ -29,18 +40,40 @@ fn logical_page_pseudos_retain_symbolic_spelling_without_becoming_physical_sides
                 CssImportance::Important
             );
             let expected = format!("@page :{canonical} {{ margin-left: -1px !important; }}");
-            assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
             assert_eq!(
-                report.syntax().rules()[0].to_specified_css().unwrap(),
+                report
+                    .syntax()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 expected
             );
-            let reparsed = parse_sheet(&expected);
+            assert_eq!(
+                report.syntax().rules()[0]
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                expected
+            );
+            let reparsed = CssParser::default().parse_sheet(&expected);
             assert!(reparsed.is_clean());
-            assert_eq!(reparsed.syntax().to_specified_css().unwrap(), expected);
-            let one = context.parse_rule(&source, &CssNamespaceContext::default());
+            assert_eq!(
+                reparsed
+                    .syntax()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                expected
+            );
+            let one = CssRule::parse(
+                &CssParser::new(context, Default::default()),
+                &source,
+                &CssNamespaceContext::default(),
+            );
             assert!(one.is_clean());
             assert_eq!(
-                one.syntax().as_ref().unwrap().to_specified_css().unwrap(),
+                one.syntax()
+                    .as_ref()
+                    .unwrap()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 expected
             );
         }
@@ -50,7 +83,7 @@ fn logical_page_pseudos_retain_symbolic_spelling_without_becoming_physical_sides
 #[test]
 fn logical_page_pairs_preserve_neighbors_origins_margin_order_and_normalized_payloads() {
     let source = "/*😀*/\r\n@page :recto{margin-left:1px;margin-right:2%!important}@page :verso{margin-left:3px}.a{float:inline-start}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
     let [
@@ -93,7 +126,7 @@ fn logical_page_pairs_preserve_neighbors_origins_margin_order_and_normalized_pay
             source
         );
     }
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     assert_eq!(pages(&normalized), vec![recto, verso]);
     // Page margin payloads remain pages; only the element float is contributed.
     let declarations: Vec<_> = normalized
@@ -111,7 +144,10 @@ fn logical_page_pairs_preserve_neighbors_origins_margin_order_and_normalized_pay
     );
     assert_eq!(declarations[0].order(), 0);
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "@page :recto { margin-left: 1px; margin-right: 2% !important; }\n@page :verso { margin-left: 3px; }\n.a { float: inline-start; }"
     );
     assert_eq!(report, before);
@@ -120,9 +156,9 @@ fn logical_page_pairs_preserve_neighbors_origins_margin_order_and_normalized_pay
 #[test]
 fn logical_pages_compose_in_ordinary_and_scoped_groups_without_element_mapping() {
     let source = "@media print{@page:recto{margin:1px}@page:verso{margin:2px}}@scope(.host){@media all{@page:recto{margin-left:3px}}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     assert_eq!(pages(&normalized).len(), 3);
     assert!(
         normalized
@@ -131,7 +167,10 @@ fn logical_pages_compose_in_ordinary_and_scoped_groups_without_element_mapping()
             .all(|item| !matches!(item, CssNormalizedItem::Declaration(_)))
     );
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "@media print { @page :recto { margin: 1px; } @page :verso { margin: 2px; } }\n@scope (.host) { @media all { @page :recto { margin-left: 3px; } } }"
     );
 }
@@ -140,7 +179,7 @@ fn logical_pages_compose_in_ordinary_and_scoped_groups_without_element_mapping()
 fn logical_page_body_recovery_keeps_valid_margin_payload_and_siblings() {
     let source =
         ".before{}@page:recto{margin-left:1px;margin-right:bogus;noise:red;margin-top:2%} .after{}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Style(_), CssRule::Page(page), CssRule::Style(_)] = report.syntax().rules()
     else {
         panic!("page and neighbors")
@@ -168,10 +207,13 @@ fn logical_page_body_recovery_keeps_valid_margin_payload_and_siblings() {
         CssKnownProperty::MarginTop
     );
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         ".before { }\n@page :recto { margin-left: 1px; margin-top: 2%; }\n.after { }"
     );
-    let eof = parse_sheet("@page:verso{margin-left:1px");
+    let eof = CssParser::default().parse_sheet("@page:verso{margin-left:1px");
     assert!(matches!(eof.syntax().rules(), [CssRule::Page(_)]));
     assert_eq!(eof.diagnostics().len(), 1);
     assert_eq!(
@@ -179,7 +221,9 @@ fn logical_page_body_recovery_keeps_valid_margin_payload_and_siblings() {
         CssRecoveryAction::RetainWithImplicitClosure
     );
     assert_eq!(
-        eof.syntax().to_specified_css().unwrap(),
+        eof.syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "@page :verso { margin-left: 1px; }"
     );
 }
@@ -197,7 +241,7 @@ fn malformed_page_pseudos_drop_each_rule_atomically_and_ordinary_pages_are_contr
     ] {
         let source =
             format!(".before{{}}@page {prelude}{{margin:1px}}@page:right{{margin:2px}}.after{{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(matches!(
             report.syntax().rules(),
             [CssRule::Style(_), CssRule::Page(_), CssRule::Style(_)]
@@ -211,19 +255,25 @@ fn malformed_page_pseudos_drop_each_rule_atomically_and_ordinary_pages_are_contr
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
         assert_eq!(
-            report.syntax().to_specified_css().unwrap(),
+            report
+                .syntax()
+                .serialize_specified(Default::default())
+                .unwrap(),
             ".before { }\n@page :right { margin: 2px; }\n.after { }"
         );
     }
     for pseudo in ["left", "right", "first"] {
-        let report = parse_sheet(&format!("@page:{pseudo}{{margin:1px}}"));
+        let report = CssParser::default().parse_sheet(format!("@page:{pseudo}{{margin:1px}}"));
         assert!(report.is_clean());
         assert_eq!(
-            report.syntax().to_specified_css().unwrap(),
+            report
+                .syntax()
+                .serialize_specified(Default::default())
+                .unwrap(),
             format!("@page :{pseudo} {{ margin: 1px; }}")
         );
     }
-    let statement = parse_sheet("@page:recto; .after{}");
+    let statement = CssParser::default().parse_sheet("@page:recto; .after{}");
     assert!(matches!(statement.syntax().rules(), [CssRule::Style(_)]));
     assert_eq!(statement.diagnostics().len(), 1);
     assert_eq!(
@@ -235,7 +285,7 @@ fn malformed_page_pseudos_drop_each_rule_atomically_and_ordinary_pages_are_contr
 #[test]
 fn logical_page_names_do_not_become_property_keywords_or_style_block_rules() {
     for pseudo in ["recto", "verso"] {
-        let report = parse_sheet(&format!(
+        let report = CssParser::default().parse_sheet(format!(
             ".host{{@page:{pseudo}{{margin:1px}}color:red}} .after{{}}"
         ));
         assert!(matches!(
@@ -251,10 +301,13 @@ fn logical_page_names_do_not_become_property_keywords_or_style_block_rules() {
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
         assert_eq!(
-            report.syntax().to_specified_css().unwrap(),
+            report
+                .syntax()
+                .serialize_specified(Default::default())
+                .unwrap(),
             ".host { color: red; }\n.after { }"
         );
-        let report = parse_style_attribute(&format!("float:{pseudo};color:red"));
+        let report = CssParser::default().parse_block_contents(format!("float:{pseudo};color:red"));
         assert_eq!(report.syntax().len(), 1);
         assert_eq!(
             report.syntax()[0].known().unwrap().property(),
@@ -277,10 +330,12 @@ fn selected_directional_consumers_remain_symbolic_and_reject_forbidden_keyword_m
         ("page-break-after", "verso", "verso"),
     ] {
         let source = format!("{name}:{text}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(
-            report.syntax()[0].to_specified_css().unwrap(),
+            report.syntax()[0]
+                .serialize_specified(Default::default())
+                .unwrap(),
             format!("{name}: {canonical};")
         );
         assert_eq!(
@@ -299,7 +354,7 @@ fn selected_directional_consumers_remain_symbolic_and_reject_forbidden_keyword_m
         ("clear", "right inline-end", "inline-end"),
         ("text-align", "left start", "start"),
     ] {
-        let report = parse_style_attribute(&format!("{name}:{text};color:red"));
+        let report = CssParser::default().parse_block_contents(format!("{name}:{text};color:red"));
         ExpectedRejection::new(CssErrorCode::InvalidPropertyValue)
             .named(name)
             .at(token)
@@ -312,16 +367,20 @@ fn selected_directional_consumers_remain_symbolic_and_reject_forbidden_keyword_m
     }
     // caption-side logical additions are conditional on left/right support.
     for text in ["top", "bottom"] {
-        assert!(parse_style_attribute(&format!("caption-side:{text}")).is_clean());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(format!("caption-side:{text}"))
+                .is_clean()
+        );
     }
 }
 
 #[test]
 fn logical_and_physical_property_occurrences_keep_relative_order_and_original_positions() {
     let source = ".a{margin-left:1px;margin-inline-start:2px;margin-top:3px;margin-block-start:4px!important}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -361,80 +420,67 @@ fn logical_and_physical_property_occurrences_keep_relative_order_and_original_po
         CssImportance::Important
     );
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         ".a { margin-left: 1px; margin-inline-start: 2px; margin-top: 3px; margin-block-start: 4px !important; }"
     );
 }
 
 #[test]
 fn logical_page_output_and_normalization_share_atomic_cumulative_limits() {
-    let report = parse_sheet("@page:recto{margin-left:1px}@page:verso{margin-left:2px}");
+    let report = CssParser::default()
+        .parse_sheet("@page:recto{margin-left:1px}@page:verso{margin-left:2px}");
     assert!(report.is_clean());
     let before = report.clone();
     let expected = "@page :recto { margin-left: 1px; }\n@page :verso { margin-left: 2px; }";
     // Page rule + selector-list + selector + pseudo + declaration + name + numeric leaf.
     for rule in report.syntax().rules() {
         assert!(
-            rule.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                7,
-                7,
-                expected.len()
-            ))
-            .is_ok()
+            rule.serialize_specified(CssSerializationLimits::new(7, 7, expected.len()))
+                .is_ok()
         );
     }
-    let exact = CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
+    let exact = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(6, usize::MAX, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(6, usize::MAX, expected.len()),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(usize::MAX, 6, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(usize::MAX, 6, expected.len()),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         for _ in 0..2 {
-            let error = report
-                .syntax()
-                .to_specified_css_with_limits(limits)
-                .unwrap_err();
-            assert_eq!(
-                error.kind(),
-                CssSpecifiedRuleSerializationErrorKind::Resource(kind)
-            );
+            let error = report.syntax().serialize_specified(limits).unwrap_err();
+            assert_eq!(serialization_failure(&error), kind);
             assert_eq!(report, before);
         }
     }
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
     let exact = CssNormalizationLimits::try_new(0, 2, 0, 0).unwrap();
+    assert_eq!(pages(&report.syntax().normalize(exact).unwrap()).len(), 2);
+    let error = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 0, 0).unwrap())
+        .unwrap_err();
     assert_eq!(
-        pages(&normalize_sheet_with_limits(report.syntax(), exact).unwrap()).len(),
-        2
-    );
-    let error = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 0, 0).unwrap(),
-    )
-    .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Rules,
-            limit: 1
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Rules, 1))
     );
     assert_eq!(report, before);
-    assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
+    assert!(report.syntax().normalize(exact).is_ok());
 }

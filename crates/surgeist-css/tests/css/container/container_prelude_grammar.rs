@@ -6,18 +6,21 @@
 //! CSS Syntax section 2.1 decodes identifier escapes before grammar admission.
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#escaping
 use crate::css::support::authored_syntax::assert_strict_rejection;
-use surgeist_css::{
-    CssContainerName, CssErrorCode, CssRecoveryAction, CssRule, CssScopedRule, parse_sheet,
-    validate_sheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::container::CssContainerName;
+use surgeist_css::rule::CssRule;
 
 fn assert_accepted(prelude: &str) {
     let source =
         format!(".before {{}} @container {prelude} {{ .first {{}} .second {{}} }} .after {{}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {report:?}");
     assert_eq!(
-        validate_sheet(&source).unwrap(),
+        CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .unwrap(),
         *report.syntax(),
         "{source}"
     );
@@ -49,8 +52,13 @@ fn assert_accepted(prelude: &str) {
 
 fn assert_rejected(prelude: &str) {
     let source = format!(".before {{}} @container {prelude} {{ .discarded {{}} }} .after {{}}");
-    let report = parse_sheet(&source);
-    assert_strict_rejection(validate_sheet(&source), report.diagnostics());
+    let report = CssParser::default().parse_sheet(&source);
+    assert_strict_rejection(
+        CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result(),
+        report.diagnostics(),
+    );
     let [CssRule::Style(before), CssRule::Style(after)] = report.syntax().rules() else {
         panic!("discard the whole invalid rule and preserve siblings: {source}: {report:?}");
     };
@@ -97,7 +105,7 @@ fn function_spellings_are_valid_literal_container_names() {
         assert_eq!(checked.as_str(), name);
         assert_accepted(name);
         let source = format!("@container {name} (width > 1px) {{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {report:?}");
         let [CssRule::Container(rule)] = report.syntax().rules() else {
             panic!("one named container: {source}: {report:?}");
@@ -119,7 +127,7 @@ fn function_tokens_remain_unnamed_queries() {
         "scroll-state(stuck: top)",
     ] {
         let source = format!("@container {query} {{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {report:?}");
         let [CssRule::Container(rule)] = report.syntax().rules() else {
             panic!("one unnamed query: {source}: {report:?}");
@@ -141,7 +149,7 @@ fn escaped_names_keep_the_decoded_identifier_without_retokenizing() {
         (r"s\74 yle", "style"),
     ] {
         let source = format!("@container {authored} (width > 1px) {{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {report:?}");
         let [CssRule::Container(rule)] = report.syntax().rules() else {
             panic!("one named query: {source}: {report:?}");
@@ -159,7 +167,7 @@ fn escaped_names_keep_the_decoded_identifier_without_retokenizing() {
 fn container_names_retain_case_sensitive_identity() {
     for name in ["Card", "card", "--card", "revert-rule"] {
         let source = format!("@container {name} (width > 1px) {{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {report:?}");
         let [CssRule::Container(rule)] = report.syntax().rules() else {
             panic!("one named query: {source}: {report:?}");
@@ -266,10 +274,13 @@ fn name_only_and_list_entries_survive_scoped_rule_parsing() {
         let source = format!(
             "@scope (.host) {{ .before {{}} @container {prelude} {{ .child {{}} }} .after {{}} }}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {report:?}");
         assert_eq!(
-            validate_sheet(&source).unwrap(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap(),
             *report.syntax(),
             "{source}"
         );
@@ -277,9 +288,9 @@ fn name_only_and_list_entries_survive_scoped_rule_parsing() {
             panic!("one scope: {source}: {report:?}");
         };
         let [
-            CssScopedRule::Style(before),
-            CssScopedRule::Container(container),
-            CssScopedRule::Style(after),
+            CssRule::Style(before),
+            CssRule::Container(container),
+            CssRule::Style(after),
         ] = scope.rules().rules()
         else {
             panic!("one scoped container between siblings: {source}: {report:?}");
@@ -292,7 +303,7 @@ fn name_only_and_list_entries_survive_scoped_rule_parsing() {
             after.position().byte_offset().value(),
             source.find(".after").unwrap()
         );
-        let [CssScopedRule::Style(child)] = container.rules().rules() else {
+        let [CssRule::Style(child)] = container.rules() else {
             panic!("one retained scoped child: {source}: {report:?}");
         };
         assert_eq!(
@@ -307,10 +318,13 @@ fn name_only_and_list_entries_survive_nested_style_rule_parsing() {
     for prelude in ["sidebar", "card (width > 1px), toolbar"] {
         let source =
             format!(".host {{ .before {{}} @container {prelude} {{ .child {{}} }} .after {{}} }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {report:?}");
         assert_eq!(
-            validate_sheet(&source).unwrap(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap(),
             *report.syntax(),
             "{source}"
         );
@@ -347,12 +361,17 @@ fn name_only_and_list_entries_survive_nested_style_rule_parsing() {
 fn invalid_list_drops_only_its_scoped_container_rule() {
     let source =
         "@scope (.host) { .before {} @container (width > 1px), ! { .discarded {} } .after {} }";
-    let report = parse_sheet(source);
-    assert_strict_rejection(validate_sheet(source), report.diagnostics());
+    let report = CssParser::default().parse_sheet(source);
+    assert_strict_rejection(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result(),
+        report.diagnostics(),
+    );
     let [CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("one surviving scope: {report:?}");
     };
-    let [CssScopedRule::Style(before), CssScopedRule::Style(after)] = scope.rules().rules() else {
+    let [CssRule::Style(before), CssRule::Style(after)] = scope.rules().rules() else {
         panic!("only the scoped siblings survive: {report:?}");
     };
     assert_eq!(
@@ -376,8 +395,13 @@ fn invalid_list_drops_only_its_scoped_container_rule() {
 #[test]
 fn invalid_list_drops_only_its_nested_container_rule() {
     let source = ".host { .before {} @container (width > 1px), ! { .discarded {} } .after {} }";
-    let report = parse_sheet(source);
-    assert_strict_rejection(validate_sheet(source), report.diagnostics());
+    let report = CssParser::default().parse_sheet(source);
+    assert_strict_rejection(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result(),
+        report.diagnostics(),
+    );
     let [CssRule::Style(host)] = report.syntax().rules() else {
         panic!("one surviving parent: {report:?}");
     };

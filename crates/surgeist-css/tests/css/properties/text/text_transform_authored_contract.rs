@@ -7,10 +7,22 @@
 use crate::css::support::authored_property;
 use authored_property::{ParserFront, assert_source, checked, checked_components, invalid, parsed};
 
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::sole_completed_contributions as completed;
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssKnownPropertyValueRef, CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::text::CssTextTransform;
 
 const PROPERTY: P = P::TextTransform;
 const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
@@ -57,9 +69,14 @@ fn primitive(source: &CssDeclaration) -> &CssTextTransform {
     wrapper.value()
 }
 fn canonical(source: &CssDeclaration, expected: &str) {
-    assert_eq!(primitive(source).serialize_specified().unwrap(), expected);
     assert_eq!(
-        source.to_specified_css().unwrap(),
+        primitive(source)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
+    assert_eq!(
+        source.serialize_specified(Default::default()).unwrap(),
         format!("text-transform: {expected} !important;")
     );
 }
@@ -67,7 +84,12 @@ fn accepted(input: &str, expected: &str) {
     for front in FRONTS {
         let source = front.valid(PROPERTY, input, expected);
         let before = source.clone();
-        assert_eq!(primitive(&source).serialize_specified().unwrap(), expected);
+        assert_eq!(
+            primitive(&source)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
         let values = completed(&source);
         let item = &values.items()[0];
         assert!(matches!(item.value(), CssContributionValueRef::Ordinary(_)));
@@ -179,9 +201,11 @@ fn singleton_primitive_provider_controls_execute_without_intrinsic_metadata() {
 }
 #[test]
 fn programmatic_components_have_checked_identity_importance_and_original_origins() {
-    let components =
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("uppercase").unwrap()])
-            .unwrap();
+    let components = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("uppercase").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     for grammar in [false, true] {
         let source = checked_components(
             PROPERTY,
@@ -224,15 +248,13 @@ fn intrinsic_metadata_is_one_inherited_ordinary_initial_terminal() {
 }
 #[test]
 fn normalization_counts_terminals_and_occurrences_cumulatively_preserving_order_contexts() {
-    let report = parse_sheet(
-        "@media screen{.a{text-transform:uppercase!important;text-transform:full-size-kana full-width;text-transform:var(--transform);text-transform:unset!important;color:red}}",
-    );
+    let report = CssParser::default().parse_sheet("@media screen{.a{text-transform:uppercase!important;text-transform:full-size-kana full-width;text-transform:var(--transform);text-transform:unset!important;color:red}}");
     assert!(report.is_clean());
     let before = report.clone();
     // Four TextTransform occurrences each contribute one terminal/handle, plus
     // the supported color control: five occurrences and five contributions.
     let exact = CssNormalizationLimits::try_new(1, 2, 5, 5).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -305,11 +327,8 @@ fn normalization_counts_terminals_and_occurrences_cumulatively_preserving_order_
         ),
     ] {
         for _ in 0..2 {
-            let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-            assert_eq!(
-                error.kind(),
-                &CssNormalizationErrorKind::LimitExceeded { resource, limit: 4 }
-            );
+            let error = report.syntax().normalize(limits).unwrap_err();
+            assert_eq!(error.exhausted_limit(), Some((resource, 4)));
             assert_eq!(error.declaration_order(), Some(4));
             assert!(
                 error
@@ -320,16 +339,16 @@ fn normalization_counts_terminals_and_occurrences_cumulatively_preserving_order_
         }
     }
     assert_eq!(report, before);
-    assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
+    assert!(report.syntax().normalize(exact).is_ok());
 }
 fn assert_primitive_limits(value: &CssTextTransform, expected: &str, nodes: usize) {
     LimitLadder::new(expected, nodes, nodes)
-        .assert_unchanged(value, CssTextTransform::serialize_specified_with_limits);
+        .assert_unchanged(value, CssTextTransform::serialize_specified);
 }
 #[test]
 fn primitive_and_declaration_resources_charge_only_emitted_keywords_and_retry_atomically() {
-    use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
+    use crate::css::support::failure_classes::SerializationFailure as Kind;
+    use CssSerializationLimits as Limits;
     for text in STATES {
         let source = checked(PROPERTY, text, true);
         // This is the adopted semantic tariff: one per keyword. Counting the
@@ -339,10 +358,7 @@ fn primitive_and_declaration_resources_charge_only_emitted_keywords_and_retry_at
         let expected = format!("text-transform: {text} !important;");
         let before = source.clone();
         let exact = Limits::new(nodes + 2, nodes + 2, expected.len());
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
         for (limits, kind) in [
             (
                 Limits::new(nodes + 1, nodes + 2, expected.len()),
@@ -359,26 +375,20 @@ fn primitive_and_declaration_resources_charge_only_emitted_keywords_and_retry_at
         ] {
             for _ in 0..2 {
                 assert_eq!(
-                    source
-                        .to_specified_css_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
+                    serialization_failure(&source.serialize_specified(limits).unwrap_err()),
                     kind
                 );
                 assert_eq!(source, before);
             }
         }
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
     }
     for (text, _) in GLOBALS {
         let source = checked(PROPERTY, text, true);
         let expected = format!("text-transform: {text} !important;");
         assert_eq!(
             source
-                .to_specified_css_with_limits(Limits::new(3, 3, expected.len()))
+                .serialize_specified(Limits::new(3, 3, expected.len()))
                 .unwrap(),
             expected
         );
@@ -388,16 +398,13 @@ fn primitive_and_declaration_resources_charge_only_emitted_keywords_and_retry_at
             (Limits::new(3, 3, expected.len() - 1), Kind::ByteLimit),
         ] {
             assert_eq!(
-                source
-                    .to_specified_css_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&source.serialize_specified(limits).unwrap_err()),
                 kind
             );
         }
         assert_eq!(
             source
-                .to_specified_css_with_limits(Limits::new(3, 3, expected.len()))
+                .serialize_specified(Limits::new(3, 3, expected.len()))
                 .unwrap(),
             expected
         );
@@ -405,47 +412,43 @@ fn primitive_and_declaration_resources_charge_only_emitted_keywords_and_retry_at
 }
 #[test]
 fn whole_sheet_siblings_share_exact_utf8_bytes_and_failed_attempts_leave_reusable_input() {
-    use CssSpecifiedValueSerializationLimits as Limits;
-    let report = parse_sheet(
-        ".a{text-transform:full-size-kana uppercase full-width!important}.b{text-transform:math-auto}",
-    );
+    use CssSerializationLimits as Limits;
+    let report = CssParser::default().parse_sheet(".a{text-transform:full-size-kana uppercase full-width!important}.b{text-transform:math-auto}");
     assert!(report.is_clean());
     let sheet = report.syntax();
     let before = sheet.clone();
     let expected = ".a { text-transform: uppercase full-width full-size-kana !important; }\n.b { text-transform: math-auto; }";
     let exact = Limits::new(usize::MAX, usize::MAX, expected.len());
     let short = Limits::new(usize::MAX, usize::MAX, expected.len() - 1);
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
     assert!(
         sheet
             .rules()
             .iter()
-            .all(|rule| rule.to_specified_css_with_limits(short).is_ok())
+            .all(|rule| rule.serialize_specified(short).is_ok())
     );
     for _ in 0..2 {
-        let error = sheet.to_specified_css_with_limits(short).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
-            )
-        );
+        let error = sheet.serialize_specified(short).unwrap_err();
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, &before);
     }
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
 }
 #[test]
 fn selected_numeric_flow_and_color_controls_remain_independent_of_new_transform_metadata() {
-    let report = parse_style_attribute("flow-tolerance:calc(-2px - 3%);color:red");
+    let report =
+        CssParser::default().parse_block_contents("flow-tolerance:calc(-2px - 3%);color:red");
     assert!(report.is_clean());
     assert_eq!(
-        report.syntax()[0].to_specified_css().unwrap(),
+        report.syntax()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "flow-tolerance: calc(-3% - 2px);"
     );
     for source in report.syntax().iter() {
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("supported control")
         };

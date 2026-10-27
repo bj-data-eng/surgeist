@@ -4,18 +4,32 @@
 //! These tests accompany new APIs; public-boundary preimplementation RED is in
 //! speech_pause_rest_lifecycle.rs.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as parsed;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssNumeric, CssNumericLiteral, CssTime, CssTimeUnit};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownPropertyValueRef, CssLonghandValueRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::CssSidePair;
+use surgeist_css::values::speech::{CssSpeechBreak, CssSpeechBreakStrength};
 
 fn time(number: &str, unit: CssTimeUnit) -> CssSpeechBreak {
-    CssSpeechBreak::try_time(CssTimeValue::from_literal(
-        CssTimeLiteral::try_new(number, unit).unwrap(),
-    ))
+    CssSpeechBreak::try_time(
+        CssNumeric::<CssTime>::try_from_literal(
+            CssNumericLiteral::<CssTime>::try_new(number, unit).unwrap(),
+        )
+        .unwrap(),
+    )
     .unwrap()
 }
 
-fn composed(before: CssSpeechBreak, after: Option<CssSpeechBreak>) -> CssSpeechBreakPair {
-    CssSpeechBreakPair::try_new(before, after).unwrap()
+fn composed(before: CssSpeechBreak, after: Option<CssSpeechBreak>) -> CssSidePair<CssSpeechBreak> {
+    CssSidePair::<CssSpeechBreak>::try_new(before, after).unwrap()
 }
 
 fn break_value(source: &CssDeclaration) -> &CssSpeechBreak {
@@ -28,7 +42,7 @@ fn break_value(source: &CssDeclaration) -> &CssSpeechBreak {
     }
 }
 
-fn pair(source: &CssDeclaration) -> &CssSpeechBreakPair {
+fn pair(source: &CssDeclaration) -> &CssSidePair<CssSpeechBreak> {
     match source.known().unwrap().property_value().unwrap() {
         CssKnownPropertyValueRef::Pause(value) => value.value(),
         CssKnownPropertyValueRef::Rest(value) => value.value(),
@@ -40,8 +54,13 @@ fn pair(source: &CssDeclaration) -> &CssSpeechBreakPair {
 fn speech_break_models_keep_none_strength_and_explicit_zero_time_distinct() {
     let zero = time("-0", CssTimeUnit::Milliseconds);
     assert_ne!(zero, CssSpeechBreak::None);
-    assert_eq!(zero.serialize_specified().unwrap(), "0s");
-    assert_eq!(CssSpeechBreak::None.serialize_specified().unwrap(), "none");
+    assert_eq!(zero.serialize_specified(Default::default()).unwrap(), "0s");
+    assert_eq!(
+        CssSpeechBreak::None
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "none"
+    );
     for (strength, css) in [
         (CssSpeechBreakStrength::XWeak, "x-weak"),
         (CssSpeechBreakStrength::Weak, "weak"),
@@ -50,13 +69,16 @@ fn speech_break_models_keep_none_strength_and_explicit_zero_time_distinct() {
         (CssSpeechBreakStrength::XStrong, "x-strong"),
     ] {
         let model = CssSpeechBreak::Strength(strength);
-        assert_eq!(model.serialize_specified().unwrap(), css);
+        assert_eq!(model.serialize_specified(Default::default()).unwrap(), css);
         for name in ["pause-before", "pause-after", "rest-before", "rest-after"] {
             assert_eq!(break_value(&parsed(name, css)), &model);
         }
     }
     let zero_none = composed(CssSpeechBreak::None, Some(zero));
-    assert_eq!(zero_none.serialize_specified().unwrap(), "none");
+    assert_eq!(
+        zero_none.serialize_specified(Default::default()).unwrap(),
+        "none"
+    );
 }
 
 #[test]
@@ -79,38 +101,34 @@ fn speech_pairs_omit_none_and_exact_zero_equivalents_without_losing_authored_chi
             assert_ne!(before, after);
             let model = composed(before, Some(after));
             let retained = model.clone();
-            assert_eq!(model.serialize_specified().unwrap(), expected);
-            assert!(model.authored_after().is_some());
+            assert_eq!(
+                model.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
+            assert!(model.authored_second().is_some());
             assert_eq!(model, retained);
             assert_eq!(
                 model
-                    .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                        3,
-                        3,
-                        expected.len()
-                    ))
+                    .serialize_specified(CssSerializationLimits::new(3, 3, expected.len()))
                     .unwrap(),
                 expected
             );
             for (limits, error) in [
                 (
-                    CssSpecifiedValueSerializationLimits::new(2, 3, expected.len()),
-                    CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                    CssSerializationLimits::new(2, 3, expected.len()),
+                    SerializationFailure::InputNodeLimit,
                 ),
                 (
-                    CssSpecifiedValueSerializationLimits::new(3, 2, expected.len()),
-                    CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                    CssSerializationLimits::new(3, 2, expected.len()),
+                    SerializationFailure::ProjectionNodeLimit,
                 ),
                 (
-                    CssSpecifiedValueSerializationLimits::new(3, 3, expected.len() - 1),
-                    CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                    CssSerializationLimits::new(3, 3, expected.len() - 1),
+                    SerializationFailure::ByteLimit,
                 ),
             ] {
                 assert_eq!(
-                    model
-                        .serialize_specified_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
+                    serialization_failure(&model.serialize_specified(limits).unwrap_err()),
                     error
                 );
                 assert_eq!(model, retained);
@@ -124,7 +142,9 @@ fn speech_pairs_omit_none_and_exact_zero_equivalents_without_losing_authored_chi
         (tiny, CssSpeechBreak::None, "0s none"),
     ] {
         assert_eq!(
-            composed(before, Some(after)).serialize_specified().unwrap(),
+            composed(before, Some(after))
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected
         );
     }
@@ -132,8 +152,11 @@ fn speech_pairs_omit_none_and_exact_zero_equivalents_without_losing_authored_chi
         for (value, expected) in [("none -0ms", "none"), ("0e400s none", "0s")] {
             let declaration = parsed(name, value);
             let authored = pair(&declaration);
-            assert!(authored.authored_after().is_some());
-            assert_eq!(authored.serialize_specified().unwrap(), expected);
+            assert!(authored.authored_second().is_some());
+            assert_eq!(
+                authored.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
         }
     }
 }
@@ -141,12 +164,14 @@ fn speech_pairs_omit_none_and_exact_zero_equivalents_without_losing_authored_chi
 #[test]
 fn checked_speech_time_composition_uses_the_owned_exact_duration_invariant() {
     for number in ["-1", "-1e-400"] {
-        let value = CssTimeValue::from_literal(
-            CssTimeLiteral::try_new(number, CssTimeUnit::Seconds).unwrap(),
-        );
-        assert_eq!(
-            CssSpeechBreak::try_time(value).unwrap_err().kind(),
-            &CssNumericConstructionErrorKind::OutOfRange
+        let value = CssNumeric::<CssTime>::try_from_literal(
+            CssNumericLiteral::<CssTime>::try_new(number, CssTimeUnit::Seconds).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            CssSpeechBreak::try_time(value)
+                .unwrap_err()
+                .is_out_of_range()
         );
     }
     for (number, unit, expected) in [
@@ -160,47 +185,56 @@ fn checked_speech_time_composition_uses_the_owned_exact_duration_invariant() {
         ),
     ] {
         let value = time(number, unit);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         let CssSpeechBreak::Time(duration) = &value else {
             panic!("time")
         };
-        let literal = duration.time().literal().unwrap();
+        let literal = duration.literal().unwrap();
         assert_eq!(literal.numeric().representation(), number);
         assert_eq!(literal.unit(), unit);
         assert!(matches!(literal.origin(), CssValueOrigin::Programmatic));
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 
 #[test]
 fn checked_speech_pairs_reject_original_recovered_time_in_either_authored_position() {
-    let report = parse_style_attribute("pause-before:calc(1s");
+    let report = CssParser::default().parse_block_contents("pause-before:calc(1s");
     assert!(!report.is_clean());
-    assert!(validate_style_attribute("pause-before:calc(1s").is_err());
+    assert!(
+        CssParser::default()
+            .parse_block_contents("pause-before:calc(1s")
+            .into_validation_result()
+            .is_err()
+    );
     let recovered = break_value(&report.syntax()[0]);
     let CssSpeechBreak::Time(duration) = recovered else {
         panic!("retained recovered calculation")
     };
-    assert_eq!(
-        CssSpeechBreak::try_time(duration.time().clone())
+    assert!(
+        CssSpeechBreak::try_time(duration.clone().into_any_range())
             .unwrap_err()
-            .kind(),
-        &CssNumericConstructionErrorKind::RecoveredComponent
+            .is_recovered_component()
     );
     for (before, after) in [
         (recovered.clone(), None),
         (CssSpeechBreak::None, Some(recovered.clone())),
     ] {
-        assert_eq!(
-            CssSpeechBreakPair::try_new(before, after)
+        assert!(
+            CssSidePair::<CssSpeechBreak>::try_new(before, after)
                 .unwrap_err()
-                .kind(),
-            &CssNumericConstructionErrorKind::RecoveredComponent
+                .is_recovered_component()
         );
     }
-    let parsed_pair = parse_style_attribute("rest:none calc(1s");
+    let parsed_pair = CssParser::default().parse_block_contents("rest:none calc(1s");
     assert!(!parsed_pair.is_clean());
-    assert!(pair(&parsed_pair.syntax()[0]).authored_after().is_some());
+    assert!(pair(&parsed_pair.syntax()[0]).authored_second().is_some());
 }
 
 #[test]
@@ -209,23 +243,41 @@ fn speech_pairs_retain_authored_second_presence_while_canonically_omitting_equal
     let omitted = composed(weak.clone(), None);
     let explicit = composed(weak.clone(), Some(weak.clone()));
     assert_ne!(omitted, explicit);
-    assert!(omitted.authored_after().is_none());
-    assert_eq!(omitted.before(), omitted.after());
-    assert_eq!(explicit.authored_after(), Some(&weak));
-    assert_eq!(omitted.serialize_specified().unwrap(), "weak");
-    assert_eq!(explicit.serialize_specified().unwrap(), "weak");
+    assert!(omitted.authored_second().is_none());
+    assert_eq!(omitted.first(), omitted.second());
+    assert_eq!(explicit.authored_second(), Some(&weak));
+    assert_eq!(
+        omitted.serialize_specified(Default::default()).unwrap(),
+        "weak"
+    );
+    assert_eq!(
+        explicit.serialize_specified(Default::default()).unwrap(),
+        "weak"
+    );
     for name in ["pause", "rest"] {
         let source = parsed(name, "WEAK/**/w\\65 ak");
-        assert_eq!(pair(&source).before(), &weak);
-        assert_eq!(pair(&source).authored_after(), Some(&weak));
-        assert_eq!(pair(&source).serialize_specified().unwrap(), "weak");
+        assert_eq!(pair(&source).first(), &weak);
+        assert_eq!(pair(&source).authored_second(), Some(&weak));
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            pair(&source)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            "weak"
+        );
+        assert_eq!(
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             "WEAK/**/w\\65 ak"
         );
     }
     let unequal = composed(weak, Some(time("250", CssTimeUnit::Milliseconds)));
-    assert_eq!(unequal.serialize_specified().unwrap(), "weak 0.25s");
+    assert_eq!(
+        unequal.serialize_specified(Default::default()).unwrap(),
+        "weak 0.25s"
+    );
 }
 
 #[test]
@@ -269,8 +321,11 @@ fn speech_pair_time_omission_uses_exact_duration_equivalence_before_rounding() {
         ),
     ] {
         let model = composed(before, Some(after));
-        assert_eq!(model.serialize_specified().unwrap(), expected);
-        assert!(model.authored_after().is_some());
+        assert_eq!(
+            model.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert!(model.authored_second().is_some());
     }
 }
 
@@ -286,37 +341,30 @@ fn speech_break_specified_serialization_counts_leaves_and_actual_canonical_bytes
     ] {
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    css.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, css.len()))
                 .unwrap(),
             css
         );
         for (limits, error) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, css.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(0, 1, css.len()),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, css.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(1, 0, css.len()),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, css.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(1, 1, css.len() - 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 error
             );
         }
-        assert_eq!(value.serialize_specified().unwrap(), css);
+        assert_eq!(value.serialize_specified(Default::default()).unwrap(), css);
     }
 }
 
@@ -348,38 +396,31 @@ fn speech_pairs_share_one_budget_and_charge_suppressed_authored_after_children()
     ] {
         assert_eq!(
             model
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    nodes,
-                    nodes,
-                    css.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(nodes, nodes, css.len()))
                 .unwrap(),
             css
         );
         for (limits, error) in [
             (
-                CssSpecifiedValueSerializationLimits::new(nodes - 1, nodes, css.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(nodes - 1, nodes, css.len()),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(nodes, nodes - 1, css.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(nodes, nodes - 1, css.len()),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(nodes, nodes, css.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(nodes, nodes, css.len() - 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                model
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&model.serialize_specified(limits).unwrap_err()),
                 error
             );
         }
-        assert_eq!(model.serialize_specified().unwrap(), css);
-        assert_eq!(model.authored_after().is_some(), nodes == 3);
+        assert_eq!(model.serialize_specified(Default::default()).unwrap(), css);
+        assert_eq!(model.authored_second().is_some(), nodes == 3);
     }
 }
 
@@ -388,28 +429,35 @@ fn speech_time_calculations_keep_math_phase_and_use_the_shared_time_projection_b
     for name in ["pause", "rest"] {
         let source = parsed(name, "calc(-1s) calc(-1s)");
         let model = pair(&source);
-        let CssSpeechBreak::Time(duration) = model.before() else {
+        let CssSpeechBreak::Time(duration) = model.first() else {
             panic!("calculated time")
         };
-        assert!(duration.time().literal().is_none());
-        assert!(duration.time().calculation().is_some());
-        assert_eq!(model.serialize_specified().unwrap(), "calc(-1s)");
+        assert!(duration.literal().is_none());
+        assert!(duration.calculation().is_some());
+        assert_eq!(
+            model.serialize_specified(Default::default()).unwrap(),
+            "calc(-1s)"
+        );
         // Input traversal includes both retained calculation children even
         // though only one is emitted; default failure leaves the tree intact.
-        assert_eq!(
+        assert!(
             model
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    2, 100, 100
-                ))
+                .serialize_specified(CssSerializationLimits::new(2, 100, 100))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+                .is_input_node_limit()
         );
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             "calc(-1s) calc(-1s)"
         );
-        assert_eq!(model.serialize_specified().unwrap(), "calc(-1s)");
+        assert_eq!(
+            model.serialize_specified(Default::default()).unwrap(),
+            "calc(-1s)"
+        );
     }
 }
 
@@ -418,7 +466,7 @@ fn speech_expanded_typed_payloads_serialize_in_before_after_order_with_original_
     for name in ["pause", "rest"] {
         let source = parsed(name, "250MS X-STRONG");
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("completed pair")
         };
@@ -433,7 +481,10 @@ fn speech_expanded_typed_payloads_serialize_in_before_after_order_with_original_
                 | CssLonghandValueRef::RestAfter(value) => value,
                 _ => panic!("coupled speech terminal"),
             };
-            assert_eq!(value.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             assert!(item.source().same_occurrence(&source));
             assert_eq!(item.source().importance(), CssImportance::Important);
         }

@@ -1,16 +1,15 @@
 //! Authored rule composition, cumulative resource and immutable graph contracts.
 //! CSS Syntax 3 §8.3/9 and the specified-output provider contracts.
+use crate::css::support::failure_classes::SerializationFailure as Kind;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::ExpectedRejection;
 use crate::css::support::rules::assert_exact_specified_sheet as exact;
 use crate::css::support::rules::clean_sheet as sheet;
-use std::error::Error;
-use surgeist_css::{
-    CssErrorCode, CssMediaRule, CssNamespaceContext, CssRecoveryAction, CssRule, CssSheet,
-    CssSpecifiedRuleSerializationErrorKind as RuleError,
-    CssSpecifiedValueSerializationError as ValueError,
-    CssSpecifiedValueSerializationErrorKind as Kind,
-    CssSpecifiedValueSerializationLimits as Limits, parse_sheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::{CssMediaRule, CssRule, CssSheet};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssSerializationLimits as Limits;
 
 #[test]
 fn namespace_and_font_providers_remain_callable_controls() {
@@ -39,7 +38,7 @@ fn groups_compose_typed_providers_without_losing_sibling_order() {
 #[test]
 fn recovered_media_members_emit_not_all_in_place_and_keep_report_origins() {
     let source = "/* 😀 */\r\n@media SCREEN,???,PRINT,&test,speech{.child{opacity:.5}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let before = report.clone();
     assert_eq!(report.diagnostics().len(), 2);
     assert!(
@@ -58,14 +57,24 @@ fn recovered_media_members_emit_not_all_in_place_and_keep_report_origins() {
         .map(|query| query.origin().clone())
         .collect::<Vec<_>>();
     let expected = "@media screen, not all, print, not all, speech { .child { opacity: 0.5; } }";
-    assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     assert_eq!(report, before);
     let reparsed = sheet(expected);
     let [CssRule::Media(emitted)] = reparsed.rules() else {
         panic!("media")
     };
     assert_eq!(
-        emitted.query().serialize_cssom().unwrap().as_css(),
+        emitted
+            .query()
+            .serialize_cssom(Default::default())
+            .unwrap()
+            .as_css(),
         "screen, not all, print, not all, speech"
     );
     assert_eq!(
@@ -91,7 +100,8 @@ fn valid_symbolic_media_conditions_keep_grouping_case_and_member_order() {
 
 #[test]
 fn invalid_declaration_recovery_drops_only_the_invalid_occurrence() {
-    let report = parse_sheet(".x{opacity:.25;opacity:bad;opacity:.5!important}");
+    let report =
+        CssParser::default().parse_sheet(".x{opacity:.25;opacity:bad;opacity:.5!important}");
     let before = report.clone();
     // Color 4 §3.2: opacity takes <opacity-value>; `bad` matches nothing.
     let [diagnostic] = report.diagnostics() else {
@@ -103,7 +113,10 @@ fn invalid_declaration_recovery_drops_only_the_invalid_occurrence() {
         .at("bad")
         .assert_first(&report);
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         ".x { opacity: 0.25; opacity: 0.5 !important; }"
     );
     assert_eq!(report, before);
@@ -126,7 +139,7 @@ fn checked_media_and_sheet_reuse_parsed_children_without_inventing_provenance() 
     let input = CssSheet::try_from_rules(vec![CssRule::Media(checked)]).unwrap();
     let before = input.clone();
     assert_eq!(
-        input.to_specified_css().unwrap(),
+        input.serialize_specified(Default::default()).unwrap(),
         "@media print { @font-face { font-weight: 500; } }"
     );
     assert_eq!(input, before);
@@ -141,20 +154,26 @@ fn logical_utf8_output_serializes_retained_rules_after_unknown_charset_recovery(
         ),
         ("@charset \"UTF-8\";", ""),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let [diagnostic] = report.diagnostics() else {
             panic!("one unknown charset")
         };
         assert_eq!(
             diagnostic.error().code(),
-            surgeist_css::CssErrorCode::UnknownAtRule
+            surgeist_css::diagnostic::CssErrorCode::UnknownAtRule
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
         let parsed = report.syntax();
         let before = parsed.clone();
         let checked = CssSheet::try_from_rules(parsed.rules().to_vec()).unwrap();
-        assert_eq!(parsed.to_specified_css().unwrap(), expected);
-        assert_eq!(checked.to_specified_css().unwrap(), expected);
+        assert_eq!(
+            parsed.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_eq!(
+            checked.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(parsed, &before);
     }
 }
@@ -167,18 +186,20 @@ fn utf8_byte_budget_counts_multibyte_output_and_sheet_separator_exactly_once() {
     assert!(expected.len() > expected.chars().count());
     assert_eq!(
         input
-            .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, expected.len()))
+            .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len()))
             .unwrap(),
         expected
     );
     let error = input
-        .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
+        .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
         .unwrap_err();
-    assert_eq!(error.kind(), RuleError::Resource(Kind::ByteLimit));
+    assert!(error.is_byte_limit(), "{error:?}");
     assert_eq!(error.rule_index(), Some(1));
-    assert!(error.source().is_some());
     assert_eq!(input, before);
-    assert_eq!(input.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        input.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 
 #[test]
@@ -188,7 +209,7 @@ fn namespace_node_control_proves_shared_sheet_aggregate_and_rule_accounting() {
     let expected = "@namespace a url(\"x\");\n@namespace b url(\"y\");";
     assert_eq!(
         input
-            .to_specified_css_with_limits(Limits::new(7, 7, expected.len()))
+            .serialize_specified(Limits::new(7, 7, expected.len()))
             .unwrap(),
         expected
     );
@@ -200,20 +221,11 @@ fn namespace_node_control_proves_shared_sheet_aggregate_and_rule_accounting() {
             input
                 .rules()
                 .iter()
-                .all(|rule| rule.to_specified_css_with_limits(limits).is_ok())
+                .all(|rule| rule.serialize_specified(limits).is_ok())
         );
-        let error = input.to_specified_css_with_limits(limits).unwrap_err();
-        assert_eq!(error.kind(), RuleError::Resource(kind));
+        let error = input.serialize_specified(limits).unwrap_err();
+        assert_eq!(serialization_failure(&error), kind);
         assert_eq!(error.rule_index(), Some(1));
-        assert_eq!(
-            error
-                .source()
-                .unwrap()
-                .downcast_ref::<ValueError>()
-                .unwrap()
-                .kind(),
-            kind
-        );
         assert_eq!(input, before);
     }
 }
@@ -228,15 +240,10 @@ fn media_provider_work_shares_nodes_with_preceding_sibling_rules() {
         (Limits::new(4, usize::MAX, 256), Kind::InputNodeLimit),
         (Limits::new(usize::MAX, 4, 256), Kind::ProjectionNodeLimit),
     ] {
-        assert!(
-            input.rules()[0]
-                .to_specified_css_with_limits(limits)
-                .is_ok()
-        );
-        let error = input.to_specified_css_with_limits(limits).unwrap_err();
-        assert_eq!(error.kind(), RuleError::Resource(kind));
+        assert!(input.rules()[0].serialize_specified(limits).is_ok());
+        let error = input.serialize_specified(limits).unwrap_err();
+        assert_eq!(serialization_failure(&error), kind);
         assert_eq!(error.rule_index(), Some(1));
-        assert!(error.source().is_some());
         assert_eq!(input, before);
     }
 }
@@ -256,7 +263,10 @@ fn finite_deep_grouping_is_emitted_and_stops_atomically_at_shared_work_limits() 
             "@media screen { ".repeat(depth),
             " }".repeat(depth)
         );
-        assert_eq!(input.to_specified_css().unwrap(), expected);
+        assert_eq!(
+            input.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         for (limits, kind) in [
             (
                 Limits::new(1, usize::MAX, expected.len()),
@@ -267,10 +277,8 @@ fn finite_deep_grouping_is_emitted_and_stops_atomically_at_shared_work_limits() 
                 Kind::ProjectionNodeLimit,
             ),
         ] {
-            let error = input.rules()[0]
-                .to_specified_css_with_limits(limits)
-                .unwrap_err();
-            assert_eq!(error.kind(), RuleError::Resource(kind));
+            let error = input.rules()[0].serialize_specified(limits).unwrap_err();
+            assert_eq!(serialization_failure(&error), kind);
             assert_eq!(error.rule_index(), None);
             assert_eq!(input, before);
         }
@@ -285,13 +293,15 @@ fn nested_provider_failure_points_to_the_enclosing_top_level_rule() {
     let before = input.clone();
     let expected = "@namespace n url(\"u\");\n@media screen { @supports (display: grid) { @font-face { font-weight: 500; } } }";
     let error = input
-        .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
+        .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
         .unwrap_err();
-    assert_eq!(error.kind(), RuleError::Resource(Kind::ByteLimit));
+    assert!(error.is_byte_limit(), "{error:?}");
     assert_eq!(error.rule_index(), Some(1));
-    assert!(error.source().is_some());
     assert_eq!(input, before);
-    assert_eq!(input.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        input.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 
 #[test]
@@ -301,11 +311,14 @@ fn condition_providers_keep_authored_grouping_and_comment_boundaries() {
         panic!("supports")
     };
     assert_eq!(
-        rule.condition().serialize().unwrap().as_css(),
+        rule.condition()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         " ((display:/*keep*/grid))"
     );
     assert_eq!(
-        supports.to_specified_css().unwrap(),
+        supports.serialize_specified(Default::default()).unwrap(),
         "@supports ((display:/*keep*/grid)) { }"
     );
     let container = sheet("@container (width/**/>/**/1px){}");
@@ -313,18 +326,21 @@ fn condition_providers_keep_authored_grouping_and_comment_boundaries() {
         panic!("container")
     };
     assert_eq!(
-        rule.prelude().serialize().unwrap().as_css(),
+        rule.prelude()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         " (width/**/>/**/1px)"
     );
     assert_eq!(
-        container.to_specified_css().unwrap(),
+        container.serialize_specified(Default::default()).unwrap(),
         "@container (width/**/>/**/1px) { }"
     );
 }
 
 #[test]
 fn recovered_media_projection_cost_preserves_its_typed_provider_origin() {
-    let report = parse_sheet("@media screen,???,print{}");
+    let report = CssParser::default().parse_sheet("@media screen,???,print{}");
     let before = report.clone();
     let [CssRule::Media(rule)] = report.syntax().rules() else {
         panic!("media")
@@ -334,36 +350,23 @@ fn recovered_media_projection_cost_preserves_its_typed_provider_origin() {
     let expected = "screen, not all, print";
     assert_eq!(
         rule.query()
-            .serialize_cssom_with_limits(Limits::new(6, 8, expected.len()))
+            .serialize_cssom(Limits::new(6, 8, expected.len()))
             .unwrap()
             .as_css(),
         expected
     );
     let provider = rule
         .query()
-        .serialize_cssom_with_limits(Limits::new(6, 7, expected.len()))
+        .serialize_cssom(Limits::new(6, 7, expected.len()))
         .unwrap_err();
-    assert!(matches!(
-        provider,
-        surgeist_css::CssMediaCssomSerializationError::Resource { .. }
-    ));
+    assert!(provider.is_projection_node_limit(), "{provider:?}");
     // A sheet and enclosing media rule add work; the provider may not reset it.
     let error = report
         .syntax()
-        .to_specified_css_with_limits(Limits::new(usize::MAX, 6, 256))
+        .serialize_specified(Limits::new(usize::MAX, 6, 256))
         .unwrap_err();
-    assert_eq!(error.kind(), RuleError::Resource(Kind::ProjectionNodeLimit));
+    assert!(error.is_projection_node_limit(), "{error:?}");
     assert_eq!(error.rule_index(), Some(0));
-    let mut source = error.source();
-    let mut media_error = None;
-    while let Some(cause) = source {
-        if let Some(value) = cause.downcast_ref::<surgeist_css::CssMediaCssomSerializationError>() {
-            media_error = Some(value);
-            break;
-        }
-        source = cause.source();
-    }
-    let media_error = media_error.expect("preserved typed media provider source");
-    assert_eq!(media_error.origin(), rule.query().queries()[1].origin());
+    assert_eq!(error.origin(), Some(rule.query().queries()[1].origin()));
     assert_eq!(report, before);
 }

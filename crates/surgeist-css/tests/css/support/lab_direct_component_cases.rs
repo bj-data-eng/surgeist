@@ -5,7 +5,10 @@
 //! [`assert_specified_text`] runner.
 
 use super::{checked_color, checked_color_declaration, component_values, declaration_color};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::property::CssKnownProperty;
 
 /// `source` serializes as `expected` through both the checked and the
 /// parsed `color` entry, without mutating either declaration, and the
@@ -13,7 +16,7 @@ use surgeist_css::*;
 pub fn assert_specified_text(source: &str, expected: &str) {
     let checked = checked_color_declaration(source);
     let source_attribute = format!("color:{source}!important;opacity:.5");
-    let report = parse_style_attribute(&source_attribute);
+    let report = CssParser::default().parse_block_contents(&source_attribute);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2);
     let parsed = &report.syntax()[0];
@@ -25,7 +28,11 @@ pub fn assert_specified_text(source: &str, expected: &str) {
     assert_eq!(parsed.importance(), CssImportance::Important);
     assert_eq!(checked.value_components(), &component_values(source));
     assert_eq!(
-        parsed.value_components().serialize().unwrap().as_css(),
+        parsed
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         source
     );
     let CssValueOrigin::Parsed(origin) = parsed.value_components().items()[0].origin() else {
@@ -43,20 +50,25 @@ pub fn assert_specified_text(source: &str, expected: &str) {
     let parsed_before = parsed.clone();
     // Execute both actual entry routes before asserting either output, so RED
     // in one route does not prevent the other route's writer from executing.
-    let checked_result = declaration_color(&checked).to_specified_css();
-    let parsed_result = declaration_color(parsed).to_specified_css();
+    let checked_result = declaration_color(&checked).serialize_specified(Default::default());
+    let parsed_result = declaration_color(parsed).serialize_specified(Default::default());
     assert_eq!(
         checked_result,
-        declaration_color(&checked).to_specified_css()
+        declaration_color(&checked).serialize_specified(Default::default())
     );
-    assert_eq!(parsed_result, declaration_color(parsed).to_specified_css());
+    assert_eq!(
+        parsed_result,
+        declaration_color(parsed).serialize_specified(Default::default())
+    );
     assert_eq!(checked, checked_before);
     assert_eq!(parsed, &parsed_before);
     assert_eq!(checked_result.unwrap(), expected, "{source}: checked entry");
     assert_eq!(parsed_result.unwrap(), expected, "{source}: parsed entry");
     // Reentry complements the explicit independent literal oracle.
     assert_eq!(
-        checked_color(expected).to_specified_css().unwrap(),
+        checked_color(expected)
+            .serialize_specified(Default::default())
+            .unwrap(),
         expected
     );
 }

@@ -2,11 +2,14 @@
 
 //! A host may inspect authored Grid placement without resolving layout lines.
 
-use surgeist_css::{CssGridLine, CssKnownPropertyValueRef, CssValueOrigin, parse_style_attribute};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::layout::CssGridLine;
 
 fn main() {
-    let report =
-        parse_style_attribute("grid-area: main 2147483648 / nav / span calc(-1) !important");
+    let report = CssParser::default()
+        .parse_block_contents("grid-area: main 2147483648 / nav / span calc(-1) !important");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let declaration = &report.syntax().as_slice()[0];
     let CssKnownPropertyValueRef::GridArea(value) = declaration
@@ -21,17 +24,19 @@ fn main() {
     assert!(area.authored_column_end().is_none());
     assert_eq!(area.effective_column_end(), area.effective_column_start());
     assert_eq!(
-        area.effective_row_end().serialize_specified().unwrap(),
+        area.effective_row_end()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "span calc(-1)"
     );
     assert_eq!(
-        area.serialize_specified().unwrap(),
+        area.serialize_specified(Default::default()).unwrap(),
         "2147483648 main / nav / span calc(-1)"
     );
     let CssGridLine::Indexed(index) = area.row_start() else {
         panic!("indexed row start")
     };
-    let surgeist_css::CssIntegerValue::Literal(literal) = index.value() else {
+    let Some(literal) = index.value().literal() else {
         panic!("exact ordinary integer")
     };
     assert!(matches!(literal.origin(), CssValueOrigin::Parsed(_)));

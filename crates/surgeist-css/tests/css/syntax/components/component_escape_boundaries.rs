@@ -2,18 +2,26 @@
 //! including a six-digit escape. Section 9 requires token-preserving output.
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/
 
-use surgeist_css::{
-    CssComponentValue, CssComponentValueErrorKind, CssComponentValueRef, CssComponentValues,
-    CssSerializedOrigin, CssValueOrigin, CssValueTokenRef, parse_component_values,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
 };
 
 fn joined(left: &str, right: &str) -> CssComponentValues {
-    let mut items = parse_component_values(left).unwrap().items().to_vec();
-    items.extend_from_slice(parse_component_values(right).unwrap().items());
-    CssComponentValues::try_new(items).unwrap()
+    let mut items = CssComponentValues::parse(&CssParser::default(), left)
+        .unwrap()
+        .items()
+        .to_vec();
+    items.extend_from_slice(
+        CssComponentValues::parse(&CssParser::default(), right)
+            .unwrap()
+            .items(),
+    );
+    CssComponentValues::try_new(items, Default::default()).unwrap()
 }
 
-fn assert_left(value: &surgeist_css::CssComponentValue, spelling: &str) {
+fn assert_left(value: &surgeist_css::component::CssComponentValue, spelling: &str) {
     match (spelling, value.view()) {
         (r"\31" | r"\000031", CssComponentValueRef::Token(CssValueTokenRef::Ident("1")))
         | (r"@\31", CssComponentValueRef::Token(CssValueTokenRef::AtKeyword("1")))
@@ -31,9 +39,10 @@ fn hex_escape_endings_preserve_separately_originating_whitespace() {
     for spelling in [r"\31", r"\000031", r"@\31", r"#\31", r"1\70"] {
         for whitespace in [" ", "\t", "\n", "\r", "\r\n", "\u{c}"] {
             let values = joined(spelling, whitespace);
-            let output = values.serialize().unwrap();
+            let output = values.serialize_tokens(Default::default()).unwrap();
             assert_eq!(output.as_css(), format!("{spelling}/**/{whitespace}"));
-            let reparsed = parse_component_values(output.as_css()).unwrap();
+            let reparsed =
+                CssComponentValues::parse(&CssParser::default(), output.as_css()).unwrap();
             let [left, separator, right] = reparsed.items() else {
                 panic!("retain the left token, separator and whitespace: {output:?}");
             };
@@ -52,7 +61,7 @@ fn hex_escape_endings_preserve_separately_originating_whitespace() {
 #[test]
 fn escape_boundary_separators_keep_both_origins_and_count_toward_limits() {
     let values = joined(r"\31", " ");
-    let output = values.serialize().unwrap();
+    let output = values.serialize_tokens(Default::default()).unwrap();
     let left = values.items()[0].origin();
     let right = values.items()[1].origin();
     for offset in 3..7 {
@@ -62,23 +71,31 @@ fn escape_boundary_separators_keep_both_origins_and_count_toward_limits() {
     }
     assert!(matches!(output.origin_at(7),
         Some(CssSerializedOrigin::Token(origin)) if origin == right));
-    let failure = values.serialize_with_limit(7).unwrap_err();
-    assert_eq!(failure.kind(), CssComponentValueErrorKind::ByteLimit);
+    let failure = values
+        .serialize_tokens(crate::css::support::byte_limits(7))
+        .unwrap_err();
+    assert!(failure.is_byte_limit(), "{failure:?}");
     assert_eq!(failure.origin(), right);
     assert_eq!(
-        values.serialize_with_limit(8).unwrap().as_css(),
+        values
+            .serialize_tokens(crate::css::support::byte_limits(8))
+            .unwrap()
+            .as_css(),
         r"\31/**/ "
     );
 }
 
 #[test]
 fn checked_tokens_use_the_same_escape_boundary_without_parsed_origins() {
-    let values = CssComponentValues::try_new(vec![
-        CssComponentValue::try_token(r"\31").unwrap(),
-        CssComponentValue::try_token(" ").unwrap(),
-    ])
+    let values = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_token(r"\31").unwrap(),
+            CssComponentValue::try_token(" ").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
-    let output = values.serialize().unwrap();
+    let output = values.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), r"\31/**/ ");
     assert!(matches!(
         output.origin_at(3),
@@ -93,9 +110,9 @@ fn checked_tokens_use_the_same_escape_boundary_without_parsed_origins() {
 fn terminated_or_escaped_backslashes_do_not_create_extra_separators() {
     for spelling in [r"\31 ", r"\000031 ", r"\\31", "plain"] {
         let values = joined(spelling, " ");
-        let output = values.serialize().unwrap();
+        let output = values.serialize_tokens(Default::default()).unwrap();
         assert_eq!(output.as_css(), format!("{spelling} "));
-        let reparsed = parse_component_values(output.as_css()).unwrap();
+        let reparsed = CssComponentValues::parse(&CssParser::default(), output.as_css()).unwrap();
         assert_eq!(reparsed.items().len(), 2, "{output:?}");
         assert!(matches!(
             reparsed.items()[1].view(),

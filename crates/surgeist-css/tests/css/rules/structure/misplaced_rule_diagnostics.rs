@@ -8,7 +8,8 @@
 //!   besides declarations, so `@page` is rejected there too.
 //!   <https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/#scope-syntax>
 //! - Cascade 5 §6.1: `@import` is valid only at the stylesheet top level.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssErrorCode;
 
 const WITHOUT_STYLE_ANCESTOR: &str = "a rule list without a style-rule ancestor";
 const PAGE: &str = "a rule list without a style-rule ancestor that is not itself a @scope body";
@@ -49,7 +50,7 @@ fn each_misplaced_rule_reports_one_placement_diagnostic_naming_its_context() {
         ),
     ];
     for (source, rule, name, context) in cases {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let [diagnostic] = report.diagnostics() else {
             panic!("{source:?}: one placement diagnostic: {report:?}");
         };
@@ -58,18 +59,29 @@ fn each_misplaced_rule_reports_one_placement_diagnostic_naming_its_context() {
             CssErrorCode::InvalidAtRulePlacement,
             "{source:?}"
         );
-        let ErrorKind::InvalidAtRulePlacement(detail) = diagnostic.error().kind() else {
-            panic!("{source:?}: placement owns the rejection");
-        };
-        assert_eq!(detail.name().as_str(), name, "{source:?}");
-        assert_eq!(detail.expected_context().as_str(), context, "{source:?}");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidAtRulePlacement,
+            "{source:?}: placement owns the rejection"
+        );
+        assert_eq!(detail.at_rule().unwrap().as_str(), name, "{source:?}");
+        assert_eq!(
+            detail.expectation().unwrap().as_str(),
+            context,
+            "{source:?}"
+        );
         assert_eq!(
             diagnostic.span().start().byte_offset().value(),
             source.find(rule).unwrap(),
             "{source:?}"
         );
         assert_eq!(
-            validate_sheet(source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }

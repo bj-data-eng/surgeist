@@ -1,4 +1,8 @@
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::rule::keyframes::{
+    CssKeyframeSelectorComparisonStage, CssParsedKeyframeSelectors,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 use surgeist_cssom::*;
 fn batch(store: &CssomStore) -> CssomBatch {
     store
@@ -274,13 +278,13 @@ fn a_whole_reverse_search_shares_native_work_and_resource_failure_rolls_back_bat
     // The provider's public literal tariff admits query + two candidates at
     // (6,8), but not a third; resetting a pair budget would falsely succeed.
     let limits = CssomLimits {
-        css: CssSpecifiedValueSerializationLimits::new(6, 8, 0),
+        css: CssSerializationLimits::new(6, 8, 0),
         ..CssomLimits::default()
     };
     let (mut store, sheet, root, children) =
         fixture("@keyframes test { 10% {} 20% {} 30% {} }", limits.clone());
     let before = store.snapshot();
-    let (query, _) = parse_keyframe_selector_list("10%").into_parts();
+    let (query, _) = CssParsedKeyframeSelectors::parse(&CssParser::default(), "10%").into_parts();
     let query = query.unwrap();
     // Every isolated public pair is admissible at this allowance. The complete
     // CSSOM search must still fail because it shares one native request across
@@ -292,7 +296,7 @@ fn a_whole_reverse_search_shares_native_work_and_resource_failure_rolls_back_bat
         assert!(
             query
                 .selectors()
-                .matches_normalized_with_limits(selectors, limits.css)
+                .matches_normalized(selectors, limits.css)
                 .is_ok()
         );
     }
@@ -304,10 +308,7 @@ fn a_whole_reverse_search_shares_native_work_and_resource_failure_rolls_back_bat
     else {
         panic!("whole search quota");
     };
-    assert_eq!(
-        error.cause().kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
-    );
+    assert!(error.cause().is_input_node_limit(), "{error:?}");
     assert_eq!(
         error.stage(),
         CssKeyframeSelectorComparisonStage::RightNormalization

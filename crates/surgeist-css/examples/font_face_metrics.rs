@@ -1,18 +1,20 @@
 #![forbid(unsafe_code)]
 //! Inspect typed descriptor payloads without matching or modifying a font.
 
-use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue as Authored, CssFontFaceDescriptorKind as Kind,
-    CssFontFaceDescriptorValue as Value, CssFontMetricOverride, CssRule, parse_component_values,
-    parse_sheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue as Authored;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind as Kind;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorValue as Value;
+use surgeist_css::rule::font_face::CssFontMetricOverride;
 
 fn main() {
     let source = concat!(
         "@font-face{font-named-instance:'Grotesque';font-language-override:'TRK';",
         "ascent-override:125%;descent-override:normal;line-gap-override:env(gap,0%)}"
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("font-face payload")
@@ -26,7 +28,10 @@ fn main() {
     else {
         panic!("ordinary ascent percentage")
     };
-    assert_eq!(ascent.serialize_specified().unwrap(), "125%");
+    assert_eq!(
+        ascent.serialize_specified(Default::default()).unwrap(),
+        "125%"
+    );
     let Authored::Pending(gap) = face
         .descriptors()
         .effective(Kind::LineGapOverride)
@@ -36,10 +41,16 @@ fn main() {
         panic!("whole-descriptor environment value")
     };
     let Value::LineGapOverride(CssFontMetricOverride::Percentage(gap)) = gap
-        .reparse_after_substitution(parse_component_values("0%").unwrap())
+        .reparse_after_substitution(
+            CssComponentValues::parse(&CssParser::default(), "0%").unwrap(),
+            Default::default(),
+        )
         .unwrap()
     else {
         panic!("strict ordinary replacement")
     };
-    println!("line-gap-override: {}", gap.serialize_specified().unwrap());
+    println!(
+        "line-gap-override: {}",
+        gap.serialize_specified(Default::default()).unwrap()
+    );
 }

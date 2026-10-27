@@ -1,5 +1,8 @@
-use surgeist_css::CssRule;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef};
+use surgeist_css::query::media::{CssCustomMediaBody, CssMediaQueryList};
+use surgeist_css::rule::CssRule;
+use surgeist_css::serialization::{CssRuleCssomFormat, CssSerializationLimits};
 use surgeist_cssom::*;
 
 #[test]
@@ -20,7 +23,7 @@ fn edited_font_families_and_counter_name_keep_native_wrapper_limits() {
             .unwrap()
             .capture(&current)
             .unwrap()
-            .font_family(CssSpecifiedValueSerializationLimits::default())
+            .font_family(CssSerializationLimits::default())
             .unwrap(),
         "Current"
     );
@@ -30,7 +33,7 @@ fn edited_font_families_and_counter_name_keep_native_wrapper_limits() {
             .unwrap()
             .capture(&before)
             .unwrap()
-            .font_family(CssSpecifiedValueSerializationLimits::default())
+            .font_family(CssSerializationLimits::default())
             .unwrap(),
         "Original"
     );
@@ -40,7 +43,7 @@ fn edited_font_families_and_counter_name_keep_native_wrapper_limits() {
             .unwrap()
             .capture(&current)
             .unwrap()
-            .name(CssSpecifiedValueSerializationLimits::default())
+            .name(CssSerializationLimits::default())
             .unwrap(),
         "current"
     );
@@ -50,7 +53,7 @@ fn edited_font_families_and_counter_name_keep_native_wrapper_limits() {
             .unwrap()
             .capture(&before)
             .unwrap()
-            .name(CssSpecifiedValueSerializationLimits::default())
+            .name(CssSerializationLimits::default())
             .unwrap(),
         "original"
     );
@@ -61,7 +64,7 @@ fn edited_font_families_and_counter_name_keep_native_wrapper_limits() {
         ]) {
             assert!(matches!(
                 captured_rule(&store, snapshot, rule).css_text( &CssomRuleFormatLimits::default()),
-                Err(CssomError::Format(ref error)) if error.kind() == CssRuleCssomSerializationErrorKind::FormatUnavailable(kind)
+                Err(CssomError::Format(ref error)) if error.unavailable_format() == Some(kind)
             ));
         }
     }
@@ -157,8 +160,13 @@ fn recursive_text_uses_current_selectors_selected_survivors_order_and_media() {
     let ticket = edit
         .insert_group_rule(&style, "& d { height: 2px; }", 2)
         .unwrap();
-    edit.set_media(&media, parse_media_query_list("print").into_parts().0)
-        .unwrap();
+    edit.set_media(
+        &media,
+        CssMediaQueryList::parse(&CssParser::default(), "print")
+            .into_parts()
+            .0,
+    )
+    .unwrap();
     let inserted = store.commit(edit).unwrap().rule(&ticket).unwrap().clone();
     let current = store.snapshot();
     assert_eq!(
@@ -243,8 +251,13 @@ fn current_import_media_without_child_sheet_is_serialized_with_genuine_clauses()
         .id()
         .clone();
     let mut edit = batch(&store);
-    edit.set_media(&media, parse_media_query_list("print").into_parts().0)
-        .unwrap();
+    edit.set_media(
+        &media,
+        CssMediaQueryList::parse(&CssParser::default(), "print")
+            .into_parts()
+            .0,
+    )
+    .unwrap();
     store.commit(edit).unwrap();
     let snapshot = store.snapshot();
     assert_eq!(
@@ -301,7 +314,7 @@ fn independent_work_and_native_output_failures_preserve_capture_and_retry() {
         })
     ));
     let native = CssomRuleFormatLimits {
-        css: CssSpecifiedValueSerializationLimits::new(1, 1, normal.len()),
+        css: CssSerializationLimits::new(1, 1, normal.len()),
         ..CssomRuleFormatLimits::default()
     };
     assert!(matches!(
@@ -309,7 +322,7 @@ fn independent_work_and_native_output_failures_preserve_capture_and_retry() {
         Err(CssomError::Format(_))
     ));
     let short = CssomRuleFormatLimits {
-        css: CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, normal.len() - 1),
+        css: CssSerializationLimits::new(usize::MAX, usize::MAX, normal.len() - 1),
         ..CssomRuleFormatLimits::default()
     };
     assert!(matches!(
@@ -383,23 +396,20 @@ fn unavailable_wrapper_is_lazy_and_reports_actual_path_without_preparing_descend
         ..CssomRuleFormatLimits::default()
     };
     assert!(
-        matches!(captured_rule(&store, &snapshot, &scope).css_text( &limits), Err(CssomError::Format(ref error)) if error.kind() == CssRuleCssomSerializationErrorKind::FormatUnavailable(CssRuleCssomFormat::Scope))
+        matches!(captured_rule(&store, &snapshot, &scope).css_text( &limits), Err(CssomError::Format(ref error)) if error.unavailable_format() == Some(CssRuleCssomFormat::Scope))
     );
     let Err(CssomError::Format(error)) =
         captured_rule(&store, &snapshot, &roots[0]).css_text(&CssomRuleFormatLimits::default())
     else {
         panic!("typed unavailable");
     };
-    assert_eq!(
-        error.kind(),
-        CssRuleCssomSerializationErrorKind::FormatUnavailable(CssRuleCssomFormat::Scope)
-    );
+    assert_eq!(error.unavailable_format(), Some(CssRuleCssomFormat::Scope));
     assert_eq!(error.rule_path(), &[0]);
     assert_eq!(
         store
             .css_scope_rule(&scope)
             .and_then(|handle| handle.capture(&snapshot))
-            .and_then(|capture| capture.start(CssSpecifiedValueSerializationLimits::default()))
+            .and_then(|capture| capture.start(CssSerializationLimits::default()))
             .unwrap()
             .as_deref(),
         Some(".outer")
@@ -602,7 +612,7 @@ fn custom_media_current_query_keeps_native_unavailable_wrapper_boundary() {
             .unwrap()
             .capture(&current)
             .unwrap()
-            .media_text(CssSpecifiedValueSerializationLimits::default())
+            .media_text(CssSerializationLimits::default())
             .unwrap(),
         "print"
     );
@@ -612,7 +622,7 @@ fn custom_media_current_query_keeps_native_unavailable_wrapper_boundary() {
             .unwrap()
             .capture(&before)
             .unwrap()
-            .media_text(CssSpecifiedValueSerializationLimits::default())
+            .media_text(CssSerializationLimits::default())
             .unwrap(),
         "screen"
     );
@@ -622,11 +632,11 @@ fn custom_media_current_query_keeps_native_unavailable_wrapper_boundary() {
                 .css_text(&CssomRuleFormatLimits::default())
                 .unwrap_err();
             assert!(
-                matches!(error, CssomError::Format(ref error) if error.kind() == CssRuleCssomSerializationErrorKind::FormatUnavailable(CssRuleCssomFormat::CustomMedia))
+                matches!(error, CssomError::Format(ref error) if error.unavailable_format() == Some(CssRuleCssomFormat::CustomMedia))
             );
         }
     }
-    let CssomAuthoredRule::Ordinary(CssRule::CustomMedia(original)) =
+    let CssomAuthoredRule::Rule(CssRule::CustomMedia(original)) =
         current.rule(&roots[0]).unwrap().authored()
     else {
         panic!("genuine original");
@@ -634,7 +644,13 @@ fn custom_media_current_query_keeps_native_unavailable_wrapper_boundary() {
     let CssCustomMediaBody::Media(original_query) = original.body() else {
         panic!("original query");
     };
-    assert_eq!(original_query.serialize_cssom().unwrap().as_css(), "screen");
+    assert_eq!(
+        original_query
+            .serialize_cssom(Default::default())
+            .unwrap()
+            .as_css(),
+        "screen"
+    );
 }
 
 #[test]
@@ -676,11 +692,11 @@ fn supports_writer_consumes_current_selectors_declarations_and_child_membership(
             .unwrap(),
         "@supports (display:grid) {\n  a { color: red; }\n}"
     );
-    let CssomAuthoredRule::Ordinary(original) = current.rule(&roots[0]).unwrap().authored() else {
+    let CssomAuthoredRule::Rule(original) = current.rule(&roots[0]).unwrap().authored() else {
         panic!("genuine original");
     };
     assert_eq!(
-        original.serialize_cssom().unwrap(),
+        original.serialize_cssom(Default::default()).unwrap(),
         "@supports (display:grid) {\n  a { color: red; }\n}"
     );
 }

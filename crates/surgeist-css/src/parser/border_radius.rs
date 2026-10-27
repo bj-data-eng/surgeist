@@ -1,31 +1,29 @@
 //! Checked border-corner radii and physical border-radius shorthand.
 
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, unexpected_at};
+use crate::diagnostic::error::property::{Error, ParseError, unexpected_at};
 
+use super::side_shapes::parse_side_pair;
 use super::values::parse_nonnegative_length_percentage;
-use crate::numeric::NumericInputContext;
-use crate::{
-    CssBorderRadiusShorthand, CssCornerRadiusValue, CssSpecifiedNonNegativeLengthPercentage,
-};
+use crate::numeric::expression::NumericInputContext;
+use crate::numeric::{CssLengthPercentage, CssNonNegative, CssNumeric};
+use crate::values::border::CssBorderRadiusShorthand;
+use crate::values::border::border_radius::CornerRadiusLength;
+use crate::values::common::CssSidePair;
 
 pub(super) fn parse_exact_corner_radius<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssCornerRadiusValue, ParseError<'i, Error>> {
-    let horizontal = parse_nonnegative_length_percentage(input, numeric)?;
-    let vertical = if input.is_exhausted() {
-        None
-    } else {
-        Some(parse_nonnegative_length_percentage(input, numeric)?)
-    };
-    Ok(CssCornerRadiusValue::new(horizontal, vertical))
+) -> Result<CssSidePair<CornerRadiusLength>, ParseError<'i, Error>> {
+    parse_side_pair(input, |input| {
+        parse_nonnegative_length_percentage(input, numeric)
+    })
 }
 
 fn parse_radius_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<Vec<CssSpecifiedNonNegativeLengthPercentage>, ParseError<'i, Error>> {
+) -> Result<Vec<CssNumeric<CssLengthPercentage, CssNonNegative>>, ParseError<'i, Error>> {
     let mut values = Vec::new();
     while !input.is_exhausted() {
         let state = input.state();

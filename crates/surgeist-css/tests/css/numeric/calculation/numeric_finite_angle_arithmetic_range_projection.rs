@@ -10,12 +10,14 @@
 //! These are representation conversions during math projection, distinct from
 //! target-context computed/used range clamping under §10.12.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::assert_calculated_number as assert_number;
 use crate::css::support::value_assertions::calculated_number as number;
-use surgeist_css::*;
+use surgeist_css::serialization::CssSerializationLimits;
 
-type Limits = CssSpecifiedValueSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Limits = CssSerializationLimits;
+type Kind = SerializationFailure;
 
 #[test]
 fn overflowing_grad_coefficients_can_have_supported_canonical_degree_values() {
@@ -115,8 +117,8 @@ fn finite_angle_arithmetic_replacements_obey_exact_limits_and_atomic_failures() 
         (Limits::new(4, 3, expected.len()), Kind::ProjectionNodeLimit),
         (Limits::new(4, 4, expected.len() - 1), Kind::ByteLimit),
     ] {
-        let error = value.serialize_specified_with_limits(limits).unwrap_err();
-        assert_eq!(error.kind(), kind, "{limits:?}");
+        let error = value.serialize_specified(limits).unwrap_err();
+        assert_eq!(serialization_failure(&error), kind, "{limits:?}");
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
         assert_eq!(
@@ -124,7 +126,7 @@ fn finite_angle_arithmetic_replacements_obey_exact_limits_and_atomic_failures() 
             before.calculation().unwrap().components()
         );
     }
-    let result = value.serialize_specified_with_limits(Limits::new(4, 4, expected.len()));
+    let result = value.serialize_specified(Limits::new(4, 4, expected.len()));
     assert_eq!(value, before);
     assert_eq!(result.unwrap(), expected);
 }

@@ -1,5 +1,12 @@
 // Independently authored facts migrated from the existing test inventories.
 // Records are maintained directly; there is no production-schema generator.
+fn cartesian(position: &CssPosition) -> &CssCartesianPosition {
+    let CssPositionRef::Cartesian(position) = position.view() else {
+        panic!("a Cartesian position")
+    };
+    position
+}
+
 property_records! {
     CaretAnimation, "caret-animation" {
         metadata: longhand(true, |v| assert_eq!(*v, CssCaretAnimation::Auto)),
@@ -164,7 +171,7 @@ property_records! {
     AnimationDuration, "animation-duration" {
         metadata: longhand(false, |v| {
             assert_eq!(v.values().len(), 1);
-            let literal = v.values()[0].time().literal().unwrap();
+            let literal = v.values()[0].literal().unwrap();
             assert_eq!(literal.numeric().representation(), "0");
             assert_eq!(literal.unit(), CssTimeUnit::Seconds);
         }),
@@ -185,7 +192,7 @@ property_records! {
             let [CssAnimationIterationCount::Number(value)] = v.values() else {
                 panic!("one ordinary initial count")
             };
-            assert_eq!(value.serialize_specified().unwrap(), "1");
+            assert_eq!(value.serialize_specified(Default::default()).unwrap(), "1");
             assert_eq!(value.origin(), &CssValueOrigin::Programmatic);
         }),
         catalog: grammar_catalog!("baseline.property.animation-iteration-count", "2, infinite", rejected("-1")),
@@ -303,7 +310,7 @@ property_records! {
                 panic!("initial background position has two free offsets");
             };
             for offset in [x, y] {
-                assert!(matches!(offset.literal_component().unwrap().view(),
+                assert!(matches!(offset.literal().map(|literal| literal.component()).unwrap().view(),
                     CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
                         if number.representation() == "0"));
             }
@@ -328,7 +335,7 @@ property_records! {
         metadata: longhand(false, |v| assert!(matches!(
             v.sizes(),
             [CssBackgroundSize::Explicit {
-                width: CssBackgroundSizeComponent::Auto,
+                width: CssAutoOr::Auto,
                 height: None
             }]
         ))),
@@ -366,11 +373,11 @@ property_records! {
         mapping: logical("border-color"),
     }
     BorderBlockEndStyle, "border-block-end-style" {
-        metadata: longhand(false, |v| assert_eq!(*v, CssBorderStyle::None)),
+        metadata: longhand(false, |v| assert_eq!(*v, CssLineStyle::None)),
         mapping: logical("border-style"),
     }
     BorderBlockEndWidth, "border-block-end-width" {
-        metadata: longhand(false, |v| assert_eq!(*v, CssBorderWidth::Medium)),
+        metadata: longhand(false, |v| assert_eq!(*v, CssLineWidth::Medium)),
         mapping: logical("border-width"),
     }
     BorderBlockStart, "border-block-start" {
@@ -382,11 +389,11 @@ property_records! {
         mapping: logical("border-color"),
     }
     BorderBlockStartStyle, "border-block-start-style" {
-        metadata: longhand(false, |v| assert_eq!(*v, CssBorderStyle::None)),
+        metadata: longhand(false, |v| assert_eq!(*v, CssLineStyle::None)),
         mapping: logical("border-style"),
     }
     BorderBlockStartWidth, "border-block-start-width" {
-        metadata: longhand(false, |v| assert_eq!(*v, CssBorderWidth::Medium)),
+        metadata: longhand(false, |v| assert_eq!(*v, CssLineWidth::Medium)),
         mapping: logical("border-width"),
     }
     BorderBlockStyle, "border-block-style" {
@@ -415,10 +422,10 @@ property_records! {
         metadata: longhand(false, |v| {
             assert_eq!(
                 v,
-                &CssCornerRadiusValue::new(CssSpecifiedNonNegativeLengthPercentage::zero(), None)
+                &CssSidePair::new(CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap(), None)
             );
-            assert_eq!(v.horizontal(), v.vertical());
-            assert!(v.authored_vertical().is_none());
+            assert_eq!(v.first(), v.second());
+            assert!(v.authored_second().is_none());
         }),
         catalog: grammar_catalog!("baseline.property.border-bottom-left-radius", "calc(1px + 2%)" => "calc(2% + 1px)", rejected("-1px")),
         dispatch: "calc(1px + 2%)",
@@ -429,10 +436,10 @@ property_records! {
         metadata: longhand(false, |v| {
             assert_eq!(
                 v,
-                &CssCornerRadiusValue::new(CssSpecifiedNonNegativeLengthPercentage::zero(), None)
+                &CssSidePair::new(CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap(), None)
             );
-            assert_eq!(v.horizontal(), v.vertical());
-            assert!(v.authored_vertical().is_none());
+            assert_eq!(v.first(), v.second());
+            assert!(v.authored_second().is_none());
         }),
         catalog: grammar_catalog!("baseline.property.border-bottom-right-radius", "10%", rejected("-1px")),
         dispatch: "10%",
@@ -440,14 +447,14 @@ property_records! {
         mapping: physical("border-radius"),
     }
     BorderBottomStyle, "border-bottom-style" {
-        metadata: longhand(false, |v| assert_eq!(*v, CssBorderStyle::None)),
+        metadata: longhand(false, |v| assert_eq!(*v, CssLineStyle::None)),
         catalog: grammar_catalog!("baseline.property.border-bottom-style", "ridge", rejected("auto")),
         dispatch: "ridge",
         wrapper: yes,
         mapping: physical("border-style"),
     }
     BorderBottomWidth, "border-bottom-width" {
-        metadata: longhand(false, |v| assert_eq!(*v, CssBorderWidth::Medium)),
+        metadata: longhand(false, |v| assert_eq!(*v, CssLineWidth::Medium)),
         catalog: grammar_catalog!("baseline.property.border-bottom-width", "3px", rejected("10%")),
         dispatch: "3px",
         wrapper: yes,
@@ -468,10 +475,10 @@ property_records! {
         metadata: longhand(false, |v| {
             assert_eq!(
                 v,
-                &CssCornerRadiusValue::new(CssSpecifiedNonNegativeLengthPercentage::zero(), None)
+                &CssSidePair::new(CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap(), None)
             );
-            assert_eq!(v.horizontal(), v.vertical());
-            assert!(v.authored_vertical().is_none());
+            assert_eq!(v.first(), v.second());
+            assert!(v.authored_second().is_none());
         }),
         mapping: logical("border-radius"),
     }
@@ -479,10 +486,10 @@ property_records! {
         metadata: longhand(false, |v| {
             assert_eq!(
                 v,
-                &CssCornerRadiusValue::new(CssSpecifiedNonNegativeLengthPercentage::zero(), None)
+                &CssSidePair::new(CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap(), None)
             );
-            assert_eq!(v.horizontal(), v.vertical());
-            assert!(v.authored_vertical().is_none());
+            assert_eq!(v.first(), v.second());
+            assert!(v.authored_second().is_none());
         }),
         mapping: logical("border-radius"),
     }
@@ -495,7 +502,7 @@ property_records! {
         metadata: longhand(false, |v| {
             assert!(!v.values().is_empty());
             assert!(v.values().iter().all(
-                |v| matches!(v, CssBorderImageOutsetComponent::Number(n) if exact_literal(n.literal_component(), "0"))
+                |v| matches!(v, CssBorderImageOutsetComponent::Number(n) if exact_literal(n.literal().map(|literal| literal.component()), "0"))
             ));
         }),
         catalog: grammar_catalog!("official.property.border-image-outset", "1 2px 3 4px", rejected("-1")),
@@ -512,7 +519,7 @@ property_records! {
             assert!(!v.fill());
             assert!(!v.values().is_empty());
             assert!(v.values().iter().all(
-                |v| matches!(v, CssBorderImageSliceComponent::Percentage(n) if exact_literal(n.literal_component(), "100%"))
+                |v| matches!(v, CssBorderImageSliceComponent::Percentage(n) if exact_literal(n.literal().map(|literal| literal.component()), "100%"))
             ));
         }),
         catalog: grammar_catalog!("official.property.border-image-slice", "10 fill", rejected("10 20 30 40 50")),
@@ -526,7 +533,7 @@ property_records! {
             assert!(!v.values().is_empty());
             assert!(
                 v.values().iter().all(
-                    |v| matches!(v, CssBorderImageWidthComponent::Number(n) if exact_literal(n.literal_component(), "1"))
+                    |v| matches!(v, CssBorderImageWidthComponent::Number(n) if exact_literal(n.literal().map(|literal| literal.component()), "1"))
                 )
             );
         }),
@@ -549,11 +556,11 @@ property_records! {
         mapping: logical("border-color"),
     }
     BorderInlineEndStyle, "border-inline-end-style" {
-        metadata: longhand(false, |v| assert_eq!(*v, CssBorderStyle::None)),
+        metadata: longhand(false, |v| assert_eq!(*v, CssLineStyle::None)),
         mapping: logical("border-style"),
     }
     BorderInlineEndWidth, "border-inline-end-width" {
-        metadata: longhand(false, |v| assert_eq!(*v, CssBorderWidth::Medium)),
+        metadata: longhand(false, |v| assert_eq!(*v, CssLineWidth::Medium)),
         mapping: logical("border-width"),
     }
     BorderInlineStart, "border-inline-start" {
@@ -565,11 +572,11 @@ property_records! {
         mapping: logical("border-color"),
     }
     BorderInlineStartStyle, "border-inline-start-style" {
-        metadata: longhand(false, |v| assert_eq!(*v, CssBorderStyle::None)),
+        metadata: longhand(false, |v| assert_eq!(*v, CssLineStyle::None)),
         mapping: logical("border-style"),
     }
     BorderInlineStartWidth, "border-inline-start-width" {
-        metadata: longhand(false, |v| assert_eq!(*v, CssBorderWidth::Medium)),
+        metadata: longhand(false, |v| assert_eq!(*v, CssLineWidth::Medium)),
         mapping: logical("border-width"),
     }
     BorderInlineStyle, "border-inline-style" {
@@ -595,14 +602,14 @@ property_records! {
         mapping: physical("border-color"),
     }
     BorderLeftStyle, "border-left-style" {
-        metadata: longhand(false, |v| assert_eq!(*v, CssBorderStyle::None)),
+        metadata: longhand(false, |v| assert_eq!(*v, CssLineStyle::None)),
         catalog: grammar_catalog!("baseline.property.border-left-style", "outset", rejected("auto")),
         dispatch: "outset",
         wrapper: yes,
         mapping: physical("border-style"),
     }
     BorderLeftWidth, "border-left-width" {
-        metadata: longhand(false, |v| assert_eq!(*v, CssBorderWidth::Medium)),
+        metadata: longhand(false, |v| assert_eq!(*v, CssLineWidth::Medium)),
         catalog: grammar_catalog!("baseline.property.border-left-width", "4px", rejected("10%")),
         dispatch: "4px",
         wrapper: yes,
@@ -630,14 +637,14 @@ property_records! {
         mapping: physical("border-color"),
     }
     BorderRightStyle, "border-right-style" {
-        metadata: longhand(false, |v| assert_eq!(*v, CssBorderStyle::None)),
+        metadata: longhand(false, |v| assert_eq!(*v, CssLineStyle::None)),
         catalog: grammar_catalog!("baseline.property.border-right-style", "double", rejected("auto")),
         dispatch: "double",
         wrapper: yes,
         mapping: physical("border-style"),
     }
     BorderRightWidth, "border-right-width" {
-        metadata: longhand(false, |v| assert_eq!(*v, CssBorderWidth::Medium)),
+        metadata: longhand(false, |v| assert_eq!(*v, CssLineWidth::Medium)),
         catalog: grammar_catalog!("baseline.property.border-right-width", "2px", rejected("10%")),
         dispatch: "2px",
         wrapper: yes,
@@ -645,8 +652,8 @@ property_records! {
     }
     BorderSpacing, "border-spacing" {
         metadata: longhand(true, |v| {
-            assert!(exact_literal(v.horizontal().literal_component(), "0"));
-            assert!(exact_literal(v.vertical().literal_component(), "0"));
+            assert!(exact_literal(v.first().literal().map(|literal| literal.component()), "0"));
+            assert!(exact_literal(v.second().literal().map(|literal| literal.component()), "0"));
         }),
         catalog: grammar_catalog!("official.property.border-spacing", "2px 3px", rejected("-1px")),
     }
@@ -654,10 +661,10 @@ property_records! {
         metadata: longhand(false, |v| {
             assert_eq!(
                 v,
-                &CssCornerRadiusValue::new(CssSpecifiedNonNegativeLengthPercentage::zero(), None)
+                &CssSidePair::new(CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap(), None)
             );
-            assert_eq!(v.horizontal(), v.vertical());
-            assert!(v.authored_vertical().is_none());
+            assert_eq!(v.first(), v.second());
+            assert!(v.authored_second().is_none());
         }),
         mapping: logical("border-radius"),
     }
@@ -665,10 +672,10 @@ property_records! {
         metadata: longhand(false, |v| {
             assert_eq!(
                 v,
-                &CssCornerRadiusValue::new(CssSpecifiedNonNegativeLengthPercentage::zero(), None)
+                &CssSidePair::new(CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap(), None)
             );
-            assert_eq!(v.horizontal(), v.vertical());
-            assert!(v.authored_vertical().is_none());
+            assert_eq!(v.first(), v.second());
+            assert!(v.authored_second().is_none());
         }),
         mapping: logical("border-radius"),
     }
@@ -697,10 +704,10 @@ property_records! {
         metadata: longhand(false, |v| {
             assert_eq!(
                 v,
-                &CssCornerRadiusValue::new(CssSpecifiedNonNegativeLengthPercentage::zero(), None)
+                &CssSidePair::new(CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap(), None)
             );
-            assert_eq!(v.horizontal(), v.vertical());
-            assert!(v.authored_vertical().is_none());
+            assert_eq!(v.first(), v.second());
+            assert!(v.authored_second().is_none());
         }),
         catalog: grammar_catalog!("baseline.property.border-top-left-radius", "4px 10%", rejected("-1px")),
         dispatch: "4px 10%",
@@ -711,10 +718,10 @@ property_records! {
         metadata: longhand(false, |v| {
             assert_eq!(
                 v,
-                &CssCornerRadiusValue::new(CssSpecifiedNonNegativeLengthPercentage::zero(), None)
+                &CssSidePair::new(CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap(), None)
             );
-            assert_eq!(v.horizontal(), v.vertical());
-            assert!(v.authored_vertical().is_none());
+            assert_eq!(v.first(), v.second());
+            assert!(v.authored_second().is_none());
         }),
         catalog: grammar_catalog!("baseline.property.border-top-right-radius", "1px", rejected("-1px")),
         dispatch: "1px",
@@ -722,14 +729,14 @@ property_records! {
         mapping: physical("border-radius"),
     }
     BorderTopStyle, "border-top-style" {
-        metadata: longhand(false, |v| assert_eq!(*v, CssBorderStyle::None)),
+        metadata: longhand(false, |v| assert_eq!(*v, CssLineStyle::None)),
         catalog: grammar_catalog!("baseline.property.border-top-style", "solid", rejected("auto")),
         dispatch: "solid",
         wrapper: yes,
         mapping: physical("border-style"),
     }
     BorderTopWidth, "border-top-width" {
-        metadata: longhand(false, |v| assert_eq!(*v, CssBorderWidth::Medium)),
+        metadata: longhand(false, |v| assert_eq!(*v, CssLineWidth::Medium)),
         catalog: grammar_catalog!("baseline.property.border-top-width", "1px", rejected("10%")),
         dispatch: "1px",
         wrapper: yes,
@@ -855,7 +862,7 @@ property_records! {
     }
     OffsetDistance, "offset-distance" {
         metadata: longhand(false, |v| {
-            let component = v.literal_component().expect("initial distance literal");
+            let component = v.literal().map(|literal| literal.component()).expect("initial distance literal");
             assert!(matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Number(value)) if value.representation() == "0"));
             assert_eq!(v.origin(), &CssValueOrigin::Programmatic);
             assert!(v.calculation().is_none());
@@ -904,7 +911,7 @@ property_records! {
     }
     ShapeMargin, "shape-margin" {
         metadata: longhand(false, |v| {
-            let component = v.literal_component().expect("initial margin literal");
+            let component = v.literal().map(|literal| literal.component()).expect("initial margin literal");
             assert!(matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Number(value)) if value.representation() == "0"));
             assert_eq!(v.origin(), &CssValueOrigin::Programmatic);
             assert!(v.calculation().is_none());
@@ -978,12 +985,12 @@ property_records! {
         wrapper: yes,
     }
     ColumnRuleStyle, "column-rule-style" {
-        metadata: longhand(false, |v| assert_eq!(*v, CssBorderStyle::None)),
+        metadata: longhand(false, |v| assert_eq!(*v, CssLineStyle::None)),
         dispatch: "double",
         wrapper: yes,
     }
     ColumnRuleWidth, "column-rule-width" {
-        metadata: longhand(false, |v| assert_eq!(*v, CssBorderWidth::Medium)),
+        metadata: longhand(false, |v| assert_eq!(*v, CssLineWidth::Medium)),
         dispatch: "2px",
         wrapper: yes,
     }
@@ -1354,7 +1361,7 @@ property_records! {
     }
     FlexGrow, "flex-grow" {
         metadata: longhand(false, |v| {
-            assert_eq!(v.serialize_specified().unwrap(), "0")
+            assert_eq!(v.serialize_specified(Default::default()).unwrap(), "0")
         }),
         catalog: grammar_catalog!("baseline.property.flex-grow", "2", rejected("solid")),
         source: "O-FLEXBOX1",
@@ -1364,7 +1371,7 @@ property_records! {
     }
     FlexShrink, "flex-shrink" {
         metadata: longhand(false, |v| {
-            assert_eq!(v.serialize_specified().unwrap(), "1")
+            assert_eq!(v.serialize_specified(Default::default()).unwrap(), "1")
         }),
         catalog: grammar_catalog!("baseline.property.flex-shrink", "0", rejected("solid")),
         source: "O-FLEXBOX1",
@@ -1788,7 +1795,7 @@ property_records! {
         wrapper: yes,
     }
     HyphenateLimitZone, "hyphenate-limit-zone" {
-        metadata: longhand(true, |v| assert_eq!(*v, CssSpecifiedLengthPercentage::zero())),
+        metadata: longhand(true, |v| assert_eq!(*v, CssNumeric::<CssLengthPercentage>::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap())),
         catalog: grammar_catalog!("ext.property.hyphenate-limit-zone", "calc(-2px + 3%)" => "calc(3% - 2px)", rejected("auto")),
         source: "X-TEXT4",
         dispatch: "calc(-2px + 3%)",
@@ -1954,7 +1961,7 @@ property_records! {
         wrapper: yes,
     }
     LinePadding, "line-padding" {
-        metadata: longhand(true, |v| assert_eq!(*v, CssSpecifiedLength::zero())),
+        metadata: longhand(true, |v| assert_eq!(*v, CssNumeric::<CssLength>::zero())),
         catalog: grammar_catalog!("ext.property.line-padding", "-2px", rejected("2%")),
         source: "X-TEXT4",
         dispatch: "-2px",
@@ -1993,7 +2000,7 @@ property_records! {
     }
     ListStyleType, "list-style-type" {
         metadata: longhand(true, |v| {
-            assert_eq!(v.serialize_specified().unwrap(), "disc")
+            assert_eq!(v.serialize_specified(Default::default()).unwrap(), "disc")
         }),
         catalog: grammar_catalog!("baseline.property.list-style-type", "square", rejected("symbols(numeric \"*\")")),
         dispatch: "square",
@@ -2015,21 +2022,21 @@ property_records! {
     MarginBlockEnd, "margin-block-end" {
         metadata: longhand(false, |v| assert_eq!(
             *v,
-            CssMarginValue::LengthPercentage(CssSpecifiedLengthPercentage::zero())
+            CssMarginValue::LengthPercentage(CssNumeric::<CssLengthPercentage>::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap())
         )),
         mapping: logical("margin"),
     }
     MarginBlockStart, "margin-block-start" {
         metadata: longhand(false, |v| assert_eq!(
             *v,
-            CssMarginValue::LengthPercentage(CssSpecifiedLengthPercentage::zero())
+            CssMarginValue::LengthPercentage(CssNumeric::<CssLengthPercentage>::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap())
         )),
         mapping: logical("margin"),
     }
     MarginBottom, "margin-bottom" {
         metadata: longhand(false, |v| assert_eq!(
             *v,
-            CssMarginValue::LengthPercentage(CssSpecifiedLengthPercentage::zero())
+            CssMarginValue::LengthPercentage(CssNumeric::<CssLengthPercentage>::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap())
         )),
         catalog: grammar_catalog!("baseline.property.margin-bottom", "5%", rejected("solid")),
         dispatch: "5%",
@@ -2043,21 +2050,21 @@ property_records! {
     MarginInlineEnd, "margin-inline-end" {
         metadata: longhand(false, |v| assert_eq!(
             *v,
-            CssMarginValue::LengthPercentage(CssSpecifiedLengthPercentage::zero())
+            CssMarginValue::LengthPercentage(CssNumeric::<CssLengthPercentage>::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap())
         )),
         mapping: logical("margin"),
     }
     MarginInlineStart, "margin-inline-start" {
         metadata: longhand(false, |v| assert_eq!(
             *v,
-            CssMarginValue::LengthPercentage(CssSpecifiedLengthPercentage::zero())
+            CssMarginValue::LengthPercentage(CssNumeric::<CssLengthPercentage>::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap())
         )),
         mapping: logical("margin"),
     }
     MarginLeft, "margin-left" {
         metadata: longhand(false, |v| assert_eq!(
             *v,
-            CssMarginValue::LengthPercentage(CssSpecifiedLengthPercentage::zero())
+            CssMarginValue::LengthPercentage(CssNumeric::<CssLengthPercentage>::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap())
         )),
         catalog: grammar_catalog!("baseline.property.margin-left", "calc(3px + 4%)" => "calc(4% + 3px)", rejected("solid")),
         dispatch: "calc(3px + 4%)",
@@ -2067,7 +2074,7 @@ property_records! {
     MarginRight, "margin-right" {
         metadata: longhand(false, |v| assert_eq!(
             *v,
-            CssMarginValue::LengthPercentage(CssSpecifiedLengthPercentage::zero())
+            CssMarginValue::LengthPercentage(CssNumeric::<CssLengthPercentage>::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap())
         )),
         catalog: grammar_catalog!("baseline.property.margin-right", "10px", rejected("solid")),
         dispatch: "10px",
@@ -2077,7 +2084,7 @@ property_records! {
     MarginTop, "margin-top" {
         metadata: longhand(false, |v| assert_eq!(
             *v,
-            CssMarginValue::LengthPercentage(CssSpecifiedLengthPercentage::zero())
+            CssMarginValue::LengthPercentage(CssNumeric::<CssLengthPercentage>::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap())
         )),
         catalog: grammar_catalog!("baseline.property.margin-top", "auto", rejected("solid")),
         dispatch: "auto",
@@ -2105,10 +2112,10 @@ property_records! {
     MaskPosition, "mask-position" {
         metadata: longhand(false, |v| {
             let [position] = v.positions() else { panic!("one initial position") };
-            let CssHorizontalPosition::Offset(x) = position.horizontal() else { panic!("horizontal percentage") };
-            let CssVerticalPosition::Offset(y) = position.vertical() else { panic!("vertical percentage") };
-            assert_eq!(x.literal_component(), Some(&CssComponentValue::try_token("0%").unwrap()));
-            assert_eq!(y.literal_component(), Some(&CssComponentValue::try_token("0%").unwrap()));
+            let CssHorizontalPosition::Offset(x) = cartesian(position).horizontal() else { panic!("horizontal percentage") };
+            let CssVerticalPosition::Offset(y) = cartesian(position).vertical() else { panic!("vertical percentage") };
+            assert_eq!(x.literal().map(|literal| literal.component()), Some(&CssComponentValue::try_token("0%").unwrap()));
+            assert_eq!(y.literal().map(|literal| literal.component()), Some(&CssComponentValue::try_token("0%").unwrap()));
         }),
         catalog: complete_grammar_catalog!("baseline.property.mask-position", "center" => "center center", rejected("left right")),
         source: "S-MASKING1",
@@ -2123,7 +2130,7 @@ property_records! {
         wrapper: yes,
     }
     MaskSize, "mask-size" {
-        metadata: longhand(false, |v| assert!(matches!(v.sizes(), [CssBackgroundSize::Explicit { width: CssBackgroundSizeComponent::Auto, height: None }]))),
+        metadata: longhand(false, |v| assert!(matches!(v.sizes(), [CssBackgroundSize::Explicit { width: CssAutoOr::Auto, height: None }]))),
         catalog: complete_grammar_catalog!("baseline.property.mask-size", "contain", rejected("solid")),
         source: "S-MASKING1",
         dispatch: "contain",
@@ -2135,12 +2142,12 @@ property_records! {
         source: "S-MASKING1", dispatch: "alpha, luminance", wrapper: yes,
     }
     MaskOrigin, "mask-origin" {
-        metadata: longhand(false, |v| assert_eq!(v.boxes(), &[CssMaskBox::BorderBox])),
+        metadata: longhand(false, |v| assert_eq!(v.boxes(), &[CssCoordBox::BorderBox])),
         catalog: complete_grammar_catalog!("official.property.mask-origin", "padding-box, fill-box", rejected("margin-box")),
         source: "S-MASKING1", dispatch: "padding-box, fill-box", wrapper: yes,
     }
     MaskClip, "mask-clip" {
-        metadata: longhand(false, |v| assert_eq!(v.clips(), &[CssMaskClip::Box(CssMaskBox::BorderBox)])),
+        metadata: longhand(false, |v| assert_eq!(v.clips(), &[CssMaskClip::Box(CssCoordBox::BorderBox)])),
         catalog: complete_grammar_catalog!("official.property.mask-clip", "no-clip, stroke-box", rejected("margin-box")),
         source: "S-MASKING1", dispatch: "no-clip, stroke-box", wrapper: yes,
     }
@@ -2170,7 +2177,7 @@ property_records! {
             assert!(!v.fill());
             for edge in v.values() {
                 let CssBorderImageSliceComponent::Number(number) = edge else { panic!("number initial slice") };
-                assert_eq!(number.literal_component(), Some(&CssComponentValue::try_number("0").unwrap()));
+                assert_eq!(number.literal().map(|literal| literal.component()), Some(&CssComponentValue::try_number("0").unwrap()));
             }
         }),
         catalog: complete_grammar_catalog!("official.property.mask-border-slice", "1 2% fill", rejected("fill 1")),
@@ -2185,7 +2192,7 @@ property_records! {
         metadata: longhand(false, |v| {
             for edge in v.values() {
                 let CssBorderImageOutsetComponent::Number(number) = edge else { panic!("number initial outset") };
-                assert_eq!(number.literal_component(), Some(&CssComponentValue::try_number("0").unwrap()));
+                assert_eq!(number.literal().map(|literal| literal.component()), Some(&CssComponentValue::try_number("0").unwrap()));
             }
         }),
         catalog: complete_grammar_catalog!("official.property.mask-border-outset", "1 2px 3 4em", rejected("1%")),
@@ -2282,11 +2289,11 @@ property_records! {
     }
     ObjectPosition, "object-position" {
         metadata: longhand(false, |v| {
-            let (CssHorizontalPosition::Offset(x), CssVerticalPosition::Offset(y)) = (v.horizontal(), v.vertical()) else {
+            let (CssHorizontalPosition::Offset(x), CssVerticalPosition::Offset(y)) = (cartesian(v).horizontal(), cartesian(v).vertical()) else {
                 panic!("object-position initial has two free percentage offsets");
             };
             for offset in [x, y] {
-                assert!(exact_literal(offset.literal_component(), "50%"));
+                assert!(exact_literal(offset.literal().map(|literal| literal.component()), "50%"));
                 assert_eq!(offset.origin(), &CssValueOrigin::Programmatic);
             }
         }),
@@ -2306,7 +2313,7 @@ property_records! {
         wrapper: yes,
     }
     Order, "order" {
-        metadata: longhand(false, |v| assert_eq!(v.serialize_specified().unwrap(), "0")),
+        metadata: longhand(false, |v| assert_eq!(v.serialize_specified(Default::default()).unwrap(), "0")),
         catalog: grammar_catalog!("baseline.property.order", "-2", rejected("1.5")),
         source: "S-DISPLAY3",
         aliases: ["-webkit-order"],
@@ -2315,7 +2322,7 @@ property_records! {
     }
     Orphans, "orphans" {
         metadata: longhand(true, |v| {
-            assert_eq!(v.literal(), Some(2))
+            assert_eq!(v.literal().and_then(|literal| literal.value()), Some(2))
         }),
         catalog: grammar_catalog!("official.property.orphans", "3", rejected("0")),
     }
@@ -2335,7 +2342,7 @@ property_records! {
         wrapper: yes,
     }
     OutlineOffset, "outline-offset" {
-        metadata: longhand(false, |v| assert_eq!(v.serialize_specified().unwrap(), "0")),
+        metadata: longhand(false, |v| assert_eq!(v.serialize_specified(Default::default()).unwrap(), "0")),
         catalog: grammar_catalog!("official.property.outline-offset", "-2px", rejected("auto")),
         source: "X-UI4",
     }
@@ -2347,7 +2354,7 @@ property_records! {
         wrapper: yes,
     }
     OutlineWidth, "outline-width" {
-        metadata: longhand(false, |v| assert!(matches!(v, CssOutlineWidth::Medium))),
+        metadata: longhand(false, |v| assert!(matches!(v, CssLineWidth::Medium))),
         catalog: grammar_catalog!("baseline.property.outline-width", "2px", rejected("10%")),
         source: "X-UI4",
         dispatch: "2px",
@@ -2385,7 +2392,7 @@ property_records! {
             assert_eq!(v.authored_box_edge(), None);
             assert_eq!(v.box_edge(), CssBoxEdgeKeyword::PaddingBox);
             assert_eq!(
-                v.authored_offset().unwrap().serialize_specified().unwrap(),
+                v.authored_offset().unwrap().serialize_specified(Default::default()).unwrap(),
                 "0px"
             );
         }),
@@ -2441,21 +2448,21 @@ property_records! {
     PaddingBlockEnd, "padding-block-end" {
         metadata: longhand(false, |v| assert_eq!(
             *v,
-            CssPaddingValue::new(CssSpecifiedNonNegativeLengthPercentage::zero())
+            CssPaddingValue::new(CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap())
         )),
         mapping: logical("padding"),
     }
     PaddingBlockStart, "padding-block-start" {
         metadata: longhand(false, |v| assert_eq!(
             *v,
-            CssPaddingValue::new(CssSpecifiedNonNegativeLengthPercentage::zero())
+            CssPaddingValue::new(CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap())
         )),
         mapping: logical("padding"),
     }
     PaddingBottom, "padding-bottom" {
         metadata: longhand(false, |v| assert_eq!(
             *v,
-            CssPaddingValue::new(CssSpecifiedNonNegativeLengthPercentage::zero())
+            CssPaddingValue::new(CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap())
         )),
         catalog: grammar_catalog!("baseline.property.padding-bottom", "calc(3px + 4%)" => "calc(4% + 3px)", rejected("auto")),
         dispatch: "calc(3px + 4%)",
@@ -2469,21 +2476,21 @@ property_records! {
     PaddingInlineEnd, "padding-inline-end" {
         metadata: longhand(false, |v| assert_eq!(
             *v,
-            CssPaddingValue::new(CssSpecifiedNonNegativeLengthPercentage::zero())
+            CssPaddingValue::new(CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap())
         )),
         mapping: logical("padding"),
     }
     PaddingInlineStart, "padding-inline-start" {
         metadata: longhand(false, |v| assert_eq!(
             *v,
-            CssPaddingValue::new(CssSpecifiedNonNegativeLengthPercentage::zero())
+            CssPaddingValue::new(CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap())
         )),
         mapping: logical("padding"),
     }
     PaddingLeft, "padding-left" {
         metadata: longhand(false, |v| assert_eq!(
             *v,
-            CssPaddingValue::new(CssSpecifiedNonNegativeLengthPercentage::zero())
+            CssPaddingValue::new(CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap())
         )),
         catalog: grammar_catalog!("baseline.property.padding-left", "0", rejected("auto")),
         dispatch: "0",
@@ -2493,7 +2500,7 @@ property_records! {
     PaddingRight, "padding-right" {
         metadata: longhand(false, |v| assert_eq!(
             *v,
-            CssPaddingValue::new(CssSpecifiedNonNegativeLengthPercentage::zero())
+            CssPaddingValue::new(CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap())
         )),
         catalog: grammar_catalog!("baseline.property.padding-right", "2%", rejected("auto")),
         dispatch: "2%",
@@ -2503,7 +2510,7 @@ property_records! {
     PaddingTop, "padding-top" {
         metadata: longhand(false, |v| assert_eq!(
             *v,
-            CssPaddingValue::new(CssSpecifiedNonNegativeLengthPercentage::zero())
+            CssPaddingValue::new(CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap())
         )),
         catalog: grammar_catalog!("baseline.property.padding-top", "12px", rejected("auto")),
         dispatch: "12px",
@@ -2532,9 +2539,9 @@ property_records! {
     }
     PerspectiveOrigin, "perspective-origin" {
         metadata: longhand(false, |v| {
-            let (CssHorizontalPosition::Offset(x), CssVerticalPosition::Offset(y)) = (v.horizontal(), v.vertical()) else { panic!("initial physical free offsets") };
+            let (CssHorizontalPosition::Offset(x), CssVerticalPosition::Offset(y)) = (cartesian(v).horizontal(), cartesian(v).vertical()) else { panic!("initial physical free offsets") };
             for offset in [x, y] {
-                assert!(exact_literal(offset.literal_component(), "50%"));
+                assert!(exact_literal(offset.literal().map(|literal| literal.component()), "50%"));
                 assert_eq!(offset.origin(), &CssValueOrigin::Programmatic);
             }
         }),
@@ -2601,7 +2608,7 @@ property_records! {
             let CssKnownPropertyValueRef::Resize(value) = known.property_value().unwrap() else {
                 panic!("typed logical resize")
             };
-            assert_eq!(*value.resize(), CssResize::Inline);
+            assert_eq!(*value.value(), CssResize::Inline);
         })),
         source: "X-UI4",
         dispatch: "block",
@@ -2673,19 +2680,19 @@ property_records! {
     }
     ScrollMarginBlockEnd, "scroll-margin-block-end" {
         metadata: longhand(false, |v| {
-            assert_eq!(*v, CssSpecifiedLength::zero())
+            assert_eq!(*v, CssNumeric::<CssLength>::zero())
         }),
         mapping: logical("scroll-margin"),
     }
     ScrollMarginBlockStart, "scroll-margin-block-start" {
         metadata: longhand(false, |v| {
-            assert_eq!(*v, CssSpecifiedLength::zero())
+            assert_eq!(*v, CssNumeric::<CssLength>::zero())
         }),
         mapping: logical("scroll-margin"),
     }
     ScrollMarginBottom, "scroll-margin-bottom" {
         metadata: longhand(false, |v| {
-            assert_eq!(*v, CssSpecifiedLength::zero())
+            assert_eq!(*v, CssNumeric::<CssLength>::zero())
         }),
         mapping: physical("scroll-margin"),
     }
@@ -2695,31 +2702,31 @@ property_records! {
     }
     ScrollMarginInlineEnd, "scroll-margin-inline-end" {
         metadata: longhand(false, |v| {
-            assert_eq!(*v, CssSpecifiedLength::zero())
+            assert_eq!(*v, CssNumeric::<CssLength>::zero())
         }),
         mapping: logical("scroll-margin"),
     }
     ScrollMarginInlineStart, "scroll-margin-inline-start" {
         metadata: longhand(false, |v| {
-            assert_eq!(*v, CssSpecifiedLength::zero())
+            assert_eq!(*v, CssNumeric::<CssLength>::zero())
         }),
         mapping: logical("scroll-margin"),
     }
     ScrollMarginLeft, "scroll-margin-left" {
         metadata: longhand(false, |v| {
-            assert_eq!(*v, CssSpecifiedLength::zero())
+            assert_eq!(*v, CssNumeric::<CssLength>::zero())
         }),
         mapping: physical("scroll-margin"),
     }
     ScrollMarginRight, "scroll-margin-right" {
         metadata: longhand(false, |v| {
-            assert_eq!(*v, CssSpecifiedLength::zero())
+            assert_eq!(*v, CssNumeric::<CssLength>::zero())
         }),
         mapping: physical("scroll-margin"),
     }
     ScrollMarginTop, "scroll-margin-top" {
         metadata: longhand(false, |v| {
-            assert_eq!(*v, CssSpecifiedLength::zero())
+            assert_eq!(*v, CssNumeric::<CssLength>::zero())
         }),
         mapping: physical("scroll-margin"),
     }
@@ -2733,19 +2740,19 @@ property_records! {
     }
     ScrollPaddingBlockEnd, "scroll-padding-block-end" {
         metadata: longhand(false, |v| {
-            assert_eq!(*v, CssScrollPaddingValue::Auto)
+            assert_eq!(*v, CssAutoOr::Auto)
         }),
         mapping: logical("scroll-padding"),
     }
     ScrollPaddingBlockStart, "scroll-padding-block-start" {
         metadata: longhand(false, |v| {
-            assert_eq!(*v, CssScrollPaddingValue::Auto)
+            assert_eq!(*v, CssAutoOr::Auto)
         }),
         mapping: logical("scroll-padding"),
     }
     ScrollPaddingBottom, "scroll-padding-bottom" {
         metadata: longhand(false, |v| {
-            assert_eq!(*v, CssScrollPaddingValue::Auto)
+            assert_eq!(*v, CssAutoOr::Auto)
         }),
         mapping: physical("scroll-padding"),
     }
@@ -2755,38 +2762,38 @@ property_records! {
     }
     ScrollPaddingInlineEnd, "scroll-padding-inline-end" {
         metadata: longhand(false, |v| {
-            assert_eq!(*v, CssScrollPaddingValue::Auto)
+            assert_eq!(*v, CssAutoOr::Auto)
         }),
         mapping: logical("scroll-padding"),
     }
     ScrollPaddingInlineStart, "scroll-padding-inline-start" {
         metadata: longhand(false, |v| {
-            assert_eq!(*v, CssScrollPaddingValue::Auto)
+            assert_eq!(*v, CssAutoOr::Auto)
         }),
         mapping: logical("scroll-padding"),
     }
     ScrollPaddingLeft, "scroll-padding-left" {
         metadata: longhand(false, |v| {
-            assert_eq!(*v, CssScrollPaddingValue::Auto)
+            assert_eq!(*v, CssAutoOr::Auto)
         }),
         mapping: physical("scroll-padding"),
     }
     ScrollPaddingRight, "scroll-padding-right" {
         metadata: longhand(false, |v| {
-            assert_eq!(*v, CssScrollPaddingValue::Auto)
+            assert_eq!(*v, CssAutoOr::Auto)
         }),
         mapping: physical("scroll-padding"),
     }
     ScrollPaddingTop, "scroll-padding-top" {
         metadata: longhand(false, |v| {
-            assert_eq!(*v, CssScrollPaddingValue::Auto)
+            assert_eq!(*v, CssAutoOr::Auto)
         }),
         mapping: physical("scroll-padding"),
     }
     ScrollSnapAlign, "scroll-snap-align" {
         metadata: longhand(false, |v| assert_eq!(
             *v,
-            CssScrollSnapAlign::new(CssScrollSnapAlignment::None, None)
+            CssSidePair::new(CssScrollSnapAlignment::None, None)
         )),
     }
     ScrollSnapStop, "scroll-snap-stop" {
@@ -2837,7 +2844,7 @@ property_records! {
             let CssTabSize::Number(number) = v else {
                 panic!("number tab initial")
             };
-            assert!(exact_literal(number.literal_component(), "8"));
+            assert!(exact_literal(number.literal().map(|literal| literal.component()), "8"));
         }),
         catalog: grammar_catalog!("ext.property.tab-size", "calc(2 + 3)" => "calc(5)", rejected("-1e-999")),
         source: "X-TEXT4",
@@ -2924,7 +2931,7 @@ property_records! {
         wrapper: yes,
     }
     TextDecorationLine, "text-decoration-line" {
-        metadata: longhand(false, |v| { assert!(v.is_none()); assert!(v.components().is_empty()); assert_eq!(v.error_kind(), None); }),
+        metadata: longhand(false, |v| { assert!(v.is_none()); assert!(v.components().is_empty()); assert_eq!(v.as_error_line(), None); }),
         catalog: grammar_catalog!("baseline.property.text-decoration-line", "spelling-error", rejected("spelling-error underline")),
         source: "X-TEXTDECOR4",
         dispatch: "underline overline",
@@ -3055,7 +3062,7 @@ property_records! {
     }
     TextIndent, "text-indent" {
         metadata: longhand(true, |v| {
-            assert!(exact_literal(v.length().literal_component(), "0"));
+            assert!(exact_literal(v.length().literal().map(|literal| literal.component()), "0"));
             assert!(!v.hanging());
             assert!(!v.each_line());
         }),
@@ -3203,7 +3210,7 @@ property_records! {
         metadata: longhand(false, |v| {
             let (CssHorizontalPosition::Offset(x), CssVerticalPosition::Offset(y)) = (v.horizontal(), v.vertical()) else { panic!("initial physical free offsets") };
             for offset in [x, y] {
-                assert!(exact_literal(offset.literal_component(), "50%"));
+                assert!(exact_literal(offset.literal().map(|literal| literal.component()), "50%"));
                 assert_eq!(offset.origin(), &CssValueOrigin::Programmatic);
             }
             assert!(v.z().is_none());
@@ -3243,7 +3250,7 @@ property_records! {
     TransitionDuration, "transition-duration" {
         metadata: longhand(false, |v| {
             assert_eq!(v.values().len(), 1);
-            let literal = v.values()[0].time().literal().unwrap();
+            let literal = v.values()[0].literal().unwrap();
             assert_eq!(literal.numeric().representation(), "0");
             assert_eq!(literal.unit(), CssTimeUnit::Seconds);
         }),
@@ -3389,7 +3396,7 @@ property_records! {
     }
     Widows, "widows" {
         metadata: longhand(true, |v| {
-            assert_eq!(v.literal(), Some(2))
+            assert_eq!(v.literal().and_then(|literal| literal.value()), Some(2))
         }),
         catalog: grammar_catalog!("official.property.widows", "4", rejected("0")),
     }

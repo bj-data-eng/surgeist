@@ -5,14 +5,30 @@ use super::super::query_components::{
     query_range_chain,
 };
 use super::{MediaInput, media_committed_error, media_terminal_error};
-use crate::error::{Error, basic, invalid_syntax, unexpected_at};
-use crate::media::{MediaFeatureShape, MediaFeatureSyntax};
-use crate::media_features::{MediaRangeState, MediaValueFamily};
-use crate::numeric::{CalculationRoot, NumericInputContext};
-use crate::syntax::*;
-use crate::{
+use crate::component::{
     CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
     CssValueOrigin, CssValueTokenRef,
+};
+use crate::diagnostic::CssError;
+use crate::diagnostic::error::{basic, invalid_syntax, unexpected_at};
+use crate::numeric::expression::CssCalculationExpression;
+use crate::numeric::expression::{CalculationRoot, NumericInputContext};
+use crate::numeric::{
+    CssCalculation, CssCalculationType, CssInteger, CssLength, CssNumber, CssResolution,
+};
+use crate::query::CssQueryComparison;
+use crate::query::media::construction::{MediaFeatureShape, MediaFeatureSyntax};
+use crate::query::media::media_features::{MediaRangeState, MediaValueFamily};
+use crate::query::media::{
+    CssColorSchemePreference, CssContrastPreference, CssDisplayMode, CssForcedColorsMode,
+    CssGridMode, CssHoverCapability, CssMediaColorGamut, CssMediaDynamicRange,
+    CssMediaEnvironmentBlending, CssMediaFeatureKind, CssMediaFeatureQuery, CssMediaGrid,
+    CssMediaInteger, CssMediaInvertedColors, CssMediaLength, CssMediaNavigationControls,
+    CssMediaOverflowBlock, CssMediaOverflowInline, CssMediaRange, CssMediaRangeRef, CssMediaRatio,
+    CssMediaReducedDataPreference, CssMediaResolution, CssMediaScripting, CssMediaUpdate,
+    CssOrientation, CssPointerCapability, CssReducedMotionPreference,
+    CssReducedTransparencyPreference, CssScanMode, CssUnknownMediaFeature,
+    CssUnknownMediaFeatureReason,
 };
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
@@ -47,7 +63,7 @@ pub(super) fn classify_generic_media_feature<'i>(
     numeric: &MediaInput<'_>,
     initial: &cssparser::ParserState,
     mut syntax: MediaFeatureSyntax,
-) -> Result<AdmittedMediaFeature, ParseError<'i, Error>> {
+) -> Result<AdmittedMediaFeature, ParseError<'i, CssError>> {
     let reason = if let Some(name) = known_generic_name(&syntax.name_text, &syntax.shape) {
         syntax.canonical_name = Some(syntax.name_text.to_ascii_lowercase());
         let discrete_range = name.id.family() == MediaValueFamily::Discrete
@@ -79,17 +95,21 @@ pub(super) fn classify_generic_media_feature<'i>(
 pub(super) fn construct_when_media_feature(
     component: CssComponentValue,
     limits: CssComponentValueLimits,
-) -> Result<crate::CssWhenMediaFeature, crate::CssWhenConstructionError> {
-    use crate::{CssWhenConstructionError, CssWhenMediaFeatureKind};
-    let invalid = || CssWhenConstructionError::InvalidMediaFeatureGrammar {
-        origin: component.origin().clone(),
+) -> Result<crate::query::CssWhenMediaFeature, crate::query::CssConditionConstructionError> {
+    use crate::query::{CssConditionConstructionError, CssWhenMediaFeatureKind};
+    let invalid = || {
+        CssConditionConstructionError::from(
+            crate::query::when::ConditionConstructionKind::InvalidMediaFeatureGrammar {
+                origin: component.origin().clone(),
+            },
+        )
     };
     if !matches!(component.view(), CssComponentValueRef::Function(function) if function.name().eq_ignore_ascii_case("media"))
     {
         return Err(invalid());
     }
-    let values = CssComponentValues::try_new_with_limits(vec![component.clone()], limits)?;
-    let serialized = values.serialize_with_limit(limits.max_css_bytes())?;
+    let values = CssComponentValues::try_new(vec![component.clone()], limits)?;
+    let serialized = values.serialize_tokens(limits)?;
     let numeric = NumericInputContext::components(&values, &serialized);
     let numeric = MediaInput {
         numeric: &numeric,
@@ -99,7 +119,7 @@ pub(super) fn construct_when_media_feature(
     let working_source = crate::tokenization::prepare(source);
     let mut parser_input = cssparser::ParserInput::new(&working_source);
     let mut input = Parser::new(&mut parser_input);
-    let result: Result<_, ParseError<'_, Error>> = (|| {
+    let result: Result<_, ParseError<'_, CssError>> = (|| {
         input.expect_function_matching("media")?;
         input.parse_nested_block(|input| {
             let initial = input.state();
@@ -110,9 +130,14 @@ pub(super) fn construct_when_media_feature(
     })();
     let admitted = result.map_err(|error| {
         if let cssparser::ParseErrorKind::Custom(error) = &error.kind
-            && let crate::ErrorKind::InvalidComponentValue(component) = error.kind()
+            && let crate::diagnostic::error::ErrorKind::InvalidComponentValue(component) =
+                error.kind()
         {
-            return CssWhenConstructionError::Component(component.as_ref().clone());
+            return CssConditionConstructionError::from(
+                crate::query::when::ConditionConstructionKind::Component(
+                    component.as_ref().clone(),
+                ),
+            );
         }
         invalid()
     })?;
@@ -120,7 +145,7 @@ pub(super) fn construct_when_media_feature(
         AdmittedMediaFeature::Feature(feature, _) => CssWhenMediaFeatureKind::Feature(feature),
         AdmittedMediaFeature::Unknown(feature) => CssWhenMediaFeatureKind::UnknownFeature(feature),
     };
-    Ok(crate::CssWhenMediaFeature::new(kind, component))
+    Ok(crate::query::CssWhenMediaFeature::new(kind, component))
 }
 fn known_generic_name(name_text: &str, shape: &MediaFeatureShape) -> Option<MediaFeatureName> {
     if let Some(id) = CssMediaFeatureKind::from_name(name_text) {
@@ -137,7 +162,7 @@ pub(super) fn parse_generic_media_feature<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     numeric: &MediaInput<'_>,
-) -> Result<ParsedMediaFeature, ParseError<'i, Error>> {
+) -> Result<ParsedMediaFeature, ParseError<'i, CssError>> {
     let initial = input.state();
     let first = input.try_parse(|p| generic_feature_first(source, p, numeric));
     match &first {
@@ -167,7 +192,7 @@ fn generic_feature_first<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     numeric: &MediaInput<'_>,
-) -> Result<ParsedMediaFeature, ParseError<'i, Error>> {
+) -> Result<ParsedMediaFeature, ParseError<'i, CssError>> {
     input.skip_whitespace();
     let name_start = input.state();
     let name_location = name_start.source_location();
@@ -208,7 +233,7 @@ fn generic_value_first<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     numeric: &MediaInput<'_>,
-) -> Result<ParsedMediaFeature, ParseError<'i, Error>> {
+) -> Result<ParsedMediaFeature, ParseError<'i, CssError>> {
     let left = generic_media_value(source, input, numeric)?;
     let (comparison, origins) = generic_comparison(input, numeric)?;
     let mut separators = vec![origins];
@@ -265,7 +290,7 @@ fn generic_media_value<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     numeric: &MediaInput<'_>,
-) -> Result<CssComponentValues, ParseError<'i, Error>> {
+) -> Result<CssComponentValues, ParseError<'i, CssError>> {
     input.skip_whitespace();
     let start = input.state();
     let component = numeric
@@ -293,7 +318,7 @@ fn generic_media_value<'i, 't>(
     };
     if can_ratio && input.try_parse(|p| p.expect_delim('/')).is_ok() {
         let denominator = parse_media_numeric(source, input, numeric, CalculationRoot::Number)
-            .map(CssNumberCalculation::from_expression)?;
+            .map(CssCalculation::<CssNumber>::from_expression)?;
         if media_literal_number(denominator.components()).is_some_and(negative_literal) {
             return Err(invalid_syntax(start.source_location()));
         }
@@ -305,7 +330,7 @@ fn parse_media_feature_query<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     numeric: &MediaInput<'_>,
-) -> Result<CssMediaFeatureQuery, ParseError<'i, Error>> {
+) -> Result<CssMediaFeatureQuery, ParseError<'i, CssError>> {
     let initial = input.state();
     let first_name = input.try_parse(Parser::expect_ident_cloned).ok();
     let name = if let Some(name) = first_name.as_deref().and_then(MediaFeatureName::parse) {
@@ -338,7 +363,7 @@ fn parse_media_feature_query<'i, 't>(
         MediaValueFamily::Length => {
             let range = parse_media_range(input, name, |p| {
                 parse_media_numeric(source, p, numeric, CalculationRoot::Length)
-                    .map(CssLengthCalculation::from_expression)
+                    .map(CssCalculation::<CssLength>::from_expression)
                     .map(CssMediaLength::new)
             })?;
             Ok(match name.id {
@@ -352,7 +377,7 @@ fn parse_media_feature_query<'i, 't>(
         MediaValueFamily::Integer => {
             let range = parse_media_range(input, name, |p| {
                 parse_media_numeric(source, p, numeric, CalculationRoot::Integer)
-                    .map(CssIntegerCalculation::from_expression)
+                    .map(CssCalculation::<CssInteger>::from_expression)
                     .map(CssMediaInteger::new)
             })?;
             Ok(match name.id {
@@ -388,7 +413,7 @@ fn parse_media_feature_query<'i, 't>(
                     .map_err(|error| media_numeric_error(source, p, numeric, error))
             } else {
                 parse_media_numeric(source, p, numeric, CalculationRoot::Resolution)
-                    .map(CssResolutionCalculation::from_expression)
+                    .map(CssCalculation::<CssResolution>::from_expression)
                     .map(CssMediaResolution::numeric)
             }
         })
@@ -403,7 +428,7 @@ fn parse_media_feature_query<'i, 't>(
 
 fn parse_media_comparison<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> Result<CssQueryComparison, ParseError<'i, Error>> {
+) -> Result<CssQueryComparison, ParseError<'i, CssError>> {
     let location = input.current_source_location();
     let token = input.next().map_err(basic)?.clone();
     let symbol = match token {
@@ -430,8 +455,8 @@ fn parse_media_comparison<'i, 't>(
 fn parse_media_range<'i, 't, T>(
     input: &mut Parser<'i, 't>,
     name: MediaFeatureName,
-    mut value: impl FnMut(&mut Parser<'i, 't>) -> Result<T, ParseError<'i, Error>>,
-) -> Result<CssMediaRange<T>, ParseError<'i, Error>> {
+    mut value: impl FnMut(&mut Parser<'i, 't>) -> Result<T, ParseError<'i, CssError>>,
+) -> Result<CssMediaRange<T>, ParseError<'i, CssError>> {
     let initial = input.state();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned)
         && MediaFeatureName::parse(&ident).is_some_and(|actual| actual == name)
@@ -453,7 +478,9 @@ fn parse_media_range<'i, 't, T>(
     }
     let left = value(input)?;
     let first = parse_media_comparison(input)?;
-    input.expect_ident_matching(name.id.name()).map_err(basic)?;
+    input
+        .expect_ident_matching(name.id.as_str())
+        .map_err(basic)?;
     if input.is_exhausted() {
         return Ok(CssMediaRange::new(MediaRangeState::ValueFirst {
             value: left,
@@ -471,15 +498,16 @@ pub(super) fn media_numeric_error<'i>(
     source: &str,
     input: &Parser<'i, '_>,
     numeric: &MediaInput<'_>,
-    error: crate::CssNumericConstructionError,
-) -> ParseError<'i, Error> {
+    error: crate::numeric::CssNumericConstructionError,
+) -> ParseError<'i, CssError> {
     if let Some(component) = error.component_error() {
         // No component at a grammar boundary is an absent operand, not a bad
         // authored token. Other component failures remain terminal and typed.
-        let absent = component.kind() == crate::CssComponentValueErrorKind::InvalidToken
+        let absent = component.kind
+            == crate::component::values::CssComponentValueErrorKind::InvalidToken
             && matches!(component.origin(), CssValueOrigin::Parsed(origin) if origin.span().start()==origin.span().end());
         if !absent {
-            return crate::error::invalid_component_value(
+            return crate::diagnostic::error::invalid_component_value(
                 input.current_source_location(),
                 component.clone(),
             );
@@ -497,11 +525,11 @@ fn parse_media_numeric<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &MediaInput<'_>,
     root: CalculationRoot,
-) -> Result<CssCalculationExpression, ParseError<'i, Error>> {
+) -> Result<CssCalculationExpression, ParseError<'i, CssError>> {
     let component = numeric
         .collect(input)
         .map_err(|error| media_numeric_error(source, input, numeric, error))?;
-    let values = crate::numeric::CalculationComponents::single(component)
+    let values = crate::numeric::expression::CalculationComponents::single(component)
         .map_err(|_| invalid_syntax(input.current_source_location()))?;
     numeric
         .admit(values, root)
@@ -511,9 +539,9 @@ fn parse_media_ratio<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     numeric: &MediaInput<'_>,
-) -> Result<CssMediaRatio, ParseError<'i, Error>> {
+) -> Result<CssMediaRatio, ParseError<'i, CssError>> {
     let operand = |input: &mut Parser<'i, 't>| {
-        let value = CssNumberCalculation::from_expression(parse_media_numeric(
+        let value = CssCalculation::<CssNumber>::from_expression(parse_media_numeric(
             source,
             input,
             numeric,
@@ -527,11 +555,16 @@ fn parse_media_ratio<'i, 't>(
     let numerator = operand(input)?;
     let denominator_is_omitted = input.try_parse(|p| p.expect_delim('/')).is_err();
     let denominator = if denominator_is_omitted {
-        CssNumberCalculation::try_from_components(
-            crate::CssComponentValues::try_new(vec![
-                crate::CssComponentValue::try_number("1").expect("default denominator"),
-            ])
+        CssCalculation::<CssNumber>::try_from_components(
+            crate::component::CssComponentValues::try_new(
+                vec![
+                    crate::component::CssComponentValue::try_number("1")
+                        .expect("default denominator"),
+                ],
+                Default::default(),
+            )
             .expect("single default denominator"),
+            Default::default(),
         )
         .expect("number default denominator")
     } else {
@@ -548,8 +581,8 @@ fn parse_media_grid<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     numeric: &MediaInput<'_>,
-) -> Result<CssMediaGrid, ParseError<'i, Error>> {
-    let calculation = CssIntegerCalculation::from_expression(parse_media_numeric(
+) -> Result<CssMediaGrid, ParseError<'i, CssError>> {
+    let calculation = CssCalculation::<CssInteger>::from_expression(parse_media_numeric(
         source,
         input,
         numeric,
@@ -578,7 +611,7 @@ fn parse_media_discrete<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &MediaInput<'_>,
     id: CssMediaFeatureKind,
-) -> Result<CssMediaFeatureQuery, ParseError<'i, Error>> {
+) -> Result<CssMediaFeatureQuery, ParseError<'i, CssError>> {
     match id {
         CssMediaFeatureKind::Orientation => {
             parse_orientation(input).map(CssMediaFeatureQuery::Orientation)
@@ -754,7 +787,7 @@ impl MediaFeatureName {
 
 fn parse_orientation<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssOrientation, ParseError<'i, Error>> {
+) -> std::result::Result<CssOrientation, ParseError<'i, CssError>> {
     parse_discrete_ident(input, |ident| {
         match_ignore_ascii_case! { ident,
             "portrait" => Some(CssOrientation::Portrait),
@@ -766,7 +799,7 @@ fn parse_orientation<'i, 't>(
 
 fn parse_scan_mode<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssScanMode, ParseError<'i, Error>> {
+) -> std::result::Result<CssScanMode, ParseError<'i, CssError>> {
     parse_discrete_ident(input, |ident| {
         match_ignore_ascii_case! { ident,
             "progressive" => Some(CssScanMode::Progressive),
@@ -778,7 +811,7 @@ fn parse_scan_mode<'i, 't>(
 
 fn parse_color_scheme_preference<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssColorSchemePreference, ParseError<'i, Error>> {
+) -> std::result::Result<CssColorSchemePreference, ParseError<'i, CssError>> {
     parse_discrete_ident(input, |ident| {
         match_ignore_ascii_case! { ident,
             "light" => Some(CssColorSchemePreference::Light),
@@ -790,7 +823,7 @@ fn parse_color_scheme_preference<'i, 't>(
 
 fn parse_reduced_motion_preference<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssReducedMotionPreference, ParseError<'i, Error>> {
+) -> std::result::Result<CssReducedMotionPreference, ParseError<'i, CssError>> {
     parse_discrete_ident(input, |ident| {
         match_ignore_ascii_case! { ident,
             "reduce" => Some(CssReducedMotionPreference::Reduce),
@@ -802,7 +835,7 @@ fn parse_reduced_motion_preference<'i, 't>(
 
 fn parse_reduced_transparency_preference<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssReducedTransparencyPreference, ParseError<'i, Error>> {
+) -> std::result::Result<CssReducedTransparencyPreference, ParseError<'i, CssError>> {
     parse_discrete_ident(input, |ident| {
         match_ignore_ascii_case! { ident,
             "reduce" => Some(CssReducedTransparencyPreference::Reduce),
@@ -814,7 +847,7 @@ fn parse_reduced_transparency_preference<'i, 't>(
 
 fn parse_contrast_preference<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssContrastPreference, ParseError<'i, Error>> {
+) -> std::result::Result<CssContrastPreference, ParseError<'i, CssError>> {
     parse_discrete_ident(input, |ident| {
         match_ignore_ascii_case! { ident,
             "no-preference" => Some(CssContrastPreference::NoPreference),
@@ -828,7 +861,7 @@ fn parse_contrast_preference<'i, 't>(
 
 fn parse_forced_colors_mode<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssForcedColorsMode, ParseError<'i, Error>> {
+) -> std::result::Result<CssForcedColorsMode, ParseError<'i, CssError>> {
     parse_discrete_ident(input, |ident| {
         match_ignore_ascii_case! { ident,
             "none" => Some(CssForcedColorsMode::None),
@@ -840,7 +873,7 @@ fn parse_forced_colors_mode<'i, 't>(
 
 fn parse_hover_capability<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssHoverCapability, ParseError<'i, Error>> {
+) -> std::result::Result<CssHoverCapability, ParseError<'i, CssError>> {
     parse_discrete_ident(input, |ident| {
         match_ignore_ascii_case! { ident,
             "none" => Some(CssHoverCapability::None),
@@ -852,7 +885,7 @@ fn parse_hover_capability<'i, 't>(
 
 fn parse_pointer_capability<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssPointerCapability, ParseError<'i, Error>> {
+) -> std::result::Result<CssPointerCapability, ParseError<'i, CssError>> {
     parse_discrete_ident(input, |ident| {
         match_ignore_ascii_case! { ident,
             "none" => Some(CssPointerCapability::None),
@@ -865,7 +898,7 @@ fn parse_pointer_capability<'i, 't>(
 
 fn parse_display_mode<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssDisplayMode, ParseError<'i, Error>> {
+) -> std::result::Result<CssDisplayMode, ParseError<'i, CssError>> {
     parse_discrete_ident(input, |ident| {
         match_ignore_ascii_case! { ident,
             "fullscreen" => Some(CssDisplayMode::Fullscreen),
@@ -881,7 +914,7 @@ fn parse_display_mode<'i, 't>(
 fn parse_discrete_ident<'i, 't, T>(
     input: &mut Parser<'i, 't>,
     parse: impl FnOnce(&str) -> Option<T>,
-) -> std::result::Result<T, ParseError<'i, Error>> {
+) -> std::result::Result<T, ParseError<'i, CssError>> {
     let location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     parse(&ident).ok_or_else(|| unexpected_at(location))
@@ -890,7 +923,7 @@ fn parse_discrete_ident<'i, 't, T>(
 fn generic_comparison<'i>(
     input: &mut Parser<'i, '_>,
     numeric: &MediaInput<'_>,
-) -> Result<(CssQueryComparison, Vec<CssValueOrigin>), ParseError<'i, Error>> {
+) -> Result<(CssQueryComparison, Vec<CssValueOrigin>), ParseError<'i, CssError>> {
     input.skip_whitespace();
     let start = input.state();
     let comparison = parse_media_comparison(input)?;

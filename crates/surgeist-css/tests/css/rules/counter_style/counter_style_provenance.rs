@@ -6,7 +6,21 @@ use crate::css::support::rules::origin_text as text;
 use crate::css::support::rules::sole_counter_style as counter;
 use descriptor_phases::*;
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::counter_style::{
+    CssCounterStyleDescriptorKind, CssCounterStyleDescriptorRef, CssCounterStyleRange,
+    CssCounterStyleRangeBound, CssCounterStyleRule, CssCounterStyleSpeakAs, CssCounterStyleSystem,
+    CssCounterSymbol,
+};
+use surgeist_css::rule::{CssDescriptorOccurrence, CssRule};
+use surgeist_css::source::{CssParsedOrigin, CssSourceSnapshot};
+use surgeist_css::values::common::{CssIdent, CssUrl, CssUrlFunction, CssUrlModifier};
+use surgeist_css::values::image::{CssImage, CssImageValue};
 
 fn assert_coordinates(origin: &CssParsedOrigin, source: &str) {
     assert_eq!(origin.source().as_str(), source);
@@ -113,7 +127,10 @@ fn rule_name_origin_excludes_trivia_and_preserves_escaped_decoded_identity() {
         source.find(r"\31 Name").unwrap()
     );
     assert_coordinates(origin, source);
-    assert_eq!(rule.name_specified_css().unwrap(), r"\31 Name");
+    assert_eq!(
+        rule.name_specified_css(Default::default()).unwrap(),
+        r"\31 Name"
+    );
     assert_eq!(text(rule.parsed_name().unwrap()), r"\31 Name");
 }
 
@@ -229,7 +246,7 @@ fn all_descriptor_kinds_retain_original_regions_and_component_origins() {
     let CssCounterStyleRangeBound::Integer(integer) = ranges.ranges()[0].upper() else {
         panic!("integer bound");
     };
-    let CssValueOrigin::Parsed(origin) = integer.literal().origin() else {
+    let CssValueOrigin::Parsed(origin) = integer.expect_literal().origin() else {
         panic!("integer parsed origin");
     };
     assert_eq!(text(origin), "-0001");
@@ -273,7 +290,11 @@ fn complete_nested_image_components_and_closings_keep_the_original_snapshot() {
     };
     assert_eq!(text(closing), ")");
     let retained = rule.clone();
-    assert!(rule.to_specified_css().unwrap().contains("calc(5% + 1px)"));
+    assert!(
+        rule.serialize_specified(Default::default())
+            .unwrap()
+            .contains("calc(5% + 1px)")
+    );
     assert_eq!(rule, retained);
     assert_original_components(components, rule.parsed_name().unwrap().source());
 }
@@ -282,7 +303,7 @@ fn complete_nested_image_components_and_closings_keep_the_original_snapshot() {
 fn suppressed_valid_duplicates_retain_origins_while_invalid_occurrences_are_dropped() {
     let source =
         r"@counter-style Duplicates { symbols:a; prefix:'first'; prefix:inherit; prefix:\4c ast; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
         panic!("retained rule");
     };
@@ -301,7 +322,7 @@ fn suppressed_valid_duplicates_retain_origins_while_invalid_occurrences_are_drop
     assert_descriptor(prefixes[0], rule, source, "prefix", "'first'");
     assert_descriptor(prefixes[1], rule, source, "prefix", r"\4c ast");
     assert_eq!(
-        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Prefix)
+        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Prefix, Default::default())
             .unwrap(),
         "Last"
     );
@@ -313,7 +334,7 @@ fn suppressed_valid_duplicates_retain_origins_while_invalid_occurrences_are_drop
 #[test]
 fn eof_image_closure_is_implicit_provenance_and_never_an_authored_delimiter() {
     let source = "@counter-style Eof { symbols: linear-gradient(red, blue";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
         panic!("retained EOF rule");
     };
@@ -351,12 +372,16 @@ fn eof_image_closure_is_implicit_provenance_and_never_an_authored_delimiter() {
         "linear-gradient(red, blue"
     );
     assert_eq!(
-        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Symbols)
+        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Symbols, Default::default())
             .unwrap(),
         "linear-gradient(red, blue)"
     );
     assert_eq!(
-        validate_sheet(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
 }
@@ -364,10 +389,10 @@ fn eof_image_closure_is_implicit_provenance_and_never_an_authored_delimiter() {
 #[test]
 fn normalization_retains_counter_name_reference_and_image_origin_identity() {
     let source = r"/*😀*/ @media print { @counter-style \31 Name { system:extends Target; prefix:linear-gradient(red, blue); } } @scope { @counter-style Scoped { symbols:x; fallback:\4f ther; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let retained = report.syntax().clone();
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let counters: Vec<_> = normalized
         .items()
         .iter()
@@ -413,9 +438,10 @@ fn normalization_retains_counter_name_reference_and_image_origin_identity() {
 
 #[test]
 fn direct_image_symbol_construction_excludes_none_and_keeps_url_identity() {
-    assert_eq!(
-        CssImage::try_new(CssImageValue::None).unwrap_err(),
-        CssImageConstructionError::NotImage
+    assert!(
+        CssImage::try_new(CssImageValue::None)
+            .unwrap_err()
+            .is_not_image()
     );
     let image = CssImage::try_new(CssImageValue::Url(CssUrl::from_parts(
         CssUrlFunction::Src,
@@ -434,7 +460,7 @@ fn direct_image_symbol_construction_excludes_none_and_keeps_url_identity() {
     assert_eq!(url.as_str(), "#symbol");
     assert!(url.is_local_url());
     assert_eq!(
-        image.serialize_specified().unwrap(),
+        image.serialize_specified(Default::default()).unwrap(),
         "src(\"#symbol\" Hint)"
     );
 }

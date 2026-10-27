@@ -3,17 +3,29 @@
 //! per-grammar canonical order. Quarter-turn rounding belongs to computed values.
 //! Ordinary numeric formatting and math projection retain the shared Values/CSSOM owner.
 
-use CssSpecifiedValueSerializationErrorKind as Kind;
-use CssSpecifiedValueSerializationLimits as Limits;
-use surgeist_css::*;
+use crate::css::support::failure_classes::SerializationFailure as Kind;
+use crate::css::support::failure_classes::serialization_failure;
+use CssSerializationLimits as Limits;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssAngle, CssAngleUnit, CssNumeric, CssNumericLiteral};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::image::CssImageOrientation;
 
-fn angle(coefficient: &str, unit: CssAngleUnit) -> CssAngleValue {
-    CssAngleValue::from_literal(CssAngleLiteral::try_new(coefficient, unit).unwrap())
+fn angle(coefficient: &str, unit: CssAngleUnit) -> CssNumeric<CssAngle> {
+    CssNumeric::<CssAngle>::try_from_literal(
+        CssNumericLiteral::<CssAngle>::try_new(coefficient, unit).unwrap(),
+    )
+    .unwrap()
 }
 
 fn parsed(value: &str) -> (CssDeclaration, CssImageOrientation) {
     let source = format!("/* 🦀 */ image-orientation:{value} !important; color:blue");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [declaration, sibling] = report.syntax().as_slice() else {
         panic!("orientation and sibling")
@@ -26,10 +38,10 @@ fn parsed(value: &str) -> (CssDeclaration, CssImageOrientation) {
     else {
         panic!("typed orientation")
     };
-    (declaration.clone(), value.orientation().clone())
+    (declaration.clone(), value.value().clone())
 }
 
-fn child(value: &CssImageOrientation) -> &CssAngleValue {
+fn child(value: &CssImageOrientation) -> &CssNumeric<CssAngle> {
     match value {
         CssImageOrientation::Angle(angle) | CssImageOrientation::Flip(Some(angle)) => angle,
         _ => panic!("orientation with retained angle"),
@@ -69,9 +81,15 @@ fn explicit_keywords_omitted_angle_and_explicit_zero_keep_distinct_output_and_id
             "0deg flip",
         ),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         let (_, reparsed) = parsed(expected);
-        assert_eq!(reparsed.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            reparsed.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(value, reparsed);
     }
     assert_ne!(CssImageOrientation::None, CssImageOrientation::FromImage);
@@ -96,7 +114,10 @@ fn ordinary_angles_use_shared_precision_and_units_without_quarter_turn_rounding_
         ("1", CssAngleUnit::Radians, "1rad"),
     ] {
         let value = CssImageOrientation::Angle(angle(coefficient, unit));
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         let literal = child(&value).literal().unwrap();
         assert_eq!(literal.numeric().representation(), coefficient);
         assert_eq!(literal.unit(), unit);
@@ -113,7 +134,10 @@ fn both_authored_flip_orders_emit_angle_then_flip_without_changing_source_proven
         let components = declaration.value_components().clone();
         let source = declaration.parsed_name().unwrap().source().as_str();
         assert_parsed_origin(&origin, source, "3.000e1deg");
-        assert_eq!(value.serialize_specified().unwrap(), "30deg flip");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            "30deg flip"
+        );
         assert_eq!(value, original);
         assert_eq!(child(&value).origin(), &origin);
         assert_eq!(declaration.value_components(), &components);
@@ -127,16 +151,20 @@ fn both_authored_flip_orders_emit_angle_then_flip_without_changing_source_proven
 #[test]
 fn checked_property_and_grammar_reentry_preserve_supplied_angle_origins_during_serialization() {
     let source = "/* 🦀 */ flip -0.25turn";
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     for declaration in [
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::ImageOrientation),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                CssKnownProperty::ImageOrientation,
+            )),
             components.clone(),
             CssImportance::Important,
         )
         .unwrap(),
-        parse_property_value_for_grammar(
-            CssKnownProperty::ImageOrientation.grammar(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(CssKnownProperty::ImageOrientation.grammar()),
             components.clone(),
             CssImportance::Important,
         )
@@ -152,9 +180,12 @@ fn checked_property_and_grammar_reentry_preserve_supplied_angle_origins_during_s
         else {
             panic!("typed orientation")
         };
-        let value = value.orientation();
+        let value = value.value();
         assert_parsed_origin(child(value).origin(), source, "-0.25turn");
-        assert_eq!(value.serialize_specified().unwrap(), "-0.25turn flip");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            "-0.25turn flip"
+        );
         assert_parsed_origin(child(value).origin(), source, "-0.25turn");
     }
 }
@@ -171,19 +202,21 @@ fn angle_calculations_use_the_numeric_projection_without_orientation_rounding() 
         let calculation = child(&value).calculation().unwrap();
         let components = calculation.components().clone();
         let origin = calculation.origin().clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected);
         assert_eq!(
-            value
-                .serialize_specified_with_limits(Limits::new(100, 100, expected.len()))
-                .unwrap(),
+            value.serialize_specified(Default::default()).unwrap(),
             expected
         );
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(100, 100, expected.len() - 1))
+                .serialize_specified(Limits::new(100, 100, expected.len()))
+                .unwrap(),
+            expected
+        );
+        assert!(
+            value
+                .serialize_specified(Limits::new(100, 100, expected.len() - 1))
                 .unwrap_err()
-                .kind(),
-            Kind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(
             child(&value).calculation().unwrap().components(),
@@ -212,7 +245,7 @@ fn carrier_transparent_keyword_and_literal_node_budgets_have_exact_boundaries() 
     ] {
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(nodes, nodes, expected.len()))
+                .serialize_specified(Limits::new(nodes, nodes, expected.len()))
                 .unwrap(),
             expected
         );
@@ -231,10 +264,7 @@ fn carrier_transparent_keyword_and_literal_node_budgets_have_exact_boundaries() 
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind
             );
         }
@@ -254,10 +284,7 @@ fn failure_after_angle_or_separator_is_atomic_and_preserves_exact_input_and_orig
         (Limits::new(2, 2, 9), Kind::ByteLimit),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(value, before);
@@ -268,14 +295,20 @@ fn failure_after_angle_or_separator_is_atomic_and_preserves_exact_input_and_orig
             "3.000e1"
         );
     }
-    assert_eq!(value.serialize_specified().unwrap(), "30deg flip");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "30deg flip"
+    );
 }
 
 #[test]
 fn tiny_nonzero_and_signed_zero_angles_remain_explicit_while_authored_coefficients_stay_exact() {
     for coefficient in ["-0", "1e-999", "-1e-999"] {
         let value = CssImageOrientation::Flip(Some(angle(coefficient, CssAngleUnit::Degrees)));
-        assert_eq!(value.serialize_specified().unwrap(), "0deg flip");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            "0deg flip"
+        );
         assert_eq!(
             child(&value).literal().unwrap().numeric().representation(),
             coefficient

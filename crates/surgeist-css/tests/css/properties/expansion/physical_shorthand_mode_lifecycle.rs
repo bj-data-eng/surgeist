@@ -9,7 +9,23 @@ use crate::css::support::checked_grammar_declaration as checked;
 use crate::css::support::important_declaration as declaration;
 use crate::css::support::named_property::longhand_contributions as terminals;
 use crate::css::support::selected_grammar as grammar;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{CssLength, CssLengthPercentage, CssNonNegative, CssNumeric};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssKnownPropertyValueRef, CssLonghandContributions, CssLonghandValue, CssLonghandValueRef,
+    CssPropertyKindRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
+use surgeist_css::values::common::CssAutoOr;
 
 struct Family {
     name: &'static str,
@@ -162,9 +178,10 @@ fn one_value(name: &str, value: &str) -> CssLonghandValue {
     assert_eq!(values.items().len(), 1);
     values.items()[0].ordinary_value().unwrap().clone()
 }
-// Scalar equality deliberately includes diagnostic provenance. Compare the
+// Scalar equality compares the numeric value and ignores spelling and
+// diagnostic provenance. Expansion must also preserve both, so compare the
 // selected length's exact literal structure separately from its real origin.
-fn scroll_margin_length(value: &CssLonghandValue) -> Option<&CssSpecifiedLength> {
+fn scroll_margin_length(value: &CssLonghandValue) -> Option<&CssNumeric<CssLength>> {
     match value.view() {
         CssLonghandValueRef::ScrollMarginTop(value)
         | CssLonghandValueRef::ScrollMarginRight(value)
@@ -177,7 +194,9 @@ fn scroll_margin_length(value: &CssLonghandValue) -> Option<&CssSpecifiedLength>
         _ => None,
     }
 }
-fn scroll_padding(value: &CssLonghandValue) -> Option<&CssScrollPaddingValue> {
+fn scroll_padding(
+    value: &CssLonghandValue,
+) -> Option<&CssAutoOr<CssNumeric<CssLengthPercentage, CssNonNegative>>> {
     match value.view() {
         CssLonghandValueRef::ScrollPaddingTop(value)
         | CssLonghandValueRef::ScrollPaddingRight(value)
@@ -227,17 +246,18 @@ fn assert_semantic_payload(actual: &CssLonghandValue, expected: &CssLonghandValu
             actual_padding,
             scroll_padding(expected).expect("scroll-padding domain"),
         ) {
-            (CssScrollPaddingValue::Auto, CssScrollPaddingValue::Auto) => {}
-            (
-                CssScrollPaddingValue::LengthPercentage(actual),
-                CssScrollPaddingValue::LengthPercentage(expected),
-            ) => {
+            (CssAutoOr::Auto, CssAutoOr::Auto) => {}
+            (CssAutoOr::Value(actual), CssAutoOr::Value(expected)) => {
                 assert!(actual.calculation().is_none());
                 assert!(expected.calculation().is_none());
                 assert_literal_payload(
-                    actual.literal_component().expect("ordinary exact padding"),
+                    actual
+                        .literal()
+                        .map(|literal| literal.component())
+                        .expect("ordinary exact padding"),
                     expected
-                        .literal_component()
+                        .literal()
+                        .map(|literal| literal.component())
                         .expect("ordinary exact padding"),
                 );
             }
@@ -250,8 +270,14 @@ fn assert_semantic_payload(actual: &CssLonghandValue, expected: &CssLonghandValu
             assert!(actual.calculation().is_none());
             assert!(expected.calculation().is_none());
             assert_literal_payload(
-                actual.literal_component().expect("ordinary exact length"),
-                expected.literal_component().expect("ordinary exact length"),
+                actual
+                    .literal()
+                    .map(|literal| literal.component())
+                    .expect("ordinary exact length"),
+                expected
+                    .literal()
+                    .map(|literal| literal.component())
+                    .expect("ordinary exact length"),
             );
         }
         (None, None) => assert_eq!(actual, expected),
@@ -260,10 +286,10 @@ fn assert_semantic_payload(actual: &CssLonghandValue, expected: &CssLonghandValu
 }
 fn scroll_scalar_origin(value: &CssLonghandValue) -> Option<&CssValueOrigin> {
     scroll_margin_length(value)
-        .map(CssSpecifiedLength::origin)
+        .map(CssNumeric::<CssLength>::origin)
         .or_else(|| match scroll_padding(value) {
-            Some(CssScrollPaddingValue::LengthPercentage(value)) => Some(value.origin()),
-            Some(CssScrollPaddingValue::Auto) | None => None,
+            Some(CssAutoOr::Value(value)) => Some(value.origin()),
+            Some(CssAutoOr::Auto) | None => None,
             Some(_) => panic!("unexpected scroll-padding branch"),
         })
 }
@@ -341,7 +367,11 @@ fn expand_family(family: &Family) {
                 checked(family.name, &value),
             ] {
                 assert_eq!(
-                    source.value_components().serialize().unwrap().as_css(),
+                    source
+                        .value_components()
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
                     value
                 );
                 assert_values(family, logical, arity, &source, &terminals(&source), None);
@@ -419,14 +449,17 @@ fn all_selected_longhands_keep_exact_intrinsic_initial_and_noninheritance() {
 fn reusable_pending_handle_selects_replacement_mode_and_retains_both_origins() {
     for family in &FAMILIES {
         let source = declaration(family.name, "var(--edges)");
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending shorthand")
         };
         assert!(handle.source().same_occurrence(&source));
         for logical in [true, false, true] {
             for arity in 1..=4 {
-                let replacement =
-                    parse_component_values(&authored(family, logical, arity)).unwrap();
+                let replacement = CssComponentValues::parse(
+                    &CssParser::default(),
+                    authored(family, logical, arity),
+                )
+                .unwrap();
                 let CssContributions::Longhands(values) =
                     handle.reenter(replacement.clone()).unwrap()
                 else {
@@ -437,7 +470,7 @@ fn reusable_pending_handle_selects_replacement_mode_and_retains_both_origins() {
                     values.items()[0]
                         .source()
                         .value_components()
-                        .serialize()
+                        .serialize_tokens(Default::default())
                         .unwrap()
                         .as_css(),
                     "var(--edges)"
@@ -451,7 +484,7 @@ fn reusable_pending_handle_selects_replacement_mode_and_retains_both_origins() {
             ("revert", CssGlobalKeyword::Revert),
             ("revert-layer", CssGlobalKeyword::RevertLayer),
         ] {
-            let replacement = parse_component_values(text).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
                 panic!("global replacement terminals")
@@ -473,7 +506,7 @@ fn reusable_pending_handle_selects_replacement_mode_and_retains_both_origins() {
 fn invalid_and_residual_reentry_are_atomic_and_keep_pending_source_usable() {
     for family in &FAMILIES {
         let source = declaration(family.name, "var(--edges)");
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending shorthand")
         };
         for invalid in [
@@ -482,24 +515,27 @@ fn invalid_and_residual_reentry_are_atomic_and_keep_pending_source_usable() {
             "initial 1px",
             "logical logical 1px",
         ] {
-            assert!(matches!(
+            assert!(
                 handle
-                    .reenter(parse_component_values(invalid).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
+                    .replacement_error()
+                    .is_some()
+            );
         }
-        assert_eq!(
+        assert!(
             handle
-                .reenter(parse_component_values("var(--again)").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         assert!(handle.source().same_occurrence(&source));
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             "var(--edges)"
         );
     }
@@ -516,29 +552,43 @@ fn parser_drops_invalid_quad_atomically_between_valid_neighbors() {
         ];
         for invalid in invalids {
             let text = format!("color:red;{}:{invalid};color:blue", family.name);
-            let report = parse_style_attribute(&text);
+            let report = CssParser::default().parse_block_contents(&text);
             let [diagnostic] = report.diagnostics() else {
                 panic!("one invalid declaration: {text}")
             };
             assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
             assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
             assert_eq!(report.syntax().len(), 2);
-            assert!(validate_style_attribute(&text).is_err());
             assert!(
-                parse_property_value_for_grammar(
-                    grammar(family.name),
-                    parse_component_values(&invalid).unwrap(),
+                CssParser::default()
+                    .parse_block_contents(&text)
+                    .into_validation_result()
+                    .is_err()
+            );
+            assert!(
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(grammar(family.name)),
+                    CssComponentValues::parse(&CssParser::default(), &invalid).unwrap(),
                     CssImportance::Normal
                 )
                 .is_err()
             );
             let syntax = report.syntax().as_slice();
             assert_eq!(
-                syntax[0].value_components().serialize().unwrap().as_css(),
+                syntax[0]
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 "red"
             );
             assert_eq!(
-                syntax[1].value_components().serialize().unwrap().as_css(),
+                syntax[1]
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 "blue"
             );
         }
@@ -560,14 +610,13 @@ fn normalization_preserves_mode_interleaving_importance_sources_and_cumulative_l
             family.tokens[1],
             family.name
         );
-        let report = parse_sheet(&text);
+        let report = CssParser::default().parse_sheet(&text);
         assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
         let preserved = report.syntax().clone();
-        let normalized = normalize_sheet_with_limits(
-            report.syntax(),
-            CssNormalizationLimits::try_new(1, 1, 5, 11).unwrap(),
-        )
-        .unwrap();
+        let normalized = report
+            .syntax()
+            .normalize(CssNormalizationLimits::try_new(1, 1, 5, 11).unwrap())
+            .unwrap();
         let declarations = normalized
             .items()
             .iter()
@@ -619,16 +668,14 @@ fn normalization_preserves_mode_interleaving_importance_sources_and_cumulative_l
             (5, 10, CssNormalizationResource::Contributions, 10, 4),
             (4, 11, CssNormalizationResource::Declarations, 4, 4),
         ] {
-            let error = normalize_sheet_with_limits(
-                report.syntax(),
-                CssNormalizationLimits::try_new(1, 1, declarations_limit, contributions_limit)
-                    .unwrap(),
-            )
-            .unwrap_err();
-            assert_eq!(
-                error.kind(),
-                &CssNormalizationErrorKind::LimitExceeded { resource, limit }
-            );
+            let error = report
+                .syntax()
+                .normalize(
+                    CssNormalizationLimits::try_new(1, 1, declarations_limit, contributions_limit)
+                        .unwrap(),
+                )
+                .unwrap_err();
+            assert_eq!(error.exhausted_limit(), Some((resource, limit)));
             assert_eq!(error.declaration_order(), Some(order));
             assert!(
                 error
@@ -659,19 +706,18 @@ fn standalone_quad_writers_keep_mode_output_and_atomic_byte_limits() {
                 assert_eq!(
                     canonical_with_limits(
                         &source,
-                        CssSpecifiedValueSerializationLimits::new(256, usize::MAX, text.len())
+                        CssSerializationLimits::new(256, usize::MAX, text.len())
                     )
                     .unwrap(),
                     text
                 );
-                assert_eq!(
+                assert!(
                     canonical_with_limits(
                         &source,
-                        CssSpecifiedValueSerializationLimits::new(256, usize::MAX, text.len() - 1)
+                        CssSerializationLimits::new(256, usize::MAX, text.len() - 1)
                     )
                     .unwrap_err()
-                    .kind(),
-                    CssSpecifiedValueSerializationErrorKind::ByteLimit
+                    .is_byte_limit()
                 );
                 assert_eq!(source.value_components(), &preserved);
             }
@@ -692,37 +738,21 @@ fn standalone_quad_writers_keep_mode_output_and_atomic_byte_limits() {
     }
 }
 fn canonical(source: &CssDeclaration) -> String {
-    canonical_with_limits(source, CssSpecifiedValueSerializationLimits::default()).unwrap()
+    canonical_with_limits(source, CssSerializationLimits::default()).unwrap()
 }
 fn canonical_with_limits(
     source: &CssDeclaration,
-    limits: CssSpecifiedValueSerializationLimits,
-) -> Result<String, CssSpecifiedValueSerializationError> {
+    limits: CssSerializationLimits,
+) -> Result<String, CssSerializationError> {
     match source.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::BorderColor(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::BorderStyle(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::BorderWidth(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::Inset(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::Margin(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::Padding(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::ScrollMargin(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::ScrollPadding(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
+        CssKnownPropertyValueRef::BorderColor(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::BorderStyle(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::BorderWidth(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::Inset(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::Margin(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::Padding(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::ScrollMargin(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::ScrollPadding(value) => value.value().serialize_specified(limits),
         _ => panic!("quad provider"),
     }
 }

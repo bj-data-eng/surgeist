@@ -9,12 +9,17 @@
 //! binary64(1e308), divided by binary64(1e308), rounds to 0.797693, flat or grouped.
 //! Genuine infinite operands and NaN retain the §10.9.1 exception semantics.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::assert_calculated_number as assert_number;
 use crate::css::support::value_assertions::calculated_number as number;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::numeric::{CssCalculation, CssNumber, CssNumeric};
+use surgeist_css::serialization::CssSerializationLimits;
 
-type Limits = CssSpecifiedValueSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Limits = CssSerializationLimits;
+type Kind = SerializationFailure;
 
 #[test]
 fn flat_same_unit_angle_sum_converts_at_each_accumulation_step() {
@@ -83,17 +88,21 @@ fn merged_angle_sum_keeps_genuine_infinity_and_nan_exceptions() {
 
 #[test]
 fn programmatic_angle_sum_keeps_exact_coefficients_and_origin() {
-    let arguments =
-        parse_component_values("(+01e308DEG + +01e308DEG - +01e308DEG) / +01e308DEG").unwrap();
+    let arguments = CssComponentValues::parse(
+        &CssParser::default(),
+        "(+01e308DEG + +01e308DEG - +01e308DEG) / +01e308DEG",
+    )
+    .unwrap();
     let root = CssComponentValue::try_function("CALC", arguments).unwrap();
-    let components = CssComponentValues::try_new(vec![root]).unwrap();
-    let value = CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(components.clone()).unwrap(),
+    let components = CssComponentValues::try_new(vec![root], Default::default()).unwrap();
+    let value = CssNumeric::<CssNumber>::try_from_calculation(
+        CssCalculation::<CssNumber>::try_from_components(components.clone(), Default::default())
+            .unwrap(),
     )
     .unwrap();
     let before = value.clone();
     assert!(matches!(value.origin(), CssValueOrigin::Programmatic));
-    let result = value.serialize_specified();
+    let result = value.serialize_specified(Default::default());
     assert_eq!(value, before);
     assert_eq!(value.origin(), before.origin());
     assert_eq!(value.calculation().unwrap().components(), &components);
@@ -121,8 +130,8 @@ fn merged_angle_replacement_obeys_exact_limits_and_atomic_failures() {
             (Limits::new(8, 7, expected.len()), Kind::ProjectionNodeLimit),
             (Limits::new(8, 8, expected.len() - 1), Kind::ByteLimit),
         ] {
-            let error = value.serialize_specified_with_limits(limits).unwrap_err();
-            assert_eq!(error.kind(), kind, "{source}: {limits:?}");
+            let error = value.serialize_specified(limits).unwrap_err();
+            assert_eq!(serialization_failure(&error), kind, "{source}: {limits:?}");
             assert_eq!(value, before);
             assert_eq!(value.origin(), before.origin());
             assert_eq!(
@@ -130,7 +139,7 @@ fn merged_angle_replacement_obeys_exact_limits_and_atomic_failures() {
                 before.calculation().unwrap().components()
             );
         }
-        let result = value.serialize_specified_with_limits(Limits::new(8, 8, expected.len()));
+        let result = value.serialize_specified(Limits::new(8, 8, expected.len()));
         assert_eq!(value, before);
         assert_eq!(result.unwrap(), expected);
     }
@@ -153,8 +162,8 @@ fn sibling_angle_replacements_share_one_cumulative_budget() {
         ),
         (Limits::new(18, 17, expected.len() - 1), Kind::ByteLimit),
     ] {
-        let error = value.serialize_specified_with_limits(limits).unwrap_err();
-        assert_eq!(error.kind(), kind, "{limits:?}");
+        let error = value.serialize_specified(limits).unwrap_err();
+        assert_eq!(serialization_failure(&error), kind, "{limits:?}");
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
         assert_eq!(
@@ -162,7 +171,7 @@ fn sibling_angle_replacements_share_one_cumulative_budget() {
             before.calculation().unwrap().components()
         );
     }
-    let result = value.serialize_specified_with_limits(Limits::new(18, 17, expected.len()));
+    let result = value.serialize_specified(Limits::new(18, 17, expected.len()));
     assert_eq!(value, before);
     assert_eq!(result.unwrap(), expected);
 }

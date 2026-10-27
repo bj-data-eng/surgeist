@@ -1,7 +1,12 @@
 //! Custom properties and `var()` references (CSS Variables 1) keep authored
 //! syntax, names and fallbacks through the public parser.
 
-use surgeist_css::*;
+use surgeist_css::declaration::{
+    CssAuthoredDeclarationValue, CssCustomPropertyName, CssCustomPropertyValue, CssDeclaration,
+    CssGlobalKeyword,
+};
+use surgeist_css::diagnostic::{CssErrorCode, CssTokenKind};
+use surgeist_css::property::CssKnownProperty;
 
 use crate::css::support::sheet_cases::*;
 
@@ -143,10 +148,13 @@ fn malformed_var_in_supported_property_drops_the_declaration() {
     ] {
         // The declaration's own value grammar rejects it, for its property.
         let error = assert_drops_sole_declaration(input);
-        let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-            panic!("{input}: property value rejection: {error:?}");
-        };
-        assert_eq!(detail.property(), property, "{input}");
+        let detail = &error;
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "{input}: property value rejection: {error:?}"
+        );
+        assert_eq!(detail.known_property().unwrap(), property, "{input}");
     }
 }
 
@@ -155,10 +163,13 @@ fn invalid_supported_value_without_var_drops_the_declaration() {
     // Box Alignment 3 (WD 2026-01-30) §8.2 and §8.1: gap is <'row-gap'> <'column-gap'>?,
     // each normal | <length-percentage [0,∞]>; `auto` is neither.
     let error = assert_drops_sole_declaration(".panel { gap: auto; }");
-    let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-        panic!("gap value rejection: {error:?}");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Gap);
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "gap value rejection: {error:?}"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Gap);
     let token = detail.encountered().expect("responsible keyword");
     assert_eq!(
         (token.kind(), token.authored()),

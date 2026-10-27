@@ -6,7 +6,12 @@ use crate::css::support::important_declaration as declaration;
 use crate::css::support::known_property;
 use crate::css::support::named_property::assert_checked_value_rejected_at;
 use crate::css::support::selected_grammar as grammar;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssPropertyKindRef,
+};
 
 const MEMBERS: [&str; 7] = [
     "font-variant-ligatures",
@@ -35,7 +40,7 @@ fn rejected<'a>(name: &str, value: &str, rest: impl Into<Option<&'a str>>) {
     let rest = rest.into();
     let target = grammar(name).target_property();
     let source = format!("color:red;{name}:{value};color:blue");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     let [diagnostic] = report.diagnostics() else {
         panic!(
             "one invalid-value diagnostic: {source}: {:?}",
@@ -60,7 +65,12 @@ fn rejected<'a>(name: &str, value: &str, rest: impl Into<Option<&'a str>>) {
         report.syntax()[1].known().unwrap().property(),
         CssKnownProperty::Color
     );
-    assert!(validate_style_attribute(&source).is_err());
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .is_err()
+    );
     assert_checked_value_rejected_at(known_property(name), value, rest);
     assert_eq!(target.canonical_name(), name);
 }
@@ -87,12 +97,17 @@ fn family_and_restricted_font_prefix_are_valid() {
         "italic emoji 16px serif",
     ] {
         let source = format!("font:{value}");
-        let unsupported = parse_style_attribute(&source);
+        let unsupported = CssParser::default().parse_block_contents(&source);
         assert!(
             !unsupported.is_clean(),
             "font keeps its restricted variant prefix: {value}"
         );
-        assert!(validate_style_attribute(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_err()
+        );
     }
 }
 
@@ -192,7 +207,7 @@ fn seven_inherited_longhands_have_normal_initials_and_exact_shorthand_targets() 
             panic!("{name} must have a fixed normal initial")
         };
         let CssExpansion::Contributions(CssContributions::Longhands(normal)) =
-            expand_declaration(&declaration(name, "normal")).unwrap()
+            declaration(name, "normal").expand().unwrap()
         else {
             panic!("{name} must expand to its own longhand")
         };
@@ -223,7 +238,7 @@ fn seven_inherited_longhands_have_normal_initials_and_exact_shorthand_targets() 
     ] {
         let source = declaration("font-variant", value);
         let CssExpansion::Contributions(CssContributions::Longhands(contributions)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("{value} must expand")
         };
@@ -241,7 +256,7 @@ fn seven_inherited_longhands_have_normal_initials_and_exact_shorthand_targets() 
                 "normal"
             };
             let CssExpansion::Contributions(CssContributions::Longhands(one)) =
-                expand_declaration(&declaration(name, expected)).unwrap()
+                declaration(name, expected).expand().unwrap()
             else {
                 panic!("{name} expected longhand")
             };

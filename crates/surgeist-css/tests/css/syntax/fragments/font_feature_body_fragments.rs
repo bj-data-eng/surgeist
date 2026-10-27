@@ -7,12 +7,16 @@ use descriptor_phases::*;
 use crate::css::support::authored_syntax::{
     assert_origin_region as origin, assert_position as position,
 };
-use surgeist_css::{
-    CssBlockFragment, CssErrorCode, CssEscapeError, CssFontDisplay, CssFontFeatureValueBlock,
-    CssFontFeatureValueDefinition, CssFontFeatureValueKind as Kind,
-    CssFontFeatureValuesItem as Item, CssParseReport, CssParsedOrigin, CssRecoveryAction, CssRule,
-    ErrorKind, parse_font_feature_value_block, parse_font_feature_values_block, parse_sheet,
+use surgeist_css::diagnostic::{CssErrorCode, CssEscapeFailure, CssRecoveryAction};
+use surgeist_css::rule::font_face::CssFontDisplay;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValueKind as Kind;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValuesItem as Item;
+use surgeist_css::rule::font_feature_values::{
+    CssFontFeatureValueBlock, CssFontFeatureValueDefinition, CssFontFeatureValuesItem,
 };
+use surgeist_css::rule::{CssBlockContext, CssBlockFragment, CssRule};
+use surgeist_css::source::CssParsedOrigin;
+use surgeist_css::{CssParseReport, CssParser};
 
 type OuterReport = CssParseReport<Option<CssBlockFragment<Vec<Item>>>>;
 type SubsidiaryReport = CssParseReport<Option<CssBlockFragment<CssFontFeatureValueBlock>>>;
@@ -28,10 +32,18 @@ const KINDS: [Kind; 7] = [
 ];
 
 fn outer(source: &str) -> OuterReport {
-    parse_font_feature_values_block(source)
+    CssBlockFragment::<Vec<CssFontFeatureValuesItem>>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    )
 }
 fn subsidiary(source: &str, kind: Kind) -> SubsidiaryReport {
-    parse_font_feature_value_block(source, kind)
+    CssBlockFragment::<CssFontFeatureValueBlock>::parse_definition(
+        &CssParser::default(),
+        source,
+        kind,
+    )
 }
 
 fn block(item: &Item) -> &CssFontFeatureValueBlock {
@@ -518,10 +530,13 @@ fn subsidiary_value_failures_and_nested_rules_recover_at_named_units() {
                 .iter()
                 .find(|d| d.action() == CssRecoveryAction::DropDescriptor)
                 .unwrap();
-            let ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind() else {
-                panic!("real named descriptor grammar")
-            };
-            assert_eq!(detail.descriptor().as_str(), "bad");
+            let detail = diagnostic.error();
+            assert_eq!(
+                detail.code(),
+                CssErrorCode::InvalidDescriptorValue,
+                "real named descriptor grammar"
+            );
+            assert_eq!(detail.descriptor().unwrap().as_str(), "bad");
         }
     }
     let source = "{@swash{lost:1}last:2}";
@@ -548,7 +563,7 @@ fn subsidiary_value_failures_and_nested_rules_recover_at_named_units() {
         assert_eq!(pending.name().as_str(), "bad");
         assert!(matches!(
             pending.value().view(),
-            surgeist_css::CssFontFeatureValueRef::Pending(_)
+            surgeist_css::rule::font_feature_values::CssFontFeatureValueRef::Pending(_)
         ));
         definition(last, "last", &["2"]);
     }
@@ -568,10 +583,13 @@ fn importance_is_invalid_in_real_named_body_declarations_and_keeps_later_members
         .find(|d| d.action() == CssRecoveryAction::DropDescriptor)
         .unwrap();
     position(diagnostic.error().position(), 18, 0, 18);
-    let ErrorKind::InvalidDeclarationAnnotation(detail) = diagnostic.error().kind() else {
-        panic!("actual named outer annotation")
-    };
-    assert_eq!(detail.encountered().authored(), "!");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidDeclarationAnnotation,
+        "actual named outer annotation"
+    );
+    assert_eq!(detail.encountered().unwrap().authored(), "!");
 
     let report = subsidiary("{Good:1!important;last:2}", Kind::Swash);
     validation(&report, false);
@@ -585,10 +603,13 @@ fn importance_is_invalid_in_real_named_body_declarations_and_keeps_later_members
         .find(|d| d.action() == CssRecoveryAction::DropDescriptor)
         .unwrap();
     position(diagnostic.error().position(), 7, 0, 7);
-    let ErrorKind::InvalidDeclarationAnnotation(detail) = diagnostic.error().kind() else {
-        panic!("actual friendly-name annotation")
-    };
-    assert_eq!(detail.encountered().authored(), "!");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidDeclarationAnnotation,
+        "actual friendly-name annotation"
+    );
+    assert_eq!(detail.encountered().unwrap().authored(), "!");
 }
 
 fn closure<T: Clone + PartialEq + std::fmt::Debug>(
@@ -812,12 +833,7 @@ fn lexical_escape_eof_diagnostics_use_original_offsets_after_valid_body_members(
     let diagnostic = report
         .diagnostics()
         .iter()
-        .find(|d| {
-            matches!(
-                d.error().kind(),
-                ErrorKind::EscapeParseError(CssEscapeError::EndOfInput)
-            )
-        })
+        .find(|d| d.error().escape_failure() == Some(CssEscapeFailure::EndOfInput))
         .unwrap();
     assert_eq!(diagnostic.action(), CssRecoveryAction::RecoverEscape);
     position(diagnostic.error().position(), 13, 0, 13);
@@ -831,12 +847,7 @@ fn lexical_escape_eof_diagnostics_use_original_offsets_after_valid_body_members(
     let diagnostic = report
         .diagnostics()
         .iter()
-        .find(|d| {
-            matches!(
-                d.error().kind(),
-                ErrorKind::EscapeParseError(CssEscapeError::EndOfInput)
-            )
-        })
+        .find(|d| d.error().escape_failure() == Some(CssEscapeFailure::EndOfInput))
         .unwrap();
     assert_eq!(diagnostic.action(), CssRecoveryAction::RecoverEscape);
     position(diagnostic.error().position(), 24, 0, 24);
@@ -867,10 +878,13 @@ fn resource<T: Clone + PartialEq + std::fmt::Debug>(
             .iter()
             .find(|d| d.action() == CssRecoveryAction::StopAtNestingLimit)
             .unwrap();
-        let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-            panic!("typed original-unit resource error")
-        };
-        assert_eq!(detail.limit(), 256);
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::NestingLimit,
+            "typed original-unit resource error"
+        );
+        assert_eq!(detail.nesting_limit().unwrap(), 256);
         position(diagnostic.error().position(), byte, 0, byte as u32);
         position(diagnostic.span().start(), unit_start, 0, unit_start as u32);
         position(diagnostic.span().end(), unit_end, 0, unit_end as u32);
@@ -1016,7 +1030,7 @@ fn defined_child_resource_failure_recovers_the_definition_and_preserves_child_an
 #[test]
 fn genuine_rule_controls_confirm_provider_semantics_without_fabricating_fragment_input() {
     let source = "@font-feature-values Demo{font-display:swap;@styleset{First:0 100 101}font-display:optional;@swash{bad:1.0;Good:+0002}}";
-    let real = parse_sheet(source);
+    let real = CssParser::default().parse_sheet(source);
     let [CssRule::FontFeatureValues(rule)] = real.syntax().rules() else {
         panic!("genuine existing rule")
     };

@@ -2,14 +2,15 @@
 //! `<url>` forms, including empty targets and ordered quoted-form modifiers.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#urls
 
-use surgeist_css::{
-    CssFontFaceSource, CssFontFaceUrlSource, CssImportTarget, CssImportUrl,
-    CssKnownPropertyValueRef, CssRecoveryAction, CssRule, CssUrl, CssUrlFunction, CssUrlModifier,
-    parse_sheet, parse_style_attribute,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::rule::font_face::{CssFontFaceSource, CssFontFaceUrlSource};
+use surgeist_css::rule::{CssImportTarget, CssImportUrl, CssRule};
+use surgeist_css::values::common::{CssUrl, CssUrlFunction, CssUrlModifier};
 
 fn background_url(value: &str) -> CssUrl {
-    let report = parse_style_attribute(&format!("background-image: {value}"));
+    let report = CssParser::default().parse_block_contents(format!("background-image: {value}"));
     assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
         panic!("one background image")
@@ -19,7 +20,7 @@ fn background_url(value: &str) -> CssUrl {
     else {
         panic!("typed image")
     };
-    let [surgeist_css::CssImageValue::Url(url)] = image.images().images() else {
+    let [surgeist_css::values::image::CssImageValue::Url(url)] = image.value().images() else {
         panic!("one URL image")
     };
     url.clone()
@@ -40,7 +41,7 @@ fn checked_constructors_preserve_function_identity_and_decoded_empty_targets() {
             url
         );
 
-        let url_import = CssImportUrl::new(surgeist_css::CssUrl::new(target));
+        let url_import = CssImportUrl::new(surgeist_css::values::common::CssUrl::new(target));
         let import = CssImportUrl::new(src.clone());
         assert_eq!(url_import.url().function(), CssUrlFunction::Url);
         assert_eq!(url_import.as_str(), target);
@@ -48,8 +49,11 @@ fn checked_constructors_preserve_function_identity_and_decoded_empty_targets() {
         assert_eq!(import.as_str(), target);
         assert_ne!(url_import, import);
 
-        let url_font =
-            CssFontFaceUrlSource::new(surgeist_css::CssUrl::new(target), None, Vec::new());
+        let url_font = CssFontFaceUrlSource::new(
+            surgeist_css::values::common::CssUrl::new(target),
+            None,
+            Vec::new(),
+        );
         let font = CssFontFaceUrlSource::new(src.clone(), None, Vec::new());
         assert_eq!(url_font.url().function(), CssUrlFunction::Url);
         assert_eq!(url_font.url().as_str(), target);
@@ -100,7 +104,7 @@ fn import_and_font_sources_expose_shared_payload_and_preserve_import_spelling() 
         "src(\"first.woff2\" integrity(\"sha256\")), ",
         "url(\"second.woff2\" cors); }"
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Import(import), CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("import then font face")
@@ -114,7 +118,10 @@ fn import_and_font_sources_expose_shared_payload_and_preserve_import_spelling() 
         matches!(target.url().modifiers(), [CssUrlModifier::Ident(ident)] if ident.as_str() == "cors")
     );
     assert_eq!(
-        import.serialize().unwrap().as_css(),
+        import
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "@import SRC(\"theme.css\" cors) layer(theme);"
     );
 
@@ -146,7 +153,7 @@ fn malformed_src_members_recover_without_losing_valid_font_and_rule_neighbors() 
         "src(\"first.woff2\"), src(foo), src(\"last.woff2\"); } ",
         ".after { color: red; }"
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(!report.is_clean());
     let [CssRule::FontFace(face), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("font face and style survive invalid import")

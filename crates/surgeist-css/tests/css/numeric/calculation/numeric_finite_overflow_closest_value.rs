@@ -12,10 +12,11 @@
 //! calculation needing no conversion or arithmetic serializes its exact
 //! authored coefficient, as ordinary literals do (#1297).
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssDeclaration;
 
 fn specified(declaration: &str) -> String {
-    let report = parse_declaration(declaration);
+    let report = CssDeclaration::parse(&CssParser::default(), declaration);
     assert!(
         report.is_clean(),
         "{declaration}: {:?}",
@@ -25,7 +26,7 @@ fn specified(declaration: &str) -> String {
         .syntax()
         .as_ref()
         .expect("retained declaration")
-        .to_specified_css()
+        .serialize_specified(Default::default())
         .unwrap()
 }
 

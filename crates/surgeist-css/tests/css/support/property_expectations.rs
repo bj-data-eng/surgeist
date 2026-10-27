@@ -6,8 +6,109 @@
     reason = "each consumer exercises a different contract subset"
 )]
 
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::color::{CssColor, CssSystemColor};
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::conformance::CssSupportStatus;
+use surgeist_css::numeric::{
+    CssLength, CssLengthPercentage, CssNonNegative, CssNumeric, CssTimeUnit,
+};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssKnownDeclaration, CssKnownPropertyValueRef, CssLonghandValueRef, CssPropertyNameRef,
+    CssUserAgentInitial,
+};
+use surgeist_css::query::container::{CssContainerNames, CssContainerType};
+use surgeist_css::values::animation::{
+    CssAnimationDirection, CssAnimationFillMode, CssAnimationIterationCount, CssAnimationName,
+    CssAnimationPlayState, CssEasing, CssEasingKeyword, CssTransitionProperty,
+};
+use surgeist_css::values::background::{
+    CssBackgroundAttachment, CssBackgroundBox, CssBackgroundRepeat, CssBackgroundRepeatStyle,
+    CssBackgroundSize, CssBlendMode,
+};
+use surgeist_css::values::border::{
+    CssBorderImageOutsetComponent, CssBorderImageRepeatKeyword, CssBorderImageSliceComponent,
+    CssBorderImageWidthComponent, CssLineStyle, CssLineWidth, CssOutlineColor, CssOutlineStyle,
+};
+use surgeist_css::values::box_model::{
+    CssAspectRatioValue, CssBoxDecorationBreak, CssBoxSizing, CssBreakBetween, CssBreakInside,
+    CssClear, CssContain, CssContainIntrinsicSizeFallback, CssContainIntrinsicSizeValue,
+    CssContentVisibility, CssDisplayInside, CssDisplayOutside, CssDisplayValue, CssFloat,
+    CssFlowTolerance, CssFrameSizing, CssInsetValue, CssLayoutPosition, CssMarginValue,
+    CssMaxSizeValue, CssMinIntrinsicSizing, CssOverflow, CssOverflowAnchor, CssPaddingValue,
+    CssScrollBehavior, CssScrollbarGutter, CssSizeValue, CssVisibility, CssZIndexValue,
+};
+use surgeist_css::values::color_adjust::{
+    CssColorScheme, CssForcedColorAdjust, CssPrintColorAdjust,
+};
+use surgeist_css::values::common::{CssAutoOr, CssBoxEdgeKeyword, CssSidePair};
+use surgeist_css::values::content::{
+    CssBookmarkState, CssContentReferenceMode, CssContentValue, CssContentValueItem,
+    CssListStylePosition, CssMarkerSide, CssQuotes,
+};
+use surgeist_css::values::effects::{
+    CssBoxShadow, CssClip, CssClipPath, CssClipRule, CssColorInterpolationFilters, CssFilter,
+    CssIsolation, CssMaskClip, CssMaskComposite, CssMaskMode, CssMaskType, CssOpacityScalarKind,
+    CssOpacityValue,
+};
+use surgeist_css::values::font::{
+    CssAbsoluteFontWeight, CssAuthoredFontFeatureSettings, CssFontKerning, CssFontLanguageOverride,
+    CssFontOpticalSizing, CssFontPalette, CssFontSize, CssFontSizeAdjust, CssFontStyle,
+    CssFontStyleKeyword, CssFontSynthesisPosition, CssFontSynthesisSmallCaps,
+    CssFontSynthesisStyle, CssFontSynthesisWeight, CssFontVariantAlternates, CssFontVariantCaps,
+    CssFontVariantEastAsian, CssFontVariantEmoji, CssFontVariantLigatures, CssFontVariantNumeric,
+    CssFontVariantPosition, CssFontVariationSettings, CssFontWeight, CssFontWidth,
+    CssFontWidthKeyword,
+};
+use surgeist_css::values::image::{
+    CssImageOrientation, CssImageRendering, CssImageValue, CssObjectFit,
+};
+use surgeist_css::values::layout::{
+    CssAlignmentValue, CssColumnCount, CssColumnFill, CssColumnSpan, CssFlexBasisRef,
+    CssFlexDirection, CssFlexWrap, CssGapValue, CssGridAutoFlow, CssGridLine, CssGridTemplateAreas,
+    CssGridTrackBreadthKind, CssGridTrackSizeKind, CssItemDirection, CssItemPack, CssItemWrap,
+    CssItemWrapMode, CssScrollSnapAlignment, CssScrollSnapStop, CssScrollSnapType,
+};
+use surgeist_css::values::position::{
+    CssBlockPosition, CssCartesianPosition, CssHorizontalPosition, CssInlinePosition, CssPosition,
+    CssPositionRef, CssVerticalPosition,
+};
+use surgeist_css::values::shape::CssShapeOutside;
+use surgeist_css::values::speech::{
+    CssCue, CssSpeak, CssSpeakAs, CssSpeechBreak, CssVoiceBalanceKeyword, CssVoiceDuration,
+    CssVoiceLevel, CssVoicePitchRange, CssVoiceRateKeyword, CssVoiceStress, CssVoiceVolume,
+    CssVoiceVolumeLevel,
+};
+use surgeist_css::values::table::{
+    CssBorderCollapse, CssCaptionSide, CssEmptyCells, CssTableLayout,
+};
+use surgeist_css::values::text::{
+    CssDirection, CssHangingPunctuation, CssHyphenateCharacter, CssHyphenateLimitChars,
+    CssHyphenateLimitLast, CssHyphenateLimitLines, CssHyphens, CssLineBreak, CssLineHeight,
+    CssOverflowWrap, CssSpacingTrim, CssTabSize, CssTextAlign, CssTextAlignAllValue,
+    CssTextAlignLastValue, CssTextAutospace, CssTextBoxEdge, CssTextBoxTrim, CssTextCombineUpright,
+    CssTextDecorationSkipBox, CssTextDecorationSkipInk, CssTextDecorationSkipInset,
+    CssTextDecorationSkipSelf, CssTextDecorationSkipSpaces, CssTextDecorationStyle,
+    CssTextDecorationThickness, CssTextEmphasisStyle, CssTextEmphasisVertical, CssTextGroupAlign,
+    CssTextJustify, CssTextOrientation, CssTextOverflow, CssTextShadow, CssTextSide,
+    CssTextSpacingAdjustment, CssTextSpacingTrim, CssTextTransform, CssTextUnderlineOffset,
+    CssTextUnderlinePosition, CssTextWrapMode, CssTextWrapStyle, CssUnicodeBidi, CssVerticalAlign,
+    CssWhiteSpaceCollapse, CssWhiteSpaceTrim, CssWordBreak, CssWordSpaceTransform, CssWrapBoundary,
+    CssWrapInside, CssWritingMode,
+};
+use surgeist_css::values::transform::{
+    CssBackfaceVisibility, CssCoordBox, CssOffsetAnchor, CssOffsetPathRef, CssOffsetPosition,
+    CssOffsetRotateModifier, CssPerspective, CssRotate, CssScale, CssTransform, CssTransformStyle,
+    CssTranslate,
+};
+use surgeist_css::values::ui::{
+    CssAccentColor, CssAppearance, CssCaretAnimation, CssCaretColor, CssCaretShape, CssCursor,
+    CssCursorKeyword, CssInteractivity, CssInterestDelayValue, CssNavigation, CssPointerEvents,
+    CssResize, CssScrollbarColor, CssScrollbarWidth, CssUserSelect, CssWillChange,
+};
+use surgeist_css::values::view_transition::CssViewTransitionName;
 
 pub type WrapperAssertion = fn(&CssKnownDeclaration, CssKnownPropertyValueRef<'_>, &str);
 
@@ -381,11 +482,15 @@ pub fn find(property: P) -> Option<&'static PropertyExpectation> {
 
 include!("property_expectations/records.rs");
 
-fn exact_literal(component: Option<&surgeist_css::CssComponentValue>, css: &str) -> bool {
-    use surgeist_css::{CssComponentValueRef as Component, CssValueTokenRef as Token};
-    let expected = surgeist_css::CssComponentValue::try_token(css).unwrap();
+fn exact_literal(
+    component: Option<&surgeist_css::component::CssComponentValue>,
+    css: &str,
+) -> bool {
+    use surgeist_css::component::CssComponentValueRef as Component;
+    use surgeist_css::component::CssValueTokenRef as Token;
+    let expected = surgeist_css::component::CssComponentValue::try_token(css).unwrap();
     match (
-        component.map(surgeist_css::CssComponentValue::view),
+        component.map(surgeist_css::component::CssComponentValue::view),
         expected.view(),
     ) {
         (

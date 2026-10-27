@@ -1,8 +1,9 @@
 use crate::css::support::math_depth::MathDepthBoundary;
-use surgeist_css::{
-    CssErrorCode, CssGridAutoRepeatKind, CssGridAutoTrackComponent, CssGridGeneralTrackComponent,
-    CssKnownProperty, CssKnownPropertyValueRef, CssRecoveryAction, CssTokenKind, ErrorKind,
-    parse_style_attribute,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::values::layout::{
+    CssGridAutoRepeatKind, CssGridAutoTrackComponent, CssGridGeneralTrackComponent,
 };
 
 #[test]
@@ -12,7 +13,7 @@ fn grid_repeat_models_reject_invalid_cross_products() {
         "grid-template-columns: repeat(auto-fit, minmax(1fr, 10px))",
     ] {
         let source = format!("{invalid}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
 
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(
@@ -36,7 +37,7 @@ fn grid_repeat_models_reject_invalid_cross_products() {
 
 #[test]
 fn grid_repeat_models_accept_each_structural_language() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "grid-template-columns: [a] repeat(2, minmax(10px, 1fr) [b]) 1fr; ",
         "grid-template-rows: 20px repeat(auto-fill, minmax(auto, 10px)) repeat(2, 5px); ",
         "grid-auto-rows: minmax(10px, auto) fit-content(20%); ",
@@ -63,7 +64,10 @@ fn grid_repeat_models_accept_each_structural_language() {
         panic!("integer repeat")
     };
     assert!(
-        matches!(repeat.count(), surgeist_css::CssPositiveIntegerValue::Literal(count) if count.integer().numeric().representation() == "2")
+        repeat
+            .count()
+            .literal()
+            .is_some_and(|count| count.numeric().representation() == "2")
     );
 
     let CssKnownPropertyValueRef::GridTemplateRows(rows) = report.syntax()[1]
@@ -151,7 +155,7 @@ fn grid_repeat_models_reject_each_invalid_structural_cross_product() {
         ("grid-auto-columns", "repeat(auto-fill, 10px)"),
     ] {
         let source = format!("{property}: {value}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
@@ -176,7 +180,7 @@ fn flexible_minmax_minimums_are_rejected_at_the_first_responsible_token() {
         ("grid-auto-columns", "minmax(1fr, 10px)"),
     ] {
         let source = format!("{property}: {value}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
 
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(
@@ -222,9 +226,12 @@ fn flexible_minmax_minimums_are_rejected_at_the_first_responsible_token() {
             source.find(';').expect("declaration terminator") + 1,
             "{source}",
         );
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("{source}: expected Grid property error");
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "{source}: expected Grid property error"
+        );
         assert_eq!(
             detail.encountered().expect("responsible fraction").kind(),
             CssTokenKind::Dimension,
@@ -240,7 +247,9 @@ fn flexible_minmax_minimums_are_rejected_at_the_first_responsible_token() {
         );
 
         {
-            let failure = surgeist_css::validate_style_attribute(&source)
+            let failure = surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect_err("strict validation rejects a flexible minmax minimum");
             assert_eq!(failure.diagnostics(), report.diagnostics(), "{source}");
         }
@@ -249,7 +258,7 @@ fn flexible_minmax_minimums_are_rejected_at_the_first_responsible_token() {
 
 #[test]
 fn grid_repeat_typed_calculation_stays_symbolic() {
-    let report = parse_style_attribute(
+    let report = CssParser::default().parse_block_contents(
         "grid-template-columns: repeat(auto-fit, calc((10px + 5%) * 2)); color: red",
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
@@ -263,7 +272,10 @@ fn grid_repeat_typed_calculation_stays_symbolic() {
     };
     assert!(value.value().auto_list().is_some());
     assert_eq!(
-        value.value().serialize_specified().unwrap(),
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "repeat(auto-fit, calc(10% + 20px))"
     );
 }
@@ -275,7 +287,7 @@ fn grid_repeat_failures_report_the_first_responsible_token_and_recover_progressi
         "grid-auto-rows: repeat(2, 10px); ",
         "color: red",
     );
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 1);
     assert_eq!(report.diagnostics().len(), 2);
     for (diagnostic, responsible) in report.diagnostics().iter().zip(["1fr", "repeat("]) {
@@ -284,9 +296,12 @@ fn grid_repeat_failures_report_the_first_responsible_token_and_recover_progressi
             CssErrorCode::InvalidPropertyValue
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("expected property value diagnostic");
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "expected property value diagnostic"
+        );
         let encountered = detail.encountered().expect("responsible token");
         assert_eq!(encountered.authored(), responsible);
         assert!(matches!(

@@ -14,7 +14,16 @@
 //! assert admission and retained authored components, without assuming a cursor
 //! carrier layout or a future model accessor or serialization API.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::source::CssSourcePosition;
 
 const HOTSPOTS: &[(&str, &[&str])] = &[
     (
@@ -234,7 +243,7 @@ fn retained_components(declaration: &CssDeclaration, source: &str, expected_numb
 
 fn parsed_accepts(value: &str, numbers: &[&str]) -> CssDeclaration {
     let source = format!("/* 🦀 */ color:red !important; cursor:{value} !important; width:1px");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [before, declaration, after] = report.syntax().as_slice() else {
         panic!("all three declarations must survive in source order: {source}")
@@ -265,16 +274,19 @@ fn parsed_accepts(value: &str, numbers: &[&str]) -> CssDeclaration {
 }
 
 fn checked_accepts(value: &str, numbers: &[&str], grammar: bool) -> CssDeclaration {
-    let supplied = parse_component_values(value).expect("well-formed supplied components");
+    let supplied = CssComponentValues::parse(&CssParser::default(), value)
+        .expect("well-formed supplied components");
     let declaration = if grammar {
-        parse_property_value_for_grammar(
-            CssKnownProperty::Cursor.grammar(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(CssKnownProperty::Cursor.grammar()),
             supplied.clone(),
             CssImportance::Important,
         )
     } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Cursor),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Cursor)),
             supplied.clone(),
             CssImportance::Important,
         )
@@ -342,7 +354,13 @@ fn retained_alias(declaration: &CssDeclaration, expected: &str) {
 
 fn validator_accepts(value: &str) {
     let source = format!("color:red !important; cursor:{value} !important; width:1px");
-    assert!(validate_style_attribute(&source).is_ok(), "{source}");
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .is_ok(),
+        "{source}"
+    );
 }
 
 #[test]
@@ -548,17 +566,20 @@ fn programmatic_url_hotspot_numbers_keep_programmatic_origins() {
             .into_iter()
             .map(|token| CssComponentValue::try_token(token).unwrap())
             .collect(),
+        Default::default(),
     )
     .unwrap();
     for declaration in [
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Cursor),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Cursor)),
             supplied.clone(),
             CssImportance::Important,
         )
         .unwrap(),
-        parse_property_value_for_grammar(
-            CssKnownProperty::Cursor.grammar(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(CssKnownProperty::Cursor.grammar()),
             supplied.clone(),
             CssImportance::Important,
         )
@@ -582,7 +603,7 @@ fn invalid_source(value: &str) -> String {
 
 fn parsed_rejects(value: &str) {
     let source = invalid_source(value);
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     let [before, after] = report.syntax().as_slice() else {
         panic!("only valid neighboring declarations must survive: {source}")
     };
@@ -598,10 +619,13 @@ fn parsed_rejects(value: &str) {
         diagnostic.error().code(),
         CssErrorCode::InvalidPropertyValue
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("typed cursor property grammar diagnostic")
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Cursor);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "typed cursor property grammar diagnostic"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Cursor);
     let start = source.find("cursor:").unwrap();
     let end = start + source[start..].find(';').unwrap() + 1;
     position(diagnostic.span().start(), &source, start);
@@ -612,16 +636,18 @@ fn parsed_rejects(value: &str) {
 }
 
 fn checked_rejects(value: &str, grammar: bool) {
-    let supplied = parse_component_values(value).unwrap();
+    let supplied = CssComponentValues::parse(&CssParser::default(), value).unwrap();
     let result = if grammar {
-        parse_property_value_for_grammar(
-            CssKnownProperty::Cursor.grammar(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(CssKnownProperty::Cursor.grammar()),
             supplied,
             CssImportance::Important,
         )
     } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Cursor),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Cursor)),
             supplied,
             CssImportance::Important,
         )
@@ -629,11 +655,13 @@ fn checked_rejects(value: &str, grammar: bool) {
     let error = result.expect_err(
         "cursor grammar must reject malformed tuples, missing fallbacks or non-URL sets",
     );
-    let CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail)) = error.kind()
-    else {
-        panic!("typed checked cursor property grammar failure: {error:?}")
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Cursor);
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        Some(CssErrorCode::InvalidPropertyValue),
+        "typed checked cursor property grammar failure: {error:?}"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Cursor);
 }
 
 #[test]
@@ -647,8 +675,11 @@ fn malformed_hotspots_missing_fallbacks_and_non_url_sets_drop_only_the_cursor_de
 fn validator_rejects_malformed_hotspots_missing_fallbacks_and_non_url_sets() {
     for value in INVALID {
         let source = invalid_source(value);
-        let report = parse_style_attribute(&source);
-        let failure = validate_style_attribute(&source).expect_err("invalid cursor declaration");
+        let report = CssParser::default().parse_block_contents(&source);
+        let failure = CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .expect_err("invalid cursor declaration");
         assert_eq!(failure.diagnostics(), report.diagnostics(), "{value}");
     }
 }

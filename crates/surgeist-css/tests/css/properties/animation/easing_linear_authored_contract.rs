@@ -3,12 +3,25 @@
 //! These specified-value contracts preserve omissions and symbolic inputs;
 //! creation/fixup and computed serialization require the later numeric phase.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::Responsible::{self, At};
 use crate::css::support::property_admission::{
     assert_checked_closure_rejected, assert_checked_rejected, assert_reentry_rejected,
     assert_style_attribute_rejected,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssLonghandContributions,
+    CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::animation::{CssEasing, CssEasingKeyword, CssEasingList};
 
 const LONGHANDS: [CssKnownProperty; 2] = [
     CssKnownProperty::TransitionTimingFunction,
@@ -37,9 +50,14 @@ fn body(property: CssKnownProperty, easing: &str) -> String {
 
 fn parsed(property: CssKnownProperty, source: &str) -> CssDeclaration {
     let css = format!("{}:{source}!important", property.canonical_name());
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    assert_eq!(validate_style_attribute(&css), Ok(report.syntax().clone()));
+    assert_eq!(
+        CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result(),
+        Ok(report.syntax().clone())
+    );
     let [declaration] = report.syntax().as_slice() else {
         panic!("one retained authored declaration")
     };
@@ -48,17 +66,13 @@ fn parsed(property: CssKnownProperty, source: &str) -> CssDeclaration {
 
 fn easing(declaration: &CssDeclaration) -> &CssEasing {
     match declaration.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::TransitionTimingFunction(value) => {
-            &value.timing_functions().values()[0]
-        }
-        CssKnownPropertyValueRef::AnimationTimingFunction(value) => {
-            &value.timing_functions().values()[0]
-        }
+        CssKnownPropertyValueRef::TransitionTimingFunction(value) => &value.value().values()[0],
+        CssKnownPropertyValueRef::AnimationTimingFunction(value) => &value.value().values()[0],
         CssKnownPropertyValueRef::Transition(value) => {
-            value.transitions().values()[0].timing_function().unwrap()
+            value.value().values()[0].timing_function().unwrap()
         }
         CssKnownPropertyValueRef::Animation(value) => {
-            value.animations().values()[0].timing_function().unwrap()
+            value.value().values()[0].timing_function().unwrap()
         }
         _ => panic!("shared easing consumer"),
     }
@@ -66,15 +80,15 @@ fn easing(declaration: &CssDeclaration) -> &CssEasing {
 
 fn easing_list(declaration: &CssDeclaration) -> &CssEasingList {
     match declaration.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::TransitionTimingFunction(value) => value.timing_functions(),
-        CssKnownPropertyValueRef::AnimationTimingFunction(value) => value.timing_functions(),
+        CssKnownPropertyValueRef::TransitionTimingFunction(value) => value.value(),
+        CssKnownPropertyValueRef::AnimationTimingFunction(value) => value.value(),
         _ => panic!("timing longhand"),
     }
 }
 
 fn completed(declaration: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(declaration).unwrap()
+        declaration.expand().unwrap()
     else {
         panic!("completed intrinsic contribution")
     };
@@ -94,16 +108,23 @@ fn unordered_stop_components_and_ordered_stop_lists_share_all_consumers() {
         for property in CONSUMERS {
             let value = body(property, source);
             let original = parsed(property, &value);
-            assert_eq!(easing(&original).serialize_specified().unwrap(), canonical);
-            let components = parse_component_values(&value).unwrap();
+            assert_eq!(
+                easing(&original)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                canonical
+            );
+            let components = CssComponentValues::parse(&CssParser::default(), &value).unwrap();
             for checked in [
-                parse_property_value(
-                    CssPropertyNameRef::Known(property),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                     components.clone(),
                     CssImportance::Important,
                 ),
-                parse_property_value_for_grammar(
-                    property.grammar(),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(property.grammar()),
                     components.clone(),
                     CssImportance::Important,
                 ),
@@ -134,9 +155,18 @@ fn authored_omissions_pairs_and_descending_inputs_wait_for_numeric_fixup() {
     ] {
         for property in LONGHANDS {
             let declaration = parsed(property, source);
-            assert_eq!(easing(&declaration).serialize_specified().unwrap(), source);
             assert_eq!(
-                declaration.value_components().serialize().unwrap().as_css(),
+                easing(&declaration)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                source
+            );
+            assert_eq!(
+                declaration
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 source
             );
             assert_eq!(easing(&parsed(property, source)), easing(&declaration),);
@@ -154,9 +184,16 @@ fn linear_keyword_and_equivalent_function_keep_separate_authored_identity() {
             &CssEasing::Keyword(CssEasingKeyword::Linear)
         );
         assert_ne!(easing(&keyword), easing(&function));
-        assert_eq!(easing(&keyword).serialize_specified().unwrap(), "linear");
         assert_eq!(
-            easing(&function).serialize_specified().unwrap(),
+            easing(&keyword)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            "linear"
+        );
+        assert_eq!(
+            easing(&function)
+                .serialize_specified(Default::default())
+                .unwrap(),
             "linear(0, 1)"
         );
     }
@@ -181,16 +218,25 @@ fn symbolic_number_and_percentage_graphs_remain_authored_and_roundtrip() {
         for property in CONSUMERS {
             let value = parsed(property, &body(property, source));
             let before = easing(&value).clone();
-            assert_eq!(easing(&value).serialize_specified().unwrap(), canonical);
+            assert_eq!(
+                easing(&value)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                canonical
+            );
             assert_eq!(easing(&value), &before);
             assert_eq!(
                 easing(&parsed(property, &body(property, canonical)))
-                    .serialize_specified()
+                    .serialize_specified(Default::default())
                     .unwrap(),
                 canonical
             );
             assert_eq!(
-                value.value_components().serialize().unwrap().as_css(),
+                value
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 body(property, source)
             );
         }
@@ -223,15 +269,17 @@ fn malformed_singleton_and_wrong_domain_stops_reject_atomically_and_recover() {
         for property in CONSUMERS {
             let token = Responsible::from(token);
             let value = body(property, invalid);
-            let components = parse_component_values(&value).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), &value).unwrap();
             for result in [
-                parse_property_value(
-                    CssPropertyNameRef::Known(property),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                     components.clone(),
                     CssImportance::Normal,
                 ),
-                parse_property_value_for_grammar(
-                    property.grammar(),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(property.grammar()),
                     components.clone(),
                     CssImportance::Normal,
                 ),
@@ -256,37 +304,38 @@ fn implicit_linear_closure_is_retained_in_browser_parsing_but_checked_reentry_re
     for property in CONSUMERS {
         let value = body(property, "linear(0, 1");
         let css = format!("{}:{value}", property.canonical_name());
-        let report = parse_style_attribute(&css);
+        let report = CssParser::default().parse_block_contents(&css);
         assert!(!report.is_clean());
         let [recovered] = report.syntax().as_slice() else {
             panic!("browser retains implicit function closure: {css}")
         };
         assert_eq!(
-            easing(recovered).serialize_specified().unwrap(),
+            easing(recovered)
+                .serialize_specified(Default::default())
+                .unwrap(),
             "linear(0, 1)"
         );
         assert!(report.diagnostics().iter().any(|diagnostic| {
             diagnostic.error().code() == CssErrorCode::UnexpectedEnd
                 && diagnostic.action() == CssRecoveryAction::RetainWithImplicitClosure
         }));
-        let components = parse_component_values(&value).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), &value).unwrap();
         for result in [
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components.clone(),
                 CssImportance::Normal,
             ),
-            parse_property_value_for_grammar(
-                property.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 components.clone(),
                 CssImportance::Normal,
             ),
         ] {
             let error = result.unwrap_err();
-            assert!(matches!(
-                error.kind(),
-                CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-            ));
+            assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
             let CssSerializedOrigin::End(Some(CssValueOrigin::ImplicitClosure { at, .. })) =
                 error.origin()
             else {
@@ -330,24 +379,32 @@ fn transition_linear_only_expands_four_defaults_and_retains_source_importance() 
 fn pending_linear_reentry_is_strict_repeatable_and_preserves_replacement_origins() {
     for property in CONSUMERS {
         let source = parsed(property, "var(--easing)");
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("whole-value substitution remains pending")
         };
-        let reenter =
-            |invalid| pending.reenter(parse_component_values(&body(property, invalid)).unwrap());
+        let reenter = |invalid| {
+            pending.reenter(
+                CssComponentValues::parse(&CssParser::default(), body(property, invalid)).unwrap(),
+            )
+        };
         // A single stop is too few (Easing 2 §2.1.2), so the stop is
         // responsible in every consumer.
         assert_reentry_rejected(reenter("linear(0)"), property, At(")"));
         let error = reenter("linear(0, 1").unwrap_err();
-        let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+        let Some(error) = error.replacement_error() else {
             panic!("an unclosed replacement is invalid: {error:?}")
         };
         assert_checked_closure_rejected(Err(error.clone()));
-        assert!(matches!(
-            reenter("linear(0, var(--again))").unwrap_err().kind(),
-            CssExpansionErrorKind::ResidualSubstitution
-        ));
-        let replacement = parse_component_values(&body(property, "linear(0 20% 40%, 1)")).unwrap();
+        assert!(
+            reenter("linear(0, var(--again))")
+                .unwrap_err()
+                .is_residual_substitution()
+        );
+        let replacement = CssComponentValues::parse(
+            &CssParser::default(),
+            body(property, "linear(0 20% 40%, 1)"),
+        )
+        .unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
             else {
@@ -380,11 +437,11 @@ fn css_wide_transition_reentry_keeps_all_four_symbolic_contributions() {
         let explicit = parsed(CssKnownProperty::Transition, keyword);
         let expected = completed(&explicit);
         let source = parsed(CssKnownProperty::Transition, "var(--easing)");
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("pending shorthand")
         };
         let CssContributions::Longhands(values) = pending
-            .reenter(parse_component_values(keyword).unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), keyword).unwrap())
             .unwrap()
         else {
             panic!("CSS-wide replacement")
@@ -407,11 +464,9 @@ fn css_wide_transition_reentry_keeps_all_four_symbolic_contributions() {
 
 #[test]
 fn normalization_keeps_linear_declaration_order_and_grouped_transition_members() {
-    let report = parse_sheet(
-        ".a { transition: linear(0, 1)!important; transition-timing-function: linear(0 80%, 1 20%); }",
-    );
+    let report = CssParser::default().parse_sheet(".a { transition: linear(0, 1)!important; transition-timing-function: linear(0 80%, 1 20%); }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -443,7 +498,7 @@ fn normalization_keeps_linear_declaration_order_and_grouped_transition_members()
     }
     assert_eq!(
         easing(declarations[1].source())
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "linear(0 80%, 1 20%)"
     );
@@ -457,9 +512,12 @@ fn multiple_linear_functions_share_atomic_numeric_and_byte_budgets() {
         let list = easing_list(&declaration);
         let original = list.clone();
         assert_eq!(list.values().len(), 2);
-        assert_eq!(list.serialize_specified().unwrap(), expected);
         assert_eq!(
-            list.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+            list.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_eq!(
+            list.serialize_specified(CssSerializationLimits::new(
                 usize::MAX,
                 usize::MAX,
                 expected.len()
@@ -469,39 +527,32 @@ fn multiple_linear_functions_share_atomic_numeric_and_byte_budgets() {
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(1, usize::MAX, usize::MAX),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(1, usize::MAX, usize::MAX),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(usize::MAX, 1, usize::MAX),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(usize::MAX, 1, usize::MAX),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(
-                    usize::MAX,
-                    usize::MAX,
-                    expected.len() - 1,
-                ),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1),
+                SerializationFailure::ByteLimit,
             ),
             // Each individual function fits, but the combined list does not.
             (
-                CssSpecifiedValueSerializationLimits::new(
-                    usize::MAX,
-                    usize::MAX,
-                    "linear(1 20% 40%, 0)".len(),
-                ),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(usize::MAX, usize::MAX, "linear(1 20% 40%, 0)".len()),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                list.serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&list.serialize_specified(limits).unwrap_err()),
                 kind
             );
             assert_eq!(list, &original);
-            assert_eq!(list.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                list.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
         }
     }
 }

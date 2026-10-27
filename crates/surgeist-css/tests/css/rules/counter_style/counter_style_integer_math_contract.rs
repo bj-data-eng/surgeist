@@ -3,20 +3,26 @@
 //! Values4 §11.12 and §5.2.1 defer integer rounding (half toward +infinity)
 //! and numeric range clamping to computed/used values, preserving specified math.
 
-use surgeist_css::{
-    CssComponentValueErrorKind, CssComponentValueLimits, CssCounterStyleDescriptorKind as Kind,
-    CssCounterStyleDescriptorValue as Value, CssCounterStyleDescriptorValueRef as View,
-    CssCounterStyleRule, CssCounterStyleValueErrorKind as Failure, CssErrorCode, CssRecoveryAction,
-    CssRule, CssSpecifiedValueSerializationErrorKind as SerializationError,
-    CssSpecifiedValueSerializationLimits as SerializationLimits, parse_component_values,
-    parse_counter_style_descriptor_value, parse_sheet, validate_sheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueLimits, CssComponentValues};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorKind as Kind;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorValue as Value;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorValueRef as View;
+use surgeist_css::rule::counter_style::{CssCounterStyleDescriptorValue, CssCounterStyleRule};
+use surgeist_css::serialization::CssSerializationLimits as SerializationLimits;
 
 fn rule(body: &str) -> CssCounterStyleRule {
     let source = format!("@counter-style Math {{ {body} }}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert!(validate_sheet(&source).is_ok());
+    assert!(
+        CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .is_ok()
+    );
     let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
         panic!("one counter-style rule must be retained");
     };
@@ -25,9 +31,14 @@ fn rule(body: &str) -> CssCounterStyleRule {
 
 fn assert_descriptor(body: &str, kind: Kind, expected: &str) {
     let value = rule(body);
-    assert_eq!(value.descriptor_specified_css(kind).unwrap(), expected);
-    let canonical = value.to_specified_css().unwrap();
-    let reparsed = parse_sheet(&canonical);
+    assert_eq!(
+        value
+            .descriptor_specified_css(kind, Default::default())
+            .unwrap(),
+        expected
+    );
+    let canonical = value.serialize_specified(Default::default()).unwrap();
+    let reparsed = CssParser::default().parse_sheet(&canonical);
     assert!(
         reparsed.is_clean(),
         "{canonical}: {:?}",
@@ -36,8 +47,16 @@ fn assert_descriptor(body: &str, kind: Kind, expected: &str) {
     let [CssRule::CounterStyle(reparsed)] = reparsed.syntax().rules() else {
         panic!("canonical serialization must retain the counter-style rule");
     };
-    assert_eq!(reparsed.to_specified_css().unwrap(), canonical);
-    assert_eq!(reparsed.descriptor_specified_css(kind).unwrap(), expected);
+    assert_eq!(
+        reparsed.serialize_specified(Default::default()).unwrap(),
+        canonical
+    );
+    assert_eq!(
+        reparsed
+            .descriptor_specified_css(kind, Default::default())
+            .unwrap(),
+        expected
+    );
 }
 
 #[test]
@@ -136,9 +155,9 @@ fn ordinary_negative_lengths_reversed_ranges_and_nondescending_weights_drop_whol
     ] {
         let source = format!(
             "@counter-style Math {{ {}: {input}; suffix: '.'; }} .after {{}}",
-            kind.css_name()
+            kind.as_str()
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [diagnostic] = report.diagnostics() else {
             panic!(
                 "one whole-descriptor diagnostic for {source}: {:?}",
@@ -153,9 +172,14 @@ fn ordinary_negative_lengths_reversed_ranges_and_nondescending_weights_drop_whol
         let [CssRule::CounterStyle(rule), CssRule::Style(_)] = report.syntax().rules() else {
             panic!("descriptor recovery must retain its rule and following sibling");
         };
-        assert_eq!(rule.descriptor_specified_css(kind).unwrap(), "");
         assert_eq!(
-            rule.descriptor_specified_css(Kind::Suffix).unwrap(),
+            rule.descriptor_specified_css(kind, Default::default())
+                .unwrap(),
+            ""
+        );
+        assert_eq!(
+            rule.descriptor_specified_css(Kind::Suffix, Default::default())
+                .unwrap(),
             "\".\""
         );
     }
@@ -191,10 +215,10 @@ fn malformed_and_wrong_domain_math_drop_only_the_descriptor_and_preserve_last_va
     ] {
         let source = format!(
             ".before {{}} @counter-style Math {{ {}: {accepted}; {}: {rejected}; suffix: '.'; }} .after {{}}",
-            kind.css_name(),
-            kind.css_name()
+            kind.as_str(),
+            kind.as_str()
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [diagnostic] = report.diagnostics() else {
             panic!(
                 "only the invalid member should recover for {source}: {:?}",
@@ -214,7 +238,11 @@ fn malformed_and_wrong_domain_math_drop_only_the_descriptor_and_preserve_last_va
         else {
             panic!("both sibling rules must survive descriptor recovery");
         };
-        assert_eq!(rule.descriptor_specified_css(kind).unwrap(), expected);
+        assert_eq!(
+            rule.descriptor_specified_css(kind, Default::default())
+                .unwrap(),
+            expected
+        );
         assert_eq!(rule.descriptors().occurrences().count(), 2);
     }
 }
@@ -227,8 +255,8 @@ fn detached_checked_and_pending_reentry_admit_math_without_replacing_original_co
         (Kind::Pad, "calc(+0001 + 1) '0'"),
         (Kind::AdditiveSymbols, "calc(+0001 + 1) X, 1 I"),
     ] {
-        let supplied = parse_component_values(input).unwrap();
-        let detached = parse_counter_style_descriptor_value(input, kind);
+        let supplied = CssComponentValues::parse(&CssParser::default(), input).unwrap();
+        let detached = CssCounterStyleDescriptorValue::parse(&CssParser::default(), input, kind);
         assert!(
             detached.is_clean(),
             "{kind:?}: {:?}",
@@ -240,16 +268,20 @@ fn detached_checked_and_pending_reentry_admit_math_without_replacing_original_co
             .expect("ordinary descriptor value");
         assert_eq!(detached.components(), &supplied);
         assert_eq!(detached.origin().unwrap().source().as_str(), input);
-        let checked = Value::try_from_components(kind, supplied.clone()).unwrap();
+        let checked =
+            Value::try_from_components(kind, supplied.clone(), Default::default()).unwrap();
         assert_eq!(checked.kind(), kind);
         assert_eq!(checked.components(), &supplied);
         assert!(checked.origin().is_none());
         assert!(!matches!(checked.view(), View::Pending(_)));
-        let pending =
-            Value::try_from_components(kind, parse_component_values("env(choice)").unwrap())
-                .unwrap();
+        let pending = Value::try_from_components(
+            kind,
+            CssComponentValues::parse(&CssParser::default(), "env(choice)").unwrap(),
+            Default::default(),
+        )
+        .unwrap();
         let completed = pending
-            .reparse_after_substitution(supplied.clone())
+            .reparse_after_substitution(supplied.clone(), Default::default())
             .unwrap();
         assert_eq!(completed.components(), &supplied);
         assert_eq!(completed.kind(), kind);
@@ -261,40 +293,48 @@ fn detached_checked_and_pending_reentry_admit_math_without_replacing_original_co
 
 #[test]
 fn strict_checked_math_rejects_recovered_closures_and_residual_substitution() {
-    let pending =
-        Value::try_from_components(Kind::System, parse_component_values("env(choice)").unwrap())
-            .unwrap();
+    let pending = Value::try_from_components(
+        Kind::System,
+        CssComponentValues::parse(&CssParser::default(), "env(choice)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     for input in ["fixed calc(1 + 1", "fixed calc(env(choice) + 1)"] {
         let error = pending
-            .reparse_after_substitution(parse_component_values(input).unwrap())
+            .reparse_after_substitution(
+                CssComponentValues::parse(&CssParser::default(), input).unwrap(),
+                Default::default(),
+            )
             .unwrap_err();
-        let expected = if input.ends_with(')') {
-            Failure::ResidualSubstitution
+        if input.ends_with(')') {
+            assert!(error.is_residual_substitution(), "{input}: {error:?}");
         } else {
-            Failure::RecoveredComponent
-        };
-        assert_eq!(error.kind(), &expected, "{input}");
+            assert!(error.is_recovered_component(), "{input}: {error:?}");
+        }
     }
     // Counter Styles 3 §3.1.5: fixed takes an <integer>; calc(1px) is a
     // <length>, and a math function of the wrong type is responsible as a
     // whole (Values 4 §10.9).
     let error = pending
-        .reparse_after_substitution(parse_component_values("fixed calc(1px)").unwrap())
+        .reparse_after_substitution(
+            CssComponentValues::parse(&CssParser::default(), "fixed calc(1px)").unwrap(),
+            Default::default(),
+        )
         .unwrap_err();
-    let Failure::Grammar(detail) = error.kind() else {
+    let Some(detail) = error.diagnostic() else {
         panic!("grammar failure: {error:?}")
     };
     crate::css::support::rules::invalid_descriptor("counter-style", "system")
         .at("calc(")
         .assert_kind(detail);
-    assert_eq!(
+    assert!(
         Value::try_from_components(
             Kind::System,
-            parse_component_values("fixed calc(1 + 1").unwrap()
+            CssComponentValues::parse(&CssParser::default(), "fixed calc(1 + 1").unwrap(),
+            Default::default(),
         )
         .unwrap_err()
-        .kind(),
-        &Failure::RecoveredComponent
+        .is_recovered_component()
     );
 }
 
@@ -304,48 +344,46 @@ fn math_projection_byte_failures_are_atomic_and_checked_graph_limits_are_cumulat
         "system: fixed calc(1 + 1); range: calc(1) infinite; pad: calc(2) '0'; additive-symbols: calc(2) X, 1 I;",
     );
     let retained = value.clone();
-    let expected = value.to_specified_css().unwrap();
+    let expected = value.serialize_specified(Default::default()).unwrap();
     assert_eq!(
         value
-            .to_specified_css_with_limits(SerializationLimits::new(65536, 262144, expected.len()))
+            .serialize_specified(SerializationLimits::new(65536, 262144, expected.len()))
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         value
-            .to_specified_css_with_limits(SerializationLimits::new(
-                65536,
-                262144,
-                expected.len() - 1
-            ))
+            .serialize_specified(SerializationLimits::new(65536, 262144, expected.len() - 1))
             .unwrap_err()
-            .kind(),
-        SerializationError::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, retained);
-    let input = parse_component_values("fixed calc(1 + 1)").unwrap();
-    assert_eq!(
-        Value::try_from_components_with_limits(
+    let input = CssComponentValues::parse(&CssParser::default(), "fixed calc(1 + 1)").unwrap();
+    assert!(
+        Value::try_from_components(
             Kind::System,
             input.clone(),
             CssComponentValueLimits::try_new(256, 2, 65536).unwrap()
         )
         .unwrap_err()
-        .kind(),
-        &Failure::Component(CssComponentValueErrorKind::ComponentLimit)
+        .component_error()
+        .is_some_and(|error| error.is_component_limit())
     );
-    let pending =
-        Value::try_from_components(Kind::System, parse_component_values("env(choice)").unwrap())
-            .unwrap();
-    assert_eq!(
+    let pending = Value::try_from_components(
+        Kind::System,
+        CssComponentValues::parse(&CssParser::default(), "env(choice)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
+    assert!(
         pending
-            .reparse_after_substitution_with_limits(
+            .reparse_after_substitution(
                 input,
                 CssComponentValueLimits::try_new(256, 65536, 1).unwrap()
             )
             .unwrap_err()
-            .kind(),
-        &Failure::Component(CssComponentValueErrorKind::ByteLimit)
+            .component_error()
+            .is_some_and(|error| error.is_byte_limit())
     );
     assert!(matches!(pending.view(), View::Pending(_)));
 }

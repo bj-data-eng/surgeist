@@ -5,9 +5,18 @@
 
 use crate::css::support::important_declaration;
 use crate::css::support::property_admission::assert_checked_value_rejected;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
+    CssPropertyTarget, CssPropertyValue,
+};
+use surgeist_css::values::effects::CssOpacityValue;
 
-fn wrapper(declaration: &CssDeclaration) -> &CssOpacityPropertyValue {
+fn wrapper(declaration: &CssDeclaration) -> &CssPropertyValue<CssOpacityValue> {
     let CssKnownPropertyValueRef::Opacity(value) =
         declaration.known().unwrap().property_value().unwrap()
     else {
@@ -19,7 +28,11 @@ fn wrapper(declaration: &CssDeclaration) -> &CssOpacityPropertyValue {
 fn assert_token(declaration: &CssDeclaration, text: &str, percentage: bool) {
     assert_eq!(wrapper(declaration).as_css(), text);
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         text
     );
     let [component] = declaration.value_components().items() else {
@@ -52,10 +65,14 @@ fn assert_parsed(text: &str, percentage: bool) {
 }
 
 fn assert_constructed(text: &str, percentage: bool) {
-    let components =
-        CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()]).unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Opacity),
+    let components = CssComponentValues::try_new(
+        vec![CssComponentValue::try_token(text).unwrap()],
+        Default::default(),
+    )
+    .unwrap();
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Opacity)),
         components.clone(),
         CssImportance::Normal,
     )
@@ -133,11 +150,11 @@ fn opacity_scalar_admission_keeps_grammar_and_symbolic_boundaries() {
         ("NaN", "NaN"),
     ] {
         assert_checked_value_rejected(CssKnownProperty::Opacity, text, Some(token));
-        let report = parse_style_attribute(&format!("opacity:{text}"));
+        let report = CssParser::default().parse_block_contents(format!("opacity:{text}"));
         assert!(!report.is_clean(), "invalid opacity scalar: {text}");
         assert!(report.syntax().is_empty());
     }
-    let report = parse_style_attribute("opacity:inherit;opacity:var(--x)");
+    let report = CssParser::default().parse_block_contents("opacity:inherit;opacity:var(--x)");
     assert!(report.is_clean());
     assert_eq!(report.syntax().len(), 2);
     assert!(matches!(

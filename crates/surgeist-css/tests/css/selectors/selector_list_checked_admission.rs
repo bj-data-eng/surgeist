@@ -7,12 +7,13 @@ use crate::css::support::color_and_selector_fixtures::{
     assert_unrepresentable_construction,
 };
 use crate::css::support::validated_selector as parsed;
-use surgeist_css::{
-    CssCompoundSelectorArgument, CssErrorCode, CssNamespaceContext, CssNthChildPattern,
-    CssNthPattern, CssPseudoClass, CssPseudoSelectorList, CssPseudoSelectorListItem,
-    CssRecoveryAction, CssRelativeSelector, CssRelativeSelectorList, CssSelector,
-    CssSelectorCombinator, CssSelectorList, CssSpecifiedValueSerializationErrorKind, ErrorKind,
-    parse_selector, parse_selector_list,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::selector::{
+    CssCompoundSelectorArgument, CssNamespaceContext, CssNthChildPattern, CssNthPattern,
+    CssParsedStyleSelectors, CssPseudoClass, CssPseudoSelectorList, CssPseudoSelectorListItem,
+    CssRelativeSelector, CssRelativeSelectorList, CssSelector, CssSelectorCombinator,
+    CssSelectorList, CssStyleSelectorContext,
 };
 
 fn class() -> CssSelector {
@@ -32,17 +33,18 @@ fn recovered_empty_pseudo(source: &str) -> CssSelector {
         ":where()" => (7, 7),
         _ => panic!("only explicit empty Is/Where fixtures are admitted"),
     };
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(!report.is_clean(), "expected recovered fixture: {report:?}");
     let [diagnostic] = report.diagnostics() else {
         panic!("one zero-width empty-member diagnostic: {report:?}")
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropSelectorListItem);
     assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidSelector);
-    assert!(matches!(
-        diagnostic.error().kind(),
-        ErrorKind::InvalidSelector(_)
-    ));
+    assert!(diagnostic.error().code() == CssErrorCode::InvalidSelector);
     for position in [
         diagnostic.error().position(),
         diagnostic.span().start(),
@@ -91,7 +93,7 @@ fn empty_nth_of() -> CssSelector {
 
 fn has(selector: CssSelector) -> CssSelector {
     CssSelector::PseudoClass(CssPseudoClass::Has(
-        CssRelativeSelectorList::try_new(vec![relative(selector)])
+        CssRelativeSelectorList::try_new(vec![relative(selector)], Default::default())
             .expect("intrinsically valid general relative child"),
     ))
 }
@@ -101,24 +103,32 @@ fn nested_has_through_is() -> CssSelector {
     // is valid as a general relative child. Only raw outer Has attachment makes
     // the graph invalid, so fixture creation needs no invalid checked container.
     let logical = CssSelector::PseudoClass(CssPseudoClass::Is(
-        CssPseudoSelectorList::try_new(vec![has(class())])
+        CssPseudoSelectorList::try_new(vec![has(class())], Default::default())
             .expect("valid Has in a complex-real member"),
     ));
     has(logical)
 }
 
 fn assert_unrepresentable(selector: &CssSelector) {
-    assert_eq!(
-        selector.to_specified_css().unwrap_err().kind(),
-        CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
+    assert!(
+        selector
+            .serialize_specified(Default::default())
+            .unwrap_err()
+            .is_unrepresentable_value()
     );
 }
 
 #[test]
 fn strict_nonempty_factories_reject_empty_vectors() {
-    assert_empty_list_construction(CssSelectorList::try_new(Vec::new()));
-    assert_empty_list_construction(CssPseudoSelectorList::try_new(Vec::new()));
-    assert_empty_list_construction(CssRelativeSelectorList::try_new(Vec::new()));
+    assert_empty_list_construction(CssSelectorList::try_new(Vec::new(), Default::default()));
+    assert_empty_list_construction(CssPseudoSelectorList::try_new(
+        Vec::new(),
+        Default::default(),
+    ));
+    assert_empty_list_construction(CssRelativeSelectorList::try_new(
+        Vec::new(),
+        Default::default(),
+    ));
 }
 
 #[test]
@@ -129,14 +139,17 @@ fn ordinary_factory_preserves_order_duplicates_and_decoded_identifiers() {
         CssSelector::Key("1Lead".into()),
         CssSelector::Class("a b".into()),
     ];
-    let list = CssSelectorList::try_new(members.clone()).unwrap();
+    let list = CssSelectorList::try_new(members.clone(), Default::default()).unwrap();
     assert_eq!(list.selectors(), members);
     for (member, literal) in
         list.selectors()
             .iter()
             .zip([".a\\ b", ".a\\.b", "#\\31 Lead", ".a\\ b"])
     {
-        assert_eq!(member.to_specified_css().unwrap(), literal);
+        assert_eq!(
+            member.serialize_specified(Default::default()).unwrap(),
+            literal
+        );
         assert_eq!(parsed(literal), *member);
     }
 }
@@ -144,14 +157,18 @@ fn ordinary_factory_preserves_order_duplicates_and_decoded_identifiers() {
 #[test]
 fn ordinary_factory_admits_legal_terminal_pseudo_elements() {
     let members = vec![parsed(".Cell::before"), parsed(".Parent > .Cell::after")];
-    let list = CssSelectorList::try_new(members.clone()).unwrap();
+    let list = CssSelectorList::try_new(members.clone(), Default::default()).unwrap();
     assert_eq!(list.selectors(), members);
     assert_eq!(
-        list.selectors()[0].to_specified_css().unwrap(),
+        list.selectors()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
         ".Cell::before"
     );
     assert_eq!(
-        list.selectors()[1].to_specified_css().unwrap(),
+        list.selectors()[1]
+            .serialize_specified(Default::default())
+            .unwrap(),
         ".Parent > .Cell::after"
     );
 }
@@ -163,7 +180,7 @@ fn pseudo_factory_admits_complex_real_and_has_members() {
         has(class()),
         recovered_empty_pseudo(":where()"),
     ];
-    let list = CssPseudoSelectorList::try_new(members.clone()).unwrap();
+    let list = CssPseudoSelectorList::try_new(members.clone(), Default::default()).unwrap();
     assert_eq!(
         list.items(),
         members
@@ -174,7 +191,10 @@ fn pseudo_factory_admits_complex_real_and_has_members() {
     let selector = CssSelector::PseudoClass(CssPseudoClass::Is(list));
     let before = selector.clone();
     let literal = ":is(.One > .Two, :has(> .One), :where())";
-    assert_eq!(selector.to_specified_css().unwrap(), literal);
+    assert_eq!(
+        selector.serialize_specified(Default::default()).unwrap(),
+        literal
+    );
     assert_eq!(selector, before);
 }
 
@@ -190,21 +210,27 @@ fn general_relative_factory_keeps_all_relations_and_member_order() {
     .into_iter()
     .map(|combinator| CssRelativeSelector::new(combinator, class()))
     .collect();
-    let list = CssRelativeSelectorList::try_new(members.clone()).unwrap();
+    let list = CssRelativeSelectorList::try_new(members.clone(), Default::default()).unwrap();
     assert_eq!(list.selectors(), members);
     let selector = CssSelector::PseudoClass(CssPseudoClass::Has(list));
     let literal = ":has(.One, > .One, + .One, ~ .One, || .One)";
-    assert_eq!(selector.to_specified_css().unwrap(), literal);
+    assert_eq!(
+        selector.serialize_specified(Default::default()).unwrap(),
+        literal
+    );
     assert_eq!(parsed(literal), selector);
 }
 
 #[test]
 fn general_relative_factory_admits_legal_terminal_pseudo_elements() {
     let members = vec![relative(parsed(".Cell::before"))];
-    let list = CssRelativeSelectorList::try_new(members.clone()).unwrap();
+    let list = CssRelativeSelectorList::try_new(members.clone(), Default::default()).unwrap();
     assert_eq!(list.selectors(), members);
     assert_eq!(
-        list.selectors()[0].selector().to_specified_css().unwrap(),
+        list.selectors()[0]
+            .selector()
+            .serialize_specified(Default::default())
+            .unwrap(),
         ".Cell::before"
     );
     // General relative admission does not authorize Has's narrower attachment.
@@ -214,10 +240,13 @@ fn general_relative_factory_admits_legal_terminal_pseudo_elements() {
 #[test]
 fn general_relative_has_member_is_valid_until_nested_has_attachment() {
     let member = relative(has(class()));
-    let list = CssRelativeSelectorList::try_new(vec![member.clone()]).unwrap();
+    let list = CssRelativeSelectorList::try_new(vec![member.clone()], Default::default()).unwrap();
     assert_eq!(list.selectors(), [member]);
     assert_eq!(
-        list.selectors()[0].selector().to_specified_css().unwrap(),
+        list.selectors()[0]
+            .selector()
+            .serialize_specified(Default::default())
+            .unwrap(),
         ":has(> .One)"
     );
     assert_unrepresentable(&CssSelector::PseudoClass(CssPseudoClass::Has(list)));
@@ -227,16 +256,22 @@ fn general_relative_has_member_is_valid_until_nested_has_attachment() {
 fn forgiving_empty_is_where_graphs_are_valid_members_of_all_three_lists() {
     for literal in [":is()", ":where()"] {
         let selector = recovered_empty_pseudo(literal);
-        assert_eq!(selector.to_specified_css().unwrap(), literal);
-        let ordinary = CssSelectorList::try_new(vec![selector.clone()]).unwrap();
+        assert_eq!(
+            selector.serialize_specified(Default::default()).unwrap(),
+            literal
+        );
+        let ordinary =
+            CssSelectorList::try_new(vec![selector.clone()], Default::default()).unwrap();
         assert_eq!(ordinary.selectors(), std::slice::from_ref(&selector));
-        let pseudo = CssPseudoSelectorList::try_new(vec![selector.clone()]).unwrap();
+        let pseudo =
+            CssPseudoSelectorList::try_new(vec![selector.clone()], Default::default()).unwrap();
         assert_eq!(
             pseudo.items(),
             [CssPseudoSelectorListItem::Selector(selector.clone())]
         );
         let member = relative(selector);
-        let relative = CssRelativeSelectorList::try_new(vec![member.clone()]).unwrap();
+        let relative =
+            CssRelativeSelectorList::try_new(vec![member.clone()], Default::default()).unwrap();
         assert_eq!(relative.selectors(), [member]);
     }
 }
@@ -245,16 +280,20 @@ fn forgiving_empty_is_where_graphs_are_valid_members_of_all_three_lists() {
 fn selected_shadow_compound_has_remains_valid_under_list_admission() {
     let argument = CssCompoundSelectorArgument::try_new(has(class())).unwrap();
     let host = CssSelector::PseudoClass(CssPseudoClass::HostFunction(argument));
-    assert_eq!(host.to_specified_css().unwrap(), ":host(:has(> .One))");
-    let ordinary = CssSelectorList::try_new(vec![host.clone()]).unwrap();
+    assert_eq!(
+        host.serialize_specified(Default::default()).unwrap(),
+        ":host(:has(> .One))"
+    );
+    let ordinary = CssSelectorList::try_new(vec![host.clone()], Default::default()).unwrap();
     assert_eq!(ordinary.selectors(), std::slice::from_ref(&host));
-    let pseudo = CssPseudoSelectorList::try_new(vec![host.clone()]).unwrap();
+    let pseudo = CssPseudoSelectorList::try_new(vec![host.clone()], Default::default()).unwrap();
     assert_eq!(
         pseudo.items(),
         [CssPseudoSelectorListItem::Selector(host.clone())]
     );
     let member = relative(host);
-    let relative = CssRelativeSelectorList::try_new(vec![member.clone()]).unwrap();
+    let relative =
+        CssRelativeSelectorList::try_new(vec![member.clone()], Default::default()).unwrap();
     assert_eq!(relative.selectors(), [member]);
 }
 
@@ -265,166 +304,199 @@ fn ordinary_parser_rejects_relative_syntax_while_relative_factory_keeps_carrier(
     let source = "> .One";
     assert_selector_report_rejected(
         source,
-        parse_selector_list(source, &CssNamespaceContext::default()),
+        CssParsedStyleSelectors::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+            CssStyleSelectorContext::Ordinary,
+        ),
     );
     let member = relative(class());
-    let list = CssRelativeSelectorList::try_new(vec![member.clone()]).unwrap();
+    let list = CssRelativeSelectorList::try_new(vec![member.clone()], Default::default()).unwrap();
     assert_eq!(list.selectors(), [member]);
     assert_eq!(
         list.selectors()[0].combinator(),
         CssSelectorCombinator::Child
     );
-    let ordinary = CssSelectorList::try_new(vec![class()]).unwrap();
+    let ordinary = CssSelectorList::try_new(vec![class()], Default::default()).unwrap();
     assert_eq!(ordinary.selectors(), [class()]);
 }
 
 #[test]
 fn ordinary_factory_rejects_empty_class_member_atomically() {
-    assert!(CssSelectorList::try_new(vec![class()]).is_ok());
-    let actual =
-        CssSelectorList::try_new(vec![class(), CssSelector::Class(String::new()), class()]);
+    assert!(CssSelectorList::try_new(vec![class()], Default::default()).is_ok());
+    let actual = CssSelectorList::try_new(
+        vec![class(), CssSelector::Class(String::new()), class()],
+        Default::default(),
+    );
     assert_unrepresentable_construction(actual);
 }
 
 #[test]
 fn pseudo_factory_rejects_empty_class_member_atomically() {
-    assert!(CssPseudoSelectorList::try_new(vec![class()]).is_ok());
-    let actual =
-        CssPseudoSelectorList::try_new(vec![class(), CssSelector::Class(String::new()), class()]);
+    assert!(CssPseudoSelectorList::try_new(vec![class()], Default::default()).is_ok());
+    let actual = CssPseudoSelectorList::try_new(
+        vec![class(), CssSelector::Class(String::new()), class()],
+        Default::default(),
+    );
     assert_unrepresentable_construction(actual);
 }
 
 #[test]
 fn relative_factory_rejects_empty_class_member_atomically() {
-    assert!(CssRelativeSelectorList::try_new(vec![relative(class())]).is_ok());
-    let actual = CssRelativeSelectorList::try_new(vec![
-        relative(class()),
-        relative(CssSelector::Class(String::new())),
-        relative(class()),
-    ]);
+    assert!(CssRelativeSelectorList::try_new(vec![relative(class())], Default::default()).is_ok());
+    let actual = CssRelativeSelectorList::try_new(
+        vec![
+            relative(class()),
+            relative(CssSelector::Class(String::new())),
+            relative(class()),
+        ],
+        Default::default(),
+    );
     assert_unrepresentable_construction(actual);
 }
 
 #[test]
 fn ordinary_factory_rejects_nul_identifier_member() {
-    assert!(CssSelectorList::try_new(vec![class()]).is_ok());
+    assert!(CssSelectorList::try_new(vec![class()], Default::default()).is_ok());
     let invalid = CssSelector::Key("bad\0name".into());
     assert_unrepresentable(&invalid);
-    let actual = CssSelectorList::try_new(vec![invalid]);
+    let actual = CssSelectorList::try_new(vec![invalid], Default::default());
     assert_unrepresentable_construction(actual);
 }
 
 #[test]
 fn pseudo_factory_rejects_nul_identifier_member() {
-    assert!(CssPseudoSelectorList::try_new(vec![class()]).is_ok());
+    assert!(CssPseudoSelectorList::try_new(vec![class()], Default::default()).is_ok());
     let invalid = CssSelector::Class("bad\0name".into());
     assert_unrepresentable(&invalid);
-    let actual = CssPseudoSelectorList::try_new(vec![invalid]);
+    let actual = CssPseudoSelectorList::try_new(vec![invalid], Default::default());
     assert_unrepresentable_construction(actual);
 }
 
 #[test]
 fn relative_factory_rejects_nul_identifier_member() {
-    assert!(CssRelativeSelectorList::try_new(vec![relative(class())]).is_ok());
+    assert!(CssRelativeSelectorList::try_new(vec![relative(class())], Default::default()).is_ok());
     let invalid = CssSelector::Tag("bad\0name".into());
     assert_unrepresentable(&invalid);
-    let actual = CssRelativeSelectorList::try_new(vec![relative(invalid)]);
+    let actual = CssRelativeSelectorList::try_new(vec![relative(invalid)], Default::default());
     assert_unrepresentable_construction(actual);
 }
 
 #[test]
 fn ordinary_factory_rejects_empty_strict_not_graph() {
-    assert!(CssSelectorList::try_new(vec![parsed(":not(.One)")]).is_ok());
+    assert!(CssSelectorList::try_new(vec![parsed(":not(.One)")], Default::default()).is_ok());
     let invalid = empty_not();
     assert_unrepresentable(&invalid);
-    let actual = CssSelectorList::try_new(vec![invalid]);
+    let actual = CssSelectorList::try_new(vec![invalid], Default::default());
     assert_unrepresentable_construction(actual);
 }
 
 #[test]
 fn pseudo_factory_rejects_empty_strict_not_graph() {
-    assert!(CssPseudoSelectorList::try_new(vec![parsed(":not(.One)")]).is_ok());
+    assert!(CssPseudoSelectorList::try_new(vec![parsed(":not(.One)")], Default::default()).is_ok());
     let invalid = empty_not();
     assert_unrepresentable(&invalid);
-    let actual = CssPseudoSelectorList::try_new(vec![invalid]);
+    let actual = CssPseudoSelectorList::try_new(vec![invalid], Default::default());
     assert_unrepresentable_construction(actual);
 }
 
 #[test]
 fn relative_factory_rejects_empty_strict_not_graph() {
-    assert!(CssRelativeSelectorList::try_new(vec![relative(parsed(":not(.One)"))]).is_ok());
+    assert!(
+        CssRelativeSelectorList::try_new(vec![relative(parsed(":not(.One)"))], Default::default())
+            .is_ok()
+    );
     let invalid = empty_not();
     assert_unrepresentable(&invalid);
-    let actual = CssRelativeSelectorList::try_new(vec![relative(invalid)]);
+    let actual = CssRelativeSelectorList::try_new(vec![relative(invalid)], Default::default());
     assert_unrepresentable_construction(actual);
 }
 
 #[test]
 fn ordinary_factory_rejects_empty_nth_of_graph() {
-    assert!(CssSelectorList::try_new(vec![parsed(":nth-child(odd of .One)")]).is_ok());
+    assert!(
+        CssSelectorList::try_new(vec![parsed(":nth-child(odd of .One)")], Default::default())
+            .is_ok()
+    );
     let invalid = empty_nth_of();
     assert_unrepresentable(&invalid);
-    let actual = CssSelectorList::try_new(vec![invalid]);
+    let actual = CssSelectorList::try_new(vec![invalid], Default::default());
     assert_unrepresentable_construction(actual);
 }
 
 #[test]
 fn pseudo_factory_rejects_empty_nth_of_graph() {
-    assert!(CssPseudoSelectorList::try_new(vec![parsed(":nth-child(odd of .One)")]).is_ok());
+    assert!(
+        CssPseudoSelectorList::try_new(vec![parsed(":nth-child(odd of .One)")], Default::default())
+            .is_ok()
+    );
     let invalid = empty_nth_of();
     assert_unrepresentable(&invalid);
-    let actual = CssPseudoSelectorList::try_new(vec![invalid]);
+    let actual = CssPseudoSelectorList::try_new(vec![invalid], Default::default());
     assert_unrepresentable_construction(actual);
 }
 
 #[test]
 fn relative_factory_rejects_empty_nth_of_graph() {
     assert!(
-        CssRelativeSelectorList::try_new(vec![relative(parsed(":nth-child(odd of .One)"))]).is_ok()
+        CssRelativeSelectorList::try_new(
+            vec![relative(parsed(":nth-child(odd of .One)"))],
+            Default::default()
+        )
+        .is_ok()
     );
     let invalid = empty_nth_of();
     assert_unrepresentable(&invalid);
-    let actual = CssRelativeSelectorList::try_new(vec![relative(invalid)]);
+    let actual = CssRelativeSelectorList::try_new(vec![relative(invalid)], Default::default());
     assert_unrepresentable_construction(actual);
 }
 
 #[test]
 fn ordinary_factory_rejects_has_nested_through_logical_graph() {
-    assert!(CssSelectorList::try_new(vec![has(class())]).is_ok());
+    assert!(CssSelectorList::try_new(vec![has(class())], Default::default()).is_ok());
     let invalid = nested_has_through_is();
     assert_unrepresentable(&invalid);
-    let actual = CssSelectorList::try_new(vec![invalid]);
+    let actual = CssSelectorList::try_new(vec![invalid], Default::default());
     assert_unrepresentable_construction(actual);
 }
 
 #[test]
 fn pseudo_factory_rejects_has_nested_through_logical_graph() {
-    assert!(CssPseudoSelectorList::try_new(vec![has(class())]).is_ok());
+    assert!(CssPseudoSelectorList::try_new(vec![has(class())], Default::default()).is_ok());
     let invalid = nested_has_through_is();
     assert_unrepresentable(&invalid);
-    let actual = CssPseudoSelectorList::try_new(vec![invalid]);
+    let actual = CssPseudoSelectorList::try_new(vec![invalid], Default::default());
     assert_unrepresentable_construction(actual);
 }
 
 #[test]
 fn relative_factory_rejects_has_nested_through_logical_graph() {
-    assert!(CssRelativeSelectorList::try_new(vec![relative(has(class()))]).is_ok());
+    assert!(
+        CssRelativeSelectorList::try_new(vec![relative(has(class()))], Default::default()).is_ok()
+    );
     let invalid = nested_has_through_is();
     assert_unrepresentable(&invalid);
-    let actual = CssRelativeSelectorList::try_new(vec![relative(invalid)]);
+    let actual = CssRelativeSelectorList::try_new(vec![relative(invalid)], Default::default());
     assert_unrepresentable_construction(actual);
 }
 
 #[test]
 fn pseudo_factory_rejects_terminal_pseudo_element_member_atomically() {
-    assert!(CssPseudoSelectorList::try_new(vec![class()]).is_ok());
-    let actual = CssPseudoSelectorList::try_new(vec![class(), parsed(".Cell::before"), class()]);
+    assert!(CssPseudoSelectorList::try_new(vec![class()], Default::default()).is_ok());
+    let actual = CssPseudoSelectorList::try_new(
+        vec![class(), parsed(".Cell::before"), class()],
+        Default::default(),
+    );
     assert_unrepresentable_construction(actual);
 }
 
 #[test]
 fn pseudo_factory_rejects_terminal_pseudo_element_in_complex_member() {
-    assert!(CssPseudoSelectorList::try_new(vec![parsed(".Parent > .Cell")]).is_ok());
-    let actual = CssPseudoSelectorList::try_new(vec![parsed(".Parent > .Cell::before")]);
+    assert!(
+        CssPseudoSelectorList::try_new(vec![parsed(".Parent > .Cell")], Default::default()).is_ok()
+    );
+    let actual =
+        CssPseudoSelectorList::try_new(vec![parsed(".Parent > .Cell::before")], Default::default());
     assert_unrepresentable_construction(actual);
 }

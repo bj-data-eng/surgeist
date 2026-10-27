@@ -2,34 +2,35 @@
 //! Original token gaps prove parsed adjacency; reusable checked fragments use the
 //! separate complete-list assembly owner and never carry these source constraints.
 use super::recovery::next_source_token;
-use crate::syntax::CssParserRuleChildrenMut;
-use crate::*;
+use crate::CssParseReport;
+use crate::diagnostic::{CssRecoveryAction, CssRecoveryDiagnostic};
+use crate::rule::{CssRule, CssSheet, CssStyleBlock};
+use crate::source::{CssSourcePosition, CssSourceSpan};
 use cssparser::Token;
 use std::ops::Range;
 
 pub(super) fn sheet(source: &str, report: CssParseReport<CssSheet>) -> CssParseReport<CssSheet> {
     let (mut sheet, mut diagnostics) = report.into_parts();
-    completed_list(
-        source,
-        CssParserRuleChildrenMut::Ordinary(sheet.rules_mut()),
-        &mut diagnostics,
-    );
+    completed_list(source, sheet.rules_mut(), &mut diagnostics);
     CssParseReport::new(sheet, diagnostics)
 }
-pub(super) fn rule(
+pub(crate) fn rule(
     source: &str,
     mut rule: CssRule,
     mut diagnostics: Vec<CssRecoveryDiagnostic>,
 ) -> CssParseReport<Option<CssRule>> {
     if matches!(rule, CssRule::Else(_)) {
-        let position = CssSourcePosition::from_byte_offset_in(source, super::rule_start(&rule));
+        let position = CssSourcePosition::from_byte_offset_in(
+            source,
+            crate::parser::reconstruction::rule_start(&rule),
+        );
         let span = CssSourceSpan::new(
             CssSourcePosition::from_byte_offset_in(source, 0),
             CssSourcePosition::from_byte_offset_in(source, source.len()),
         )
         .expect("whole input span");
         let diagnostic = CssRecoveryDiagnostic::new(
-            crate::error::invalid_free_else(source, position),
+            crate::diagnostic::error::invalid_free_else(source, position),
             span,
             CssRecoveryAction::RejectInput,
         )
@@ -46,85 +47,46 @@ pub(super) fn style_block(
     mut block: CssStyleBlock,
     mut diagnostics: Vec<CssRecoveryDiagnostic>,
 ) -> CssParseReport<Option<CssStyleBlock>> {
-    completed_list(
-        source,
-        CssParserRuleChildrenMut::Ordinary(block.rules_mut()),
-        &mut diagnostics,
-    );
+    completed_list(source, block.rules_mut(), &mut diagnostics);
     CssParseReport::new(Some(block), diagnostics)
 }
 pub(super) fn completed_list(
     source: &str,
-    list: CssParserRuleChildrenMut<'_>,
+    list: &mut Vec<CssRule>,
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
 ) {
     admit(source, list, diagnostics);
 }
 
-fn admit(
-    source: &str,
-    list: CssParserRuleChildrenMut<'_>,
-    diagnostics: &mut Vec<CssRecoveryDiagnostic>,
-) {
+fn admit(source: &str, list: &mut Vec<CssRule>, diagnostics: &mut Vec<CssRecoveryDiagnostic>) {
     let mut work = vec![list];
     let mut rejected = Vec::new();
     let mut placements = Vec::new();
-    while let Some(list) = work.pop() {
+    while let Some(rules) = work.pop() {
         let mut previous_end = None;
-        match list {
-            CssParserRuleChildrenMut::Ordinary(rules) => {
-                rules.retain_mut(|rule| {
-                    let conditional = matches!(
-                        rule,
-                        CssRule::Media(_)
-                            | CssRule::Supports(_)
-                            | CssRule::Container(_)
-                            | CssRule::When(_)
-                            | CssRule::Else(_)
-                    );
-                    let start = conditional.then(|| super::rule_start(rule));
-                    check(
-                        source,
-                        matches!(rule, CssRule::Else(_)),
-                        conditional,
-                        start,
-                        &mut previous_end,
-                        &mut rejected,
-                        &mut placements,
-                    )
-                });
-                for rule in rules {
-                    if let Some(children) = rule.parser_children_mut() {
-                        work.push(children);
-                    }
-                }
-            }
-            CssParserRuleChildrenMut::Scoped(rules) => {
-                rules.retain_mut(|rule| {
-                    let conditional = matches!(
-                        rule,
-                        CssScopedRule::Media(_)
-                            | CssScopedRule::Supports(_)
-                            | CssScopedRule::Container(_)
-                            | CssScopedRule::When(_)
-                            | CssScopedRule::Else(_)
-                    );
-                    let start = conditional.then(|| super::scoped_rule_start(rule));
-                    check(
-                        source,
-                        matches!(rule, CssScopedRule::Else(_)),
-                        conditional,
-                        start,
-                        &mut previous_end,
-                        &mut rejected,
-                        &mut placements,
-                    )
-                });
-                for rule in rules {
-                    if let Some(children) = rule.parser_children_mut() {
-                        work.push(children);
-                    }
-                }
+        rules.retain_mut(|rule| {
+            let conditional = matches!(
+                rule,
+                CssRule::Media(_)
+                    | CssRule::Supports(_)
+                    | CssRule::Container(_)
+                    | CssRule::When(_)
+                    | CssRule::Else(_)
+            );
+            let start = conditional.then(|| crate::parser::reconstruction::rule_start(rule));
+            check(
+                source,
+                matches!(rule, CssRule::Else(_)),
+                conditional,
+                start,
+                &mut previous_end,
+                &mut rejected,
+                &mut placements,
+            )
+        });
+        for rule in rules {
+            if let Some(children) = rule.parser_children_mut() {
+                work.push(children);
             }
         }
     }
@@ -165,7 +127,7 @@ fn check(
         .expect("balanced original rule span");
         placements.push(
             CssRecoveryDiagnostic::new(
-                crate::error::invalid_free_else(source, position),
+                crate::diagnostic::error::invalid_free_else(source, position),
                 span,
                 CssRecoveryAction::DropAtRule,
             )
@@ -234,7 +196,7 @@ mod tests {
     #[test]
     fn discarded_else_suppresses_owned_eof_closures_and_keeps_lexical_comment() {
         let source = "@else { .lost { color: rgb(1 2 3); /*";
-        let report = parse_sheet(source);
+        let report = crate::CssParser::default().parse_sheet(source);
         assert!(report.syntax().rules().is_empty());
         assert_eq!(
             report
@@ -259,7 +221,8 @@ mod tests {
     }
     #[test]
     fn discarded_nested_else_does_not_suppress_ancestor_eof_closure() {
-        let report = parse_sheet("@layer kept { @else { .lost { color: red");
+        let report =
+            crate::CssParser::default().parse_sheet("@layer kept { @else { .lost { color: red");
         assert!(
             matches!(report.syntax().rules(), [CssRule::LayerBlock(rule)] if rule.rules().is_empty())
         );
@@ -277,7 +240,7 @@ mod tests {
         let source = "{";
         let eof = CssSourcePosition::from_byte_offset_in(source, 1);
         let diagnostic = CssRecoveryDiagnostic::new(
-            crate::error::implicit_eof(source),
+            crate::diagnostic::error::implicit_eof(source),
             CssSourceSpan::new(eof, eof).unwrap(),
             CssRecoveryAction::RetainWithImplicitClosure,
         )

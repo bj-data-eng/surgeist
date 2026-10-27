@@ -2,7 +2,13 @@
 //! ordinary 2 MiB thread stack while preserving source order and provenance.
 
 use crate::css::support::authored_syntax::normalized_declarations as declarations;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedDeclaration,
+    CssRuleContextKindRef,
+};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::selector::CssSelector;
 
 const INNER_GROUPS: usize = 252;
 
@@ -37,7 +43,7 @@ fn assert_color(value: &CssNormalizedDeclaration, source: &str, color: &str, ord
         value
             .source()
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         color
@@ -63,9 +69,12 @@ fn alternating_groups_at_parser_ceiling_normalize_in_source_order_on_small_stack
         .stack_size(2 * 1024 * 1024)
         .spawn(|| {
             let (source, group_offsets) = deep_sheet();
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(report.is_clean(), "{:?}", report.diagnostics());
-            let sheet = normalize_sheet(report.syntax()).expect("parser-valid nesting normalizes");
+            let sheet = report
+                .syntax()
+                .normalize(Default::default())
+                .expect("parser-valid nesting normalizes");
             let values = declarations(&sheet);
             assert_eq!(values.len(), 4);
             for (index, color) in ["red", "blue", "green", "black"].into_iter().enumerate() {
@@ -155,9 +164,12 @@ fn pure_scope_chain_at_structural_ceiling_normalizes_on_small_stack() {
                 "@scope{".repeat(255),
                 "}".repeat(255)
             );
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(report.is_clean(), "{:?}", report.diagnostics());
-            let sheet = normalize_sheet(report.syntax()).expect("ceiling-depth scopes normalize");
+            let sheet = report
+                .syntax()
+                .normalize(Default::default())
+                .expect("ceiling-depth scopes normalize");
             let values = declarations(&sheet);
             assert_eq!(values.len(), 1);
             assert_color(values[0], &source, "red", 0);
@@ -181,7 +193,7 @@ fn colliding_depth_and_rule_budgets_report_depth_without_consuming_source() {
         .stack_size(2 * 1024 * 1024)
         .spawn(|| {
             let (source, group_offsets) = deep_sheet();
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(report.is_clean(), "{:?}", report.diagnostics());
 
             // Before inner group 239: style depth 0, outer scope depth 1,
@@ -189,14 +201,13 @@ fn colliding_depth_and_rule_budgets_report_depth_without_consuming_source() {
             // Thus group 239 has depth 241 with 242 rules already admitted.
             let limits = CssNormalizationLimits::try_new(240, 242, usize::MAX, usize::MAX)
                 .expect("both budgets are within the structural ceiling");
-            let error = normalize_sheet_with_limits(report.syntax(), limits)
+            let error = report
+                .syntax()
+                .normalize(limits)
                 .expect_err("the next group exceeds both budgets");
             assert_eq!(
-                error.kind(),
-                &CssNormalizationErrorKind::LimitExceeded {
-                    resource: CssNormalizationResource::RuleDepth,
-                    limit: 240,
-                }
+                error.exhausted_limit(),
+                Some((CssNormalizationResource::RuleDepth, 240))
             );
             assert_eq!(
                 error.position().unwrap().byte_offset().value(),
@@ -213,7 +224,10 @@ fn colliding_depth_and_rule_budgets_report_depth_without_consuming_source() {
 
             // The failed attempt leaves the same retained syntax available to
             // the default, unrestricted count policy.
-            let sheet = normalize_sheet(report.syntax()).expect("source remains usable");
+            let sheet = report
+                .syntax()
+                .normalize(Default::default())
+                .expect("source remains usable");
             let values = declarations(&sheet);
             assert_eq!(values.len(), 4);
             for (index, color) in ["red", "blue", "green", "black"].into_iter().enumerate() {

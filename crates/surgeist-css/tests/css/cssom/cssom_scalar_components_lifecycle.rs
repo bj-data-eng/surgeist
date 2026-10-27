@@ -6,15 +6,39 @@
 //! Authored URL targets and relative units stay context-free. These controls
 //! do not resolve URLs, fonts, colors, layout, inheritance or used values.
 
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as declaration;
 use crate::css::support::value_assertions::assert_component_rejected;
-use surgeist_css::*;
+use crate::css::support::value_assertions::literal_specified;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssColor;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssFrequency, CssFrequencyUnit, CssInteger, CssLength, CssNumber, CssNumeric,
+    CssNumericLiteral, CssPercentage, CssResolution, CssResolutionUnit, CssTime,
+};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
+    CssFontFaceSource, CssFontFaceSourceList, CssFontFaceUrlSource, CssFontLocalName,
+};
+use surgeist_css::serialization::{
+    CssSerializationLimits, serialize_css_comma_separated_list, serialize_css_identifier,
+    serialize_css_string, serialize_css_whitespace_separated_list,
+};
+use surgeist_css::values::common::{CssAutoOr, CssUrl};
+use surgeist_css::values::effects::CssClip;
 
-type Limits = CssSpecifiedValueSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Limits = CssSerializationLimits;
+type Kind = SerializationFailure;
 
 fn component(text: &str) -> CssComponentValue {
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let [value] = values.items() else {
         panic!("one scalar component: {text}")
     };
@@ -23,22 +47,54 @@ fn component(text: &str) -> CssComponentValue {
 
 fn specified(value: &CssDeclaration) -> String {
     match value.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::Color(v) => v.value().to_specified_css().unwrap(),
-        CssKnownPropertyValueRef::Filter(v) => v.value().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::AspectRatio(v) => v.ratio().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::Clip(v) => v.clip().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::Content(v) => v.value().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::FontSize(v) => v.size().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::FontFamily(v) => v.families().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::VoiceFamily(v) => v.value().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::BorderTopWidth(v) => v.value().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::BorderTopStyle(v) => v.value().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::Top(v) => v.value().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::Right(v) => v.value().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::Bottom(v) => v.value().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::Left(v) => v.value().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::MarginTop(v) => v.value().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::PaddingTop(v) => v.value().serialize_specified().unwrap(),
+        CssKnownPropertyValueRef::Color(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::Filter(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::AspectRatio(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::Clip(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::Content(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::FontSize(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::FontFamily(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::VoiceFamily(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::BorderTopWidth(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::BorderTopStyle(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::Top(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::Right(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::Bottom(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::Left(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::MarginTop(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::PaddingTop(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
         _ => panic!("fixture selects a concrete component owner"),
     }
 }
@@ -46,35 +102,47 @@ fn specified(value: &CssDeclaration) -> String {
 #[test]
 fn scalar_outputs_compose_without_losing_exact_authored_components() {
     let number_component = component("+001.2345678");
-    let number = CssSpecifiedNumber::try_from_component(number_component.clone()).unwrap();
+    let number = CssNumeric::<CssNumber>::try_from_component(number_component.clone()).unwrap();
     let percentage_component = component("12.5000%");
     let percentage =
-        CssSpecifiedPercentage::try_from_component(percentage_component.clone()).unwrap();
+        CssNumeric::<CssPercentage>::try_from_component(percentage_component.clone()).unwrap();
     let length_component = component("+02.5000Q");
-    let length = CssSpecifiedLength::try_from_component(length_component.clone()).unwrap();
+    let length = CssNumeric::<CssLength>::try_from_component(length_component.clone()).unwrap();
     let integer_component = component("-0002147483649");
-    let integer_literal = CssIntegerLiteral::try_from_component(integer_component.clone()).unwrap();
-    let integer = CssIntegerValue::Literal(integer_literal.clone());
-    let time = CssTimeLiteral::try_from_component(component("1250MS")).unwrap();
-    let frequency = CssFrequencyLiteral::try_from_component(component("2KHz")).unwrap();
-    let resolution = CssResolutionLiteral::try_from_component(component("150DPI")).unwrap();
+    let integer_literal =
+        CssNumericLiteral::<CssInteger>::try_from_component(integer_component.clone()).unwrap();
+    let integer = CssNumeric::<CssInteger>::try_from_literal(integer_literal.clone()).unwrap();
+    let time = CssNumericLiteral::<CssTime>::try_from_component(component("1250MS")).unwrap();
+    let frequency =
+        CssNumericLiteral::<CssFrequency>::try_from_component(component("2KHz")).unwrap();
+    let resolution =
+        CssNumericLiteral::<CssResolution>::try_from_component(component("150DPI")).unwrap();
     let values = [
-        number.serialize_specified().unwrap(),
-        integer.serialize_specified().unwrap(),
-        percentage.serialize_specified().unwrap(),
-        length.serialize_specified().unwrap(),
-        time.serialize_specified().unwrap(),
-        frequency.serialize_specified().unwrap(),
-        resolution.serialize_specified().unwrap(),
+        number.serialize_specified(Default::default()).unwrap(),
+        integer.serialize_specified(Default::default()).unwrap(),
+        percentage.serialize_specified(Default::default()).unwrap(),
+        length.serialize_specified(Default::default()).unwrap(),
+        literal_specified(&time, Default::default()).unwrap(),
+        literal_specified(&frequency, Default::default()).unwrap(),
+        literal_specified(&resolution, Default::default()).unwrap(),
     ];
     let items: Vec<&str> = values.iter().map(String::as_str).collect();
     assert_eq!(
-        serialize_css_whitespace_separated_list(&items).unwrap(),
+        serialize_css_whitespace_separated_list(&items, Default::default()).unwrap(),
         "1.234568 -2147483649 12.5% 2.5q 1.25s 2khz 1.5625dppx"
     );
-    assert_eq!(number.literal_component(), Some(&number_component));
-    assert_eq!(percentage.literal_component(), Some(&percentage_component));
-    assert_eq!(length.literal_component(), Some(&length_component));
+    assert_eq!(
+        number.literal().map(|literal| literal.component()),
+        Some(&number_component)
+    );
+    assert_eq!(
+        percentage.literal().map(|literal| literal.component()),
+        Some(&percentage_component)
+    );
+    assert_eq!(
+        length.literal().map(|literal| literal.component()),
+        Some(&length_component)
+    );
     assert_eq!(integer_literal.component(), &integer_component);
     assert_eq!(time.numeric().representation(), "1250");
     assert_eq!(frequency.unit(), CssFrequencyUnit::Kilohertz);
@@ -88,21 +156,26 @@ fn scalar_outputs_compose_without_losing_exact_authored_components() {
         assert!(matches!(origin, CssValueOrigin::Parsed(_)));
     }
     let checked_component = CssComponentValue::try_number("+001.2345678").unwrap();
-    let checked = CssSpecifiedNumber::try_from_component(checked_component.clone()).unwrap();
+    let checked = CssNumeric::<CssNumber>::try_from_component(checked_component.clone()).unwrap();
     assert_eq!(checked.origin(), &CssValueOrigin::Programmatic);
-    assert_eq!(checked.literal_component(), Some(&checked_component));
-    assert_eq!(checked.serialize_specified().unwrap(), "1.234568");
-    // Syntax 3 §4.3.3: an exponent makes a <number-token> of type "number".
     assert_eq!(
-        CssIntegerLiteral::try_from_component(component("1e0"))
+        checked.literal().map(|literal| literal.component()),
+        Some(&checked_component)
+    );
+    assert_eq!(
+        checked.serialize_specified(Default::default()).unwrap(),
+        "1.234568"
+    );
+    // Syntax 3 §4.3.3: an exponent makes a <number-token> of type "number".
+    assert!(
+        CssNumericLiteral::<CssInteger>::try_from_component(component("1e0"))
             .unwrap_err()
-            .kind(),
-        CssComponentValueErrorKind::InvalidToken
+            .is_root_domain_mismatch()
     );
     assert_component_rejected(
-        CssSpecifiedLength::try_from_component,
+        CssNumeric::<CssLength>::try_from_component,
         component("2hz"),
-        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+        NumericFailure::RootDomainMismatch,
     );
 }
 
@@ -156,10 +229,11 @@ fn macro_aliases_delegate_to_concrete_property_grammar_and_family_rules() {
     ] {
         let parsed = declaration(name, text);
         let property = parsed.known().unwrap().property();
-        let components = parse_component_values(text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let retained = components.clone();
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(property),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components,
             CssImportance::Important,
         )
@@ -179,7 +253,8 @@ fn macro_aliases_delegate_to_concrete_property_grammar_and_family_rules() {
         ("padding-top", "-1px"),
         ("voice-family", "female male"),
     ] {
-        let report = parse_style_attribute(&format!("{name}:{invalid};color:red"));
+        let report =
+            CssParser::default().parse_block_contents(format!("{name}:{invalid};color:red"));
         crate::css::support::value_assertions::assert_first_property_rejection(
             report.diagnostics(),
             crate::css::support::known_property(name),
@@ -191,12 +266,12 @@ fn macro_aliases_delegate_to_concrete_property_grammar_and_family_rules() {
 
 #[test]
 fn common_escaping_and_authored_wrappers_compose_already_serialized_items() {
-    let identifier = serialize_css_identifier("1é😀").unwrap();
-    let string = serialize_css_string("a\"\\\n\0").unwrap();
+    let identifier = serialize_css_identifier("1é😀", Default::default()).unwrap();
+    let string = serialize_css_string("a\"\\\n\0", Default::default()).unwrap();
     let url = CssUrl::new("../é😀.woff2#face");
     let local = CssFontLocalName::try_new("1é😀").unwrap();
-    let url_text = url.serialize_specified().unwrap();
-    let local_text = local.serialize_specified().unwrap();
+    let url_text = url.serialize_specified(Default::default()).unwrap();
+    let local_text = local.serialize_specified(Default::default()).unwrap();
     assert_eq!(identifier, "\\31 é😀");
     assert_eq!(string, "\"a\\\"\\\\\\a �\"");
     assert_eq!(url_text, "url(\"../é😀.woff2#face\")");
@@ -212,13 +287,12 @@ fn common_escaping_and_authored_wrappers_compose_already_serialized_items() {
     ];
     let expected = "\\31 é😀, \"a\\\"\\\\\\a �\", url(\"../é😀.woff2#face\"), local(\"1é😀\"), ";
     assert_eq!(
-        serialize_css_comma_separated_list(&items).unwrap(),
+        serialize_css_comma_separated_list(&items, Default::default()).unwrap(),
         expected
     );
     // One list and five already-serialized items; Unicode consumes UTF-8 bytes.
     assert_eq!(
-        serialize_css_comma_separated_list_with_limits(&items, Limits::new(6, 6, expected.len()))
-            .unwrap(),
+        serialize_css_comma_separated_list(&items, Limits::new(6, 6, expected.len())).unwrap(),
         expected
     );
     for (limits, kind) in [
@@ -227,9 +301,7 @@ fn common_escaping_and_authored_wrappers_compose_already_serialized_items() {
         (Limits::new(6, 6, expected.len() - 1), Kind::ByteLimit),
     ] {
         assert_eq!(
-            serialize_css_comma_separated_list_with_limits(&items, limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&serialize_css_comma_separated_list(&items, limits).unwrap_err()),
             kind
         );
         assert_eq!(items[2], "url(\"../é😀.woff2#face\")");
@@ -239,7 +311,11 @@ fn common_escaping_and_authored_wrappers_compose_already_serialized_items() {
 #[test]
 fn local_and_url_source_children_share_one_atomic_resource_budget() {
     let text = "LOCAL('é😀'), URL('../font.woff2')";
-    let report = parse_font_face_descriptor_value(text, CssFontFaceDescriptorKind::Src);
+    let report = CssAuthoredFontFaceDescriptorValue::parse(
+        &CssParser::default(),
+        text,
+        CssFontFaceDescriptorKind::Src,
+    );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let Some(CssAuthoredFontFaceDescriptorValue::Ordinary(CssFontFaceDescriptorValue::Src(parsed))) =
         report.syntax()
@@ -261,7 +337,7 @@ fn local_and_url_source_children_share_one_atomic_resource_budget() {
         let before = value.clone();
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(6, 6, expected.len()))
+                .serialize_specified(Limits::new(6, 6, expected.len()))
                 .unwrap(),
             expected
         );
@@ -271,15 +347,15 @@ fn local_and_url_source_children_share_one_atomic_resource_budget() {
             (Limits::new(6, 6, expected.len() - 1), Kind::ByteLimit),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind
             );
             assert_eq!(value, &before);
         }
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 
@@ -290,7 +366,7 @@ fn rectangle_edges_share_cumulative_limits_and_keep_their_authored_origins() {
     else {
         panic!("clip")
     };
-    let value = wrapper.clip();
+    let value = wrapper.value();
     let before = value.clone();
     let CssClip::Rect(rect) = value else {
         panic!("rectangle")
@@ -298,18 +374,22 @@ fn rectangle_edges_share_cumulative_limits_and_keep_their_authored_origins() {
     let retained: Vec<CssComponentValue> = [rect.top(), rect.bottom(), rect.left()]
         .into_iter()
         .map(|edge| {
-            let CssClipEdge::Length(length) = edge else {
+            let CssAutoOr::Value(length) = edge else {
                 panic!("ordinary length edge")
             };
             assert!(matches!(length.origin(), CssValueOrigin::Parsed(_)));
-            length.literal_component().unwrap().clone()
+            length
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap()
+                .clone()
         })
         .collect();
     let expected = "rect(1px, auto, -2em, 0)";
     // One rectangle and four effective edge scalars; clip adds no extra node.
     assert_eq!(
         value
-            .serialize_specified_with_limits(Limits::new(5, 5, expected.len()))
+            .serialize_specified(Limits::new(5, 5, expected.len()))
             .unwrap(),
         expected
     );
@@ -319,10 +399,7 @@ fn rectangle_edges_share_cumulative_limits_and_keep_their_authored_origins() {
         (Limits::new(5, 5, expected.len() - 1), Kind::ByteLimit),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(value, &before);
@@ -331,14 +408,20 @@ fn rectangle_edges_share_cumulative_limits_and_keep_their_authored_origins() {
             .into_iter()
             .zip(&retained)
         {
-            let CssClipEdge::Length(length) = edge else {
+            let CssAutoOr::Value(length) = edge else {
                 panic!("length edge")
             };
-            assert_eq!(length.literal_component(), Some(original));
+            assert_eq!(
+                length.literal().map(|literal| literal.component()),
+                Some(original)
+            );
             assert_eq!(length.origin(), original.origin());
         }
     }
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 
 fn color(text: &str) -> CssColor {
@@ -366,8 +449,17 @@ fn declared_color4_replacement_preserves_keywords_and_missing_components() {
     ] {
         let value = color(text);
         let before = value.clone();
-        assert_eq!(value.to_specified_css().unwrap(), expected, "{text}");
-        assert_eq!(color(expected).to_specified_css().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{text}"
+        );
+        assert_eq!(
+            color(expected)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
         assert_eq!(value, before);
     }
 }
@@ -400,10 +492,11 @@ fn every_byte_alpha_has_an_independent_cssom_witness_and_atomic_byte_limit() {
         let text = format!("#000000{byte:02x}");
         let value = color(&text);
         let before = value.clone();
-        let components = parse_component_values(&text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
         let retained = components.clone();
-        let checked_declaration = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
+        let checked_declaration = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
             components,
             CssImportance::Normal,
         )
@@ -424,21 +517,29 @@ fn every_byte_alpha_has_an_independent_cssom_witness_and_atomic_byte_limit() {
         // A hex color is one color node in both input and projection counts.
         assert_eq!(
             value
-                .to_specified_css_with_limits(Limits::new(1, 1, expected.len()))
+                .serialize_specified(Limits::new(1, 1, expected.len()))
                 .unwrap(),
             expected,
             "{text}"
         );
-        assert_eq!(
+        assert!(
             value
-                .to_specified_css_with_limits(Limits::new(1, 1, expected.len() - 1))
+                .serialize_specified(Limits::new(1, 1, expected.len() - 1))
                 .unwrap_err()
-                .kind(),
-            Kind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(value, before);
-        assert_eq!(value.to_specified_css().unwrap(), expected);
-        assert_eq!(checked.value().to_specified_css().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_eq!(
+            checked
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
         assert_eq!(checked_declaration.value_components(), &retained);
     }
     for (byte, expected) in [(1, "0.004"), (127, "0.498"), (128, "0.5"), (254, "0.996")] {

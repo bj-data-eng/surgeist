@@ -6,7 +6,18 @@
 //! Outline's shorthand includes its style; ordinary border-style still admits hidden.
 //! No future outline payload or output-order API is assumed.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyValueError,
+};
+use surgeist_css::source::CssSourcePosition;
+use surgeist_css::values::border::{CssLineStyle, CssOutlineStyle};
 
 const HIDDEN_SPELLINGS: &[&str] = &["hidden", "HIDDEN", r"h\69 dden"];
 
@@ -31,7 +42,7 @@ fn property_name(property: CssKnownProperty) -> &'static str {
 fn parsed_rejects(property: CssKnownProperty, value: &str) {
     let name = property_name(property);
     let source = format!("/* 🦀 */ color:red !important; {name}:{value} !important; width:1px");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(
         !report.is_clean(),
         "hidden is forbidden for {name}: {source}"
@@ -65,10 +76,13 @@ fn parsed_rejects(property: CssKnownProperty, value: &str) {
         CssErrorCode::InvalidPropertyValue
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("known-property grammar failure")
-    };
-    assert_eq!(detail.property(), property);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "known-property grammar failure"
+    );
+    assert_eq!(detail.known_property().unwrap(), property);
     let start = source.find(name).unwrap();
     let end = start + source[start..].find(';').unwrap() + 1;
     position(diagnostic.span().start(), &source, start);
@@ -77,8 +91,10 @@ fn parsed_rejects(property: CssKnownProperty, value: &str) {
     let offset = responsible.byte_offset().value();
     assert!((start..=end).contains(&offset));
     position(responsible, &source, offset);
-    let failure =
-        validate_style_attribute(&source).expect_err("strict validator rejects recovered outline");
+    let failure = CssParser::default()
+        .parse_block_contents(&source)
+        .into_validation_result()
+        .expect_err("strict validator rejects recovered outline");
     assert_eq!(failure.diagnostics(), report.diagnostics());
 }
 
@@ -86,8 +102,9 @@ fn checked_rejects(
     property: CssKnownProperty,
     value: &str,
     grammar: bool,
-) -> CssPropertyValueParseError {
-    let components = parse_component_values(value).expect("well-formed components");
+) -> CssPropertyValueError {
+    let components =
+        CssComponentValues::parse(&CssParser::default(), value).expect("well-formed components");
     checked_components_rejects(property, components, grammar)
 }
 
@@ -95,22 +112,30 @@ fn checked_components_rejects(
     property: CssKnownProperty,
     components: CssComponentValues,
     grammar: bool,
-) -> CssPropertyValueParseError {
+) -> CssPropertyValueError {
     let result = if grammar {
-        parse_property_value_for_grammar(property.grammar(), components, CssImportance::Important)
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(property.grammar()),
+            components,
+            CssImportance::Important,
+        )
     } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components,
             CssImportance::Important,
         )
     };
     let error = result.expect_err("hidden is not an outline style");
-    let CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail)) = error.kind()
-    else {
-        panic!("typed outline grammar failure: {error:?}")
-    };
-    assert_eq!(detail.property(), property);
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        Some(CssErrorCode::InvalidPropertyValue),
+        "typed outline grammar failure: {error:?}"
+    );
+    assert_eq!(detail.known_property().unwrap(), property);
     error
 }
 
@@ -127,7 +152,13 @@ macro_rules! hidden_contract {
                 property_name($known),
                 $value
             );
-            assert!(validate_style_attribute(&source).is_err(), "{source}");
+            assert!(
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .is_err(),
+                "{source}"
+            );
         }
         #[test]
         fn $property() {
@@ -176,9 +207,10 @@ fn hidden_case_and_escape_spellings_reject_in_outline_longhand_and_shorthand() {
 fn original_hidden_origin(property: CssKnownProperty) {
     for spelling in HIDDEN_SPELLINGS {
         let source = format!("/* 🦀 */ {spelling}");
-        let components = parse_component_values(&source).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
         let hidden = components.items().iter().find(|component| matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Ident(ident)) if ident.eq_ignore_ascii_case("hidden"))).expect("decoded hidden identifier");
-        let supplied = CssComponentValues::try_new(vec![hidden.clone()]).unwrap();
+        let supplied =
+            CssComponentValues::try_new(vec![hidden.clone()], Default::default()).unwrap();
         for grammar in [false, true] {
             let error = checked_components_rejects(property, supplied.clone(), grammar);
             let origin = match error.origin() {
@@ -187,7 +219,7 @@ fn original_hidden_origin(property: CssKnownProperty) {
                 }
                 _ => panic!("singleton rejection must map to its original hidden token"),
             };
-            assert_eq!(origin, hidden.origin());
+            assert_eq!(&origin, hidden.origin());
             let CssValueOrigin::Parsed(origin) = origin else {
                 panic!("original component provenance")
             };
@@ -214,7 +246,7 @@ fn admitted(property: CssKnownProperty, value: &str) -> Vec<CssDeclaration> {
         "/* 🦀 */ color:red !important; {}:{value} !important; width:1px",
         property_name(property)
     );
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [before, declaration, after] = report.syntax().as_slice() else {
         panic!("all valid occurrences survive")
@@ -223,16 +255,23 @@ fn admitted(property: CssKnownProperty, value: &str) -> Vec<CssDeclaration> {
     assert_eq!(before.importance(), CssImportance::Important);
     assert_eq!(after.known().unwrap().property(), CssKnownProperty::Width);
     assert_eq!(after.importance(), CssImportance::Normal);
-    assert!(validate_style_attribute(&source).is_ok());
-    let components = parse_component_values(value).unwrap();
-    let by_property = parse_property_value(
-        CssPropertyNameRef::Known(property),
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .is_ok()
+    );
+    let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
+    let by_property = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
         components.clone(),
         CssImportance::Important,
     )
     .unwrap();
-    let by_grammar = parse_property_value_for_grammar(
-        property.grammar(),
+    let by_grammar = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(property.grammar()),
         components.clone(),
         CssImportance::Important,
     )
@@ -305,10 +344,7 @@ fn border_style_hidden_remains_accepted_through_all_front_doors() {
             else {
                 panic!("typed border style")
             };
-            assert_eq!(
-                value.value().assigned_values(),
-                [&CssBorderStyle::Hidden; 4]
-            );
+            assert_eq!(value.value().assigned(), [&CssLineStyle::Hidden; 4]);
         }
     }
 }

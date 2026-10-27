@@ -19,13 +19,27 @@
 //! Catalog source completeness and downstream execution are not test oracles.
 
 use crate::css::support::authored_property::{checked, parsed};
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::Responsible::{self, At};
 use crate::css::support::property_admission::implicit_closing_origin as implicit_origin;
 use crate::css::support::property_admission::{
     assert_checked_rejected, assert_implicit_closure, assert_invalid_value,
 };
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssLonghandContributions,
+    CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyValueError,
+};
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
 
 const ROLES: [(P, &str); 4] = [
     (P::GridTemplateRows, "10px"),
@@ -63,19 +77,13 @@ fn fronts(property: P, value: &str) -> [CssDeclaration; 3] {
 }
 fn typed_output(
     source: &CssDeclaration,
-    limits: CssSpecifiedValueSerializationLimits,
-) -> Result<String, CssSpecifiedValueSerializationError> {
+    limits: CssSerializationLimits,
+) -> Result<String, CssSerializationError> {
     match source.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::GridTemplateRows(v) => {
-            v.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::GridTemplateColumns(v) => {
-            v.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::GridTemplate(v) => {
-            v.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::Grid(v) => v.value().serialize_specified_with_limits(limits),
+        CssKnownPropertyValueRef::GridTemplateRows(v) => v.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::GridTemplateColumns(v) => v.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::GridTemplate(v) => v.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::Grid(v) => v.value().serialize_specified(limits),
         _ => panic!("owning typed Grid wrapper"),
     }
 }
@@ -85,11 +93,11 @@ fn accepted(property: P, value: &str, expected: &str) {
         assert!(source.known().unwrap().substitution_dependent().is_none());
         let before = source.clone();
         assert_eq!(
-            typed_output(&source, CssSpecifiedValueSerializationLimits::default()).unwrap(),
+            typed_output(&source, CssSerializationLimits::default()).unwrap(),
             expected
         );
         assert_eq!(
-            source.to_specified_css().unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             format!("{}: {expected} !important;", property.canonical_name())
         );
         assert_eq!(source, before);
@@ -100,7 +108,7 @@ fn accepted(property: P, value: &str, expected: &str) {
 fn invalid<'a>(property: P, value: &str, token: impl Into<Responsible<'a>>) {
     let token = token.into();
     let css = format!("color:red;{}:{value};color:blue", property.canonical_name());
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert_eq!(report.syntax().len(), 2, "{css}");
     assert!(
         report
@@ -112,20 +120,28 @@ fn invalid<'a>(property: P, value: &str, token: impl Into<Responsible<'a>>) {
         panic!("one atomic declaration failure: {css}")
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("typed property failure")
-    };
-    assert_eq!(detail.property(), property);
-    assert_invalid_value(diagnostic.error().kind(), property, token);
+    let detail = diagnostic.error();
     assert_eq!(
-        validate_style_attribute(&css).unwrap_err().diagnostics(),
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "typed property failure"
+    );
+    assert_eq!(detail.known_property().unwrap(), property);
+    assert_invalid_value(diagnostic.error(), property, token);
+    assert_eq!(
+        CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
-    let components = parse_component_values(value).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
     let before = components.clone();
     assert_checked_rejected(
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components.clone(),
             CssImportance::Normal,
         ),
@@ -133,8 +149,9 @@ fn invalid<'a>(property: P, value: &str, token: impl Into<Responsible<'a>>) {
         token,
     );
     assert_checked_rejected(
-        parse_property_value_for_grammar(
-            property.grammar(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(property.grammar()),
             components.clone(),
             CssImportance::Normal,
         ),
@@ -144,8 +161,7 @@ fn invalid<'a>(property: P, value: &str, token: impl Into<Responsible<'a>>) {
     assert_eq!(components, before);
 }
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("completed intrinsic Grid contributions")
     };
@@ -199,10 +215,14 @@ fn terminal_output(values: &CssLonghandContributions, property: P) -> String {
         .find(|v| v.property() == property)
         .unwrap();
     match item.ordinary_value().unwrap().view() {
-        CssLonghandValueRef::GridTemplateAreas(v) => v.serialize_specified().unwrap(),
-        CssLonghandValueRef::GridAutoRows(v) => v.serialize_specified().unwrap(),
-        CssLonghandValueRef::GridAutoColumns(v) => v.serialize_specified().unwrap(),
-        CssLonghandValueRef::GridAutoFlow(v) => v.serialize_specified().unwrap(),
+        CssLonghandValueRef::GridTemplateAreas(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::GridAutoRows(v) => v.serialize_specified(Default::default()).unwrap(),
+        CssLonghandValueRef::GridAutoColumns(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::GridAutoFlow(v) => v.serialize_specified(Default::default()).unwrap(),
         _ => panic!("currently callable borrowed dependency"),
     }
 }
@@ -377,7 +397,7 @@ fn track_auto_flow_precision_and_empty_group_policies_are_controls() {
     ] {
         let source = checked(P::GridAutoFlow, value, true);
         assert_eq!(
-            source.to_specified_css().unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             format!("grid-auto-flow: {expected} !important;")
         );
     }
@@ -475,25 +495,22 @@ fn whole_value_pending_reentry_reuses_original_grammar_order_importance_and_orig
     for (property, ordinary_text) in ROLES {
         for pending_text in ["var(--grid)", "env(grid)", "attr(data-grid *)"] {
             for source in fronts(property, pending_text) {
-                let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+                let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                     panic!("one whole pending value")
                 };
                 assert!(handle.source().same_occurrence(&source));
                 for invalid_text in ["not-a-grid-value", "var(--still-pending)"] {
                     for _ in 0..2 {
                         let error = handle
-                            .reenter(parse_component_values(invalid_text).unwrap())
+                            .reenter(
+                                CssComponentValues::parse(&CssParser::default(), invalid_text)
+                                    .unwrap(),
+                            )
                             .unwrap_err();
                         if invalid_text.starts_with("var") {
-                            assert!(matches!(
-                                error.kind(),
-                                CssExpansionErrorKind::ResidualSubstitution
-                            ));
+                            assert!(error.is_residual_substitution());
                         } else {
-                            assert!(matches!(
-                                error.kind(),
-                                CssExpansionErrorKind::InvalidReplacement(_)
-                            ));
+                            assert!(error.replacement_error().is_some());
                         }
                         assert!(handle.source().same_occurrence(&source));
                     }
@@ -503,7 +520,8 @@ fn whole_value_pending_reentry_reuses_original_grammar_order_importance_and_orig
                     _ => r#""a a" "b b" 1fr / 10px 20px"#,
                 };
                 for replacement_text in [ordinary_text, new_branch, "none"] {
-                    let replacement = parse_component_values(replacement_text).unwrap();
+                    let replacement =
+                        CssComponentValues::parse(&CssParser::default(), replacement_text).unwrap();
                     let before = replacement.clone();
                     let CssContributions::Longhands(values) =
                         handle.reenter(replacement.clone()).unwrap()
@@ -519,7 +537,8 @@ fn whole_value_pending_reentry_reuses_original_grammar_order_importance_and_orig
                     assert_eq!(replacement, before);
                 }
                 for (text, keyword) in GLOBALS {
-                    let replacement = parse_component_values(text).unwrap();
+                    let replacement =
+                        CssComponentValues::parse(&CssParser::default(), text).unwrap();
                     let CssContributions::Longhands(values) =
                         handle.reenter(replacement.clone()).unwrap()
                     else {
@@ -537,14 +556,11 @@ fn whole_value_pending_reentry_reuses_original_grammar_order_importance_and_orig
     }
 }
 
-fn assert_closure_error(error: &CssPropertyValueParseError, origin: &CssValueOrigin) {
-    assert!(matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-    ));
+fn assert_closure_error(error: &CssPropertyValueError, origin: &CssValueOrigin) {
+    assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
     assert_eq!(
         error.origin(),
-        &CssSerializedOrigin::End(Some(origin.clone()))
+        CssSerializedOrigin::End(Some(origin.clone()))
     );
 }
 #[test]
@@ -565,17 +581,19 @@ fn all_four_checked_roles_reject_original_implicit_comments_functions_and_blocks
             function.into(),
             block.into(),
         ] {
-            let components = parse_component_values(&text).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
             let before = components.clone();
             let origin = implicit_origin(&components);
             for result in [
-                parse_property_value(
-                    CssPropertyNameRef::Known(property),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                     components.clone(),
                     CssImportance::Important,
                 ),
-                parse_property_value_for_grammar(
-                    property.grammar(),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(property.grammar()),
                     components.clone(),
                     CssImportance::Important,
                 ),
@@ -584,21 +602,21 @@ fn all_four_checked_roles_reject_original_implicit_comments_functions_and_blocks
             }
             assert_eq!(components, before);
             let source = checked(property, "var(--grid)", true);
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("pending")
             };
             // Residual substitution has documented priority over reentry grammar.
             if !text.starts_with("var") {
                 for _ in 0..2 {
                     let error = handle.reenter(components.clone()).unwrap_err();
-                    let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+                    let Some(error) = error.replacement_error() else {
                         panic!("original closure rejection")
                     };
                     assert_closure_error(error, &origin);
                 }
                 assert!(
                     handle
-                        .reenter(parse_component_values(value).unwrap())
+                        .reenter(CssComponentValues::parse(&CssParser::default(), value).unwrap())
                         .is_ok()
                 );
                 assert!(handle.source().same_occurrence(&source));
@@ -619,25 +637,28 @@ fn all_four_checked_roles_reject_original_implicit_comments_functions_and_blocks
 #[test]
 fn checked_invalid_repeat_count_maps_to_the_original_responsible_token() {
     for property in [P::GridTemplateRows, P::GridTemplateColumns] {
-        let components = parse_component_values("/*😀*/repeat(0, 10px)").unwrap();
-        let serialized = components.serialize().unwrap();
+        let components =
+            CssComponentValues::parse(&CssParser::default(), "/*😀*/repeat(0, 10px)").unwrap();
+        let serialized = components.serialize_tokens(Default::default()).unwrap();
         let expected = serialized
             .origin_at(serialized.as_css().find("0,").unwrap())
             .unwrap()
             .clone();
         for result in [
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components.clone(),
                 CssImportance::Normal,
             ),
-            parse_property_value_for_grammar(
-                property.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 components.clone(),
                 CssImportance::Normal,
             ),
         ] {
-            assert_eq!(result.unwrap_err().origin(), &expected);
+            assert_eq!(result.unwrap_err().origin(), expected);
         }
     }
 }
@@ -645,13 +666,13 @@ fn checked_invalid_repeat_count_maps_to_the_original_responsible_token() {
 #[test]
 fn normalization_preserves_duplicate_order_contexts_and_exact_one_three_six_accounting() {
     let css = "@media screen{.a{grid:none!important;grid-template:10px / 20px;grid-template-rows:10px;grid-template-columns:20px;grid:var(--grid);grid:unset}}";
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(report.is_clean());
     let before = report.clone();
     // Four ordinary occurrences: 6+3+1+1; one whole pending handle costs one;
     // six global terminals. The public normalization contract totals 18.
     let exact = CssNormalizationLimits::try_new(1, 2, 6, 18).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -718,11 +739,8 @@ fn normalization_preserves_duplicate_order_contexts_and_exact_one_three_six_acco
         ),
     ] {
         for _ in 0..2 {
-            let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-            assert_eq!(
-                error.kind(),
-                &CssNormalizationErrorKind::LimitExceeded { resource, limit }
-            );
+            let error = report.syntax().normalize(limits).unwrap_err();
+            assert_eq!(error.exhausted_limit(), Some((resource, limit)));
             assert_eq!(error.declaration_order(), Some(5));
             assert!(
                 error
@@ -733,13 +751,13 @@ fn normalization_preserves_duplicate_order_contexts_and_exact_one_three_six_acco
         }
     }
     assert_eq!(report, before);
-    assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
+    assert!(report.syntax().normalize(exact).is_ok());
 }
 #[test]
 fn recoverable_browser_comments_retain_diagnostics_and_source_in_normalized_reports() {
     for (property, value) in ROLES {
         let css = format!(".a{{{}:{value}/*", property.canonical_name());
-        let report = parse_sheet(&css);
+        let report = CssParser::default().parse_sheet(&css);
         assert_implicit_closure(&css, &report);
         let before = report.clone();
         let count = match property {
@@ -748,7 +766,7 @@ fn recoverable_browser_comments_retain_diagnostics_and_source_in_normalized_repo
             _ => 1,
         };
         let exact = CssNormalizationLimits::try_new(0, 1, 1, count).unwrap();
-        let normalized = normalize_report_with_limits(&report, exact).unwrap();
+        let normalized = report.normalize(exact).unwrap();
         assert_eq!(normalized.diagnostics(), report.diagnostics());
         let declarations: Vec<_> = normalized
             .syntax()
@@ -770,21 +788,19 @@ fn recoverable_browser_comments_retain_diagnostics_and_source_in_normalized_repo
         for terminal in values.items() {
             assert_source(terminal, item.source());
         }
-        let error = normalize_report_with_limits(
-            &report,
-            CssNormalizationLimits::try_new(0, 1, 1, count - 1).unwrap(),
-        )
-        .unwrap_err();
+        let error = report
+            .normalize(CssNormalizationLimits::try_new(0, 1, 1, count - 1).unwrap())
+            .unwrap_err();
         assert!(error.declaration().unwrap().same_occurrence(item.source()));
         assert_eq!(report, before);
-        assert!(normalize_report_with_limits(&report, exact).is_ok());
+        assert!(report.normalize(exact).is_ok());
     }
 }
 
 #[test]
 fn every_new_typed_branch_obeys_atomic_byte_limits_and_reusable_output() {
-    use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
+    use CssSerializationLimits as Limits;
+
     for (property, value) in [
         (P::GridTemplateRows, "none"),
         (P::GridTemplateColumns, "subgrid [] repeat(calc(2), [a])"),
@@ -796,14 +812,13 @@ fn every_new_typed_branch_obeys_atomic_byte_limits_and_reusable_output() {
         let exact = Limits::new(usize::MAX, usize::MAX, value.len());
         assert_eq!(typed_output(&source, exact).unwrap(), value);
         for _ in 0..2 {
-            assert_eq!(
+            assert!(
                 typed_output(
                     &source,
                     Limits::new(usize::MAX, usize::MAX, value.len() - 1)
                 )
                 .unwrap_err()
-                .kind(),
-                Kind::ByteLimit
+                .is_byte_limit()
             );
             assert_eq!(source, before);
         }
@@ -812,9 +827,8 @@ fn every_new_typed_branch_obeys_atomic_byte_limits_and_reusable_output() {
 }
 #[test]
 fn aggregate_work_costs_and_sheet_sibling_byte_limits_remain_atomic() {
-    use CssSpecifiedRuleSerializationErrorKind as RuleKind;
-    use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
+    use crate::css::support::failure_classes::SerializationFailure as Kind;
+    use CssSerializationLimits as Limits;
     // Accepted grid_aggregate_serialization.rs:124-158 independently fixes five
     // semantic visits for the represented aggregate. The public declaration
     // contract (declaration_serialization.rs:205-210) adds declaration + name.
@@ -829,7 +843,7 @@ fn aggregate_work_costs_and_sheet_sibling_byte_limits_remain_atomic() {
     );
     assert_eq!(
         declaration
-            .to_specified_css_with_limits(Limits::new(7, 7, declaration_text.len()))
+            .serialize_specified(Limits::new(7, 7, declaration_text.len()))
             .unwrap(),
         declaration_text
     );
@@ -847,78 +861,82 @@ fn aggregate_work_costs_and_sheet_sibling_byte_limits_remain_atomic() {
     ] {
         for _ in 0..2 {
             assert_eq!(
-                typed_output(&declaration, value_limits).unwrap_err().kind(),
+                serialization_failure(&typed_output(&declaration, value_limits).unwrap_err()),
                 kind
             );
             assert_eq!(
-                declaration
-                    .to_specified_css_with_limits(declaration_limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(
+                    &declaration
+                        .serialize_specified(declaration_limits)
+                        .unwrap_err()
+                ),
                 kind
             );
             assert_eq!(declaration, declaration_before);
         }
     }
-    assert_eq!(declaration.to_specified_css().unwrap(), declaration_text);
+    assert_eq!(
+        declaration.serialize_specified(Default::default()).unwrap(),
+        declaration_text
+    );
 
     // Public CssSheet composition supplies one shared final byte budget and a
     // newline between top-level rules (specified_rule_serialization.rs:296-299).
     // The fixture's canonical text fixes that exact budget independently. Do
     // not trial-fit whole-sheet work counts: selector and rule graph costs stay
     // with existing public graph owners and functional implementation coverage.
-    let report = parse_sheet(".a{grid:10px / 20px}.b{grid:10px / 20px}");
+    let report = CssParser::default().parse_sheet(".a{grid:10px / 20px}.b{grid:10px / 20px}");
     assert!(report.is_clean());
     let sheet = report.syntax();
     let before = sheet.clone();
     let expected = ".a { grid: 10px / 20px; }\n.b { grid: 10px / 20px; }";
     let exact = Limits::new(usize::MAX, usize::MAX, expected.len());
     let short = Limits::new(usize::MAX, usize::MAX, expected.len() - 1);
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
     assert!(
         sheet
             .rules()
             .iter()
-            .all(|rule| rule.to_specified_css_with_limits(short).is_ok())
+            .all(|rule| rule.serialize_specified(short).is_ok())
     );
     for _ in 0..2 {
-        let error = sheet.to_specified_css_with_limits(short).unwrap_err();
-        assert_eq!(error.kind(), RuleKind::Resource(Kind::ByteLimit));
+        let error = sheet.serialize_specified(short).unwrap_err();
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, &before);
     }
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
 }
 #[test]
 fn new_subgrid_and_area_siblings_share_final_sheet_output_budget_without_mutation() {
-    use CssSpecifiedRuleSerializationErrorKind as RuleKind;
-    use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
-    let report = parse_sheet(
-        r#".a{grid-template-rows:subgrid repeat(calc(2), [a])!important}.b{grid-template:"a a" / 10px 20px}"#,
-    );
+    use CssSerializationLimits as Limits;
+
+    let report = CssParser::default().parse_sheet(r#".a{grid-template-rows:subgrid repeat(calc(2), [a])!important}.b{grid-template:"a a" / 10px 20px}"#);
     assert!(report.is_clean());
     let sheet = report.syntax();
     let before = sheet.clone();
     let expected = r#".a { grid-template-rows: subgrid repeat(calc(2), [a]) !important; }
 .b { grid-template: "a a" / 10px 20px; }"#;
-    assert_eq!(sheet.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        sheet.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     let short = Limits::new(usize::MAX, usize::MAX, expected.len() - 1);
     assert!(
         sheet
             .rules()
             .iter()
-            .all(|r| r.to_specified_css_with_limits(short).is_ok())
+            .all(|r| r.serialize_specified(short).is_ok())
     );
     for _ in 0..2 {
-        let error = sheet.to_specified_css_with_limits(short).unwrap_err();
-        assert_eq!(error.kind(), RuleKind::Resource(Kind::ByteLimit));
+        let error = sheet.serialize_specified(short).unwrap_err();
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, &before);
     }
     assert_eq!(
         sheet
-            .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, expected.len()))
+            .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len()))
             .unwrap(),
         expected
     );
@@ -933,7 +951,7 @@ fn independent_supported_color_and_implicit_grid_controls_keep_intrinsic_contrac
     ] {
         let source = checked(property, value, true);
         assert_eq!(
-            source.to_specified_css().unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             format!("{}: {expected} !important;", property.canonical_name())
         );
         let values = completed(&source);

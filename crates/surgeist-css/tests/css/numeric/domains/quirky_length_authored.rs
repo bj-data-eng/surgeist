@@ -1,26 +1,43 @@
 //! Values4 Appendix C: retained Number tokens have a distinct pixel interpretation.
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::known_property;
 use crate::css::support::value_assertions::{
     assert_component_rejected, assert_first_property_diagnostic, assert_property_rejected,
     property_rejection,
 };
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssLength, CssLengthPercentage, CssNonNegative, CssNumeric};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef, CssPropertyTarget};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::border::CssLineWidth;
+use surgeist_css::values::common::{CssAutoOr, CssSidePair};
+use surgeist_css::values::effects::{CssClip, CssShadow};
+use surgeist_css::values::text::{CssTextShadowLayer, CssTextUnderlineOffsetLength};
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 const QUIRKS: CssParserContext = CssParserContext::new(CssParserMode::Quirks);
 
 fn declaration(name: CssKnownProperty, values: CssComponentValues) -> CssDeclaration {
-    QUIRKS
-        .parse_property_value_for_grammar(name.grammar(), values, CssImportance::Normal)
-        .unwrap()
+    CssDeclaration::try_from_components(
+        &CssParser::new(QUIRKS, Default::default()),
+        CssPropertyTarget::Grammar(name.grammar()),
+        values,
+        CssImportance::Normal,
+    )
+    .unwrap()
 }
 
 #[test]
 fn contextual_length_owners_keep_original_number_tokens_and_distinguish_pixels() {
     for (text, expected) in [("+7", "7px"), ("1.0", "1px"), ("1e1", "10px")] {
         for values in [
-            parse_component_values(text).unwrap(),
-            CssComponentValues::try_new(vec![CssComponentValue::try_number(text).unwrap()])
-                .unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+            CssComponentValues::try_new(
+                vec![CssComponentValue::try_number(text).unwrap()],
+                Default::default(),
+            )
+            .unwrap(),
         ] {
             let original = &values.items()[0];
             let margin = declaration(CssKnownProperty::MarginTop, values.clone());
@@ -31,14 +48,20 @@ fn contextual_length_owners_keep_original_number_tokens_and_distinguish_pixels()
             };
             let margin = margin.value().length_percentage().unwrap();
             assert!(margin.is_quirky_length());
-            assert_eq!(margin.literal_component(), Some(original));
+            assert_eq!(
+                margin.literal().map(|literal| literal.component()),
+                Some(original)
+            );
             assert_eq!(margin.origin(), original.origin());
             assert_eq!(margin.calculation(), None);
-            assert_eq!(margin.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                margin.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             assert_component_rejected(
-                CssSpecifiedLengthPercentage::try_from_component,
+                CssNumeric::<CssLengthPercentage>::try_from_component,
                 original.clone(),
-                CssNumericConstructionErrorKind::RootDomainMismatch,
+                NumericFailure::RootDomainMismatch,
             );
 
             let padding = declaration(CssKnownProperty::PaddingTop, values.clone());
@@ -49,14 +72,20 @@ fn contextual_length_owners_keep_original_number_tokens_and_distinguish_pixels()
             };
             let padding = padding.value().length_percentage();
             assert!(padding.is_quirky_length());
-            assert_eq!(padding.literal_component(), Some(original));
+            assert_eq!(
+                padding.literal().map(|literal| literal.component()),
+                Some(original)
+            );
             assert_eq!(padding.origin(), original.origin());
             assert_eq!(padding.calculation(), None);
-            assert_eq!(padding.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                padding.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             assert_component_rejected(
-                CssSpecifiedNonNegativeLengthPercentage::try_from_component,
+                CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component,
                 original.clone(),
-                CssNumericConstructionErrorKind::RootDomainMismatch,
+                NumericFailure::RootDomainMismatch,
             );
 
             let border = declaration(CssKnownProperty::BorderTopWidth, values.clone());
@@ -65,60 +94,75 @@ fn contextual_length_owners_keep_original_number_tokens_and_distinguish_pixels()
             else {
                 panic!("border")
             };
-            let CssBorderWidth::Length(border) = border.value() else {
+            let CssLineWidth::Length(border) = border.value() else {
                 panic!("length")
             };
             assert!(border.is_quirky_length());
-            assert_eq!(border.literal_component(), Some(original));
+            assert_eq!(
+                border.literal().map(|literal| literal.component()),
+                Some(original)
+            );
             assert_eq!(border.origin(), original.origin());
             assert_eq!(border.calculation(), None);
-            assert_eq!(border.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                border.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             assert_component_rejected(
-                CssSpecifiedNonNegativeLength::try_from_component,
+                CssNumeric::<CssLength, CssNonNegative>::try_from_component,
                 original.clone(),
-                CssNumericConstructionErrorKind::RootDomainMismatch,
+                NumericFailure::RootDomainMismatch,
             );
 
             // The sole function exception retains the same inner Number, even
             // for programmatic origins that carry no source position.
             let rect = CssComponentValue::try_function(
                 "rect",
-                CssComponentValues::try_new(vec![
-                    original.clone(),
-                    CssComponentValue::try_token(",").unwrap(),
-                    CssComponentValue::try_ident("auto").unwrap(),
-                    CssComponentValue::try_token(",").unwrap(),
-                    CssComponentValue::try_ident("auto").unwrap(),
-                    CssComponentValue::try_token(",").unwrap(),
-                    CssComponentValue::try_ident("auto").unwrap(),
-                ])
+                CssComponentValues::try_new(
+                    vec![
+                        original.clone(),
+                        CssComponentValue::try_token(",").unwrap(),
+                        CssComponentValue::try_ident("auto").unwrap(),
+                        CssComponentValue::try_token(",").unwrap(),
+                        CssComponentValue::try_ident("auto").unwrap(),
+                        CssComponentValue::try_token(",").unwrap(),
+                        CssComponentValue::try_ident("auto").unwrap(),
+                    ],
+                    Default::default(),
+                )
                 .unwrap(),
             )
             .unwrap();
             let clip = declaration(
                 CssKnownProperty::Clip,
-                CssComponentValues::try_new(vec![rect]).unwrap(),
+                CssComponentValues::try_new(vec![rect], Default::default()).unwrap(),
             );
             let CssKnownPropertyValueRef::Clip(clip) =
                 clip.known().unwrap().property_value().unwrap()
             else {
                 panic!("clip")
             };
-            let CssClip::Rect(clip) = clip.clip() else {
+            let CssClip::Rect(clip) = clip.value() else {
                 panic!("rectangle")
             };
-            let CssClipEdge::Length(clip) = clip.top() else {
+            let CssAutoOr::Value(clip) = clip.top() else {
                 panic!("length")
             };
             assert!(clip.is_quirky_length());
-            assert_eq!(clip.literal_component(), Some(original));
+            assert_eq!(
+                clip.literal().map(|literal| literal.component()),
+                Some(original)
+            );
             assert_eq!(clip.origin(), original.origin());
             assert_eq!(clip.calculation(), None);
-            assert_eq!(clip.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                clip.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             assert_component_rejected(
-                CssSpecifiedLength::try_from_component,
+                CssNumeric::<CssLength>::try_from_component,
                 original.clone(),
-                CssNumericConstructionErrorKind::RootDomainMismatch,
+                NumericFailure::RootDomainMismatch,
             );
         }
     }
@@ -127,7 +171,7 @@ fn contextual_length_owners_keep_original_number_tokens_and_distinguish_pixels()
 #[test]
 fn exact_zero_and_explicit_dimensions_remain_ordinary_retained_literals() {
     for text in ["0", "-0", "+0.0e99", "7px"] {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let declaration = declaration(CssKnownProperty::MarginTop, values.clone());
         let CssKnownPropertyValueRef::MarginTop(margin) =
             declaration.known().unwrap().property_value().unwrap()
@@ -136,14 +180,17 @@ fn exact_zero_and_explicit_dimensions_remain_ordinary_retained_literals() {
         };
         let length = margin.value().length_percentage().unwrap();
         assert!(!length.is_quirky_length());
-        assert_eq!(length.literal_component(), Some(&values.items()[0]));
+        assert_eq!(
+            length.literal().map(|literal| literal.component()),
+            Some(&values.items()[0])
+        );
         assert_eq!(length.origin(), values.items()[0].origin());
     }
 }
 
 #[test]
 fn negative_nonzero_coefficients_retain_exact_sign_beyond_tokenizer_float_range() {
-    let values = parse_component_values("-1e-1000").unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), "-1e-1000").unwrap();
     let declaration = declaration(CssKnownProperty::MarginTop, values.clone());
     let CssKnownPropertyValueRef::MarginTop(margin) =
         declaration.known().unwrap().property_value().unwrap()
@@ -152,16 +199,23 @@ fn negative_nonzero_coefficients_retain_exact_sign_beyond_tokenizer_float_range(
     };
     let length = margin.value().length_percentage().unwrap();
     assert!(length.is_quirky_length());
-    assert_eq!(length.literal_component(), Some(&values.items()[0]));
-    assert_eq!(length.serialize_specified().unwrap(), "0px");
+    assert_eq!(
+        length.literal().map(|literal| literal.component()),
+        Some(&values.items()[0])
+    );
+    assert_eq!(
+        length.serialize_specified(Default::default()).unwrap(),
+        "0px"
+    );
     for property in [
         CssKnownProperty::PaddingTop,
         CssKnownProperty::BorderTopWidth,
         CssKnownProperty::Width,
     ] {
         assert_property_rejected(
-            QUIRKS.parse_property_value_for_grammar(
-                property.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::new(QUIRKS, Default::default()),
+                CssPropertyTarget::Grammar(property.grammar()),
                 values.clone(),
                 CssImportance::Normal,
             ),
@@ -183,10 +237,11 @@ fn fit_content_function_arguments_do_not_inherit_the_named_property_permission()
             "fit-content(calc(7))",
             "calc-size(7, size)",
         ] {
-            let values = parse_component_values(text).unwrap();
+            let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             property_rejection(
-                QUIRKS.parse_property_value_for_grammar(
-                    property.grammar(),
+                CssDeclaration::try_from_components(
+                    &CssParser::new(QUIRKS, Default::default()),
+                    CssPropertyTarget::Grammar(property.grammar()),
                     values,
                     CssImportance::Normal,
                 ),
@@ -194,45 +249,48 @@ fn fit_content_function_arguments_do_not_inherit_the_named_property_permission()
             );
         }
         assert!(
-            QUIRKS
-                .parse_property_value_for_grammar(
-                    property.grammar(),
-                    parse_component_values("fit-content(7px)").unwrap(),
-                    CssImportance::Normal
-                )
-                .is_ok()
+            CssDeclaration::try_from_components(
+                &CssParser::new(QUIRKS, Default::default()),
+                CssPropertyTarget::Grammar(property.grammar()),
+                CssComponentValues::parse(&CssParser::default(), "fit-content(7px)").unwrap(),
+                CssImportance::Normal
+            )
+            .is_ok()
         );
     }
 }
 
-fn clip_length(original: &CssComponentValue) -> CssSpecifiedLength {
+fn clip_length(original: &CssComponentValue) -> CssNumeric<CssLength> {
     let rect = CssComponentValue::try_function(
         "rect",
-        CssComponentValues::try_new(vec![
-            original.clone(),
-            CssComponentValue::try_token(",").unwrap(),
-            CssComponentValue::try_ident("auto").unwrap(),
-            CssComponentValue::try_token(",").unwrap(),
-            CssComponentValue::try_ident("auto").unwrap(),
-            CssComponentValue::try_token(",").unwrap(),
-            CssComponentValue::try_ident("auto").unwrap(),
-        ])
+        CssComponentValues::try_new(
+            vec![
+                original.clone(),
+                CssComponentValue::try_token(",").unwrap(),
+                CssComponentValue::try_ident("auto").unwrap(),
+                CssComponentValue::try_token(",").unwrap(),
+                CssComponentValue::try_ident("auto").unwrap(),
+                CssComponentValue::try_token(",").unwrap(),
+                CssComponentValue::try_ident("auto").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap(),
     )
     .unwrap();
     let declaration = declaration(
         CssKnownProperty::Clip,
-        CssComponentValues::try_new(vec![rect]).unwrap(),
+        CssComponentValues::try_new(vec![rect], Default::default()).unwrap(),
     );
     let CssKnownPropertyValueRef::Clip(clip) =
         declaration.known().unwrap().property_value().unwrap()
     else {
         panic!("clip")
     };
-    let CssClip::Rect(rect) = clip.clip() else {
+    let CssClip::Rect(rect) = clip.value() else {
         panic!("rectangle")
     };
-    let CssClipEdge::Length(value) = rect.top() else {
+    let CssAutoOr::Value(value) = rect.top() else {
         panic!("length")
     };
     value.clone()
@@ -241,8 +299,12 @@ fn clip_length(original: &CssComponentValue) -> CssSpecifiedLength {
 #[test]
 fn checked_pixel_lengths_compose_without_granting_number_syntax_to_composite_properties() {
     for values in [
-        parse_component_values("+1e1").unwrap(),
-        CssComponentValues::try_new(vec![CssComponentValue::try_number("+1e1").unwrap()]).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "+1e1").unwrap(),
+        CssComponentValues::try_new(
+            vec![CssComponentValue::try_number("+1e1").unwrap()],
+            Default::default(),
+        )
+        .unwrap(),
     ] {
         let original = &values.items()[0];
         let signed = clip_length(original);
@@ -252,7 +314,7 @@ fn checked_pixel_lengths_compose_without_granting_number_syntax_to_composite_pro
         else {
             panic!("border")
         };
-        let CssBorderWidth::Length(nonnegative) = border.value() else {
+        let CssLineWidth::Length(nonnegative) = border.value() else {
             panic!("nonnegative length")
         };
         let direct = CssTextShadowLayer::try_new(
@@ -285,25 +347,34 @@ fn checked_pixel_lengths_compose_without_granting_number_syntax_to_composite_pro
                 shadow.spread_radius().unwrap(),
             ] {
                 assert!(value.is_quirky_length());
-                assert_eq!(value.literal_component(), Some(original));
+                assert_eq!(
+                    value.literal().map(|literal| literal.component()),
+                    Some(original)
+                );
                 assert_eq!(value.origin(), original.origin());
             }
             let blur = shadow.blur_radius().unwrap();
             assert!(blur.is_quirky_length());
-            assert_eq!(blur.literal_component(), Some(original));
-            assert_eq!(blur.origin(), original.origin());
-            assert_eq!(layer.serialize_specified().unwrap(), "10px 10px 10px 10px");
             assert_eq!(
+                blur.literal().map(|literal| literal.component()),
+                Some(original)
+            );
+            assert_eq!(blur.origin(), original.origin());
+            assert_eq!(
+                layer.serialize_specified(Default::default()).unwrap(),
+                "10px 10px 10px 10px"
+            );
+            assert!(
                 layer
-                    .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                        100, 100, 18
-                    ))
+                    .serialize_specified(CssSerializationLimits::new(100, 100, 18))
                     .unwrap_err()
-                    .kind(),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
+                    .is_byte_limit()
             );
             assert_eq!(layer, before);
-            assert_eq!(layer.serialize_specified().unwrap(), "10px 10px 10px 10px");
+            assert_eq!(
+                layer.serialize_specified(Default::default()).unwrap(),
+                "10px 10px 10px 10px"
+            );
         }
 
         let margin = declaration(CssKnownProperty::MarginTop, values.clone());
@@ -317,9 +388,15 @@ fn checked_pixel_lengths_compose_without_granting_number_syntax_to_composite_pro
         )
         .unwrap();
         assert!(offset.value().is_quirky_length());
-        assert_eq!(offset.value().literal_component(), Some(original));
+        assert_eq!(
+            offset.value().literal().map(|literal| literal.component()),
+            Some(original)
+        );
         assert_eq!(offset.value().origin(), original.origin());
-        assert_eq!(offset.serialize_specified().unwrap(), "10px");
+        assert_eq!(
+            offset.serialize_specified(Default::default()).unwrap(),
+            "10px"
+        );
 
         let padding = declaration(CssKnownProperty::PaddingTop, values.clone());
         let CssKnownPropertyValueRef::PaddingTop(padding) =
@@ -327,11 +404,17 @@ fn checked_pixel_lengths_compose_without_granting_number_syntax_to_composite_pro
         else {
             panic!("padding")
         };
-        let radius = CssCornerRadiusValue::new(padding.value().length_percentage().clone(), None);
-        assert!(radius.horizontal().is_quirky_length());
-        assert_eq!(radius.horizontal().literal_component(), Some(original));
-        assert_eq!(radius.vertical().origin(), original.origin());
-        assert_eq!(radius.serialize_specified().unwrap(), "10px");
+        let radius = CssSidePair::new(padding.value().length_percentage().clone(), None);
+        assert!(radius.first().is_quirky_length());
+        assert_eq!(
+            radius.first().literal().map(|literal| literal.component()),
+            Some(original)
+        );
+        assert_eq!(radius.second().origin(), original.origin());
+        assert_eq!(
+            radius.serialize_specified(Default::default()).unwrap(),
+            "10px"
+        );
 
         for source in [
             "text-shadow:10 10 10 10",
@@ -340,31 +423,32 @@ fn checked_pixel_lengths_compose_without_granting_number_syntax_to_composite_pro
         ] {
             let (name, _) = source.split_once(':').unwrap();
             assert_first_property_diagnostic(
-                QUIRKS.parse_declaration(source).diagnostics(),
+                CssDeclaration::parse(&CssParser::new(QUIRKS, Default::default()), source)
+                    .diagnostics(),
                 source,
                 known_property(name),
                 "10",
             );
         }
         assert_component_rejected(
-            CssSpecifiedLength::try_from_component,
+            CssNumeric::<CssLength>::try_from_component,
             original.clone(),
-            CssNumericConstructionErrorKind::RootDomainMismatch,
+            NumericFailure::RootDomainMismatch,
         );
         assert_component_rejected(
-            CssSpecifiedNonNegativeLength::try_from_component,
+            CssNumeric::<CssLength, CssNonNegative>::try_from_component,
             original.clone(),
-            CssNumericConstructionErrorKind::RootDomainMismatch,
+            NumericFailure::RootDomainMismatch,
         );
         assert_component_rejected(
-            CssSpecifiedLengthPercentage::try_from_component,
+            CssNumeric::<CssLengthPercentage>::try_from_component,
             original.clone(),
-            CssNumericConstructionErrorKind::RootDomainMismatch,
+            NumericFailure::RootDomainMismatch,
         );
         assert_component_rejected(
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component,
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component,
             original.clone(),
-            CssNumericConstructionErrorKind::RootDomainMismatch,
+            NumericFailure::RootDomainMismatch,
         );
     }
 }
@@ -373,17 +457,25 @@ fn checked_pixel_lengths_compose_without_granting_number_syntax_to_composite_pro
 fn text_shadow_checked_spread_narrowing_rejects_exact_negative_pixels_and_keeps_retry_inputs() {
     for text in ["-1", "-1e-1000"] {
         for values in [
-            parse_component_values(text).unwrap(),
-            CssComponentValues::try_new(vec![CssComponentValue::try_number(text).unwrap()])
-                .unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+            CssComponentValues::try_new(
+                vec![CssComponentValue::try_number(text).unwrap()],
+                Default::default(),
+            )
+            .unwrap(),
         ] {
             let signed = clip_length(&values.items()[0]);
             let before = signed.clone();
             let shadow = CssShadow::try_new(
                 false,
-                CssSpecifiedLength::zero(),
-                CssSpecifiedLength::zero(),
-                Some(CssSpecifiedNonNegativeLength::zero()),
+                CssNumeric::<CssLength>::zero(),
+                CssNumeric::<CssLength>::zero(),
+                Some(
+                    CssNumeric::<CssLength, CssNonNegative>::try_from_component(
+                        CssComponentValue::try_number("0").unwrap(),
+                    )
+                    .unwrap(),
+                ),
                 Some(signed.clone()),
                 None,
             )
@@ -391,7 +483,10 @@ fn text_shadow_checked_spread_narrowing_rejects_exact_negative_pixels_and_keeps_
             assert!(CssTextShadowLayer::try_from_shadow(shadow).is_none());
             assert_eq!(signed, before);
             assert!(signed.is_quirky_length());
-            assert_eq!(signed.literal_component(), Some(&values.items()[0]));
+            assert_eq!(
+                signed.literal().map(|literal| literal.component()),
+                Some(&values.items()[0])
+            );
             assert_eq!(signed.origin(), values.items()[0].origin());
         }
     }

@@ -1,8 +1,32 @@
 //! Values4 WD20240312 Appendix C. Independent number-token -> px expectations.
 //! Unitless admission composes with the selected named shorthand assignment mode.
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::assert_component_rejected;
 use crate::css::support::{contextual_checked_declaration as checked, known_property as property};
-use surgeist_css::*;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{CssLength, CssLengthPercentage, CssNumeric};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandContribution, CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyTextTarget,
+};
+use surgeist_css::query::supports::{CssSupportsDeclaration, CssSupportsLeaf};
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::{CssRule, CssStyleBlock};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::border::CssLineWidth;
+use surgeist_css::values::box_model::CssMarginValue;
+use surgeist_css::values::common::CssBoxSideKind;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 const STANDARDS: CssParserContext = CssParserContext::new(CssParserMode::Standards);
 const QUIRKS: CssParserContext = CssParserContext::new(CssParserMode::Quirks);
@@ -47,15 +71,16 @@ const ELIGIBLE: &[(&str, &str, &str)] = &[
 
 fn rejected(context: CssParserContext, name: &str, text: &str) {
     crate::css::support::value_assertions::property_rejection(
-        context.parse_property_value_for_grammar(
-            property(name).grammar(),
-            parse_component_values(text).unwrap(),
+        CssDeclaration::try_from_components(
+            &CssParser::new(context, Default::default()),
+            CssPropertyTarget::Grammar(property(name).grammar()),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             CssImportance::Normal,
         ),
         property(name),
     );
     let css = format!("{name}:{text};color:red");
-    let report = context.parse_style_attribute(&css);
+    let report = CssParser::new(context, Default::default()).parse_block_contents(&css);
     assert_eq!(
         report.syntax().len(),
         1,
@@ -68,8 +93,8 @@ fn rejected(context: CssParserContext, name: &str, text: &str) {
     );
     assert!(!report.is_clean());
 }
-fn supports_declaration(condition: &CssSupportsCondition) -> &CssSupportsDeclaration {
-    let CssSupportsConditionKind::Declaration(value) = condition.kind() else {
+fn supports_declaration(condition: &CssCondition<CssSupportsLeaf>) -> &CssSupportsDeclaration {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(value)) = condition.kind() else {
         panic!("declaration condition")
     };
     value
@@ -104,15 +129,21 @@ fn logical_value_css(item: &CssLonghandContribution) -> String {
         CssLonghandValueRef::MarginBlockStart(v)
         | CssLonghandValueRef::MarginInlineStart(v)
         | CssLonghandValueRef::MarginBlockEnd(v)
-        | CssLonghandValueRef::MarginInlineEnd(v) => v.serialize_specified().unwrap(),
+        | CssLonghandValueRef::MarginInlineEnd(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
         CssLonghandValueRef::PaddingBlockStart(v)
         | CssLonghandValueRef::PaddingInlineStart(v)
         | CssLonghandValueRef::PaddingBlockEnd(v)
-        | CssLonghandValueRef::PaddingInlineEnd(v) => v.serialize_specified().unwrap(),
+        | CssLonghandValueRef::PaddingInlineEnd(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
         CssLonghandValueRef::BorderBlockStartWidth(v)
         | CssLonghandValueRef::BorderInlineStartWidth(v)
         | CssLonghandValueRef::BorderBlockEndWidth(v)
-        | CssLonghandValueRef::BorderInlineEndWidth(v) => v.serialize_specified().unwrap(),
+        | CssLonghandValueRef::BorderInlineEndWidth(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
         _ => panic!("logical terminal, never a complementary physical target"),
     }
 }
@@ -135,7 +166,7 @@ fn logical_numeric_origin(item: &CssLonghandContribution) -> &CssValueOrigin {
         | CssLonghandValueRef::BorderInlineStartWidth(v)
         | CssLonghandValueRef::BorderBlockEndWidth(v)
         | CssLonghandValueRef::BorderInlineEndWidth(v) => {
-            let CssBorderWidth::Length(v) = v else {
+            let CssLineWidth::Length(v) = v else {
                 panic!("numeric border width")
             };
             v.origin()
@@ -149,53 +180,64 @@ fn listed_number_tokens_are_lengths_only_in_document_quirks_mode() {
     for &(name, text, px) in ELIGIBLE {
         rejected(STANDARDS, name, text);
         let css = format!("{name}:{text}!important");
-        let list = QUIRKS.parse_style_attribute(&css);
+        let list = CssParser::new(QUIRKS, Default::default()).parse_block_contents(&css);
         assert!(list.is_clean(), "{css}: {:?}", list.diagnostics());
-        let one = QUIRKS.parse_declaration(&css);
+        let one = CssDeclaration::parse(&CssParser::new(QUIRKS, Default::default()), &css);
         assert!(one.is_clean());
         let p = property(name);
-        let raw = parse_component_values(text).unwrap();
+        let raw = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let raw_before = raw.clone();
-        let text_name = QUIRKS.parse_property_value_text(
+        let text_name = CssParser::new(QUIRKS, Default::default()).parse_property_value(
             text,
-            CssPropertyNameRef::Known(p),
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(p)),
             CssImportance::Important,
         );
-        let text_grammar = QUIRKS.parse_property_value_text_for_grammar(
+        let text_grammar = CssParser::new(QUIRKS, Default::default()).parse_property_value(
             text,
-            p.grammar(),
+            CssPropertyTextTarget::Grammar(p.grammar()),
             CssImportance::Important,
         );
         assert!(text_name.is_clean() && text_grammar.is_clean());
         for value in [
             list.syntax()[0].clone(),
             one.syntax().as_ref().unwrap().clone(),
-            QUIRKS
-                .parse_property_value(
-                    CssPropertyNameRef::Known(p),
-                    raw.clone(),
-                    CssImportance::Important,
-                )
-                .unwrap(),
-            QUIRKS
-                .parse_property_value_for_grammar(
-                    p.grammar(),
-                    raw.clone(),
-                    CssImportance::Important,
-                )
-                .unwrap(),
+            CssDeclaration::try_from_components(
+                &CssParser::new(QUIRKS, Default::default()),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(p)),
+                raw.clone(),
+                CssImportance::Important,
+            )
+            .unwrap(),
+            CssDeclaration::try_from_components(
+                &CssParser::new(QUIRKS, Default::default()),
+                CssPropertyTarget::Grammar(p.grammar()),
+                raw.clone(),
+                CssImportance::Important,
+            )
+            .unwrap(),
             text_name.syntax().as_ref().unwrap().clone(),
             text_grammar.syntax().as_ref().unwrap().clone(),
         ] {
             assert_eq!(value.parser_context(), QUIRKS);
             assert_eq!(value.importance(), CssImportance::Important);
             assert_eq!(
-                value.to_specified_css().unwrap(),
+                value.serialize_specified(Default::default()).unwrap(),
                 format!("{name}: {px} !important;")
             );
-            assert_eq!(value.value_components().serialize().unwrap().as_css(), text);
-            let emitted = value.to_specified_css().unwrap();
-            assert!(parse_style_attribute(&emitted).is_clean());
+            assert_eq!(
+                value
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                text
+            );
+            let emitted = value.serialize_specified(Default::default()).unwrap();
+            assert!(
+                CssParser::default()
+                    .parse_block_contents(&emitted)
+                    .is_clean()
+            );
         }
         assert_eq!(raw, raw_before);
     }
@@ -209,27 +251,30 @@ fn fractions_exponents_signed_lengths_and_rust_authored_tokens_keep_exact_origin
         ("1e1", "10px"),
         ("-.25", "-0.25px"),
     ] {
-        let parsed = parse_component_values(text).unwrap();
-        let generated =
-            CssComponentValues::try_new(vec![CssComponentValue::try_number(text).unwrap()])
-                .unwrap();
+        let parsed = CssComponentValues::parse(&CssParser::default(), text).unwrap();
+        let generated = CssComponentValues::try_new(
+            vec![CssComponentValue::try_number(text).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         for values in [parsed.clone(), generated.clone()] {
             let before = values.clone();
             crate::css::support::value_assertions::property_rejection(
-                STANDARDS.parse_property_value_for_grammar(
-                    CssKnownProperty::MarginTop.grammar(),
+                CssDeclaration::try_from_components(
+                    &CssParser::new(STANDARDS, Default::default()),
+                    CssPropertyTarget::Grammar(CssKnownProperty::MarginTop.grammar()),
                     values.clone(),
                     CssImportance::Normal,
                 ),
                 CssKnownProperty::MarginTop,
             );
-            let value = QUIRKS
-                .parse_property_value_for_grammar(
-                    CssKnownProperty::MarginTop.grammar(),
-                    values.clone(),
-                    CssImportance::Normal,
-                )
-                .unwrap();
+            let value = CssDeclaration::try_from_components(
+                &CssParser::new(QUIRKS, Default::default()),
+                CssPropertyTarget::Grammar(CssKnownProperty::MarginTop.grammar()),
+                values.clone(),
+                CssImportance::Normal,
+            )
+            .unwrap();
             assert_eq!(value.value_components(), &values);
             let CssKnownPropertyValueRef::MarginTop(margin) =
                 value.known().unwrap().property_value().unwrap()
@@ -240,9 +285,9 @@ fn fractions_exponents_signed_lengths_and_rust_authored_tokens_keep_exact_origin
                 panic!("length")
             };
             assert_eq!(length.origin(), values.items()[0].origin());
-            assert_eq!(length.serialize_specified().unwrap(), px);
+            assert_eq!(length.serialize_specified(Default::default()).unwrap(), px);
             assert_eq!(
-                value.to_specified_css().unwrap(),
+                value.serialize_specified(Default::default()).unwrap(),
                 format!("margin-top: {px};")
             );
             assert_eq!(values, before);
@@ -250,7 +295,7 @@ fn fractions_exponents_signed_lengths_and_rust_authored_tokens_keep_exact_origin
         assert_eq!(generated.items()[0].origin(), &CssValueOrigin::Programmatic);
     }
     let css = "/*😀*/ MARGIN-TOP:7!important";
-    let report = QUIRKS.parse_style_attribute(css);
+    let report = CssParser::new(QUIRKS, Default::default()).parse_block_contents(css);
     assert!(report.is_clean());
     let declaration = &report.syntax()[0];
     assert_eq!(
@@ -277,21 +322,21 @@ fn expressly_listed_quads_assign_every_slot_without_complementary_writes() {
             let actual = match source.known().unwrap().property_value().unwrap() {
                 CssKnownPropertyValueRef::Margin(v) => v
                     .value()
-                    .assigned_values()
-                    .map(|v| v.serialize_specified().unwrap()),
+                    .assigned()
+                    .map(|v| v.serialize_specified(Default::default()).unwrap()),
                 CssKnownPropertyValueRef::Padding(v) => v
                     .value()
-                    .assigned_values()
-                    .map(|v| v.serialize_specified().unwrap()),
+                    .assigned()
+                    .map(|v| v.serialize_specified(Default::default()).unwrap()),
                 CssKnownPropertyValueRef::BorderWidth(v) => v
                     .value()
-                    .assigned_values()
-                    .map(|v| v.serialize_specified().unwrap()),
+                    .assigned()
+                    .map(|v| v.serialize_specified(Default::default()).unwrap()),
                 _ => panic!("quad"),
             };
             assert_eq!(actual, assigned);
             let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("quad contributions")
             };
@@ -319,7 +364,7 @@ fn logical_marker_keeps_named_shorthand_quirk_permission_and_assigns_only_logica
             let text = format!("logical {numbers}");
             rejected(STANDARDS, name, &text);
             let css = format!("{name}:{text}!important");
-            let parsed = QUIRKS.parse_style_attribute(&css);
+            let parsed = CssParser::new(QUIRKS, Default::default()).parse_block_contents(&css);
             assert!(parsed.is_clean(), "{css}: {:?}", parsed.diagnostics());
             for source in [parsed.syntax()[0].clone(), checked(QUIRKS, name, &text)] {
                 let kind = match source.known().unwrap().property_value().unwrap() {
@@ -331,15 +376,19 @@ fn logical_marker_keeps_named_shorthand_quirk_permission_and_assigns_only_logica
                 assert_eq!(kind, CssBoxSideKind::Logical);
                 assert_eq!(source.parser_context(), QUIRKS);
                 assert_eq!(
-                    source.value_components().serialize().unwrap().as_css(),
+                    source
+                        .value_components()
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
                     text
                 );
                 assert_eq!(
-                    source.to_specified_css().unwrap(),
+                    source.serialize_specified(Default::default()).unwrap(),
                     format!("{name}: logical {px} !important;")
                 );
                 let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-                    expand_declaration(&source).unwrap()
+                    source.expand().unwrap()
                 else {
                     panic!("logical assignment")
                 };
@@ -361,11 +410,10 @@ fn logical_marker_keeps_named_shorthand_quirk_permission_and_assigns_only_logica
     }
     let source = checked(QUIRKS, "margin", "logical auto -1 2% 3px");
     assert_eq!(
-        source.to_specified_css().unwrap(),
+        source.serialize_specified(Default::default()).unwrap(),
         "margin: logical auto -1px 2% 3px !important;"
     );
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(&source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(items)) = source.expand().unwrap()
     else {
         panic!("mixed logical margins")
     };
@@ -384,29 +432,41 @@ fn logical_marker_keeps_named_shorthand_quirk_permission_and_assigns_only_logica
         let condition = format!("({name}:logical 1 2)");
         assert!(
             supports_declaration(
-                &QUIRKS
-                    .parse_supports_condition(&condition, &namespaces)
-                    .unwrap()
+                &CssCondition::<CssSupportsLeaf>::parse(
+                    &CssParser::new(QUIRKS, Default::default()),
+                    &condition,
+                    &namespaces
+                )
+                .unwrap()
             )
             .known()
             .is_some()
         );
         assert!(
             supports_declaration(
-                &STANDARDS
-                    .parse_supports_condition(&condition, &namespaces)
-                    .unwrap()
+                &CssCondition::<CssSupportsLeaf>::parse(
+                    &CssParser::new(STANDARDS, Default::default()),
+                    &condition,
+                    &namespaces
+                )
+                .unwrap()
             )
             .known()
             .is_none()
         );
         assert!(
-            supports_declaration(&parse_css_supports_condition(&condition).unwrap())
-                .known()
-                .is_none()
+            supports_declaration(
+                &CssCondition::<CssSupportsLeaf>::parse_condition_text(
+                    &CssParser::default(),
+                    &condition
+                )
+                .unwrap()
+            )
+            .known()
+            .is_none()
         );
         assert!(
-            parse_css_supports_declaration(name, "logical 1 2")
+            CssSupportsDeclaration::parse(&CssParser::default(), name, "logical 1 2")
                 .unwrap()
                 .known()
                 .is_none()
@@ -420,7 +480,7 @@ fn logical_marker_preserves_ranges_functions_arity_and_logical_property_exclusio
         for context in [STANDARDS, QUIRKS] {
             let source = checked(context, name, "logical 1px 2px");
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{name}: logical 1px 2px !important;")
             );
             for text in [
@@ -473,14 +533,14 @@ fn pending_logical_number_replacement_selects_logical_targets_and_retains_both_o
         for pending in ["var(--length)", "env(length)", "attr(data-length *)"] {
             let source = checked(QUIRKS, name, pending);
             let before = source.clone();
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("pending shorthand")
             };
             let bad = "logical calc(7)";
             let error = handle
-                .reenter(parse_component_values(bad).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), bad).unwrap())
                 .unwrap_err();
-            let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+            let Some(error) = error.replacement_error() else {
                 panic!("invalid Length math")
             };
             let origin = match error.origin() {
@@ -489,22 +549,30 @@ fn pending_logical_number_replacement_selects_logical_targets_and_retains_both_o
                 other => panic!("replacement source: {other:?}"),
             };
             assert_eq!(origin.source().as_str(), bad);
-            assert_eq!(
+            assert!(
                 handle
-                    .reenter(parse_component_values("logical var(--again)").unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), "logical var(--again)")
+                            .unwrap()
+                    )
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
-            let generated = CssComponentValues::try_new(vec![
-                CssComponentValue::try_ident("logical").unwrap(),
-                CssComponentValue::try_token(" ").unwrap(),
-                CssComponentValue::try_number("1").unwrap(),
-                CssComponentValue::try_token(" ").unwrap(),
-                CssComponentValue::try_number("2").unwrap(),
-            ])
+            let generated = CssComponentValues::try_new(
+                vec![
+                    CssComponentValue::try_ident("logical").unwrap(),
+                    CssComponentValue::try_token(" ").unwrap(),
+                    CssComponentValue::try_number("1").unwrap(),
+                    CssComponentValue::try_token(" ").unwrap(),
+                    CssComponentValue::try_number("2").unwrap(),
+                ],
+                Default::default(),
+            )
             .unwrap();
-            for replacement in [parse_component_values("logical 1 2").unwrap(), generated] {
+            for replacement in [
+                CssComponentValues::parse(&CssParser::default(), "logical 1 2").unwrap(),
+                generated,
+            ] {
                 let replacement_before = replacement.clone();
                 for _ in 0..2 {
                     let CssContributions::Longhands(items) =
@@ -534,7 +602,7 @@ fn pending_logical_number_replacement_selects_logical_targets_and_retains_both_o
                 }
                 assert_eq!(replacement, replacement_before);
                 let standard = checked(STANDARDS, name, pending);
-                let CssExpansion::Pending(handle) = expand_declaration(&standard).unwrap() else {
+                let CssExpansion::Pending(handle) = standard.expand().unwrap() else {
                     panic!("standard pending")
                 };
                 crate::css::support::value_assertions::replacement_rejection(
@@ -544,7 +612,11 @@ fn pending_logical_number_replacement_selects_logical_targets_and_retains_both_o
             }
             assert_eq!(source, before);
             assert_eq!(
-                source.value_components().serialize().unwrap().as_css(),
+                source
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 pending
             );
         }
@@ -562,7 +634,7 @@ fn background_and_spacing_offsets_admit_every_length_slot_and_keep_nonlength_par
             "right 3px bottom 4px",
         ),
         ("background-position", "1 2, 3% 4", "1px 2px, 3% 4px"),
-        ("border-spacing", "3", "3px 3px"),
+        ("border-spacing", "3", "3px"),
         ("border-spacing", "3 4px", "3px 4px"),
         ("margin", "auto -1 2% 3px", "auto -1px 2% 3px"),
         (
@@ -573,7 +645,7 @@ fn background_and_spacing_offsets_admit_every_length_slot_and_keep_nonlength_par
     ] {
         let value = checked(QUIRKS, name, text);
         assert_eq!(
-            value.to_specified_css().unwrap(),
+            value.serialize_specified(Default::default()).unwrap(),
             format!("{name}: {expected} !important;")
         );
         rejected(STANDARDS, name, text);
@@ -589,7 +661,9 @@ fn clip_rect_exception_admits_all_four_edges_without_relaxing_nested_math_or_sha
         ("r\\65 ct(1, 2, 3, 4)", "rect(1px, 2px, 3px, 4px)"),
     ] {
         assert_eq!(
-            checked(QUIRKS, "clip", text).to_specified_css().unwrap(),
+            checked(QUIRKS, "clip", text)
+                .serialize_specified(Default::default())
+                .unwrap(),
             format!("clip: {expected} !important;")
         );
         rejected(STANDARDS, "clip", text);
@@ -648,16 +722,20 @@ fn excluded_properties_references_and_function_interiors_keep_ordinary_grammar()
 #[test]
 fn ordinary_zero_dimensions_percentages_numbers_and_css_wide_values_are_controls() {
     assert_component_rejected(
-        CssSpecifiedLength::try_from_component,
+        CssNumeric::<CssLength>::try_from_component,
         CssComponentValue::try_number("7").unwrap(),
-        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+        NumericFailure::RootDomainMismatch,
     );
     assert_component_rejected(
-        CssSpecifiedLengthPercentage::try_from_component,
+        CssNumeric::<CssLengthPercentage>::try_from_component,
         CssComponentValue::try_number("7").unwrap(),
-        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+        NumericFailure::RootDomainMismatch,
     );
-    assert!(!parse_style_attribute("margin-top:7").is_clean());
+    assert!(
+        !CssParser::default()
+            .parse_block_contents("margin-top:7")
+            .is_clean()
+    );
     for context in [STANDARDS, QUIRKS] {
         for (name, text, expected) in [
             ("margin-top", "0", "0"),
@@ -668,13 +746,17 @@ fn ordinary_zero_dimensions_percentages_numbers_and_css_wide_values_are_controls
             ("border-image-outset", "7", "7"),
         ] {
             assert_eq!(
-                checked(context, name, text).to_specified_css().unwrap(),
+                checked(context, name, text)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 format!("{name}: {expected} !important;")
             );
         }
         for text in ["inherit", "initial", "unset", "revert", "revert-layer"] {
             assert_eq!(
-                checked(context, "margin", text).to_specified_css().unwrap(),
+                checked(context, "margin", text)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 format!("margin: {text} !important;")
             );
         }
@@ -684,18 +766,22 @@ fn ordinary_zero_dimensions_percentages_numbers_and_css_wide_values_are_controls
 #[test]
 fn decoded_property_spelling_selects_the_same_scoped_length_permission() {
     for source in ["MARGIN-TOP:7", r"m\61 rgin-top:7"] {
-        let report = QUIRKS.parse_declaration(source);
+        let report = CssDeclaration::parse(&CssParser::new(QUIRKS, Default::default()), source);
         assert!(report.is_clean());
         assert_eq!(
             report
                 .syntax()
                 .as_ref()
                 .unwrap()
-                .to_specified_css()
+                .serialize_specified(Default::default())
                 .unwrap(),
             "margin-top: 7px;"
         );
-        assert!(STANDARDS.parse_declaration(source).syntax().is_none());
+        assert!(
+            CssDeclaration::parse(&CssParser::new(STANDARDS, Default::default()), source)
+                .syntax()
+                .is_none()
+        );
     }
 }
 
@@ -714,15 +800,15 @@ fn nonnegative_slots_and_bad_token_categories_fail_atomically_at_original_origin
         rejected(QUIRKS, name, "-1");
     }
     for text in ["7foo", "\"7\"", "7,", "inherit 7", "7!important"] {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let before = values.clone();
-        let error = QUIRKS
-            .parse_property_value_for_grammar(
-                CssKnownProperty::MarginTop.grammar(),
-                values.clone(),
-                CssImportance::Normal,
-            )
-            .unwrap_err();
+        let error = CssDeclaration::try_from_components(
+            &CssParser::new(QUIRKS, Default::default()),
+            CssPropertyTarget::Grammar(CssKnownProperty::MarginTop.grammar()),
+            values.clone(),
+            CssImportance::Normal,
+        )
+        .unwrap_err();
         let origin = match error.origin() {
             CssSerializedOrigin::Token(origin) | CssSerializedOrigin::End(Some(origin)) => origin,
             other => panic!("original token origin: {other:?}"),
@@ -741,12 +827,12 @@ fn pending_reentry_retains_document_mode_original_and_replacement_origins_after_
         for pending in ["var(--length)", "env(length)", "attr(data-length *)"] {
             let source = checked(QUIRKS, name, pending);
             let before = source.clone();
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("pending")
             };
-            let bad = parse_component_values("bogus").unwrap();
+            let bad = CssComponentValues::parse(&CssParser::default(), "bogus").unwrap();
             let error = handle.reenter(bad).unwrap_err();
-            let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+            let Some(error) = error.replacement_error() else {
                 panic!("grammar error")
             };
             let origin = match error.origin() {
@@ -756,14 +842,15 @@ fn pending_reentry_retains_document_mode_original_and_replacement_origins_after_
             };
             assert_eq!(origin.source().as_str(), "bogus");
             assert_eq!(origin.span().start().byte_offset().value(), 0);
-            assert_eq!(
+            assert!(
                 handle
-                    .reenter(parse_component_values("var(--again)").unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap()
+                    )
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
-            let replacement = parse_component_values(text).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             for _ in 0..2 {
                 let CssContributions::Longhands(items) =
                     handle.reenter(replacement.clone()).unwrap()
@@ -779,11 +866,15 @@ fn pending_reentry_retains_document_mode_original_and_replacement_origins_after_
             }
             assert_eq!(source, before);
             assert_eq!(
-                source.value_components().serialize().unwrap().as_css(),
+                source
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 pending
             );
             let standard = checked(STANDARDS, name, pending);
-            let CssExpansion::Pending(handle) = expand_declaration(&standard).unwrap() else {
+            let CssExpansion::Pending(handle) = standard.expand().unwrap() else {
                 panic!("standard pending")
             };
             crate::css::support::value_assertions::replacement_rejection(
@@ -797,11 +888,12 @@ fn pending_reentry_retains_document_mode_original_and_replacement_origins_after_
 #[test]
 fn sheet_rule_and_block_fronts_keep_quirks_mode_and_normalized_occurrence_order() {
     let namespaces = CssNamespaceContext::default();
-    let report = QUIRKS.parse_sheet(".a{margin-top:7!important;margin-top:8}.b{width:9}");
+    let report = CssParser::new(QUIRKS, Default::default())
+        .parse_sheet(".a{margin-top:7!important;margin-top:8}.b{width:9}");
     assert!(report.is_clean());
     let before = report.clone();
     let exact = CssNormalizationLimits::try_new(1, 2, 3, 3).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -820,17 +912,13 @@ fn sheet_rule_and_block_fronts_keep_quirks_mode_and_normalized_occurrence_order(
         CssImportance::Important
     );
     assert_eq!(declarations[1].source().importance(), CssImportance::Normal);
-    let error = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(1, 2, 3, 2).unwrap(),
-    )
-    .unwrap_err();
+    let error = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(1, 2, 3, 2).unwrap())
+        .unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 2
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 2))
     );
     assert_eq!(error.declaration_order(), Some(2));
     assert!(
@@ -840,14 +928,26 @@ fn sheet_rule_and_block_fronts_keep_quirks_mode_and_normalized_occurrence_order(
             .same_occurrence(declarations[2].source())
     );
     assert_eq!(report, before);
-    assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
-    let rule = QUIRKS.parse_rule(".a{margin-top:7}", &namespaces);
+    assert!(report.syntax().normalize(exact).is_ok());
+    let rule = CssRule::parse(
+        &CssParser::new(QUIRKS, Default::default()),
+        ".a{margin-top:7}",
+        &namespaces,
+    );
     assert!(rule.is_clean());
     assert_eq!(
-        rule.syntax().as_ref().unwrap().to_specified_css().unwrap(),
+        rule.syntax()
+            .as_ref()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         ".a { margin-top: 7px; }"
     );
-    let block = QUIRKS.parse_style_block("{margin-top:7}", &namespaces);
+    let block = CssStyleBlock::parse(
+        &CssParser::new(QUIRKS, Default::default()),
+        "{margin-top:7}",
+        &namespaces,
+    );
     assert!(block.is_clean());
     assert_eq!(
         block.syntax().as_ref().unwrap().declarations()[0].parser_context(),
@@ -860,35 +960,47 @@ fn authored_supports_uses_document_mode_and_both_method_overloads_force_standard
     let namespaces = CssNamespaceContext::default();
     for &(name, text, _) in ELIGIBLE {
         let condition_text = format!("({name}:{text})");
-        let quirky = QUIRKS
-            .parse_supports_condition(&condition_text, &namespaces)
-            .unwrap();
+        let quirky = CssCondition::<CssSupportsLeaf>::parse(
+            &CssParser::new(QUIRKS, Default::default()),
+            &condition_text,
+            &namespaces,
+        )
+        .unwrap();
         assert!(
             supports_declaration(&quirky).known().is_some(),
             "{condition_text}"
         );
         assert!(
             supports_declaration(
-                &STANDARDS
-                    .parse_supports_condition(&condition_text, &namespaces)
-                    .unwrap()
+                &CssCondition::<CssSupportsLeaf>::parse(
+                    &CssParser::new(STANDARDS, Default::default()),
+                    &condition_text,
+                    &namespaces
+                )
+                .unwrap()
             )
             .known()
             .is_none()
         );
         assert!(
-            supports_declaration(&parse_css_supports_condition(&condition_text).unwrap())
-                .known()
-                .is_none()
+            supports_declaration(
+                &CssCondition::<CssSupportsLeaf>::parse_condition_text(
+                    &CssParser::default(),
+                    &condition_text
+                )
+                .unwrap()
+            )
+            .known()
+            .is_none()
         );
-        let method = parse_css_supports_declaration(name, text).unwrap();
+        let method = CssSupportsDeclaration::parse(&CssParser::default(), name, text).unwrap();
         assert!(method.known().is_none());
         let CssValueOrigin::Parsed(origin) = method.value_components()[0].origin() else {
             panic!("separate value source")
         };
         assert_eq!(origin.source().as_str(), text);
         let css = format!("@supports {condition_text} {{.a{{{name}:{text}}}}}");
-        let report = QUIRKS.parse_sheet(&css);
+        let report = CssParser::new(QUIRKS, Default::default()).parse_sheet(&css);
         assert!(report.is_clean());
         let CssRule::Supports(rule) = &report.syntax().rules()[0] else {
             panic!("supports")
@@ -896,20 +1008,29 @@ fn authored_supports_uses_document_mode_and_both_method_overloads_force_standard
         assert!(supports_declaration(rule.condition()).known().is_some());
     }
     assert!(
-        parse_css_supports_declaration("margin-top", "7px")
+        CssSupportsDeclaration::parse(&CssParser::default(), "margin-top", "7px")
             .unwrap()
             .known()
             .is_some()
     );
     assert!(
-        supports_declaration(&parse_css_supports_condition("(margin-top:7px)").unwrap())
-            .known()
-            .is_some()
+        supports_declaration(
+            &CssCondition::<CssSupportsLeaf>::parse_condition_text(
+                &CssParser::default(),
+                "(margin-top:7px)"
+            )
+            .unwrap()
+        )
+        .known()
+        .is_some()
     );
     assert!(
-        QUIRKS
-            .parse_supports_condition("(margin-top:7", &namespaces)
-            .is_err()
+        CssCondition::<CssSupportsLeaf>::parse(
+            &CssParser::new(QUIRKS, Default::default()),
+            "(margin-top:7",
+            &namespaces
+        )
+        .is_err()
     );
 }
 
@@ -919,73 +1040,56 @@ fn converted_length_keeps_scalar_tariff_and_shared_cumulative_atomic_budgets() {
     let before = source.clone();
     let expected = "margin-top: 7px !important;";
     // Declared composition tariff: declaration + property name + numeric leaf.
-    let exact = CssSpecifiedValueSerializationLimits::new(3, 3, expected.len());
-    assert_eq!(
-        source.to_specified_css_with_limits(exact).unwrap(),
-        expected
-    );
+    let exact = CssSerializationLimits::new(3, 3, expected.len());
+    assert_eq!(source.serialize_specified(exact).unwrap(), expected);
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(2, 3, expected.len()),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(3, 2, expected.len()),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(3, 3, expected.len() - 1),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            source
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&source.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(source, before);
     }
-    assert_eq!(
-        source.to_specified_css_with_limits(exact).unwrap(),
-        expected
-    );
-    let report = QUIRKS.parse_sheet(".a{margin-top:7}.b{margin-top:8}");
+    assert_eq!(source.serialize_specified(exact).unwrap(), expected);
+    let report =
+        CssParser::new(QUIRKS, Default::default()).parse_sheet(".a{margin-top:7}.b{margin-top:8}");
     assert!(report.is_clean());
     let before = report.clone();
     let expected = ".a { margin-top: 7px; }\n.b { margin-top: 8px; }";
     // Rule, selector-list, compound, class, declaration-list, three-node declaration.
     for rule in report.syntax().rules() {
         assert!(
-            rule.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                8,
-                8,
-                expected.len()
-            ))
-            .is_ok()
+            rule.serialize_specified(CssSerializationLimits::new(8, 8, expected.len()))
+                .is_ok()
         );
     }
-    let exact = CssSpecifiedValueSerializationLimits::new(17, 17, expected.len());
+    let exact = CssSerializationLimits::new(17, 17, expected.len());
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
     for limits in [
-        CssSpecifiedValueSerializationLimits::new(9, 17, expected.len()),
-        CssSpecifiedValueSerializationLimits::new(17, 9, expected.len()),
-        CssSpecifiedValueSerializationLimits::new(17, 17, expected.len() - 1),
+        CssSerializationLimits::new(9, 17, expected.len()),
+        CssSerializationLimits::new(17, 9, expected.len()),
+        CssSerializationLimits::new(17, 17, expected.len() - 1),
     ] {
-        assert!(
-            report
-                .syntax()
-                .to_specified_css_with_limits(limits)
-                .is_err()
-        );
+        assert!(report.syntax().serialize_specified(limits).is_err());
         assert_eq!(report, before);
     }
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
 }

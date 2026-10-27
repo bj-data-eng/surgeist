@@ -5,7 +5,17 @@
 
 use crate::css::support::important_speech_declaration as declaration;
 use crate::css::support::known_property as property;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssSerializedOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty, CssPropertyKindRef,
+    CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
 
 fn assert_ordinary_admission(name: &str, value: &str) {
     let parsed = declaration(name, value);
@@ -13,9 +23,10 @@ fn assert_ordinary_admission(name: &str, value: &str) {
     assert!(known.property_value().is_some(), "{name}:{value}");
     assert!(known.global().is_none());
     assert!(known.substitution_dependent().is_none());
-    let components = parse_component_values(value).unwrap();
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(property(name)),
+    let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property(name))),
         components.clone(),
         CssImportance::Important,
     )
@@ -25,8 +36,18 @@ fn assert_ordinary_admission(name: &str, value: &str) {
     assert_eq!(checked.value_components(), &components);
     assert_eq!(checked.importance(), CssImportance::Important);
     assert!(checked.position().is_none());
-    assert!(validate_style_attribute(&format!("{name}:{value}")).is_ok());
-    assert!(validate_sheet(&format!(".a{{{name}:{value}}}")).is_ok());
+    assert!(
+        CssParser::default()
+            .parse_block_contents(format!("{name}:{value}"))
+            .into_validation_result()
+            .is_ok()
+    );
+    assert!(
+        CssParser::default()
+            .parse_sheet(format!(".a{{{name}:{value}}}"))
+            .into_validation_result()
+            .is_ok()
+    );
 }
 
 fn permutations(parts: &[&str]) -> Vec<String> {
@@ -98,17 +119,21 @@ fn speech_keywords_use_decoded_case_insensitive_identifiers_and_preserve_tokens(
         ("speak-as", "digits/**/spell-out", "speak-as"),
     ] {
         let source = format!("{name}:{value}!important");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let [parsed] = report.syntax().as_slice() else {
             panic!("one declaration")
         };
         assert_eq!(parsed.known().unwrap().property(), property(canonical));
         assert_eq!(parsed.importance(), CssImportance::Important);
-        let serialized = parsed.value_components().serialize().unwrap();
+        let serialized = parsed
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap();
         assert_eq!(serialized.as_css(), value);
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(property(canonical)),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property(canonical))),
             parsed.value_components().clone(),
             CssImportance::Important,
         )
@@ -161,7 +186,7 @@ fn foreign_keywords_duplicates_and_exclusive_speech_modes_are_rejected_atomicall
     ] {
         for value in values {
             let source = format!("color:red;{name}:{value};height:1px");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert_eq!(report.syntax().len(), 2, "{source}");
             assert_eq!(
                 report.syntax()[0].known().unwrap().property(),
@@ -185,11 +210,15 @@ fn foreign_keywords_duplicates_and_exclusive_speech_modes_are_rejected_atomicall
                 CssErrorCode::UnsupportedProperty,
                 "{source}"
             );
-            let failure = validate_style_attribute(&source).unwrap_err();
+            let failure = CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .unwrap_err();
             assert_eq!(failure.diagnostics(), report.diagnostics());
-            let checked = parse_property_value(
-                CssPropertyNameRef::Known(property(name)),
-                parse_component_values(value).unwrap(),
+            let checked = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property(name))),
+                CssComponentValues::parse(&CssParser::default(), value).unwrap(),
                 CssImportance::Normal,
             );
             assert!(checked.is_err(), "checked {name}:{value}");
@@ -219,7 +248,7 @@ fn speech_global_keywords_keep_inherited_terminal_metadata_and_source_identity()
             assert_eq!(source.known().unwrap().global(), Some(keyword));
             assert!(source.known().unwrap().property_value().is_none());
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("completed terminal")
             };
@@ -230,22 +259,25 @@ fn speech_global_keywords_keep_inherited_terminal_metadata_and_source_identity()
             assert_eq!(value.value(), CssContributionValueRef::Global(keyword));
             assert!(value.source().same_occurrence(&source));
             assert_eq!(value.source().importance(), CssImportance::Important);
-            let checked = parse_property_value(
-                CssPropertyNameRef::Known(known),
-                parse_component_values(text).unwrap(),
+            let checked = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(known)),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 CssImportance::Important,
             )
             .unwrap();
             assert_eq!(checked.known().unwrap().global(), Some(keyword));
             let mixed = format!("{text} digits");
-            let report = parse_style_attribute(&format!("{name}:{mixed};color:red"));
+            let report =
+                CssParser::default().parse_block_contents(format!("{name}:{mixed};color:red"));
             assert_eq!(report.syntax().len(), 1, "{name}:{mixed}");
             assert_eq!(report.diagnostics().len(), 1, "{name}:{mixed}");
             assert!(
-                parse_property_value(
-                    CssPropertyNameRef::Known(known),
-                    parse_component_values(&mixed).unwrap(),
-                    CssImportance::Normal,
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(known)),
+                    CssComponentValues::parse(&CssParser::default(), &mixed).unwrap(),
+                    CssImportance::Normal
                 )
                 .is_err(),
                 "{name}:{mixed}"
@@ -274,11 +306,11 @@ fn speech_substitution_reentry_checks_the_original_grammar_and_retains_replaceme
                 .as_css(),
             "var(--speech)"
         );
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("symbolic Speech declaration")
         };
         for text in [valid, "inherit"] {
-            let replacement = parse_component_values(text).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
                 panic!("one replacement terminal")
@@ -306,21 +338,21 @@ fn speech_substitution_reentry_checks_the_original_grammar_and_retains_replaceme
             "always;color:red",
         ] {
             let error = handle
-                .reenter(parse_component_values(text).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), text).unwrap())
                 .unwrap_err();
             assert!(
-                matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(_)),
+                error.replacement_error().is_some(),
                 "{name}:{text}: {error:?}"
             );
         }
         let error = handle
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err();
-        assert_eq!(error.kind(), &CssExpansionErrorKind::ResidualSubstitution);
+        assert!(error.is_residual_substitution(), "{error:?}");
         // Failure does not consume the source or prevent a subsequent valid reentry.
         assert!(
             handle
-                .reenter(parse_component_values(valid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), valid).unwrap())
                 .is_ok()
         );
     }
@@ -331,7 +363,7 @@ fn conflicting_speech_keyword_diagnostics_identify_the_authored_token_and_whole_
     let prefix = "color:red;/*😀*/";
     let unit = "speak-as:normal digits;";
     let source = format!("{prefix}{unit}height:1px");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("one conflict diagnostic")
@@ -354,9 +386,12 @@ fn conflicting_speech_keyword_diagnostics_identify_the_authored_token_and_whole_
         diagnostic.span().end().byte_offset().value(),
         prefix.len() + unit.len()
     );
-    let failure = validate_style_attribute(&source).unwrap_err();
+    let failure = CssParser::default()
+        .parse_block_contents(&source)
+        .into_validation_result()
+        .unwrap_err();
     assert_eq!(failure.diagnostics(), report.diagnostics());
-    let components = parse_component_values("normal digits").unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), "normal digits").unwrap();
     let token = components
         .items()
         .iter()
@@ -367,19 +402,23 @@ fn conflicting_speech_keyword_diagnostics_identify_the_authored_token_and_whole_
             )
         })
         .unwrap();
-    let error = parse_property_value(
-        CssPropertyNameRef::Known(property("speak-as")),
+    let error = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property("speak-as"))),
         components.clone(),
         CssImportance::Normal,
     )
     .unwrap_err();
     assert_eq!(
         error.origin(),
-        &CssSerializedOrigin::Token(token.origin().clone())
+        CssSerializedOrigin::Token(token.origin().clone())
     );
     let sheet_source = format!(".a{{{source}}}");
-    let sheet = parse_sheet(&sheet_source);
-    let failure = validate_sheet(&sheet_source).unwrap_err();
+    let sheet = CssParser::default().parse_sheet(&sheet_source);
+    let failure = CssParser::default()
+        .parse_sheet(&sheet_source)
+        .into_validation_result()
+        .unwrap_err();
     assert_eq!(failure.diagnostics(), sheet.diagnostics());
     let [CssRule::Style(rule)] = sheet.syntax().rules() else {
         panic!("style rule")

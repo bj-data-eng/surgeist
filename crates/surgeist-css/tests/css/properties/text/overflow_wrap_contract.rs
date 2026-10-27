@@ -1,8 +1,17 @@
 //! Typed authored overflow wrapping contracts from CSS Text 4 §6.4 (2026-08-14).
 
 use crate::css::support::checked_grammar_declaration as checked;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as parsed;
-use surgeist_css::*;
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::text::CssOverflowWrap;
 
 fn exact_value(source: &CssDeclaration) -> CssOverflowWrap {
     let CssKnownPropertyValueRef::OverflowWrap(wrapper) =
@@ -10,8 +19,7 @@ fn exact_value(source: &CssDeclaration) -> CssOverflowWrap {
     else {
         panic!("typed overflow-wrap wrapper")
     };
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("terminal expansion")
     };
@@ -62,36 +70,32 @@ fn direct_keyword_serialization_is_canonical_and_budgeted() {
         (CssOverflowWrap::BreakWord, "break-word"),
         (CssOverflowWrap::Anywhere, "anywhere"),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), spelling);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            spelling
+        );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    spelling.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, spelling.len()))
                 .unwrap(),
             spelling
         );
         for (limits, expected) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, spelling.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(0, 1, spelling.len()),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, spelling.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(1, 0, spelling.len()),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, spelling.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(1, 1, spelling.len() - 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 expected
             );
         }
@@ -115,7 +119,7 @@ fn authored_alias_origin_and_all_reset_use_the_canonical_identity() {
     assert_eq!(exact_value(&source), CssOverflowWrap::Anywhere);
 
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&parsed("all", "initial")).unwrap()
+        parsed("all", "initial").expand().unwrap()
     else {
         panic!("symbolic all reset")
     };

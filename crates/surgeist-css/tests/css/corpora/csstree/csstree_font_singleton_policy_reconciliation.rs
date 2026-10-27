@@ -5,10 +5,12 @@ use crate::css::support::descriptor_phases;
 use descriptor_phases::*;
 
 use serde_json::{Value, json};
-use surgeist_css::{
-    CssFontFeatureValuesItem, CssNamespaceContext, CssRule, CssSourcePosition, CssSourceSpan,
-    ErrorKind, parse_rule,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValuesItem;
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::source::{CssSourcePosition, CssSourceSpan};
 
 use crate::css::support::csstree::adapters::{EntryPoint, Extractor};
 use crate::css::support::csstree::reconciliation::{
@@ -33,7 +35,11 @@ fn span(value: CssSourceSpan) -> Value {
 /// of each diagnostic is reconciled once, through `expected_raw_diagnostics`.
 fn typed_definitions_reconcile(row: &Value) -> Result<(), String> {
     let input = text(row, "input");
-    let report = parse_rule(input, &CssNamespaceContext::default());
+    let report = CssRule::parse(
+        &CssParser::default(),
+        input,
+        &CssNamespaceContext::default(),
+    );
     assert_eq!(report.syntax().is_some(), row["present"].as_bool().unwrap());
     assert_eq!(report.is_clean(), row["clean"].as_bool().unwrap());
     assert_eq!(
@@ -88,9 +94,8 @@ fn typed_definitions_reconcile(row: &Value) -> Result<(), String> {
         .iter()
         .map(|diagnostic| {
             let error = diagnostic.error();
-            let ErrorKind::InvalidDescriptorValue(detail) = error.kind() else {
-                panic!("expected descriptor grammar failure: {error:?}")
-            };
+            let detail = &error;
+            assert_eq!(detail.code(), CssErrorCode::InvalidDescriptorValue, "expected descriptor grammar failure: {error:?}");
             let encountered = detail.encountered().expect("responsible authored identifier");
             let start = diagnostic.span().start().byte_offset().value();
             let end = diagnostic.span().end().byte_offset().value();
@@ -99,8 +104,8 @@ fn typed_definitions_reconcile(row: &Value) -> Result<(), String> {
                 "error_position": position(error.position()), "recovery_byte_span": [start, end],
                 "recovery_span": span(diagnostic.span()), "action": format!("{:?}", diagnostic.action()),
                 "detail": {
-                    "at_rule": detail.at_rule().as_str(), "descriptor": detail.descriptor().as_str(),
-                    "expectation": detail.expectation().as_str(),
+                    "at_rule": detail.at_rule().unwrap().as_str(), "descriptor": detail.descriptor().unwrap().as_str(),
+                    "expectation": detail.expectation().unwrap().as_str(),
                     "encountered": {"kind": format!("{:?}", encountered.kind()), "authored": encountered.authored()}
                 }, "recovered_source": &input[start..end]})
         })

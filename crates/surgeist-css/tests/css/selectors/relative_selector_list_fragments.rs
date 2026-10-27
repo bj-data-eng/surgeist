@@ -5,18 +5,20 @@
 use crate::css::support::color_and_selector_fixtures::{
     assert_selector_input_rejected, assert_strict_validation_rejects,
 };
-use surgeist_css::{
-    CssAttributeCaseSensitivity, CssErrorCode, CssNamespaceConstraint, CssNamespaceContext,
-    CssNamespaceName, CssNamespacePrefix, CssNthPattern, CssPseudoClass, CssPseudoSelectorListItem,
-    CssQualifiedNamePrefix, CssRecoveryAction, CssRelativeSelectorList, CssSelector,
-    CssSelectorCombinator as Combinator, CssSelectorConstructionErrorKind, CssSourcePosition,
-    CssSpecifiedValueSerializationErrorKind as Kind,
-    CssSpecifiedValueSerializationLimits as Limits, CssTokenKind, ErrorKind,
-    parse_relative_selector_list, parse_selector, parse_selector_list,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix};
+use surgeist_css::selector::CssSelectorCombinator as Combinator;
+use surgeist_css::selector::{
+    CssAttributeCaseSensitivity, CssNamespaceConstraint, CssNamespaceContext, CssNthPattern,
+    CssParsedStyleSelectors, CssPseudoClass, CssPseudoSelectorListItem, CssQualifiedNamePrefix,
+    CssRelativeSelectorList, CssSelector, CssStyleSelectorContext,
 };
+use surgeist_css::serialization::CssSerializationLimits as Limits;
+use surgeist_css::source::CssSourcePosition;
 
 fn clean_in(source: &str, context: &CssNamespaceContext) -> CssRelativeSelectorList {
-    let report = parse_relative_selector_list(source, context);
+    let report = CssRelativeSelectorList::parse(&CssParser::default(), source, context);
     assert!(report.is_clean(), "{source:?}: {report:?}");
     report.into_validation_result().unwrap().unwrap()
 }
@@ -26,7 +28,10 @@ fn clean(source: &str) -> CssRelativeSelectorList {
 }
 
 fn rejected_in(source: &str, context: &CssNamespaceContext) {
-    assert_selector_input_rejected(source, parse_relative_selector_list(source, context));
+    assert_selector_input_rejected(
+        source,
+        CssRelativeSelectorList::parse(&CssParser::default(), source, context),
+    );
 }
 
 fn position(actual: CssSourcePosition, expected: (usize, u32, u32)) {
@@ -50,10 +55,13 @@ fn explicit_and_implicit_leading_relations_keep_ordered_typed_members() {
         assert_eq!(member.selector(), &CssSelector::Class(name.into()));
     }
     let literal = ".One, > .Two, + .Three, ~ .Four, || .Five";
-    assert_eq!(list.to_specified_css().unwrap(), literal);
+    assert_eq!(
+        list.serialize_specified(Default::default()).unwrap(),
+        literal
+    );
     assert_eq!(clean(literal), list);
     assert_eq!(
-        CssRelativeSelectorList::try_new(list.selectors().to_vec()).unwrap(),
+        CssRelativeSelectorList::try_new(list.selectors().to_vec(), Default::default()).unwrap(),
         list
     );
 }
@@ -78,7 +86,7 @@ fn leading_relation_remains_separate_from_internal_complex_relationships() {
         assert_eq!(part.selector().classes(), [name]);
     }
     assert_eq!(
-        list.to_specified_css().unwrap(),
+        list.serialize_specified(Default::default()).unwrap(),
         "+ .One > .Two ~ .Three || .Four"
     );
 }
@@ -91,7 +99,10 @@ fn nested_commas_and_strings_do_not_split_outer_relative_members() {
     assert_eq!(list.selectors()[1].combinator(), Combinator::Descendant);
     assert_eq!(list.selectors()[2].combinator(), Combinator::NextSibling);
     let literal = r#"> :is(.One, #Two), [Data="a,b"], + :nth-child(2n+1 of .A, #B)"#;
-    assert_eq!(list.to_specified_css().unwrap(), literal);
+    assert_eq!(
+        list.serialize_specified(Default::default()).unwrap(),
+        literal
+    );
     let CssSelector::PseudoClass(CssPseudoClass::NthChild(authored)) =
         list.selectors()[2].selector()
     else {
@@ -122,7 +133,10 @@ fn nested_commas_and_strings_do_not_split_outer_relative_members() {
     };
     assert_eq!((coefficients.a(), coefficients.b()), (2, 1));
     assert_eq!(reparsed.selector_list(), authored.selector_list());
-    assert_eq!(canonical.to_specified_css().unwrap(), literal);
+    assert_eq!(
+        canonical.serialize_specified(Default::default()).unwrap(),
+        literal
+    );
 }
 
 #[test]
@@ -133,12 +147,17 @@ fn general_terminal_pseudo_elements_are_valid_until_has_attachment() {
         ".Cell::marker",
     ] {
         let list = clean(literal);
-        assert_eq!(list.to_specified_css().unwrap(), literal);
+        assert_eq!(
+            list.serialize_specified(Default::default()).unwrap(),
+            literal
+        );
         assert!(list.has_pseudo_elements());
         let attached = CssSelector::PseudoClass(CssPseudoClass::Has(list));
-        assert_eq!(
-            attached.to_specified_css().unwrap_err().kind(),
-            Kind::UnrepresentableValue
+        assert!(
+            attached
+                .serialize_specified(Default::default())
+                .unwrap_err()
+                .is_unrepresentable_value()
         );
     }
     for source in ["> .Cell::before > .Other", ".Cell::after + .Other"] {
@@ -150,13 +169,15 @@ fn general_terminal_pseudo_elements_are_valid_until_has_attachment() {
 fn independent_has_selectors_remain_general_relatives_without_authorizing_nested_has() {
     let list = clean("> :has(+ .One), :not(:has(|| .Two))");
     assert_eq!(
-        list.to_specified_css().unwrap(),
+        list.serialize_specified(Default::default()).unwrap(),
         "> :has(+ .One), :not(:has(|| .Two))"
     );
     let attached = CssSelector::PseudoClass(CssPseudoClass::Has(list));
-    assert_eq!(
-        attached.to_specified_css().unwrap_err().kind(),
-        Kind::UnrepresentableValue
+    assert!(
+        attached
+            .serialize_specified(Default::default())
+            .unwrap_err()
+            .is_unrepresentable_value()
     );
     for source in [":has(:has(.One))", "> :has(:not(:has(.One)))"] {
         rejected_in(source, &CssNamespaceContext::default());
@@ -164,7 +185,11 @@ fn independent_has_selectors_remain_general_relatives_without_authorizing_nested
     // Has's restriction invalidates the inner Has; Is forgives that member,
     // retaining valid empty Is syntax and the original contextual diagnostic.
     let source = "> :has(:is(:has(.One)))";
-    let recovered = parse_relative_selector_list(source, &CssNamespaceContext::default());
+    let recovered = CssRelativeSelectorList::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(!recovered.is_clean());
     let [member] = recovered.syntax().as_ref().unwrap().selectors() else {
         panic!("one recovered general relative");
@@ -186,7 +211,7 @@ fn independent_has_selectors_remain_general_relatives_without_authorizing_nested
             .syntax()
             .as_ref()
             .unwrap()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         "> :has(:is())"
     );
@@ -198,14 +223,20 @@ fn independent_has_selectors_remain_general_relatives_without_authorizing_nested
     position(diagnostic.error().position(), (16, 0, 16));
     position(diagnostic.span().start(), (11, 0, 11));
     position(diagnostic.span().end(), (21, 0, 21));
-    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-        panic!("typed inherited Has restriction");
-    };
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidSelector,
+        "typed inherited Has restriction"
+    );
     assert_eq!(
         detail.production().unwrap().as_str(),
         "baseline.selector.complex"
     );
-    assert_eq!(detail.expectation().as_str(), "a supported selector");
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
+        "a supported selector"
+    );
     let token = detail.encountered().unwrap();
     assert_eq!(token.kind(), CssTokenKind::Delim);
     assert_eq!(token.authored(), ".");
@@ -219,15 +250,19 @@ fn independent_has_selectors_remain_general_relatives_without_authorizing_nested
     );
     for source in [":has(> :has(+ .One))", ":has(> .Cell::before)"] {
         assert!(
-            parse_selector(source, &CssNamespaceContext::default())
-                .syntax()
-                .is_none()
+            CssSelector::parse(
+                &CssParser::default(),
+                source,
+                &CssNamespaceContext::default()
+            )
+            .syntax()
+            .is_none()
         );
     }
     let valid = clean("> .One, + .Two, ~ .Three, || .Four");
     assert_eq!(
         CssSelector::PseudoClass(CssPseudoClass::Has(valid))
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         ":has(> .One, + .Two, ~ .Three, || .Four)"
     );
@@ -241,7 +276,10 @@ fn selected_shadow_compound_has_admission_survives_the_general_front() {
         "|| ::slotted(:has(:first-child:last-child))",
     ] {
         let list = clean(literal);
-        assert_eq!(list.to_specified_css().unwrap(), literal);
+        assert_eq!(
+            list.serialize_specified(Default::default()).unwrap(),
+            literal
+        );
         assert_eq!(clean(literal), list);
     }
     rejected_in(
@@ -287,20 +325,39 @@ fn ordinary_fronts_reject_explicit_relatives_while_general_front_retains_carrier
         // Selectors 4 §4.1: an ordinary complex selector begins with a compound.
         assert_selector_input_rejected(
             source,
-            parse_selector(source, &CssNamespaceContext::default()),
+            CssSelector::parse(
+                &CssParser::default(),
+                source,
+                &CssNamespaceContext::default(),
+            ),
         );
         assert_selector_input_rejected(
             source,
-            parse_selector_list(source, &CssNamespaceContext::default()),
+            CssParsedStyleSelectors::parse(
+                &CssParser::default(),
+                source,
+                &CssNamespaceContext::default(),
+                CssStyleSelectorContext::Ordinary,
+            ),
         );
         assert!(!clean(source).selectors().is_empty());
     }
-    let ordinary = parse_selector_list(".One, .Two", &CssNamespaceContext::default())
-        .into_validation_result()
-        .unwrap()
-        .unwrap();
+    let ordinary = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
+        ".One, .Two",
+        &CssNamespaceContext::default(),
+        CssStyleSelectorContext::Ordinary,
+    )
+    .into_validation_result()
+    .unwrap()
+    .unwrap();
     let relative = clean(".One, .Two");
-    for (ordinary, relative) in ordinary.selectors().iter().zip(relative.selectors()) {
+    for (ordinary, relative) in ordinary
+        .selectors()
+        .selectors()
+        .iter()
+        .zip(relative.selectors())
+    {
         assert_eq!(ordinary.selector(), relative.selector());
         assert_eq!(relative.combinator(), Combinator::Descendant);
     }
@@ -368,7 +425,10 @@ fn namespaces_universals_and_original_case_are_retained_in_relative_children() {
         &CssSelector::Class("Implicit".into())
     );
     let literal = "> Leaf, + Svg|Thing[Svg|DATA=\"MiX\" i], ~ *|*, || |*, .Implicit";
-    assert_eq!(list.to_specified_css().unwrap(), literal);
+    assert_eq!(
+        list.serialize_specified(Default::default()).unwrap(),
+        literal
+    );
     assert_eq!(clean_in(literal, &context), list);
     for source in [
         "> Svg|Leaf, + svg|Thing",
@@ -386,7 +446,9 @@ fn comments_preserve_token_adjacency_and_only_css_whitespace_is_descendant() {
             "{whitespace}>{whitespace}.One{whitespace},{whitespace}.Two{whitespace}.Three{whitespace}"
         );
         assert_eq!(
-            clean(&source).to_specified_css().unwrap(),
+            clean(&source)
+                .serialize_specified(Default::default())
+                .unwrap(),
             "> .One, .Two .Three"
         );
     }
@@ -396,7 +458,12 @@ fn comments_preserve_token_adjacency_and_only_css_whitespace_is_descendant() {
         (".One /**/.Two", ".One .Two"),
         ("|/**/|/**/.One", "|| .One"),
     ] {
-        assert_eq!(clean(source).to_specified_css().unwrap(), literal);
+        assert_eq!(
+            clean(source)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            literal
+        );
     }
     for source in [">\u{b}.One", "| | .One", "| /**/|.One"] {
         rejected_in(source, &CssNamespaceContext::default());
@@ -418,7 +485,10 @@ fn escaped_leading_punctuation_loses_combinator_meaning() {
         };
         assert_eq!(member.combinator(), Combinator::Descendant);
         assert_eq!(member.selector(), &CssSelector::Tag(decoded.into()));
-        assert_eq!(list.to_specified_css().unwrap(), literal);
+        assert_eq!(
+            list.serialize_specified(Default::default()).unwrap(),
+            literal
+        );
     }
 }
 
@@ -435,13 +505,20 @@ fn generic_relative_carriers_do_not_apply_nesting_prelude_classification() {
         assert_eq!(compound.scope_anchors(), 0);
         assert_eq!(compound.classes(), [class]);
     }
-    assert_eq!(list.to_specified_css().unwrap(), "&.One, > &.Two");
+    assert_eq!(
+        list.serialize_specified(Default::default()).unwrap(),
+        "&.One, > &.Two"
+    );
 }
 
 #[test]
 fn outer_error_keeps_original_unicode_crlf_token_and_complete_source_span() {
     let source = "/*😀*/\r\n> .é, + :NoPe";
-    let report = parse_relative_selector_list(source, &CssNamespaceContext::default());
+    let report = CssRelativeSelectorList::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.syntax().is_none());
     let [diagnostic] = report.diagnostics() else {
         panic!("one outer rejection");
@@ -451,9 +528,12 @@ fn outer_error_keeps_original_unicode_crlf_token_and_complete_source_span() {
     position(diagnostic.error().position(), (20, 1, 9));
     position(diagnostic.span().start(), (0, 0, 0));
     position(diagnostic.span().end(), (24, 1, 13));
-    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-        panic!("typed selector error");
-    };
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidSelector,
+        "typed selector error"
+    );
     let token = detail.encountered().unwrap();
     assert_eq!(token.kind(), CssTokenKind::Ident);
     assert_eq!(token.authored(), "NoPe");
@@ -467,7 +547,11 @@ fn outer_error_keeps_original_unicode_crlf_token_and_complete_source_span() {
 #[test]
 fn inner_forgiveness_retains_members_and_exact_original_diagnostics_without_becoming_clean() {
     let source = "/*😀*/\r\n> :is(.é, :NoPe), + .Two";
-    let report = parse_relative_selector_list(source, &CssNamespaceContext::default());
+    let report = CssRelativeSelectorList::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     let list = report.syntax().as_ref().unwrap();
     assert_eq!(list.selectors().len(), 2);
     let CssSelector::PseudoClass(CssPseudoClass::Is(inner)) = list.selectors()[0].selector() else {
@@ -479,7 +563,10 @@ fn inner_forgiveness_retains_members_and_exact_original_diagnostics_without_beco
             "é".into()
         ))]
     );
-    assert_eq!(list.to_specified_css().unwrap(), "> :is(.é), + .Two");
+    assert_eq!(
+        list.serialize_specified(Default::default()).unwrap(),
+        "> :is(.é), + .Two"
+    );
     let [diagnostic] = report.diagnostics() else {
         panic!("one dropped inner member");
     };
@@ -496,7 +583,8 @@ fn inner_forgiveness_retains_members_and_exact_original_diagnostics_without_beco
 
 #[test]
 fn later_outer_error_keeps_prior_inner_diagnostics_but_returns_no_partial_list() {
-    let report = parse_relative_selector_list(
+    let report = CssRelativeSelectorList::parse(
+        &CssParser::default(),
         "> :is(:NoPe,.One), + :NoPe",
         &CssNamespaceContext::default(),
     );
@@ -522,13 +610,17 @@ fn later_outer_error_keeps_prior_inner_diagnostics_but_returns_no_partial_list()
 #[test]
 fn actual_eof_closure_keeps_retained_relative_syntax_and_original_eof_position() {
     let source = "/*😀*/\r\n> :is(.é";
-    let report = parse_relative_selector_list(source, &CssNamespaceContext::default());
+    let report = CssRelativeSelectorList::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert_eq!(
         report
             .syntax()
             .as_ref()
             .unwrap()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         "> :is(.é)"
     );
@@ -570,10 +662,17 @@ fn relative_fragments_share_the_exact_256_function_depth_and_257_rejection_bound
             selector = child;
         }
         assert_eq!(selector, &CssSelector::Class("One".into()));
-        assert_eq!(list.to_specified_css().unwrap(), source);
+        assert_eq!(
+            list.serialize_specified(Default::default()).unwrap(),
+            source
+        );
     }
     let source = format!("> {}.One{}", ":is(".repeat(257), ")".repeat(257));
-    let report = parse_relative_selector_list(&source, &CssNamespaceContext::default());
+    let report = CssRelativeSelectorList::parse(
+        &CssParser::default(),
+        &source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.syntax().is_none());
     let [diagnostic] = report.diagnostics() else {
         panic!("one depth limit");
@@ -586,23 +685,31 @@ fn relative_fragments_share_the_exact_256_function_depth_and_257_rejection_bound
         diagnostic.span().end(),
         (source.len(), 0, source.len() as u32),
     );
-    let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-        panic!("typed limit");
-    };
-    assert_eq!(detail.limit(), 256);
+    let detail = diagnostic.error();
+    assert_eq!(detail.code(), CssErrorCode::NestingLimit, "typed limit");
+    assert_eq!(detail.nesting_limit().unwrap(), 256);
     assert_eq!(
-        detail.enclosing_production().as_str(),
+        detail.production().unwrap().as_str(),
         "baseline.selector.complex"
     );
     assert_strict_validation_rejects(report);
-    assert_eq!(clean("> .After").to_specified_css().unwrap(), "> .After");
+    assert_eq!(
+        clean("> .After")
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "> .After"
+    );
 }
 
 #[test]
 fn large_clean_relative_list_keeps_parse_budget_separate_from_default_specified_admission() {
     // One list aggregate + 32,768 relative carriers + 32,768 scalar classes.
     let source = format!("{}.A", ".A, ".repeat(32_767));
-    let report = parse_relative_selector_list(&source, &CssNamespaceContext::default());
+    let report = CssRelativeSelectorList::parse(
+        &CssParser::default(),
+        &source,
+        &CssNamespaceContext::default(),
+    );
     assert!(
         report.is_clean(),
         "large flat relative list must parse cleanly"
@@ -615,17 +722,19 @@ fn large_clean_relative_list_keeps_parse_budget_separate_from_default_specified_
             .all(|member| member.combinator() == Combinator::Descendant
                 && matches!(member.selector(), CssSelector::Class(name) if name == "A"))
     );
-    assert_eq!(
-        list.to_specified_css().unwrap_err().kind(),
-        Kind::InputNodeLimit
+    assert!(
+        list.serialize_specified(Default::default())
+            .unwrap_err()
+            .is_input_node_limit()
     );
-    let error = CssRelativeSelectorList::try_new(list.selectors().to_vec()).unwrap_err();
-    let CssSelectorConstructionErrorKind::Specified(cause) = error.kind() else {
+    let error = CssRelativeSelectorList::try_new(list.selectors().to_vec(), Default::default())
+        .unwrap_err();
+    let Some(cause) = error.serialization_error() else {
         panic!("typed aggregate error");
     };
-    assert_eq!(cause.kind(), Kind::InputNodeLimit);
+    assert!(cause.is_input_node_limit(), "{cause:?}");
     assert!(
-        list.to_specified_css_with_limits(Limits::new(65_537, 65_537, source.len()))
+        list.serialize_specified(Limits::new(65_537, 65_537, source.len()))
             .unwrap()
             == source,
         "explicit output preserves the independently authored ordered list"

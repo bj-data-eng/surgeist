@@ -1,13 +1,19 @@
 //! Values 4 (2024-03-12) §8.3.2, specified generic `<position>` serialization.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#position-serialization
 
-use surgeist_css::{
-    CssHorizontalPosition as H, CssSpecifiedValueSerializationErrorKind as ErrorKind,
-    CssSpecifiedValueSerializationLimits as L, CssVerticalPosition as V, *,
-};
+use crate::css::support::failure_classes::SerializationFailure as ErrorKind;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::numeric::{CssCalculation, CssLengthPercentage, CssNumeric};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::position::CssHorizontalPosition as H;
+use surgeist_css::values::position::CssVerticalPosition as V;
+use surgeist_css::values::position::{CssPhysicalPosition, CssPosition};
 
-fn parsed(input: &str) -> CssPhysicalPosition {
-    let report = parse_style_attribute(&format!("mask-position: {input}"));
+fn parsed(input: &str) -> CssPosition {
+    let report = CssParser::default().parse_block_contents(format!("mask-position: {input}"));
     assert!(report.is_clean(), "{input}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::MaskPosition(value) = report.syntax()[0]
         .known()
@@ -17,7 +23,7 @@ fn parsed(input: &str) -> CssPhysicalPosition {
     else {
         panic!("expected mask-position");
     };
-    value.positions().positions()[0].clone()
+    value.value().positions()[0].clone()
 }
 
 #[test]
@@ -31,7 +37,12 @@ fn specified_axes_are_explicit_and_horizontal_first() {
         ("25% 75%", "25% 75%"),
         ("bottom 2% right 1px", "right 1px bottom 2%"),
     ] {
-        assert_eq!(parsed(authored).serialize_specified().unwrap(), expected);
+        assert_eq!(
+            parsed(authored)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
 }
 
@@ -44,7 +55,10 @@ fn typed_axes_preserve_offset_origin_and_symbolic_values() {
     .unwrap();
     assert!(matches!(paired.horizontal(), H::RightOffset(_)));
     assert!(matches!(paired.vertical(), V::BottomOffset(_)));
-    assert_eq!(paired.serialize_specified().unwrap(), "right 0px bottom 2%");
+    assert_eq!(
+        paired.serialize_specified(Default::default()).unwrap(),
+        "right 0px bottom 2%"
+    );
     assert!(
         CssPhysicalPosition::try_new(H::RightOffset(signed_length_percentage("0px")), V::Top)
             .is_err()
@@ -55,16 +69,20 @@ fn typed_axes_preserve_offset_origin_and_symbolic_values() {
         V::Offset(signed_length_percentage("-2%")),
     )
     .unwrap();
-    assert_eq!(signed.serialize_specified().unwrap(), "-1px -2%");
+    assert_eq!(
+        signed.serialize_specified(Default::default()).unwrap(),
+        "-1px -2%"
+    );
 
-    let calculation = CssLengthPercentageCalculation::try_from_components(
-        parse_component_values("calc(1px + 5%)").unwrap(),
+    let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "calc(1px + 5%)").unwrap(),
+        Default::default(),
     )
     .unwrap();
-    let offset = CssSpecifiedLengthPercentage::try_from_calculation(calculation).unwrap();
+    let offset = CssNumeric::<CssLengthPercentage>::try_from_calculation(calculation).unwrap();
     let symbolic = CssPhysicalPosition::try_new(H::Offset(offset), V::Center).unwrap();
     assert_eq!(
-        symbolic.serialize_specified().unwrap(),
+        symbolic.serialize_specified(Default::default()).unwrap(),
         "calc(5% + 1px) center"
     );
 }
@@ -73,9 +91,7 @@ fn typed_axes_preserve_offset_origin_and_symbolic_values() {
 fn one_budget_covers_aggregate_axes_children_and_full_output() {
     let keywords = CssPhysicalPosition::try_new(H::Left, V::Top).unwrap();
     assert_eq!(
-        keywords
-            .serialize_specified_with_limits(L::new(3, 3, 8))
-            .unwrap(),
+        keywords.serialize_specified(L::new(3, 3, 8)).unwrap(),
         "left top"
     );
     for (limits, expected) in [
@@ -87,10 +103,7 @@ fn one_budget_covers_aggregate_axes_children_and_full_output() {
         (L::new(3, 3, 0), ErrorKind::ByteLimit),
     ] {
         assert_eq!(
-            keywords
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&keywords.serialize_specified(limits).unwrap_err()),
             expected
         );
     }
@@ -103,7 +116,7 @@ fn one_budget_covers_aggregate_axes_children_and_full_output() {
     let expected = "right 1px bottom 2%";
     assert_eq!(
         offsets
-            .serialize_specified_with_limits(L::new(5, 5, expected.len()))
+            .serialize_specified(L::new(5, 5, expected.len()))
             .unwrap(),
         expected
     );
@@ -113,10 +126,7 @@ fn one_budget_covers_aggregate_axes_children_and_full_output() {
         (L::new(5, 5, expected.len() - 1), ErrorKind::ByteLimit),
     ] {
         assert_eq!(
-            offsets
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&offsets.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
@@ -127,8 +137,8 @@ fn typed_math_projection_is_cumulative_across_both_axes() {
     let axis = || signed_length_percentage("calc(1px + 2em)");
     let one = CssPhysicalPosition::try_new(H::Offset(axis()), V::Center).unwrap();
     let two = CssPhysicalPosition::try_new(H::Offset(axis()), V::Offset(axis())).unwrap();
-    let one_css = one.serialize_specified().unwrap();
-    let two_css = two.serialize_specified().unwrap();
+    let one_css = one.serialize_specified(Default::default()).unwrap();
+    let two_css = two.serialize_specified(Default::default()).unwrap();
     assert_eq!(one_css, "calc(2em + 1px) center");
     assert_eq!(two_css, "calc(2em + 1px) calc(2em + 1px)");
 
@@ -136,13 +146,11 @@ fn typed_math_projection_is_cumulative_across_both_axes() {
     // a function, sum and two literal input nodes (four), then two literals,
     // two canonical scalar terms and a sum projection node (five).
     assert_eq!(
-        one.serialize_specified_with_limits(L::new(7, 8, 1_000))
-            .unwrap(),
+        one.serialize_specified(L::new(7, 8, 1_000)).unwrap(),
         one_css
     );
     assert_eq!(
-        two.serialize_specified_with_limits(L::new(11, 13, 1_000))
-            .unwrap(),
+        two.serialize_specified(L::new(11, 13, 1_000)).unwrap(),
         two_css
     );
     for (limits, kind) in [
@@ -152,33 +160,40 @@ fn typed_math_projection_is_cumulative_across_both_axes() {
         (L::new(11, 12, 1_000), ErrorKind::ProjectionNodeLimit),
     ] {
         assert_eq!(
-            two.serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&two.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
 
     let one_limit = L::new(1_000, 1_000, one_css.len());
-    assert!(one.serialize_specified_with_limits(one_limit).is_ok());
-    assert_eq!(
-        two.serialize_specified_with_limits(one_limit)
+    assert!(one.serialize_specified(one_limit).is_ok());
+    assert!(
+        two.serialize_specified(one_limit)
             .unwrap_err()
-            .kind(),
-        ErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }
 
-fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercentage {
-    let components = surgeist_css::parse_component_values(css).unwrap();
+fn signed_length_percentage(
+    css: &str,
+) -> surgeist_css::numeric::CssNumeric<surgeist_css::numeric::CssLengthPercentage> {
+    let components = surgeist_css::component::CssComponentValues::parse(
+        &surgeist_css::CssParser::default(),
+        css,
+    )
+    .unwrap();
     if css.contains('(') {
-        surgeist_css::CssSpecifiedLengthPercentage::try_from_calculation(
-            surgeist_css::CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+        surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssLengthPercentage>::try_from_calculation(
+            surgeist_css::numeric::CssCalculation::<surgeist_css::numeric::CssLengthPercentage>::try_from_components(
+                components,
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap()
     } else {
-        surgeist_css::CssSpecifiedLengthPercentage::try_from_component(
-            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+        surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssLengthPercentage>::try_from_component(
+            surgeist_css::component::CssComponentValue::try_token(css).unwrap(),
         )
         .unwrap()
     }

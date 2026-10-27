@@ -9,7 +9,27 @@ use crate::css::support::authored_syntax::{
     assert_origin_bytes as origin, assert_position as point, fragment_body as body,
     fragment_recovery as recovered,
 };
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueOrigin};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::color_profile::{
+    CssColorProfileDescriptor, CssColorProfileDescriptorKind, CssColorProfileDescriptorValueRef,
+    CssColorProfileRenderingIntent,
+};
+use surgeist_css::rule::counter_style::{
+    CssCounterStyleDescriptorRef, CssCounterStyleDescriptors, CssCounterStyleSystem,
+    CssCounterSymbol,
+};
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontDisplay, CssFontFaceDescriptorKind,
+    CssFontFaceDescriptorValue, CssFontFaceDescriptors, CssFontFaceFamily,
+};
+use surgeist_css::rule::font_palette_values::{
+    CssFontPaletteBase, CssFontPaletteDescriptor, CssFontPaletteDescriptorKind,
+    CssFontPaletteDescriptorValueRef,
+};
+use surgeist_css::rule::{CssBlockContext, CssBlockFragment, CssRule};
+use surgeist_css::source::CssParsedOrigin;
+use surgeist_css::{CssParseReport, CssParser};
 
 fn clean<T: Clone + std::fmt::Debug + PartialEq>(
     report: &CssParseReport<Option<CssBlockFragment<T>>>,
@@ -47,7 +67,11 @@ fn profile_kinds(value: &[CssColorProfileDescriptor]) -> Vec<CssColorProfileDesc
 #[test]
 fn font_face_body_retains_order_and_effective_duplicate_display() {
     let source = "{font-family:A;src:url(a);font-display:swap;font-display:optional}";
-    let report = parse_font_face_block(source);
+    let report = CssBlockFragment::<CssFontFaceDescriptors>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     clean(&report);
     let fragment = body(&report);
     origin(fragment.origin(), source, 0, source.len());
@@ -99,7 +123,11 @@ fn font_face_body_retains_order_and_effective_duplicate_display() {
 #[test]
 fn counter_body_retains_all_symbols_occurrences_and_last_valid_symbols() {
     let source = "{system:numeric;symbols:\"0\" \"1\";symbols:a b}";
-    let report = parse_counter_style_block(source);
+    let report = CssBlockFragment::<CssCounterStyleDescriptors>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     clean(&report);
     let descriptors = body(&report).body();
     assert!(matches!(
@@ -127,7 +155,11 @@ fn counter_body_retains_all_symbols_occurrences_and_last_valid_symbols() {
 #[test]
 fn palette_body_retains_required_family_and_duplicate_base_occurrences() {
     let source = "{font-family:A;base-palette:light;base-palette:dark}";
-    let report = parse_font_palette_values_block(source);
+    let report = CssBlockFragment::<Vec<CssFontPaletteDescriptor>>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     clean(&report);
     let descriptors = body(&report).body();
     assert_eq!(
@@ -163,7 +195,11 @@ fn palette_body_retains_required_family_and_duplicate_base_occurrences() {
 #[test]
 fn profile_body_retains_url_intent_and_comma_separated_component_names() {
     let source = "{src:url(p.icc);rendering-intent:perceptual;components:A, a, A}";
-    let report = parse_color_profile_block(source);
+    let report = CssBlockFragment::<Vec<CssColorProfileDescriptor>>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     clean(&report);
     let descriptors = body(&report).body();
     assert_eq!(
@@ -196,14 +232,26 @@ fn profile_body_retains_url_intent_and_comma_separated_component_names() {
 
 #[test]
 fn real_empty_bodies_do_not_fabricate_defaults_or_required_descriptors() {
-    let face = parse_font_face_block("{}");
+    let face = CssBlockFragment::<CssFontFaceDescriptors>::parse(
+        &CssParser::default(),
+        "{}",
+        &CssBlockContext::default(),
+    );
     clean(&face);
     assert_eq!(body(&face).body().occurrences().len(), 0);
-    let counter = parse_counter_style_block("{}");
+    let counter = CssBlockFragment::<CssCounterStyleDescriptors>::parse(
+        &CssParser::default(),
+        "{}",
+        &CssBlockContext::default(),
+    );
     clean(&counter);
     assert_eq!(body(&counter).body().occurrences().len(), 0);
     assert!(body(&counter).body().system().is_none());
-    let profile = parse_color_profile_block("{}");
+    let profile = CssBlockFragment::<Vec<CssColorProfileDescriptor>>::parse(
+        &CssParser::default(),
+        "{}",
+        &CssBlockContext::default(),
+    );
     clean(&profile);
     assert!(body(&profile).body().is_empty());
     for source in [
@@ -211,10 +259,21 @@ fn real_empty_bodies_do_not_fabricate_defaults_or_required_descriptors() {
         "{base-palette:0}",
         "{font-family:serif;base-palette:dark}",
     ] {
-        rejected(&parse_font_palette_values_block(source), source);
+        rejected(
+            &CssBlockFragment::<Vec<CssFontPaletteDescriptor>>::parse(
+                &CssParser::default(),
+                source,
+                &CssBlockContext::default(),
+            ),
+            source,
+        );
     }
     // Missing symbols is downstream counter usability, not an authored body error.
-    let counter = parse_counter_style_block("{symbols:x}");
+    let counter = CssBlockFragment::<CssCounterStyleDescriptors>::parse(
+        &CssParser::default(),
+        "{symbols:x}",
+        &CssBlockContext::default(),
+    );
     clean(&counter);
     assert!(body(&counter).body().system().is_none());
     symbol(
@@ -235,7 +294,11 @@ fn counter_extends_symbol_combination_retains_authored_body_with_undefined_defin
         "{system:extends decimal;symbols:x}",
         "{system:extends decimal;additive-symbols:1 x}",
     ] {
-        let report = parse_counter_style_block(source);
+        let report = CssBlockFragment::<CssCounterStyleDescriptors>::parse(
+            &CssParser::default(),
+            source,
+            &CssBlockContext::default(),
+        );
         clean(&report);
         assert_eq!(
             body(&report)
@@ -243,8 +306,8 @@ fn counter_extends_symbol_combination_retains_authored_body_with_undefined_defin
                 .prospective()
                 .unwrap()
                 .definition_status(),
-            surgeist_css::CssCounterStyleDefinitionStatus::Undefined(
-                surgeist_css::CssCounterStyleDefinitionIssue::ExtendsWithSymbols
+            surgeist_css::rule::counter_style::CssCounterStyleDefinitionStatus::Undefined(
+                surgeist_css::rule::counter_style::CssCounterStyleDefinitionIssue::ExtendsWithSymbols
             )
         );
     }
@@ -261,10 +324,38 @@ fn no_real_curly_opener_is_distinct_from_an_empty_body() {
         "font-family:A",
         "}",
     ] {
-        rejected(&parse_font_face_block(source), source);
-        rejected(&parse_counter_style_block(source), source);
-        rejected(&parse_font_palette_values_block(source), source);
-        rejected(&parse_color_profile_block(source), source);
+        rejected(
+            &CssBlockFragment::<CssFontFaceDescriptors>::parse(
+                &CssParser::default(),
+                source,
+                &CssBlockContext::default(),
+            ),
+            source,
+        );
+        rejected(
+            &CssBlockFragment::<CssCounterStyleDescriptors>::parse(
+                &CssParser::default(),
+                source,
+                &CssBlockContext::default(),
+            ),
+            source,
+        );
+        rejected(
+            &CssBlockFragment::<Vec<CssFontPaletteDescriptor>>::parse(
+                &CssParser::default(),
+                source,
+                &CssBlockContext::default(),
+            ),
+            source,
+        );
+        rejected(
+            &CssBlockFragment::<Vec<CssColorProfileDescriptor>>::parse(
+                &CssParser::default(),
+                source,
+                &CssBlockContext::default(),
+            ),
+            source,
+        );
     }
 }
 
@@ -272,18 +363,50 @@ fn no_real_curly_opener_is_distinct_from_an_empty_body() {
 fn trailing_nontrivia_never_publishes_a_valid_first_body() {
     for tail in ["x", ";", "{}", "}", ")", "]"] {
         let source = format!("{{font-family:A}}{tail}");
-        rejected(&parse_font_face_block(&source), &source);
-        rejected(&parse_font_palette_values_block(&source), &source);
+        rejected(
+            &CssBlockFragment::<CssFontFaceDescriptors>::parse(
+                &CssParser::default(),
+                &source,
+                &CssBlockContext::default(),
+            ),
+            &source,
+        );
+        rejected(
+            &CssBlockFragment::<Vec<CssFontPaletteDescriptor>>::parse(
+                &CssParser::default(),
+                &source,
+                &CssBlockContext::default(),
+            ),
+            &source,
+        );
         let source = format!("{{prefix:\"a\"}}{tail}");
-        rejected(&parse_counter_style_block(&source), &source);
+        rejected(
+            &CssBlockFragment::<CssCounterStyleDescriptors>::parse(
+                &CssParser::default(),
+                &source,
+                &CssBlockContext::default(),
+            ),
+            &source,
+        );
         let source = format!("{{src:url(a)}}{tail}");
-        rejected(&parse_color_profile_block(&source), &source);
+        rejected(
+            &CssBlockFragment::<Vec<CssColorProfileDescriptor>>::parse(
+                &CssParser::default(),
+                &source,
+                &CssBlockContext::default(),
+            ),
+            &source,
+        );
     }
 }
 
 #[test]
 fn unknown_descriptor_units_preserve_valid_neighbors_and_fail_clean_validation() {
-    let face = parse_font_face_block("{font-family:A;bogus:1;src:url(a)}");
+    let face = CssBlockFragment::<CssFontFaceDescriptors>::parse(
+        &CssParser::default(),
+        "{font-family:A;bogus:1;src:url(a)}",
+        &CssBlockContext::default(),
+    );
     assert_eq!(
         face_kinds(body(&face).body()),
         [
@@ -291,7 +414,11 @@ fn unknown_descriptor_units_preserve_valid_neighbors_and_fail_clean_validation()
             CssFontFaceDescriptorKind::Src
         ]
     );
-    let counter = parse_counter_style_block("{prefix:\"a\";bogus:1;suffix:\"b\"}");
+    let counter = CssBlockFragment::<CssCounterStyleDescriptors>::parse(
+        &CssParser::default(),
+        "{prefix:\"a\";bogus:1;suffix:\"b\"}",
+        &CssBlockContext::default(),
+    );
     assert_eq!(body(&counter).body().occurrences().len(), 2);
     symbol(
         body(&counter).body().prefix().unwrap().ordinary_prefix(),
@@ -303,7 +430,11 @@ fn unknown_descriptor_units_preserve_valid_neighbors_and_fail_clean_validation()
         "b",
         true,
     );
-    let palette = parse_font_palette_values_block("{font-family:A;bogus:1;base-palette:dark}");
+    let palette = CssBlockFragment::<Vec<CssFontPaletteDescriptor>>::parse(
+        &CssParser::default(),
+        "{font-family:A;bogus:1;base-palette:dark}",
+        &CssBlockContext::default(),
+    );
     assert_eq!(
         palette_kinds(body(&palette).body()),
         [
@@ -311,7 +442,11 @@ fn unknown_descriptor_units_preserve_valid_neighbors_and_fail_clean_validation()
             CssFontPaletteDescriptorKind::BasePalette
         ]
     );
-    let profile = parse_color_profile_block("{src:url(a);bogus:1;rendering-intent:perceptual}");
+    let profile = CssBlockFragment::<Vec<CssColorProfileDescriptor>>::parse(
+        &CssParser::default(),
+        "{src:url(a);bogus:1;rendering-intent:perceptual}",
+        &CssBlockContext::default(),
+    );
     assert_eq!(
         profile_kinds(body(&profile).body()),
         [
@@ -336,21 +471,44 @@ fn unknown_descriptor_units_preserve_valid_neighbors_and_fail_clean_validation()
 #[test]
 fn descriptor_failure_can_leave_a_retained_empty_body_while_palette_remains_required() {
     let source = "{bogus:1}";
-    let face = parse_font_face_block(source);
+    let face = CssBlockFragment::<CssFontFaceDescriptors>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     assert_eq!(body(&face).body().occurrences().len(), 0);
     recovered(&face, CssRecoveryAction::DropDescriptor);
-    let counter = parse_counter_style_block(source);
+    let counter = CssBlockFragment::<CssCounterStyleDescriptors>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     assert_eq!(body(&counter).body().occurrences().len(), 0);
     recovered(&counter, CssRecoveryAction::DropDescriptor);
-    let profile = parse_color_profile_block(source);
+    let profile = CssBlockFragment::<Vec<CssColorProfileDescriptor>>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     assert!(body(&profile).body().is_empty());
     recovered(&profile, CssRecoveryAction::DropDescriptor);
-    rejected(&parse_font_palette_values_block(source), source);
+    rejected(
+        &CssBlockFragment::<Vec<CssFontPaletteDescriptor>>::parse(
+            &CssParser::default(),
+            source,
+            &CssBlockContext::default(),
+        ),
+        source,
+    );
 }
 
 #[test]
 fn complete_value_errors_drop_only_the_bad_descriptor() {
-    let face = parse_font_face_block("{font-family:A;font-display:swap extra;src:url(a)}");
+    let face = CssBlockFragment::<CssFontFaceDescriptors>::parse(
+        &CssParser::default(),
+        "{font-family:A;font-display:swap extra;src:url(a)}",
+        &CssBlockContext::default(),
+    );
     assert_eq!(
         face_kinds(body(&face).body()),
         [
@@ -359,12 +517,18 @@ fn complete_value_errors_drop_only_the_bad_descriptor() {
         ]
     );
     recovered(&face, CssRecoveryAction::DropDescriptor);
-    let counter = parse_counter_style_block("{prefix:\"a\";system:numeric extra;suffix:\"b\"}");
+    let counter = CssBlockFragment::<CssCounterStyleDescriptors>::parse(
+        &CssParser::default(),
+        "{prefix:\"a\";system:numeric extra;suffix:\"b\"}",
+        &CssBlockContext::default(),
+    );
     assert_eq!(body(&counter).body().occurrences().len(), 2);
     assert!(body(&counter).body().system().is_none());
     recovered(&counter, CssRecoveryAction::DropDescriptor);
-    let palette = parse_font_palette_values_block(
+    let palette = CssBlockFragment::<Vec<CssFontPaletteDescriptor>>::parse(
+        &CssParser::default(),
         "{font-family:A;base-palette:light extra;override-colors:0 red}",
+        &CssBlockContext::default(),
     );
     assert_eq!(
         palette_kinds(body(&palette).body()),
@@ -375,8 +539,11 @@ fn complete_value_errors_drop_only_the_bad_descriptor() {
     );
     recovered(&palette, CssRecoveryAction::DropDescriptor);
     // The selected Color 5 components production uses commas, not spaces.
-    let profile =
-        parse_color_profile_block("{src:url(a);components:a b;rendering-intent:perceptual}");
+    let profile = CssBlockFragment::<Vec<CssColorProfileDescriptor>>::parse(
+        &CssParser::default(),
+        "{src:url(a);components:a b;rendering-intent:perceptual}",
+        &CssBlockContext::default(),
+    );
     assert_eq!(
         profile_kinds(body(&profile).body()),
         [
@@ -391,7 +558,11 @@ fn complete_value_errors_drop_only_the_bad_descriptor() {
 fn structural_child_is_recoverable_for_every_descriptor_family() {
     // Syntax 3 (2026-10-01) §5.5.5 and §7.1: an at-rule in a
     // `<declaration-list>` is invalid and dropped alone.
-    let face = parse_font_face_block("{font-family:A;@unknown{}src:url(a)}");
+    let face = CssBlockFragment::<CssFontFaceDescriptors>::parse(
+        &CssParser::default(),
+        "{font-family:A;@unknown{}src:url(a)}",
+        &CssBlockContext::default(),
+    );
     assert_eq!(
         face_kinds(body(&face).body()),
         [
@@ -400,7 +571,11 @@ fn structural_child_is_recoverable_for_every_descriptor_family() {
         ]
     );
     recovered(&face, CssRecoveryAction::DropAtRule);
-    let counter = parse_counter_style_block("{prefix:\"a\";@unknown{}suffix:\"b\"}");
+    let counter = CssBlockFragment::<CssCounterStyleDescriptors>::parse(
+        &CssParser::default(),
+        "{prefix:\"a\";@unknown{}suffix:\"b\"}",
+        &CssBlockContext::default(),
+    );
     assert_eq!(body(&counter).body().occurrences().len(), 2);
     symbol(
         body(&counter).body().suffix().unwrap().ordinary_suffix(),
@@ -408,7 +583,11 @@ fn structural_child_is_recoverable_for_every_descriptor_family() {
         true,
     );
     recovered(&counter, CssRecoveryAction::DropAtRule);
-    let palette = parse_font_palette_values_block("{font-family:A;@unknown{}base-palette:dark}");
+    let palette = CssBlockFragment::<Vec<CssFontPaletteDescriptor>>::parse(
+        &CssParser::default(),
+        "{font-family:A;@unknown{}base-palette:dark}",
+        &CssBlockContext::default(),
+    );
     assert_eq!(
         palette_kinds(body(&palette).body()),
         [
@@ -417,7 +596,11 @@ fn structural_child_is_recoverable_for_every_descriptor_family() {
         ]
     );
     recovered(&palette, CssRecoveryAction::DropAtRule);
-    let profile = parse_color_profile_block("{src:url(a);@unknown{}rendering-intent:perceptual}");
+    let profile = CssBlockFragment::<Vec<CssColorProfileDescriptor>>::parse(
+        &CssParser::default(),
+        "{src:url(a);@unknown{}rendering-intent:perceptual}",
+        &CssBlockContext::default(),
+    );
     assert_eq!(
         profile_kinds(body(&profile).body()),
         [
@@ -432,7 +615,11 @@ fn structural_child_is_recoverable_for_every_descriptor_family() {
 fn original_utf8_and_utf16_coordinates_exclude_outer_trivia_but_share_its_snapshot() {
     let source = " /*é*/\r\n{font-family:A} /*💡*/ ";
     assert_eq!(source.len(), 34);
-    let face = parse_font_face_block(source);
+    let face = CssBlockFragment::<CssFontFaceDescriptors>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     clean(&face);
     origin(body(&face).origin(), source, 9, 24);
     point(body(&face).origin().span().start(), 9, 1, 0);
@@ -449,7 +636,11 @@ fn original_utf8_and_utf16_coordinates_exclude_outer_trivia_but_share_its_snapsh
         1,
         1,
     );
-    let palette = parse_font_palette_values_block(source);
+    let palette = CssBlockFragment::<Vec<CssFontPaletteDescriptor>>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     clean(&palette);
     origin(body(&palette).origin(), source, 9, 24);
     let descriptor = &body(&palette).body()[0];
@@ -470,7 +661,11 @@ fn original_utf8_and_utf16_coordinates_exclude_outer_trivia_but_share_its_snapsh
     );
 
     let source = " /*é*/\r\n{prefix:\"💡\"} /*x*/";
-    let counter = parse_counter_style_block(source);
+    let counter = CssBlockFragment::<CssCounterStyleDescriptors>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     clean(&counter);
     origin(body(&counter).origin(), source, 9, 24);
     point(body(&counter).origin().span().end(), 24, 1, 13);
@@ -489,7 +684,11 @@ fn original_utf8_and_utf16_coordinates_exclude_outer_trivia_but_share_its_snapsh
     );
 
     let source = " /*é*/\r\n{src:url(a)} /*💡*/ ";
-    let profile = parse_color_profile_block(source);
+    let profile = CssBlockFragment::<Vec<CssColorProfileDescriptor>>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     clean(&profile);
     origin(body(&profile).origin(), source, 9, 21);
     point(body(&profile).origin().span().end(), 21, 1, 12);
@@ -514,20 +713,32 @@ fn original_utf8_and_utf16_coordinates_exclude_outer_trivia_but_share_its_snapsh
 #[test]
 fn implicit_outer_braces_retain_valid_payloads_at_original_eof() {
     let source = "{font-family:A";
-    let face = parse_font_face_block(source);
+    let face = CssBlockFragment::<CssFontFaceDescriptors>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     implicit(&face, source);
     assert_eq!(
         face_kinds(body(&face).body()),
         [CssFontFaceDescriptorKind::FontFamily]
     );
-    let palette = parse_font_palette_values_block(source);
+    let palette = CssBlockFragment::<Vec<CssFontPaletteDescriptor>>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     implicit(&palette, source);
     assert_eq!(
         palette_kinds(body(&palette).body()),
         [CssFontPaletteDescriptorKind::FontFamily]
     );
     let source = "{prefix:\"a";
-    let counter = parse_counter_style_block(source);
+    let counter = CssBlockFragment::<CssCounterStyleDescriptors>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     implicit(&counter, source);
     symbol(
         body(&counter).body().prefix().unwrap().ordinary_prefix(),
@@ -535,16 +746,48 @@ fn implicit_outer_braces_retain_valid_payloads_at_original_eof() {
         true,
     );
     let source = "{src:url(a)";
-    let profile = parse_color_profile_block(source);
+    let profile = CssBlockFragment::<Vec<CssColorProfileDescriptor>>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     implicit(&profile, source);
     assert_eq!(
         profile_kinds(body(&profile).body()),
         [CssColorProfileDescriptorKind::Src]
     );
-    implicit(&parse_font_face_block("{"), "{");
-    implicit(&parse_counter_style_block("{"), "{");
-    implicit(&parse_color_profile_block("{"), "{");
-    rejected(&parse_font_palette_values_block("{"), "{");
+    implicit(
+        &CssBlockFragment::<CssFontFaceDescriptors>::parse(
+            &CssParser::default(),
+            "{",
+            &CssBlockContext::default(),
+        ),
+        "{",
+    );
+    implicit(
+        &CssBlockFragment::<CssCounterStyleDescriptors>::parse(
+            &CssParser::default(),
+            "{",
+            &CssBlockContext::default(),
+        ),
+        "{",
+    );
+    implicit(
+        &CssBlockFragment::<Vec<CssColorProfileDescriptor>>::parse(
+            &CssParser::default(),
+            "{",
+            &CssBlockContext::default(),
+        ),
+        "{",
+    );
+    rejected(
+        &CssBlockFragment::<Vec<CssFontPaletteDescriptor>>::parse(
+            &CssParser::default(),
+            "{",
+            &CssBlockContext::default(),
+        ),
+        "{",
+    );
 }
 
 fn implicit_function(
@@ -575,7 +818,11 @@ fn implicit_function(
 #[test]
 fn retained_pending_function_closures_keep_implicit_metadata_and_original_eof() {
     let source = "{font-family:env(family";
-    let face = parse_font_face_block(source);
+    let face = CssBlockFragment::<CssFontFaceDescriptors>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     implicit(&face, source);
     let CssAuthoredFontFaceDescriptorValue::Pending(value) =
         body(&face).body().occurrences().next().unwrap().value()
@@ -583,7 +830,11 @@ fn retained_pending_function_closures_keep_implicit_metadata_and_original_eof() 
         panic!("pending font-family")
     };
     implicit_function(value.components(), body(&face).origin(), source, 13);
-    let palette = parse_font_palette_values_block(source);
+    let palette = CssBlockFragment::<Vec<CssFontPaletteDescriptor>>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     implicit(&palette, source);
     let value = body(&palette).body()[0].value();
     assert!(matches!(
@@ -592,7 +843,11 @@ fn retained_pending_function_closures_keep_implicit_metadata_and_original_eof() 
     ));
     implicit_function(value.components(), body(&palette).origin(), source, 13);
     let source = "{src:env(profile";
-    let profile = parse_color_profile_block(source);
+    let profile = CssBlockFragment::<Vec<CssColorProfileDescriptor>>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     implicit(&profile, source);
     let value = body(&profile).body()[0].value();
     assert!(matches!(
@@ -605,7 +860,11 @@ fn retained_pending_function_closures_keep_implicit_metadata_and_original_eof() 
 #[test]
 fn unterminated_comments_and_outer_braces_report_original_eof_without_losing_descriptors() {
     let source = "{font-family:A;/* unfinished";
-    let face = parse_font_face_block(source);
+    let face = CssBlockFragment::<CssFontFaceDescriptors>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     implicit(&face, source);
     assert_eq!(
         face_kinds(body(&face).body()),
@@ -619,7 +878,11 @@ fn unterminated_comments_and_outer_braces_report_original_eof_without_losing_des
             .value(),
         source.len()
     );
-    let palette = parse_font_palette_values_block(source);
+    let palette = CssBlockFragment::<Vec<CssFontPaletteDescriptor>>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     implicit(&palette, source);
     assert_eq!(
         palette_kinds(body(&palette).body()),
@@ -627,7 +890,11 @@ fn unterminated_comments_and_outer_braces_report_original_eof_without_losing_des
     );
     recovered(&palette, CssRecoveryAction::IgnoreUnterminatedComment);
     let source = "{prefix:\"a\";/* unfinished";
-    let counter = parse_counter_style_block(source);
+    let counter = CssBlockFragment::<CssCounterStyleDescriptors>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     implicit(&counter, source);
     symbol(
         body(&counter).body().prefix().unwrap().ordinary_prefix(),
@@ -636,7 +903,11 @@ fn unterminated_comments_and_outer_braces_report_original_eof_without_losing_des
     );
     recovered(&counter, CssRecoveryAction::IgnoreUnterminatedComment);
     let source = "{src:url(a);/* unfinished";
-    let profile = parse_color_profile_block(source);
+    let profile = CssBlockFragment::<Vec<CssColorProfileDescriptor>>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     implicit(&profile, source);
     assert_eq!(
         profile_kinds(body(&profile).body()),
@@ -647,8 +918,11 @@ fn unterminated_comments_and_outer_braces_report_original_eof_without_losing_des
 
 #[test]
 fn bad_url_descriptor_preserves_the_previous_url_and_following_intent() {
-    let report =
-        parse_color_profile_block("{src:url(good);src:url(a b);rendering-intent:perceptual}");
+    let report = CssBlockFragment::<Vec<CssColorProfileDescriptor>>::parse(
+        &CssParser::default(),
+        "{src:url(good);src:url(a b);rendering-intent:perceptual}",
+        &CssBlockContext::default(),
+    );
     assert_eq!(
         profile_kinds(body(&report).body()),
         [
@@ -673,10 +947,13 @@ fn nesting<T: Clone + std::fmt::Debug>(
 ) {
     let diagnostic = recovered(report, CssRecoveryAction::StopAtNestingLimit);
     assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
-    let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-        panic!("native typed nesting error")
-    };
-    assert_eq!(detail.limit(), 256);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::NestingLimit,
+        "native typed nesting error"
+    );
+    assert_eq!(detail.nesting_limit().unwrap(), 256);
     point(
         diagnostic.error().position(),
         value_start + first_excessive_function * 2,
@@ -699,7 +976,11 @@ fn real_outer_brace_counts_once_and_excessive_descriptor_units_retain_both_neigh
         // the zero-based function 255 is the first over-limit group at 257.
         let value = format!("{}x{}", "f(".repeat(depth), ")".repeat(depth));
         let face_source = format!("{{font-family:A;bad:{value};font-display:swap}}");
-        let face = parse_font_face_block(&face_source);
+        let face = CssBlockFragment::<CssFontFaceDescriptors>::parse(
+            &CssParser::default(),
+            &face_source,
+            &CssBlockContext::default(),
+        );
         assert_eq!(
             face_kinds(body(&face).body()),
             [
@@ -708,7 +989,11 @@ fn real_outer_brace_counts_once_and_excessive_descriptor_units_retain_both_neigh
             ]
         );
         let counter_source = format!("{{prefix:\"a\";bad:{value};suffix:\"b\"}}");
-        let counter = parse_counter_style_block(&counter_source);
+        let counter = CssBlockFragment::<CssCounterStyleDescriptors>::parse(
+            &CssParser::default(),
+            &counter_source,
+            &CssBlockContext::default(),
+        );
         assert_eq!(body(&counter).body().occurrences().len(), 2);
         symbol(
             body(&counter).body().prefix().unwrap().ordinary_prefix(),
@@ -721,7 +1006,11 @@ fn real_outer_brace_counts_once_and_excessive_descriptor_units_retain_both_neigh
             true,
         );
         let palette_source = format!("{{font-family:A;bad:{value};base-palette:dark}}");
-        let palette = parse_font_palette_values_block(&palette_source);
+        let palette = CssBlockFragment::<Vec<CssFontPaletteDescriptor>>::parse(
+            &CssParser::default(),
+            &palette_source,
+            &CssBlockContext::default(),
+        );
         assert_eq!(
             palette_kinds(body(&palette).body()),
             [
@@ -730,7 +1019,11 @@ fn real_outer_brace_counts_once_and_excessive_descriptor_units_retain_both_neigh
             ]
         );
         let profile_source = format!("{{src:url(a);bad:{value};rendering-intent:perceptual}}");
-        let profile = parse_color_profile_block(&profile_source);
+        let profile = CssBlockFragment::<Vec<CssColorProfileDescriptor>>::parse(
+            &CssParser::default(),
+            &profile_source,
+            &CssBlockContext::default(),
+        );
         assert_eq!(
             profile_kinds(body(&profile).body()),
             [
@@ -770,7 +1063,11 @@ fn failed_structural_child_depth_retains_native_error_and_later_palette_profile_
         // Outer brace + failed child's brace + 254 functions reaches 256.
         let value = format!("{}x{}", "f(".repeat(depth), ")".repeat(depth));
         let palette_source = format!("{{font-family:A;@unknown{{bad:{value}}}base-palette:dark}}");
-        let palette = parse_font_palette_values_block(&palette_source);
+        let palette = CssBlockFragment::<Vec<CssFontPaletteDescriptor>>::parse(
+            &CssParser::default(),
+            &palette_source,
+            &CssBlockContext::default(),
+        );
         assert_eq!(
             palette_kinds(body(&palette).body()),
             [
@@ -780,7 +1077,11 @@ fn failed_structural_child_depth_retains_native_error_and_later_palette_profile_
         );
         let profile_source =
             format!("{{src:url(a);@unknown{{bad:{value}}}rendering-intent:perceptual}}");
-        let profile = parse_color_profile_block(&profile_source);
+        let profile = CssBlockFragment::<Vec<CssColorProfileDescriptor>>::parse(
+            &CssParser::default(),
+            &profile_source,
+            &CssBlockContext::default(),
+        );
         assert_eq!(
             profile_kinds(body(&profile).body()),
             [
@@ -828,7 +1129,7 @@ fn real_rule_resource_recovery_keeps_the_next_native_top_level_sibling() {
         ),
     ] {
         let source = format!("{head}{deep}{tail}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(matches!(report.syntax().rules(), [_, CssRule::Style(_)]));
         assert!(
             report

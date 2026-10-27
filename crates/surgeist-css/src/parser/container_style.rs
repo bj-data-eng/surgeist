@@ -4,9 +4,17 @@ use super::boolean_condition::{
     parse_component_condition,
 };
 use super::query_components::ComponentCursor as Cursor;
-use crate::container_style::StyleRangeKind;
-use crate::supports::{SupportsLexical, trivia};
-use crate::*;
+use crate::component::{CssBlockKind, CssComponentValue, CssComponentValueRef, CssValueTokenRef};
+use crate::declaration::CssCustomPropertyName;
+use crate::property::CssPropertyGrammar;
+use crate::query::container::container_style::StyleRangeKind;
+use crate::query::container::{
+    CssContainerGeneralEnclosed, CssContainerStyleFeature, CssContainerStyleFeatureName,
+    CssContainerStyleRange, CssContainerStyleRangeOperand, CssContainerStyleValue,
+    CssStyleQueryLeaf,
+};
+use crate::query::supports::construction::{SupportsLexical, trivia};
+use crate::query::{CssCondition, CssQueryComparison};
 use std::ops::Range;
 
 /// A style query, as regions of its lexical root.
@@ -22,11 +30,10 @@ pub(super) enum StyleLeaf {
 struct StyleModel;
 
 impl BooleanModel<StyleLeaf> for StyleModel {
-    type Condition = CssContainerStyleQuery;
-    type Kind = CssContainerStyleQueryKind;
+    type Leaf = CssStyleQueryLeaf;
 
-    fn leaf(leaf: StyleLeaf, lexical: &SupportsLexical) -> Self::Kind {
-        let feature = |value| CssContainerStyleQueryKind::Feature(value);
+    fn leaf(leaf: StyleLeaf, lexical: &SupportsLexical) -> CssStyleQueryLeaf {
+        let feature = |value| CssStyleQueryLeaf::Feature(value);
         match leaf {
             StyleLeaf::Boolean(name) => feature(CssContainerStyleFeature::Boolean(name)),
             StyleLeaf::Plain(name, range) => feature(CssContainerStyleFeature::Plain {
@@ -75,44 +82,31 @@ impl BooleanModel<StyleLeaf> for StyleModel {
                     CssContainerStyleRange::new(kind),
                 ))
             }
-            StyleLeaf::Opaque => CssContainerStyleQueryKind::GeneralEnclosed(
+            StyleLeaf::Opaque => CssStyleQueryLeaf::GeneralEnclosed(
                 CssContainerGeneralEnclosed::new(lexical.clone()),
             ),
         }
     }
-    fn parenthesized(group: Box<Self::Condition>) -> Self::Kind {
-        CssContainerStyleQueryKind::Parenthesized(group)
-    }
-    fn not(operand: Box<Self::Condition>) -> Self::Kind {
-        CssContainerStyleQueryKind::Not(operand)
-    }
-    fn and(operands: Vec<Self::Condition>) -> Self::Kind {
-        CssContainerStyleQueryKind::And(CssContainerStyleQueryList::new(operands))
-    }
-    fn or(operands: Vec<Self::Condition>) -> Self::Kind {
-        CssContainerStyleQueryKind::Or(CssContainerStyleQueryList::new(operands))
-    }
-    fn condition(kind: Self::Kind, lexical: SupportsLexical) -> Self::Condition {
-        CssContainerStyleQuery::new(kind, lexical)
-    }
 }
 
 impl StyleNode {
-    pub(super) fn into_query(self, parent: SupportsLexical) -> CssContainerStyleQuery {
+    pub(super) fn into_query(self, parent: SupportsLexical) -> CssCondition<CssStyleQueryLeaf> {
         self.build::<StyleModel>(&parent)
     }
 }
 
 // A whole style feature is tried before the boolean algebra (Contain 3
 // `<style-query>`); an operand that is neither group nor function fails.
-pub(super) fn parse(items: &[CssComponentValue]) -> Option<StyleNode> {
+pub(super) fn parse(
+    items: &[CssComponentValue],
+) -> Result<StyleNode, ConditionFailure<std::convert::Infallible>> {
     if let Some(leaf) = feature(items) {
-        return Some(StyleNode {
+        return Ok(StyleNode {
             range: 0..items.len(),
             kind: BooleanNodeKind::Leaf(leaf),
         });
     }
-    parse_component_condition(&mut StyleOperands, items).ok()
+    parse_component_condition(&mut StyleOperands, items)
 }
 
 struct StyleOperands;
@@ -132,9 +126,10 @@ impl<'a> ComponentOperands<'a> for StyleOperands {
         };
         let kind = match component.view() {
             CssComponentValueRef::Block(block) if block.kind() == CssBlockKind::Parenthesis => {
+                // A style query has no resource failure; a mismatch is an enclosure.
                 match parse(block.values().items()) {
-                    Some(group) => BooleanNodeKind::Parenthesized(Box::new(group)),
-                    None => BooleanNodeKind::Leaf(StyleLeaf::Opaque),
+                    Ok(group) => BooleanNodeKind::Parenthesized(Box::new(group)),
+                    Err(_) => BooleanNodeKind::Leaf(StyleLeaf::Opaque),
                 }
             }
             CssComponentValueRef::Function(_) => BooleanNodeKind::Leaf(StyleLeaf::Opaque),

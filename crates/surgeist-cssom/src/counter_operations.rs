@@ -1,7 +1,14 @@
 //! CounterStyle partial reads and checked literal descriptor transitions.
 use crate::parser_resources::check_resource_diagnostics;
 use crate::{declaration::*, declaration_budget::DeclarationBudget, *};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryDiagnostic;
+use surgeist_css::rule::counter_style::{
+    CssCounterStyleDefinitionStatus, CssCounterStyleDescriptorCollection,
+    CssCounterStyleDescriptorEntry, CssCounterStyleDescriptorKind, CssCounterStyleDescriptorValue,
+    CssCounterStyleName,
+};
+use surgeist_css::serialization::{CssSerializationLimits, serialize_css_identifier};
 
 impl CssomBlock {
     fn counter_entry_count(&self) -> Result<usize, CssomError> {
@@ -23,7 +30,7 @@ impl CssomBlock {
     /// and independently edited raw value origins. It performs no counter execution.
     pub fn counter_descriptors(
         &self,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<CssCounterStyleDescriptorCollection<'_>, CssomError> {
         let CssomBlockData::CounterStyle(original) = self.data() else {
             return Err(CssomError::WrongKind);
@@ -42,8 +49,7 @@ impl CssomBlock {
                     .map(CssCounterStyleDescriptorEntry::from_value),
             )
             .collect();
-        CssCounterStyleDescriptorCollection::try_new_with_limits(entries, limits)
-            .map_err(CssomError::Value)
+        CssCounterStyleDescriptorCollection::try_new(entries, limits).map_err(CssomError::Value)
     }
 }
 
@@ -52,12 +58,12 @@ impl CssomSnapshot {
     pub(crate) fn counter_name(
         &self,
         id: &CssomRuleId,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String, CssomError> {
         let CssomRuleData::CounterStyle { name, .. } = self.rule(id)?.data() else {
             return Err(CssomError::WrongKind);
         };
-        serialize_css_identifier_with_limits(name, limits).map_err(CssomError::Value)
+        serialize_css_identifier(name, limits).map_err(CssomError::Value)
     }
     /// Specified effective descriptor text; an unspecified descriptor is empty.
     /// This remains independent of whole-rule output and definition validity.
@@ -65,7 +71,7 @@ impl CssomSnapshot {
         &self,
         id: &CssomRuleId,
         kind: CssCounterStyleDescriptorKind,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String, CssomError> {
         let CssomRuleData::CounterStyle { block, .. } = self.rule(id)?.data() else {
             return Err(CssomError::WrongKind);
@@ -83,7 +89,7 @@ impl CssomSnapshot {
             |entry| {
                 entry
                     .value()
-                    .to_specified_css_with_limits(budget.provider()?)
+                    .serialize_specified(budget.provider()?)
                     .map_err(CssomError::Value)
             },
         )
@@ -128,7 +134,8 @@ impl CssomBatch {
                 return Ok(false);
             }
             let (value, diagnostics) =
-                parse_counter_style_descriptor_value(source, kind).into_parts();
+                CssCounterStyleDescriptorValue::parse(&CssParser::default(), source, kind)
+                    .into_parts();
             check_resource_diagnostics(&diagnostics)?;
             operation_diagnostics = diagnostics;
             let Some(value) = value else {
@@ -145,11 +152,9 @@ impl CssomBatch {
                 .collect::<Vec<_>>();
             budget.scan(entries.len() + 1)?;
             entries.push(CssCounterStyleDescriptorEntry::from_value(&value));
-            let prospective = CssCounterStyleDescriptorCollection::try_new_with_limits(
-                entries,
-                budget.provider()?,
-            )
-            .map_err(CssomError::Value)?;
+            let prospective =
+                CssCounterStyleDescriptorCollection::try_new(entries, budget.provider()?)
+                    .map_err(CssomError::Value)?;
             match prospective.definition_status() {
                 CssCounterStyleDefinitionStatus::Defined => {}
                 CssCounterStyleDefinitionStatus::Undefined(_) => return Ok(false),

@@ -1,21 +1,22 @@
 //! Authored custom-media definitions remain ordered payloads, not evaluated aliases.
 use crate::css::support::authored_syntax::{assert_diagnostics, parsed_origin};
-use surgeist_css::{
-    CssCustomMediaBody, CssCustomMediaSerializationError, CssErrorCode, CssMediaSerializationError,
-    CssNormalizationErrorKind, CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
-    CssRecoveryAction, CssRule, CssRuleContextKindRef, normalize_report, normalize_sheet,
-    normalize_sheet_with_limits, parse_sheet,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem, CssRuleContextKindRef,
 };
+use surgeist_css::query::media::CssCustomMediaBody;
+use surgeist_css::rule::CssRule;
 
 #[test]
 fn normalization_retains_distinct_boolean_and_empty_list_definitions() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@custom-media --choice true;",
         "@custom-media --choice false;",
         "@custom-media --choice;",
     ));
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     assert_eq!(normalized.items().len(), 3);
     for (index, (item, authored)) in normalized
         .items()
@@ -60,9 +61,9 @@ fn scoped_and_conditional_contexts_remain_on_each_definition() {
         "@custom-media --direct false;",
         "}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let [
         CssNormalizedItem::Rule(scope),
         CssNormalizedItem::Rule(media),
@@ -92,7 +93,7 @@ fn scoped_and_conditional_contexts_remain_on_each_definition() {
 #[test]
 fn normalized_report_preserves_recovered_definition_and_original_diagnostics() {
     let source = "@custom-media --x (color), ???, screen;";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     // The second `<media-query>` member first fails at its `?` delimiter.
     let malformed = source.find("???").unwrap();
     assert_diagnostics(
@@ -103,7 +104,7 @@ fn normalized_report_preserves_recovered_definition_and_original_diagnostics() {
             malformed,
         )],
     );
-    let normalized = normalize_report(&report).unwrap();
+    let normalized = report.normalize(Default::default()).unwrap();
     assert!(!normalized.is_clean());
     assert_eq!(normalized.diagnostics(), report.diagnostics());
     let [CssNormalizedItem::Rule(context)] = normalized.syntax().items() else {
@@ -116,13 +117,12 @@ fn normalized_report_preserves_recovered_definition_and_original_diagnostics() {
         panic!("authored definition");
     };
     assert_eq!(definition, original);
-    let Err(CssCustomMediaSerializationError::Media(CssMediaSerializationError::RecoveredNever {
-        origin,
-    })) = definition.serialize()
-    else {
-        panic!("recovered member: {:?}", definition.serialize())
-    };
-    let origin = parsed_origin(&origin);
+    let error = definition.serialize_tokens(Default::default()).unwrap_err();
+    assert!(
+        crate::css::support::is_recovered_media_failure(&error),
+        "recovered member: {error:?}"
+    );
+    let origin = parsed_origin(error.origin().expect("recovered member origin"));
     assert_eq!(origin.source().as_str(), source);
     assert_eq!(origin.span().start().byte_offset().value(), malformed);
 }
@@ -130,18 +130,12 @@ fn normalized_report_preserves_recovered_definition_and_original_diagnostics() {
 #[test]
 fn definition_occurrences_consume_rule_budget_without_partial_output() {
     let source = "@custom-media --a true; @custom-media --b false;";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean());
     let before = report.syntax().clone();
     let limits = CssNormalizationLimits::try_new(0, 1, 0, 0).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Rules,
-            limit: 1,
-        }
-    ));
+    let error = report.syntax().normalize(limits).unwrap_err();
+    assert!(error.exhausted_limit() == Some((CssNormalizationResource::Rules, 1)));
     assert_eq!(
         error.position().unwrap().byte_offset().value(),
         source.find("@custom-media --b").unwrap()
@@ -149,10 +143,7 @@ fn definition_occurrences_consume_rule_budget_without_partial_output() {
     assert_eq!(*report.syntax(), before);
     let sufficient = CssNormalizationLimits::try_new(0, 2, 0, 0).unwrap();
     assert_eq!(
-        normalize_sheet_with_limits(report.syntax(), sufficient)
-            .unwrap()
-            .items()
-            .len(),
+        report.syntax().normalize(sufficient).unwrap().items().len(),
         2
     );
 }

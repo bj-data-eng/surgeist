@@ -1,6 +1,18 @@
 //! Test-only phase extraction for preserved ordinary descriptor assertions.
 #![allow(dead_code)]
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::numeric::{CssInteger, CssNumeric, CssNumericLiteral, CssRange};
+use surgeist_css::rule::counter_style::{
+    CssCounterAdditiveSymbols, CssCounterStyleDescriptorValue, CssCounterStyleDescriptorValueRef,
+    CssCounterStyleName, CssCounterStyleNegative, CssCounterStylePad, CssCounterStyleRange,
+    CssCounterStyleSpeakAs, CssCounterStyleSystem, CssCounterSymbol, CssCounterSymbols,
+};
+use surgeist_css::rule::font_face::CssFontDisplay;
+use surgeist_css::rule::font_feature_values::{
+    CssFontFeatureDisplayValue, CssFontFeatureDisplayValueRef, CssFontFeatureValue,
+    CssFontFeatureValueDefinition, CssFontFeatureValueIndex, CssFontFeatureValueKind,
+    CssFontFeatureValueRef, CssFontFeatureValuesError,
+};
 pub trait OrdinaryCounterValue {
     fn ordinary_system(&self) -> &CssCounterStyleSystem;
     fn ordinary_negative(&self) -> &CssCounterStyleNegative;
@@ -106,7 +118,7 @@ impl OrdinaryFeatureDisplay for CssFontFeatureDisplayValue {
 pub fn checked_feature_value(
     kind: CssFontFeatureValueKind,
     spellings: &[&str],
-) -> Result<CssFontFeatureValue, CssFontFeatureValueError> {
+) -> Result<CssFontFeatureValue, CssFontFeatureValuesError> {
     let mut components = Vec::new();
     for spelling in spellings {
         if !components.is_empty() {
@@ -114,16 +126,20 @@ pub fn checked_feature_value(
         }
         components.push(CssComponentValue::try_number(spelling).unwrap());
     }
-    CssFontFeatureValue::try_from_components(kind, CssComponentValues::try_new(components).unwrap())
+    CssFontFeatureValue::try_from_components(
+        kind,
+        CssComponentValues::try_new(components, Default::default()).unwrap(),
+        Default::default(),
+    )
 }
 
 /// Assert that an ordinary-integer regression still retains its exact literal variant.
 pub trait LiteralIntegerValue {
-    fn literal(&self) -> &CssIntegerLiteral;
+    fn expect_literal(&self) -> &CssNumericLiteral<CssInteger>;
 }
-impl LiteralIntegerValue for CssIntegerValue {
-    fn literal(&self) -> &CssIntegerLiteral {
-        let CssIntegerValue::Literal(value) = self else {
+impl<R: CssRange<CssInteger>> LiteralIntegerValue for CssNumeric<CssInteger, R> {
+    fn expect_literal(&self) -> &CssNumericLiteral<CssInteger> {
+        let Some(value) = self.literal() else {
             panic!("exact ordinary integer literal expected")
         };
         value

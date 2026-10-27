@@ -6,7 +6,16 @@
 //! https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#interpolation-space
 //! https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#serializing-sRGB-values
 //! https://www.w3.org/TR/2025/WD-css-images-4-20250930/#serialization
-use surgeist_css::*;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::image::{CssImage, CssImageValue};
 
 const FUNCTIONS: [&str; 5] = [
     "linear-gradient",
@@ -17,9 +26,10 @@ const FUNCTIONS: [&str; 5] = [
 ];
 
 fn parsed(css: &str) -> (CssDeclaration, CssImageValue) {
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage),
-        parse_component_values(css).unwrap(),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage)),
+        CssComponentValues::parse(&CssParser::default(), css).unwrap(),
         CssImportance::Important,
     )
     .unwrap();
@@ -28,7 +38,7 @@ fn parsed(css: &str) -> (CssDeclaration, CssImageValue) {
     else {
         panic!("background image")
     };
-    let [image] = images.images().images() else {
+    let [image] = images.value().images() else {
         panic!("one gradient")
     };
     let image = image.clone();
@@ -38,54 +48,52 @@ fn parsed(css: &str) -> (CssDeclaration, CssImageValue) {
 fn verify(css: &str, expected: &str) {
     let (declaration, image) = parsed(css);
     let before = declaration.clone();
-    assert_eq!(image.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        image.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     let checked = CssImage::try_new(image.clone()).unwrap();
-    assert_eq!(checked.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        checked.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     // Exact output capacity succeeds; every failure is reusable and returns no
     // partial string. This exercises the existing public cumulative provider.
     assert_eq!(
         image
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                1000,
-                1000,
-                expected.len(),
-            ))
+            .serialize_specified(CssSerializationLimits::new(1000, 1000, expected.len(),))
             .unwrap(),
         expected,
     );
     for (input, projection, bytes, cause) in [
-        (
-            0,
-            1000,
-            1000,
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
-        ),
-        (
-            1000,
-            0,
-            1000,
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
-        ),
+        (0, 1000, 1000, SerializationFailure::InputNodeLimit),
+        (1000, 0, 1000, SerializationFailure::ProjectionNodeLimit),
         (
             1000,
             1000,
             expected.len() - 1,
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         let error = image
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                input, projection, bytes,
-            ))
+            .serialize_specified(CssSerializationLimits::new(input, projection, bytes))
             .unwrap_err();
-        assert_eq!(error.kind(), cause);
-        assert_eq!(image.serialize_specified().unwrap(), expected);
+        assert_eq!(serialization_failure(&error), cause);
+        assert_eq!(
+            image.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
-    let output = declaration.to_specified_css().unwrap();
+    let output = declaration.serialize_specified(Default::default()).unwrap();
     assert_eq!(output, format!("background-image: {expected} !important;"));
-    let report = parse_style_attribute(&output);
+    let report = CssParser::default().parse_block_contents(&output);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    assert_eq!(report.syntax()[0].to_specified_css().unwrap(), output);
+    assert_eq!(
+        report.syntax()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
+        output
+    );
     assert_eq!(declaration, before);
 }
 

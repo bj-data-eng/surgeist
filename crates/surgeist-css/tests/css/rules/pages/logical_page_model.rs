@@ -3,7 +3,12 @@
 //! CSS2 §13.2.2 orders unqualified pages below side pages below first pages.
 
 use crate::css::support::rules::page_pseudo;
-use surgeist_css::*;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::page::{CssPagePseudo, CssPageSpecificity};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 #[test]
 fn parsed_page_classifications_retain_their_symbolic_identity_in_each_mode() {
@@ -17,7 +22,11 @@ fn parsed_page_classifications_retain_their_symbolic_identity_in_each_mode() {
         for mode in [CssParserMode::Standards, CssParserMode::Quirks] {
             let context = CssParserContext::new(mode);
             let source = format!("@page :{pseudo}{{margin-left:2cm!important}}");
-            let report = context.parse_rule(&source, &CssNamespaceContext::default());
+            let report = CssRule::parse(
+                &CssParser::new(context, Default::default()),
+                &source,
+                &CssNamespaceContext::default(),
+            );
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             let Some(CssRule::Page(page)) = report.syntax() else {
                 panic!("one typed page rule")
@@ -34,11 +43,11 @@ fn parsed_page_classifications_retain_their_symbolic_identity_in_each_mode() {
                     .syntax()
                     .as_ref()
                     .unwrap()
-                    .to_specified_css()
+                    .serialize_specified(Default::default())
                     .unwrap(),
                 canonical
             );
-            let reparsed = context.parse_sheet(&canonical);
+            let reparsed = CssParser::new(context, Default::default()).parse_sheet(&canonical);
             assert!(reparsed.is_clean());
             let [CssRule::Page(reparsed)] = reparsed.syntax().rules() else {
                 panic!("one reparsed page")
@@ -56,7 +65,7 @@ fn parsed_page_classifications_retain_their_symbolic_identity_in_each_mode() {
 
 #[test]
 fn page_specificity_compares_default_side_and_first_without_mapping_or_importance() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@page{margin-left:1px!important}",
         "@page :left{margin-left:2px}",
         "@page :right{margin-left:3px!important}",
@@ -109,9 +118,9 @@ fn normalization_preserves_typed_page_classification_and_specificity_inside_grou
         "@page{margin-top:4px}",
         "}}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let pages: Vec<_> = normalized
         .items()
         .iter()
@@ -169,12 +178,15 @@ fn normalization_preserves_typed_page_classification_and_specificity_inside_grou
             .all(|item| !matches!(item, CssNormalizedItem::Declaration(_)))
     );
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "@scope (.root) { @media print { @page :recto { margin-top: 1px; } @page :verso { margin-top: 2px !important; } @page :first { margin-top: 3px; } @page { margin-top: 4px; } } }"
     );
 }
 
-fn page_specificity(page: &surgeist_css::CssPageRule) -> CssPageSpecificity {
+fn page_specificity(page: &surgeist_css::rule::page::CssPageRule) -> CssPageSpecificity {
     page.selectors()
         .selectors()
         .first()

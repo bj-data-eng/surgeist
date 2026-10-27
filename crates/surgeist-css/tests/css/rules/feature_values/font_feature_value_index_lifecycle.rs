@@ -12,13 +12,19 @@ use crate::css::support::descriptor_phases;
 use crate::css::support::rules::{invalid_descriptor, rejected_bang};
 use descriptor_phases::*;
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssError, CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_feature_values::{
+    CssFontFeatureValueBlock, CssFontFeatureValueDefinition, CssFontFeatureValueIndex,
+    CssFontFeatureValueKind, CssFontFeatureValueName, CssFontFeatureValuesItem,
+};
 
 type Block = CssFontFeatureValueBlock;
 type Definition = CssFontFeatureValueDefinition;
 type Index = CssFontFeatureValueIndex;
 type Kind = CssFontFeatureValueKind;
-type ConstructionError = CssFontFeatureValuesErrorKind;
 
 fn definition(kind: Kind, name: &str, values: &[&str]) -> Definition {
     Definition::new(
@@ -62,12 +68,18 @@ fn assert_checked(kind: Kind, authored: &[&str], expected: &[&str]) {
 fn assert_parsed(kind: Kind, authored: &[&str], expected: &[&str]) {
     let source = format!(
         "/*😀*/ @font-feature-values Demo {{ @{} {{ Case: {}; }} }}",
-        kind.css_name(),
+        kind.as_str(),
         authored.join(" "),
     );
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert!(validate_sheet(&source).is_ok(), "strict validation agrees");
+    assert!(
+        CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .is_ok(),
+        "strict validation agrees"
+    );
     let [CssRule::FontFeatureValues(rule)] = report.syntax().rules() else {
         panic!("one feature-values rule")
     };
@@ -98,7 +110,7 @@ fn assert_parsed(kind: Kind, authored: &[&str], expected: &[&str]) {
             *spelling,
         );
     }
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let [CssNormalizedItem::Rule(context)] = normalized.items() else {
         panic!("one normalized rule")
     };
@@ -185,9 +197,14 @@ fn exact_large_authored_indexes_survive_parsing_and_checked_block_admission() {
 #[test]
 fn invalid_definitions_recover_locally_without_discarding_newly_admitted_siblings() {
     let source = "/*😀*/ @font-feature-values Demo { @character-variant { One: +0001; bad: 1 2 3; Wide: +000100 2; } @styleset { Wide: 21 100; bad: -1; Zero: -000; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(!report.is_clean());
-    assert!(validate_sheet(source).is_err());
+    assert!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .is_err()
+    );
     assert_eq!(report.diagnostics().len(), 2, "{:?}", report.diagnostics());
     assert!(
         report
@@ -247,21 +264,24 @@ fn invalid_definitions_recover_locally_without_discarding_newly_admitted_sibling
 #[test]
 fn rejected_integer_syntax_and_index_counts_remain_intrinsic_errors() {
     for text in ["", "+", "1.0", "1e0", "1px", "1%", "1 2"] {
-        assert_eq!(
-            Index::try_from_decimal(text).unwrap_err().kind(),
-            ConstructionError::InvalidIntegerSyntax
+        assert!(
+            Index::try_from_decimal(text)
+                .unwrap_err()
+                .is_invalid_integer_syntax()
         );
     }
-    assert_eq!(
-        Index::try_from_decimal("-1").unwrap_err().kind(),
-        ConstructionError::NegativeIndex
+    assert!(
+        Index::try_from_decimal("-1")
+            .unwrap_err()
+            .is_negative_index()
     );
-    assert!(matches!(
+    assert!(
         checked_feature_value(Kind::Styleset, &[])
             .unwrap_err()
-            .kind(),
-        CssFontFeatureValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-    ));
+            .diagnostic()
+            .map(CssError::code)
+            == Some(CssErrorCode::UnexpectedEnd)
+    );
     for (kind, values) in [
         (Kind::CharacterVariant, &["1", "2", "3"][..]),
         (Kind::Stylistic, &["1", "2"][..]),
@@ -271,10 +291,13 @@ fn rejected_integer_syntax_and_index_counts_remain_intrinsic_errors() {
     ] {
         let good = definition(kind, "good", &["1", "2"][..kind_count(kind)]);
         assert!(Block::try_new(kind, vec![good]).is_ok());
-        assert!(matches!(
-            checked_feature_value(kind, values).unwrap_err().kind(),
-            CssFontFeatureValueErrorKind::Grammar(ErrorKind::UnexpectedToken(_))
-        ));
+        assert!(
+            checked_feature_value(kind, values)
+                .unwrap_err()
+                .diagnostic()
+                .map(CssError::code)
+                == Some(CssErrorCode::UnexpectedToken)
+        );
     }
     for (kind, invalid, token) in [
         ("character-variant", "1 2 3", Some("3")),
@@ -294,7 +317,7 @@ fn rejected_integer_syntax_and_index_counts_remain_intrinsic_errors() {
                 "1"
             }
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         // Fonts 4 §6.9.1: <integer [0,∞]>{1,2} for character-variant and
         // <integer [0,∞]>+ for styleset; calc() is the selected policy. The
         // first violating index token, or the end of the value, is

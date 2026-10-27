@@ -6,14 +6,22 @@
 //! These public tests do not inspect implementation source or private helpers.
 
 use crate::css::support::color_and_selector_fixtures::assert_color_limit_error as assert_error;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::lab_direct_component_cases::{
     assert_specified_text as assert_text, lab_direct_component_cases,
 };
 use crate::css::support::{checked_color as color, component_values as components};
-use surgeist_css::*;
+use surgeist_css::color::{
+    CssColor, CssColorComponent, CssColorHue, CssColorNumberLiteral, CssColorPercentageLiteral,
+    CssLabColor, CssLchColor,
+};
+use surgeist_css::component::{CssComponentValue, CssValueOrigin};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::CssSidePair;
 
-type Limits = CssSpecifiedValueSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Limits = CssSerializationLimits;
+type Kind = SerializationFailure;
 
 macro_rules! text_case {
     ($name:ident, $source:literal, $expected:literal) => {
@@ -44,11 +52,16 @@ text_case!(
 
 fn assert_limited(value: &CssColor, limits: Limits, expected: &str) {
     let before = value.clone();
-    let result = value.to_specified_css_with_limits(limits);
-    assert_eq!(result, value.to_specified_css_with_limits(limits));
+    let result = value.serialize_specified(limits);
+    assert_eq!(result, value.serialize_specified(limits));
     assert_eq!(value, &before);
     assert_eq!(result.unwrap(), expected);
-    assert_eq!(color(expected).to_specified_css().unwrap(), expected);
+    assert_eq!(
+        color(expected)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 }
 
 macro_rules! limit_success {
@@ -303,19 +316,19 @@ limit_error!(
     ByteLimit
 );
 
-fn pair() -> CssBorderColorPair {
-    let value = color("lab(1e400 0 0)");
-    CssBorderColorPair::new(value.clone(), Some(value))
+fn pair() -> CssSidePair<CssColor> {
+    // Two different authored values with the same output: an equal second value is not written.
+    CssSidePair::new(color("lab(1e400 0 0)"), Some(color("lab(1e401 0 0)")))
 }
 
-fn assert_pair_result(value: &CssBorderColorPair, limits: Limits, expected: Result<&str, Kind>) {
+fn assert_pair_result(value: &CssSidePair<CssColor>, limits: Limits, expected: Result<&str, Kind>) {
     let before = value.clone();
-    let result = value.serialize_specified_with_limits(limits);
-    assert_eq!(result, value.serialize_specified_with_limits(limits));
+    let result = value.serialize_specified(limits);
+    assert_eq!(result, value.serialize_specified(limits));
     assert_eq!(value, &before);
     match expected {
         Ok(expected) => assert_eq!(result.unwrap(), expected),
-        Err(kind) => assert_eq!(result.unwrap_err().kind(), kind),
+        Err(kind) => assert_eq!(serialization_failure(&result.unwrap_err()), kind),
     }
 }
 
@@ -355,7 +368,7 @@ fn sibling_endpoint_colors_one_short_byte_is_typed() {
 }
 #[test]
 fn utf8_prefix_leaves_exact_endpoint_output_budget() {
-    let value = CssBorderColorPair::new(color("color(--é 0)"), Some(color("lab(1e400 0 0)")));
+    let value = CssSidePair::new(color("color(--é 0)"), Some(color("lab(1e400 0 0)")));
     // The actual first sibling + separating space uses14 UTF-8 bytes;12 remain.
     assert_pair_result(
         &value,
@@ -365,7 +378,7 @@ fn utf8_prefix_leaves_exact_endpoint_output_budget() {
 }
 #[test]
 fn utf8_prefix_one_short_endpoint_output_budget_is_typed() {
-    let value = CssBorderColorPair::new(color("color(--é 0)"), Some(color("lab(1e400 0 0)")));
+    let value = CssSidePair::new(color("color(--é 0)"), Some(color("lab(1e400 0 0)")));
     assert_pair_result(
         &value,
         Limits::new(usize::MAX, usize::MAX, 25),
@@ -374,8 +387,7 @@ fn utf8_prefix_one_short_endpoint_output_budget_is_typed() {
 }
 #[test]
 fn unbounded_second_sibling_failure_keeps_entire_pair_unchanged() {
-    let value =
-        CssBorderColorPair::new(color("lab(1e400 0 0)"), Some(color("lab(50 1e2000000 0)")));
+    let value = CssSidePair::new(color("lab(1e400 0 0)"), Some(color("lab(50 1e2000000 0)")));
     assert_pair_result(
         &value,
         Limits::new(usize::MAX, usize::MAX, 64),
@@ -384,7 +396,7 @@ fn unbounded_second_sibling_failure_keeps_entire_pair_unchanged() {
 }
 #[test]
 fn contextual_second_sibling_failure_keeps_entire_pair_unchanged() {
-    let value = CssBorderColorPair::new(
+    let value = CssSidePair::new(
         color("color(--é 0)"),
         Some(color("lab(calc(1em / 1px) 0 0)")),
     );
@@ -437,8 +449,8 @@ fn checked_lab(programmatic: bool, oklab: bool) {
         "lab(100 0 0)"
     };
     let before = value.clone();
-    let result = value.to_specified_css();
-    assert_eq!(result, value.to_specified_css());
+    let result = value.serialize_specified(Default::default());
+    assert_eq!(result, value.serialize_specified(Default::default()));
     assert_eq!(value, before);
     let retained = if oklab {
         value.oklab_value().unwrap()
@@ -484,8 +496,8 @@ fn checked_lch_percentage_literal_keeps_coefficient_kind_and_origin() {
     .unwrap();
     let value = CssColor::from_lch(model);
     let before = value.clone();
-    let result = value.to_specified_css();
-    assert_eq!(result, value.to_specified_css());
+    let result = value.serialize_specified(Default::default());
+    assert_eq!(result, value.serialize_specified(Default::default()));
     assert_eq!(value, before);
     assert_eq!(value.lch_value().unwrap().chroma(), &before_chroma);
     assert_eq!(result.unwrap(), "lch(50 0 30)");
@@ -537,8 +549,8 @@ fn checked_oklch_percentages(programmatic: bool) {
     .unwrap();
     let value = CssColor::from_oklch(model);
     let before = value.clone();
-    let result = value.to_specified_css();
-    assert_eq!(result, value.to_specified_css());
+    let result = value.serialize_specified(Default::default());
+    assert_eq!(result, value.serialize_specified(Default::default()));
     assert_eq!(value, before);
     assert_eq!(value.oklch_value().unwrap().lightness(), &before_lightness);
     assert_eq!(value.oklch_value().unwrap().chroma(), &before_chroma);

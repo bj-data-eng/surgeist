@@ -1,12 +1,12 @@
 //! CSS Scrollbars 1 terminal color grammar.
 
 use super::property_input::Parser;
-use crate::error::property::ParseError;
+use crate::diagnostic::error::property::ParseError;
 
 use super::color::parse_color;
-use crate::CssScrollbarColor;
-use crate::error::property::Error;
-use crate::numeric::NumericInputContext;
+use crate::diagnostic::error::property::Error;
+use crate::numeric::expression::NumericInputContext;
+use crate::values::ui::CssScrollbarColor;
 
 pub(super) fn parse_scrollbar_color<'i, 't>(
     input: &mut Parser<'i, 't>,

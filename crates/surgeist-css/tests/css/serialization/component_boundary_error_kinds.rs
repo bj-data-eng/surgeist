@@ -7,22 +7,21 @@
 //! their trailing whitespace, so their boundary case is pinned privately in
 //! `src/pending_serialization.rs`.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::query::supports::CssSupportsTestBody;
+use surgeist_css::serialization::CssSerializationLimits;
 
 #[test]
 fn named_supports_body_reports_an_unserializable_trailing_reverse_solidus() {
     // The tokenizer reports the bare reverse solidus as a parse error, so the
     // single-child entry declines; the inert body still retains the child.
-    let (body, _) = parse_supports_test_contents("future: a \\\n;").into_parts();
+    let (body, _) =
+        CssSupportsTestBody::parse(&CssParser::default(), "future: a \\\n;").into_parts();
     let body = body.expect("inert body");
     assert_eq!(body.children().count(), 1);
-    assert_eq!(
-        body.to_specified_css_with_graph_limits(CssRuleGraphSerializationLimits {
-            values: CssSpecifiedValueSerializationLimits::default(),
-            max_depth: 8,
-        })
-        .unwrap_err()
-        .kind(),
-        CssSpecifiedValueSerializationErrorKind::UnserializableBoundary
+    assert!(
+        body.serialize_specified(CssSerializationLimits::default())
+            .unwrap_err()
+            .is_unserializable_boundary()
     );
 }

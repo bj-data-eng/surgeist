@@ -6,7 +6,16 @@ use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssLonghandValue,
+    CssPropertyKindRef, CssPropertyNameRef,
+};
 
 const LONGHANDS: [&str; 4] = [
     "contain-intrinsic-width",
@@ -28,15 +37,18 @@ fn accepted(name: &str, value: &str) {
         );
         assert_eq!(source.importance(), CssImportance::Important);
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
     }
 }
 
 fn one_value(source: &CssDeclaration) -> CssLonghandValue {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("one terminal contribution")
     };
@@ -199,7 +211,7 @@ fn four_terminals_have_fixed_none_initials_and_shorthand_sets_width_then_height(
     ] {
         let source = declaration(SHORTHAND, authored);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("two contained intrinsic size contributions")
         };
@@ -226,7 +238,7 @@ fn four_terminals_have_fixed_none_initials_and_shorthand_sets_width_then_height(
 fn css_wide_values_all_reset_and_substitutions_keep_symbolic_provenance() {
     let all_source = declaration("all", "initial");
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&all_source).unwrap()
+        all_source.expand().unwrap()
     else {
         panic!("symbolic all reset")
     };
@@ -246,7 +258,7 @@ fn css_wide_values_all_reset_and_substitutions_keep_symbolic_provenance() {
             let source = declaration(name, text);
             checked(name, text);
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("{name} has symbolic global contributions")
             };
@@ -259,30 +271,29 @@ fn css_wide_values_all_reset_and_substitutions_keep_symbolic_provenance() {
         }
         for pending in ["var(--intrinsic)", "env(--intrinsic)"] {
             let source = declaration(name, pending);
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("{name} keeps substitution pending")
             };
             assert!(handle.source().same_occurrence(&source));
             for invalid in ["auto", "-1e-999px", "1%"] {
                 assert!(
-                    matches!(
-                        handle
-                            .reenter(parse_component_values(invalid).unwrap())
-                            .unwrap_err()
-                            .kind(),
-                        CssExpansionErrorKind::InvalidReplacement(_)
-                    ),
+                    handle
+                        .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
+                        .unwrap_err()
+                        .replacement_error()
+                        .is_some(),
                     "{name}: {invalid}"
                 );
             }
-            assert_eq!(
+            assert!(
                 handle
-                    .reenter(parse_component_values("var(--again)").unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap()
+                    )
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
-            let replacement = parse_component_values("auto 2px").unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), "auto 2px").unwrap();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
                 panic!("{name} reenters to terminal contributions")
@@ -301,7 +312,7 @@ fn css_wide_values_all_reset_and_substitutions_keep_symbolic_provenance() {
                 assert_eq!(item.replacement_components(), Some(&replacement));
             }
             let CssContributions::Longhands(globals) = handle
-                .reenter(parse_component_values("inherit").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "inherit").unwrap())
                 .unwrap()
             else {
                 panic!("{name} reenters to global contributions")
@@ -320,13 +331,13 @@ fn css_wide_values_all_reset_and_substitutions_keep_symbolic_provenance() {
 #[test]
 fn normalization_keeps_authored_physical_and_logical_order_after_invalid_recovery() {
     let sheet = ".a{contain-intrinsic-width:auto 1px;contain-intrinsic-block-size:2px;contain-intrinsic-size:auto none auto 3px;contain-intrinsic-height:-1px;contain-intrinsic-inline-size:none}";
-    let report = parse_sheet(sheet);
+    let report = CssParser::default().parse_sheet(sheet);
     let [diagnostic] = report.diagnostics() else {
         panic!("one negative-height diagnostic: {:?}", report.diagnostics())
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
     assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()

@@ -8,7 +8,7 @@
 
 use super::reconstruction::{REPLAY_DEPTH, REPLAY_MAX_DEPTH, REPLAY_PARSES};
 use super::recovery::PREFLIGHT_TOKENS;
-use crate::CssRule;
+use crate::rule::CssRule;
 use crate::tokenization::PREPARED_BYTES;
 
 fn sheet(depth: usize, count: usize) -> String {
@@ -28,7 +28,7 @@ fn measure(depth: usize, count: usize) -> Measure {
     REPLAY_PARSES.with(|parses| parses.set(0));
     REPLAY_DEPTH.with(|live| live.set(0));
     REPLAY_MAX_DEPTH.with(|maximum| maximum.set(0));
-    let report = super::parse_sheet(&source);
+    let report = crate::CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().rules().len(), count);
     let mut rule = &report.syntax().rules()[count - 1];
@@ -91,7 +91,7 @@ fn prepared(depth: usize, count: usize) -> (usize, usize, usize) {
     let source = sheet(depth, count);
     PREPARED_BYTES.with(|prepared| prepared.set(0));
     REPLAY_PARSES.with(|parses| parses.set(0));
-    let report = super::parse_sheet(&source);
+    let report = crate::CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     (
         PREPARED_BYTES.with(std::cell::Cell::get),
@@ -126,7 +126,7 @@ fn deep_child_replays_prepare_at_most_one_source_length_view_each() {
 fn many_deep_siblings_parse_on_an_ordinary_test_thread() {
     for (depth, count) in [(32, 400), (64, 200)] {
         let source = sheet(depth, count);
-        let report = super::parse_sheet(&source);
+        let report = crate::CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         assert_eq!(report.syntax().rules().len(), count);
     }

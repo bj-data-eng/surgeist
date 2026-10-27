@@ -3,8 +3,24 @@
 
 use crate::css::support::color_and_selector_fixtures::named_color as named;
 use crate::css::support::color_components::token;
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::numeric_failure;
 use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssAlphaColor, CssColor, CssColorComponent, CssColorHue, CssColorInterpolation,
+    CssColorInterpolationMethod, CssColorMix, CssColorMixComponent, CssColorMixPercentage,
+    CssColorMixWeight, CssColorNumberLiteral, CssColorPercentageLiteral, CssColorSyntax,
+    CssHexColor, CssHslColor, CssHwbColor, CssLabColor, CssLchColor, CssNamedColor,
+    CssPredefinedColor, CssRelativeColor, CssRelativeColorChannel, CssRelativeColorEnvironment,
+    CssRelativeColorExpression, CssRelativeColorExpressionValue, CssRelativeColorFunction,
+    CssRelativeColorResultDomain, CssRgbColor, CssSystemColor,
+};
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::numeric::{CssCalculation, CssCalculationType, CssPercentage};
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn number(text: &str) -> CssColorComponent {
     CssColorComponent::Number(CssColorNumberLiteral::try_from_component(token(text)).unwrap())
@@ -26,9 +42,10 @@ fn relative_expression(
     domain: CssRelativeColorResultDomain,
 ) -> CssRelativeColorExpression {
     CssRelativeColorExpression::try_from_components(
-        parse_component_values(text).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), text).unwrap(),
         environment,
         domain,
+        Default::default(),
     )
     .unwrap()
 }
@@ -47,19 +64,31 @@ fn hex_named_and_symbolic_keywords_have_checked_distinct_branches() {
     }
     let named = named("ReBeccAPurple");
     assert_eq!(named.named().unwrap().name(), "rebeccapurple");
-    assert_eq!(named.to_specified_css().unwrap(), "rebeccapurple");
+    assert_eq!(
+        named.serialize_specified(Default::default()).unwrap(),
+        "rebeccapurple"
+    );
     for name in ["", "not-a-css-color", "currentcolor", "transparent"] {
         assert!(CssNamedColor::try_new(name).is_none(), "{name}");
     }
     let current = CssColor::current_color();
     assert!(current.is_current_color());
-    assert_eq!(current.to_specified_css().unwrap(), "currentcolor");
+    assert_eq!(
+        current.serialize_specified(Default::default()).unwrap(),
+        "currentcolor"
+    );
     let transparent = CssColor::transparent();
     assert!(transparent.is_transparent());
-    assert_eq!(transparent.to_specified_css().unwrap(), "transparent");
+    assert_eq!(
+        transparent.serialize_specified(Default::default()).unwrap(),
+        "transparent"
+    );
     let system = CssColor::from_system(CssSystemColor::CanvasText);
     assert_eq!(system.system(), Some(CssSystemColor::CanvasText));
-    assert_eq!(system.to_specified_css().unwrap(), "canvastext");
+    assert_eq!(
+        system.serialize_specified(Default::default()).unwrap(),
+        "canvastext"
+    );
 }
 
 #[test]
@@ -85,19 +114,20 @@ fn rgb_constructor_checks_legacy_domains_and_retains_modern_missing_components()
         [number("1"), percentage("2%"), number("3")],
         [number("1"), CssColorComponent::None, number("3")],
     ] {
-        assert_eq!(
-            CssRgbColor::try_new(CssColorSyntax::Legacy, channels, None).unwrap_err(),
-            CssColorConstructionError::InvalidSyntax
+        assert!(
+            CssRgbColor::try_new(CssColorSyntax::Legacy, channels, None)
+                .unwrap_err()
+                .is_invalid_syntax()
         );
     }
-    assert_eq!(
+    assert!(
         CssRgbColor::try_new(
             CssColorSyntax::Legacy,
             [percentage("1%"), percentage("2%"), percentage("3%")],
             Some(CssColorComponent::None),
         )
-        .unwrap_err(),
-        CssColorConstructionError::InvalidSyntax
+        .unwrap_err()
+        .is_invalid_syntax()
     );
     let modern = CssRgbColor::try_new(
         CssColorSyntax::Modern,
@@ -131,7 +161,7 @@ fn hsl_legacy_rules_and_other_absolute_payloads_preserve_authored_fields() {
     );
     assert!(legacy.alpha().is_none());
     assert!(CssColor::from_hsl(legacy).hsl_value().is_some());
-    assert_eq!(
+    assert!(
         CssHslColor::try_new(
             CssColorSyntax::Legacy,
             hue("1"),
@@ -139,10 +169,10 @@ fn hsl_legacy_rules_and_other_absolute_payloads_preserve_authored_fields() {
             percentage("30%"),
             None,
         )
-        .unwrap_err(),
-        CssColorConstructionError::InvalidSyntax
+        .unwrap_err()
+        .is_invalid_syntax()
     );
-    assert_eq!(
+    assert!(
         CssHslColor::try_new(
             CssColorSyntax::Legacy,
             CssColorHue::None,
@@ -150,10 +180,10 @@ fn hsl_legacy_rules_and_other_absolute_payloads_preserve_authored_fields() {
             percentage("30%"),
             None,
         )
-        .unwrap_err(),
-        CssColorConstructionError::InvalidSyntax
+        .unwrap_err()
+        .is_invalid_syntax()
     );
-    assert_eq!(
+    assert!(
         CssHslColor::try_new(
             CssColorSyntax::Legacy,
             hue("1"),
@@ -161,8 +191,8 @@ fn hsl_legacy_rules_and_other_absolute_payloads_preserve_authored_fields() {
             percentage("30%"),
             Some(CssColorComponent::None),
         )
-        .unwrap_err(),
-        CssColorConstructionError::InvalidSyntax
+        .unwrap_err()
+        .is_invalid_syntax()
     );
     let modern = CssHslColor::try_new(
         CssColorSyntax::Modern,
@@ -223,9 +253,14 @@ fn hsl_legacy_rules_and_other_absolute_payloads_preserve_authored_fields() {
 #[test]
 fn relative_expression_construction_preserves_origin_and_precise_errors() {
     let programmatic = CssRelativeColorExpression::try_from_components(
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("h").unwrap()]).unwrap(),
+        CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident("h").unwrap()],
+            Default::default(),
+        )
+        .unwrap(),
         CssRelativeColorEnvironment::Hsl,
         CssRelativeColorResultDomain::Hue,
+        Default::default(),
     )
     .unwrap();
     assert_eq!(programmatic.origin(), &CssValueOrigin::Programmatic);
@@ -245,18 +280,21 @@ fn relative_expression_construction_preserves_origin_and_precise_errors() {
     assert_eq!(calculation.result_type(), CssCalculationType::Number);
     assert_eq!(calculation.references(), &[CssRelativeColorChannel::H]);
 
-    let bad = parse_component_values(" /* gap */ 1px").unwrap();
+    let bad = CssComponentValues::parse(&CssParser::default(), " /* gap */ 1px").unwrap();
     let bad_index = bad.items().len() - 1;
     let bad_origin = bad.items()[bad_index].origin().clone();
     let error = CssRelativeColorExpression::try_from_components(
         bad,
         CssRelativeColorEnvironment::Hsl,
         CssRelativeColorResultDomain::Hue,
+        Default::default(),
     )
     .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::Component(CssComponentValueErrorKind::InvalidToken)
+    assert!(
+        error
+            .component_error()
+            .is_some_and(|error| error.is_invalid_token()),
+        "{error:?}"
     );
     assert_eq!(error.origin(), Some(&bad_origin));
     assert_eq!(error.path(), Some(&[bad_index][..]));
@@ -265,39 +303,38 @@ fn relative_expression_construction_preserves_origin_and_precise_errors() {
             "h",
             CssRelativeColorEnvironment::Alpha,
             CssRelativeColorResultDomain::Hue,
-            CssNumericConstructionErrorKind::InvalidArgumentType,
+            NumericFailure::InvalidArgumentType,
         ),
         (
             "10%",
             CssRelativeColorEnvironment::Hsl,
             CssRelativeColorResultDomain::Hue,
-            CssNumericConstructionErrorKind::RootDomainMismatch,
+            NumericFailure::RootDomainMismatch,
         ),
     ] {
         let error = CssRelativeColorExpression::try_from_components(
-            parse_component_values(text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             environment,
             domain,
+            Default::default(),
         )
         .unwrap_err();
-        assert_eq!(error.kind(), &kind, "{text}");
+        assert_eq!(numeric_failure(&error), kind, "{text}");
         assert_eq!(error.path(), Some(&[0][..]));
     }
-    let extra_values = parse_component_values("h s").unwrap();
+    let extra_values = CssComponentValues::parse(&CssParser::default(), "h s").unwrap();
     let extra_origin = extra_values.items()[2].origin().clone();
     let extra = CssRelativeColorExpression::try_from_components(
         extra_values,
         CssRelativeColorEnvironment::Hsl,
         CssRelativeColorResultDomain::Hue,
+        Default::default(),
     )
     .unwrap_err();
-    assert_eq!(
-        extra.kind(),
-        &CssNumericConstructionErrorKind::MultipleValues
-    );
+    assert!(extra.is_multiple_values(), "{extra:?}");
     assert_eq!(extra.origin(), Some(&extra_origin));
     assert_eq!(extra.path(), Some(&[2][..]));
-    let nested_values = parse_component_values("calc(h + 1px)").unwrap();
+    let nested_values = CssComponentValues::parse(&CssParser::default(), "calc(h + 1px)").unwrap();
     let CssComponentValueRef::Function(function) = nested_values.items()[0].view() else {
         panic!("expected calc function");
     };
@@ -306,12 +343,10 @@ fn relative_expression_construction_preserves_origin_and_precise_errors() {
         nested_values,
         CssRelativeColorEnvironment::Hsl,
         CssRelativeColorResultDomain::Hue,
+        Default::default(),
     )
     .unwrap_err();
-    assert_eq!(
-        nested.kind(),
-        &CssNumericConstructionErrorKind::IncompatibleTypes
-    );
+    assert!(nested.is_incompatible_types(), "{nested:?}");
     assert_eq!(nested.origin(), Some(&nested_origin));
     assert_eq!(nested.path(), Some(&[0, 4][..]));
     let CssValueOrigin::Parsed(origin) = nested_origin else {
@@ -325,15 +360,13 @@ fn relative_expression_construction_preserves_origin_and_precise_errors() {
         CssRelativeColorEnvironment::Xyz(PredefinedColorSpace::Srgb),
     ] {
         let error = CssRelativeColorExpression::try_from_components(
-            parse_component_values("r").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "r").unwrap(),
             environment,
             CssRelativeColorResultDomain::NumberPercentage,
+            Default::default(),
         )
         .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::InvalidArgumentType
-        );
+        assert!(error.is_invalid_argument_type(), "{error:?}");
         assert_eq!(error.path(), Some(&[0][..]));
     }
 }
@@ -362,7 +395,7 @@ fn relative_color_constructor_derives_signature_and_checks_each_slot() {
     assert_eq!(relative.alpha().unwrap().result_domain(), D::Alpha);
     let color = CssColor::from_relative(relative);
     assert_eq!(
-        color.to_specified_css().unwrap(),
+        color.serialize_specified(Default::default()).unwrap(),
         "hsl(from red h s l / alpha)"
     );
 
@@ -371,54 +404,54 @@ fn relative_color_constructor_derives_signature_and_checks_each_slot() {
         channels[1].clone(),
         channels[2].clone(),
     ];
-    assert_eq!(
+    assert!(
         CssRelativeColor::try_new(
             CssRelativeColorFunction::Hsl,
             named("red"),
             wrong_environment,
             None
         )
-        .unwrap_err(),
-        CssColorConstructionError::InvalidExpressionEnvironment
+        .unwrap_err()
+        .is_invalid_expression_environment()
     );
     let wrong_slot = [
         relative_expression("h", E::Hsl, D::NumberPercentage),
         channels[1].clone(),
         channels[2].clone(),
     ];
-    assert_eq!(
+    assert!(
         CssRelativeColor::try_new(
             CssRelativeColorFunction::Hsl,
             named("red"),
             wrong_slot,
             None
         )
-        .unwrap_err(),
-        CssColorConstructionError::InvalidExpressionEnvironment
+        .unwrap_err()
+        .is_invalid_expression_environment()
     );
-    assert_eq!(
+    assert!(
         CssRelativeColor::try_new(
             CssRelativeColorFunction::Rgb,
             named("red"),
             channels.clone(),
             None
         )
-        .unwrap_err(),
-        CssColorConstructionError::InvalidExpressionEnvironment
+        .unwrap_err()
+        .is_invalid_expression_environment()
     );
     for alpha in [
         relative_expression("alpha", E::Hwb, D::Alpha),
         relative_expression("alpha", E::Hsl, D::NumberPercentage),
     ] {
-        assert_eq!(
+        assert!(
             CssRelativeColor::try_new(
                 CssRelativeColorFunction::Hsl,
                 named("red"),
                 channels.clone(),
                 Some(alpha),
             )
-            .unwrap_err(),
-            CssColorConstructionError::InvalidExpressionEnvironment
+            .unwrap_err()
+            .is_invalid_expression_environment()
         );
     }
 }
@@ -429,8 +462,9 @@ fn mix_constructor_retains_order_weights_and_symbolic_calculation() {
     let tiny_weight =
         CssColorMixWeight::literal(CssColorMixPercentage::try_from_component(token(tiny)).unwrap());
     let symbolic = CssColorMixWeight::try_calculation(
-        CssPercentageCalculation::try_from_components(
-            parse_component_values("calc(25% + 10%)").unwrap(),
+        CssCalculation::<CssPercentage>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), "calc(25% + 10%)").unwrap(),
+            Default::default(),
         )
         .unwrap(),
     )
@@ -466,7 +500,11 @@ fn mix_constructor_retains_order_weights_and_symbolic_calculation() {
     let calculation = mix.components()[1].weight().unwrap().calculation().unwrap();
     assert_eq!(calculation.result_type(), CssCalculationType::Percentage);
     assert_eq!(
-        calculation.components().serialize().unwrap().as_css(),
+        calculation
+            .components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "calc(25% + 10%)"
     );
     assert!(mix.components()[2].weight().is_none());
@@ -475,9 +513,10 @@ fn mix_constructor_retains_order_weights_and_symbolic_calculation() {
         Some(HueInterpolation::Longer)
     );
     assert!(CssColor::from_color_mix(mix).color_mix_value().is_some());
-    assert_eq!(
-        CssColorMix::try_new(None, vec![]).unwrap_err(),
-        CssColorMixConstructionError::EmptyComponents
+    assert!(
+        CssColorMix::try_new(None, vec![])
+            .unwrap_err()
+            .is_empty_components()
     );
     assert!(
         CssColorInterpolationMethod::try_new(
@@ -488,7 +527,7 @@ fn mix_constructor_retains_order_weights_and_symbolic_calculation() {
     );
     for text in ["-0.0000000000000000000001%", "100.0000000000000000000001%"] {
         let error = CssColorMixPercentage::try_from_component(token(text)).unwrap_err();
-        assert_eq!(error.kind(), CssColorScalarErrorKind::OutOfRange);
+        assert!(error.is_out_of_range(), "{error:?}");
     }
     let precise =
         CssColorMixPercentage::try_from_component(token("99.9999999999999999999999%")).unwrap();
@@ -507,7 +546,7 @@ fn mix_constructor_retains_order_weights_and_symbolic_calculation() {
         .unwrap(),
     );
     assert_eq!(
-        default_mix.to_specified_css().unwrap(),
+        default_mix.serialize_specified(Default::default()).unwrap(),
         "color-mix(red, blue)"
     );
 }
@@ -518,22 +557,22 @@ fn construction_depth_and_serialization_budget_have_checked_boundaries() {
     for _ in 0..256 {
         color = CssColor::from_alpha(CssAlphaColor::try_new(color, None).unwrap());
     }
-    assert_eq!(
-        CssAlphaColor::try_new(color, None).unwrap_err(),
-        CssColorConstructionError::NestingLimit
+    assert!(
+        CssAlphaColor::try_new(color, None)
+            .unwrap_err()
+            .is_nesting_limit()
     );
     let purple = named("purple");
     assert_eq!(
         purple
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 6))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 6))
             .unwrap(),
         "purple"
     );
-    assert_eq!(
+    assert!(
         purple
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 5))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 5))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }

@@ -15,7 +15,7 @@ pub enum DomStyleParsedSheetError {
     /// Original phase/mapping or the actual qualified producer refused.
     Sheet(DomParsedHtmlStyleSheetError),
     /// Real CSS input refusal, preserving its actual original/Runtime poll cause.
-    Css(surgeist_css::CssUtf16InputError<DomStyleRuntimeError>),
+    Css(surgeist_css::source::CssUtf16InputError<DomStyleRuntimeError>),
 }
 impl From<DomStyleRuntimeError> for DomStyleParsedSheetError {
     fn from(value: DomStyleRuntimeError) -> Self {
@@ -325,8 +325,8 @@ impl DomStyleRuntime {
         )?;
         steps.joined(&prep)?;
         let text = prep.request().text().shared_code_units().clone();
-        let report = context
-            .parse_sheet_utf16_with_limits(text, state.limits.css_input, || steps.joined(&prep))
+        let report = CssParser::new(context, Default::default())
+            .parse_sheet_utf16(text, state.limits.css_input, || steps.joined(&prep))
             .map_err(DomStyleParsedSheetError::Css)?;
         steps.joined(&prep)?;
         let mut owner_label = custody.string(label.len(), &mut prep, &steps)?;
@@ -340,11 +340,13 @@ impl DomStyleRuntime {
             .media()
             .map(|s| s.shared_code_units().clone())
             .unwrap_or_default();
-        let media = context
-            .parse_media_query_list_utf16_with_limits(media, state.limits.css_input, || {
-                steps.joined(&prep)
-            })
-            .map_err(DomStyleParsedSheetError::Css)?;
+        let media = CssMediaQueryList::parse_utf16(
+            &CssParser::new(context, Default::default()),
+            media,
+            state.limits.css_input,
+            || steps.joined(&prep),
+        )
+        .map_err(DomStyleParsedSheetError::Css)?;
         steps.joined(&prep)?;
         let title = prep
             .request()

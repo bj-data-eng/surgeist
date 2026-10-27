@@ -5,7 +5,22 @@
 //! This checks authored grammar and intrinsic lifecycle, not filter execution.
 
 use crate::css::support::property_admission::validated_known_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{
+    CssSpecificationTier, CssSupportStatus, property_support_metadata, specification_source,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContributions, CssPropertyKindRef, CssPropertyNameRef,
+    CssPropertyTarget,
+};
+use surgeist_css::values::effects::{CssFilter, CssFilterAmount, CssFilterFunction};
 
 const BACKDROP_SOURCE: &str = "https://raw.githubusercontent.com/w3c/csswg-drafts/034f50a78495b619478342d71117cd7ca7e76de7/filter-effects-2/Overview.bs";
 
@@ -18,7 +33,7 @@ fn filter_value(declaration: &CssDeclaration) -> &CssFilter {
 }
 
 fn contributions(source: &CssDeclaration) -> CssLonghandContributions {
-    match expand_declaration(source).expect("filter intrinsic expansion") {
+    match source.expand().expect("filter intrinsic expansion") {
         CssExpansion::Contributions(CssContributions::Longhands(values)) => values,
         other => panic!("completed longhand, got {other:?}"),
     }
@@ -54,10 +69,30 @@ fn assert_omitted_hue_order(property: CssKnownProperty) {
         panic!("retain authored function order, defaults and URL: {list:?}");
     };
     assert!(blur.authored_length().is_none());
-    assert_eq!(blur.length().serialize_specified().unwrap(), "0px");
-    assert_eq!(contrast.serialize_specified().unwrap(), "25%");
-    assert_eq!(shadow.offset_x().serialize_specified().unwrap(), "-1px");
-    assert_eq!(shadow.offset_y().serialize_specified().unwrap(), "2px");
+    assert_eq!(
+        blur.length()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "0px"
+    );
+    assert_eq!(
+        contrast.serialize_specified(Default::default()).unwrap(),
+        "25%"
+    );
+    assert_eq!(
+        shadow
+            .offset_x()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "-1px"
+    );
+    assert_eq!(
+        shadow
+            .offset_y()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "2px"
+    );
     assert!(shadow.standard_deviation().is_none());
     assert!(shadow.color().is_some());
     assert_eq!(url.as_str(), "filters.svg#rough");
@@ -120,7 +155,7 @@ fn invalid_filter_values_recover_to_the_sibling_with_utf16_provenance() {
             let prefix = "/* 🦀 */ ";
             let unit = format!("{property}:{value};");
             let source = format!("{prefix}{unit} color:blue");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(!report.is_clean(), "{source}");
             let [sibling] = report.syntax().as_slice() else {
                 panic!("only valid color sibling survives: {source}");
@@ -152,7 +187,10 @@ fn invalid_filter_values_recover_to_the_sibling_with_utf16_provenance() {
                 position.column().value() as usize,
                 source[..byte].encode_utf16().count()
             );
-            let error = validate_style_attribute(&source).unwrap_err();
+            let error = CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .unwrap_err();
             assert_eq!(error.diagnostics(), report.diagnostics());
         }
     }
@@ -196,9 +234,10 @@ fn assert_ordinary(property: CssKnownProperty) {
     for importance in [CssImportance::Normal, CssImportance::Important] {
         for text in ["none", "blur(1px) opacity(.5)"] {
             let parsed = declaration(property, text, importance);
-            let components = parse_component_values(text).unwrap();
-            let checked = parse_property_value(
-                CssPropertyNameRef::Known(property),
+            let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
+            let checked = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components.clone(),
                 importance,
             )
@@ -270,7 +309,7 @@ fn backdrop_css_wide_contributions_remain_symbolic() {
 fn assert_reentry(property: CssKnownProperty) {
     for text in ["var(--effect)", "env(effect)"] {
         let source = declaration(property, text, CssImportance::Important);
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("substitution remains pending");
         };
         assert!(pending.source().same_occurrence(&source));
@@ -282,24 +321,20 @@ fn assert_reentry(property: CssKnownProperty) {
             "none!important",
         ] {
             let error = pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err();
-            assert!(
-                matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(_)),
-                "{invalid}: {error:?}"
-            );
+            assert!(error.replacement_error().is_some(), "{invalid}: {error:?}");
         }
         for residual in ["var(--again)", "blur(env(radius))", "attr(effect)"] {
-            assert_eq!(
+            assert!(
                 pending
-                    .reenter(parse_component_values(residual).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), residual).unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
         }
         for valid in ["none", "blur() hue-rotate()", "inherit"] {
-            let replacement = parse_component_values(valid).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), valid).unwrap();
             let CssContributions::Longhands(values) = pending
                 .reenter(replacement.clone())
                 .expect("validated replacement after earlier failures")
@@ -346,12 +381,14 @@ fn assert_normalization(property: CssKnownProperty) {
         property.canonical_name(),
         property.canonical_name()
     );
-    let report = parse_sheet(&css);
+    let report = CssParser::default().parse_sheet(&css);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
     // Outer style, child style, and trailing implicit declaration run.
     let exact = CssNormalizationLimits::try_new(1, 3, 4, 4).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact)
+    let normalized = report
+        .syntax()
+        .normalize(exact)
         .expect("filter declarations normalize alongside other declarations and child rules");
     let values: Vec<_> = normalized
         .items()
@@ -409,11 +446,8 @@ fn assert_normalization(property: CssKnownProperty) {
             CssNormalizationResource::Contributions,
         ),
     ] {
-        let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded { resource, limit: 3 }
-        );
+        let error = report.syntax().normalize(limits).unwrap_err();
+        assert_eq!(error.exhausted_limit(), Some((resource, 3)));
         assert_eq!(error.declaration_order(), Some(3));
         assert!(
             error
@@ -427,7 +461,7 @@ fn assert_normalization(property: CssKnownProperty) {
         );
     }
     assert_eq!(report, before);
-    assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
+    assert!(report.syntax().normalize(exact).is_ok());
 }
 
 #[test]

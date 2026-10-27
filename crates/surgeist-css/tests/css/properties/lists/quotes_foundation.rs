@@ -4,11 +4,22 @@
 //! Its inherited initial `auto` remains symbolic until language is known.
 
 use crate::css::support::important_declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssPropertyKindRef,
+};
+use surgeist_css::values::content::CssQuotes;
 
 fn expansion(source: &CssDeclaration) -> CssLonghandContribution {
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(items)) = source.expand().unwrap()
     else {
         panic!("quotes expands to one terminal")
     };
@@ -53,7 +64,11 @@ fn three_keywords_and_string_pairs_parse_as_distinct_authored_values() {
         };
         assert_eq!(value.as_css(), keyword);
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             keyword
         );
         let item = expansion(&source);
@@ -67,7 +82,7 @@ fn three_keywords_and_string_pairs_parse_as_distinct_authored_values() {
     else {
         panic!("quotes wrapper")
     };
-    let CssQuotes::Pairs(pairs) = value.quotes() else {
+    let CssQuotes::Pairs(pairs) = value.value() else {
         panic!("two authored pairs")
     };
     assert_eq!(pairs.pairs().len(), 2);
@@ -85,7 +100,7 @@ fn escaped_and_empty_strings_are_values_but_odd_pairs_are_invalid() {
     else {
         panic!("escaped quotes")
     };
-    let CssQuotes::Pairs(pairs) = value.quotes() else {
+    let CssQuotes::Pairs(pairs) = value.value() else {
         panic!("escaped pair")
     };
     assert_eq!(pairs.pairs()[0].open().as_str(), "\"");
@@ -95,7 +110,7 @@ fn escaped_and_empty_strings_are_values_but_odd_pairs_are_invalid() {
     else {
         panic!("empty pair")
     };
-    let CssQuotes::Pairs(pairs) = value.quotes() else {
+    let CssQuotes::Pairs(pairs) = value.value() else {
         panic!("empty strings are still a pair")
     };
     assert_eq!(pairs.pairs()[0].open().as_str(), "");
@@ -111,7 +126,7 @@ fn escaped_and_empty_strings_are_values_but_odd_pairs_are_invalid() {
         "auto match-parent",
     ] {
         let source = format!("color:red;quotes:{invalid};height:2px");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 2, "{invalid}");
         assert_eq!(
             report.syntax()[0].known().unwrap().property(),
@@ -125,34 +140,38 @@ fn escaped_and_empty_strings_are_values_but_odd_pairs_are_invalid() {
             panic!("one whole-declaration diagnostic: {invalid}")
         };
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        assert!(validate_style_attribute(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_err()
+        );
     }
 }
 
 #[test]
 fn pending_reentry_is_strict_repeatable_and_preserves_replacement_provenance() {
     let source = important_declaration("quotes", "var(--quotes)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("quotes substitution is pending")
     };
     assert!(pending.source().same_occurrence(&source));
     for invalid in ["\"open\"", "auto \"a\" \"b\"", "match-parent none"] {
-        assert!(matches!(
+        assert!(
             pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
     }
-    assert_eq!(
+    assert!(
         pending
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
-    let replacement = parse_component_values("match-parent").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "match-parent").unwrap();
     for _ in 0..2 {
         let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
         else {
@@ -168,7 +187,7 @@ fn pending_reentry_is_strict_repeatable_and_preserves_replacement_provenance() {
         assert_eq!(item.replacement_components(), Some(&replacement));
     }
     let CssContributions::Longhands(items) = pending
-        .reenter(parse_component_values("inherit").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "inherit").unwrap())
         .unwrap()
     else {
         panic!("reentered symbolic global")
@@ -182,9 +201,9 @@ fn pending_reentry_is_strict_repeatable_and_preserves_replacement_provenance() {
 
 #[test]
 fn normalized_quotes_preserve_order_and_fail_atomically_at_contribution_limit() {
-    let report = parse_sheet(".a{quotes:auto;color:red;quotes:\"<\" \">\"}");
+    let report = CssParser::default().parse_sheet(".a{quotes:auto;color:red;quotes:\"<\" \">\"}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -219,13 +238,10 @@ fn normalized_quotes_preserve_order_and_fail_atomically_at_contribution_limit() 
         assert!(item.source().same_occurrence(declarations[index].source()));
     }
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+    let error = report.syntax().normalize(limits).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 2,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 2))
     );
     assert_eq!(error.declaration_order(), Some(2));
     assert_eq!(

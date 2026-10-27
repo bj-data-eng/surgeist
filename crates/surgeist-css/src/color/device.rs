@@ -1,15 +1,18 @@
 //! Computed ink coordinates and the selected #822 colorimetric branch.
 
 use super::channels::{self, Component, Domain, Error as ChannelError};
-use super::facts::{CssColorFactIdentity, CssColorFacts, CssDeviceColorFact};
 use super::keywords::ColorFunction as F;
-use super::{Color, ColorError};
-use crate::{ColorSpace as Space, CssColorSyntax, PredefinedColorSpace};
+use crate::color::CssColorSyntax;
+use crate::color::{CssColorFactIdentity, CssColorFacts, CssDeviceColorFact};
+use surgeist_color::Color;
+use surgeist_color::ColorSpace as Space;
+use surgeist_color::PredefinedColorSpace;
+use surgeist_color::{Finite, UnitInterval};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ComputedCmyk {
-    pub(crate) channels: [Option<f64>; 4],
-    pub(crate) alpha: Option<f64>,
+    pub(crate) channels: [Option<Finite>; 4],
+    pub(crate) alpha: Option<UnitInterval>,
 }
 impl ComputedCmyk {
     pub(crate) fn new(
@@ -32,19 +35,19 @@ impl ComputedCmyk {
             alpha: channels::alpha(alpha, legacy)?,
         })
     }
-    fn naive(self) -> Result<Color, ColorError> {
-        let [c, m, y, k] = self.channels.map(|value| value.unwrap_or(0.0));
-        let result =
-            surgeist_color::naively_convert_cmyk_to_srgba([c, m, y, k, self.alpha.unwrap_or(1.0)])
-                .map_err(|_| ColorError::Unrepresentable)?;
-        Color::try_new(
+    fn naive(self) -> Color {
+        let zero = channels::supported(0.0);
+        let [c, m, y, k] = self.channels.map(|value| value.unwrap_or(zero));
+        let opaque = channels::supported(self.alpha.map_or(1.0, UnitInterval::get));
+        let [red, green, blue, _] =
+            surgeist_color::naively_convert_cmyk_to_srgba([c, m, y, k, opaque]);
+        // The value is already sRGB; selecting the legacy family converts nothing.
+        Color::new(
             Space::Predefined(PredefinedColorSpace::Srgb),
-            [Some(result[0]), Some(result[1]), Some(result[2])],
+            [Some(red), Some(green), Some(blue)],
             self.alpha,
         )
-        .and_then(|value| {
-            value.with_serialization_family(surgeist_color::SerializationFamily::LegacySrgb)
-        })
+        .to_legacy_srgb()
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -54,7 +57,6 @@ pub(crate) enum DeviceError {
     Unavailable,
     ConversionMismatch,
     InvalidFacts,
-    Numerical(ColorError),
     Stopped,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -79,7 +81,7 @@ pub(crate) struct DeviceResult {
     pub(crate) value: Color,
     pub(crate) facts: CssColorFactIdentity,
     pub(crate) resource: Option<CssColorFactIdentity>,
-    pub(crate) intent: Option<crate::CssColorProfileRenderingIntent>,
+    pub(crate) intent: Option<crate::rule::color_profile::CssColorProfileRenderingIntent>,
     pub(crate) computed: ComputedCmyk,
 }
 pub(crate) struct DeviceResolution<'facts> {
@@ -155,7 +157,11 @@ impl<'facts> DeviceResolution<'facts> {
                 }
                 // Actual computed device input, including source-defined
                 // missing-to-zero conversion, qualifies this concrete result.
-                if value.to_bits() != self.computed.channels[index].unwrap_or(0.0).to_bits() {
+                if value.to_bits()
+                    != self.computed.channels[index]
+                        .map_or(0.0, Finite::get)
+                        .to_bits()
+                {
                     return self.fail(DeviceError::ConversionMismatch);
                 }
                 self.state = if index == 3 {
@@ -165,10 +171,7 @@ impl<'facts> DeviceResolution<'facts> {
                 };
             }
             DeviceAction::ComputeFallback => {
-                let value = match self.computed.naive() {
-                    Ok(value) => value,
-                    Err(error) => return self.fail(DeviceError::Numerical(error)),
-                };
+                let value = self.computed.naive();
                 self.result = Some(DeviceResult {
                     value,
                     facts: self.expected,
@@ -182,10 +185,7 @@ impl<'facts> DeviceResolution<'facts> {
                 let CssDeviceColorFact::Resolved(record) = self.facts.device else {
                     return self.fail(DeviceError::InvalidFacts);
                 };
-                let value = match record.value.with_alpha(self.computed.alpha) {
-                    Ok(value) => value,
-                    Err(error) => return self.fail(DeviceError::Numerical(error)),
-                };
+                let value = record.value.with_alpha(self.computed.alpha);
                 self.result = Some(DeviceResult {
                     value,
                     facts: self.expected,
@@ -212,10 +212,10 @@ impl<'facts> DeviceResolution<'facts> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::facts::{
+    use super::*;
+    use crate::color::{
         CssColorProfileConversionRecord, CssColorPropertyFacts, CssColorSchemeFact,
     };
-    use super::*;
     fn facts(device: CssDeviceColorFact<'_>) -> CssColorFacts<'_> {
         CssColorFacts::new(
             CssColorFactIdentity::new(1, 2),
@@ -253,7 +253,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            computed.channels,
+            computed.channels.map(|value| value.map(Finite::get)),
             [Some(0.0), Some(0.5), Some(1.0), Some(0.25)]
         );
         assert_eq!(computed.alpha, None);
@@ -302,16 +302,15 @@ mod tests {
         .unwrap();
         let profile = CssColorFactIdentity::new(9, 8);
         let input = [0.25; 4];
-        let lab = Color::try_new(
+        let lab = Color::new(
             Space::Lab,
-            [Some(45.06), Some(45.477), Some(35.459)],
-            Some(1.0),
-        )
-        .unwrap();
+            [Finite::new(45.06), Finite::new(45.477), Finite::new(35.459)],
+            UnitInterval::new(1.0),
+        );
         let record = CssColorProfileConversionRecord::new(
             profile,
             &input,
-            crate::CssColorProfileRenderingIntent::RelativeColorimetric,
+            crate::rule::color_profile::CssColorProfileRenderingIntent::RelativeColorimetric,
             Space::Lab,
             lab,
         );
@@ -327,7 +326,7 @@ mod tests {
         assert_eq!(result.value.channels(), lab.channels());
         assert_eq!(result.value.alpha(), Some(0.5));
         let wrong = ComputedCmyk {
-            channels: [Some(0.5); 4],
+            channels: [Finite::new(0.5); 4],
             ..computed
         };
         assert_eq!(

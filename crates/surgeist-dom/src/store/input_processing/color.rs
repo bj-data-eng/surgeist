@@ -7,30 +7,32 @@ use super::{
 use crate::DocumentString;
 use std::{mem::size_of, sync::atomic::AtomicBool};
 use surgeist_color::{
-    Color, ColorSpace, DigitSlot, OperationOwner, PredefinedColorSpace, SerializationRequest,
-    Transformation,
+    ActionLayout, Color, ColorSpace, DigitSlot, OperationOwner, PredefinedColorSpace,
+    Serialization, SerializationAction, SerializationReceipt, SerializationRequest,
+    SerializationStep, Transformation,
 };
-use surgeist_css::{
-    CssColorActionDescription as Action, CssColorActionLayout, CssColorBank, CssColorBankLengths,
-    CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInputKind,
-    CssColorOperation, CssColorOperationError, CssColorOperationOwner, CssColorParseOutcome,
-    CssColorPropertyFacts, CssColorResolutionSite, CssColorSchemeFact, CssColorSerialization,
-    CssColorSlot, CssColorTransformation, CssDeviceColorFact, CssUsedColorCheckpoint,
+use surgeist_css::color::controlled::{
+    CssColorActionLayout, CssColorBank, CssColorOperationOwner, CssColorParse, CssColorParseAction,
+    CssColorParseOutcome, CssColorParseStep, CssColorSlot, CssColorTransform,
+    CssUsedColorCheckpoint,
+};
+use surgeist_css::color::{
+    CssColorError, CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInputKind,
+    CssColorPropertyFacts, CssColorSchemeFact, CssDeviceColorFact,
 };
 use surgeist_html::{HtmlInputColorEffect, HtmlInputColorSerialization, HtmlInputColorSpace};
 
-fn error(error: CssColorOperationError) -> DomError {
-    use CssColorOperationError as E;
-    match error {
-        E::Protocol(value) => DomError::InputColorProtocol(value),
-        E::Unavailable(value) => DomError::InputColorUnavailable(value),
-        E::Unsupported(value) => DomError::InputColorUnsupported(value),
-        E::Facts(value) => DomError::InputColorFacts(value),
-        E::Numerical {
-            error,
-            site: CssColorResolutionSite::Source(input),
-        } => DomError::InputColorNumerical { error, input },
-        E::Numerical { .. } => DomError::InputProcessingProtocol,
+fn error(error: CssColorError) -> DomError {
+    if let Some(value) = error.unavailable() {
+        DomError::InputColorUnavailable(value)
+    } else if let Some(value) = error.unsupported() {
+        DomError::InputColorUnsupported(value)
+    } else if let Some(value) = error.fact_defect() {
+        DomError::InputColorFacts(value)
+    } else {
+        // The adapter's UTF-16 input admits every unit, so a malformed-input
+        // report is an adapter inconsistency.
+        DomError::InputProcessingProtocol
     }
 }
 
@@ -50,14 +52,39 @@ fn begin_action(
     cancel: &AtomicBool,
 ) -> Result<usize, DomError> {
     // The register is observed and its acknowledged transition may copy it.
+    // A typed action is its own description; it is observed with its layout.
     meter.charge(sum(&[register, register])?, source, cancel)?;
-    let fixed = sum(&[
-        guard,
-        size_of::<Action>(),
-        size_of::<CssColorActionLayout>(),
-    ])?;
+    let fixed = sum(&[guard, size_of::<CssColorActionLayout>()])?;
     meter.fixed(fixed, fixed, source, cancel)?;
     Ok(fixed)
+}
+
+/// A Color action is its own description; it is observed with its layout.
+fn begin_numerical_action(
+    meter: &mut InputProcessing,
+    register: usize,
+    guard: usize,
+    source: Option<&Formation>,
+    cancel: &AtomicBool,
+) -> Result<usize, DomError> {
+    // The register is observed and its acknowledged transition may copy it.
+    meter.charge(sum(&[register, register])?, source, cancel)?;
+    let fixed = sum(&[guard, size_of::<ActionLayout>()])?;
+    meter.fixed(fixed, fixed, source, cancel)?;
+    Ok(fixed)
+}
+
+fn numerical_payload(
+    meter: &mut InputProcessing,
+    layout: ActionLayout,
+    source: Option<&Formation>,
+    cancel: &AtomicBool,
+) -> Result<(), DomError> {
+    meter.charge(
+        sum(&[layout.read_bytes, layout.write_bytes, layout.output_bytes])?,
+        source,
+        cancel,
+    )
 }
 
 fn payload(
@@ -83,132 +110,139 @@ fn payload(
     )
 }
 
-fn parse<'owner, 'facts>(
+/// Services one typed parse action through the actual caller banks.
+fn service<'owner, 'facts>(
     meter: &mut InputProcessing,
-    owner: &'owner mut CssColorOperationOwner,
+    action: CssColorParseAction<'owner, 'facts>,
+    banks: &mut [Vec<CssColorSlot<'owner>>; 3],
+    input: &[u16],
+    source: Option<&Formation>,
+    cancel: &AtomicBool,
+    #[cfg(test)] written: &mut crate::store::CopyObservation,
+) -> Result<CssColorParse<'owner, 'facts>, DomError> {
+    payload(meter, action.layout(), source, cancel)?;
+    match action {
+        CssColorParseAction::ReadInput(read) => {
+            let unit = *input
+                .get(read.offset())
+                .ok_or(DomError::InputProcessingProtocol)?;
+            read.read(unit).map_err(error)
+        }
+        CssColorParseAction::ReadSlot(read) => {
+            let slot = banks[bank_index(read.bank())]
+                .get(read.index())
+                .ok_or(DomError::InputProcessingProtocol)?;
+            read.read(slot).map_err(error)
+        }
+        CssColorParseAction::AppendSlot(write) => {
+            let index = write.index();
+            let bank_storage = &mut banks[bank_index(write.bank())];
+            if bank_storage.len() != index {
+                return Err(DomError::InputProcessingProtocol);
+            }
+            meter.reserve(
+                bank_storage,
+                index
+                    .checked_add(1)
+                    .ok_or(DomError::RepresentationExhausted)?,
+                BankKind::Bytes,
+                source,
+                cancel,
+            )?;
+            let (record, receipt) = write.record();
+            bank_storage.push(record);
+            #[cfg(test)]
+            written.pushed::<CssColorSlot<'_>>();
+            let next = receipt.stored(&bank_storage[index]);
+            #[cfg(test)]
+            super::committed(super::Commit::ColorSlot, cancel);
+            Ok(next)
+        }
+        CssColorParseAction::UpdateSlot(write) => {
+            let index = write.index();
+            let stored = banks[bank_index(write.bank())]
+                .get_mut(index)
+                .ok_or(DomError::InputProcessingProtocol)?;
+            let (record, receipt) = write.record();
+            *stored = record;
+            Ok(receipt.stored(stored))
+        }
+        CssColorParseAction::ReadFact(read) => read.read().map_err(error),
+        CssColorParseAction::Compute(compute) => compute.compute().map_err(error),
+    }
+}
+
+fn parse<'facts>(
+    meter: &mut InputProcessing,
+    owner: &mut CssColorOperationOwner,
     facts: &'facts CssColorFacts<'facts>,
     input: &[u16],
     source: Option<&Formation>,
     cancel: &AtomicBool,
-) -> Result<CssUsedColorCheckpoint<'owner, 'facts>, DomError> {
+) -> Result<CssUsedColorCheckpoint<'facts>, DomError> {
     let base = meter.live;
     let marker = source_marker(source);
     let fixed = sum(&[
-        size_of::<Option<CssColorOperation<'_, '_>>>(),
+        size_of::<CssColorParse<'_, '_>>(),
         size_of::<[Vec<CssColorSlot<'_>>; 3]>(),
-        size_of::<CssColorParseOutcome<'_, '_>>(),
+        size_of::<CssColorParseOutcome<'_>>(),
     ])?;
     meter.fixed(fixed, fixed, source, cancel)?;
     #[cfg(test)]
     let mut written = crate::store::CopyObservation::default();
     let mut banks: [Vec<CssColorSlot<'_>>; 3] = std::array::from_fn(|_| Vec::new());
-    let parsed = {
-        let mut operation = Some(
-            CssColorOperation::parse_used(
-                owner,
-                CssColorInputKind::Utf16,
-                input.len(),
-                CssColorGrammarRequest::WholeColor,
-                facts,
-                facts.identity(),
-            )
-            .map_err(error)?,
-        );
-        let parsed = (|| {
-            loop {
-                meter.poll(cancel)?;
-                meter.inspect(source, cancel)?;
-                let actual = operation
-                    .as_mut()
-                    .ok_or(DomError::InputProcessingProtocol)?;
-                if matches!(actual.action(), Action::UsedReady | Action::StandardFailed) {
-                    break;
-                }
-                let bytes = begin_action(
-                    meter,
-                    CssColorOperation::register_bytes(),
-                    CssColorOperation::action_bytes(),
-                    source,
-                    cancel,
-                )?;
-                let serviced = (|| {
-                    let mut action = actual.next_action();
-                    payload(meter, action.layout(), source, cancel)?;
-                    match action.description() {
-                        Action::ReadInput { offset } => action
-                            .read_input(
-                                offset,
-                                *input.get(offset).ok_or(DomError::InputProcessingProtocol)?,
-                            )
-                            .map_err(error),
-                        Action::ReadSlot { bank, index } => action
-                            .read_slot(
-                                bank,
-                                index,
-                                banks[bank_index(bank)]
-                                    .get(index)
-                                    .ok_or(DomError::InputProcessingProtocol)?,
-                            )
-                            .map_err(error),
-                        Action::AppendSlot { bank, index } => {
-                            let bank_storage = &mut banks[bank_index(bank)];
-                            if bank_storage.len() != index {
-                                return Err(DomError::InputProcessingProtocol);
-                            }
-                            meter.reserve(
-                                bank_storage,
-                                index
-                                    .checked_add(1)
-                                    .ok_or(DomError::RepresentationExhausted)?,
-                                BankKind::Bytes,
-                                source,
-                                cancel,
-                            )?;
-                            bank_storage.push(action.record().map_err(error)?);
-                            #[cfg(test)]
-                            written.pushed::<CssColorSlot<'_>>();
-                            action
-                                .written(bank, index, &bank_storage[index])
-                                .map_err(error)?;
-                            #[cfg(test)]
-                            super::committed(super::Commit::ColorSlot, cancel);
-                            Ok(())
-                        }
-                        Action::UpdateSlot { bank, index } => {
-                            let stored = banks[bank_index(bank)]
-                                .get_mut(index)
-                                .ok_or(DomError::InputProcessingProtocol)?;
-                            *stored = action.record().map_err(error)?;
-                            action.written(bank, index, stored).map_err(error)
-                        }
-                        Action::Compute(_) | Action::ReadFact(_) => action.compute().map_err(error),
-                        _ => Err(DomError::InputProcessingProtocol),
-                    }
-                })();
-                meter.release(bytes, metadata(bytes), source);
-                serviced?;
-            }
-            meter.charge(
-                sum(&[1, size_of::<CssColorParseOutcome<'_, '_>>()])?,
+    let mut parse = CssColorParse::start(
+        owner,
+        CssColorInputKind::Utf16,
+        input.len(),
+        CssColorGrammarRequest::WholeColor,
+        facts,
+        facts.identity(),
+    )
+    .map_err(error)?;
+    // A refusal drops the pending parse or action, which abandons the parse.
+    let parsed = (|| {
+        let outcome = loop {
+            meter.poll(cancel)?;
+            meter.inspect(source, cancel)?;
+            let action = match parse.step() {
+                CssColorParseStep::Complete(outcome) => break outcome,
+                CssColorParseStep::Pending(action) => action,
+            };
+            let bytes = begin_action(
+                meter,
+                CssColorParse::register_bytes(),
+                CssColorParse::action_bytes(),
                 source,
                 cancel,
             )?;
-            match CssColorOperation::take(&mut operation).map_err(DomError::InputColorProtocol)? {
-                CssColorParseOutcome::Used(value) => Ok(value),
-                CssColorParseOutcome::StandardFailure(failure) => {
-                    let [red, green, blue] =
-                        surgeist_html::input_color_standard_failure_fallback().channels();
-                    Ok(failure.fallback(Color::from_srgba8([red, green, blue, 255])))
-                }
+            let serviced = service(
+                meter,
+                action,
+                &mut banks,
+                input,
+                source,
+                cancel,
+                #[cfg(test)]
+                &mut written,
+            );
+            meter.release(bytes, metadata(bytes), source);
+            parse = serviced?;
+        };
+        meter.charge(
+            sum(&[1, size_of::<CssColorParseOutcome<'_>>()])?,
+            source,
+            cancel,
+        )?;
+        Ok(match outcome {
+            CssColorParseOutcome::Used(value) => value,
+            CssColorParseOutcome::StandardFailure(failure) => {
+                let [red, green, blue] =
+                    surgeist_html::input_color_standard_failure_fallback().channels();
+                failure.fallback(Color::from_srgba8([red, green, blue, 255]))
             }
-        })();
-        if parsed.is_err()
-            && let Some(operation) = operation.as_mut()
-        {
-            operation.abandon();
-        }
-        parsed
-    };
+        })
+    })();
     // These records genuinely borrow the operation owner. Destroy them,
     // rather than relabelling headers, before entering numerical phases.
     drop(banks);
@@ -217,83 +251,54 @@ fn parse<'owner, 'facts>(
     parsed
 }
 
-fn transform<'css, 'facts>(
+/// One total transformation; a refused admission drops it, which declines it.
+fn transform<'facts>(
     meter: &mut InputProcessing,
-    checkpoint: &mut Option<CssUsedColorCheckpoint<'css, 'facts>>,
+    checkpoint: CssUsedColorCheckpoint<'facts>,
     owner: &mut OperationOwner,
     effect: Transformation,
     source: Option<&Formation>,
     cancel: &AtomicBool,
-) -> Result<(), DomError> {
+) -> Result<CssUsedColorCheckpoint<'facts>, DomError> {
     let base = meter.live;
     let marker = source_marker(source);
     meter.fixed(
-        size_of::<Option<CssColorTransformation<'_, '_, '_>>>(),
-        size_of::<Option<CssColorTransformation<'_, '_, '_>>>(),
+        CssColorTransform::register_bytes(),
+        CssColorTransform::register_bytes(),
         source,
         cancel,
     )?;
     let result = (|| {
-        let mut operation = Some(
-            CssUsedColorCheckpoint::transform(
-                checkpoint,
-                owner,
-                effect,
-                CssColorBankLengths::new(0, 0, 0),
-            )
-            .map_err(error)?,
-        );
-        let transformed = (|| {
-            loop {
-                meter.poll(cancel)?;
-                meter.inspect(source, cancel)?;
-                let actual = operation
-                    .as_mut()
-                    .ok_or(DomError::InputProcessingProtocol)?;
-                if actual.action() == Action::UsedReady {
-                    break;
-                }
-                let bytes = begin_action(
-                    meter,
-                    CssColorTransformation::register_bytes(),
-                    CssColorTransformation::action_bytes(),
-                    source,
-                    cancel,
-                )?;
-                let serviced = (|| {
-                    let action = actual.next_action();
-                    payload(meter, action.layout(), source, cancel)?;
-                    match action.description() {
-                        Action::Compute(_) => action.compute().map_err(error),
-                        _ => Err(DomError::InputProcessingProtocol),
-                    }
-                })();
-                meter.release(bytes, metadata(bytes), source);
-                serviced?;
-            }
-            meter.charge(
-                sum(&[1, CssColorTransformation::register_bytes()])?,
-                source,
-                cancel,
-            )?;
-            *checkpoint = Some(CssColorTransformation::take(&mut operation).map_err(error)?);
-            Ok(())
-        })();
-        if transformed.is_err()
-            && let Some(operation) = operation.as_mut()
-        {
-            operation.abandon();
-        }
-        transformed
+        meter.poll(cancel)?;
+        meter.inspect(source, cancel)?;
+        let transformation = checkpoint.transform(owner, effect);
+        let bytes = begin_action(
+            meter,
+            CssColorTransform::register_bytes(),
+            0,
+            source,
+            cancel,
+        )?;
+        let admitted = payload(meter, transformation.layout(), source, cancel);
+        meter.release(bytes, metadata(bytes), source);
+        admitted?;
+        let checkpoint = transformation.compute();
+        meter.charge(
+            sum(&[1, CssColorTransform::register_bytes()])?,
+            source,
+            cancel,
+        )?;
+        Ok(checkpoint)
     })();
     meter.live = base;
     source_cleanup(source, marker);
     result
 }
 
-fn serialize<'css, 'facts>(
+/// CSS does not wrap serialization: Color serializes the checkpoint's value.
+fn serialize(
     meter: &mut InputProcessing,
-    checkpoint: &mut Option<CssUsedColorCheckpoint<'css, 'facts>>,
+    checkpoint: CssUsedColorCheckpoint<'_>,
     owner: &mut OperationOwner,
     request: SerializationRequest,
     source: Option<&Formation>,
@@ -303,65 +308,59 @@ fn serialize<'css, 'facts>(
     let marker = source_marker(source);
     meter.fixed(
         sum(&[
-            size_of::<Option<CssColorSerialization<'_, '_, '_>>>(),
+            size_of::<Option<Serialization<'_>>>(),
             size_of::<Vec<DigitSlot<'_>>>(),
             size_of::<Vec<u16>>(),
-            size_of::<surgeist_css::CssColorSerializationReceipt<'_, '_>>(),
+            size_of::<SerializationReceipt>(),
         ])?,
         sum(&[
-            size_of::<Option<CssColorSerialization<'_, '_, '_>>>(),
+            size_of::<Option<Serialization<'_>>>(),
             size_of::<Vec<DigitSlot<'_>>>(),
             size_of::<Vec<u16>>(),
-            size_of::<surgeist_css::CssColorSerializationReceipt<'_, '_>>(),
+            size_of::<SerializationReceipt>(),
         ])?,
         source,
         cancel,
     )?;
     let result = (|| {
+        let value = checkpoint.value();
         #[cfg(test)]
         let mut written = crate::store::CopyObservation::default();
         let mut digits: Vec<DigitSlot<'_>> = Vec::new();
         let mut output = Vec::new();
         let serialized = {
-            let mut operation = Some(
-                CssUsedColorCheckpoint::serialize(
-                    checkpoint,
-                    owner,
-                    request,
-                    CssColorBankLengths::new(0, 0, 0),
-                    0,
-                )
-                .map_err(error)?,
-            );
+            let mut serialization = Some(Serialization::new(owner, value, request));
             let serialized = (|| {
-                loop {
+                let receipt = loop {
                     meter.poll(cancel)?;
                     meter.inspect(source, cancel)?;
-                    let actual = operation
-                        .as_mut()
-                        .ok_or(DomError::InputProcessingProtocol)?;
-                    if actual.action() == Action::Serialized {
-                        break;
-                    }
-                    let bytes = begin_action(
+                    let action = match serialization
+                        .take()
+                        .ok_or(DomError::InputProcessingProtocol)?
+                        .step()
+                    {
+                        SerializationStep::Complete(receipt) => break receipt,
+                        SerializationStep::Pending(action) => action,
+                    };
+                    let bytes = begin_numerical_action(
                         meter,
-                        CssColorSerialization::register_bytes(),
-                        CssColorSerialization::action_bytes(),
+                        Serialization::register_bytes(),
+                        Serialization::action_bytes(),
                         source,
                         cancel,
                     )?;
                     let serviced = (|| {
-                        let mut action = actual.next_action();
-                        payload(meter, action.layout(), source, cancel)?;
-                        match action.description() {
-                            Action::Compute(_) => action.compute().map_err(error),
-                            Action::ReadNumericalDigit { index } => action
-                                .read_numerical_digit(
-                                    index,
-                                    digits.get(index).ok_or(DomError::InputProcessingProtocol)?,
-                                )
-                                .map_err(error),
-                            Action::AppendNumericalDigit { index } => {
+                        numerical_payload(meter, action.layout(), source, cancel)?;
+                        Ok(match action {
+                            SerializationAction::Compute(compute) => compute.compute(),
+                            SerializationAction::ReadDigit(read) => {
+                                let slot = digits
+                                    .get(read.index())
+                                    .ok_or(DomError::InputProcessingProtocol)?;
+                                read.read(slot)
+                            }
+                            SerializationAction::AppendDigit(write) => {
+                                let index = write.index();
                                 if index != digits.len() {
                                     return Err(DomError::InputProcessingProtocol);
                                 }
@@ -374,24 +373,24 @@ fn serialize<'css, 'facts>(
                                     source,
                                     cancel,
                                 )?;
-                                digits.push(action.numerical_record().map_err(error)?);
+                                let (record, receipt) = write.record();
+                                digits.push(record);
                                 #[cfg(test)]
                                 written.pushed::<DigitSlot<'_>>();
-                                action
-                                    .numerical_written(index, &digits[index])
-                                    .map_err(error)?;
+                                let next = receipt.stored(&digits[index]);
                                 #[cfg(test)]
                                 super::committed(super::Commit::ColorDigit, cancel);
-                                Ok(())
+                                next
                             }
-                            Action::UpdateNumericalDigit { index } => {
+                            SerializationAction::ReplaceDigit(write) => {
                                 let stored = digits
-                                    .get_mut(index)
+                                    .get_mut(write.index())
                                     .ok_or(DomError::InputProcessingProtocol)?;
-                                *stored = action.numerical_record().map_err(error)?;
-                                action.numerical_written(index, stored).map_err(error)
+                                let (record, receipt) = write.record();
+                                *stored = record;
+                                receipt.stored(stored)
                             }
-                            Action::EmitUnit { unit } => {
+                            SerializationAction::Emit(emit) => {
                                 let required = output
                                     .len()
                                     .checked_add(1)
@@ -406,39 +405,30 @@ fn serialize<'css, 'facts>(
                                 // Producer emission is a byte; actual stored output
                                 // and its capacity are UTF16, at two bytes per unit.
                                 meter.charge(size_of::<u16>(), source, cancel)?;
-                                output.push(u16::from(unit));
+                                output.push(u16::from(emit.unit()));
                                 #[cfg(test)]
                                 written.pushed::<u16>();
-                                action.emitted(unit).map_err(error)?;
+                                let next = emit.emitted();
                                 #[cfg(test)]
                                 super::committed(super::Commit::OutputUnit, cancel);
-                                Ok(())
+                                next
                             }
-                            _ => Err(DomError::InputProcessingProtocol),
-                        }
+                        })
                     })();
                     meter.release(bytes, metadata(bytes), source);
-                    serviced?;
-                }
+                    serialization = Some(serviced?);
+                };
                 meter.charge(
-                    sum(&[
-                        1,
-                        size_of::<surgeist_css::CssColorSerializationReceipt<'_, '_>>(),
-                    ])?,
+                    sum(&[1, size_of::<SerializationReceipt>()])?,
                     source,
                     cancel,
                 )?;
-                let receipt = CssColorSerialization::take(&mut operation).map_err(error)?;
                 if receipt.length() != output.len() {
                     return Err(DomError::InputProcessingProtocol);
                 }
                 Ok(())
             })();
-            if serialized.is_err()
-                && let Some(operation) = operation.as_mut()
-            {
-                operation.abandon();
-            }
+            // An unfinished serialization ends here, before its records go.
             serialized
         };
         drop(digits);
@@ -482,7 +472,7 @@ pub(super) fn run(
     source: Option<&Formation>,
     cancel: &AtomicBool,
 ) -> Result<InputValue, DomError> {
-    let initialization = CssColorOperation::initialization_layout();
+    let initialization = CssColorParse::initialization_layout();
     meter.fixed(
         sum(&[
             size_of::<InputProcessing>(),
@@ -490,7 +480,7 @@ pub(super) fn run(
             initialization.fact_identity_bytes,
             OperationOwner::layout_bytes(),
             size_of::<CssColorFacts<'_>>(),
-            size_of::<Option<CssUsedColorCheckpoint<'_, '_>>>(),
+            size_of::<CssUsedColorCheckpoint<'_>>(),
             size_of::<HtmlInputColorSerialization>(),
             size_of::<DocumentString>(),
         ])?,
@@ -500,7 +490,7 @@ pub(super) fn run(
             initialization.fact_identity_bytes,
             OperationOwner::layout_bytes(),
             size_of::<CssColorFacts<'_>>(),
-            size_of::<Option<CssUsedColorCheckpoint<'_, '_>>>(),
+            size_of::<CssUsedColorCheckpoint<'_>>(),
             size_of::<HtmlInputColorSerialization>(),
             size_of::<DocumentString>(),
         ])?)
@@ -523,14 +513,14 @@ pub(super) fn run(
     );
     let mut css_owner = CssColorOperationOwner::new();
     let mut numerical_owner = OperationOwner::new();
-    let mut checkpoint = Some(parse(
+    let mut checkpoint = parse(
         meter,
         &mut css_owner,
         &facts,
         input.code_units(),
         source,
         cancel,
-    )?);
+    )?;
     let mut sequence = HtmlInputColorSerialization::new(alpha, space);
     loop {
         meter.charge(
@@ -552,9 +542,9 @@ pub(super) fn run(
             HtmlInputColorEffect::QuantizeSrgb => Transformation::QuantizeSrgb,
             HtmlInputColorEffect::ColorFunction => Transformation::ColorFunction,
         };
-        transform(
+        checkpoint = transform(
             meter,
-            &mut checkpoint,
+            checkpoint,
             &mut numerical_owner,
             effect,
             source,
@@ -568,7 +558,7 @@ pub(super) fn run(
     };
     let output = serialize(
         meter,
-        &mut checkpoint,
+        checkpoint,
         &mut numerical_owner,
         request,
         source,
@@ -665,7 +655,7 @@ mod tests {
     }
 
     #[test]
-    fn color_unavailable_and_numerical_failure_remain_typed_errors_not_black() {
+    fn color_unavailable_remains_a_typed_error_and_an_overflowing_axis_is_closest_finite() {
         let cancel = AtomicBool::new(false);
         let mut meter = super::super::tests::fixture();
         assert_eq!(
@@ -679,28 +669,22 @@ mod tests {
                 )
                 .map(|output| output.value),
             Err(DomError::InputColorUnavailable(
-                surgeist_css::CssColorUnavailable::Palette(
-                    surgeist_css::CssSystemColor::CanvasText,
+                surgeist_css::color::CssColorUnavailable::Palette(
+                    surgeist_css::color::CssSystemColor::CanvasText,
                 )
             ))
         );
         assert_eq!(meter.live, 0);
 
+        // Lab a* is unclamped; its cubic XYZ exceeds binary64, so Color 4
+        // conversion takes the closest finite sRGB channels, signed by the D50
+        // XYZ-to-sRGB X column (+, -, +), and limited sRGB quantizes them.
         let mut meter = semantic_fixture();
         let raw = DocumentString::from("lab(50 1e308 0)");
         let actual = meter
             .color(&raw, false, HtmlInputColorSpace::LimitedSrgb, None, &cancel)
             .map(|output| output.value);
-        assert_eq!(
-            actual,
-            Err(DomError::InputColorNumerical {
-                error: surgeist_color::ColorError::Unrepresentable,
-                input: surgeist_css::CssColorInputRange {
-                    start: 0,
-                    end: raw.len()
-                },
-            })
-        );
+        assert_eq!(actual, Ok(DocumentString::from("#ff00ff")));
         assert_eq!(meter.live, 0);
     }
 
@@ -731,7 +715,7 @@ mod tests {
         assert_eq!(meter.live, 0);
         let stopped_work = meter.work;
         assert!(stopped_work > 1_000_000_000);
-        assert!(meter.peak > CssColorOperation::register_bytes() + CssColorSlot::record_bytes());
+        assert!(meter.peak > CssColorParse::register_bytes() + CssColorSlot::record_bytes());
         cancel.store(true, std::sync::atomic::Ordering::Release);
         assert_eq!(
             meter

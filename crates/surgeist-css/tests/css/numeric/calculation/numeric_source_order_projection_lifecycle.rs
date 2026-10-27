@@ -6,9 +6,13 @@
 //! around 10^16: adding one to either signed 10^16 rounds back to that value,
 //! while cancellation before adding one leaves exactly one.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::calculated_length as length;
 use crate::css::support::value_assertions::calculated_number as number;
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::numeric::{CssCalculation, CssNumber, CssNumeric};
+use surgeist_css::serialization::CssSerializationLimits;
 
 #[test]
 fn numeric_cancellation_uses_source_order_for_all_three_term_permutations() {
@@ -26,8 +30,14 @@ fn numeric_cancellation_uses_source_order_for_all_three_term_permutations() {
         let calculation = value.calculation().unwrap();
         let components = calculation.components().clone();
         let ty = calculation.numeric_type();
-        assert_eq!(components.serialize().unwrap().as_css(), source);
-        let result = value.serialize_specified();
+        assert_eq!(
+            components
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            source
+        );
+        let result = value.serialize_specified(Default::default());
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
         assert_eq!(value.calculation().unwrap().components(), &components);
@@ -51,7 +61,7 @@ fn absolute_and_contextual_same_unit_coefficients_use_the_same_order() {
         let value = length(source);
         let before = value.clone();
         let ty = value.calculation().unwrap().numeric_type();
-        let result = value.serialize_specified();
+        let result = value.serialize_specified(Default::default());
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
         assert_eq!(
@@ -70,15 +80,18 @@ fn programmatic_sum_keeps_exact_authored_tokens_and_origin() {
             .into_iter()
             .map(|token| CssComponentValue::try_token(token).unwrap())
             .collect(),
+        Default::default(),
     )
     .unwrap();
     let root = CssComponentValue::try_function("CALC", arguments).unwrap();
-    let components = CssComponentValues::try_new(vec![root]).unwrap();
-    let calculation = CssNumberCalculation::try_from_components(components.clone()).unwrap();
-    let value = CssSpecifiedNumber::try_from_calculation(calculation).unwrap();
+    let components = CssComponentValues::try_new(vec![root], Default::default()).unwrap();
+    let calculation =
+        CssCalculation::<CssNumber>::try_from_components(components.clone(), Default::default())
+            .unwrap();
+    let value = CssNumeric::<CssNumber>::try_from_calculation(calculation).unwrap();
     let before = value.clone();
     assert!(matches!(value.origin(), CssValueOrigin::Programmatic));
-    let result = value.serialize_specified();
+    let result = value.serialize_specified(Default::default());
     assert_eq!(value, before);
     assert_eq!(value.origin(), before.origin());
     assert_eq!(value.calculation().unwrap().components(), &components);
@@ -94,28 +107,24 @@ fn ordered_sum_replacement_has_exact_resource_limits_and_atomic_failures() {
     // replacement for subtraction, and one combined scalar replacement.
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(4, 5, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(4, 5, expected.len()),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 4, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(5, 4, expected.len()),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 5, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(5, 5, expected.len() - 1),
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        let error = value.serialize_specified_with_limits(limits).unwrap_err();
-        assert_eq!(error.kind(), kind);
+        let error = value.serialize_specified(limits).unwrap_err();
+        assert_eq!(serialization_failure(&error), kind);
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
     }
-    let result = value.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-        5,
-        5,
-        expected.len(),
-    ));
+    let result = value.serialize_specified(CssSerializationLimits::new(5, 5, expected.len()));
     assert_eq!(value, before);
     assert_eq!(
         value.calculation().unwrap().components(),

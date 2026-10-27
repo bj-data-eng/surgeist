@@ -1,10 +1,9 @@
 //! Intrinsic Namespaces 3 construction uses checked decoded identifiers and
 //! literal strings. Authored coordinates exist only for parsed declarations.
 
-use surgeist_css::{
-    CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssNamespaceRule, CssRule,
-    parse_sheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix, CssNamespaceRule, CssRule};
+use surgeist_css::selector::CssNamespaceContext;
 
 #[test]
 fn typed_namespace_construction_preserves_prefix_case_literal_names_and_absent_source() {
@@ -75,7 +74,7 @@ fn parsed_and_constructed_declarations_agree_semantically_without_fabricating_co
             "urn:digit",
         ),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{source}: {report:?}");
         let [CssRule::Namespace(parsed)] = report.syntax().rules() else {
             panic!("one retained namespace declaration: {report:?}");

@@ -1,41 +1,35 @@
 //! Dependency-free finite numerical formatting and shared tie policy.
 //!
 //! Exact authored coefficients and CSS specified-value policy stay with their
-//! owners. This module consumes actual finite binary64 bits only.
+//! owners. This module consumes actual finite binary64 bits only, proven by
+//! [`Finite`].
 
 pub(crate) mod bounded;
 mod controlled;
+use crate::Finite;
 use bounded::{FiniteFormatCursor, FormatReply, FormatRequest};
-pub use controlled::{FiniteFormatAction, FiniteFormatter, FormatRecovery, FormatSummary};
+pub use controlled::{
+    FiniteFormatter, FormatAction, FormatCompute, FormatDigitReceipt, FormatEmit, FormatReadDigit,
+    FormatStep, FormatSummary, FormatWriteDigit,
+};
 
-/// A refused finite formatting request or output allocation.
+/// A refused finite formatting output or allocation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum FormatError {
-    NonFinite,
     ByteLimit,
     CapacityOverflow,
-    Protocol(crate::ProtocolError),
 }
 
 impl std::fmt::Display for FormatError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NonFinite => f.write_str("finite formatting requires a finite number"),
             Self::ByteLimit => f.write_str("finite formatted output exceeds the byte limit"),
             Self::CapacityOverflow => f.write_str("finite formatting storage capacity exceeded"),
-            Self::Protocol(error) => error.fmt(f),
         }
     }
 }
-impl std::error::Error for FormatError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Protocol(error) => Some(error),
-            _ => None,
-        }
-    }
-}
+impl std::error::Error for FormatError {}
 
 /// Generic specified coefficients use away-from-zero ties; exact color
 /// rationals and final ordinary sRGB scalars use ties toward positive infinity.
@@ -52,17 +46,12 @@ impl RoundingMode {
 }
 
 /// Formats actual finite binary64 bits to at most six fractional decimal places.
-///
-/// Nonfinite input is refused before considering the final-output byte limit.
 pub fn format_finite(
-    value: f64,
+    value: Finite,
     rounding: RoundingMode,
     byte_limit: usize,
 ) -> Result<String, FormatError> {
-    if !value.is_finite() {
-        return Err(FormatError::NonFinite);
-    }
-    let mut cursor = FiniteFormatCursor::new(value, rounding).expect("checked finite scalar");
+    let mut cursor = FiniteFormatCursor::new(value, rounding);
     // This ordinary owner services the SAME digit protocol as the controlled
     // used serializer. It owns real scratch and reserves only final output;
     // no preview number or expanded fractional spelling is materialized.
@@ -117,11 +106,9 @@ pub fn format_finite(
 
 /// Tests the actual finite binary coefficient using the formatter's millionths
 /// kernel; this is emitted-zero metadata, not authored-value classification.
-pub fn rounds_to_zero(value: f64, rounding: RoundingMode) -> Result<bool, FormatError> {
-    if !value.is_finite() {
-        return Err(FormatError::NonFinite);
-    }
-    let bits = value.to_bits();
+#[must_use]
+pub fn rounds_to_zero(value: Finite, rounding: RoundingMode) -> bool {
+    let bits = value.get().to_bits();
     let encoded_exponent = ((bits >> 52) & 0x7ff) as i32;
     let fraction = bits & ((1_u64 << 52) - 1);
     let (significand, exponent) = if encoded_exponent == 0 {
@@ -130,12 +117,12 @@ pub fn rounds_to_zero(value: f64, rounding: RoundingMode) -> Result<bool, Format
         ((1_u64 << 52) | fraction, encoded_exponent - 1075)
     };
     if significand == 0 {
-        return Ok(true);
+        return true;
     }
     if exponent >= 0 {
-        return Ok(false);
+        return false;
     }
-    Ok(rounded_millionths(significand, exponent, bits >> 63 != 0, rounding) == 0)
+    rounded_millionths(significand, exponent, bits >> 63 != 0, rounding) == 0
 }
 
 fn rounded_millionths(
@@ -161,22 +148,8 @@ fn rounded_millionths(
 mod tests {
     use super::*;
 
-    #[test]
-    fn nonfinite_native_requests_return_typed_errors_before_output_limits() {
-        for rounding in [
-            RoundingMode::AwayFromZero,
-            RoundingMode::TowardPositiveInfinity,
-        ] {
-            for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-                for limit in [0, usize::MAX] {
-                    assert_eq!(
-                        format_finite(value, rounding, limit),
-                        Err(FormatError::NonFinite)
-                    );
-                }
-                assert_eq!(rounds_to_zero(value, rounding), Err(FormatError::NonFinite));
-            }
-        }
+    fn finite(value: f64) -> Finite {
+        Finite::new(value).expect("finite formatter fixture")
     }
 
     #[test]
@@ -217,14 +190,14 @@ mod tests {
                 (RoundingMode::TowardPositiveInfinity, positive),
             ] {
                 assert_eq!(
-                    format_finite(value, rounding, expected.len()).unwrap(),
+                    format_finite(finite(value), rounding, expected.len()).unwrap(),
                     expected
                 );
                 assert_eq!(
-                    format_finite(value, rounding, expected.len() - 1),
+                    format_finite(finite(value), rounding, expected.len() - 1),
                     Err(FormatError::ByteLimit)
                 );
-                assert_eq!(rounds_to_zero(value, rounding).unwrap(), expected == "0");
+                assert_eq!(rounds_to_zero(finite(value), rounding), expected == "0");
             }
         }
     }
@@ -243,17 +216,20 @@ mod tests {
             RoundingMode::AwayFromZero,
             RoundingMode::TowardPositiveInfinity,
         ] {
-            assert_eq!(format_finite(f64::MAX, rounding, 309).unwrap(), INTEGER);
             assert_eq!(
-                format_finite(-f64::MAX, rounding, 310).unwrap(),
+                format_finite(finite(f64::MAX), rounding, 309).unwrap(),
+                INTEGER
+            );
+            assert_eq!(
+                format_finite(finite(-f64::MAX), rounding, 310).unwrap(),
                 format!("-{INTEGER}")
             );
             assert_eq!(
-                format_finite(f64::MAX, rounding, 308),
+                format_finite(finite(f64::MAX), rounding, 308),
                 Err(FormatError::ByteLimit)
             );
             assert_eq!(
-                format_finite(-f64::MAX, rounding, 309),
+                format_finite(finite(-f64::MAX), rounding, 309),
                 Err(FormatError::ByteLimit)
             );
         }

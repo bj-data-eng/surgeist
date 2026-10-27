@@ -1,13 +1,35 @@
 //! Authored fill, rule, and span from Multicol 1 CR (2024-05-16) §§4, 6.1, 7.1:
 //! https://www.w3.org/TR/2024/CR-css-multicol-1-20240516/
 
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_component_rejected;
 use crate::css::support::property_admission::assert_declaration_rejected as rejected;
 use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssColor;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{CssCalculation, CssLength, CssNonNegative, CssNumeric};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssLonghandValue, CssLonghandValueRef,
+    CssPropertyKindRef, CssPropertyNameRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::border::{CssLineStyle, CssLineWidth};
+use surgeist_css::values::layout::{CssColumnFill, CssColumnRule, CssColumnSpan};
 
 const NAMES: [&str; 6] = [
     "column-fill",
@@ -34,8 +56,7 @@ fn accepted(name: &str, value: &str) {
 }
 
 fn expanded(source: &CssDeclaration) -> Vec<CssLonghandContribution> {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!(
             "terminal contributions for {:?}",
@@ -65,9 +86,9 @@ fn authored_color(value: &str) -> CssColor {
     color.value().clone()
 }
 
-fn programmatic_width(number: &str) -> CssBorderWidth {
-    CssBorderWidth::Length(
-        CssSpecifiedNonNegativeLength::try_from_component(
+fn programmatic_width(number: &str) -> CssLineWidth {
+    CssLineWidth::Length(
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component(
             CssComponentValue::try_dimension(number, "px").unwrap(),
         )
         .unwrap(),
@@ -227,7 +248,7 @@ fn unordered_rule_components_expand_with_omissions_reset_to_initials() {
 #[test]
 fn globals_and_pending_values_expand_all_six_properties_with_strict_reentry() {
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&declaration("all", "initial")).unwrap()
+        declaration("all", "initial").expand().unwrap()
     else {
         panic!("symbolic universal reset")
     };
@@ -258,16 +279,17 @@ fn globals_and_pending_values_expand_all_six_properties_with_strict_reentry() {
         }
         for pending in ["var(--multicol)", "env(--multicol)"] {
             let source = declaration(name, pending);
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("{name} remains pending until substitution")
             };
             assert!(handle.source().same_occurrence(&source));
-            assert_eq!(
+            assert!(
                 handle
-                    .reenter(parse_component_values("var(--again)").unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap()
+                    )
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
             let (valid, invalid_text) = match name {
                 "column-fill" => ("balance-all", "justify"),
@@ -278,14 +300,16 @@ fn globals_and_pending_values_expand_all_six_properties_with_strict_reentry() {
                 "column-span" => ("all", "2"),
                 _ => unreachable!(),
             };
-            assert!(matches!(
+            assert!(
                 handle
-                    .reenter(parse_component_values(invalid_text).unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), invalid_text).unwrap()
+                    )
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
-            let replacement = parse_component_values(valid).unwrap();
+                    .replacement_error()
+                    .is_some()
+            );
+            let replacement = CssComponentValues::parse(&CssParser::default(), valid).unwrap();
             for _ in 0..2 {
                 let CssContributions::Longhands(values) =
                     handle.reenter(replacement.clone()).unwrap()
@@ -302,7 +326,7 @@ fn globals_and_pending_values_expand_all_six_properties_with_strict_reentry() {
                 }
             }
             let CssContributions::Longhands(values) = handle
-                .reenter(parse_component_values("inherit").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "inherit").unwrap())
                 .unwrap()
             else {
                 panic!("{name} reenters a global keyword")
@@ -321,7 +345,7 @@ fn globals_and_pending_values_expand_all_six_properties_with_strict_reentry() {
 
 #[test]
 fn normalization_keeps_mixed_order_and_fails_atomically_at_contribution_limit() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         ".a{column-fill:balance;column-rule:red solid 2px;",
         "column-span:all;column-rule-width:1%}",
     ));
@@ -329,7 +353,7 @@ fn normalization_keeps_mixed_order_and_fails_atomically_at_contribution_limit() 
         panic!("one invalid width diagnostic: {:?}", report.diagnostics())
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -359,13 +383,10 @@ fn normalization_keeps_mixed_order_and_fails_atomically_at_contribution_limit() 
         }
     }
     let limit = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 3).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limit).unwrap_err();
+    let error = report.syntax().normalize(limit).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 3,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 3))
     );
     assert_eq!(error.declaration_order(), Some(1));
     assert_eq!(
@@ -378,30 +399,30 @@ fn normalization_keeps_mixed_order_and_fails_atomically_at_contribution_limit() 
 fn direct_rule_construction_keeps_exact_width_and_modern_color_without_legacy_projection() {
     assert!(CssColumnRule::try_new(None, None, None).is_none());
     assert_component_rejected(
-        CssSpecifiedNonNegativeLength::try_from_component,
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component,
         CssComponentValue::try_dimension("-1e-100", "px").unwrap(),
-        CssNumericConstructionErrorKind::OutOfRange,
+        NumericFailure::OutOfRange,
     );
     let width = programmatic_width("1e100");
     let color = authored_color("color-mix(in srgb, red, green, blue)");
     let rule = CssColumnRule::try_new(
         Some(width.clone()),
-        Some(CssBorderStyle::Dashed),
+        Some(CssLineStyle::Dashed),
         Some(color.clone()),
     )
     .unwrap();
     assert_eq!(rule.width(), Some(&width));
-    assert_eq!(rule.style(), Some(CssBorderStyle::Dashed));
+    assert_eq!(rule.style(), Some(CssLineStyle::Dashed));
     assert_eq!(rule.color(), Some(&color));
     assert!(matches!(
         rule.width().unwrap().origin(),
         Some(CssValueOrigin::Programmatic)
     ));
-    let CssBorderWidth::Length(length) = rule.width().unwrap() else {
+    let CssLineWidth::Length(length) = rule.width().unwrap() else {
         panic!("exact width")
     };
     assert!(matches!(
-        length.literal_component().map(CssComponentValue::view),
+        length.literal().map(|literal| literal.component()).map(CssComponentValue::view),
         Some(CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }))
             if number.representation() == "1e100" && unit == "px"
     ));
@@ -415,12 +436,12 @@ fn direct_rule_construction_keeps_exact_width_and_modern_color_without_legacy_pr
     else {
         panic!("typed parsed column rule")
     };
-    assert_eq!(parsed.rule(), &rule);
+    assert_eq!(parsed.value(), &rule);
     assert!(matches!(
-        parsed.rule().width().unwrap().origin(),
+        parsed.value().width().unwrap().origin(),
         Some(CssValueOrigin::Parsed(_))
     ));
-    let CssValueOrigin::Parsed(origin) = parsed.rule().width().unwrap().origin().unwrap() else {
+    let CssValueOrigin::Parsed(origin) = parsed.value().width().unwrap().origin().unwrap() else {
         unreachable!()
     };
     assert_eq!(origin.span().start().byte_offset().value(), 12);
@@ -452,36 +473,45 @@ fn calculated_rule_width_preserves_expression_and_source_origin() {
     else {
         panic!("typed calculated rule")
     };
-    assert_eq!(value.rule().style(), Some(CssBorderStyle::Solid));
+    assert_eq!(value.value().style(), Some(CssLineStyle::Solid));
     let programmatic_calc = CssComponentValue::try_function(
         "calc",
-        CssComponentValues::try_new(vec![
-            CssComponentValue::try_dimension("1", "px").unwrap(),
-            CssComponentValue::try_token(" ").unwrap(),
-            CssComponentValue::try_token("*").unwrap(),
-            CssComponentValue::try_token(" ").unwrap(),
-            CssComponentValue::try_token("2").unwrap(),
-        ])
+        CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_dimension("1", "px").unwrap(),
+                CssComponentValue::try_token(" ").unwrap(),
+                CssComponentValue::try_token("*").unwrap(),
+                CssComponentValue::try_token(" ").unwrap(),
+                CssComponentValue::try_token("2").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap(),
     )
     .unwrap();
-    let calculation = CssLengthCalculation::try_from_components(
-        CssComponentValues::try_new(vec![programmatic_calc]).unwrap(),
+    let calculation = CssCalculation::<CssLength>::try_from_components(
+        CssComponentValues::try_new(vec![programmatic_calc], Default::default()).unwrap(),
+        Default::default(),
     )
     .unwrap();
     let constructed = CssColumnRule::try_new(
-        Some(CssBorderWidth::Length(
-            CssSpecifiedNonNegativeLength::try_from_calculation(calculation).unwrap(),
+        Some(CssLineWidth::Length(
+            CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(calculation).unwrap(),
         )),
-        Some(CssBorderStyle::Solid),
+        Some(CssLineStyle::Solid),
         None,
     )
     .unwrap();
-    for (rule, parsed_origin) in [(value.rule(), true), (&constructed, false)] {
-        let Some(CssBorderWidth::Length(length)) = rule.width() else {
+    for (rule, parsed_origin) in [(value.value(), true), (&constructed, false)] {
+        let Some(CssLineWidth::Length(length)) = rule.width() else {
             panic!("exact calculated width")
         };
-        assert!(length.literal_component().is_none());
+        assert!(
+            length
+                .literal()
+                .map(|literal| literal.component())
+                .is_none()
+        );
         assert!(length.calculation().is_some());
         assert!(
             matches!(
@@ -512,8 +542,8 @@ fn typed_initials_and_shorthand_contributions_are_independent_of_parsed_referenc
         };
         match (name, value.view()) {
             ("column-fill", CssLonghandValueRef::ColumnFill(CssColumnFill::Balance))
-            | ("column-rule-style", CssLonghandValueRef::ColumnRuleStyle(CssBorderStyle::None))
-            | ("column-rule-width", CssLonghandValueRef::ColumnRuleWidth(CssBorderWidth::Medium))
+            | ("column-rule-style", CssLonghandValueRef::ColumnRuleStyle(CssLineStyle::None))
+            | ("column-rule-width", CssLonghandValueRef::ColumnRuleWidth(CssLineWidth::Medium))
             | ("column-span", CssLonghandValueRef::ColumnSpan(CssColumnSpan::None)) => {}
             ("column-rule-color", CssLonghandValueRef::ColumnRuleColor(color))
                 if color.is_current_color() => {}
@@ -528,13 +558,13 @@ fn typed_initials_and_shorthand_contributions_are_independent_of_parsed_referenc
     assert!(matches!(
         width.value(),
         CssContributionValueRef::Ordinary(CssLonghandValueRef::ColumnRuleWidth(
-            CssBorderWidth::Medium
+            CssLineWidth::Medium
         ))
     ));
     assert!(matches!(
         style.value(),
         CssContributionValueRef::Ordinary(CssLonghandValueRef::ColumnRuleStyle(
-            CssBorderStyle::Dashed
+            CssLineStyle::Dashed
         ))
     ));
     assert!(matches!(
@@ -553,13 +583,16 @@ fn column_rule_canonical_output_omits_initials_and_charges_one_cumulative_budget
         panic!("typed reordered rule")
     };
     assert_eq!(
-        reordered.rule().serialize_specified().unwrap(),
+        reordered
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "2px solid red"
     );
     let current = authored_color("currentcolor");
     let all_initial = CssColumnRule::try_new(
-        Some(CssBorderWidth::Medium),
-        Some(CssBorderStyle::None),
+        Some(CssLineWidth::Medium),
+        Some(CssLineStyle::None),
         Some(current.clone()),
     )
     .unwrap();
@@ -567,93 +600,98 @@ fn column_rule_canonical_output_omits_initials_and_charges_one_cumulative_budget
     // shortest all-initial representation (CSSOM "serialize a CSS value"
     // step 2), as `border` and `outline` do. Each retained member still costs
     // one input and one projection node.
-    assert_eq!(all_initial.serialize_specified().unwrap(), "none");
+    assert_eq!(
+        all_initial.serialize_specified(Default::default()).unwrap(),
+        "none"
+    );
     assert_eq!(
         all_initial
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(4, 4, 4))
+            .serialize_specified(CssSerializationLimits::new(4, 4, 4))
             .unwrap(),
         "none"
     );
     for (limits, expected) in [
         (
-            CssSpecifiedValueSerializationLimits::new(3, 4, 4),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(3, 4, 4),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 3, 4),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(4, 3, 4),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 4, 3),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(4, 4, 3),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            all_initial
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&all_initial.serialize_specified(limits).unwrap_err()),
             expected
         );
     }
     // An authored initial style is the retained member: aggregate and style
     // each cost one input and one projection node, with nothing synthesized.
-    let style_only = CssColumnRule::try_new(None, Some(CssBorderStyle::None), None).unwrap();
-    assert_eq!(style_only.serialize_specified().unwrap(), "none");
+    let style_only = CssColumnRule::try_new(None, Some(CssLineStyle::None), None).unwrap();
     assert_eq!(
-        style_only
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 4))
-            .unwrap(),
+        style_only.serialize_specified(Default::default()).unwrap(),
         "none"
     );
     assert_eq!(
         style_only
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 1, 4))
+            .serialize_specified(CssSerializationLimits::new(2, 2, 4))
+            .unwrap(),
+        "none"
+    );
+    assert!(
+        style_only
+            .serialize_specified(CssSerializationLimits::new(2, 1, 4))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
     // Without an authored style the `none` token is synthesized: it charges
     // one projection node and no input node.
-    let synthetic = CssColumnRule::try_new(Some(CssBorderWidth::Medium), None, None).unwrap();
-    assert_eq!(synthetic.serialize_specified().unwrap(), "none");
+    let synthetic = CssColumnRule::try_new(Some(CssLineWidth::Medium), None, None).unwrap();
+    assert_eq!(
+        synthetic.serialize_specified(Default::default()).unwrap(),
+        "none"
+    );
     assert_eq!(
         synthetic
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 3, 4))
+            .serialize_specified(CssSerializationLimits::new(2, 3, 4))
             .unwrap(),
         "none"
     );
     for (limits, expected) in [
         (
-            CssSpecifiedValueSerializationLimits::new(1, 3, 4),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(1, 3, 4),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 2, 4),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(2, 2, 4),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, 3),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(2, 3, 3),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            synthetic
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&synthetic.serialize_specified(limits).unwrap_err()),
             expected
         );
     }
     let rule = CssColumnRule::try_new(
         Some(programmatic_width("2")),
-        Some(CssBorderStyle::None),
+        Some(CssLineStyle::None),
         Some(authored_color("red")),
     )
     .unwrap();
-    assert_eq!(rule.serialize_specified().unwrap(), "2px red");
     assert_eq!(
-        rule.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(4, 4, 7))
+        rule.serialize_specified(Default::default()).unwrap(),
+        "2px red"
+    );
+    assert_eq!(
+        rule.serialize_specified(CssSerializationLimits::new(4, 4, 7))
             .unwrap(),
         "2px red"
     );
@@ -666,79 +704,49 @@ fn fill_and_span_keyword_output_is_bounded() {
         (CssColumnFill::Balance, "balance"),
         (CssColumnFill::BalanceAll, "balance-all"),
     ] {
-        assert_eq!(fill.serialize_specified().unwrap(), text);
+        assert_eq!(fill.serialize_specified(Default::default()).unwrap(), text);
         assert_eq!(
-            fill.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                1,
-                1,
-                text.len(),
-            ))
-            .unwrap(),
+            fill.serialize_specified(CssSerializationLimits::new(1, 1, text.len(),))
+                .unwrap(),
             text
         );
-        assert_eq!(
-            fill.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                1,
-                1,
-                text.len() - 1,
-            ))
-            .unwrap_err()
-            .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+        assert!(
+            fill.serialize_specified(CssSerializationLimits::new(1, 1, text.len() - 1,))
+                .unwrap_err()
+                .is_byte_limit()
         );
     }
     for (span, text) in [(CssColumnSpan::None, "none"), (CssColumnSpan::All, "all")] {
-        assert_eq!(span.serialize_specified().unwrap(), text);
+        assert_eq!(span.serialize_specified(Default::default()).unwrap(), text);
         assert_eq!(
-            span.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                1,
-                1,
-                text.len(),
-            ))
-            .unwrap(),
+            span.serialize_specified(CssSerializationLimits::new(1, 1, text.len(),))
+                .unwrap(),
             text
         );
-        assert_eq!(
-            span.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                1,
-                1,
-                text.len() - 1
-            ))
-            .unwrap_err()
-            .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+        assert!(
+            span.serialize_specified(CssSerializationLimits::new(1, 1, text.len() - 1))
+                .unwrap_err()
+                .is_byte_limit()
         );
     }
     for (input_limit, projection_limit, error) in [
-        (
-            0,
-            1,
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
-        ),
-        (
-            1,
-            0,
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
-        ),
+        (0, 1, SerializationFailure::InputNodeLimit),
+        (1, 0, SerializationFailure::ProjectionNodeLimit),
     ] {
-        let limits = CssSpecifiedValueSerializationLimits::new(input_limit, projection_limit, 32);
+        let limits = CssSerializationLimits::new(input_limit, projection_limit, 32);
         for fill in [
             CssColumnFill::Auto,
             CssColumnFill::Balance,
             CssColumnFill::BalanceAll,
         ] {
             assert_eq!(
-                fill.serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&fill.serialize_specified(limits).unwrap_err()),
                 error
             );
         }
         for span in [CssColumnSpan::None, CssColumnSpan::All] {
             assert_eq!(
-                span.serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&span.serialize_specified(limits).unwrap_err()),
                 error
             );
         }
@@ -754,18 +762,18 @@ fn nested_math_and_modern_color_share_the_rule_budget() {
         panic!("calculated exact width")
     };
     let color = authored_color("color-mix(in srgb, red, green, blue)");
-    let width_only = CssColumnRule::try_new(Some(width.width().clone()), None, None).unwrap();
+    let width_only = CssColumnRule::try_new(Some(width.value().clone()), None, None).unwrap();
     let color_only = CssColumnRule::try_new(None, None, Some(color.clone())).unwrap();
-    let combined = CssColumnRule::try_new(Some(width.width().clone()), None, Some(color)).unwrap();
+    let combined = CssColumnRule::try_new(Some(width.value().clone()), None, Some(color)).unwrap();
     let minimum_nodes = |rule: &CssColumnRule, input: bool| {
         (1..=256)
             .find(|count| {
                 let limits = if input {
-                    CssSpecifiedValueSerializationLimits::new(*count, usize::MAX, usize::MAX)
+                    CssSerializationLimits::new(*count, usize::MAX, usize::MAX)
                 } else {
-                    CssSpecifiedValueSerializationLimits::new(usize::MAX, *count, usize::MAX)
+                    CssSerializationLimits::new(usize::MAX, *count, usize::MAX)
                 };
-                rule.serialize_specified_with_limits(limits).is_ok()
+                rule.serialize_specified(limits).is_ok()
             })
             .unwrap()
     };
@@ -777,27 +785,27 @@ fn nested_math_and_modern_color_share_the_rule_budget() {
         assert!(color_nodes > 2, "modern color has nested nodes");
         assert_eq!(combined_nodes, width_nodes + color_nodes - 1);
         let limits = if input {
-            CssSpecifiedValueSerializationLimits::new(combined_nodes - 1, usize::MAX, usize::MAX)
+            CssSerializationLimits::new(combined_nodes - 1, usize::MAX, usize::MAX)
         } else {
-            CssSpecifiedValueSerializationLimits::new(usize::MAX, combined_nodes - 1, usize::MAX)
+            CssSerializationLimits::new(usize::MAX, combined_nodes - 1, usize::MAX)
         };
         assert_eq!(
-            combined
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&combined.serialize_specified(limits).unwrap_err()),
             if input {
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+                SerializationFailure::InputNodeLimit
             } else {
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+                SerializationFailure::ProjectionNodeLimit
             }
         );
     }
     let expected = "calc(2px) color-mix(in srgb, red, green, blue)";
-    assert_eq!(combined.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        combined.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(
         combined
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+            .serialize_specified(CssSerializationLimits::new(
                 usize::MAX,
                 usize::MAX,
                 expected.len(),
@@ -805,15 +813,14 @@ fn nested_math_and_modern_color_share_the_rule_budget() {
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         combined
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+            .serialize_specified(CssSerializationLimits::new(
                 usize::MAX,
                 usize::MAX,
                 expected.len() - 1,
             ))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }

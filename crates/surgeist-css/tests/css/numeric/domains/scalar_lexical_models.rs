@@ -1,13 +1,28 @@
 //! Ordinary authored scalar transport preserves checked tokens at every magnitude.
-use surgeist_css::*;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use crate::css::support::value_assertions::positive_literal;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssNumericTokenKind,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssInteger, CssNonNegative, CssNumeric, CssNumericLiteral};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::effects::{CssOpacityScalar, CssOpacityScalarKind, CssOpacityValue};
+use surgeist_css::values::layout::{CssColumnCount, CssGridLine};
 
-fn integer(declaration: &CssDeclaration) -> &CssIntegerLiteral {
+fn integer(declaration: &CssDeclaration) -> &CssNumericLiteral<CssInteger> {
     let CssKnownPropertyValueRef::Order(value) =
         declaration.known().unwrap().property_value().unwrap()
     else {
         panic!("ordinary order")
     };
-    let CssIntegerValue::Literal(literal) = value.value() else {
+    let Some(literal) = value.value().literal() else {
         panic!("ordinary integer")
     };
     literal
@@ -39,11 +54,16 @@ fn checked_integer_tokens_keep_sign_digits_kind_and_origins_at_every_magnitude()
     ] {
         for component in [
             CssComponentValue::try_number(text).unwrap(),
-            parse_component_values(text).unwrap().items()[0].clone(),
+            CssComponentValues::parse(&CssParser::default(), text)
+                .unwrap()
+                .items()[0]
+                .clone(),
         ] {
-            let components = CssComponentValues::try_new(vec![component.clone()]).unwrap();
-            let declaration = parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Order),
+            let components =
+                CssComponentValues::try_new(vec![component.clone()], Default::default()).unwrap();
+            let declaration = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Order)),
                 components,
                 CssImportance::Normal,
             )
@@ -71,7 +91,7 @@ fn stylesheet_scalar_tokens_keep_actual_spans_and_snapshots_in_semantic_payloads
         ("opacity", "1e-999"),
     ] {
         let input = format!("{property}: {text} !important");
-        let report = parse_style_attribute(&input);
+        let report = CssParser::default().parse_block_contents(&input);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let declaration = &report.syntax()[0];
         let component = if property == "order" {
@@ -118,11 +138,16 @@ fn checked_opacity_tokens_keep_number_or_percentage_identity_without_rounding_or
     ] {
         for component in [
             CssComponentValue::try_token(text).unwrap(),
-            parse_component_values(text).unwrap().items()[0].clone(),
+            CssComponentValues::parse(&CssParser::default(), text)
+                .unwrap()
+                .items()[0]
+                .clone(),
         ] {
-            let components = CssComponentValues::try_new(vec![component.clone()]).unwrap();
-            let declaration = parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Opacity),
+            let components =
+                CssComponentValues::try_new(vec![component.clone()], Default::default()).unwrap();
+            let declaration = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Opacity)),
                 components,
                 CssImportance::Normal,
             )
@@ -149,57 +174,76 @@ fn checked_opacity_tokens_keep_number_or_percentage_identity_without_rounding_or
 #[test]
 fn signed_zero_has_nonnegative_semantics_and_positive_counts_reject_every_zero_spelling() {
     for text in ["0", "+000", "-000"] {
-        let literal =
-            CssIntegerLiteral::try_from_component(CssComponentValue::try_number(text).unwrap())
-                .unwrap();
+        let literal = CssNumericLiteral::<CssInteger>::try_from_component(
+            CssComponentValue::try_number(text).unwrap(),
+        )
+        .unwrap();
         assert!(literal.is_zero());
         assert!(!literal.is_negative());
-        assert!(CssFontPaletteIndex::try_new(CssIntegerValue::Literal(literal.clone())).is_ok());
         assert!(
-            CssGridLine::try_indexed(CssIntegerValue::Literal(literal.clone()), None).is_none()
+            CssNumeric::<CssInteger, CssNonNegative>::try_from_literal(literal.clone()).is_ok()
         );
-        assert!(CssPositiveIntegerLiteral::try_new(literal).is_none());
+        assert!(
+            CssGridLine::try_indexed(
+                CssNumeric::<CssInteger>::try_from_literal(literal.clone()).unwrap(),
+                None
+            )
+            .is_none()
+        );
+        assert!(positive_literal(literal).is_none());
     }
-    let negative = CssIntegerLiteral::from_i32(-1);
+    let negative = CssNumericLiteral::<CssInteger>::from_i32(-1);
     assert!(negative.is_negative());
     assert!(!negative.is_zero());
     // Fonts 4 @font-palette-values: a palette index is a nonnegative <integer>.
-    assert!(matches!(
-        CssFontPaletteIndex::try_new(CssIntegerValue::Literal(negative)),
-        Err(CssFontPaletteConstructionError::NegativeIndex)
-    ));
+    assert!(
+        CssNumeric::<CssInteger, CssNonNegative>::try_from_literal(negative)
+            .as_ref()
+            .is_err_and(|error| error.is_out_of_range())
+    );
     for text in ["+0002", "2147483648", "9999999999999999999999999"] {
-        let literal =
-            CssIntegerLiteral::try_from_component(CssComponentValue::try_number(text).unwrap())
-                .unwrap();
-        let positive = CssPositiveIntegerLiteral::try_new(literal).unwrap();
-        assert_eq!(positive.integer().numeric().representation(), text);
-        assert_eq!(positive.integer().origin(), &CssValueOrigin::Programmatic);
+        let literal = CssNumericLiteral::<CssInteger>::try_from_component(
+            CssComponentValue::try_number(text).unwrap(),
+        )
+        .unwrap();
+        let positive = positive_literal(literal).unwrap();
+        assert_eq!(positive.numeric().representation(), text);
+        assert_eq!(positive.origin(), &CssValueOrigin::Programmatic);
     }
 }
 
 #[test]
 fn environment_indices_and_digit_counts_apply_their_actual_grammar_ranges() {
     for text in ["0", "+0000", "-0000", "2147483648"] {
-        let report = parse_style_attribute(&format!("width:env(viewport-segment-width {text} 0)"));
+        let report = CssParser::default()
+            .parse_block_contents(format!("width:env(viewport-segment-width {text} 0)"));
         assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     }
     for text in ["-1", "-2147483649"] {
-        let report = parse_style_attribute(&format!("width:env(viewport-segment-width {text} 0)"));
+        let report = CssParser::default()
+            .parse_block_contents(format!("width:env(viewport-segment-width {text} 0)"));
         assert!(!report.is_clean(), "negative environment index {text}");
     }
     for text in ["2", "+0003", "4"] {
-        assert!(parse_style_attribute(&format!("text-combine-upright:digits {text}")).is_clean());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(format!("text-combine-upright:digits {text}"))
+                .is_clean()
+        );
     }
     for text in ["1", "5", "-0000", "2147483648"] {
-        assert!(!parse_style_attribute(&format!("text-combine-upright:digits {text}")).is_clean());
+        assert!(
+            !CssParser::default()
+                .parse_block_contents(format!("text-combine-upright:digits {text}"))
+                .is_clean()
+        );
     }
 }
 
 #[test]
 fn positive_column_counts_keep_exact_token_origins_at_small_and_large_magnitudes() {
     for text in ["+0002", "2147483648", "9999999999999999999999"] {
-        let report = parse_style_attribute(&format!("column-count:{text}"));
+        let report = CssParser::default().parse_block_contents(format!("column-count:{text}"));
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let declaration = &report.syntax()[0];
         let CssKnownPropertyValueRef::ColumnCount(count) =
@@ -207,17 +251,19 @@ fn positive_column_counts_keep_exact_token_origins_at_small_and_large_magnitudes
         else {
             panic!("column count")
         };
-        let CssColumnCount::Count(CssPositiveIntegerValue::Literal(positive)) = count.count()
-        else {
+        let Some(positive) = (match count.value() {
+            CssColumnCount::Count(value) => value.literal(),
+            _ => None,
+        }) else {
             panic!("positive literal")
         };
-        assert_eq!(positive.integer().numeric().representation(), text);
+        assert_eq!(positive.numeric().representation(), text);
         assert_eq!(
-            positive.integer().component(),
+            positive.component(),
             &declaration.value_components().items()[0]
         );
         assert_eq!(
-            positive.integer().origin(),
+            positive.origin(),
             declaration.value_components().items()[0].origin()
         );
     }
@@ -231,33 +277,26 @@ fn bounded_scalar_serialization_normalizes_output_without_changing_retained_toke
         let value = CssOpacityValue::Scalar(scalar);
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, expected.len()))
                 .unwrap(),
             expected
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, 10),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(0, 1, 10),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, 10),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(1, 0, 10),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(1, 1, expected.len() - 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind
             );
         }

@@ -1,31 +1,37 @@
 //! Public-only Animations 1 and selected CSSOM detached keyframe contracts.
 
+use crate::css::support::failure_classes::SerializationFailure as Resource;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::ExpectedRejection;
-use surgeist_css::{
-    CssDeclarationBlockErrorKind, CssErrorCode, CssImportance, CssInvalidKeyframeSourceReason,
-    CssKeyframePercent, CssKeyframeRuleView, CssKeyframeRuleViewError, CssKeyframeSelector,
-    CssKeyframeSelectorList, CssKnownProperty, CssParserContext, CssParserMode, CssPropertyNameRef,
-    CssRecoveryAction, CssSpecifiedDeclarationBlock,
-    CssSpecifiedValueSerializationErrorKind as Resource,
-    CssSpecifiedValueSerializationLimits as Limits, expand_declaration, parse_component_values,
-    parse_keyframe_rule, parse_keyframe_selector_list, parse_property_value, parse_style_attribute,
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{
+    CssDeclaration, CssImportance, CssInvalidKeyframeSourceReason, CssSpecifiedDeclarationBlock,
 };
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
+use surgeist_css::rule::keyframes::{
+    CssKeyframePercent, CssKeyframeRuleView, CssKeyframeRuleViewError, CssKeyframeSelector,
+    CssKeyframeSelectorList, CssParsedKeyframeRule, CssParsedKeyframeSelectors,
+};
+use surgeist_css::serialization::CssSerializationLimits as Limits;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 /// The serialization resource whose budget a detached keyframe exhausted,
 /// whether in its selectors or in its declaration block.
 fn exhausted(error: &CssKeyframeRuleViewError) -> Resource {
-    match error {
-        CssKeyframeRuleViewError::Serialization(error) => error.kind(),
-        CssKeyframeRuleViewError::Declaration(error) => match error.kind() {
-            CssDeclarationBlockErrorKind::Serialization(error) => error.kind(),
-            other => panic!("declaration resource failure: {other:?}"),
-        },
-        other => panic!("serialization resource failure: {other:?}"),
-    }
+    let serialization = error
+        .serialization()
+        .or_else(|| {
+            error
+                .declaration_block()
+                .and_then(|block| block.serialization())
+        })
+        .unwrap_or_else(|| panic!("serialization resource failure: {error:?}"));
+    serialization_failure(serialization)
 }
 
 fn selectors(source: &str) -> CssKeyframeSelectorList {
-    let report = parse_keyframe_selector_list(source);
+    let report = CssParsedKeyframeSelectors::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{source}: {report:?}");
     report.syntax().as_ref().unwrap().selectors().clone()
 }
@@ -33,7 +39,7 @@ fn selectors(source: &str) -> CssKeyframeSelectorList {
 #[test]
 fn raw_keytext_preserves_complete_source_order_duplicates_and_endpoint_observations() {
     let source = " /*😀*/\r\nFROM /*a*/, 0%, to, 100%, 50%, 50% /*z*/ ";
-    let report = parse_keyframe_selector_list(source);
+    let report = CssParsedKeyframeSelectors::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{report:?}");
     let parsed = report.syntax().as_ref().unwrap();
     assert_eq!(parsed.origin().source().as_str(), source);
@@ -52,7 +58,10 @@ fn raw_keytext_preserves_complete_source_order_duplicates_and_endpoint_observati
     ));
     let before = report.clone();
     assert_eq!(
-        parsed.selectors().serialize_key_text().unwrap(),
+        parsed
+            .selectors()
+            .serialize_key_text(Default::default())
+            .unwrap(),
         "0%, 0%, 100%, 100%, 50%, 50%"
     );
     assert_eq!(
@@ -78,7 +87,7 @@ fn ordered_offset_comparison_normalizes_aliases_without_rounding_or_deduplicatio
     assert_ne!(normalized("0.0000001%"), normalized("0.0000002%"));
     assert_eq!(
         selectors("0.0000001%, 0.0000002%")
-            .serialize_key_text()
+            .serialize_key_text(Default::default())
             .unwrap(),
         "0%, 0%"
     );
@@ -101,7 +110,7 @@ fn invalid_or_trailing_raw_keytext_rejects_complete_input_with_original_diagnost
         "from{}",
         "from, var(--x)",
     ] {
-        let report = parse_keyframe_selector_list(source);
+        let report = CssParsedKeyframeSelectors::parse(&CssParser::default(), source);
         assert!(report.syntax().is_none(), "{source}: {report:?}");
         assert!(!report.is_clean());
         assert!(
@@ -121,7 +130,7 @@ fn invalid_or_trailing_raw_keytext_rejects_complete_input_with_original_diagnost
 #[test]
 fn complete_detached_rule_preserves_original_unicode_positions_and_snapshot_identity() {
     let source = " /*😀*/\r\n from, 0%, to /*s*/ { opacity:0; --X:日本; opacity:1 } /*tail*/ ";
-    let report = parse_keyframe_rule(source);
+    let report = CssParsedKeyframeRule::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{report:?}");
     let parsed = report.syntax().as_ref().unwrap();
     let start = source.find("from").unwrap();
@@ -150,7 +159,11 @@ fn complete_detached_rule_preserves_original_unicode_positions_and_snapshot_iden
             .same_snapshot(value_origin.source())
     );
     assert_eq!(
-        parsed.block().selectors().serialize_key_text().unwrap(),
+        parsed
+            .block()
+            .selectors()
+            .serialize_key_text(Default::default())
+            .unwrap(),
         "0%, 0%, 100%"
     );
 }
@@ -158,7 +171,7 @@ fn complete_detached_rule_preserves_original_unicode_positions_and_snapshot_iden
 #[test]
 fn detached_rule_recovers_declarations_but_rejects_invalid_outer_or_trailing_input() {
     let source = "from{opacity:0; mystery:1; opacity:2 !important; animation-name:x; opacity:1}";
-    let report = parse_keyframe_rule(source);
+    let report = CssParsedKeyframeRule::parse(&CssParser::default(), source);
     assert!(report.syntax().is_some(), "{report:?}");
     assert_eq!(
         report
@@ -190,7 +203,7 @@ fn detached_rule_recovers_declarations_but_rejects_invalid_outer_or_trailing_inp
             CssRecoveryAction::DropAtRule,
         ),
     ] {
-        let report = parse_keyframe_rule(source);
+        let report = CssParsedKeyframeRule::parse(&CssParser::default(), source);
         let rule = report.syntax().as_ref().expect("recovered keyframe rule");
         assert_eq!(rule.block().declarations().len(), 1, "{source}");
         assert_eq!(
@@ -214,7 +227,7 @@ fn detached_rule_recovers_declarations_but_rejects_invalid_outer_or_trailing_inp
         "101%{}",
         "from{opacity:bad} to{}",
     ] {
-        let report = parse_keyframe_rule(source);
+        let report = CssParsedKeyframeRule::parse(&CssParser::default(), source);
         assert!(report.syntax().is_none(), "{source}: {report:?}");
         assert!(
             report
@@ -231,7 +244,7 @@ fn detached_rule_recovers_declarations_but_rejects_invalid_outer_or_trailing_inp
         );
     }
     let trailing = "from{opacity:bad} to{}";
-    let report = parse_keyframe_rule(trailing);
+    let report = CssParsedKeyframeRule::parse(&CssParser::default(), trailing);
     assert_eq!(
         report.diagnostics()[0]
             .error()
@@ -244,7 +257,7 @@ fn detached_rule_recovers_declarations_but_rejects_invalid_outer_or_trailing_inp
 
 #[test]
 fn empty_recovered_empty_and_eof_closed_detached_blocks_remain_distinct() {
-    let clean = parse_keyframe_rule("from{}");
+    let clean = CssParsedKeyframeRule::parse(&CssParser::default(), "from{}");
     assert!(clean.is_clean());
     assert!(
         clean
@@ -255,7 +268,7 @@ fn empty_recovered_empty_and_eof_closed_detached_blocks_remain_distinct() {
             .declarations()
             .is_empty()
     );
-    let recovered = parse_keyframe_rule("from{mystery:1}");
+    let recovered = CssParsedKeyframeRule::parse(&CssParser::default(), "from{mystery:1}");
     assert!(!recovered.is_clean());
     assert!(
         recovered
@@ -267,7 +280,7 @@ fn empty_recovered_empty_and_eof_closed_detached_blocks_remain_distinct() {
             .is_empty()
     );
     let source = "from{opacity:1";
-    let eof = parse_keyframe_rule(source);
+    let eof = CssParsedKeyframeRule::parse(&CssParser::default(), source);
     assert!(eof.syntax().is_some(), "{eof:?}");
     assert!(!eof.is_clean());
     assert_eq!(
@@ -287,7 +300,7 @@ fn empty_recovered_empty_and_eof_closed_detached_blocks_remain_distinct() {
             .any(|d| d.action() == CssRecoveryAction::RetainWithImplicitClosure)
     );
     assert!(eof.into_validation_result().is_err());
-    let comment = parse_keyframe_selector_list("from /*open");
+    let comment = CssParsedKeyframeSelectors::parse(&CssParser::default(), "from /*open");
     assert!(comment.syntax().is_some());
     assert!(
         comment
@@ -300,7 +313,7 @@ fn empty_recovered_empty_and_eof_closed_detached_blocks_remain_distinct() {
 #[test]
 fn symbolic_percentages_preserve_authored_math_without_range_evaluation() {
     let source = "calc(120%), calc(-10%), from, clamp(0%, 50%, 100%)";
-    let report = parse_keyframe_selector_list(source);
+    let report = CssParsedKeyframeSelectors::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{report:?}");
     let parsed = report.syntax().as_ref().unwrap();
     assert!(
@@ -313,19 +326,24 @@ fn symbolic_percentages_preserve_authored_math_without_range_evaluation() {
             .is_none()
     );
     assert_eq!(
-        parsed.selectors().serialize_key_text().unwrap(),
+        parsed
+            .selectors()
+            .serialize_key_text(Default::default())
+            .unwrap(),
         "calc(120%), calc(-10%), 0%, calc(50%)"
     );
     assert_eq!(parsed.origin().source().as_str(), source);
-    assert!(parse_keyframe_rule("calc(120%), calc(-10%){}").is_clean());
+    assert!(
+        CssParsedKeyframeRule::parse(&CssParser::default(), "calc(120%), calc(-10%){}").is_clean()
+    );
 }
 
 #[test]
 fn selector_depth_and_genuine_rule_body_share_the_fixed_parser_ceiling() {
     let at_limit = format!("calc({}1%{})", "(".repeat(255), ")".repeat(255));
-    assert!(parse_keyframe_selector_list(&at_limit).is_clean());
+    assert!(CssParsedKeyframeSelectors::parse(&CssParser::default(), &at_limit).is_clean());
     let past_limit = format!("calc({}1%{})", "(".repeat(256), ")".repeat(256));
-    let rejected = parse_keyframe_selector_list(&past_limit);
+    let rejected = CssParsedKeyframeSelectors::parse(&CssParser::default(), &past_limit);
     assert!(rejected.syntax().is_none());
     assert!(
         rejected
@@ -335,7 +353,7 @@ fn selector_depth_and_genuine_rule_body_share_the_fixed_parser_ceiling() {
     );
     for (depth, admitted) in [(255, true), (256, false)] {
         let source = format!("from{{--x:{}1{}}}", "(".repeat(depth), ")".repeat(depth));
-        let report = parse_keyframe_rule(&source);
+        let report = CssParsedKeyframeRule::parse(&CssParser::default(), &source);
         let block = report.syntax().as_ref().unwrap().block();
         assert_eq!(
             block.declarations().len(),
@@ -353,7 +371,7 @@ fn selector_depth_and_genuine_rule_body_share_the_fixed_parser_ceiling() {
         }
     }
     assert!(
-        parse_keyframe_rule("from{}").is_clean(),
+        CssParsedKeyframeRule::parse(&CssParser::default(), "from{}").is_clean(),
         "a fresh retry has no spent parser depth"
     );
 }
@@ -365,10 +383,7 @@ fn keytext_cumulative_limits_count_duplicates_and_symbolic_work_and_allow_atomic
     let expected = "0%, 50%, 50%";
     let before = literals.clone();
     let adequate = Limits::new(4, 4, expected.len());
-    assert_eq!(
-        literals.serialize_key_text_with_limits(adequate).unwrap(),
-        expected
-    );
+    assert_eq!(literals.serialize_key_text(adequate).unwrap(), expected);
     for (limits, kind) in [
         (Limits::new(3, 4, expected.len()), Resource::InputNodeLimit),
         (
@@ -384,55 +399,51 @@ fn keytext_cumulative_limits_count_duplicates_and_symbolic_work_and_allow_atomic
         (Limits::new(4, 4, 0), Resource::ByteLimit),
     ] {
         assert_eq!(
-            literals
-                .serialize_key_text_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&literals.serialize_key_text(limits).unwrap_err()),
             kind
         );
         assert_eq!(literals, before);
-        assert_eq!(
-            literals.serialize_key_text_with_limits(adequate).unwrap(),
-            expected
-        );
+        assert_eq!(literals.serialize_key_text(adequate).unwrap(), expected);
     }
     // Two selectors each cost 1 + the calc function/leaf's two inputs and one projection.
     let symbolic = selectors("calc(120%), calc(-10%)");
     let expected = "calc(120%), calc(-10%)";
     assert_eq!(
         symbolic
-            .serialize_key_text_with_limits(Limits::new(7, 5, expected.len()))
+            .serialize_key_text(Limits::new(7, 5, expected.len()))
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         symbolic
-            .serialize_key_text_with_limits(Limits::new(6, 5, expected.len()))
+            .serialize_key_text(Limits::new(6, 5, expected.len()))
             .unwrap_err()
-            .kind(),
-        Resource::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         symbolic
-            .serialize_key_text_with_limits(Limits::new(7, 4, expected.len()))
+            .serialize_key_text(Limits::new(7, 4, expected.len()))
             .unwrap_err()
-            .kind(),
-        Resource::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
 }
 
 #[test]
 fn checked_assembly_formats_programmatic_inputs_without_manufacturing_source_positions() {
-    let source = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Opacity),
-        parse_component_values("1").unwrap(),
+    let source = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Opacity)),
+        CssComponentValues::parse(&CssParser::default(), "1").unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
     assert_eq!(source.position(), None);
-    let expansion = expand_declaration(&source).unwrap();
-    let declarations =
-        CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(&[expansion]).unwrap();
+    let expansion = source.expand().unwrap();
+    let declarations = CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(
+        &[expansion],
+        Default::default(),
+    )
+    .unwrap();
     let selectors = CssKeyframeSelectorList::try_new(vec![
         CssKeyframeSelector::From,
         CssKeyframeSelector::Percent(CssKeyframePercent::try_new(0.0).unwrap()),
@@ -441,7 +452,7 @@ fn checked_assembly_formats_programmatic_inputs_without_manufacturing_source_pos
     .unwrap();
     let view = CssKeyframeRuleView::try_new(&selectors, &declarations).unwrap();
     assert_eq!(
-        view.serialize_cssom().unwrap(),
+        view.serialize_cssom(Default::default()).unwrap(),
         "0%, 0%, 100% { opacity: 1; }"
     );
     assert!(std::ptr::eq(view.selectors(), &selectors));
@@ -453,20 +464,24 @@ fn checked_assembly_formats_programmatic_inputs_without_manufacturing_source_pos
 #[test]
 fn checked_assembly_preserves_keyframe_domain_including_empty_blocks() {
     let selectors = selectors("from");
-    let ordinary =
-        CssSpecifiedDeclarationBlock::try_from_declarations(parse_style_attribute("").syntax())
-            .unwrap();
-    assert!(matches!(
-        CssKeyframeRuleView::try_new(&selectors, &ordinary),
-        Err(CssKeyframeRuleViewError::NonKeyframeDeclarations)
-    ));
-    let parsed = parse_keyframe_rule("from{}");
+    let ordinary = CssSpecifiedDeclarationBlock::try_from_declarations(
+        CssParser::default().parse_block_contents("").syntax(),
+        Default::default(),
+    )
+    .unwrap();
+    assert!(
+        CssKeyframeRuleView::try_new(&selectors, &ordinary)
+            .as_ref()
+            .is_err_and(|error| error.is_non_keyframe_declarations())
+    );
+    let parsed = CssParsedKeyframeRule::parse(&CssParser::default(), "from{}");
     let declarations = CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(
         parsed.syntax().as_ref().unwrap().block().declarations(),
+        Default::default(),
     )
     .unwrap();
     let view = CssKeyframeRuleView::try_new(&selectors, &declarations).unwrap();
-    assert_eq!(view.serialize_cssom().unwrap(), "0% { }");
+    assert_eq!(view.serialize_cssom(Default::default()).unwrap(), "0% { }");
     for (source, reason) in [
         (
             "opacity:1!important",
@@ -474,32 +489,32 @@ fn checked_assembly_preserves_keyframe_domain_including_empty_blocks() {
         ),
         ("animation-name:x", CssInvalidKeyframeSourceReason::Property),
     ] {
-        let report = parse_style_attribute(source);
-        let expansion = expand_declaration(&report.syntax()[0]).unwrap();
-        let error =
-            CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(&[expansion]).unwrap_err();
-        assert!(
-            matches!(error.kind(), CssDeclarationBlockErrorKind::InvalidKeyframeSource {reason: actual} if *actual == reason)
-        );
+        let report = CssParser::default().parse_block_contents(source);
+        let expansion = report.syntax()[0].expand().unwrap();
+        let error = CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(
+            &[expansion],
+            Default::default(),
+        )
+        .unwrap_err();
+        assert!(error.invalid_keyframe_source() == Some(reason));
     }
 }
 
 #[test]
 fn detached_formatting_budget_is_cumulative_across_keytext_braces_and_declarations() {
-    let report = parse_keyframe_rule("from,0%{--x:1}");
+    let report = CssParsedKeyframeRule::parse(&CssParser::default(), "from,0%{--x:1}");
     let parsed = report.syntax().as_ref().unwrap();
-    let declarations =
-        CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(parsed.block().declarations())
-            .unwrap();
+    let declarations = CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(
+        parsed.block().declarations(),
+        Default::default(),
+    )
+    .unwrap();
     let view = CssKeyframeRuleView::try_new(parsed.block().selectors(), &declarations).unwrap();
     let expected = "0%, 0% { --x: 1; }";
     let before = report.clone();
     // Rule/list/two selectors = 4; custom declaration aggregate/occurrence/name/component-list/token = 5.
     let adequate = Limits::new(9, 9, expected.len());
-    assert_eq!(
-        view.serialize_cssom_with_limits(adequate).unwrap(),
-        expected
-    );
+    assert_eq!(view.serialize_cssom(adequate).unwrap(), expected);
     for (limits, resource) in [
         (Limits::new(8, 9, expected.len()), Resource::InputNodeLimit),
         (
@@ -508,24 +523,21 @@ fn detached_formatting_budget_is_cumulative_across_keytext_braces_and_declaratio
         ),
         (Limits::new(9, 9, expected.len() - 1), Resource::ByteLimit),
     ] {
-        let error = view.serialize_cssom_with_limits(limits).unwrap_err();
+        let error = view.serialize_cssom(limits).unwrap_err();
         assert_eq!(exhausted(&error), resource, "{error:?}");
         assert_eq!(report, before);
-        assert_eq!(
-            view.serialize_cssom_with_limits(adequate).unwrap(),
-            expected
-        );
+        assert_eq!(view.serialize_cssom(adequate).unwrap(), expected);
     }
-    let empty = parse_keyframe_rule("to{}");
+    let empty = CssParsedKeyframeRule::parse(&CssParser::default(), "to{}");
     let declarations = CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(
         empty.syntax().as_ref().unwrap().block().declarations(),
+        Default::default(),
     )
     .unwrap();
     let list = selectors("to");
     let view = CssKeyframeRuleView::try_new(&list, &declarations).unwrap();
     assert_eq!(
-        view.serialize_cssom_with_limits(Limits::new(4, 4, 8))
-            .unwrap(),
+        view.serialize_cssom(Limits::new(4, 4, 8)).unwrap(),
         "100% { }"
     );
 }
@@ -537,22 +549,32 @@ fn parser_context_preserves_owning_keyframe_declaration_admission() {
     ExpectedRejection::new(CssErrorCode::InvalidPropertyValue)
         .named("width")
         .at("1")
-        .assert_first(&parse_keyframe_rule(source));
+        .assert_first(&CssParsedKeyframeRule::parse(&CssParser::default(), source));
     let context = CssParserContext::new(CssParserMode::Quirks);
-    let report = context.parse_keyframe_rule(source);
+    let report = CssParsedKeyframeRule::parse(&CssParser::new(context, Default::default()), source);
     assert!(report.is_clean(), "{report:?}");
     let declaration = &report.syntax().as_ref().unwrap().block().declarations()[0];
     assert_eq!(declaration.source().parser_context(), context);
     let declarations = CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(
         report.syntax().as_ref().unwrap().block().declarations(),
+        Default::default(),
     )
     .unwrap();
-    assert_eq!(declarations.serialize_cssom().unwrap(), "width: 1px;");
+    assert_eq!(
+        declarations.serialize_cssom(Default::default()).unwrap(),
+        "width: 1px;"
+    );
 }
 
 #[test]
 fn normalized_matching_inputs_retain_every_duplicate_rule_candidate() {
-    let report = surgeist_css::parse_keyframes_block("{from{} 0%{} from{} to{}}");
+    let report = surgeist_css::rule::CssBlockFragment::<
+        Vec<surgeist_css::rule::keyframes::CssKeyframeBlock>,
+    >::parse(
+        &surgeist_css::CssParser::default(),
+        "{from{} 0%{} from{} to{}}",
+        &surgeist_css::rule::CssBlockContext::default(),
+    );
     assert!(report.is_clean());
     let candidates = report.syntax().as_ref().unwrap().body();
     assert_eq!(candidates.len(), 4);
@@ -577,14 +599,21 @@ fn normalized_matching_inputs_retain_every_duplicate_rule_candidate() {
 
 #[test]
 fn selected_terminal_keyframe_assembly_keeps_original_source_observations() {
-    let authored = parse_style_attribute("opacity:1!important");
+    let authored = CssParser::default().parse_block_contents("opacity:1!important");
     let original = &authored.syntax()[0];
-    let ordinary = CssSpecifiedDeclarationBlock::try_from_declarations(authored.syntax()).unwrap();
+    let ordinary =
+        CssSpecifiedDeclarationBlock::try_from_declarations(authored.syntax(), Default::default())
+            .unwrap();
     let selected = ordinary.entries()[0].with_importance(CssImportance::Normal);
-    let checked = CssSpecifiedDeclarationBlock::try_from_keyframe_entries(&[selected]).unwrap();
+    let checked =
+        CssSpecifiedDeclarationBlock::try_from_keyframe_entries(&[selected], Default::default())
+            .unwrap();
     let list = selectors("from");
     let view = CssKeyframeRuleView::try_new(&list, &checked).unwrap();
-    assert_eq!(view.serialize_cssom().unwrap(), "0% { opacity: 1; }");
+    assert_eq!(
+        view.serialize_cssom(Default::default()).unwrap(),
+        "0% { opacity: 1; }"
+    );
     assert_eq!(checked.entries()[0].importance(), CssImportance::Normal);
     assert_eq!(
         checked.entries()[0].source().importance(),
@@ -600,7 +629,8 @@ fn selected_terminal_keyframe_assembly_keeps_original_source_observations() {
         "opacity:1!important"
     );
     assert!(
-        !parse_keyframe_rule("from{opacity:1!important}").is_clean(),
+        !CssParsedKeyframeRule::parse(&CssParser::default(), "from{opacity:1!important}")
+            .is_clean(),
         "selected-phase assembly does not loosen authored grammar"
     );
 }

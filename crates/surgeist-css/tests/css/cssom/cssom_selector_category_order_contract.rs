@@ -3,16 +3,22 @@
 //! repetition survive checked construction, parsing and rule output, while the
 //! per-category accessors keep their grouped matching-relevant view.
 
+use crate::css::support::failure_classes::SerializationFailure as Resource;
+use crate::css::support::serialization_limits::LimitFailure;
 use crate::css::support::validated_selector as parsed;
-use surgeist_css::{
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::CssPseudoElementSegment as Segment;
+use surgeist_css::selector::CssSimpleSelector as Simple;
+use surgeist_css::selector::{
     CssAttributeCaseSensitivity, CssAttributeMatcher, CssAttributeName, CssAttributeSelector,
-    CssCompoundSelector, CssIdent, CssNamespaceContext, CssPseudoClass, CssPseudoElement,
-    CssPseudoElementSegment as Segment, CssQualifiedAttributeName, CssQualifiedNamePrefix, CssRule,
-    CssRuleCssomSerializationErrorKind as RuleError, CssSelector, CssSimpleSelector as Simple,
-    CssSpecifiedValueSerializationErrorKind as Resource,
-    CssSpecifiedValueSerializationLimits as Limits, CssStyleSelector, CssStyleSelectorContext,
-    CssValueOrigin, parse_rule, parse_sheet,
+    CssCompoundSelector, CssNamespaceContext, CssPseudoClass, CssPseudoElement,
+    CssQualifiedAttributeName, CssQualifiedNamePrefix, CssSelector, CssStyleSelector,
+    CssStyleSelectorContext,
 };
+use surgeist_css::serialization::CssSerializationLimits as Limits;
+use surgeist_css::values::common::CssIdent;
 
 const AUTHORED: &str = ".One#X:hover[A='é'].Two#Y:focus[B='two'].One#X:hover[A='é']";
 const SERIALIZED: &str = ".One#X:hover[A=\"é\"].Two#Y:focus[B=\"two\"].One#X:hover[A=\"é\"]";
@@ -34,6 +40,7 @@ fn attribute(name: &str, value: &str) -> Simple {
             name,
             CssAttributeMatcher::Equals(value.into()),
             CssAttributeCaseSensitivity::DocumentDefault,
+            Default::default(),
         )
         .unwrap(),
     )
@@ -44,27 +51,38 @@ fn interleaved_repetitions_keep_authored_order_through_checked_parse_and_rule_ou
     // Members serialize in authored order; the grouped accessors still expose
     // each category's relative order and every repeated member.
     let checked = CssSelector::Compound(
-        CssCompoundSelector::try_new(vec![
-            Simple::Class(ident("One")),
-            Simple::Id(ident("X")),
-            Simple::PseudoClass(CssPseudoClass::Hover),
-            attribute("A", "é"),
-            Simple::Class(ident("Two")),
-            Simple::Id(ident("Y")),
-            Simple::PseudoClass(CssPseudoClass::Focus),
-            attribute("B", "two"),
-            Simple::Class(ident("One")),
-            Simple::Id(ident("X")),
-            Simple::PseudoClass(CssPseudoClass::Hover),
-            attribute("A", "é"),
-        ])
+        CssCompoundSelector::try_new(
+            vec![
+                Simple::Class(ident("One")),
+                Simple::Id(ident("X")),
+                Simple::PseudoClass(CssPseudoClass::Hover),
+                attribute("A", "é"),
+                Simple::Class(ident("Two")),
+                Simple::Id(ident("Y")),
+                Simple::PseudoClass(CssPseudoClass::Focus),
+                attribute("B", "two"),
+                Simple::Class(ident("One")),
+                Simple::Id(ident("X")),
+                Simple::PseudoClass(CssPseudoClass::Hover),
+                attribute("A", "é"),
+            ],
+            Default::default(),
+        )
         .unwrap(),
     );
     assert_eq!(parsed(AUTHORED), checked);
     assert_eq!(parsed(SERIALIZED), checked);
     assert_ne!(parsed(GROUPED), checked);
-    assert_eq!(parsed(GROUPED).to_specified_css().unwrap(), GROUPED);
-    assert_eq!(checked.to_specified_css().unwrap(), SERIALIZED);
+    assert_eq!(
+        parsed(GROUPED)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        GROUPED
+    );
+    assert_eq!(
+        checked.serialize_specified(Default::default()).unwrap(),
+        SERIALIZED
+    );
     let CssSelector::Compound(compound) = &checked else {
         panic!("checked compound")
     };
@@ -80,7 +98,11 @@ fn interleaved_repetitions_keep_authored_order_through_checked_parse_and_rule_ou
     );
 
     let source = format!("/*😀*/\n{AUTHORED}{{opacity:0}}");
-    let report = parse_rule(&source, &CssNamespaceContext::default());
+    let report = CssRule::parse(
+        &CssParser::default(),
+        &source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
     let rule = report.syntax().as_ref().unwrap();
@@ -106,9 +128,16 @@ fn interleaved_repetitions_keep_authored_order_through_checked_parse_and_rule_ou
         AUTHORED.encode_utf16().count() + 1
     );
     let expected = format!("{SERIALIZED} {{ opacity: 0; }}");
-    assert_eq!(rule.serialize_cssom().unwrap(), expected);
-    assert_eq!(rule.to_specified_css().unwrap(), expected);
-    let roundtrip = parse_rule(&expected, &CssNamespaceContext::default());
+    assert_eq!(rule.serialize_cssom(Default::default()).unwrap(), expected);
+    assert_eq!(
+        rule.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
+    let roundtrip = CssRule::parse(
+        &CssParser::default(),
+        &expected,
+        &CssNamespaceContext::default(),
+    );
     assert!(roundtrip.is_clean());
     let CssRule::Style(reparsed) = roundtrip.syntax().as_ref().unwrap() else {
         panic!("reparsed style")
@@ -124,10 +153,18 @@ fn authored_category_order_keeps_pseudo_element_attachments_order_sensitive() {
     let expected = source;
     let selector = parsed(source);
     let before = selector.clone();
-    assert_eq!(selector.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        selector.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     // Part names include parsed source provenance in equality. Round-trip output
     // and semantic attachment are checked without erasing that provenance.
-    assert_eq!(parsed(expected).to_specified_css().unwrap(), expected);
+    assert_eq!(
+        parsed(expected)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     let CssSelector::Compound(compound) = &selector else {
         panic!("originating compound")
     };
@@ -169,12 +206,19 @@ fn authored_category_order_keeps_pseudo_element_attachments_order_sensitive() {
             Segment::PseudoElement(CssPseudoElement::Marker),
         ]
     ));
-    let report = parse_rule(&format!("{source}{{}}"), &CssNamespaceContext::default());
+    let report = CssRule::parse(
+        &CssParser::default(),
+        format!("{source}{{}}"),
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean(), "{report:?}");
     let rule = report.syntax().as_ref().unwrap();
-    assert_eq!(rule.serialize_cssom().unwrap(), format!("{expected} {{ }}"));
     assert_eq!(
-        rule.to_specified_css().unwrap(),
+        rule.serialize_cssom(Default::default()).unwrap(),
+        format!("{expected} {{ }}")
+    );
+    assert_eq!(
+        rule.serialize_specified(Default::default()).unwrap(),
         format!("{expected} {{ }}")
     );
     assert_eq!(selector, before);
@@ -183,18 +227,22 @@ fn authored_category_order_keeps_pseudo_element_attachments_order_sensitive() {
         "Leaf.c::before[A]",
         "Leaf.c::before > .tail",
     ] {
-        let rejected = parse_rule(&format!("{invalid}{{}}"), &CssNamespaceContext::default());
+        let rejected = CssRule::parse(
+            &CssParser::default(),
+            format!("{invalid}{{}}"),
+            &CssNamespaceContext::default(),
+        );
         assert!(rejected.syntax().is_none(), "{invalid}: {rejected:?}");
         crate::css::support::value_assertions::assert_first_code(
             rejected.diagnostics(),
-            surgeist_css::CssErrorCode::InvalidSelector,
+            surgeist_css::diagnostic::CssErrorCode::InvalidSelector,
         );
     }
 }
 
 #[test]
 fn interleaved_rule_siblings_share_exact_limits_and_failure_preserves_retry() {
-    let report = parse_sheet(&format!("{AUTHORED}{{}}{AUTHORED}{{}}"));
+    let report = CssParser::default().parse_sheet(format!("{AUTHORED}{{}}{AUTHORED}{{}}"));
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
     let expected = format!("{SERIALIZED} {{ }}\n{SERIALIZED} {{ }}");
@@ -202,18 +250,9 @@ fn interleaved_rule_siblings_share_exact_limits_and_failure_preserves_retry() {
     // Per empty style: rule1 + selector-list1 + build1 + output1 =4 more.
     // Sheet1 + two complete Style17 =35 input and projection visits.
     let adequate = Limits::new(35, 35, expected.len());
+    assert_eq!(report.syntax().serialize_cssom(adequate).unwrap(), expected);
     assert_eq!(
-        report
-            .syntax()
-            .serialize_cssom_with_limits(adequate)
-            .unwrap(),
-        expected
-    );
-    assert_eq!(
-        report
-            .syntax()
-            .to_specified_css_with_limits(adequate)
-            .unwrap(),
+        report.syntax().serialize_specified(adequate).unwrap(),
         expected
     );
     for (limits, kind) in [
@@ -239,25 +278,16 @@ fn interleaved_rule_siblings_share_exact_limits_and_failure_preserves_retry() {
             Resource::ByteLimit,
         ),
     ] {
-        let failure = report
-            .syntax()
-            .serialize_cssom_with_limits(limits)
-            .unwrap_err();
-        assert_eq!(failure.kind(), RuleError::Resource(kind));
+        let failure = report.syntax().serialize_cssom(limits).unwrap_err();
+        assert_eq!(failure.limit_kind(), Some(kind));
         assert_eq!(failure.rule_path(), &[1]);
         assert_eq!(report, before);
-        assert_eq!(
-            report
-                .syntax()
-                .serialize_cssom_with_limits(adequate)
-                .unwrap(),
-            expected
-        );
+        assert_eq!(report.syntax().serialize_cssom(adequate).unwrap(), expected);
     }
 }
 
 fn nested_selector_texts(source: &str) -> Vec<(String, String, usize)> {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {report:?}");
     let [CssRule::Style(outer)] = report.syntax().rules() else {
         panic!("{source}: one outer style rule")
@@ -281,9 +311,10 @@ fn nested_selector_texts(source: &str) -> Vec<(String, String, usize)> {
                     .serialize_cssom(
                         &CssNamespaceContext::default(),
                         CssStyleSelectorContext::Nested,
+                        Default::default(),
                     )
                     .unwrap(),
-                selector.to_specified_css().unwrap(),
+                selector.serialize_specified(Default::default()).unwrap(),
                 compound.nesting_selectors(),
             )
         })
@@ -321,7 +352,8 @@ fn nesting_selector_serializes_at_its_authored_compound_position() {
 fn scope_anchor_serializes_at_its_authored_compound_position() {
     // Inside `@scope`, `&` is a scope anchor (Cascade 6 §2.5); it keeps its
     // authored compound position the same way.
-    let report = parse_sheet("@scope(.outer){.a&{color:green}:hover&.b{color:green}}");
+    let report =
+        CssParser::default().parse_sheet("@scope(.outer){.a&{color:green}:hover&.b{color:green}}");
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("one scope rule")
@@ -331,10 +363,10 @@ fn scope_anchor_serializes_at_its_authored_compound_position() {
         .rules()
         .iter()
         .map(|rule| {
-            let surgeist_css::CssScopedRule::Style(style) = rule else {
+            let surgeist_css::rule::CssRule::Style(style) = rule else {
                 panic!("scoped style rule")
             };
-            let [surgeist_css::CssScopedStyleSelector::Selector(selector)] =
+            let [surgeist_css::selector::CssStyleSelector::Selector(selector)] =
                 style.selectors().selectors()
             else {
                 panic!("one scoped selector")
@@ -343,7 +375,7 @@ fn scope_anchor_serializes_at_its_authored_compound_position() {
                 panic!("one compound")
             };
             (
-                selector.to_specified_css().unwrap(),
+                selector.serialize_specified(Default::default()).unwrap(),
                 compound.scope_anchors(),
             )
         })

@@ -15,11 +15,23 @@
 //! Frozen WebKit 73aa6c89e2cb77c46184a81aec944e4ab99d114d also permits
 //! contextual numeric coefficients in simplify(Abs&) through magnitudeComparable.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::calculated_length as length;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssCalculation, CssLength, CssLengthPercentage, CssNumber, CssNumeric, CssNumericDimension,
+    CssPercentage,
+};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
-type Limits = CssSpecifiedValueSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Limits = CssSerializationLimits;
+type Kind = SerializationFailure;
 
 fn assert_length(source: &str, expected: &str) {
     let value = length(source);
@@ -27,8 +39,14 @@ fn assert_length(source: &str, expected: &str) {
     let calculation = value.calculation().unwrap();
     let ty = calculation.numeric_type();
     let components = calculation.components().clone();
-    assert_eq!(components.serialize().unwrap().as_css(), source);
-    let result = value.serialize_specified();
+    assert_eq!(
+        components
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
+    let result = value.serialize_specified(Default::default());
     assert_eq!(value, before);
     assert_eq!(value.origin(), before.origin());
     assert_eq!(value.calculation().unwrap().components(), &components);
@@ -87,23 +105,37 @@ fn contextual_hypot_projects_same_unit_norms_including_zero_coefficients() {
 #[test]
 fn percentage_hypot_distinguishes_raw_norms_from_unknown_signed_bases() {
     let source = "hypot(3%,4%)";
-    let components = parse_component_values(source).unwrap();
-    let raw = CssPercentageCalculation::try_from_components(components.clone()).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
+    let raw = CssCalculation::<CssPercentage>::try_from_components(
+        components.clone(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(raw.numeric_type().percent_hint(), None);
-    let raw = CssSpecifiedPercentage::try_from_calculation(raw).unwrap();
+    let raw = CssNumeric::<CssPercentage>::try_from_calculation(raw).unwrap();
     let raw_before = raw.clone();
-    assert_eq!(raw.serialize_specified().unwrap(), "calc(5%)");
+    assert_eq!(
+        raw.serialize_specified(Default::default()).unwrap(),
+        "calc(5%)"
+    );
     assert_eq!(raw, raw_before);
     assert_eq!(raw.calculation().unwrap().components(), &components);
 
-    let hinted = CssLengthPercentageCalculation::try_from_components(components.clone()).unwrap();
+    let hinted = CssCalculation::<CssLengthPercentage>::try_from_components(
+        components.clone(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(
         hinted.numeric_type().percent_hint(),
         Some(CssNumericDimension::Length)
     );
-    let hinted = CssSpecifiedLengthPercentage::try_from_calculation(hinted).unwrap();
+    let hinted = CssNumeric::<CssLengthPercentage>::try_from_calculation(hinted).unwrap();
     let hinted_before = hinted.clone();
-    assert_eq!(hinted.serialize_specified().unwrap(), "hypot(3%, 4%)");
+    assert_eq!(
+        hinted.serialize_specified(Default::default()).unwrap(),
+        "hypot(3%, 4%)"
+    );
     assert_eq!(hinted, hinted_before);
     assert_eq!(hinted.calculation().unwrap().components(), &components);
 }
@@ -119,13 +151,16 @@ fn sign_retains_unknown_zero_bases_and_mixed_unit_magnitudes() {
         ("sign(abs(-2em))", "sign(2em)"),
         ("sign(-2px)", "calc(-1)"),
     ] {
-        let value = CssSpecifiedNumber::try_from_calculation(
-            CssNumberCalculation::try_from_components(parse_component_values(source).unwrap())
-                .unwrap(),
+        let value = CssNumeric::<CssNumber>::try_from_calculation(
+            CssCalculation::<CssNumber>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap();
         let before = value.clone();
-        let result = value.serialize_specified();
+        let result = value.serialize_specified(Default::default());
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
         assert_eq!(
@@ -139,41 +174,58 @@ fn sign_retains_unknown_zero_bases_and_mixed_unit_magnitudes() {
 #[test]
 fn percentage_abs_distinguishes_raw_coefficients_from_unknown_signed_bases() {
     let source = "abs(-2%)";
-    let components = parse_component_values(source).unwrap();
-    let raw = CssPercentageCalculation::try_from_components(components.clone()).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
+    let raw = CssCalculation::<CssPercentage>::try_from_components(
+        components.clone(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(raw.numeric_type().percent_hint(), None);
-    let raw = CssSpecifiedPercentage::try_from_calculation(raw).unwrap();
+    let raw = CssNumeric::<CssPercentage>::try_from_calculation(raw).unwrap();
     let raw_before = raw.clone();
-    assert_eq!(raw.serialize_specified().unwrap(), "calc(2%)");
+    assert_eq!(
+        raw.serialize_specified(Default::default()).unwrap(),
+        "calc(2%)"
+    );
     assert_eq!(raw, raw_before);
     assert_eq!(raw.calculation().unwrap().components(), &components);
 
-    let hinted = CssLengthPercentageCalculation::try_from_components(components.clone()).unwrap();
+    let hinted = CssCalculation::<CssLengthPercentage>::try_from_components(
+        components.clone(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(
         hinted.numeric_type().percent_hint(),
         Some(CssNumericDimension::Length)
     );
-    let hinted = CssSpecifiedLengthPercentage::try_from_calculation(hinted).unwrap();
+    let hinted = CssNumeric::<CssLengthPercentage>::try_from_calculation(hinted).unwrap();
     let hinted_before = hinted.clone();
-    assert_eq!(hinted.serialize_specified().unwrap(), source);
+    assert_eq!(
+        hinted.serialize_specified(Default::default()).unwrap(),
+        source
+    );
     assert_eq!(hinted, hinted_before);
     assert_eq!(hinted.calculation().unwrap().components(), &components);
 }
 
 #[test]
 fn programmatic_abs_keeps_exact_authored_coefficient_and_origin() {
-    let arguments =
-        CssComponentValues::try_new(vec![CssComponentValue::try_token("-02.0000000EM").unwrap()])
-            .unwrap();
+    let arguments = CssComponentValues::try_new(
+        vec![CssComponentValue::try_token("-02.0000000EM").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     let component = CssComponentValue::try_function("ABS", arguments).unwrap();
-    let components = CssComponentValues::try_new(vec![component]).unwrap();
-    let value = CssSpecifiedLength::try_from_calculation(
-        CssLengthCalculation::try_from_components(components.clone()).unwrap(),
+    let components = CssComponentValues::try_new(vec![component], Default::default()).unwrap();
+    let value = CssNumeric::<CssLength>::try_from_calculation(
+        CssCalculation::<CssLength>::try_from_components(components.clone(), Default::default())
+            .unwrap(),
     )
     .unwrap();
     let before = value.clone();
     assert!(matches!(value.origin(), CssValueOrigin::Programmatic));
-    let result = value.serialize_specified();
+    let result = value.serialize_specified(Default::default());
     assert_eq!(value, before);
     assert_eq!(value.origin(), before.origin());
     assert_eq!(value.calculation().unwrap().components(), &components);
@@ -193,8 +245,8 @@ fn contextual_abs_replacement_obeys_exact_limits_and_atomic_failures() {
         (Limits::new(0, 0, 0), Kind::InputNodeLimit),
         (Limits::new(2, 0, 0), Kind::ProjectionNodeLimit),
     ] {
-        let error = value.serialize_specified_with_limits(limits).unwrap_err();
-        assert_eq!(error.kind(), kind);
+        let error = value.serialize_specified(limits).unwrap_err();
+        assert_eq!(serialization_failure(&error), kind);
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
         assert_eq!(
@@ -202,7 +254,7 @@ fn contextual_abs_replacement_obeys_exact_limits_and_atomic_failures() {
             before.calculation().unwrap().components()
         );
     }
-    let result = value.serialize_specified_with_limits(Limits::new(2, 2, expected.len()));
+    let result = value.serialize_specified(Limits::new(2, 2, expected.len()));
     assert_eq!(value, before);
     assert_eq!(result.unwrap(), expected);
 }
@@ -218,8 +270,8 @@ fn contextual_hypot_replacement_obeys_exact_limits_and_atomic_failures() {
         (Limits::new(3, 2, expected.len()), Kind::ProjectionNodeLimit),
         (Limits::new(3, 3, expected.len() - 1), Kind::ByteLimit),
     ] {
-        let error = value.serialize_specified_with_limits(limits).unwrap_err();
-        assert_eq!(error.kind(), kind);
+        let error = value.serialize_specified(limits).unwrap_err();
+        assert_eq!(serialization_failure(&error), kind);
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
         assert_eq!(
@@ -227,7 +279,7 @@ fn contextual_hypot_replacement_obeys_exact_limits_and_atomic_failures() {
             before.calculation().unwrap().components()
         );
     }
-    let result = value.serialize_specified_with_limits(Limits::new(3, 3, expected.len()));
+    let result = value.serialize_specified(Limits::new(3, 3, expected.len()));
     assert_eq!(value, before);
     assert_eq!(result.unwrap(), expected);
 }
@@ -242,9 +294,10 @@ fn numeric_color_consumption_censors_only_after_nested_arithmetic() {
         ("rgb(0 0 0 / calc(1 / calc(0 * -1)))", "rgba(0, 0, 0, 0)"),
         ("rgb(0 0 0 / calc(1 / (0 * 1)))", "rgb(0, 0, 0)"),
     ] {
-        let components = parse_component_values(source).unwrap();
-        let declaration = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
+        let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
+        let declaration = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
             components.clone(),
             CssImportance::Normal,
         )
@@ -255,7 +308,7 @@ fn numeric_color_consumption_censors_only_after_nested_arithmetic() {
         else {
             panic!("color")
         };
-        let result = value.value().to_specified_css();
+        let result = value.value().serialize_specified(Default::default());
         assert_eq!(declaration, before);
         assert_eq!(declaration.value_components(), &components);
         assert_eq!(result.unwrap(), expected, "{source}");
@@ -265,13 +318,16 @@ fn numeric_color_consumption_censors_only_after_nested_arithmetic() {
         ("calc(0 / 0)", "calc(NaN)"),
         ("calc(1 / calc(0 * -1))", "calc(-infinity)"),
     ] {
-        let value = CssSpecifiedNumber::try_from_calculation(
-            CssNumberCalculation::try_from_components(parse_component_values(source).unwrap())
-                .unwrap(),
+        let value = CssNumeric::<CssNumber>::try_from_calculation(
+            CssCalculation::<CssNumber>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap();
         let before = value.clone();
-        let result = value.serialize_specified();
+        let result = value.serialize_specified(Default::default());
         assert_eq!(value, before);
         assert_eq!(result.unwrap(), expected);
     }

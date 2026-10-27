@@ -1,8 +1,10 @@
-use surgeist_css::{
-    CssErrorCode, CssGlobalKeyword, CssKnownDeclaredValueRef, CssKnownProperty,
-    CssKnownPropertyValueRef, CssRecoveryAction, CssTextCombineUpright, CssTextOrientation,
-    CssUnicodeBidi, ErrorKind, parse_style_attribute,
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssGlobalKeyword;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
 };
+use surgeist_css::values::text::{CssTextCombineUpright, CssTextOrientation, CssUnicodeBidi};
 
 #[test]
 fn writing_modes_and_legacy_alias_are_typed() {
@@ -13,7 +15,7 @@ fn writing_modes_and_legacy_alias_are_typed() {
         "glyph-orientation-vertical: 90; ",
         "color: red",
     );
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
 
     if !report.is_clean() {
         assert_eq!(report.diagnostics().len(), 4);
@@ -55,7 +57,7 @@ fn writing_modes_and_legacy_alias_are_typed() {
     else {
         panic!("expected text-combine-upright");
     };
-    assert_eq!(combine.combine(), &CssTextCombineUpright::All);
+    assert_eq!(combine.value(), &CssTextCombineUpright::All);
     assert_eq!(combine.as_css(), "all");
 
     let CssKnownPropertyValueRef::TextOrientation(orientation) = report.syntax()[1]
@@ -66,7 +68,7 @@ fn writing_modes_and_legacy_alias_are_typed() {
     else {
         panic!("expected text-orientation");
     };
-    assert_eq!(orientation.orientation(), &CssTextOrientation::Sideways);
+    assert_eq!(orientation.value(), &CssTextOrientation::Sideways);
 
     let CssKnownPropertyValueRef::UnicodeBidi(bidi) = report.syntax()[2]
         .known()
@@ -76,14 +78,14 @@ fn writing_modes_and_legacy_alias_are_typed() {
     else {
         panic!("expected unicode-bidi");
     };
-    assert_eq!(bidi.bidi(), &CssUnicodeBidi::IsolateOverride);
+    assert_eq!(bidi.value(), &CssUnicodeBidi::IsolateOverride);
 
     let alias = report.syntax()[3].known().unwrap();
     assert_eq!(alias.property(), CssKnownProperty::TextOrientation);
     let CssKnownPropertyValueRef::TextOrientation(mapped) = alias.property_value().unwrap() else {
         panic!("legacy shorthand must map to text-orientation");
     };
-    assert_eq!(mapped.orientation(), &CssTextOrientation::Sideways);
+    assert_eq!(mapped.value(), &CssTextOrientation::Sideways);
     assert_eq!(mapped.as_css(), "90");
     assert!(CssKnownProperty::TextOrientation.aliases().is_empty());
     assert_eq!(
@@ -93,7 +95,9 @@ fn writing_modes_and_legacy_alias_are_typed() {
     );
 
     assert_eq!(
-        surgeist_css::validate_style_attribute(source)
+        surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect("strict validation accepts the complete Writing Modes values"),
         report.syntax().clone(),
     );
@@ -118,7 +122,7 @@ fn writing_modes_keyword_and_legacy_number_domains_are_exact() {
     ] {
         for value in values {
             let source = format!("{property}: {value}");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             assert_eq!(report.syntax().len(), 1, "{source}");
         }
@@ -132,7 +136,7 @@ fn writing_modes_keyword_and_legacy_number_domains_are_exact() {
         ("90", CssTextOrientation::Sideways),
     ] {
         let source = format!("GLYPH-ORIENTATION-VERTICAL: {value}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let known = report.syntax()[0].known().unwrap();
         assert_eq!(known.property(), CssKnownProperty::TextOrientation);
@@ -140,7 +144,7 @@ fn writing_modes_keyword_and_legacy_number_domains_are_exact() {
         else {
             panic!("{source}: expected mapped text-orientation");
         };
-        assert_eq!(mapped.orientation(), &expected, "{source}");
+        assert_eq!(mapped.value(), &expected, "{source}");
         assert_eq!(mapped.as_css(), value, "{source}");
     }
 }
@@ -164,7 +168,7 @@ fn writing_modes_globals_and_substitutions_remain_whole_property_branches() {
     for property in PROPERTIES {
         for (keyword, expected) in GLOBALS {
             let source = format!("{property}: {keyword}");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             assert!(matches!(
                 report.syntax()[0].known().unwrap().declared_value(),
@@ -179,7 +183,7 @@ fn writing_modes_globals_and_substitutions_remain_whole_property_branches() {
         }
 
         let source = format!("{property}: var(--writing, initial)");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert!(matches!(
             report.syntax()[0].known().unwrap().declared_value(),
@@ -246,7 +250,7 @@ fn writing_modes_invalid_values_drop_exact_declaration_and_keep_sibling() {
     ] {
         let invalid = format!("{property}: {value}");
         let source = format!("{invalid}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
@@ -275,17 +279,26 @@ fn writing_modes_invalid_values_drop_exact_declaration_and_keep_sibling() {
             invalid.len() + 1,
             "{source}",
         );
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("{source}: expected property-specific error");
-        };
-        assert_eq!(detail.property(), expected_property, "{source}");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "{source}: expected property-specific error"
+        );
+        assert_eq!(
+            detail.known_property().unwrap(),
+            expected_property,
+            "{source}"
+        );
         assert!(
             diagnostic.error().position().byte_offset().value() < invalid.len() + 1,
             "{source}: responsible position must be inside the dropped declaration",
         );
 
         assert_eq!(
-            surgeist_css::validate_style_attribute(&source)
+            surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect_err("strict validation rejects recovered writing-mode syntax")
                 .diagnostics(),
             report.diagnostics(),
@@ -296,12 +309,12 @@ fn writing_modes_invalid_values_drop_exact_declaration_and_keep_sibling() {
 
 #[test]
 fn writing_modes_eof_and_non_bmp_recovery_preserve_exact_coordinates() {
-    let valid_eof = parse_style_attribute("glyph-orientation-vertical: 90deg");
+    let valid_eof = CssParser::default().parse_block_contents("glyph-orientation-vertical: 90deg");
     assert!(valid_eof.is_clean(), "{:?}", valid_eof.diagnostics());
     assert_eq!(valid_eof.syntax().len(), 1);
 
     let invalid_eof_source = "unicode-bidi: isolate embed";
-    let invalid_eof = parse_style_attribute(invalid_eof_source);
+    let invalid_eof = CssParser::default().parse_block_contents(invalid_eof_source);
     let [diagnostic] = invalid_eof.diagnostics() else {
         panic!("adjacent unicode-bidi keyword at EOF must recover exactly once");
     };
@@ -318,7 +331,7 @@ fn writing_modes_eof_and_non_bmp_recovery_preserve_exact_coordinates() {
     );
 
     let source = "--😀: 1; text-orientation: sideways upright; color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("adjacent text-orientation keyword must recover exactly once");
@@ -343,11 +356,10 @@ fn writing_modes_eof_and_non_bmp_recovery_preserve_exact_coordinates() {
         declaration_end,
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert!(matches!(
-        diagnostic.error().kind(),
-        ErrorKind::InvalidPropertyValue(detail)
-            if detail.property() == CssKnownProperty::TextOrientation
-    ));
+    assert!(
+        (diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
+            && diagnostic.error().known_property().unwrap() == CssKnownProperty::TextOrientation)
+    );
     assert_eq!(
         report.syntax()[1].known().unwrap().property(),
         CssKnownProperty::Color,

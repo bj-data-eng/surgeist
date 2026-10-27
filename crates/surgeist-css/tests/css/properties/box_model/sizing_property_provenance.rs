@@ -1,8 +1,7 @@
 //! Exact authored property provenance from the selected dated Sizing snapshots.
 
-use surgeist_css::{
-    CssKnownProperty, CssSupportStatus, feature_metadata, property_support_metadata,
-};
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata, property_support_metadata};
+use surgeist_css::property::CssKnownProperty;
 
 fn assert_provenance(
     name: &str,

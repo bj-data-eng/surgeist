@@ -4,10 +4,9 @@
 //! different units are therefore mathematically equal inside math functions,
 //! so their ratio is exactly 1 and their difference is exactly zero.
 
-use surgeist_css::{
-    CssLengthCalculation, CssNumberCalculation, CssSpecifiedLength, CssSpecifiedNumber,
-    parse_component_values,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::numeric::{CssCalculation, CssLength, CssNumber, CssNumeric};
 
 /// Pairs of equal absolute lengths, each spelled in two different units.
 const EQUAL_LENGTHS: [(&str, &str); 12] = [
@@ -26,22 +25,28 @@ const EQUAL_LENGTHS: [(&str, &str); 12] = [
 ];
 
 fn number(source: &str) -> String {
-    CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(parse_component_values(source).unwrap())
-            .unwrap_or_else(|error| panic!("{source}: {error:?}")),
+    CssNumeric::<CssNumber>::try_from_calculation(
+        CssCalculation::<CssNumber>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+            Default::default(),
+        )
+        .unwrap_or_else(|error| panic!("{source}: {error:?}")),
     )
     .unwrap()
-    .serialize_specified()
+    .serialize_specified(Default::default())
     .unwrap()
 }
 
 fn length(source: &str) -> String {
-    CssSpecifiedLength::try_from_calculation(
-        CssLengthCalculation::try_from_components(parse_component_values(source).unwrap())
-            .unwrap_or_else(|error| panic!("{source}: {error:?}")),
+    CssNumeric::<CssLength>::try_from_calculation(
+        CssCalculation::<CssLength>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+            Default::default(),
+        )
+        .unwrap_or_else(|error| panic!("{source}: {error:?}")),
     )
     .unwrap()
-    .serialize_specified()
+    .serialize_specified(Default::default())
     .unwrap()
 }
 

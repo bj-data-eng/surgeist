@@ -1,12 +1,16 @@
 use std::sync::Arc;
-use surgeist_css::*;
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::source::{CssUtf16InputLimits, CssUtf16Resource};
+use surgeist_css::{CssParseReport, CssParser, CssParserContext, CssParserMode};
 
 fn parse(raw: Arc<Vec<u16>>) -> CssParseReport<CssMediaQueryList> {
-    CssParserContext::default()
-        .parse_media_query_list_utf16_with_limits(raw, CssUtf16InputLimits::default(), || {
-            Ok::<_, ()>(())
-        })
-        .unwrap()
+    CssMediaQueryList::parse_utf16(
+        &CssParser::default(),
+        raw,
+        CssUtf16InputLimits::default(),
+        || Ok::<_, ()>(()),
+    )
+    .unwrap()
 }
 
 #[test]
@@ -48,14 +52,14 @@ fn empty_and_comment_only_media_keep_complete_context_without_changing_equality(
     let context =
         CssParserContext::new(CssParserMode::Quirks).with_svg_glyph_orientation_vertical();
     for text in ["", "/* no members */"] {
-        let a = context
-            .parse_media_query_list_utf16_with_limits(
-                Arc::new(text.encode_utf16().collect()),
-                CssUtf16InputLimits::default(),
-                || Ok::<_, ()>(()),
-            )
-            .unwrap();
-        let b = context.parse_media_query_list(text);
+        let a = CssMediaQueryList::parse_utf16(
+            &CssParser::new(context, Default::default()),
+            Arc::new(text.encode_utf16().collect()),
+            CssUtf16InputLimits::default(),
+            || Ok::<_, ()>(()),
+        )
+        .unwrap();
+        let b = CssMediaQueryList::parse(&CssParser::new(context, Default::default()), text);
         assert!(a.syntax().queries().is_empty());
         assert_eq!(a.syntax(), &CssMediaQueryList::new(vec![]));
         assert_eq!(a.syntax(), b.syntax());
@@ -69,7 +73,7 @@ fn empty_and_comment_only_media_keep_complete_context_without_changing_equality(
                 .same_snapshot(b.syntax().parse_source().unwrap().source())
         );
         assert_eq!(
-            parse_media_query_list(text)
+            CssMediaQueryList::parse(&CssParser::default(), text)
                 .syntax()
                 .parse_source()
                 .unwrap()
@@ -94,7 +98,8 @@ fn media_preparation_limits_actual_backing_and_stops_at_late_interruption() {
         .storage_usage()
         .retained_bytes();
     for (maximum, success) in [(bytes, true), (bytes - 1, false)] {
-        let result = CssParserContext::default().parse_media_query_list_utf16_with_limits(
+        let result = CssMediaQueryList::parse_utf16(
+            &CssParser::default(),
             raw.clone(),
             CssUtf16InputLimits {
                 max_retained_bytes: maximum,
@@ -104,29 +109,29 @@ fn media_preparation_limits_actual_backing_and_stops_at_late_interruption() {
         );
         assert_eq!(result.is_ok(), success);
         if !success {
-            assert!(matches!(
-                result,
-                Err(CssUtf16InputError::Limit("retained source bytes"))
+            assert!(result.as_ref().is_err_and(
+                |error| error.exhausted_limit() == Some(CssUtf16Resource::RetainedBytes)
             ));
         }
     }
     drop(report);
     let mut total = 0;
     drop(
-        CssParserContext::default()
-            .parse_media_query_list_utf16_with_limits(
-                raw.clone(),
-                CssUtf16InputLimits::default(),
-                || {
-                    total += 1;
-                    Ok::<_, usize>(())
-                },
-            )
-            .unwrap(),
+        CssMediaQueryList::parse_utf16(
+            &CssParser::default(),
+            raw.clone(),
+            CssUtf16InputLimits::default(),
+            || {
+                total += 1;
+                Ok::<_, usize>(())
+            },
+        )
+        .unwrap(),
     );
     for stop in [1, 3, total - 1, total] {
         let mut calls = 0;
-        let result = CssParserContext::default().parse_media_query_list_utf16_with_limits(
+        let result = CssMediaQueryList::parse_utf16(
+            &CssParser::default(),
             raw.clone(),
             CssUtf16InputLimits::default(),
             || {
@@ -134,7 +139,11 @@ fn media_preparation_limits_actual_backing_and_stops_at_late_interruption() {
                 if calls == stop { Err(stop) } else { Ok(()) }
             },
         );
-        assert!(matches!(result, Err(CssUtf16InputError::Interrupted(actual)) if actual == stop));
+        assert!(
+            result
+                .as_ref()
+                .is_err_and(|error| error.interruption().is_some_and(|actual| *actual == stop))
+        );
         assert_eq!(calls, stop);
         assert_eq!(Arc::strong_count(&raw), 1);
     }

@@ -1,8 +1,19 @@
-use surgeist_css::*;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssColorComponent};
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::property::{
+    CssInitialValueRef, CssKnownPropertyValueRef, CssLonghandValueRef, CssPropertyGrammar,
+    CssPropertyKindRef,
+};
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
+use surgeist_css::values::common::{CssBoxSideKind, CssFourSides, CssSidePair};
 
 fn parsed_color(text: &str) -> CssColor {
     let source = format!("border-top-color:{text}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BorderTopColor(value) = report.syntax()[0]
         .known()
@@ -15,67 +26,59 @@ fn parsed_color(text: &str) -> CssColor {
     value.value().clone()
 }
 
-fn error_kind(
-    result: Result<String, CssSpecifiedValueSerializationError>,
-) -> CssSpecifiedValueSerializationErrorKind {
-    result.unwrap_err().kind()
+fn error_kind(result: Result<String, CssSerializationError>) -> SerializationFailure {
+    serialization_failure(&result.unwrap_err())
 }
 
 #[test]
 fn logical_color_pairs_preserve_omission_exact_values_and_cumulative_limits() {
     let first = parsed_color("currentcolor");
     let second = parsed_color("transparent");
-    let one = CssBorderColorPair::new(first.clone(), None);
-    assert!(one.start().is_current_color());
-    assert!(one.authored_end().is_none());
-    assert_eq!(one.end(), one.start());
-    assert_eq!(one.serialize_specified().unwrap(), "currentcolor");
-    assert_ne!(
-        one,
-        CssBorderColorPair::new(first.clone(), Some(first.clone()))
-    );
-
-    let pair = CssBorderColorPair::new(first, Some(second.clone()));
-    assert_eq!(pair.authored_end(), Some(&second));
-    assert!(pair.end().is_transparent());
+    let one = CssSidePair::new(first.clone(), None);
+    assert!(one.first().is_current_color());
+    assert!(one.authored_second().is_none());
+    assert_eq!(one.second(), one.first());
     assert_eq!(
-        pair.serialize_specified().unwrap(),
+        one.serialize_specified(Default::default()).unwrap(),
+        "currentcolor"
+    );
+    assert_ne!(one, CssSidePair::new(first.clone(), Some(first.clone())));
+
+    let pair = CssSidePair::new(first, Some(second.clone()));
+    assert_eq!(pair.authored_second(), Some(&second));
+    assert!(pair.second().is_transparent());
+    assert_eq!(
+        pair.serialize_specified(Default::default()).unwrap(),
         "currentcolor transparent"
     );
-    let exact = CssSpecifiedValueSerializationLimits::new(3, 3, 24);
+    let exact = CssSerializationLimits::new(3, 3, 24);
     assert_eq!(
-        pair.serialize_specified_with_limits(exact).unwrap(),
+        pair.serialize_specified(exact).unwrap(),
         "currentcolor transparent"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, 24),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(2, 3, 24),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, 24),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(3, 2, 24),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, 23),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(3, 3, 23),
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            error_kind(pair.serialize_specified_with_limits(limits)),
-            kind
-        );
+        assert_eq!(error_kind(pair.serialize_specified(limits)), kind);
     }
 }
 
 #[test]
 fn four_side_colors_keep_authored_arity_and_independent_role_assignments() {
     let colors = ["red", "blue", "transparent", "currentcolor"].map(parsed_color);
-    assert!(CssBorderColorShorthand::try_new(CssBoxSideKind::Physical, vec![]).is_none());
-    assert!(
-        CssBorderColorShorthand::try_new(CssBoxSideKind::Logical, vec![colors[0].clone(); 5])
-            .is_none()
-    );
+    assert!(CssFourSides::<CssColor>::try_new(CssBoxSideKind::Physical, vec![]).is_none());
+    assert!(CssFourSides::try_new(CssBoxSideKind::Logical, vec![colors[0].clone(); 5]).is_none());
     for (count, expected_roles, specified) in [
         (1, ["red", "red", "red", "red"], "red"),
         (2, ["red", "blue", "red", "blue"], "red blue"),
@@ -91,30 +94,30 @@ fn four_side_colors_keep_authored_arity_and_independent_role_assignments() {
         ),
     ] {
         for kind in [CssBoxSideKind::Physical, CssBoxSideKind::Logical] {
-            let shorthand =
-                CssBorderColorShorthand::try_new(kind, colors[..count].to_vec()).unwrap();
+            let shorthand = CssFourSides::try_new(kind, colors[..count].to_vec()).unwrap();
             assert_eq!(shorthand.kind(), kind);
-            assert_eq!(shorthand.authored_values(), &colors[..count]);
+            assert_eq!(shorthand.authored(), &colors[..count]);
             assert_eq!(
                 shorthand
-                    .assigned_values()
-                    .map(|color| color.to_specified_css().unwrap()),
+                    .assigned()
+                    .map(|color| color.serialize_specified(Default::default()).unwrap()),
                 expected_roles.map(str::to_owned)
             );
             let expected = match kind {
                 CssBoxSideKind::Physical => specified.to_owned(),
                 CssBoxSideKind::Logical => format!("logical {specified}"),
+                _ => unreachable!("only physical and logical sides are authored"),
             };
-            assert_eq!(shorthand.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                shorthand.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
         }
     }
-    let one = CssBorderColorShorthand::try_new(CssBoxSideKind::Physical, vec![colors[0].clone()])
-        .unwrap();
+    let one = CssFourSides::try_new(CssBoxSideKind::Physical, vec![colors[0].clone()]).unwrap();
     let repeated =
-        CssBorderColorShorthand::try_new(CssBoxSideKind::Physical, vec![colors[0].clone(); 4])
-            .unwrap();
-    let logical =
-        CssBorderColorShorthand::try_new(CssBoxSideKind::Logical, vec![colors[0].clone()]).unwrap();
+        CssFourSides::try_new(CssBoxSideKind::Physical, vec![colors[0].clone(); 4]).unwrap();
+    let logical = CssFourSides::try_new(CssBoxSideKind::Logical, vec![colors[0].clone()]).unwrap();
     assert_ne!(one, repeated);
     assert_ne!(one, logical);
 }
@@ -122,40 +125,30 @@ fn four_side_colors_keep_authored_arity_and_independent_role_assignments() {
 #[test]
 fn logical_four_color_budget_charges_only_authored_colors_and_prefix_bytes() {
     let colors = ["red", "blue", "transparent", "currentcolor"].map(parsed_color);
-    let shorthand =
-        CssBorderColorShorthand::try_new(CssBoxSideKind::Logical, colors.to_vec()).unwrap();
+    let shorthand = CssFourSides::try_new(CssBoxSideKind::Logical, colors.to_vec()).unwrap();
     let expected = "logical red blue transparent currentcolor";
-    let exact = CssSpecifiedValueSerializationLimits::new(5, 5, 41);
-    assert_eq!(
-        shorthand.serialize_specified_with_limits(exact).unwrap(),
-        expected
-    );
+    let exact = CssSerializationLimits::new(5, 5, 41);
+    assert_eq!(shorthand.serialize_specified(exact).unwrap(), expected);
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(4, 5, 41),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(4, 5, 41),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 4, 41),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(5, 4, 41),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 5, 40),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(5, 5, 40),
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        assert_eq!(
-            error_kind(shorthand.serialize_specified_with_limits(limits)),
-            kind
-        );
+        assert_eq!(error_kind(shorthand.serialize_specified(limits)), kind);
     }
-    let one = CssBorderColorShorthand::try_new(
-        CssBoxSideKind::Physical,
-        vec![parsed_color("currentcolor")],
-    )
-    .unwrap();
+    let one = CssFourSides::try_new(CssBoxSideKind::Physical, vec![parsed_color("currentcolor")])
+        .unwrap();
     assert_eq!(
-        one.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 12))
+        one.serialize_specified(CssSerializationLimits::new(2, 2, 12))
             .unwrap(),
         "currentcolor"
     );
@@ -166,7 +159,7 @@ fn parsed_current_agrees_with_checked_aggregates_without_losing_color_graphs_or_
     let start = "rgb(1 2 3 / none)";
     let end = "lab(calc(50% + 10%) 20 -30 / 120%)";
     let source = format!("border-block-color:{start} {end}!important");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let declaration = &report.syntax()[0];
     let CssKnownPropertyValueRef::BorderBlockColor(value) =
@@ -174,9 +167,9 @@ fn parsed_current_agrees_with_checked_aggregates_without_losing_color_graphs_or_
     else {
         panic!("typed border-block-color")
     };
-    let rgb = value.value().start().rgb_value().unwrap();
+    let rgb = value.value().first().rgb_value().unwrap();
     assert!(matches!(rgb.alpha(), Some(CssColorComponent::None)));
-    let lab = value.value().end().lab_value().unwrap();
+    let lab = value.value().second().lab_value().unwrap();
     assert!(matches!(
         lab.lightness(),
         CssColorComponent::PercentageCalculation(_)
@@ -191,7 +184,7 @@ fn parsed_current_agrees_with_checked_aggregates_without_losing_color_graphs_or_
         "border-block-color:".len()
     );
 
-    let report = parse_style_attribute("border-inline-color:red #12abef");
+    let report = CssParser::default().parse_block_contents("border-inline-color:red #12abef");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BorderInlineColor(value) = report.syntax()[0]
         .known()
@@ -203,11 +196,11 @@ fn parsed_current_agrees_with_checked_aggregates_without_losing_color_graphs_or_
     };
     assert_eq!(
         value.value(),
-        &CssBorderColorPair::new(parsed_color("red"), Some(parsed_color("#12abef")))
+        &CssSidePair::new(parsed_color("red"), Some(parsed_color("#12abef")))
     );
 
     let source = "border-color:logical red blue transparent currentcolor";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BorderColor(value) = report.syntax()[0]
         .known()
@@ -220,7 +213,7 @@ fn parsed_current_agrees_with_checked_aggregates_without_losing_color_graphs_or_
     let colors = ["red", "blue", "transparent", "currentcolor"].map(parsed_color);
     assert_eq!(
         value.value(),
-        &CssBorderColorShorthand::try_new(CssBoxSideKind::Logical, colors.to_vec()).unwrap()
+        &CssFourSides::try_new(CssBoxSideKind::Logical, colors.to_vec()).unwrap()
     );
 }
 
@@ -229,22 +222,25 @@ fn constructed_aggregates_retain_one_checked_symbolic_graph_and_its_source() {
     let source = "alpha(from red / none)";
     let color = parsed_color(source);
     assert!(color.alpha_value().is_some());
-    let pair = CssBorderColorPair::new(color.clone(), None);
-    assert_eq!(pair.start(), &color);
-    assert_eq!(pair.end(), &color);
-    assert_eq!(pair.serialize_specified().unwrap(), source);
+    let pair = CssSidePair::new(color.clone(), None);
+    assert_eq!(pair.first(), &color);
+    assert_eq!(pair.second(), &color);
+    assert_eq!(
+        pair.serialize_specified(Default::default()).unwrap(),
+        source
+    );
 
-    let shorthand = CssBorderColorShorthand::try_new(
+    let shorthand = CssFourSides::try_new(
         CssBoxSideKind::Logical,
         vec![color.clone(), parsed_color("blue")],
     )
     .unwrap();
-    assert_eq!(shorthand.authored_values()[0], color);
-    let assigned = shorthand.assigned_values();
+    assert_eq!(shorthand.authored()[0], color);
+    let assigned = shorthand.assigned();
     assert_eq!(assigned[0], &color);
     assert_eq!(assigned[2], &color);
     assert_eq!(
-        shorthand.serialize_specified().unwrap(),
+        shorthand.serialize_specified(Default::default()).unwrap(),
         "logical alpha(from red / none) blue"
     );
 }

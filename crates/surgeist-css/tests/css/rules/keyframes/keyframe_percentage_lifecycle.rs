@@ -4,12 +4,28 @@
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-range
 //! https://www.w3.org/TR/2023/WD-css-animations-1-20230302/#keyframes
 
+use crate::css::support::failure_classes::NumericFailure as Failure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::numeric_failure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::clean_sheet as sheet;
 use crate::css::support::rules::sole_keyframes as keyframes;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueOrigin};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::numeric::{CssCalculation, CssCalculationType, CssNumeric, CssPercentage};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::rule::keyframes::{CssKeyframePercent, CssKeyframeSelector, CssKeyframesString};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::animation::{CssAnimationName, CssAnimationNameList};
+use surgeist_css::values::effects::CssOpacityValue;
 
-fn calculation(source: &str) -> CssPercentageCalculation {
-    CssPercentageCalculation::try_from_components(parse_component_values(source).unwrap()).unwrap()
+fn calculation(source: &str) -> CssCalculation<CssPercentage> {
+    CssCalculation::<CssPercentage>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+        Default::default(),
+    )
+    .unwrap()
 }
 
 fn percentage(source: &str) -> CssKeyframePercent {
@@ -110,7 +126,6 @@ fn wrong_numeric_types_and_malformed_functions_fail_checked_percentage_construct
     // Values 4 #calc-type-checking: a <number> or <length> root is not a <percentage>,
     // a percentage cannot add to a length here, `+` needs a right operand
     // and min() needs at least one argument.
-    use CssNumericConstructionErrorKind as Failure;
     for (source, expected) in [
         ("calc(25)", Failure::RootDomainMismatch),
         ("calc(25px)", Failure::RootDomainMismatch),
@@ -118,53 +133,63 @@ fn wrong_numeric_types_and_malformed_functions_fail_checked_percentage_construct
         ("min()", Failure::Arity),
     ] {
         assert_eq!(
-            CssPercentageCalculation::try_from_components(parse_component_values(source).unwrap())
+            numeric_failure(
+                &CssCalculation::<CssPercentage>::try_from_components(
+                    CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+                    Default::default()
+                )
                 .unwrap_err()
-                .kind(),
-            &expected,
+            ),
+            expected,
             "{source}"
         );
     }
     // Values 4 #calc-type-checking (Typed OM "add two types") fails for a
     // percentage and a length where percentages resolve against no other
     // type, so the sum has incompatible types.
-    assert_eq!(
-        CssPercentageCalculation::try_from_components(
-            parse_component_values("calc(25% + 1px)").unwrap()
+    assert!(
+        CssCalculation::<CssPercentage>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), "calc(25% + 1px)").unwrap(),
+            Default::default()
         )
         .unwrap_err()
-        .kind(),
-        &Failure::IncompatibleTypes
+        .is_incompatible_types()
     );
 }
 
 #[test]
 fn a_percentage_group_is_rejected_before_keyframe_construction() {
-    let components = parse_component_values("(25%)").unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), "(25%)").unwrap();
     let before = components.clone();
-    let error = CssPercentageCalculation::try_from_components(components.clone()).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::RootDomainMismatch
-    );
+    let error = CssCalculation::<CssPercentage>::try_from_components(
+        components.clone(),
+        Default::default(),
+    )
+    .unwrap_err();
+    assert!(error.is_root_domain_mismatch(), "{error:?}");
     assert_eq!(components, before);
-    assert_eq!(components.serialize().unwrap().as_css(), "(25%)");
+    assert_eq!(
+        components
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "(25%)"
+    );
 }
 
 #[test]
 fn standalone_checked_percentage_functions_reject_implicit_closures() {
-    let components = parse_component_values("calc(25%").unwrap();
-    let error = CssPercentageCalculation::try_from_components(components).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::RecoveredComponent
-    );
+    let components = CssComponentValues::parse(&CssParser::default(), "calc(25%").unwrap();
+    let error =
+        CssCalculation::<CssPercentage>::try_from_components(components, Default::default())
+            .unwrap_err();
+    assert!(error.is_recovered_component(), "{error:?}");
 }
 
 #[test]
 fn checked_constructors_refuse_a_recovered_parsed_percentage_child() {
     let source = "opacity:calc(25%";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(!report.is_clean());
     let CssKnownPropertyValueRef::Opacity(wrapper) = report.syntax()[0]
         .known()
@@ -180,17 +205,18 @@ fn checked_constructors_refuse_a_recovered_parsed_percentage_child() {
     // Checked public construction rejects implicit closure; only
     // parser admission retains recovered syntax, which the report records.
     assert!(CssKeyframePercent::try_from_calculation(original.clone()).is_none());
-    assert_eq!(
-        CssSpecifiedPercentage::try_from_calculation(original.clone())
+    assert!(
+        CssNumeric::<CssPercentage>::try_from_calculation(original.clone())
             .unwrap_err()
-            .kind(),
-        &CssNumericConstructionErrorKind::RecoveredComponent
+            .is_recovered_component()
     );
-    assert_eq!(
-        CssPercentageCalculation::try_from_components(original.components().clone())
-            .unwrap_err()
-            .kind(),
-        &CssNumericConstructionErrorKind::RecoveredComponent
+    assert!(
+        CssCalculation::<CssPercentage>::try_from_components(
+            original.components().clone(),
+            Default::default()
+        )
+        .unwrap_err()
+        .is_recovered_component()
     );
     // Refusal leaves the parsed child and its implicit origin intact.
     let CssComponentValueRef::Function(function) = original.components().items()[0].view() else {
@@ -262,17 +288,17 @@ fn selector_offsets_clone_the_authored_domain_and_preserve_shared_source_snapsho
 }
 
 #[test]
-fn calculated_percentage_equality_preserves_authored_source_provenance() {
+fn calculated_percentage_equality_ignores_authored_source_provenance() {
     let first = percentage("calc(25%)");
     let shifted = percentage("  calc(25%)");
-    assert_ne!(first, shifted);
+    assert_eq!(first, shifted);
     assert_eq!(first, first.clone());
     assert_eq!(
         first
             .calculation()
             .unwrap()
             .components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "calc(25%)"
@@ -285,10 +311,19 @@ fn calculated_selector_output_keeps_math_form_and_authored_out_of_range_coeffici
     let input = sheet(source);
     let before = input.clone();
     let expected = "@keyframes k { calc(120%) { } calc(-10%) { } calc(25%) { } 100% { } }";
-    assert_eq!(input.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        input.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(input, before);
-    let reentered = validate_sheet(expected).unwrap();
-    assert_eq!(reentered.to_specified_css().unwrap(), expected);
+    let reentered = CssParser::default()
+        .parse_sheet(expected)
+        .into_validation_result()
+        .unwrap();
+    assert_eq!(
+        reentered.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(keyframes(&reentered).blocks().len(), 4);
     for block in &keyframes(&reentered).blocks()[..3] {
         assert!(
@@ -310,7 +345,7 @@ fn calculated_selector_output_keeps_math_form_and_authored_out_of_range_coeffici
 fn normalization_preserves_calculated_selectors_duplicates_and_source_positions() {
     let input = sheet("@keyframes k{calc(25%),calc(25%){}calc(25%){}from{}}");
     let original = keyframes(&input);
-    let normalized = normalize_sheet(&input).unwrap();
+    let normalized = input.normalize(Default::default()).unwrap();
     let [CssNormalizedItem::Rule(context)] = normalized.items() else {
         panic!("terminal keyframes rule");
     };
@@ -333,30 +368,27 @@ fn calculated_graph_output_shares_exact_cumulative_limits_and_remains_reusable_a
     let expected = "@keyframes k { calc(120%) { } calc(-10%) { } }";
     // Sheet/rule/name cost three. Each block/list/selector/declaration-list costs four.
     // Each calculation visits two input nodes and creates one projected percentage leaf.
-    let exact = CssSpecifiedValueSerializationLimits::new(15, 13, expected.len());
-    assert_eq!(input.to_specified_css_with_limits(exact).unwrap(), expected);
+    let exact = CssSerializationLimits::new(15, 13, expected.len());
+    assert_eq!(input.serialize_specified(exact).unwrap(), expected);
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(14, 13, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(14, 13, expected.len()),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(15, 12, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(15, 12, expected.len()),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(15, 13, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(15, 13, expected.len() - 1),
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        let error = input.to_specified_css_with_limits(limits).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(kind)
-        );
+        let error = input.serialize_specified(limits).unwrap_err();
+        assert_eq!(serialization_failure(&error), kind);
         assert_eq!(error.rule_index(), Some(0));
         assert_eq!(input, before);
-        assert_eq!(input.to_specified_css_with_limits(exact).unwrap(), expected);
+        assert_eq!(input.serialize_specified(exact).unwrap(), expected);
     }
     assert_eq!(input, before);
 }
@@ -379,9 +411,11 @@ fn unrepresentable_constructed_string_name_fails_output_without_changing_identit
     let name = CssKeyframesString::new("a\0b");
     let names =
         CssAnimationNameList::try_new(vec![CssAnimationName::String(name.clone())]).unwrap();
-    assert_eq!(
-        names.serialize_specified().unwrap_err().kind(),
-        CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
+    assert!(
+        names
+            .serialize_specified(Default::default())
+            .unwrap_err()
+            .is_unrepresentable_value()
     );
     assert!(matches!(names.names(), [CssAnimationName::String(retained)] if retained == &name));
     assert_eq!(name.as_str(), "a\0b");

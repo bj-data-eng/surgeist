@@ -3,22 +3,21 @@
 //! canonical auto-flow/dense order. Existing child numeric/identity contracts
 //! determine operand text. There was no existing aggregate output API for RED.
 use crate::css::support::authored_property::{checked, parsed};
-use surgeist_css::*;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssValueOrigin, CssValueTokenRef};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
 
-type Limits = CssSpecifiedValueSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Limits = CssSerializationLimits;
+type Kind = SerializationFailure;
 
-fn serialize(
-    value: &CssDeclaration,
-    limits: Limits,
-) -> Result<String, CssSpecifiedValueSerializationError> {
+fn serialize(value: &CssDeclaration, limits: Limits) -> Result<String, CssSerializationError> {
     match value.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::GridTemplate(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::Grid(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
+        CssKnownPropertyValueRef::GridTemplate(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::Grid(value) => value.value().serialize_specified(limits),
         _ => panic!("aggregate"),
     }
 }
@@ -43,10 +42,22 @@ fn output(property: CssKnownProperty, text: &str, expected: &str) {
         checked(property, expected, true);
         match value.known().unwrap().property_value().unwrap() {
             CssKnownPropertyValueRef::GridTemplate(value) => {
-                assert_eq!(value.value().serialize_specified().unwrap(), expected)
+                assert_eq!(
+                    value
+                        .value()
+                        .serialize_specified(Default::default())
+                        .unwrap(),
+                    expected
+                )
             }
             CssKnownPropertyValueRef::Grid(value) => {
-                assert_eq!(value.value().serialize_specified().unwrap(), expected)
+                assert_eq!(
+                    value
+                        .value()
+                        .serialize_specified(Default::default())
+                        .unwrap(),
+                    expected
+                )
             }
             _ => unreachable!(),
         }
@@ -125,7 +136,7 @@ fn aggregate_node_and_byte_thresholds_have_no_enum_carrier_cost() {
             (Limits::new(nodes, nodes, text.len() - 1), Kind::ByteLimit),
         ] {
             assert_eq!(
-                serialize(&value, limits).unwrap_err().kind(),
+                serialization_failure(&serialize(&value, limits).unwrap_err()),
                 kind,
                 "{text}"
             );
@@ -152,7 +163,7 @@ fn symbolic_and_exact_numeric_children_use_the_projection_contract() {
 #[test]
 fn output_and_atomic_error_preserve_authored_numeric_origins() {
     let source = "/*😀*/grid:10px / dense auto-flow 1e-50px!important";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Grid(wrapper) = report.syntax()[0]
         .known()
@@ -179,23 +190,26 @@ fn output_and_atomic_error_preserve_authored_numeric_origins() {
         start + "1e-50px".len()
     );
     assert_eq!(origin.source().as_str(), source);
-    assert!(matches!(operand.literal_component().unwrap().view(),
+    assert!(
+        matches!(operand.literal().map(|literal| literal.component()).unwrap().view(),
         CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
-        if number.representation() == "1e-50" && unit == "px"));
+        if number.representation() == "1e-50" && unit == "px")
+    );
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "10px / auto-flow dense 0px"
     );
-    assert_eq!(
+    assert!(
         value
-            .serialize_specified_with_limits(Limits::new(100, 100, 1))
+            .serialize_specified(Limits::new(100, 100, 1))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(*value, before);
-    assert!(matches!(operand.literal_component().unwrap().view(),
+    assert!(
+        matches!(operand.literal().map(|literal| literal.component()).unwrap().view(),
         CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
-        if number.representation() == "1e-50" && unit == "px"));
+        if number.representation() == "1e-50" && unit == "px")
+    );
     assert_eq!(wrapper.as_css(), "10px / dense auto-flow 1e-50px");
 }

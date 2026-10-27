@@ -1,8 +1,8 @@
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::match_ignore_ascii_case;
 
-use crate::{
+use crate::values::font::{
     CssFontKerning, CssFontLanguageOverride, CssFontLanguageString, CssFontOpticalSizing,
     CssFontSizeAdjust,
 };
@@ -22,7 +22,7 @@ pub(super) fn parse_font_kerning<'i, 't>(
 
 pub(super) fn parse_font_size_adjust<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssFontSizeAdjust, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("none"))
@@ -35,7 +35,7 @@ pub(super) fn parse_font_size_adjust<'i, 't>(
 
 pub(super) fn parse_font_language_override<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssFontLanguageOverride, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("normal"))

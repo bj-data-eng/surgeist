@@ -6,10 +6,11 @@
 use std::collections::BTreeSet;
 
 use serde_json::{Value, json};
-use surgeist_css::{
-    CssDeclarationList, CssImportance, CssKnownPropertyValueRef, CssRule, CssSelector, parse_sheet,
-    validate_sheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::declaration::{CssDeclarationList, CssImportance};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::CssSelector;
 
 use crate::css::support::csstree::adapters::{EntryPoint, Extractor};
 use crate::css::support::csstree::reconciliation::{
@@ -32,7 +33,13 @@ fn declarations(actual: &CssDeclarationList) -> Value {
                         json!(["color", "red"])
                     }
                     Some(CssKnownPropertyValueRef::Width(value)) => {
-                        assert_eq!(value.value().serialize_specified().unwrap(), "10px");
+                        assert_eq!(
+                            value
+                                .value()
+                                .serialize_specified(Default::default())
+                                .unwrap(),
+                            "10px"
+                        );
                         json!(["width", "10px"])
                     }
                     other => panic!("unexpected retained declaration: {other:?}"),
@@ -75,7 +82,7 @@ fn rules(actual: &[CssRule]) -> Value {
         CssRule::Media(media) => {
             // Whitespace is immaterial for the two simple query forms in this
             // fixture; serialization still exposes feature names and values.
-            let condition = media.query().serialize().unwrap().as_css().replace(' ', "");
+            let condition = media.query().serialize_tokens(Default::default()).unwrap().as_css().replace(' ', "");
             json!({"kind": "media", "condition": condition, "rules": rules(media.rules())})
         }
         CssRule::Page(page) => {
@@ -89,9 +96,9 @@ fn rules(actual: &[CssRule]) -> Value {
 /// Public retained rules, their typed values and strict validation for one row.
 fn typed_rules_reconcile(row: &Value) -> Result<(), String> {
     let input = text(row, "input");
-    let report = parse_sheet(input);
+    let report = CssParser::default().parse_sheet(input);
     let actual = json!({"ordered_rules": rules(report.syntax().rules()),
-        "validation_accepts": validate_sheet(input).is_ok()});
+        "validation_accepts": CssParser::default().parse_sheet(input).into_validation_result().is_ok()});
     let predicted = json!({"ordered_rules": row["expected"]["ordered_rules"],
         "validation_accepts": row["expected"]["validation_accepts"]});
     if actual == predicted {

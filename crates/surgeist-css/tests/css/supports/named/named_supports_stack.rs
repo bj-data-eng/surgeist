@@ -1,11 +1,13 @@
 //! Deep generic test bodies retain their authored payload on an ordinary caller stack.
 
-use surgeist_css::{
-    CssComponentValueErrorKind, CssComponentValueLimits, CssNamedSupportsConstructionError,
-    CssNormalizedItem, CssRule, CssSupportsConditionName, CssSupportsConditionRule,
-    CssSupportsTestBody, CssSupportsTestItem, ErrorKind, normalize_sheet, parse_component_values,
-    parse_sheet,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueLimits, CssComponentValues};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::query::supports::{
+    CssSupportsConditionName, CssSupportsTestBody, CssSupportsTestItem,
 };
+use surgeist_css::rule::{CssRule, CssSupportsConditionRule};
 
 const CHILD: &str = "SURGEIST_NAMED_SUPPORTS_STACK_CHILD";
 const TEST: &str = "css::supports::named::named_supports_stack::deep_named_supports_lifecycle_fits_two_mib_caller_stack";
@@ -78,21 +80,30 @@ fn assert_nested_lifecycle(chain: Chain) {
     let body = body_source(chain, ADMITTED_BODY_DEPTH);
     let source = format!("@supports-condition --deep{{{body}}}");
     let expected_specified = specified_rule(chain, ADMITTED_BODY_DEPTH);
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::SupportsCondition(rule)] = report.syntax().rules() else {
         panic!("expected one retained definition");
     };
     assert_chain(rule.body(), chain, ADMITTED_BODY_DEPTH);
-    assert_eq!(rule.serialize().unwrap().as_css(), source);
-    assert_eq!(rule.to_specified_css().unwrap(), expected_specified);
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        rule.serialize_tokens(Default::default()).unwrap().as_css(),
+        source
+    );
+    assert_eq!(
+        rule.serialize_specified(Default::default()).unwrap(),
+        expected_specified
+    );
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         expected_specified
     );
 
     let cloned = rule.clone();
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     assert_eq!(normalized.items().len(), 1);
     assert!(
         normalized
@@ -102,21 +113,35 @@ fn assert_nested_lifecycle(chain: Chain) {
     );
     drop(report);
     assert_chain(cloned.body(), chain, ADMITTED_BODY_DEPTH);
-    assert_eq!(cloned.serialize().unwrap().as_css(), source);
-    assert_eq!(cloned.to_specified_css().unwrap(), expected_specified);
+    assert_eq!(
+        cloned
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
+    assert_eq!(
+        cloned.serialize_specified(Default::default()).unwrap(),
+        expected_specified
+    );
     drop(cloned);
     drop(normalized);
 
     // Checked construction must apply the same aggregate structural ceiling.
-    let components = parse_component_values(&body).unwrap();
-    let constructed_body = CssSupportsTestBody::try_from_components(components).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), &body).unwrap();
+    let constructed_body =
+        CssSupportsTestBody::try_from_components(components, Default::default()).unwrap();
     assert_chain(&constructed_body, chain, ADMITTED_BODY_DEPTH);
     let constructed = CssSupportsConditionRule::try_new(
         CssSupportsConditionName::try_new("--deep").unwrap(),
         constructed_body,
+        Default::default(),
     )
     .unwrap();
-    assert_eq!(constructed.to_specified_css().unwrap(), expected_specified);
+    assert_eq!(
+        constructed.serialize_specified(Default::default()).unwrap(),
+        expected_specified
+    );
     drop(constructed);
 
     // A body at depth 256 is independently valid, but the enclosing definition
@@ -124,15 +149,15 @@ fn assert_nested_lifecycle(chain: Chain) {
     let too_deep_body = body_source(chain, ADMITTED_BODY_DEPTH + 1);
     let overflow_source =
         format!("@supports-condition --overflow{{{too_deep_body}}}@supports-condition --after{{}}");
-    let overflow_report = parse_sheet(&overflow_source);
+    let overflow_report = CssParser::default().parse_sheet(&overflow_source);
     assert!(!overflow_report.is_clean());
     assert!(
         overflow_report.diagnostics().iter().any(|diagnostic| {
-            matches!(
-                diagnostic.error().kind(),
-                ErrorKind::InvalidComponentValue(detail)
-                    if detail.kind() == CssComponentValueErrorKind::NestingLimit
-            ) || matches!(diagnostic.error().kind(), ErrorKind::NestingLimit(_))
+            diagnostic
+                .error()
+                .component_error()
+                .is_some_and(|detail| detail.is_nesting_limit())
+                || diagnostic.error().code() == CssErrorCode::NestingLimit
         }),
         "expected typed nesting diagnostic: {:?}",
         overflow_report.diagnostics()
@@ -141,21 +166,26 @@ fn assert_nested_lifecycle(chain: Chain) {
         panic!("overdeep definition must be dropped while following rule survives");
     };
     assert_eq!(after.name().as_str(), "--after");
-    let components = parse_component_values(&too_deep_body).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), &too_deep_body).unwrap();
     let tighter = CssComponentValueLimits::try_new(255, usize::MAX, usize::MAX).unwrap();
-    let error = CssSupportsTestBody::try_from_components_with_limits(components.clone(), tighter)
-        .unwrap_err();
+    let error = CssSupportsTestBody::try_from_components(components.clone(), tighter).unwrap_err();
     assert!(
-        matches!(error, CssNamedSupportsConstructionError::Component(ref detail) if detail.kind() == CssComponentValueErrorKind::NestingLimit)
+        error
+            .component_error()
+            .is_some_and(|detail| detail.is_nesting_limit())
     );
-    let body_at_ceiling = CssSupportsTestBody::try_from_components(components).unwrap();
+    let body_at_ceiling =
+        CssSupportsTestBody::try_from_components(components, Default::default()).unwrap();
     let error = CssSupportsConditionRule::try_new(
         CssSupportsConditionName::try_new("--deep").unwrap(),
         body_at_ceiling,
+        Default::default(),
     )
     .unwrap_err();
     assert!(
-        matches!(error, CssNamedSupportsConstructionError::Component(ref detail) if detail.kind() == CssComponentValueErrorKind::NestingLimit)
+        error
+            .component_error()
+            .is_some_and(|detail| detail.is_nesting_limit())
     );
 }
 

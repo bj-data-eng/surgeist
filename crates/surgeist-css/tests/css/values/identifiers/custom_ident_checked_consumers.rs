@@ -1,7 +1,25 @@
 //! Checked name owners separate Values 4 identifier validity from the extra
 //! exclusions in Animations 1, Transitions 1, and Grid 1.
 
-use surgeist_css::*;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueTokenRef};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::numeric::{CssNonNegative, CssNumeric, CssNumericLiteral, CssTime, CssTimeUnit};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::keyframes::{CssKeyframesIdent, CssKeyframesName};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::animation::{
+    CssAnimationName, CssAnimationNameList, CssTransition, CssTransitionList,
+    CssTransitionProperty, CssTransitionPropertyList, CssTransitionPropertyName,
+};
+use surgeist_css::values::common::{CssCustomIdent, CssIdent};
+use surgeist_css::values::layout::{
+    CssGridGeneralTrackComponent, CssGridGeneralTrackList, CssGridLineName, CssGridLineNames,
+    CssGridTrackBreadth, CssGridTrackList, CssGridTrackSize,
+};
 
 fn custom(value: &str) -> CssCustomIdent {
     CssCustomIdent::try_new(value).unwrap()
@@ -43,9 +61,9 @@ fn checked_keyframes_names_keep_decoded_case_and_punctuation() {
         CssAnimationName::Custom(upper),
     ])
     .unwrap();
-    let css = names.serialize_specified().unwrap();
+    let css = names.serialize_specified(Default::default()).unwrap();
     assert_eq!(css, r"A\ B, a\ b, A\ B");
-    let report = parse_style_attribute(&format!("animation-name:{css}"));
+    let report = CssParser::default().parse_block_contents(format!("animation-name:{css}"));
     assert!(report.is_clean());
     let CssKnownPropertyValueRef::AnimationName(parsed) = report.syntax()[0]
         .known()
@@ -55,7 +73,7 @@ fn checked_keyframes_names_keep_decoded_case_and_punctuation() {
     else {
         panic!("animation-name");
     };
-    assert_eq!(parsed.names(), &names);
+    assert_eq!(parsed.value(), &names);
 }
 
 #[test]
@@ -63,15 +81,18 @@ fn checked_identifier_has_the_same_identity_in_definitions_and_references() {
     let ident = keyframes_ident("Fade");
     let definition = CssKeyframesName::Ident(ident.clone());
     let reference = CssAnimationName::Custom(ident);
-    let sheet = parse_sheet("@keyframes Fade {}");
+    let sheet = CssParser::default().parse_sheet("@keyframes Fade {}");
     assert!(sheet.is_clean());
     let [CssRule::Keyframes(rule)] = sheet.syntax().rules() else {
         panic!("keyframes definition");
     };
     assert_eq!(rule.name(), &definition);
     let names = CssAnimationNameList::try_new(vec![reference.clone()]).unwrap();
-    assert_eq!(names.serialize_specified().unwrap(), "Fade");
-    let report = parse_style_attribute("animation-name:Fade");
+    assert_eq!(
+        names.serialize_specified(Default::default()).unwrap(),
+        "Fade"
+    );
+    let report = CssParser::default().parse_block_contents("animation-name:Fade");
     assert!(report.is_clean());
     let CssKnownPropertyValueRef::AnimationName(parsed) = report.syntax()[0]
         .known()
@@ -81,7 +102,7 @@ fn checked_identifier_has_the_same_identity_in_definitions_and_references() {
     else {
         panic!("animation reference");
     };
-    assert_eq!(parsed.names().names(), &[reference]);
+    assert_eq!(parsed.value().names(), &[reference]);
 }
 
 #[test]
@@ -105,7 +126,7 @@ fn checked_transition_names_keep_unknown_names_case_and_duplicate_indices() {
     ])
     .unwrap();
     assert_eq!(
-        properties.serialize_specified().unwrap(),
+        properties.serialize_specified(Default::default()).unwrap(),
         "Auto, auto, span, Auto"
     );
     assert_eq!(properties.properties().len(), 4);
@@ -122,11 +143,11 @@ fn checked_consumer_names_keep_literal_backslashes_as_decoded_content() {
     )])
     .unwrap();
     for css in [
-        animation.serialize_specified().unwrap(),
-        transition.serialize_specified().unwrap(),
+        animation.serialize_specified(Default::default()).unwrap(),
+        transition.serialize_specified(Default::default()).unwrap(),
     ] {
         assert_eq!(css, r"\\61uto");
-        let components = parse_component_values(&css).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), &css).unwrap();
         assert!(matches!(
             components.items(),
             [component] if matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Ident(value)) if value == decoded)
@@ -148,15 +169,18 @@ fn checked_grid_groups_accept_only_checked_line_names_and_preserve_duplicates() 
         ])
         .unwrap(),
     );
-    assert_eq!(tracks.serialize_specified().unwrap(), "[none none] auto");
+    assert_eq!(
+        tracks.serialize_specified(Default::default()).unwrap(),
+        "[none none] auto"
+    );
 }
 
 #[test]
 fn checked_transition_none_cannot_mix_with_an_omitted_property() {
     let none = CssTransition::try_new(Some(CssTransitionProperty::None), None, None, None).unwrap();
-    let duration = CssDuration::try_new(CssTimeValue::from_literal(
-        CssTimeLiteral::try_new("1", CssTimeUnit::Seconds).unwrap(),
-    ))
+    let duration = CssNumeric::<CssTime, CssNonNegative>::try_from_literal(
+        CssNumericLiteral::<CssTime>::try_new("1", CssTimeUnit::Seconds).unwrap(),
+    )
     .unwrap();
     let omitted = CssTransition::try_new(None, Some(duration), None, None).unwrap();
     assert!(CssTransitionList::try_new(vec![none.clone(), omitted.clone()]).is_none());
@@ -171,29 +195,26 @@ fn checked_name_projection_keeps_exact_budgets_and_atomic_failures() {
     let before = names.clone();
     assert_eq!(
         names
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 4))
+            .serialize_specified(CssSerializationLimits::new(2, 2, 4))
             .unwrap(),
         "Auto"
     );
     for (limits, expected) in [
         (
-            CssSpecifiedValueSerializationLimits::new(1, 2, 4),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(1, 2, 4),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 1, 4),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(2, 1, 4),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 2, 3),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(2, 2, 3),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            names
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&names.serialize_specified(limits).unwrap_err()),
             expected
         );
         assert_eq!(names, before);
@@ -203,14 +224,20 @@ fn checked_name_projection_keeps_exact_budgets_and_atomic_failures() {
 #[test]
 fn mixed_transition_none_diagnostic_identifies_the_property_after_a_duration() {
     let source = r"transition:1s \6e one, opacity 2s;color:red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     let [diagnostic] = report.diagnostics() else {
         panic!("one rejected mixed-none list");
     };
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("transition grammar error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Transition);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "transition grammar error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::Transition
+    );
     // Transitions 1 §2.5: `1s none` is a valid single transition, so the
     // comma that continues the list is responsible.
     assert_eq!(

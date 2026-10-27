@@ -1,10 +1,10 @@
 use std::ops::Range;
 
 use serde::{Deserialize, Serialize};
-use surgeist_css::{
-    CssDeclarationList, CssFontFaceDescriptor, CssFontFaceDescriptorKind, CssKnownProperty,
-    CssPropertyNameRef, CssRule, CssSheet,
-};
+use surgeist_css::declaration::CssDeclarationList;
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef};
+use surgeist_css::rule::font_face::{CssFontFaceDescriptor, CssFontFaceDescriptorKind};
+use surgeist_css::rule::{CssRule, CssSheet};
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -161,7 +161,7 @@ impl FontFaceDescriptorKind {
     const fn css_name(self) -> &'static str {
         match self {
             Self::FontStretch => "font-stretch",
-            _ => self.css_kind().css_name(),
+            _ => self.css_kind().as_str(),
         }
     }
 

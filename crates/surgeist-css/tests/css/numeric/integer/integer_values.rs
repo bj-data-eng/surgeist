@@ -1,8 +1,22 @@
 //! Exact authored integer fidelity and Values4 specified math projection.
-use surgeist_css::*;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssNumericTokenKind, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationExpressionRef, CssInteger, CssNumeric, CssNumericLiteral,
+};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::CssZIndexValue;
 
-fn order(text: &str) -> CssIntegerValue {
-    let report = parse_style_attribute(&format!("order:{text}"));
+fn order(text: &str) -> CssNumeric<CssInteger> {
+    let report = CssParser::default().parse_block_contents(format!("order:{text}"));
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Order(value) = report.syntax()[0]
         .known()
@@ -15,37 +29,43 @@ fn order(text: &str) -> CssIntegerValue {
     value.value().clone()
 }
 
-fn exact(text: &str) -> CssIntegerValue {
-    CssIntegerValue::Literal(
-        CssIntegerLiteral::try_from_component(CssComponentValue::try_number(text).unwrap())
-            .unwrap(),
+fn exact(text: &str) -> CssNumeric<CssInteger> {
+    CssNumeric::<CssInteger>::try_from_literal(
+        CssNumericLiteral::<CssInteger>::try_from_component(
+            CssComponentValue::try_number(text).unwrap(),
+        )
+        .unwrap(),
     )
+    .unwrap()
 }
 
-fn assert_output(value: &CssIntegerValue, expected: &str) {
+fn assert_output(value: &CssNumeric<CssInteger>, expected: &str) {
     let before = value.clone();
-    assert_eq!(value.serialize_specified().unwrap(), expected);
-    assert_eq!(order(expected).serialize_specified().unwrap(), expected);
     assert_eq!(
-        value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                65_536,
-                262_144,
-                expected.len()
-            ))
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
+    assert_eq!(
+        order(expected)
+            .serialize_specified(Default::default())
             .unwrap(),
         expected
     );
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+            .serialize_specified(CssSerializationLimits::new(65_536, 262_144, expected.len()))
+            .unwrap(),
+        expected
+    );
+    assert!(
+        value
+            .serialize_specified(CssSerializationLimits::new(
                 65_536,
                 262_144,
                 expected.len() - 1
             ))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, &before);
 }
@@ -59,12 +79,13 @@ fn checked_integer_literals_preserve_components_and_reject_other_token_kinds() {
         "-2147483649",
         "9999999999999999999999999999999999999999",
     ] {
-        let parsed = parse_component_values(text).unwrap();
+        let parsed = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         for component in [
             parsed.items()[0].clone(),
             CssComponentValue::try_number(text).unwrap(),
         ] {
-            let literal = CssIntegerLiteral::try_from_component(component.clone()).unwrap();
+            let literal =
+                CssNumericLiteral::<CssInteger>::try_from_component(component.clone()).unwrap();
             assert_eq!(literal.component(), &component);
             assert_eq!(literal.origin(), component.origin());
             assert_eq!(literal.numeric().representation(), text);
@@ -72,12 +93,13 @@ fn checked_integer_literals_preserve_components_and_reject_other_token_kinds() {
         }
     }
     for text in ["1.0", "1e2", "1%", "1px", "auto", " ", "calc(1)", "[1]"] {
-        let components = parse_component_values(text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         assert_eq!(components.items().len(), 1);
         let component = components.items()[0].clone();
-        let error = CssIntegerLiteral::try_from_component(component.clone()).unwrap_err();
-        assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
-        assert_eq!(error.origin(), component.origin());
+        let error =
+            CssNumericLiteral::<CssInteger>::try_from_component(component.clone()).unwrap_err();
+        assert!(error.is_root_domain_mismatch(), "{error:?}");
+        assert_eq!(error.origin(), Some(component.origin()));
     }
 }
 
@@ -90,14 +112,18 @@ fn both_integer_properties_preserve_exact_payloads_and_original_origins() {
             "+0009007199254740993",
             "-123456789012345678901234567890",
         ] {
-            let components = parse_component_values(text).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             for supplied in [
                 components,
-                CssComponentValues::try_new(vec![CssComponentValue::try_number(text).unwrap()])
-                    .unwrap(),
+                CssComponentValues::try_new(
+                    vec![CssComponentValue::try_number(text).unwrap()],
+                    Default::default(),
+                )
+                .unwrap(),
             ] {
-                let declaration = parse_property_value(
-                    CssPropertyNameRef::Known(property),
+                let declaration = CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                     supplied.clone(),
                     CssImportance::Normal,
                 )
@@ -110,7 +136,7 @@ fn both_integer_properties_preserve_exact_payloads_and_original_origins() {
                     },
                     _ => panic!("integer property"),
                 };
-                let CssIntegerValue::Literal(literal) = payload else {
+                let Some(literal) = payload.literal() else {
                     panic!("exact payload")
                 };
                 assert_eq!(literal.component(), &supplied.items()[0]);
@@ -125,7 +151,8 @@ fn both_integer_properties_preserve_exact_payloads_and_original_origins() {
         ("-000", 0),
     ] {
         assert_output(&order(text), &expected.to_string());
-        let CssIntegerValue::Literal(literal) = order(text) else {
+        let value = order(text);
+        let Some(literal) = value.literal() else {
             panic!("ordinary integer")
         };
         assert_eq!(literal.numeric().representation(), text);
@@ -156,7 +183,10 @@ fn ordinary_integer_serialization_is_exact_and_canonical_without_magnitude_round
         (0, "0"),
     ] {
         assert_output(
-            &CssIntegerValue::Literal(CssIntegerLiteral::from_i32(input)),
+            &CssNumeric::<CssInteger>::try_from_literal(CssNumericLiteral::<CssInteger>::from_i32(
+                input,
+            ))
+            .unwrap(),
             expected,
         );
     }
@@ -169,34 +199,34 @@ fn ordinary_integer_serialization_is_exact_and_canonical_without_magnitude_round
 #[test]
 fn ordinary_integer_limits_charge_canonical_bytes_and_one_node_per_stage() {
     for value in [
-        CssIntegerValue::Literal(surgeist_css::CssIntegerLiteral::from_i32(-2)),
+        CssNumeric::<CssInteger>::try_from_literal(surgeist_css::numeric::CssNumericLiteral::<
+            surgeist_css::numeric::CssInteger,
+        >::from_i32(-2))
+        .unwrap(),
         exact("-0002"),
     ] {
         for (limits, expected) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 0, 0),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(0, 0, 0),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, 0),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(1, 0, 0),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(1, 1, 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 expected
             );
         }
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 2))
+                .serialize_specified(CssSerializationLimits::new(1, 1, 2))
                 .unwrap(),
             "-2"
         );
@@ -207,18 +237,31 @@ fn ordinary_integer_limits_charge_canonical_bytes_and_one_node_per_stage() {
 fn explicit_calculation_leaf_keeps_its_exact_coefficient_without_mutating_input() {
     // An operation-free calculation leaf serializes its exact authored
     // coefficient, as the literal does (#1297), not binary64 9007199254740992.
-    let components = parse_component_values("9007199254740993").unwrap();
-    let calculation = CssIntegerCalculation::try_from_components(components.clone()).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), "9007199254740993").unwrap();
+    let calculation =
+        CssCalculation::<CssInteger>::try_from_components(components.clone(), Default::default())
+            .unwrap();
     let CssCalculationExpressionRef::Value(leaf) = calculation.expression() else {
         panic!("exact authored leaf")
     };
     assert_eq!(leaf.literal().representation(), "9007199254740993");
     assert_eq!(calculation.components(), &components);
+    // A bare root re-enters literal admission; an operation-free math function
+    // keeps its leaf's exact coefficient in its projection.
     assert_output(
-        &CssIntegerValue::Calculation(calculation.clone()),
-        "calc(9007199254740993)",
+        &CssNumeric::<CssInteger>::try_from_calculation(calculation.clone()).unwrap(),
+        "9007199254740993",
     );
     assert_eq!(calculation.components(), &components);
+    let math = CssCalculation::<CssInteger>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "calc(9007199254740993)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
+    assert_output(
+        &CssNumeric::<CssInteger>::try_from_calculation(math).unwrap(),
+        "calc(9007199254740993)",
+    );
     assert_output(&exact("9007199254740993"), "9007199254740993");
 }
 
@@ -256,27 +299,29 @@ fn integer_context_math_preserves_fractional_results_and_symbolic_requirements()
         ("sign(1em - 1px)", "sign(1em - 1px)"),
     ] {
         assert_output(&order(input), expected);
-        let calculation =
-            CssIntegerCalculation::try_from_components(parse_component_values(input).unwrap())
-                .unwrap();
-        assert_output(&CssIntegerValue::Calculation(calculation), expected);
+        let calculation = CssCalculation::<CssInteger>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), input).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
+        assert_output(
+            &CssNumeric::<CssInteger>::try_from_calculation(calculation).unwrap(),
+            expected,
+        );
     }
     let value = order("calc(1 + 2)");
     for (limits, expected) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 100, 100),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(0, 100, 100),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(100, 0, 100),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(100, 0, 100),
+            SerializationFailure::ProjectionNodeLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             expected
         );
     }
@@ -284,7 +329,8 @@ fn integer_context_math_preserves_fractional_results_and_symbolic_requirements()
 
 #[test]
 fn parsed_exact_payloads_retain_the_original_source_token() {
-    let report = parse_style_attribute("order:+0002147483648;z-index:-2147483649");
+    let report =
+        CssParser::default().parse_block_contents("order:+0002147483648;z-index:-2147483649");
     assert!(report.is_clean());
     assert_eq!(report.syntax().len(), 2);
     for (declaration, expected) in report
@@ -300,7 +346,7 @@ fn parsed_exact_payloads_retain_the_original_source_token() {
             },
             _ => panic!("integer property"),
         };
-        let CssIntegerValue::Literal(literal) = value else {
+        let Some(literal) = value.literal() else {
             panic!("exact")
         };
         assert_eq!(literal.numeric().representation(), expected);
@@ -322,13 +368,25 @@ fn parsed_exact_payloads_retain_the_original_source_token() {
 #[test]
 fn ordinary_huge_integers_and_operation_free_calculation_leaves_stay_exact() {
     let digits = "9".repeat(400);
-    let components = parse_component_values(&digits).unwrap();
-    let calculation = CssIntegerCalculation::try_from_components(components.clone()).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), &digits).unwrap();
+    let calculation =
+        CssCalculation::<CssInteger>::try_from_components(components.clone(), Default::default())
+            .unwrap();
+    // A bare root re-enters literal admission.
     assert_output(
-        &CssIntegerValue::Calculation(calculation.clone()),
-        &format!("calc({digits})"),
+        &CssNumeric::<CssInteger>::try_from_calculation(calculation.clone()).unwrap(),
+        &digits,
     );
     assert_eq!(calculation.components(), &components);
+    let math = CssCalculation::<CssInteger>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), format!("calc({digits})")).unwrap(),
+        Default::default(),
+    )
+    .unwrap();
+    assert_output(
+        &CssNumeric::<CssInteger>::try_from_calculation(math).unwrap(),
+        &format!("calc({digits})"),
+    );
     // Arithmetic keeps binary64 projection; its finite overflow converts to the
     // closest finite value rather than an infinity (#1297).
     assert_output(

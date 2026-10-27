@@ -2,33 +2,53 @@
 //! unordered Number/contiguous Percentage-group grammar. These new API tests
 //! preserve authored inputs before contextual creation or computed serialization.
 
+use crate::css::support::failure_classes::NumericFailure::{
+    RecoveredComponent, RootDomainMismatch,
+};
 use crate::css::support::property_admission::{
     assert_checked_closure_rejected, assert_component_rejected, assert_implicit_closure,
     assert_numeric_rejected,
 };
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::CssNumericConstructionErrorKind::{RecoveredComponent, RootDomainMismatch};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::declaration::{CssDeclaration, CssImportance, CssSpecifiedDeclarationBlock};
+use surgeist_css::numeric::{CssCalculation, CssNumber, CssNumeric, CssPercentage};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::animation::{CssEasing, CssEasingList, CssLinearEasing, CssLinearStop};
 
-fn number(source: &str) -> CssSpecifiedNumber {
-    CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(parse_component_values(source).unwrap()).unwrap(),
+fn number(source: &str) -> CssNumeric<CssNumber> {
+    CssNumeric::<CssNumber>::try_from_calculation(
+        CssCalculation::<CssNumber>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
 
-fn percentage(source: &str) -> CssSpecifiedPercentage {
-    CssSpecifiedPercentage::try_from_calculation(
-        CssPercentageCalculation::try_from_components(parse_component_values(source).unwrap())
-            .unwrap(),
+fn percentage(source: &str) -> CssNumeric<CssPercentage> {
+    CssNumeric::<CssPercentage>::try_from_calculation(
+        CssCalculation::<CssPercentage>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
 
 fn parsed(source: &str) -> CssLinearEasing {
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::TransitionTimingFunction),
-        parse_component_values(source).unwrap(),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(
+            CssKnownProperty::TransitionTimingFunction,
+        )),
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
@@ -37,7 +57,7 @@ fn parsed(source: &str) -> CssLinearEasing {
     else {
         panic!("timing wrapper")
     };
-    let [CssEasing::Linear(value)] = value.timing_functions().values() else {
+    let [CssEasing::Linear(value)] = value.value().values() else {
         panic!("one linear function")
     };
     value.clone()
@@ -64,7 +84,7 @@ fn checked_cardinality_preserves_omitted_single_and_paired_authored_inputs() {
     let value = CssLinearEasing::try_new(vec![omitted, single, pair]).unwrap();
     assert_eq!(value.stops().len(), 3);
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "linear(-2, 3 -20%, 0.5 150% 20%)"
     );
     assert_eq!(value, parsed("linear(-2, -20% 3, 150% 20% 0.5)"));
@@ -80,7 +100,10 @@ fn checked_numeric_domains_and_original_recovered_math_are_rejected_before_compo
         ("calc(1", RecoveredComponent),
     ] {
         assert_numeric_rejected(
-            CssNumberCalculation::try_from_components(parse_component_values(source).unwrap()),
+            CssCalculation::<CssNumber>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+                Default::default(),
+            ),
             kind,
         );
     }
@@ -91,17 +114,20 @@ fn checked_numeric_domains_and_original_recovered_math_are_rejected_before_compo
         ("calc(1%", RecoveredComponent),
     ] {
         assert_numeric_rejected(
-            CssPercentageCalculation::try_from_components(parse_component_values(source).unwrap()),
+            CssCalculation::<CssPercentage>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+                Default::default(),
+            ),
             kind,
         );
     }
     assert_component_rejected(
-        CssSpecifiedNumber::try_from_component,
+        CssNumeric::<CssNumber>::try_from_component,
         CssComponentValue::try_token("1%").unwrap(),
         RootDomainMismatch,
     );
     assert_component_rejected(
-        CssSpecifiedPercentage::try_from_component,
+        CssNumeric::<CssPercentage>::try_from_component,
         CssComponentValue::try_number("1").unwrap(),
         RootDomainMismatch,
     );
@@ -111,7 +137,7 @@ fn checked_numeric_domains_and_original_recovered_math_are_rejected_before_compo
 fn browser_retains_recovered_numeric_math_but_public_linear_constructors_reject_it() {
     for source in ["linear(0, calc(1", "linear(0, 1 calc(20%"] {
         let css = format!("transition-timing-function:{source}");
-        let report = parse_style_attribute(&css);
+        let report = CssParser::default().parse_block_contents(&css);
         assert_implicit_closure(&css, &report);
         let [declaration] = report.syntax().as_slice() else {
             panic!("browser retains recovered numeric graph")
@@ -121,19 +147,22 @@ fn browser_retains_recovered_numeric_math_but_public_linear_constructors_reject_
         else {
             panic!("timing wrapper")
         };
-        let [CssEasing::Linear(value)] = value.timing_functions().values() else {
+        let [CssEasing::Linear(value)] = value.value().values() else {
             panic!("linear model")
         };
         let last = &value.stops()[1];
         assert!(CssLinearStop::try_new(last.output().clone(), last.inputs().to_vec()).is_none());
         assert!(CssLinearEasing::try_new(value.stops().to_vec()).is_none());
-        assert_checked_closure_rejected(parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::TransitionTimingFunction),
-            parse_component_values(source).unwrap(),
+        assert_checked_closure_rejected(CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                CssKnownProperty::TransitionTimingFunction,
+            )),
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
             CssImportance::Normal,
         ));
         assert_eq!(value.stops().len(), 2);
-        assert!(value.serialize_specified().is_ok());
+        assert!(value.serialize_specified(Default::default()).is_ok());
     }
 }
 
@@ -151,8 +180,8 @@ fn checked_composition_keeps_exact_original_tokens_math_and_origins() {
     assert_eq!(stop.output(), &output);
     assert_eq!(stop.output().origin(), output.origin());
     assert_eq!(
-        stop.output().literal_component(),
-        output.literal_component()
+        stop.output().literal().map(|literal| literal.component()),
+        output.literal().map(|literal| literal.component())
     );
     assert_eq!(stop.inputs(), &[first.clone(), second.clone()]);
     assert_eq!(stop.inputs()[0].origin(), first.origin());
@@ -161,7 +190,7 @@ fn checked_composition_keeps_exact_original_tokens_math_and_origins() {
         second.calculation().unwrap().components()
     );
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "linear(-9007199254740993 150% calc(30%), sign(-2em))"
     );
     assert_eq!(value.stops()[0], stop);
@@ -178,8 +207,8 @@ fn equality_ignores_origins_but_retains_stop_order_omissions_pairs_and_math_stru
     let precise = parsed("linear(0.0000001 20%, 1)");
     let zero = parsed("linear(0 20%, 1)");
     assert_eq!(
-        precise.serialize_specified().unwrap(),
-        zero.serialize_specified().unwrap()
+        precise.serialize_specified(Default::default()).unwrap(),
+        zero.serialize_specified(Default::default()).unwrap()
     );
     assert_ne!(precise, zero);
     let value = parsed("linear(calc(1 + 2) calc(10% + 20%), 1)");
@@ -198,8 +227,13 @@ fn equality_ignores_origins_but_retains_stop_order_omissions_pairs_and_math_stru
 fn assert_limits(value: &CssLinearEasing, expected: &str, input: usize, projection: usize) {
     LimitLadder::new(expected, input, projection).assert_unchanged_with(
         value,
-        CssLinearEasing::serialize_specified_with_limits,
-        |_, _, _| assert_eq!(value.serialize_specified().unwrap(), expected),
+        CssLinearEasing::serialize_specified,
+        |_, _, _| {
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                expected
+            )
+        },
     );
 }
 
@@ -228,52 +262,39 @@ fn function_stops_and_numeric_children_share_exact_cumulative_budgets() {
     ])
     .unwrap();
     assert_eq!(
-        list.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            13,
-            13,
-            expected.len()
-        ))
-        .unwrap(),
+        list.serialize_specified(CssSerializationLimits::new(13, 13, expected.len()))
+            .unwrap(),
         expected
     );
-    assert_eq!(
-        list.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            12,
-            13,
-            expected.len()
-        ))
-        .unwrap_err()
-        .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+    assert!(
+        list.serialize_specified(CssSerializationLimits::new(12, 13, expected.len()))
+            .unwrap_err()
+            .is_input_node_limit()
+    );
+    assert!(
+        list.serialize_specified(CssSerializationLimits::new(13, 12, expected.len()))
+            .unwrap_err()
+            .is_projection_node_limit()
     );
     assert_eq!(
-        list.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            13,
-            12,
-            expected.len()
-        ))
-        .unwrap_err()
-        .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+        list.serialize_specified(Default::default()).unwrap(),
+        expected
     );
-    assert_eq!(list.serialize_specified().unwrap(), expected);
     let stop = CssLinearStop::try_new(number("-2"), vec![percentage("150%")]).unwrap();
     assert_eq!(
-        stop.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 3, 7))
+        stop.serialize_specified(CssSerializationLimits::new(3, 3, 7))
             .unwrap(),
         "-2 150%"
     );
-    assert_eq!(
-        stop.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 3, 7))
+    assert!(
+        stop.serialize_specified(CssSerializationLimits::new(2, 3, 7))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
-        stop.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 2, 7))
+    assert!(
+        stop.serialize_specified(CssSerializationLimits::new(3, 2, 7))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
 }
 
@@ -291,12 +312,16 @@ fn shorthand_inverse_reconstructs_both_timing_consumers_without_fixup() {
             "1s linear(0 80% 20%, 1) fade",
         ),
     ] {
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert!(report.is_clean());
-        let block = CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax()).unwrap();
+        let block = CssSpecifiedDeclarationBlock::try_from_declarations(
+            report.syntax(),
+            Default::default(),
+        )
+        .unwrap();
         assert_eq!(
             block
-                .property_value(CssPropertyNameRef::Known(property))
+                .property_value(CssPropertyNameRef::Known(property), Default::default())
                 .unwrap()
                 .as_deref(),
             Some(expected)

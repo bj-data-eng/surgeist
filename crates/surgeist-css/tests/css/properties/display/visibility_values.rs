@@ -1,6 +1,21 @@
 //! Display3 visibility is inherited, initially visible, with three keywords.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_invalid_value;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem, CssRuleContext,
+    CssRuleContextKindRef,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::CssVisibility;
 
 #[test]
 fn visibility_initial_and_constructed_values_have_exact_typed_payloads() {
@@ -22,15 +37,20 @@ fn visibility_initial_and_constructed_values_have_exact_typed_payloads() {
         ("HIDDEN", CssVisibility::Hidden, "hidden"),
         (r"c\6f llapse", CssVisibility::Collapse, "collapse"),
     ] {
-        let components =
-            CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()]).unwrap();
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Visibility),
+        let components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_token(text).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Visibility)),
             components.clone(),
             CssImportance::Important,
         )
         .unwrap();
-        let report = parse_style_attribute(&format!("visibility:{text}!important"));
+        let report =
+            CssParser::default().parse_block_contents(format!("visibility:{text}!important"));
         assert!(report.is_clean());
         for declaration in [checked, report.syntax()[0].clone()] {
             let before = declaration.clone();
@@ -42,20 +62,23 @@ fn visibility_initial_and_constructed_values_have_exact_typed_payloads() {
             assert_eq!(value.value(), &expected);
             assert_eq!(value.value(), &expected);
             assert_eq!(value.as_css(), text);
-            assert_eq!(value.value().serialize_specified().unwrap(), canonical);
             assert_eq!(
                 value
                     .value()
-                    .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                        1, 1, 0
-                    ))
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                canonical
+            );
+            assert!(
+                value
+                    .value()
+                    .serialize_specified(CssSerializationLimits::new(1, 1, 0))
                     .unwrap_err()
-                    .kind(),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
+                    .is_byte_limit()
             );
             assert_eq!(value.as_css(), text);
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&declaration).unwrap()
+                declaration.expand().unwrap()
             else {
                 panic!("ordinary")
             };
@@ -81,39 +104,36 @@ fn visibility_canonical_keywords_obey_exact_limits_without_mutation() {
         (CssVisibility::Hidden, "hidden"),
         (CssVisibility::Collapse, "collapse"),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), expected);
-        let exact = CssSpecifiedValueSerializationLimits::new(1, 1, expected.len());
         assert_eq!(
-            value.serialize_specified_with_limits(exact).unwrap(),
+            value.serialize_specified(Default::default()).unwrap(),
             expected
         );
+        let exact = CssSerializationLimits::new(1, 1, expected.len());
+        assert_eq!(value.serialize_specified(exact).unwrap(), expected);
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 0, 0),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(0, 0, 0),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, 0),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(1, 0, 0),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(1, 1, expected.len() - 1),
+                SerializationFailure::ByteLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, 0),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(1, 1, 0),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind
             );
         }
-        let report = parse_style_attribute(&format!("visibility:{expected}"));
+        let report = CssParser::default().parse_block_contents(format!("visibility:{expected}"));
         assert!(report.is_clean());
         let CssKnownPropertyValueRef::Visibility(parsed) = report.syntax()[0]
             .known()
@@ -124,7 +144,13 @@ fn visibility_canonical_keywords_obey_exact_limits_without_mutation() {
             panic!("visibility")
         };
         assert_eq!(parsed.value(), &value);
-        assert_eq!(parsed.value().serialize_specified().unwrap(), expected);
+        assert_eq!(
+            parsed
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
         assert_eq!(parsed.as_css(), expected);
     }
 }
@@ -132,19 +158,23 @@ fn visibility_canonical_keywords_obey_exact_limits_without_mutation() {
 #[test]
 fn recovered_visibility_normalization_preserves_occurrences_and_exact_budgets() {
     let text = ".a{visibility:visible;visibility:auto;visibility:hidden!important}";
-    let report = parse_sheet(text);
+    let report = CssParser::default().parse_sheet(text);
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
         report.diagnostics()[0].action(),
         CssRecoveryAction::DropDeclaration
     );
     assert_invalid_value(
-        report.diagnostics()[0].error().kind(),
+        report.diagnostics()[0].error(),
         CssKnownProperty::Visibility,
         Some("auto"),
     );
     assert_eq!(
-        validate_sheet(text).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(text)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     for (limits, resource, limit) in [
@@ -165,17 +195,18 @@ fn recovered_visibility_normalization_preserves_occurrences_and_exact_budgets() 
         ),
     ] {
         assert_eq!(
-            normalize_sheet_with_limits(report.syntax(), limits)
+            report
+                .syntax()
+                .normalize(limits)
                 .unwrap_err()
-                .kind(),
-            &CssNormalizationErrorKind::LimitExceeded { resource, limit }
+                .exhausted_limit(),
+            Some((resource, limit))
         );
     }
-    let sheet = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap(),
-    )
-    .unwrap();
+    let sheet = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap())
+        .unwrap();
     let items: Vec<_> = sheet
         .items()
         .iter()
@@ -236,10 +267,10 @@ fn nested_visibility_runs_preserve_contexts_across_structural_chunks() {
             "@media all{".repeat(depth),
             "}".repeat(depth),
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{depth}: {:?}", report.diagnostics());
         for _ in 0..2 {
-            let sheet = normalize_sheet(report.syntax()).unwrap();
+            let sheet = report.syntax().normalize(Default::default()).unwrap();
             let items: Vec<_> = sheet
                 .items()
                 .iter()

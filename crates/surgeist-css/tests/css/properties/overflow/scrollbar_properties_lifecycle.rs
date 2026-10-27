@@ -3,7 +3,17 @@
 //! this candidate exercises admission and the already-existing authored lifecycle APIs.
 
 use crate::css::support::validated_important_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssPropertyGrammar, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::ui::CssScrollbarWidth;
 
 use crate::css::support::authored_property;
 use crate::css::support::named_property::sole_longhand_contribution as contribution;
@@ -47,16 +57,18 @@ fn checked_construction_admits_the_same_grammar_and_preserves_input_origins() {
         let grammar = CssPropertyGrammar::from_name(name).unwrap();
         assert_eq!(grammar.target_property(), property);
         for &text in valid {
-            let components = parse_component_values(text).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             for source in [
-                parse_property_value(
-                    CssPropertyNameRef::Known(property),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                     components.clone(),
                     CssImportance::Important,
                 )
                 .unwrap(),
-                parse_property_value_for_grammar(
-                    grammar,
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(grammar),
                     components.clone(),
                     CssImportance::Important,
                 )
@@ -68,11 +80,14 @@ fn checked_construction_admits_the_same_grammar_and_preserves_input_origins() {
                 assert_eq!(source.known().unwrap().property(), property);
             }
         }
-        let components =
-            CssComponentValues::try_new(vec![CssComponentValue::try_ident(valid[0]).unwrap()])
-                .unwrap();
-        let source = parse_property_value(
-            CssPropertyNameRef::Known(property),
+        let components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident(valid[0]).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
+        let source = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components.clone(),
             CssImportance::Normal,
         )
@@ -82,25 +97,24 @@ fn checked_construction_admits_the_same_grammar_and_preserves_input_origins() {
             source.value_components().items()[0].origin(),
             CssValueOrigin::Programmatic
         ));
-        let invalid = CssComponentValues::try_new(vec![
-            CssComponentValue::try_ident("definitely-invalid-keyword").unwrap(),
-        ])
+        let invalid = CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident("definitely-invalid-keyword").unwrap()],
+            Default::default(),
+        )
         .unwrap();
-        let error = parse_property_value(
-            CssPropertyNameRef::Known(property),
+        let error = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             invalid,
             CssImportance::Normal,
         )
         .unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
+        assert!(error.code().is_some());
         let responsible = match error.origin() {
             CssSerializedOrigin::Token(origin) | CssSerializedOrigin::End(Some(origin)) => origin,
             other => panic!("invalid checked value lost its original component origin: {other:?}"),
         };
-        assert_eq!(responsible, &CssValueOrigin::Programmatic);
+        assert_eq!(responsible, CssValueOrigin::Programmatic);
     }
 }
 
@@ -140,7 +154,7 @@ fn invalid_recovery_control_preserves_neighbors_and_the_original_snapshot() {
     for &(name, _, _, _, invalid) in CASES {
         for &value in invalid {
             let text = format!("color:red;{name}:{value};height:2px!important");
-            let report = parse_style_attribute(&text);
+            let report = CssParser::default().parse_block_contents(&text);
             let snapshot = report.syntax().to_vec();
             let [diagnostic] = report.diagnostics() else {
                 panic!("one dropped invalid occurrence: {text}")
@@ -159,7 +173,7 @@ fn invalid_recovery_control_preserves_neighbors_and_the_original_snapshot() {
             assert_eq!(
                 report.syntax()[0]
                     .value_components()
-                    .serialize()
+                    .serialize_tokens(Default::default())
                     .unwrap()
                     .as_css(),
                 "red"
@@ -167,12 +181,17 @@ fn invalid_recovery_control_preserves_neighbors_and_the_original_snapshot() {
             assert_eq!(
                 report.syntax()[1]
                     .value_components()
-                    .serialize()
+                    .serialize_tokens(Default::default())
                     .unwrap()
                     .as_css(),
                 "2px"
             );
-            assert!(validate_style_attribute(&text).is_err());
+            assert!(
+                CssParser::default()
+                    .parse_block_contents(&text)
+                    .into_validation_result()
+                    .is_err()
+            );
             for (source, original) in report.syntax().iter().zip(&snapshot) {
                 assert!(source.same_occurrence(original));
                 assert_eq!(source.value_components(), original.value_components());
@@ -187,16 +206,22 @@ fn color_lifecycle_control_exercises_the_same_shared_front_doors() {
     let item = contribution(&source);
     assert_eq!(item.property(), CssKnownProperty::Color);
     let source = declaration("color", "var(--control)");
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("existing color control is pending")
     };
     assert!(matches!(
         handle
-            .reenter(parse_component_values("inherit").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "inherit").unwrap())
             .unwrap(),
         CssContributions::Longhands(_)
     ));
-    assert!(normalize_sheet(parse_sheet(".a{color:red!important;color:blue}").syntax()).is_ok());
+    assert!(
+        CssParser::default()
+            .parse_sheet(".a{color:red!important;color:blue}")
+            .syntax()
+            .normalize(Default::default())
+            .is_ok()
+    );
 }
 
 #[test]

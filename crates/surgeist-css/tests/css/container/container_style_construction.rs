@@ -1,25 +1,41 @@
 //! Conditional5 style-query structure, lexical ownership and checked boundaries.
 use crate::css::support::authored_syntax::checked_container_condition as construct;
-use surgeist_css::*;
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::property::{CssKnownProperty, CssPropertyGrammar};
+use surgeist_css::query::container::{
+    CssContainerLeaf, CssContainerStyleFeature, CssContainerStyleFeatureName,
+    CssContainerStyleRange, CssContainerStyleRangeOperand, CssContainerStyleRangeOperandRef,
+    CssContainerStyleRangeRef, CssContainerStyleValue, CssStyleQueryLeaf,
+};
+use surgeist_css::query::{CssCondition, CssConditionKind, CssQueryComparison};
 
-fn style(condition: &CssContainerCondition) -> &CssContainerStyleQuery {
-    let CssContainerConditionKind::Style(query) = condition.kind() else {
+fn style(condition: &CssCondition<CssContainerLeaf>) -> &CssCondition<CssStyleQueryLeaf> {
+    let CssConditionKind::Leaf(CssContainerLeaf::Style(query)) = condition.kind() else {
         panic!("style")
     };
     query
 }
 fn plain(
-    query: &CssContainerStyleQuery,
+    query: &CssCondition<CssStyleQueryLeaf>,
 ) -> (&CssContainerStyleFeatureName, &CssContainerStyleValue) {
-    let CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Plain { name, value }) =
-        query.kind()
+    let CssConditionKind::Leaf(CssStyleQueryLeaf::Feature(CssContainerStyleFeature::Plain {
+        name,
+        value,
+    })) = query.kind()
     else {
         panic!("plain")
     };
     (name, value)
 }
-fn range(query: &CssContainerStyleQuery) -> &CssContainerStyleRange {
-    let CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Range(range)) = query.kind()
+fn range(query: &CssCondition<CssStyleQueryLeaf>) -> &CssContainerStyleRange {
+    let CssConditionKind::Leaf(CssStyleQueryLeaf::Feature(CssContainerStyleFeature::Range(range))) =
+        query.kind()
     else {
         panic!("range")
     };
@@ -37,30 +53,33 @@ fn inner_logic_and_unknowns_expose_independent_original_regions() {
     let source = "style(NoT (((--Theme: dark) aNd future(1))))";
     let condition = construct(source);
     let query = style(&condition);
-    let CssContainerStyleQueryKind::Not(group) = query.kind() else {
+    let CssConditionKind::Not(group) = query.kind() else {
         panic!("not")
     };
-    let CssContainerStyleQueryKind::Parenthesized(group) = group.kind() else {
+    let CssConditionKind::Parenthesized(group) = group.kind() else {
         panic!("group")
     };
-    let CssContainerStyleQueryKind::Parenthesized(and) = group.kind() else {
+    let CssConditionKind::Parenthesized(and) = group.kind() else {
         panic!("redundant group")
     };
-    let CssContainerStyleQueryKind::And(list) = and.kind() else {
+    let CssConditionKind::And(list) = and.kind() else {
         panic!("and")
     };
-    let [grouped_feature, unknown] = list.queries() else {
+    let [grouped_feature, unknown] = list.conditions() else {
         panic!("two operands")
     };
-    let CssContainerStyleQueryKind::Parenthesized(feature) = grouped_feature.kind() else {
+    let CssConditionKind::Parenthesized(feature) = grouped_feature.kind() else {
         panic!("feature group")
     };
     let (CssContainerStyleFeatureName::Custom(name), value) = plain(feature) else {
         panic!("custom name")
     };
     assert_eq!(name.as_str(), "--Theme");
-    assert_eq!(value.serialize().unwrap().as_css(), " dark");
-    let CssContainerStyleQueryKind::GeneralEnclosed(opaque) = unknown.kind() else {
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        " dark"
+    );
+    let CssConditionKind::Leaf(CssStyleQueryLeaf::GeneralEnclosed(opaque)) = unknown.kind() else {
         panic!("opaque")
     };
     assert_eq!(opaque.authored(), Some("future(1)"));
@@ -74,8 +93,21 @@ fn inner_logic_and_unknowns_expose_independent_original_regions() {
     }
     let detached = feature.as_ref().clone();
     drop(condition);
-    assert_eq!(detached.serialize().unwrap().as_css(), "--Theme: dark");
-    assert_eq!(plain(&detached).1.serialize().unwrap().as_css(), " dark");
+    assert_eq!(
+        detached
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "--Theme: dark"
+    );
+    assert_eq!(
+        plain(&detached)
+            .1
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        " dark"
+    );
 }
 
 #[test]
@@ -90,7 +122,10 @@ fn ordinary_name_keeps_its_grammar_while_plain_custom_names_remain_literal_value
     );
     assert_eq!(grammar.name(), "glyph-orientation-vertical");
     assert_eq!(grammar.target_property(), CssKnownProperty::TextOrientation);
-    assert_eq!(value.serialize().unwrap().as_css(), " --Angle");
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        " --Angle"
+    );
     assert!(matches!(
         value.components().last().unwrap().view(),
         CssComponentValueRef::Token(CssValueTokenRef::Ident("--Angle"))
@@ -116,14 +151,34 @@ fn directional_ranges_expose_all_three_operands_and_exact_comparisons() {
         left.view(),
         CssContainerStyleRangeOperandRef::Value(_)
     ));
-    assert_eq!(left.value().serialize().unwrap().as_css(), "1px ");
+    assert_eq!(
+        left.value()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "1px "
+    );
     assert_eq!(reference(middle), "--Size");
-    assert_eq!(middle.value().serialize().unwrap().as_css(), r" --\53 ize ");
+    assert_eq!(
+        middle
+            .value()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        r" --\53 ize "
+    );
     assert!(matches!(
         right.view(),
         CssContainerStyleRangeOperandRef::Value(_)
     ));
-    assert_eq!(right.value().serialize().unwrap().as_css(), " var(--max,)");
+    assert_eq!(
+        right
+            .value()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        " var(--max,)"
+    );
 
     let condition = construct("style(--max >= --current > --min)");
     let CssContainerStyleRangeRef::Descending {
@@ -169,7 +224,13 @@ fn generic_range_values_do_not_become_numeric_or_custom_reference_nodes() {
             right.view(),
             CssContainerStyleRangeOperandRef::Value(_)
         ));
-        assert_eq!(left.value().serialize().unwrap().as_css(), left_expected);
+        assert_eq!(
+            left.value()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            left_expected
+        );
         assert_eq!(
             comparison,
             if source.contains('>') {
@@ -186,7 +247,10 @@ fn whitespace_only_value_and_range_operands_keep_parsed_origins() {
     let source = "style(--x: )";
     let condition = construct(source);
     let (_, value) = plain(style(&condition));
-    assert_eq!(value.serialize().unwrap().as_css(), " ");
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        " "
+    );
     assert_eq!(value.components().len(), 1);
     assert!(matches!(
         value.components()[0].view(),
@@ -203,7 +267,14 @@ fn whitespace_only_value_and_range_operands_keep_parsed_origins() {
     else {
         panic!("whitespace middle")
     };
-    assert_eq!(middle.value().serialize().unwrap().as_css(), " ");
+    assert_eq!(
+        middle
+            .value()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        " "
+    );
     assert_eq!(middle.value().position().unwrap().byte_offset().value(), 10);
     assert!(matches!(
         middle.view(),
@@ -213,22 +284,29 @@ fn whitespace_only_value_and_range_operands_keep_parsed_origins() {
 
 #[test]
 fn programmatic_operand_boundaries_and_mixed_origins_remain_inspectable() {
-    let parsed = parse_component_values("/*source*/1").unwrap();
+    let parsed = CssComponentValues::parse(&CssParser::default(), "/*source*/1").unwrap();
     let number = parsed.items().last().unwrap().clone();
-    let argument = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("--x").unwrap(),
-        CssComponentValue::try_token(":").unwrap(),
-        number,
-        CssComponentValue::try_ident("e2").unwrap(),
-    ])
+    let argument = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("--x").unwrap(),
+            CssComponentValue::try_token(":").unwrap(),
+            number,
+            CssComponentValue::try_ident("e2").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let function = CssComponentValue::try_function("style", argument).unwrap();
-    let condition = CssContainerCondition::try_from_components(
-        CssComponentValues::try_new(vec![function]).unwrap(),
+    let condition = CssCondition::<CssContainerLeaf>::try_from_components(
+        CssComponentValues::try_new(vec![function], Default::default()).unwrap(),
+        Default::default(),
     )
     .unwrap();
     let (_, value) = plain(style(&condition));
-    assert_eq!(value.serialize().unwrap().as_css(), "1/**/e2");
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        "1/**/e2"
+    );
     assert_eq!(value.components().len(), 2);
     assert!(matches!(
         value.components()[0].origin(),
@@ -244,30 +322,33 @@ fn programmatic_operand_boundaries_and_mixed_origins_remain_inspectable() {
 #[test]
 fn style_limits_apply_before_admission_and_recovered_groups_keep_closure_origins() {
     let source = "style((--x) and future())";
-    let values = parse_component_values(source).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     for (limits, expected) in [
         (
             CssComponentValueLimits::try_new(1, usize::MAX, usize::MAX).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, 1, usize::MAX).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, usize::MAX, 1).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
     ] {
-        let Err(CssContainerConstructionError::Component(error)) =
-            CssContainerCondition::try_from_components_with_limits(values.clone(), limits)
+        let Err(outer) =
+            CssCondition::<CssContainerLeaf>::try_from_components(values.clone(), limits)
         else {
             panic!("component limit")
         };
-        assert_eq!(error.kind(), expected);
+        let Some(error) = outer.component_error() else {
+            panic!("component limit")
+        };
+        assert_eq!(component_failure(error), expected);
     }
     let condition = construct("style((--x");
-    let serialized = condition.serialize().unwrap();
+    let serialized = condition.serialize_tokens(Default::default()).unwrap();
     assert_eq!(serialized.as_css(), "style((--x))");
     for offset in [10, 11] {
         assert!(matches!(
@@ -277,16 +358,20 @@ fn style_limits_apply_before_admission_and_recovered_groups_keep_closure_origins
             ))
         ));
     }
-    let CssContainerStyleQueryKind::Parenthesized(child) = style(&condition).kind() else {
+    let CssConditionKind::Parenthesized(child) = style(&condition).kind() else {
         panic!("retained group")
     };
     assert!(matches!(
         child.kind(),
-        CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Boolean(_))
+        CssConditionKind::Leaf(CssStyleQueryLeaf::Feature(
+            CssContainerStyleFeature::Boolean(_)
+        ))
     ));
-    assert_eq!(
-        child.serialize_with_limit(2).unwrap_err().kind(),
-        CssComponentValueErrorKind::ByteLimit
+    assert!(
+        child
+            .serialize_tokens(crate::css::support::byte_limits(2))
+            .unwrap_err()
+            .is_byte_limit()
     );
 }
 
@@ -312,9 +397,21 @@ fn maximum_style_depth_supports_detached_clone_and_drop_on_an_ordinary_stack() {
                     drop(original);
                     let cloned = detached.clone();
                     assert_eq!(detached, cloned);
-                    assert_eq!(detached.serialize().unwrap().as_css(), inner);
+                    assert_eq!(
+                        detached
+                            .serialize_tokens(Default::default())
+                            .unwrap()
+                            .as_css(),
+                        inner
+                    );
                     drop(detached);
-                    assert_eq!(cloned.serialize().unwrap().as_css(), inner);
+                    assert_eq!(
+                        cloned
+                            .serialize_tokens(Default::default())
+                            .unwrap()
+                            .as_css(),
+                        inner
+                    );
                     drop(cloned);
                 }
             })
@@ -351,13 +448,15 @@ fn escaped_comparison_identifiers_are_values_and_grouped_failures_are_inner_opaq
         CssComponentValueRef::Token(CssValueTokenRef::Ident(">"))
     ));
     let condition = construct("style((--x:var(color)))");
-    let CssContainerStyleQueryKind::GeneralEnclosed(opaque) = style(&condition).kind() else {
+    let CssConditionKind::Leaf(CssStyleQueryLeaf::GeneralEnclosed(opaque)) =
+        style(&condition).kind()
+    else {
         panic!("inner general-enclosed")
     };
     assert_eq!(opaque.authored(), Some("(--x:var(color))"));
     let condition = construct("style(--x:var(color))");
     assert!(matches!(
         condition.kind(),
-        CssContainerConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
     ));
 }

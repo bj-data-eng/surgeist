@@ -1,20 +1,20 @@
 //! Grammar admission for the selected CSS Generated Content 3 `content` value.
 
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::Token;
 
 use super::background::parse_image;
 use super::generated_content::parse_content_string;
 use super::url::parse_url;
-use crate::CssIdent;
-use crate::content_values::*;
+use crate::values::common::CssIdent;
+use crate::values::content::content_values::*;
 
 type Result<'i, T> = std::result::Result<T, ParseError<'i, Error>>;
 
 pub(super) fn parse_content_value<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<'i, CssContentValue> {
     let start = input.state();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
@@ -54,7 +54,7 @@ pub(super) fn parse_content_value<'i, 't>(
 /// Admits the full shared nonempty list without `content` keywords/slash branches.
 pub(super) fn parse_content_list<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<'i, CssContentList> {
     let mut items = Vec::new();
     while !input.is_exhausted() {
@@ -65,7 +65,7 @@ pub(super) fn parse_content_list<'i, 't>(
 
 fn parse_alternative<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<'i, CssContentAlternative> {
     let mut items = Vec::new();
     while !input.is_exhausted() {
@@ -94,7 +94,7 @@ fn parse_alternative<'i, 't>(
 
 fn parse_item<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<'i, CssContentValueItem> {
     if let Ok(string) = input.try_parse(parse_content_string) {
         return Ok(CssContentValueItem::String(string));
@@ -106,7 +106,9 @@ fn parse_item<'i, 't>(
     }
     match input.try_parse(|input| parse_image(input, numeric)) {
         Ok(image) => return Ok(CssContentValueItem::Image(image)),
-        Err(error) if crate::error::property::is_resource_parse_error(&error) => return Err(error),
+        Err(error) if crate::diagnostic::error::property::is_resource_parse_error(&error) => {
+            return Err(error);
+        }
         Err(_) => {}
     }
     input.skip_whitespace();
@@ -174,7 +176,7 @@ pub(super) fn parse_counter_name<'i, 't>(
 
 fn parse_counter<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<'i, CssContentCounter> {
     let name = parse_counter_name(input)?;
     let style = if input.try_parse(Parser::expect_comma).is_ok() {
@@ -188,7 +190,7 @@ fn parse_counter<'i, 't>(
 
 fn parse_counters<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<'i, CssContentCounters> {
     let name = parse_counter_name(input)?;
     input.expect_comma().map_err(basic)?;
@@ -204,7 +206,7 @@ fn parse_counters<'i, 't>(
 
 pub(super) fn parse_style<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<'i, CssCounterStyleValue> {
     let keyword_location = input.current_source_location();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
@@ -224,7 +226,7 @@ pub(super) fn parse_style<'i, 't>(
 
 fn parse_symbols<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<'i, CssSymbolsStyleValue> {
     let start = input.state();
     let system = if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
@@ -257,7 +259,7 @@ fn parse_symbols<'i, 't>(
 
 fn parse_target<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<'i, CssContentTarget> {
     if let Ok(string) = input.try_parse(parse_content_string) {
         return Ok(CssContentTarget::String(string));
@@ -267,7 +269,7 @@ fn parse_target<'i, 't>(
 
 fn parse_target_counter<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<'i, CssTargetCounter> {
     let target = parse_target(input, numeric)?;
     input.expect_comma().map_err(basic)?;
@@ -283,7 +285,7 @@ fn parse_target_counter<'i, 't>(
 
 fn parse_target_counters<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<'i, CssTargetCounters> {
     let target = parse_target(input, numeric)?;
     input.expect_comma().map_err(basic)?;
@@ -301,7 +303,7 @@ fn parse_target_counters<'i, 't>(
 
 fn parse_target_text<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<'i, CssTargetText> {
     let target = parse_target(input, numeric)?;
     let mode = if input.try_parse(Parser::expect_comma).is_ok() {

@@ -1088,8 +1088,8 @@ mod source_tests {
                 )
                 .err(),
             Some(DomError::InputColorUnavailable(
-                surgeist_css::CssColorUnavailable::Palette(
-                    surgeist_css::CssSystemColor::CanvasText
+                surgeist_css::color::CssColorUnavailable::Palette(
+                    surgeist_css::color::CssSystemColor::CanvasText
                 )
             ))
         );

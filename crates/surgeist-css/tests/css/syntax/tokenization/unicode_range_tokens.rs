@@ -1,4 +1,6 @@
-use surgeist_css::{CssErrorCode, CssRecoveryAction, CssRule, parse_sheet};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::CssRule;
 
 // Admission and numeric expectations: selected CSS Syntax 3 (2026-10-01),
 // §§4.3.14 and 5.5.11. Comments may surround a range and its commas.
@@ -18,7 +20,7 @@ fn unicode_ranges_preserve_token_text_between_surrounding_comments() {
         ("u+0, /*😀*/ u+10FFFF", vec![(0, 0), (0x10ffff, 0x10ffff)]),
     ] {
         let source = format!("@font-face{{unicode-range:{value};font-display:swap}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{value:?}: {:?}", report.diagnostics());
         let [CssRule::FontFace(rule)] = report.syntax().rules() else {
             panic!("font-face");
@@ -31,7 +33,10 @@ fn unicode_ranges_preserve_token_text_between_surrounding_comments() {
             .collect();
         assert_eq!(actual, expected, "{value:?}");
         assert_eq!(
-            surgeist_css::validate_sheet(&source).unwrap(),
+            surgeist_css::CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap(),
             *report.syntax()
         );
     }
@@ -67,7 +72,7 @@ fn invalid_unicode_ranges_point_to_the_responsible_original_token() {
         let source = format!(
             "/*😀*/\r\n@font-face{{unicode-range:{value};font-display:swap}} .after{{color:red}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [diagnostic] = report.diagnostics() else {
             panic!("{value:?}: {:?}", report.diagnostics());
         };
@@ -80,10 +85,12 @@ fn invalid_unicode_ranges_point_to_the_responsible_original_token() {
         let expected = value_start + value.find(responsible).unwrap();
         let position = diagnostic.error().position();
         assert_eq!(position.byte_offset().value(), expected, "{value:?}");
-        let surgeist_css::ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind()
-        else {
-            panic!("descriptor error");
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidDescriptorValue,
+            "descriptor error"
+        );
         assert_eq!(
             detail.encountered().unwrap().authored(),
             spelling,
@@ -101,7 +108,9 @@ fn invalid_unicode_ranges_point_to_the_responsible_original_token() {
         assert!(ordinary_face!(rule.descriptors(), UnicodeRange).is_none());
         assert!(ordinary_face!(rule.descriptors(), FontDisplay).is_some());
         assert_eq!(
-            surgeist_css::validate_sheet(&source)
+            surgeist_css::CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
                 .unwrap_err()
                 .diagnostics(),
             report.diagnostics()
@@ -113,7 +122,7 @@ fn invalid_unicode_ranges_point_to_the_responsible_original_token() {
 fn incomplete_unicode_range_lists_drop_the_whole_descriptor() {
     for value in ["u+", "u+0,", "u+0,,u+1", "u+0,u+"] {
         let source = format!("@font-face{{unicode-range:{value};font-display:swap}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(!report.is_clean(), "{value:?}");
         let [diagnostic] = report.diagnostics() else {
             panic!("one descriptor failure");
@@ -138,7 +147,7 @@ fn incomplete_unicode_ranges_name_their_last_authored_token() {
         ("u+ab-/**/", "ab-"),
     ] {
         let source = format!("@font-face{{unicode-range:{value};font-display:swap}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [diagnostic] = report.diagnostics() else {
             panic!("{value:?}: {:?}", report.diagnostics());
         };
@@ -162,7 +171,7 @@ fn incomplete_unicode_ranges_name_their_last_authored_token() {
 #[test]
 fn rejected_unicode_range_occurrences_preserve_ordered_valid_occurrences() {
     let source = "@font-face{unicode-range:u+0;unicode-range:u+1,u+g;unicode-range:/**/u+2/**/;font-display:swap}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [diagnostic] = report.diagnostics() else {
         panic!("{:?}", report.diagnostics());
     };
@@ -179,8 +188,8 @@ fn rejected_unicode_range_occurrences_preserve_ordered_valid_occurrences() {
         .descriptors()
         .occurrences()
         .filter_map(|descriptor| {
-            if let surgeist_css::CssAuthoredFontFaceDescriptorValue::Ordinary(
-                surgeist_css::CssFontFaceDescriptorValue::UnicodeRange(range),
+            if let surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue::Ordinary(
+                surgeist_css::rule::font_face::CssFontFaceDescriptorValue::UnicodeRange(range),
             ) = descriptor.value()
             {
                 Some(range.ranges()[0].start())

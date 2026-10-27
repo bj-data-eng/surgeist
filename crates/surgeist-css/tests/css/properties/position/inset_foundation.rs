@@ -8,7 +8,16 @@ use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssExpansionError, CssInitialValueRef,
+    CssKnownPropertyValueRef, CssLonghandValue, CssPropertyKindRef, CssPropertyNameRef,
+};
+use surgeist_css::values::box_model::CssLayoutPosition;
 
 fn assert_four_expansion(result: Result<CssExpansion, CssExpansionError>) {
     let CssExpansion::Contributions(values) = result.unwrap() else {
@@ -190,7 +199,10 @@ fn eight_insets_accept_exact_signed_length_percentages_or_auto() {
             CssKnownPropertyValueRef::Left(value) => value.value(),
             _ => panic!("existing physical inset wrapper"),
         };
-        assert_eq!(inset.serialize_specified().unwrap(), "1px");
+        assert_eq!(
+            inset.serialize_specified(Default::default()).unwrap(),
+            "1px"
+        );
     }
 }
 
@@ -221,7 +233,7 @@ fn axis_pairs_repeat_start_at_end_without_physical_mapping() {
             let source = declaration(pair, authored);
             checked(pair, authored);
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("{pair} expands to two logical longhands")
             };
@@ -267,7 +279,7 @@ fn inset_grammar_is_complete_while_four_side_reset_membership_selects_only_autho
     ] {
         accepted(FOUR_SIDE, value);
         let source = declaration(FOUR_SIDE, value);
-        assert_four_expansion(expand_declaration(&source));
+        assert_four_expansion(source.expand());
     }
     // Logical 1: `logical` alone leaves the value ending early, so the last
     // authored token is responsible.
@@ -290,14 +302,14 @@ fn inset_grammar_is_complete_while_four_side_reset_membership_selects_only_autho
     for value in ["initial", "inherit", "unset", "revert", "revert-layer"] {
         let source = declaration(FOUR_SIDE, value);
         checked(FOUR_SIDE, value);
-        assert_four_expansion(expand_declaration(&source));
+        assert_four_expansion(source.expand());
     }
-    let report = parse_sheet(&format!(
+    let report = CssParser::default().parse_sheet(format!(
         ".a{{color:red;{FOUR_SIDE}:logical 1px 2px;color:blue}}"
     ));
     assert!(report.is_clean());
     let before = report.syntax().clone();
-    assert!(normalize_sheet(report.syntax()).is_ok());
+    assert!(report.syntax().normalize(Default::default()).is_ok());
     assert_eq!(report.syntax(), &before);
 }
 
@@ -305,7 +317,7 @@ fn inset_grammar_is_complete_while_four_side_reset_membership_selects_only_autho
 fn all_css_wide_and_pending_reentry_preserve_members_and_occurrence() {
     let all_source = declaration("all", "initial");
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&all_source).unwrap()
+        all_source.expand().unwrap()
     else {
         panic!("symbolic all reset")
     };
@@ -322,10 +334,10 @@ fn all_css_wide_and_pending_reentry_preserve_members_and_occurrence() {
             let source = declaration(name, text);
             checked(name, text);
             if name == FOUR_SIDE {
-                assert_four_expansion(expand_declaration(&source));
+                assert_four_expansion(source.expand());
             } else {
                 let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                    expand_declaration(&source).unwrap()
+                    source.expand().unwrap()
                 else {
                     panic!("{name} has symbolic globals")
                 };
@@ -340,26 +352,28 @@ fn all_css_wide_and_pending_reentry_preserve_members_and_occurrence() {
         }
         for pending in ["var(--inset)", "env(--inset)"] {
             let source = declaration(name, pending);
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("{name} retains pending substitution")
             };
             assert!(handle.source().same_occurrence(&source));
-            assert!(matches!(
+            assert!(
                 handle
-                    .reenter(parse_component_values("1fr").unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), "1fr").unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
-            assert_eq!(
+                    .replacement_error()
+                    .is_some()
+            );
+            assert!(
                 handle
-                    .reenter(parse_component_values("var(--again)").unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap()
+                    )
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
             let replacement_text = if name == "position" { "fixed" } else { "auto" };
-            let replacement = parse_component_values(replacement_text).unwrap();
+            let replacement =
+                CssComponentValues::parse(&CssParser::default(), replacement_text).unwrap();
             if name == FOUR_SIDE {
                 assert_four_contributions(handle.reenter(replacement));
             } else {
@@ -393,11 +407,9 @@ fn all_css_wide_and_pending_reentry_preserve_members_and_occurrence() {
 
 #[test]
 fn normalization_preserves_authored_logical_pairs_and_pending_four_side_order() {
-    let report = parse_sheet(
-        ".a{position:relative;top:-1px;inset-block:2% auto;inset-inline-end:3px;inset:var(--inset);right:auto}",
-    );
+    let report = CssParser::default().parse_sheet(".a{position:relative;top:-1px;inset-block:2% auto;inset-inline-end:3px;inset:var(--inset);right:auto}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()

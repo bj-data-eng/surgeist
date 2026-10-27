@@ -12,14 +12,17 @@ use crate::css::support::descriptor_phases;
 use crate::css::support::rules::sole_counter_style;
 use descriptor_phases::*;
 
-use surgeist_css::{
-    CssCounterStyleDescriptorKind as Descriptor, CssCounterStyleRule, CssCounterStyleSpeakAs,
-    CssCounterStyleSystem, CssCounterSymbol, CssErrorCode, CssNormalizedItem, CssRecoveryAction,
-    CssRule, CssRuleContextKindRef, CssScopedRule,
-    CssSpecifiedValueSerializationErrorKind as SerializationError,
-    CssSpecifiedValueSerializationLimits as Limits, normalize_report, normalize_sheet, parse_sheet,
-    validate_sheet,
+use crate::css::support::failure_classes::SerializationFailure as SerializationError;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorKind as Descriptor;
+use surgeist_css::rule::counter_style::{
+    CssCounterStyleRule, CssCounterStyleSpeakAs, CssCounterStyleSystem, CssCounterSymbol,
 };
+use surgeist_css::serialization::CssSerializationLimits as Limits;
 
 fn clean_rule(body: &str) -> CssCounterStyleRule {
     sole_counter_style(&format!("@counter-style ImageCase {{ {body} }}"))
@@ -28,37 +31,43 @@ fn clean_rule(body: &str) -> CssCounterStyleRule {
 fn assert_output(rule: &CssCounterStyleRule, descriptor: Descriptor, value: &str, body: &str) {
     let retained = rule.clone();
     let expected = format!("@counter-style ImageCase {{ {body} }}");
-    assert_eq!(rule.descriptor_specified_css(descriptor).unwrap(), value);
-    assert_eq!(rule.to_specified_css().unwrap(), expected);
     assert_eq!(
-        rule.descriptor_specified_css_with_limits(
-            descriptor,
-            Limits::new(10_000, 10_000, value.len())
-        )
-        .unwrap(),
+        rule.descriptor_specified_css(descriptor, Default::default())
+            .unwrap(),
+        value
+    );
+    assert_eq!(
+        rule.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
+    assert_eq!(
+        rule.descriptor_specified_css(descriptor, Limits::new(10_000, 10_000, value.len()))
+            .unwrap(),
         value,
     );
     assert_eq!(
-        rule.to_specified_css_with_limits(Limits::new(10_000, 10_000, expected.len()))
+        rule.serialize_specified(Limits::new(10_000, 10_000, expected.len()))
             .unwrap(),
         expected,
     );
-    assert_eq!(
-        rule.to_specified_css_with_limits(Limits::new(10_000, 10_000, expected.len() - 1))
+    assert!(
+        rule.serialize_specified(Limits::new(10_000, 10_000, expected.len() - 1))
             .unwrap_err()
-            .kind(),
-        SerializationError::ByteLimit,
+            .is_byte_limit()
     );
     assert_eq!(
         rule, &retained,
         "projections must not change authored values"
     );
-    let reparsed = parse_sheet(&expected);
+    let reparsed = CssParser::default().parse_sheet(&expected);
     assert!(reparsed.is_clean(), "{:?}", reparsed.diagnostics());
     let [CssRule::CounterStyle(reparsed)] = reparsed.syntax().rules() else {
         panic!("canonical text must remain a counter definition");
     };
-    assert_eq!(reparsed.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        reparsed.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 
 // Every macro invocation below becomes a separate executable test. Expected
@@ -108,7 +117,7 @@ macro_rules! gradient_case {
             let rule = clean_rule(concat!("symbols: a; pad: 3 ", $gradient, ";"));
             assert_output(&rule, Descriptor::Pad, concat!("3 ", $gradient),
                 concat!("pad: 3 ", $gradient, "; symbols: a;"));
-            assert_eq!(rule.descriptors().pad().unwrap().ordinary_pad().minimum_length().literal().numeric().representation(), "3");
+            assert_eq!(rule.descriptors().pad().unwrap().ordinary_pad().minimum_length().expect_literal().numeric().representation(), "3");
         }
     };
     ($name:ident, additive, $gradient:literal) => {
@@ -117,7 +126,7 @@ macro_rules! gradient_case {
             let rule = clean_rule(concat!("system: additive; additive-symbols: ", $gradient, " 10, N 0;"));
             assert_output(&rule, Descriptor::AdditiveSymbols, concat!("10 ", $gradient, ", 0 N"),
                 concat!("system: additive; additive-symbols: 10 ", $gradient, ", 0 N;"));
-            assert_eq!(rule.descriptors().additive_symbols().unwrap().ordinary_additive_symbols().tuples()[0].weight().literal().numeric().representation(), "10");
+            assert_eq!(rule.descriptors().additive_symbols().unwrap().ordinary_additive_symbols().tuples()[0].weight().expect_literal().numeric().representation(), "10");
         }
     };
 }
@@ -273,7 +282,7 @@ fn gradient_pad_accepts_both_component_orders_without_changing_the_integer() {
                 .unwrap()
                 .ordinary_pad()
                 .minimum_length()
-                .literal()
+                .expect_literal()
                 .numeric()
                 .representation(),
             "+0003"
@@ -301,7 +310,7 @@ fn additive_gradient_tuples_accept_both_orders_without_reordering_weights() {
                 .ordinary_additive_symbols()
                 .tuples()[0]
                 .weight()
-                .literal()
+                .expect_literal()
                 .numeric()
                 .representation(),
             "+0010"
@@ -351,7 +360,7 @@ fn image_symbols_keep_currentcolor_and_percentage_dependent_math_unresolved() {
 #[test]
 fn malformed_image_duplicate_keeps_the_previous_image_and_following_siblings() {
     let source = "/*😀*/\n.before{} @counter-style ImageCase { symbols:a; prefix:linear-gradient(red, blue); prefix:linear-gradient(red,); suffix:'.'; } .after{}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let retained = report.syntax().clone();
     let [
         CssRule::Style(_),
@@ -384,9 +393,12 @@ fn malformed_image_duplicate_keeps_the_previous_image_and_following_siblings() {
         "linear-gradient(red, blue)",
         "prefix: linear-gradient(red, blue); suffix: \".\"; symbols: a;",
     );
-    let normalized = normalize_report(&report).unwrap();
+    let normalized = report.normalize(Default::default()).unwrap();
     assert_eq!(normalized.diagnostics(), report.diagnostics());
-    let failure = validate_sheet(source).expect_err("strict validation must reject recovery");
+    let failure = CssParser::default()
+        .parse_sheet(source)
+        .into_validation_result()
+        .expect_err("strict validation must reject recovery");
     assert_eq!(failure.diagnostics(), report.diagnostics());
     assert_eq!(report.syntax(), &retained);
 }
@@ -394,7 +406,7 @@ fn malformed_image_duplicate_keeps_the_previous_image_and_following_siblings() {
 #[test]
 fn normalized_conditional_and_scoped_rules_keep_their_image_payloads() {
     let source = "@media print { @counter-style ImageCase { symbols:linear-gradient(red, blue); } } @scope { @counter-style ImageCase { symbols:a; prefix:radial-gradient(red, blue); } .inside{} }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let retained = report.syntax().clone();
     let [CssRule::Media(media), CssRule::Scope(scope)] = report.syntax().rules() else {
@@ -403,11 +415,10 @@ fn normalized_conditional_and_scoped_rules_keep_their_image_payloads() {
     let [CssRule::CounterStyle(conditional)] = media.rules() else {
         panic!("conditional counter definition");
     };
-    let [CssScopedRule::CounterStyle(scoped), CssScopedRule::Style(_)] = scope.rules().rules()
-    else {
+    let [CssRule::CounterStyle(scoped), CssRule::Style(_)] = scope.rules().rules() else {
         panic!("scoped counter definition and sibling");
     };
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let counters: Vec<_> = normalized
         .items()
         .iter()
@@ -496,7 +507,9 @@ fn later_valid_image_duplicate_selects_the_last_value_without_mutation() {
         .descriptors()
         .occurrences()
         .find_map(|occurrence| match occurrence {
-            surgeist_css::CssCounterStyleDescriptorRef::Prefix(value) => Some(value),
+            surgeist_css::rule::counter_style::CssCounterStyleDescriptorRef::Prefix(value) => {
+                Some(value)
+            }
             _ => None,
         })
         .unwrap();
@@ -521,7 +534,7 @@ fn suppressed_gradient_children_share_the_complete_rule_node_budget() {
     // symbol lists 2; gradient/stops/two stop-color pairs 6; identifier 1.
     // Suppression changes final bytes, not input or projection node costs.
     assert_eq!(
-        rule.to_specified_css_with_limits(Limits::new(13, 13, expected.len()))
+        rule.serialize_specified(Limits::new(13, 13, expected.len()))
             .unwrap(),
         expected
     );
@@ -540,14 +553,12 @@ fn suppressed_gradient_children_share_the_complete_rule_node_budget() {
         ),
     ] {
         assert_eq!(
-            rule.to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&rule.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
     assert_eq!(
-        rule.to_specified_css_with_limits(Limits::new(13, 13, expected.len()))
+        rule.serialize_specified(Limits::new(13, 13, expected.len()))
             .unwrap(),
         expected
     );
@@ -622,7 +633,7 @@ fn reserved_identifier_symbols_reject_the_whole_descriptor() {
         let source = format!(
             "@counter-style ImageCase {{ symbols:a; prefix:{symbol}; suffix:'.'; }} .after{{}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::CounterStyle(rule), CssRule::Style(_)] = report.syntax().rules() else {
             panic!("recovered counter and sibling");
         };
@@ -652,7 +663,7 @@ fn unselected_image_functions_are_not_reinterpreted_as_identifiers() {
         let source = format!(
             "/*😀*/\n@counter-style ImageCase {{ symbols:a; prefix:{function}; suffix:'.'; }} .after{{}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::CounterStyle(rule), CssRule::Style(_)] = report.syntax().rules() else {
             panic!("recovered counter and sibling");
         };
@@ -684,7 +695,11 @@ fn unselected_image_functions_are_not_reinterpreted_as_identifiers() {
         );
         assert_output(rule, Descriptor::Prefix, "", "suffix: \".\"; symbols: a;");
         assert_eq!(
-            validate_sheet(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -699,7 +714,7 @@ fn malformed_images_drop_the_whole_value_instead_of_keeping_a_partial_list() {
         let source = format!(
             "@counter-style ImageCase {{ symbols:a; symbols:{value}; suffix:'.'; }} .after{{}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::CounterStyle(rule), CssRule::Style(_)] = report.syntax().rules() else {
             panic!("earlier valid symbols and sibling");
         };
@@ -724,7 +739,7 @@ fn too_many_negative_or_prefix_symbols_are_rejected_as_complete_values() {
         let source = format!(
             "@counter-style ImageCase {{ symbols:a; {descriptor} suffix:'.'; }} .after{{}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::CounterStyle(rule), CssRule::Style(_)] = report.syntax().rules() else {
             panic!("recovered counter and sibling");
         };
@@ -752,7 +767,7 @@ fn negative_pad_or_non_descending_additive_weights_reject_the_entire_descriptor(
         let source = format!(
             "@counter-style ImageCase {{ symbols:a; {descriptor} suffix:'.'; }} .after{{}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::CounterStyle(rule), CssRule::Style(_)] = report.syntax().rules() else {
             panic!("recovered counter and sibling");
         };
@@ -784,7 +799,11 @@ fn omitted_descriptors_do_not_materialize_defaults_on_extended_styles() {
         Descriptor::AdditiveSymbols,
         Descriptor::SpeakAs,
     ] {
-        assert_eq!(rule.descriptor_specified_css(descriptor).unwrap(), "");
+        assert_eq!(
+            rule.descriptor_specified_css(descriptor, Default::default())
+                .unwrap(),
+            ""
+        );
     }
     assert_output(
         &rule,
@@ -803,7 +822,7 @@ fn image_nesting_limit_keeps_the_typed_stop_action_and_following_siblings() {
     let source = format!(
         "@counter-style ImageCase {{ symbols:a; prefix:url(kept.svg); prefix:{value}; suffix:'.'; }} .after{{}}"
     );
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let [CssRule::CounterStyle(rule), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("counter and sibling survive the resource failure");
     };
@@ -825,7 +844,11 @@ fn image_nesting_limit_keeps_the_typed_stop_action_and_following_siblings() {
         start + "prefix:".len() + value.len() + 1
     );
     assert_eq!(
-        validate_sheet(&source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
 }

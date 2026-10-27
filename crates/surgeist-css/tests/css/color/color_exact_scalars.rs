@@ -2,18 +2,30 @@
 use crate::css::support::color_and_selector_fixtures::assert_color_grammar_failure;
 use crate::css::support::declaration_color as color;
 use surgeist_color::PredefinedColorSpace;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColorComponent, CssColorHue, CssColorMix, CssRelativeColorChannel,
+    CssRelativeColorExpressionValue,
+};
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::CssAngleUnit;
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
 
 fn both(text: &str) -> [CssDeclaration; 2] {
     let source = format!("color:{text}!important");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let [parsed] = report.syntax().as_slice() else {
         panic!("one declaration")
     };
     assert_eq!(parsed.importance(), CssImportance::Important);
     assert_eq!(
-        parsed.value_components().serialize().unwrap().as_css(),
+        parsed
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         text
     );
     let CssValueOrigin::Parsed(origin) = parsed.value_components().items()[0].origin() else {
@@ -21,9 +33,10 @@ fn both(text: &str) -> [CssDeclaration; 2] {
     };
     assert_eq!(origin.source().as_str(), source);
     assert_eq!(origin.span().start().byte_offset().value(), 6);
-    let values = parse_component_values(text).unwrap();
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
         values.clone(),
         CssImportance::Normal,
     )
@@ -120,7 +133,7 @@ fn predefined_none_math_and_exact_channel_remain_distinct() {
         assert_eq!(value.color_space(), PredefinedColorSpace::DisplayP3Linear);
         assert!(matches!(value.channels()[0], CssColorComponent::None));
         assert!(
-            matches!(&value.channels()[1], CssColorComponent::NumberCalculation(calc) if calc.components().serialize().unwrap().as_css() == "calc(0.5)")
+            matches!(&value.channels()[1], CssColorComponent::NumberCalculation(calc) if calc.components().serialize_tokens(Default::default()).unwrap().as_css() == "calc(0.5)")
         );
         number(&value.channels()[2], "1e100");
     }
@@ -177,7 +190,7 @@ fn exact_mix_weight_range_rejects_nonzero_negative_and_over_100() {
         "color-mix(in srgb, red -1e-100%, blue)",
         "color-mix(in srgb, red 100.0000000000000000000001%, blue)",
     ] {
-        let report = parse_style_attribute(&format!("color:{text};opacity:.5"));
+        let report = CssParser::default().parse_block_contents(format!("color:{text};opacity:.5"));
         assert_eq!(report.diagnostics().len(), 1, "{text}");
         assert_eq!(report.syntax().len(), 1, "{text}");
         assert_eq!(
@@ -185,9 +198,10 @@ fn exact_mix_weight_range_rejects_nonzero_negative_and_over_100() {
             CssKnownProperty::Opacity
         );
         assert_color_grammar_failure(
-            parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Color),
-                parse_component_values(text).unwrap(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 CssImportance::Normal,
             ),
             text,

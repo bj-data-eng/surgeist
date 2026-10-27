@@ -3,15 +3,16 @@
 use super::combinators::{Combinator, Tail, commit, fill, keyword, parse_group};
 use super::property_input::Parser;
 use super::values::next_is_ident;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::{Token, match_ignore_ascii_case};
 
 use super::background::parse_image_value;
 use super::content_values::parse_style;
 use super::generated_content::parse_content_string;
-use crate::{
-    CssImageValue, CssListStylePosition, CssListStyleTypeValue, CssListStyleValue, CssMarkerSide,
+use crate::values::content::{
+    CssListStylePosition, CssListStyleTypeValue, CssListStyleValue, CssMarkerSide,
 };
+use crate::values::image::CssImageValue;
 
 pub(super) fn parse_marker_side<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -27,7 +28,7 @@ pub(super) fn parse_marker_side<'i, 't>(
 
 pub(super) fn parse_list_style_type<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssListStyleTypeValue, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("none"))
@@ -55,7 +56,7 @@ pub(super) fn parse_list_style_position<'i, 't>(
 
 pub(super) fn parse_list_style_image<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssImageValue, ParseError<'i, Error>> {
     parse_image_value(input, numeric)
 }
@@ -73,7 +74,7 @@ fn starts_image(input: &mut Parser<'_, '_>) -> bool {
 
 pub(super) fn parse_list_style<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssListStyleValue, ParseError<'i, Error>> {
     // `<'list-style-position'> || <'list-style-image'> || <'list-style-type'>`.
     // Image and type both admit `none`, so up to two `none` operands are

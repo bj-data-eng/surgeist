@@ -4,9 +4,22 @@
 //! Signed/zero arc radii follow the adopted F.6.2 interpretation; flags remain
 //! single ASCII 0/1 characters. SVG spelling is retained, never float-normalized.
 
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_checked_matches_diagnostic;
 use crate::css::support::property_admission::validated_declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::effects::CssClipPath;
 
 fn clip(source: &CssDeclaration) -> &CssClipPath {
     let CssKnownPropertyValueRef::ClipPath(value) =
@@ -29,20 +42,31 @@ fn clip_path_declaration(value: &str) -> CssDeclaration {
 
 fn accept(authored: &str, expected: &str) {
     let source = clip_path_declaration(authored);
-    assert_eq!(clip(&source).serialize_specified().unwrap(), expected);
-    let components = parse_component_values(authored).unwrap();
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::ClipPath),
+    assert_eq!(
+        clip(&source)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
+    let components = CssComponentValues::parse(&CssParser::default(), authored).unwrap();
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ClipPath)),
         components.clone(),
         CssImportance::Important,
     )
     .unwrap();
     assert_eq!(checked.value_components(), &components);
     assert_eq!(checked.importance(), CssImportance::Important);
-    assert_eq!(clip(&checked).serialize_specified().unwrap(), expected);
+    assert_eq!(
+        clip(&checked)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     for declaration in [&source, &checked] {
         let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-            expand_declaration(declaration).unwrap()
+            declaration.expand().unwrap()
         else {
             panic!("ordinary path terminal")
         };
@@ -56,7 +80,10 @@ fn accept(authored: &str, expected: &str) {
         let CssLonghandValueRef::ClipPath(value) = item.ordinary_value().unwrap().view() else {
             panic!("typed path terminal")
         };
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 
@@ -179,7 +206,7 @@ fn reject(value: &str) {
     let prefix = "/*😀*/ ";
     let unit = format!("clip-path:{value};");
     let css = format!("{prefix}{unit} color:blue");
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     let [sibling] = report.syntax().as_slice() else {
         panic!("only color survives {css}: {:?}", report.syntax())
     };
@@ -214,7 +241,11 @@ fn reject(value: &str) {
         css[..byte].encode_utf16().count()
     );
     assert_eq!(
-        validate_style_attribute(&css).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     assert_checked_matches_diagnostic(CssKnownProperty::ClipPath, value, diagnostic);
@@ -313,7 +344,7 @@ fn malformed_css_path_envelopes_recover_once_without_widening_other_shapes() {
 
 fn strict_recovered(value: &str, expected: &str) {
     let css = format!("clip-path:{value}");
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert_eq!(
         report.syntax().len(),
         1,
@@ -328,16 +359,23 @@ fn strict_recovered(value: &str, expected: &str) {
             .any(|d| d.action() == CssRecoveryAction::RetainWithImplicitClosure)
     );
     assert_eq!(
-        validate_style_attribute(&css).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     assert_eq!(
-        clip(&report.syntax()[0]).serialize_specified().unwrap(),
+        clip(&report.syntax()[0])
+            .serialize_specified(Default::default())
+            .unwrap(),
         expected
     );
-    let recovered = parse_component_values(value).unwrap();
-    let Err(error) = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::ClipPath),
+    let recovered = CssComponentValues::parse(&CssParser::default(), value).unwrap();
+    let Err(error) = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ClipPath)),
         recovered.clone(),
         CssImportance::Normal,
     ) else {
@@ -354,13 +392,16 @@ fn strict_recovered(value: &str, expected: &str) {
     assert_eq!(at.span().start().byte_offset().value(), value.len());
     assert_eq!(at.span().end().byte_offset().value(), value.len());
     let source = clip_path_declaration("var(--clip)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending clip")
     };
-    assert!(matches!(
-        pending.reenter(recovered).unwrap_err().kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
+    assert!(
+        pending
+            .reenter(recovered)
+            .unwrap_err()
+            .replacement_error()
+            .is_some()
+    );
 }
 
 #[test]
@@ -383,7 +424,7 @@ fn recovered_rect_remains_parse_only_and_checked_reentry_rejects_it() {
 #[test]
 fn path_function_string_and_closing_origins_retain_original_escaped_source() {
     let css = "/*😀*/ clip-path:PaTh(evenodd, 'M\\30  0L1 2')!important";
-    let report = parse_style_attribute(css);
+    let report = CssParser::default().parse_block_contents(css);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let component = &report.syntax()[0].value_components().items()[0];
     let CssComponentValueRef::Function(function) = component.view() else {
@@ -439,7 +480,7 @@ fn assert_origin(origin: &CssValueOrigin, source: &str, start: usize, length: us
 #[test]
 fn pending_path_reentry_is_strict_reusable_and_preserves_authored_replacement_origins() {
     let source = clip_path_declaration("var(--path)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending path")
     };
     for invalid in [
@@ -447,20 +488,21 @@ fn pending_path_reentry_is_strict_reusable_and_preserves_authored_replacement_or
         "path('M0 0A1 2 0 2 1 3 4')",
         "path(nonzero 'M0 0')",
     ] {
-        assert!(matches!(
+        assert!(
             pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
     }
-    assert_eq!(
+    assert!(
         pending
-            .reenter(parse_component_values("path(var(--again))").unwrap())
+            .reenter(
+                CssComponentValues::parse(&CssParser::default(), "path(var(--again))").unwrap()
+            )
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     for (authored, expected) in [
         ("path('M0 0')", "path(\"M0 0\")"),
@@ -469,7 +511,7 @@ fn pending_path_reentry_is_strict_reusable_and_preserves_authored_replacement_or
             "path(evenodd, \"M0,0 L1-2\") border-box",
         ),
     ] {
-        let replacement = parse_component_values(authored).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), authored).unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
             else {
@@ -484,7 +526,10 @@ fn pending_path_reentry_is_strict_reusable_and_preserves_authored_replacement_or
             let CssLonghandValueRef::ClipPath(value) = item.ordinary_value().unwrap().view() else {
                 panic!("typed clip replacement")
             };
-            assert_eq!(value.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
         }
     }
     assert!(pending.source().same_occurrence(&source));
@@ -493,9 +538,9 @@ fn pending_path_reentry_is_strict_reusable_and_preserves_authored_replacement_or
 #[test]
 fn normalization_retains_path_family_fill_importance_and_source_order_after_recovery() {
     let css = ".a{clip-path:path('M0 0')!important;clip-path:path('M0 0L1');clip-path:border-box path(nonzero, 'M1-2Z');clip-path:var(--path)}";
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert_eq!(report.diagnostics().len(), 1, "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let items: Vec<_> = normalized
         .items()
         .iter()
@@ -547,7 +592,7 @@ fn normalization_retains_path_family_fill_importance_and_source_order_after_reco
                 panic!("path terminal")
             };
             assert_eq!(
-                value.serialize_specified().unwrap(),
+                value.serialize_specified(Default::default()).unwrap(),
                 if order == 0 {
                     "path(\"M0 0\")"
                 } else {
@@ -560,8 +605,8 @@ fn normalization_retains_path_family_fill_importance_and_source_order_after_reco
 
 #[test]
 fn clip_serializer_charges_path_string_fill_and_box_cumulatively() {
-    use CssSpecifiedValueSerializationErrorKind as K;
-    use CssSpecifiedValueSerializationLimits as L;
+    use crate::css::support::failure_classes::SerializationFailure as K;
+    use CssSerializationLimits as L;
     for (authored, expected, nodes) in [
         ("path('M0 0')", "path(\"M0 0\")", 3),
         ("path(nonzero, 'M0 0')", "path(nonzero, \"M0 0\")", 4),
@@ -576,7 +621,7 @@ fn clip_serializer_charges_path_string_fill_and_box_cumulatively() {
         let value = clip(&source);
         assert_eq!(
             value
-                .serialize_specified_with_limits(L::new(nodes, nodes, expected.len()))
+                .serialize_specified(L::new(nodes, nodes, expected.len()))
                 .unwrap(),
             expected
         );
@@ -589,14 +634,14 @@ fn clip_serializer_charges_path_string_fill_and_box_cumulatively() {
             (L::new(nodes, nodes, expected.len() - 1), K::ByteLimit),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind
             );
         }
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(source, before);
     }
 }
@@ -604,16 +649,15 @@ fn clip_serializer_charges_path_string_fill_and_box_cumulatively() {
 #[test]
 fn pending_clip_reentry_rejects_recovered_circle_and_rect_before_canonical_closure() {
     let source = clip_path_declaration("var(--clip)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending clip")
     };
     for value in ["circle(1px", "rect(0 1px 2% 3px"] {
-        let Err(error) = pending.reenter(parse_component_values(value).unwrap()) else {
+        let Err(error) =
+            pending.reenter(CssComponentValues::parse(&CssParser::default(), value).unwrap())
+        else {
             panic!("pending reentry must reject recovered replacement: {value}")
         };
-        assert!(matches!(
-            error.kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+        assert!(error.replacement_error().is_some());
     }
 }

@@ -1,15 +1,24 @@
 //! New authored prelude API contracts: ordered independent entries from pinned
 //! Conditional Rules 5 section 5.4, and shared component provenance/limits.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-rule
-use surgeist_css::{
-    CssComponentValue, CssComponentValueErrorKind, CssComponentValueLimits, CssComponentValueRef,
-    CssComponentValues, CssContainerConditionKind, CssContainerConstructionError, CssContainerName,
-    CssContainerPrelude, CssNormalizedItem, CssRule, CssRuleContextKindRef, CssSerializedOrigin,
-    CssValueOrigin, CssValueTokenRef, normalize_sheet, parse_component_values, parse_sheet,
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::container::{CssContainerLeaf, CssContainerName, CssContainerPrelude};
+use surgeist_css::rule::CssRule;
 
 fn construct(source: &str) -> CssContainerPrelude {
-    CssContainerPrelude::try_from_components(parse_component_values(source).unwrap()).unwrap()
+    CssContainerPrelude::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+        Default::default(),
+    )
+    .unwrap()
 }
 
 #[test]
@@ -28,15 +37,24 @@ fn entries_retain_independent_names_queries_duplicates_and_order() {
     assert!(entries[3].query().is_none());
     assert!(matches!(
         entries[1].query().unwrap().kind(),
-        CssContainerConditionKind::Feature(_)
+        CssConditionKind::Leaf(CssContainerLeaf::Feature(_))
     ));
     assert!(matches!(
         entries[2].query().unwrap().kind(),
-        CssContainerConditionKind::Style(_)
+        CssConditionKind::Leaf(CssContainerLeaf::Style(_))
     ));
-    assert_eq!(entries[1].serialize().unwrap().as_css(), " (width:1px)");
     assert_eq!(
-        entries[2].serialize().unwrap().as_css(),
+        entries[1]
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        " (width:1px)"
+    );
+    assert_eq!(
+        entries[2]
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         " card style(--theme)"
     );
 }
@@ -44,14 +62,15 @@ fn entries_retain_independent_names_queries_duplicates_and_order() {
 #[test]
 fn parsed_and_checked_preludes_share_components_and_original_token_origins() {
     let source = r"@container C\61 rd /*left*/, /*right*/ style(--tokens: a,b) {}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("container")
     };
     let prelude = rule.prelude();
-    let components = CssComponentValues::try_new(prelude.components().to_vec()).unwrap();
-    let checked = CssContainerPrelude::try_from_components(components).unwrap();
+    let components =
+        CssComponentValues::try_new(prelude.components().to_vec(), Default::default()).unwrap();
+    let checked = CssContainerPrelude::try_from_components(components, Default::default()).unwrap();
     assert_eq!(&checked, prelude);
     assert_eq!(prelude.entries()[0].name().unwrap().as_str(), "Card");
     assert_eq!(
@@ -77,7 +96,7 @@ fn parsed_and_checked_preludes_share_components_and_original_token_origins() {
         })
         .collect();
     assert_eq!(commas.len(), 1, "nested comma belongs to the function");
-    let serialized = prelude.serialize().unwrap();
+    let serialized = prelude.serialize_tokens(Default::default()).unwrap();
     let comma_offset = serialized.as_css().find(',').unwrap();
     assert_eq!(
         serialized.origin_at(comma_offset),
@@ -85,13 +104,18 @@ fn parsed_and_checked_preludes_share_components_and_original_token_origins() {
     );
     assert!(serialized.as_css().contains("/*left*/, /*right*/"));
     assert!(serialized.as_css().contains("style(--tokens: a,b)"));
-    let reparsed = parse_sheet(&format!("@container{}{{}}", serialized.as_css()));
+    let reparsed =
+        CssParser::default().parse_sheet(format!("@container{}{{}}", serialized.as_css()));
     assert!(reparsed.is_clean(), "{reparsed:?}");
     let [CssRule::Container(reparsed)] = reparsed.syntax().rules() else {
         panic!("container")
     };
     assert_eq!(
-        reparsed.prelude().serialize().unwrap().as_css(),
+        reparsed
+            .prelude()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         serialized.as_css()
     );
 }
@@ -100,13 +124,15 @@ fn parsed_and_checked_preludes_share_components_and_original_token_origins() {
 fn mixed_origins_and_programmatic_escaped_names_serialize_without_reinterpretation() {
     let name = CssComponentValue::try_ident("1 pane,\\Card").unwrap();
     let comma = CssComponentValue::try_token(",").unwrap();
-    let parsed = parse_component_values("style(--tokens: a,b)").unwrap();
+    let parsed = CssComponentValues::parse(&CssParser::default(), "style(--tokens: a,b)").unwrap();
     let parsed_origin = parsed.items()[0].origin().clone();
     let mut items = vec![name, comma];
     items.extend_from_slice(parsed.items());
-    let prelude =
-        CssContainerPrelude::try_from_components(CssComponentValues::try_new(items).unwrap())
-            .unwrap();
+    let prelude = CssContainerPrelude::try_from_components(
+        CssComponentValues::try_new(items, Default::default()).unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(
         prelude.entries()[0].name().unwrap().as_str(),
         "1 pane,\\Card"
@@ -114,7 +140,7 @@ fn mixed_origins_and_programmatic_escaped_names_serialize_without_reinterpretati
     assert_eq!(prelude.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(prelude.entries()[0].position(), None);
     assert_eq!(prelude.entries()[1].origin(), &parsed_origin);
-    let serialized = prelude.serialize().unwrap();
+    let serialized = prelude.serialize_tokens(Default::default()).unwrap();
     assert_eq!(
         serialized.origin_at(0),
         Some(&CssSerializedOrigin::Token(CssValueOrigin::Programmatic))
@@ -133,7 +159,7 @@ fn mixed_origins_and_programmatic_escaped_names_serialize_without_reinterpretati
     assert!(rebuilt.entries()[0].query().is_none());
     assert!(matches!(
         rebuilt.entries()[1].query().unwrap().kind(),
-        CssContainerConditionKind::Style(_)
+        CssConditionKind::Leaf(CssContainerLeaf::Style(_))
     ));
 }
 
@@ -150,97 +176,102 @@ fn malformed_complete_preludes_return_typed_failure_and_the_offending_origin() {
         "none",
         "card,(width:1px) junk",
     ] {
-        let values = parse_component_values(source).unwrap();
-        let Err(CssContainerConstructionError::InvalidPreludeGrammar { .. }) =
-            CssContainerPrelude::try_from_components(values)
-        else {
-            panic!("invalid full prelude: {source}")
-        };
+        let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
+        assert!(
+            CssContainerPrelude::try_from_components(values, Default::default())
+                .is_err_and(|error| error.is_invalid_prelude_grammar()),
+            "invalid full prelude: {source}"
+        );
     }
-    let values = parse_component_values("card,!").unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), "card,!").unwrap();
     let expected = values.items().last().unwrap().origin().clone();
-    let error = CssContainerPrelude::try_from_components(values).unwrap_err();
+    let error = CssContainerPrelude::try_from_components(values, Default::default()).unwrap_err();
     assert_eq!(error.origin(), &expected);
-    let values =
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("default").unwrap()])
-            .unwrap();
-    assert!(matches!(
-        CssContainerPrelude::try_from_components(values),
-        Err(CssContainerConstructionError::InvalidPreludeGrammar {
-            origin: CssValueOrigin::Programmatic
-        })
-    ));
+    let values = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("default").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
+    assert!(
+        CssContainerPrelude::try_from_components(values, Default::default())
+            .as_ref()
+            .is_err_and(|error| error.is_invalid_prelude_grammar()
+                && matches!(error.origin(), CssValueOrigin::Programmatic))
+    );
 }
 
 #[test]
 fn full_prelude_limits_count_all_entries_commas_and_nested_components() {
     let source = "Card,(width:1px),style(--theme)";
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let exact = CssComponentValueLimits::try_new(
         components.nesting_depth(),
         components.component_count(),
         source.len(),
     )
     .unwrap();
-    let prelude =
-        CssContainerPrelude::try_from_components_with_limits(components.clone(), exact).unwrap();
-    assert_eq!(
-        prelude.serialize_with_limit(source.len()).unwrap().as_css(),
-        source
-    );
+    let prelude = CssContainerPrelude::try_from_components(components.clone(), exact).unwrap();
     assert_eq!(
         prelude
-            .serialize_with_limit(source.len() - 1)
+            .serialize_tokens(crate::css::support::byte_limits(source.len()))
+            .unwrap()
+            .as_css(),
+        source
+    );
+    assert!(
+        prelude
+            .serialize_tokens(crate::css::support::byte_limits(source.len() - 1))
             .unwrap_err()
-            .kind(),
-        CssComponentValueErrorKind::ByteLimit
+            .is_byte_limit()
     );
     let entry = &prelude.entries()[1];
     assert_eq!(
         entry
-            .serialize_with_limit("(width:1px)".len())
+            .serialize_tokens(crate::css::support::byte_limits("(width:1px)".len()))
             .unwrap()
             .as_css(),
         "(width:1px)"
     );
-    assert_eq!(
+    assert!(
         entry
-            .serialize_with_limit("(width:1px)".len() - 1)
+            .serialize_tokens(crate::css::support::byte_limits("(width:1px)".len() - 1))
             .unwrap_err()
-            .kind(),
-        CssComponentValueErrorKind::ByteLimit
+            .is_byte_limit()
     );
     for (limits, kind) in [
         (
             CssComponentValueLimits::try_new(0, usize::MAX, usize::MAX).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, components.component_count() - 1, usize::MAX)
                 .unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, usize::MAX, source.len() - 1).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
     ] {
-        let Err(CssContainerConstructionError::Component(error)) =
-            CssContainerPrelude::try_from_components_with_limits(components.clone(), limits)
+        let Err(outer) = CssContainerPrelude::try_from_components(components.clone(), limits)
         else {
             panic!("whole input limit")
         };
-        assert_eq!(error.kind(), kind);
+        let Some(error) = outer.component_error() else {
+            panic!("whole input limit")
+        };
+        assert_eq!(component_failure(error), kind);
     }
     // Resource admission precedes grammar classification, even for invalid input.
     let limits = CssComponentValueLimits::try_new(256, 0, usize::MAX).unwrap();
-    assert!(matches!(
-        CssContainerPrelude::try_from_components_with_limits(
-            parse_component_values("default").unwrap(),
+    assert!(
+        CssContainerPrelude::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), "default").unwrap(),
             limits
-        ),
-        Err(CssContainerConstructionError::Component(_))
-    ));
+        )
+        .as_ref()
+        .is_err_and(|error| error.component_error().is_some())
+    );
 }
 
 #[test]
@@ -250,9 +281,9 @@ fn normalization_preserves_each_complete_prelude_once_without_duplicating_bodies
         "@scope (.host) { @container card, (width:1px), card { .child { color:red } } }",
         ".host { @container card, (width:1px), card { .child { color:red } } }",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{report:?}");
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let mut containers = Vec::new();
         let mut declarations = Vec::new();
         for item in normalized.items() {
@@ -283,21 +314,38 @@ fn normalization_preserves_each_complete_prelude_once_without_duplicating_bodies
                 .unwrap()
                 .same_context(container)
         );
-        let preserved = prelude.serialize().unwrap().as_css().to_owned();
+        let preserved = prelude
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css()
+            .to_owned();
         drop(report);
-        assert_eq!(prelude.serialize().unwrap().as_css(), preserved);
+        assert_eq!(
+            prelude
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            preserved
+        );
     }
 }
 
 #[test]
 fn detached_entry_equality_and_serialization_ignore_other_entries() {
-    let head = parse_component_values("card (width:1px)").unwrap();
+    let head = CssComponentValues::parse(&CssParser::default(), "card (width:1px)").unwrap();
     let build = |tail: &str| {
         let mut items = head.items().to_vec();
         items.push(CssComponentValue::try_token(",").unwrap());
-        items.extend_from_slice(parse_component_values(tail).unwrap().items());
-        CssContainerPrelude::try_from_components(CssComponentValues::try_new(items).unwrap())
-            .unwrap()
+        items.extend_from_slice(
+            CssComponentValues::parse(&CssParser::default(), tail)
+                .unwrap()
+                .items(),
+        );
+        CssContainerPrelude::try_from_components(
+            CssComponentValues::try_new(items, Default::default()).unwrap(),
+            Default::default(),
+        )
+        .unwrap()
     };
     let one = build("alpha");
     let two = build("beta");
@@ -307,18 +355,24 @@ fn detached_entry_equality_and_serialization_ignore_other_entries() {
     let query = entry.query().unwrap().clone();
     drop(one);
     drop(two);
-    assert_eq!(entry.serialize().unwrap().as_css(), "card (width:1px)");
+    assert_eq!(
+        entry.serialize_tokens(Default::default()).unwrap().as_css(),
+        "card (width:1px)"
+    );
     drop(entry);
-    assert_eq!(query.serialize().unwrap().as_css(), "(width:1px)");
+    assert_eq!(
+        query.serialize_tokens(Default::default()).unwrap().as_css(),
+        "(width:1px)"
+    );
 }
 
 #[test]
 fn parser_recovered_closures_keep_their_provenance_through_checked_preludes() {
     // Public component parsing supplies trusted EOF closures; construction must
     // preserve that evidence, while emitted CSS explicitly closes each group.
-    let components = parse_component_values("card,((width:1px").unwrap();
-    let prelude = CssContainerPrelude::try_from_components(components).unwrap();
-    let serialized = prelude.serialize().unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), "card,((width:1px").unwrap();
+    let prelude = CssContainerPrelude::try_from_components(components, Default::default()).unwrap();
+    let serialized = prelude.serialize_tokens(Default::default()).unwrap();
     assert_eq!(serialized.as_css(), "card,((width:1px))");
     for offset in [16, 17] {
         assert!(matches!(
@@ -337,7 +391,7 @@ fn incomplete_queries_name_the_last_authored_token_before_the_block() {
     // diagnostics").
     for prelude in ["not", "card not", "(width:1px) and", "card, not"] {
         let source = format!("@container {prelude} {{}} .after {{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [diagnostic] = report.diagnostics() else {
             panic!("one incomplete-query diagnostic: {source}: {report:?}");
         };
@@ -371,11 +425,23 @@ fn full_depth_prelude_lifecycle_is_safe_on_an_ordinary_stack() {
                     let entry = prelude.entries()[1].clone();
                     let condition = entry.query().unwrap().clone();
                     drop(prelude);
-                    assert_eq!(clone.serialize().unwrap().as_css(), source);
+                    assert_eq!(
+                        clone.serialize_tokens(Default::default()).unwrap().as_css(),
+                        source
+                    );
                     drop(clone);
-                    assert_eq!(entry.serialize().unwrap().as_css(), query);
+                    assert_eq!(
+                        entry.serialize_tokens(Default::default()).unwrap().as_css(),
+                        query
+                    );
                     drop(entry);
-                    assert_eq!(condition.serialize().unwrap().as_css(), query);
+                    assert_eq!(
+                        condition
+                            .serialize_tokens(Default::default())
+                            .unwrap()
+                            .as_css(),
+                        query
+                    );
                     drop(condition);
                 }
             })

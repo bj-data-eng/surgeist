@@ -1,50 +1,84 @@
 //! Positioning, visibility and Box Alignment 3 keyword families keep their
 //! authored values and reject family leakage.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::values::box_model::{
+    CssClear, CssContentVisibility, CssFloat, CssLayoutPosition, CssVisibility,
+};
+use surgeist_css::values::layout::{
+    CssAlignmentPosition, CssAlignmentValue, CssBaselinePosition, CssOverflowPosition,
+};
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;
 
 #[test]
 fn invalid_display_keyword_is_typed_with_property_context() {
-    let error = parse_sheet(".panel { display: solid; }").expect_err("rejected parse report");
+    let error = CssParser::default()
+        .parse_sheet(".panel { display: solid; }")
+        .expect_err("rejected parse report");
 
-    let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-        panic!("unexpected error kind: {:?}", error.kind());
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Display);
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "unexpected error kind: {:?}",
+        error
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Display);
 }
 
 #[test]
 fn unsupported_overflow_keyword_is_typed_with_property_context() {
-    let error = parse_sheet(".panel { overflow: none; }").expect_err("rejected parse report");
+    let error = CssParser::default()
+        .parse_sheet(".panel { overflow: none; }")
+        .expect_err("rejected parse report");
 
-    let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-        panic!("unexpected error kind: {:?}", error.kind());
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Overflow);
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "unexpected error kind: {:?}",
+        error
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Overflow);
 }
 
 #[test]
 fn unsupported_position_keyword_is_typed_with_property_context() {
-    let error = parse_sheet(".panel { position: running; }").expect_err("rejected parse report");
+    let error = CssParser::default()
+        .parse_sheet(".panel { position: running; }")
+        .expect_err("rejected parse report");
 
-    let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-        panic!("unexpected error kind: {:?}", error.kind());
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Position);
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "unexpected error kind: {:?}",
+        error
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Position);
 }
 
 #[test]
 fn unsupported_alignment_keyword_is_typed_with_property_context() {
-    let error =
-        parse_sheet(".panel { align-items: unsafe stretch; }").expect_err("rejected parse report");
+    let error = CssParser::default()
+        .parse_sheet(".panel { align-items: unsafe stretch; }")
+        .expect_err("rejected parse report");
 
-    let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-        panic!("unexpected error kind: {:?}", error.kind());
-    };
-    assert_eq!(detail.property(), CssKnownProperty::AlignItems);
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "unexpected error kind: {:?}",
+        error
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::AlignItems
+    );
 }
 
 #[test]
@@ -312,7 +346,10 @@ fn safe_prefixed_alignment_positions_are_admitted_but_stretch_is_rejected() {
         ".panel { place-content: safe flex-start; }",
     ];
     for case in accepted {
-        assert!(parse_sheet(case).is_clean(), "{case} should be admitted");
+        assert!(
+            CssParser::default().parse_sheet(case).is_clean(),
+            "{case} should be admitted"
+        );
     }
     let rejected = [
         (

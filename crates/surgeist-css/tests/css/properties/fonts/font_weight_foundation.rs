@@ -6,7 +6,13 @@ use crate::css::support::important_declaration as declaration;
 use crate::css::support::known_property;
 use crate::css::support::named_property::assert_checked_value_rejected_at;
 use crate::css::support::selected_grammar as grammar;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssPropertyKindRef,
+};
 
 #[test]
 fn property_accepts_keywords_exact_numbers_and_number_math() {
@@ -49,7 +55,7 @@ fn exact_bounds_and_wrong_numeric_domains_drop_only_the_weight_declaration() {
         "normal bold",
     ] {
         let source = format!("color:red;font-weight:{invalid};color:blue");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         let [diagnostic] = report.diagnostics() else {
             panic!("one invalid weight diagnostic: {source}: {report:?}");
         };
@@ -59,7 +65,12 @@ fn exact_bounds_and_wrong_numeric_domains_drop_only_the_weight_declaration() {
             CssErrorCode::InvalidPropertyValue
         );
         assert_eq!(report.syntax().len(), 2, "neighbors survive: {source}");
-        assert!(validate_style_attribute(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_err()
+        );
     }
     for (invalid, rest) in [
         ("0", "0"),
@@ -90,7 +101,7 @@ fn inherited_normal_weight_has_one_intrinsic_contribution_and_pending_reentry() 
     };
     let ordinary = declaration("font-weight", "normal");
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&ordinary).expect("weight expansion")
+        ordinary.expand().expect("weight expansion")
     else {
         panic!("one ordinary weight contribution");
     };
@@ -103,11 +114,11 @@ fn inherited_normal_weight_has_one_intrinsic_contribution_and_pending_reentry() 
     assert_eq!(item.source().importance(), CssImportance::Important);
 
     let symbolic = declaration("font-weight", "var(--weight)");
-    let CssExpansion::Pending(pending) = expand_declaration(&symbolic).unwrap() else {
+    let CssExpansion::Pending(pending) = symbolic.expand().unwrap() else {
         panic!("unresolved weight remains pending");
     };
     assert!(pending.source().same_occurrence(&symbolic));
-    let replacement = parse_component_values("350.5").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "350.5").unwrap();
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("replacement contributes a longhand");
     };
@@ -117,19 +128,18 @@ fn inherited_normal_weight_has_one_intrinsic_contribution_and_pending_reentry() 
     assert_eq!(item.property(), property);
     assert!(item.source().same_occurrence(&symbolic));
     assert_eq!(item.replacement_components(), Some(&replacement));
-    assert!(matches!(
+    assert!(
         pending
-            .reenter(parse_component_values("0").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "0").unwrap())
             .unwrap_err()
-            .kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
-    assert_eq!(
+            .replacement_error()
+            .is_some()
+    );
+    assert!(
         pending
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
 }
 
@@ -147,7 +157,7 @@ fn shorthand_distinguishes_fractional_and_symbolic_weight_from_size() {
     }
     for invalid in ["0 16px serif", "350.5 bold 16px serif"] {
         let source = format!("color:red;font:{invalid};color:blue");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(
             report.syntax().len(),
             2,

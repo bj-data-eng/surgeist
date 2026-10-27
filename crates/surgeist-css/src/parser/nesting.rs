@@ -3,19 +3,21 @@ use cssparser::{ParseError, Parser};
 use super::Recovered;
 use super::recovery::RecoveryState;
 use super::rule_list::{RuleListUnits, RuleParser, StyleSink, recover_rule_list};
-use crate::error::{CssFeatureId, Error};
-use crate::syntax::*;
+use crate::diagnostic::{CssError, CssFeatureId};
+use crate::rule::syntax::StyleContents;
+use crate::rule::{CssRule, CssStyleRule};
+use crate::selector::CssStyleSelectorList;
 
 pub(super) static IMPLEMENTED_SELECTORS: &[CssFeatureId] =
     &[CssFeatureId::new("baseline.selector.nesting")];
 
-pub(super) fn parse_style_rule_block<'i, 't>(
+pub(crate) fn parse_style_rule_block<'i, 't>(
     source: &'i str,
     selectors: CssStyleSelectorList,
-    position: crate::CssSourcePosition,
+    position: crate::source::CssSourcePosition,
     input: &mut Parser<'i, 't>,
     recovery: RecoveryState,
-) -> std::result::Result<Recovered<Vec<CssRule>>, ParseError<'i, Error>> {
+) -> std::result::Result<Recovered<Vec<CssRule>>, ParseError<'i, CssError>> {
     recovery.record_style_context(input.position().byte_index());
     let recovered = parse_style_contents(source, input, recovery)?;
     Ok(Recovered {
@@ -29,11 +31,11 @@ pub(super) fn parse_style_rule_block<'i, 't>(
     })
 }
 
-pub(super) fn parse_style_contents<'i, 't>(
+pub(crate) fn parse_style_contents<'i, 't>(
     source: &'i str,
     input: &mut Parser<'i, 't>,
     recovery: RecoveryState,
-) -> std::result::Result<Recovered<StyleContents>, ParseError<'i, Error>> {
+) -> std::result::Result<Recovered<StyleContents>, ParseError<'i, CssError>> {
     recovery.record_style_context(input.position().byte_index());
     let mut grammar = RuleParser::style(source, recovery);
     let mut sink = StyleSink::new();
@@ -74,8 +76,8 @@ pub(super) fn admit_detached<'i, 't>(
     recovery: RecoveryState,
     envelope: &super::rule_candidate::RuleEnvelope,
 ) -> (
-    Result<super::CssAdmittedRule, ParseError<'i, Error>>,
-    Vec<crate::CssRecoveryDiagnostic>,
+    Result<CssRule, ParseError<'i, CssError>>,
+    Vec<crate::diagnostic::CssRecoveryDiagnostic>,
 ) {
     recovery.record_style_context(0);
     let mut parser = RuleParser::style(source, recovery.clone());
@@ -86,7 +88,7 @@ pub(super) fn admit_detached<'i, 't>(
                     .into_rules()
                     .try_into()
                     .expect("one detached nested rule");
-                super::CssAdmittedRule::Ordinary(rule)
+                rule
             },
         );
     (result, parser.diagnostics)

@@ -1,9 +1,9 @@
 #![forbid(unsafe_code)]
-use surgeist_css::CssSpecifiedValueSerializationLimits;
+use surgeist_css::serialization::CssSerializationLimits;
 use surgeist_cssom::*;
 
-fn limits() -> CssSpecifiedValueSerializationLimits {
-    CssSpecifiedValueSerializationLimits::default()
+fn limits() -> CssSerializationLimits {
+    CssSerializationLimits::default()
 }
 fn fixture(source: &str) -> (CssomStore, CssomSheetId, Vec<CssomRuleId>) {
     let mut store = CssomStore::new(CssomLimits::default(), CssomContext::default()).unwrap();
@@ -120,7 +120,7 @@ fn container_readonly_plural_native_output_and_fresh_conditions() {
     let (store, _, roots) = fixture("@container alpha, (width > 1px), alpha, beta future(foo){}");
     let rule = store.css_container_rule(&roots[0]).unwrap();
     let text = "alpha, (width > 1px), alpha, beta future(foo)";
-    let exact = CssSpecifiedValueSerializationLimits::new(1000, 1000, text.len());
+    let exact = CssSerializationLimits::new(1000, 1000, text.len());
     assert_eq!(rule.condition_text(&store, exact).unwrap(), text);
     assert_eq!(
         rule.as_condition_rule()
@@ -131,7 +131,7 @@ fn container_readonly_plural_native_output_and_fresh_conditions() {
     assert!(
         rule.condition_text(
             &store,
-            CssSpecifiedValueSerializationLimits::new(1000, 1000, text.len() - 1)
+            CssSerializationLimits::new(1000, 1000, text.len() - 1)
         )
         .is_err()
     );
@@ -434,7 +434,7 @@ fn assert_rejected_original_fragment(outcome: &CssomOperationOutcome<()>, source
     let diagnostic = &outcome.diagnostics()[0];
     assert_eq!(
         diagnostic.action(),
-        surgeist_css::CssRecoveryAction::RejectInput
+        surgeist_css::diagnostic::CssRecoveryAction::RejectInput
     );
     assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
     assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
@@ -446,10 +446,8 @@ fn invalid_selector_noop_outcome_reports_its_actual_original_diagnostic() {
     let style = store.css_style_rule(&roots[0]).unwrap();
     let recovered = style.set_selector_text(&mut store, ":is(.ok").unwrap();
     assert!(
-        recovered
-            .diagnostics()
-            .iter()
-            .any(|d| d.action() == surgeist_css::CssRecoveryAction::RetainWithImplicitClosure)
+        recovered.diagnostics().iter().any(|d| d.action()
+            == surgeist_css::diagnostic::CssRecoveryAction::RetainWithImplicitClosure)
     );
     let before = store.snapshot();
     let rejected = style.set_selector_text(&mut store, ".bad,").unwrap();

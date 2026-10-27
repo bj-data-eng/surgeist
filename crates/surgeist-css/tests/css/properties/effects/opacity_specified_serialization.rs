@@ -1,10 +1,17 @@
 //! Color 4 specified opacity formatting; exact dyadic goldens come from
 //! (2^24-1)*2^104 and 5^149*10^-151, independently of the formatter.
 
-use surgeist_css::*;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::numeric::{CssCalculation, CssNumber, CssPercentage};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::effects::{CssOpacityScalar, CssOpacityValue};
 
 fn opacity(text: &str) -> CssOpacityValue {
-    let report = parse_style_attribute(&format!("opacity:{text}"));
+    let report = CssParser::default().parse_block_contents(format!("opacity:{text}"));
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Opacity(value) = report.syntax()[0]
         .known()
@@ -19,22 +26,23 @@ fn opacity(text: &str) -> CssOpacityValue {
 
 fn assert_output(value: &CssOpacityValue, expected: &str) {
     let before = value.clone();
-    let output = value.serialize_specified().unwrap();
+    let output = value.serialize_specified(Default::default()).unwrap();
     assert_eq!(output, expected);
     assert_eq!(*value, before);
-    assert_eq!(opacity(&output).serialize_specified().unwrap(), expected);
-    let exact = CssSpecifiedValueSerializationLimits::new(65_536, 262_144, expected.len());
     assert_eq!(
-        value.serialize_specified_with_limits(exact).unwrap(),
+        opacity(&output)
+            .serialize_specified(Default::default())
+            .unwrap(),
         expected
     );
-    let short = CssSpecifiedValueSerializationLimits::new(65_536, 262_144, expected.len() - 1);
-    assert_eq!(
+    let exact = CssSerializationLimits::new(65_536, 262_144, expected.len());
+    assert_eq!(value.serialize_specified(exact).unwrap(), expected);
+    let short = CssSerializationLimits::new(65_536, 262_144, expected.len() - 1);
+    assert!(
         value
-            .serialize_specified_with_limits(short)
+            .serialize_specified(short)
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(*value, before);
 }
@@ -103,29 +111,26 @@ fn scalar_limits_are_independent_atomic_and_precede_exponent_expansion() {
     let value = opacity(".5");
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 1, 3),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(0, 1, 3),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 0, 3),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(1, 0, 3),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 1, 2),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(1, 1, 2),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 3))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 3))
             .unwrap(),
         "0.5"
     );
@@ -135,9 +140,11 @@ fn scalar_limits_are_independent_atomic_and_precede_exponent_expansion() {
     ] {
         let value = opacity(text);
         let before = value.clone();
-        assert_eq!(
-            value.serialize_specified().unwrap_err().kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+        assert!(
+            value
+                .serialize_specified(Default::default())
+                .unwrap_err()
+                .is_byte_limit()
         );
         assert_eq!(value, before);
     }
@@ -267,30 +274,27 @@ fn calculation_limits_are_atomic_and_not_source_coordinate_dependent() {
     let before = value.clone();
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 100, 100),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(0, 100, 100),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(100, 0, 100),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(100, 0, 100),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(100, 100, 6),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(100, 100, 6),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(value, before);
     }
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(100, 100, 7))
+            .serialize_specified(CssSerializationLimits::new(100, 100, 7))
             .unwrap(),
         "calc(3)"
     );
@@ -331,7 +335,9 @@ fn atan2_exception_table_preserves_each_quadrant_and_zero_sign() {
             if [1, 4].contains(&y_index) && [1, 4].contains(&x_index) {
                 // These four cells are "normal" in the specification table.
                 // Host transcendental last bits are not a portable contract.
-                let output = opacity(&source).serialize_specified().unwrap();
+                let output = opacity(&source)
+                    .serialize_specified(Default::default())
+                    .unwrap();
                 let actual = output
                     .strip_prefix("calc(")
                     .unwrap()
@@ -341,7 +347,12 @@ fn atan2_exception_table_preserves_each_quadrant_and_zero_sign() {
                     .unwrap();
                 let expected = expected[y_index][x_index].parse::<f64>().unwrap();
                 assert!((actual - expected).abs() <= 4.0 * f64::EPSILON * expected.abs());
-                assert_eq!(opacity(&output).serialize_specified().unwrap(), output);
+                assert_eq!(
+                    opacity(&output)
+                        .serialize_specified(Default::default())
+                        .unwrap(),
+                    output
+                );
             } else {
                 assert_math_scalar(&source, expected[y_index][x_index]);
             }
@@ -415,26 +426,35 @@ fn intermediate_dimension_products_resolve_before_dimension_cancellation() {
 #[test]
 fn checked_calculation_construction_and_deep_projection_share_specified_semantics() {
     for source in ["calc(1 / 2)", "min(25%,50%)", "sign(1em - 1px)"] {
-        let components = parse_component_values(source).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         let typed = if source.contains('%') {
             CssOpacityValue::PercentageCalculation(
-                CssPercentageCalculation::try_from_components(components).unwrap(),
+                CssCalculation::<CssPercentage>::try_from_components(
+                    components,
+                    Default::default(),
+                )
+                .unwrap(),
             )
         } else {
             CssOpacityValue::NumberCalculation(
-                CssNumberCalculation::try_from_components(components).unwrap(),
+                CssCalculation::<CssNumber>::try_from_components(components, Default::default())
+                    .unwrap(),
             )
         };
         assert_eq!(
-            typed.serialize_specified().unwrap(),
-            opacity(source).serialize_specified().unwrap()
+            typed.serialize_specified(Default::default()).unwrap(),
+            opacity(source)
+                .serialize_specified(Default::default())
+                .unwrap()
         );
     }
     // Existing public numeric construction supports 256 nested functions.
     let source = format!("{}1{}", "calc(1 + 0 * ".repeat(256), ")".repeat(256));
-    let calculation =
-        CssNumberCalculation::try_from_components(parse_component_values(&source).unwrap())
-            .unwrap();
+    let calculation = CssCalculation::<CssNumber>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), &source).unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let original = calculation.clone();
     let value = CssOpacityValue::NumberCalculation(calculation);
     assert_output(&value, "calc(1)");
@@ -456,14 +476,9 @@ fn flat_symbolic_graph_and_repeated_distribution_obey_projection_limits() {
     let value = opacity(&source);
     let before = value.clone();
     let error = value
-        .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            65_536, 32, 1_048_576,
-        ))
+        .serialize_specified(CssSerializationLimits::new(65_536, 32, 1_048_576))
         .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
-    );
+    assert!(error.is_projection_node_limit(), "{error:?}");
     assert_eq!(value, before);
     let expected = format!(
         "calc({})",
@@ -480,7 +495,7 @@ fn arithmetic_precision_handles_lexical_overflow_underflow_and_stable_hypot() {
     // Require stable finite evaluation near the mathematical result, not an
     // exact integer that the declared arithmetic precision does not promise.
     let output = opacity("calc(hypot(3e200,4e200) / 1e200)")
-        .serialize_specified()
+        .serialize_specified(Default::default())
         .unwrap();
     let number = output
         .strip_prefix("calc(")
@@ -490,7 +505,12 @@ fn arithmetic_precision_handles_lexical_overflow_underflow_and_stable_hypot() {
         .parse::<f64>()
         .unwrap();
     assert!(number.is_finite() && (number - 5.0).abs() <= 4.0 * f64::EPSILON * 5.0);
-    assert_eq!(opacity(&output).serialize_specified().unwrap(), output);
+    assert_eq!(
+        opacity(&output)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        output
+    );
     let max = format!("calc({:.0})", f64::MAX);
     let negative_max = format!("calc(-{:.0})", f64::MAX);
     let exact = format!("calc(1{})", "0".repeat(999));
@@ -551,13 +571,12 @@ fn partial_comparisons_preserve_first_numeric_and_symbolic_argument_positions() 
 fn representational_capacity_overflow_is_typed_before_allocation() {
     let value = opacity(&format!("1e{}", isize::MAX));
     let before = value.clone();
-    let limits = CssSpecifiedValueSerializationLimits::new(1, 1, usize::MAX);
-    assert_eq!(
+    let limits = CssSerializationLimits::new(1, 1, usize::MAX);
+    assert!(
         value
-            .serialize_specified_with_limits(limits)
+            .serialize_specified(limits)
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::CapacityOverflow
+            .is_capacity_overflow()
     );
     assert_eq!(value, before);
 }

@@ -1,7 +1,10 @@
 //! Owning functional evidence with actual DOM, CSSOM roots and inline producer.
 use super::*;
 use crate::*;
-use surgeist_css::*;
+use surgeist_css::property::CssPropertyGrammar;
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::source::CssUtf16InputLimits;
+use surgeist_css::{CssParser, CssParserContext};
 use surgeist_cssom::*;
 
 fn flag() -> AtomicBool {

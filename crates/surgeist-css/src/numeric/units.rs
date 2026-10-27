@@ -7,8 +7,10 @@
 //! rational ratios and their binary64 projections all derive from that entry.
 
 use super::{CssNumericDimension, CssNumericUnit};
-use crate::exact_decimal::ExactFactor;
-use crate::{CssAngleUnit, CssFrequencyUnit, CssLengthUnit, CssResolutionUnit, CssTimeUnit};
+use crate::numeric::{
+    CssAngleUnit, CssFrequencyUnit, CssLengthUnit, CssResolutionUnit, CssTimeUnit,
+};
+use crate::serialization::exact_decimal::ExactFactor;
 
 /// How one unit relates to its dimension's canonical unit.
 #[derive(Clone, Copy, Debug, PartialEq)]

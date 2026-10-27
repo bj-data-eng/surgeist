@@ -17,10 +17,20 @@ use crate::css::support::{
     authored_checked_declaration as checked, authored_parsed_declaration as parsed,
     known_property as property,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::declaration::{CssGlobalKeyword, CssImportance};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 use crate::css::support::authored_property;
 use crate::css::support::check_named_components as checked_components;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::invalid_named_value as invalid;
 use crate::css::support::named_property::sole_completed_contributions as completed;
 use authored_property::assert_source;
@@ -102,12 +112,14 @@ fn auto_initials_are_ordinary_longhands_and_only_line_break_inherits() {
         let CssInitialValueRef::Value(initial) = initial.view() else {
             panic!("ordinary auto initial")
         };
-        let components =
-            CssComponentValues::try_new(vec![CssComponentValue::try_ident("auto").unwrap()])
-                .unwrap();
+        let components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident("auto").unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         let auto = checked_components(name, components, false).unwrap();
         assert_eq!(
-            auto.to_specified_css().unwrap(),
+            auto.serialize_specified(Default::default()).unwrap(),
             format!("{name}: auto !important;")
         );
         let values = completed(&auto);
@@ -116,13 +128,11 @@ fn auto_initials_are_ordinary_longhands_and_only_line_break_inherits() {
 }
 #[test]
 fn normalization_preserves_order_contexts_importance_and_exact_cumulative_terminal_counts() {
-    let report = parse_sheet(
-        "@media screen{.a{wrap-inside:avoid!important;wrap-before:line;wrap-after:flex;line-break:anywhere;wrap-before:var(--before);wrap-after:unset!important;line-break:normal;wrap-inside:auto;color:red}}",
-    );
+    let report = CssParser::default().parse_sheet("@media screen{.a{wrap-inside:avoid!important;wrap-before:line;wrap-after:flex;line-break:anywhere;wrap-before:var(--before);wrap-after:unset!important;line-break:normal;wrap-inside:auto;color:red}}");
     assert!(report.is_clean());
     let before = report.clone();
     let exact = CssNormalizationLimits::try_new(1, 2, 9, 9).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -210,11 +220,8 @@ fn normalization_preserves_order_contexts_importance_and_exact_cumulative_termin
         ),
     ] {
         for _ in 0..2 {
-            let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-            assert_eq!(
-                error.kind(),
-                &CssNormalizationErrorKind::LimitExceeded { resource, limit: 8 }
-            );
+            let error = report.syntax().normalize(limits).unwrap_err();
+            assert_eq!(error.exhausted_limit(), Some((resource, 8)));
             assert_eq!(error.declaration_order(), Some(8));
             assert!(
                 error
@@ -225,22 +232,19 @@ fn normalization_preserves_order_contexts_importance_and_exact_cumulative_termin
         }
     }
     assert_eq!(report, before);
-    assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
+    assert!(report.syntax().normalize(exact).is_ok());
 }
 #[test]
 fn canonical_keyword_declarations_have_exact_node_byte_budgets_and_atomic_reusable_failures() {
-    use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
+    use crate::css::support::failure_classes::SerializationFailure as Kind;
+    use CssSerializationLimits as Limits;
     for name in FAMILY {
         for &text in keywords(name) {
             for source in [parsed(name, text), checked(name, text, true)] {
                 let before = source.clone();
                 let expected = format!("{name}: {text} !important;");
                 let exact = Limits::new(3, 3, expected.len());
-                assert_eq!(
-                    source.to_specified_css_with_limits(exact).unwrap(),
-                    expected
-                );
+                assert_eq!(source.serialize_specified(exact).unwrap(), expected);
                 for (limits, kind) in [
                     (Limits::new(2, 3, expected.len()), Kind::InputNodeLimit),
                     (Limits::new(3, 2, expected.len()), Kind::ProjectionNodeLimit),
@@ -248,54 +252,41 @@ fn canonical_keyword_declarations_have_exact_node_byte_budgets_and_atomic_reusab
                 ] {
                     for _ in 0..2 {
                         assert_eq!(
-                            source
-                                .to_specified_css_with_limits(limits)
-                                .unwrap_err()
-                                .kind(),
+                            serialization_failure(&source.serialize_specified(limits).unwrap_err()),
                             kind
                         );
                         assert_eq!(source, before);
                     }
                 }
-                assert_eq!(
-                    source.to_specified_css_with_limits(exact).unwrap(),
-                    expected
-                );
+                assert_eq!(source.serialize_specified(exact).unwrap(), expected);
             }
         }
     }
 }
 #[test]
 fn sheet_siblings_share_exact_final_bytes_and_failed_output_leaves_the_input_reusable() {
-    use CssSpecifiedValueSerializationLimits as Limits;
-    let report = parse_sheet(
-        ".a{wrap-inside:avoid!important}.b{wrap-before:line}.c{wrap-after:flex}.d{line-break:anywhere}",
-    );
+    use CssSerializationLimits as Limits;
+    let report = CssParser::default().parse_sheet(".a{wrap-inside:avoid!important}.b{wrap-before:line}.c{wrap-after:flex}.d{line-break:anywhere}");
     assert!(report.is_clean());
     let sheet = report.syntax();
     let before = sheet.clone();
     let expected = ".a { wrap-inside: avoid !important; }\n.b { wrap-before: line; }\n.c { wrap-after: flex; }\n.d { line-break: anywhere; }";
     let exact = Limits::new(usize::MAX, usize::MAX, expected.len());
     let short = Limits::new(usize::MAX, usize::MAX, expected.len() - 1);
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
     assert!(
         sheet
             .rules()
             .iter()
-            .all(|rule| rule.to_specified_css_with_limits(short).is_ok())
+            .all(|rule| rule.serialize_specified(short).is_ok())
     );
     for _ in 0..2 {
-        let error = sheet.to_specified_css_with_limits(short).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
-            )
-        );
+        let error = sheet.serialize_specified(short).unwrap_err();
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(3));
         assert_eq!(sheet, &before);
     }
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
 }
 #[test]
 fn flow_flex_grid_item_and_color_controls_execute_independently_of_wrap_lookup() {
@@ -316,12 +307,15 @@ fn flow_flex_grid_item_and_color_controls_execute_independently_of_wrap_lookup()
         ("item-flow", "row", "item-flow: row auto normal normal;", 4),
         ("color", "red", "color: red;", 1),
     ] {
-        let report = parse_style_attribute(&format!("{name}:{input}"));
+        let report = CssParser::default().parse_block_contents(format!("{name}:{input}"));
         assert!(report.is_clean());
         for source in report.syntax().iter() {
-            assert_eq!(source.to_specified_css().unwrap(), expected);
+            assert_eq!(
+                source.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("supported independent control")
             };

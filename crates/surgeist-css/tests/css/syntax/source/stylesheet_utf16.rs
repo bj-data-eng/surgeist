@@ -1,9 +1,13 @@
 use std::sync::Arc;
-use surgeist_css::*;
+use surgeist_css::rule::CssSheet;
+use surgeist_css::source::{
+    CssDecodedStylesheetInput, CssStylesheetDecodeHints, CssUtf16InputLimits, CssUtf16Resource,
+};
+use surgeist_css::{CssParseReport, CssParser, CssParserContext, CssParserMode};
 
 fn parse(units: Vec<u16>) -> CssParseReport<CssSheet> {
-    CssParserContext::default()
-        .parse_sheet_utf16_with_limits(Arc::new(units), CssUtf16InputLimits::default(), || {
+    CssParser::default()
+        .parse_sheet_utf16(Arc::new(units), CssUtf16InputLimits::default(), || {
             Ok::<_, ()>(())
         })
         .unwrap()
@@ -52,8 +56,8 @@ fn empty_recovered_and_diagnostic_clones_retain_the_actual_source() {
 
 #[test]
 fn real_utf8_parses_are_qualified_and_equality_ignores_qualification() {
-    let a = parse_sheet("/* comment */");
-    let b = parse_sheet("/* comment */");
+    let a = CssParser::default().parse_sheet("/* comment */");
+    let b = CssParser::default().parse_sheet("/* comment */");
     assert_eq!(a.syntax(), b.syntax());
     let x = a.syntax().parse_source().unwrap();
     let y = b.syntax().parse_source().unwrap();
@@ -62,7 +66,7 @@ fn real_utf8_parses_are_qualified_and_equality_ignores_qualification() {
     let context =
         CssParserContext::new(CssParserMode::Quirks).with_svg_glyph_orientation_vertical();
     assert_eq!(
-        context
+        CssParser::new(context, Default::default())
             .parse_sheet("")
             .syntax()
             .parse_source()
@@ -71,14 +75,22 @@ fn real_utf8_parses_are_qualified_and_equality_ignores_qualification() {
         context
     );
     assert!(CssSheet::new().parse_source().is_none());
-    let decoded =
-        decode_stylesheet_bytes(b"/* decoded */", CssStylesheetDecodeHints::default()).unwrap();
-    let report = parse_decoded_stylesheet(&decoded, None);
+    let decoded = CssDecodedStylesheetInput::decode(
+        b"/* decoded */",
+        CssStylesheetDecodeHints::default(),
+        Default::default(),
+    )
+    .unwrap();
+    let report = CssParser::default()
+        .parse_sheet_bytes(&decoded)
+        .with_location(None);
     let qualified = report.syntax().parse_source().unwrap();
     assert!(qualified.source().same_snapshot(decoded.source()));
     assert_eq!(qualified.context(), CssParserContext::default());
     assert_eq!(
-        parse_sheet_with_options("", CssStylesheetParseOptions::default())
+        CssParser::default()
+            .parse_sheet("")
+            .with_location(None)
             .syntax()
             .parse_source()
             .unwrap()
@@ -121,26 +133,20 @@ fn finite_preparation_rejects_zero_allowances_and_stops_at_first_interruption() 
             ..base
         },
     ] {
-        assert!(matches!(
-            CssParserContext::default().parse_sheet_utf16_with_limits(
-                original.clone(),
-                limits,
-                || Ok::<_, ()>(())
-            ),
-            Err(CssUtf16InputError::Limit(_))
-        ));
+        assert!(
+            CssParser::default()
+                .parse_sheet_utf16(original.clone(), limits, || Ok::<_, ()>(()))
+                .as_ref()
+                .is_err_and(|error| error.exhausted_limit().is_some())
+        );
     }
     for stop in 1..=7 {
         let mut calls = 0;
-        let result = CssParserContext::default().parse_sheet_utf16_with_limits(
-            original.clone(),
-            base,
-            || {
-                calls += 1;
-                if calls == stop { Err(stop) } else { Ok(()) }
-            },
-        );
-        assert_eq!(result.unwrap_err(), CssUtf16InputError::Interrupted(stop));
+        let result = CssParser::default().parse_sheet_utf16(original.clone(), base, || {
+            calls += 1;
+            if calls == stop { Err(stop) } else { Ok(()) }
+        });
+        assert_eq!(result.unwrap_err().interruption(), Some(&stop));
         assert_eq!(calls, stop);
     }
 }
@@ -153,13 +159,10 @@ fn actual_padded_original_backing_counts_independently_of_text_length() {
         max_retained_bytes: 8191,
         ..Default::default()
     };
-    assert!(matches!(
-        CssParserContext::default().parse_sheet_utf16_with_limits(Arc::new(raw), limits, || Ok::<
-            _,
-            (),
-        >(
-            ()
-        )),
-        Err(CssUtf16InputError::Limit("retained source bytes"))
-    ));
+    assert!(
+        CssParser::default()
+            .parse_sheet_utf16(Arc::new(raw), limits, || Ok::<_, ()>(()))
+            .as_ref()
+            .is_err_and(|error| error.exhausted_limit() == Some(CssUtf16Resource::RetainedBytes))
+    );
 }

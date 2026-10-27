@@ -5107,7 +5107,12 @@
         "diagnostics": [
           {
             "code": "unexpected_token",
-            "action": "drop_declaration",
+            "action": "drop_qualified_rule",
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "unexpected_token",
+            "action": "drop_at_rule",
             "payload_relation": "intersects"
           }
         ]
@@ -5130,12 +5135,12 @@
         "diagnostics": [
           {
             "code": "unexpected_token",
-            "action": "drop_declaration",
+            "action": "drop_qualified_rule",
             "payload_relation": "intersects"
           },
           {
             "code": "unknown_property",
-            "action": "drop_declaration",
+            "action": "drop_qualified_rule",
             "payload_relation": "intersects"
           }
         ]
@@ -5157,8 +5162,8 @@
         },
         "diagnostics": [
           {
-            "code": "unknown_at_rule",
-            "action": "drop_declaration",
+            "code": "unexpected_token",
+            "action": "drop_at_rule",
             "payload_relation": "intersects"
           }
         ]

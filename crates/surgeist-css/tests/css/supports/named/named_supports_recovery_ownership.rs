@@ -2,10 +2,11 @@
 //! first summary. Historical parser diagnostics keep their original order.
 
 use crate::css::support::authored_syntax::assert_diagnostics;
-use surgeist_css::{
-    CssRecoveryAction, CssRule, CssSupportsConditionRule, CssSupportsTestBody, CssSupportsTestItem,
-    CssValueOrigin, parse_component_values, parse_sheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::query::supports::{CssSupportsTestBody, CssSupportsTestItem};
+use surgeist_css::rule::{CssRule, CssSupportsConditionRule};
 
 fn definition(rules: &[CssRule]) -> &CssSupportsConditionRule {
     let [CssRule::SupportsCondition(rule)] = rules else {
@@ -38,7 +39,7 @@ fn assert_own_missing_close(origin: &CssValueOrigin, source: &str) {
 #[test]
 fn later_body_local_fault_precedes_earlier_retained_child_fault_in_summary() {
     let source = "@supports-condition --x { & { bad:url(a b); } bad:url(a b); }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [first, second] = report.diagnostics() else {
         panic!(
             "two independently owned discarded declarations: {:?}",
@@ -73,7 +74,7 @@ fn later_body_local_fault_precedes_earlier_retained_child_fault_in_summary() {
 #[test]
 fn own_missing_body_close_precedes_retained_nested_body_fault_in_summary() {
     let source = "@supports-condition --x { & { bad:url(a b); }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(
         report
             .diagnostics()
@@ -100,11 +101,11 @@ fn own_missing_body_close_precedes_retained_nested_body_fault_in_summary() {
 #[test]
 fn own_missing_body_close_precedes_retained_declaration_value_closure_in_summary() {
     let source = "@supports-condition --x { color:fn(a";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     // EOF closes both the value function and the definition body.
     let closure = (
-        surgeist_css::CssErrorCode::UnexpectedEnd,
-        surgeist_css::CssRecoveryAction::RetainWithImplicitClosure,
+        surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd,
+        surgeist_css::diagnostic::CssRecoveryAction::RetainWithImplicitClosure,
         source.len(),
     );
     assert_diagnostics(report.diagnostics(), &[closure, closure]);
@@ -119,7 +120,7 @@ fn own_missing_body_close_precedes_retained_declaration_value_closure_in_summary
 #[test]
 fn nested_only_recovery_summary_uses_first_child_without_reordering_history() {
     let source = "@supports-condition --x { & { bad:url(a b); } @future { bad:url(c d); } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 2);
     let body = definition(report.syntax().rules()).body();
     let [
@@ -151,8 +152,11 @@ fn nested_only_recovery_summary_uses_first_child_without_reordering_history() {
 #[test]
 fn empty_semicolons_are_ignored_recursively_by_the_block_partition() {
     let contents = ";color:red;; & { ; } @future { ;; inner:yes;; } ;";
-    let body = CssSupportsTestBody::try_from_components(parse_component_values(contents).unwrap())
-        .unwrap();
+    let body = CssSupportsTestBody::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), contents).unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     assert!(body.recovery_origin().is_none());
     let [
         CssSupportsTestItem::Declarations(run),
@@ -171,16 +175,16 @@ fn empty_semicolons_are_ignored_recursively_by_the_block_partition() {
     assert_eq!(inner.declarations().len(), 1);
     assert_eq!(inner.declarations()[0].property(), "inner");
     assert_eq!(
-        body.to_specified_css().unwrap(),
+        body.serialize_specified(Default::default()).unwrap(),
         "color: red; & { } @future  { inner: yes; }"
     );
-    let report = parse_sheet(
+    let report = CssParser::default().parse_sheet(
         "@supports-condition --x { ;color:red;; & { ; } @future { ;; inner:yes;; } ; }",
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(
         definition(report.syntax().rules())
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         "@supports-condition --x { color: red; & { } @future  { inner: yes; } }"
     );

@@ -1485,20 +1485,27 @@ state. Native freeze alone cannot stand in for a complete parse report.
 #1179 consolidates EOF/terminal ownership and separates general construction
 effects from select metadata without changing these proof obligations.
 
-The HTML input color adapter in
-`construction/parser_session/input_color.rs` moves to parser. Its source path
-calls the controlled `CssColorOperation::parse_used`, lends each operation's
-actual CSS banks and separately held numerical owner/bank, and admits every
-described action through the original `ParseControl`. It must not call the
-ordinary `parse_used_color` helper, which owns local scratch and hides those
-actions from the parser ledger. Source completion uses
-`CssColorOperation::take(&mut Option<Self>)`; a protocol/refusal failure leaves
-the original operation in `Some`. Numerical transforms/serialization lend the
-separately held Color owner to `CssUsedColorCheckpoint::transform`/`serialize`
-and provide the separate actual `DigitSlot` bank required by the color contract;
-the CSS owner is never borrowed as its own nested numerical owner. The adapter consumes
+The HTML input color adapter belongs to parser:
+[`construction/input_color.rs`](../../crates/surgeist-html-parser/src/construction/input_color.rs),
+with its CSS action servicing in
+[`construction/css_color.rs`](../../crates/surgeist-html-parser/src/construction/css_color.rs).
+Its source path drives `surgeist_css::color::controlled::CssColorParse`: it
+starts the parse over its own `CssColorOperationOwner`, owns the three slot banks,
+and admits every described `CssColorParseAction` through the original
+`ParseControl` before servicing it. It does not call the ordinary
+`surgeist_css::color::parse_used_color` helper, which owns local scratch and
+hides those actions from the parser ledger. A semantic failure
+(`CssColorError`) ends that parse; dropping a pending action or parse abandons
+it, leaving the caller-owned banks to the parser. A standard failure is a
+`CssColorFailureCheckpoint` whose `fallback` supplies the HTML opaque-black used
+color. Numerical transforms lend the separately held Color owner to
+`CssUsedColorCheckpoint::transform`, which yields a total `CssColorTransform`
+that the adapter admits and computes. CSS does not wrap serialization: the adapter
+drives `surgeist_color::Serialization` over the checkpoint's value with the
+separate actual `DigitSlot` bank required by the color contract, and the CSS
+owner is never borrowed as its own nested numerical owner. The adapter consumes
 `surgeist_color::{Color, ColorSpace, PredefinedColorSpace, Transformation,
-SerializationRequest, Serialization, ColorError}` directly for numerical work.
+SerializationRequest, Serialization}` directly for numerical work.
 The [color contract](color-crate-contracts.md) owns that numerical API. CSS
 grammar, contextual facts and source identities remain CSS-owned; HTML-specific
 input branches, source operands, recovery diagnostics and

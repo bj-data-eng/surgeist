@@ -15,9 +15,7 @@ pub mod app {
 pub mod color {
     pub use surgeist_color::*;
 }
-pub mod css {
-    pub use surgeist_css::*;
-}
+pub use surgeist_css as css;
 pub mod cssom {
     pub use surgeist_cssom::*;
 }

@@ -1,17 +1,22 @@
-use surgeist_css::{CssMediaConditionKind, CssMediaQuery, parse_media_query};
+use surgeist_css::CssParser;
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{CssMediaLeaf, CssMediaQuery};
 
 // The selected MQ4/MQ5 grammar requires these to remain known feature syntax.
 // In particular, MQ4 section 2.4.3 requires signed range operands; failure of
 // an implementation's older value model must not turn them into unknowns.
 // https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/#mq-range-context
 fn assert_known_feature(source: &str) {
-    let report = parse_media_query(source);
+    let report = CssMediaQuery::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let CssMediaQuery::Condition(condition) = report.syntax() else {
         panic!("{source}: expected a condition-only query");
     };
     assert!(
-        matches!(condition.kind(), CssMediaConditionKind::Feature(_)),
+        matches!(
+            condition.kind(),
+            CssConditionKind::Leaf(CssMediaLeaf::Feature(_))
+        ),
         "{source}: expected a known feature, got {:?}",
         condition.kind()
     );

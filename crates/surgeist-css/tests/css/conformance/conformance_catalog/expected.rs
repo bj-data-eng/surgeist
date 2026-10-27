@@ -7,7 +7,9 @@
 //! inputs must parse without diagnostics; `rejects` inputs must report the
 //! given root code first.
 
-use surgeist_css::{CssErrorCode, CssFeatureKind as K, CssSupportStatus};
+use surgeist_css::conformance::CssFeatureKind as K;
+use surgeist_css::conformance::CssSupportStatus;
+use surgeist_css::diagnostic::CssErrorCode;
 
 #[derive(Clone, Copy, Debug)]
 pub(super) enum Input {
@@ -142,13 +144,13 @@ pub(super) const EXPECTED: &[ExpectedFeature] = &[
     complete("official.value.stylesheet", K::Value, "O-SYNTAX3", "#parser-entry-points")
         .spelled("<stylesheet>")
         .accepts(Sheet("@layer a; .x { color: red; }")),
-    complete("official.value.rule-list", K::Value, "O-SYNTAX3", "#declaration-rule-list")
+    complete("official.value.rule-list", K::Value, "O-SYNTAX3", "#typedef-rule-list")
         .spelled("<rule-list>")
         .accepts(Sheet("@media print { .x { color: red; } .y { color: blue; } }")),
-    complete("official.value.declaration-list", K::Value, "O-SYNTAX3", "#declaration-rule-list")
+    complete("official.value.declaration-list", K::Value, "O-SYNTAX3", "#typedef-declaration-list")
         .spelled("<declaration-list>")
         .accepts(Sheet("@font-face { font-family: Demo; src: url(demo.woff2); }")),
-    complete("official.value.style-block", K::Value, "O-SYNTAX3", "#declaration-rule-list")
+    complete("official.value.style-block", K::Value, "O-SYNTAX3", "#typedef-block-contents")
         .spelled("<style-block>")
         .accepts(Sheet(".x { color: red; & .y { color: blue; } }")),
     complete("official.value.declaration-value", K::Value, "O-SYNTAX3", "#any-value")
@@ -161,7 +163,7 @@ pub(super) const EXPECTED: &[ExpectedFeature] = &[
         .spelled("<an+b>")
         .accepts(Sheet(":nth-child(-n+3) { color: red; }"))
         .rejects(Sheet(":nth-child(n-) { color: red; }"), CssErrorCode::InvalidSelector),
-    complete("official.value.unicode-range", K::Value, "O-SYNTAX3", "#urange-syntax")
+    complete("official.value.unicode-range", K::Value, "O-SYNTAX3", "#consume-unicode-range-value")
         .spelled("<urange>")
         .accepts(Sheet("@font-face { font-family: Demo; src: url(demo.woff2); unicode-range: U+00??, U+0-7F; }"))
         .rejects(Sheet("@font-face { font-family: Demo; src: url(demo.woff2); unicode-range: U+110000; }"), CssErrorCode::InvalidDescriptorValue),

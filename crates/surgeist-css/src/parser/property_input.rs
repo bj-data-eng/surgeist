@@ -1,15 +1,17 @@
 //! One bounded property grammar cursor over source and checked syntax arenas.
-use crate::error::property::{BasicParseError, ParseError, ParseErrorKind};
+use crate::component::values::CssComponentValueErrorKind;
+use crate::component::{
+    CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueLimits,
+    CssComponentValueRef, CssHashFlag, CssNumericTokenKind, CssNumericTokenRef,
+    CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
+};
+use crate::diagnostic::error::property::{BasicParseError, ParseError, ParseErrorKind};
+use crate::source::CssSourcePosition;
 use crate::syntax_consumption::{
     CheckedLexeme, GroupEnd, ListId, SyntaxDocument, SyntaxNode, SyntaxToken, TokenKind,
     TokenPayload,
 };
-use crate::utf16_value::Control;
-use crate::{
-    CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
-    CssComponentValueLimits, CssComponentValueRef, CssHashFlag, CssNumericTokenKind,
-    CssNumericTokenRef, CssSerializedOrigin, CssSourcePosition, CssValueOrigin, CssValueTokenRef,
-};
+use crate::values::color_adjust::utf16_value::Control;
 use cssparser::BasicParseErrorKind;
 use cssparser::{CowRcStr, Delimiter, Delimiters, Token};
 use std::{borrow::Cow, marker::PhantomData, ops::Range};
@@ -837,7 +839,7 @@ impl<'i, 't> PropertyParser<'i, 't> {
         if let TokenPayload::Checked { component, .. } = self.document.nodes[id].token().payload {
             return Ok(Cow::Borrowed(component));
         }
-        let values = crate::component_values::promote_nodes(
+        let values = crate::component::values::parse::promote_nodes(
             self.document,
             &[id],
             CssComponentValueLimits::default(),
@@ -851,11 +853,11 @@ impl<'i, 't> PropertyParser<'i, 't> {
     }
     pub(crate) fn collect_numeric_component(
         &mut self,
-        _numeric: &crate::numeric::NumericInputContext<'_>,
-    ) -> Result<CssComponentValue, crate::CssNumericConstructionError> {
+        _numeric: &crate::numeric::expression::NumericInputContext<'_>,
+    ) -> Result<CssComponentValue, crate::numeric::CssNumericConstructionError> {
         self.collect_component()
             .map(Cow::into_owned)
-            .map_err(crate::CssNumericConstructionError::component)
+            .map_err(crate::numeric::CssNumericConstructionError::component)
     }
     /// Owned text for retained output only. Grammar never consumes this string.
     pub(crate) fn slice(&self, range: Range<Site<'i>>) -> String {
@@ -888,7 +890,7 @@ impl<'i, 't> PropertyParser<'i, 't> {
             self.control().is_none(),
             "controlled property slices retain their actual source"
         );
-        let mut output = crate::component_values::CssCanonicalBuilder::new(usize::MAX);
+        let mut output = crate::component::values::serialize::CssCanonicalBuilder::new(usize::MAX);
         for id in &self.document.lists[self.list][range.start.index..range.end.index] {
             let TokenPayload::Checked { component, .. } = &self.document.nodes[*id].token().payload
             else {
@@ -913,12 +915,15 @@ fn implicit_end_origin(
 ) -> CssSerializedOrigin {
     let origin = match (opening, &at.source) {
         (CssValueOrigin::Parsed(opening), Some(source)) => {
-            crate::CssParsedOrigin::from_range(&source.snapshot, source.offset..source.offset)
-                .map(|at| CssValueOrigin::ImplicitClosure {
-                    opening: opening.clone(),
-                    at,
-                })
-                .unwrap_or_else(|| CssValueOrigin::Parsed(opening.clone()))
+            crate::source::CssParsedOrigin::from_range(
+                &source.snapshot,
+                source.offset..source.offset,
+            )
+            .map(|at| CssValueOrigin::ImplicitClosure {
+                opening: opening.clone(),
+                at,
+            })
+            .unwrap_or_else(|| CssValueOrigin::Parsed(opening.clone()))
         }
         _ => opening.clone(),
     };
@@ -1016,15 +1021,19 @@ fn native_token<'i>(token: &'i SyntaxToken<'i>) -> Token<'i> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::component::CssComponentValues;
+    use crate::source::CssSourceSnapshot;
     use crate::syntax_consumption::{SyntaxInput, SyntaxInputLimits, normalize, source_document};
-    use crate::{CssComponentValues, CssSourceSnapshot, parse_component_values};
 
     #[test]
     fn independent_checked_leaves_do_not_merge_into_a_new_token() {
-        let values = CssComponentValues::try_new(vec![
-            CssComponentValue::try_ident("a").unwrap(),
-            CssComponentValue::try_ident("b").unwrap(),
-        ])
+        let values = CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_ident("a").unwrap(),
+                CssComponentValue::try_ident("b").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap();
         let document = normalize(
             SyntaxInput::CheckedComponents(values.items()),
@@ -1040,7 +1049,7 @@ mod tests {
 
     #[test]
     fn checked_collection_borrows_the_exact_original_component() {
-        let values = parse_component_values("calc(1px + 2px)").unwrap();
+        let values = crate::component::values::parse_component_values("calc(1px + 2px)").unwrap();
         let document = normalize(
             SyntaxInput::CheckedComponents(values.items()),
             SyntaxInputLimits::default(),
@@ -1091,10 +1100,10 @@ mod tests {
 
     #[test]
     fn descendant_sites_select_real_mixed_source_children_and_closing_boundaries() {
-        let children = parse_component_values("\n 2px").unwrap();
+        let children = crate::component::values::parse_component_values("\n 2px").unwrap();
         let origin = children.items()[1].origin().clone();
         let group = CssComponentValue::try_function("f", children).unwrap();
-        let values = CssComponentValues::try_new(vec![group]).unwrap();
+        let values = CssComponentValues::try_new(vec![group], Default::default()).unwrap();
         let document = normalize(
             SyntaxInput::CheckedComponents(values.items()),
             SyntaxInputLimits::default(),
@@ -1112,7 +1121,7 @@ mod tests {
 
     #[test]
     fn nested_end_reports_the_actual_closing_token_and_root_end_reports_eof() {
-        let values = parse_component_values("f()").unwrap();
+        let values = crate::component::values::parse_component_values("f()").unwrap();
         let CssComponentValueRef::Function(function) = values.items()[0].view() else {
             unreachable!()
         };
@@ -1129,15 +1138,22 @@ mod tests {
             .parse_nested_block(|nested| {
                 nested
                     .expect_ident_cloned()
-                    .map_err(crate::error::property::basic)
+                    .map_err(crate::diagnostic::error::property::basic)
             })
             .unwrap_err();
         let (kind, origin) = nested.into_parts();
-        assert!(matches!(kind, crate::ErrorKind::UnexpectedEnd(_)));
+        assert!(matches!(
+            kind,
+            crate::diagnostic::error::ErrorKind::UnexpectedEnd(_)
+        ));
         assert_eq!(origin, CssSerializedOrigin::Token(closing.clone()));
         let (kind, origin) =
-            crate::error::property::basic(input.expect_ident_cloned().unwrap_err()).into_parts();
-        assert!(matches!(kind, crate::ErrorKind::UnexpectedEnd(_)));
+            crate::diagnostic::error::property::basic(input.expect_ident_cloned().unwrap_err())
+                .into_parts();
+        assert!(matches!(
+            kind,
+            crate::diagnostic::error::ErrorKind::UnexpectedEnd(_)
+        ));
         assert_eq!(origin, CssSerializedOrigin::End(Some(closing)));
     }
 
@@ -1170,17 +1186,18 @@ pub(crate) enum NativeValueRange {
 
 pub(crate) fn adapt_native<'s, 'n, T, F>(
     input: &mut cssparser::Parser<'s, '_>,
-    numeric: &crate::numeric::NumericInputContext<'n>,
+    numeric: &crate::numeric::expression::NumericInputContext<'n>,
     range: NativeValueRange,
     parse: F,
-) -> Result<T, cssparser::ParseError<'s, crate::Error>>
+) -> Result<T, cssparser::ParseError<'s, crate::diagnostic::CssError>>
 where
     F: for<'i, 't> FnOnce(
         &mut Parser<'i, 't>,
-        &crate::numeric::NumericInputContext<'n>,
-    ) -> Result<T, ParseError<'i, crate::error::property::Error>>,
+        &crate::numeric::expression::NumericInputContext<'n>,
+    )
+        -> Result<T, ParseError<'i, crate::diagnostic::error::property::Error>>,
 {
-    use crate::numeric::NumericInputContext;
+    use crate::numeric::expression::NumericInputContext;
     use crate::syntax_consumption::{SourceWindow, SyntaxInput, SyntaxInputLimits, normalize};
     let checkpoint = input.state();
     let start = input.position().byte_index();
@@ -1205,7 +1222,10 @@ where
                 0,
             )
             .map_err(|detail| {
-                crate::error::invalid_component_value(input.current_source_location(), detail)
+                crate::diagnostic::error::invalid_component_value(
+                    input.current_source_location(),
+                    detail,
+                )
             })?;
             let mut parser = Parser::new(&document);
             let result = parse(&mut parser, numeric);
@@ -1220,7 +1240,9 @@ where
         NumericInputContext::Components(values, serialized) => {
             let paths = serialized
                 .component_paths_in_range(start..end)
-                .ok_or_else(|| crate::error::invalid_syntax(input.current_source_location()))?;
+                .ok_or_else(|| {
+                    crate::diagnostic::error::invalid_syntax(input.current_source_location())
+                })?;
             let (siblings, first, parent) = if let Some(path) = paths.first() {
                 let (first, parent) = path.split_last().expect("component path");
                 let siblings = if parent.is_empty() {
@@ -1242,7 +1264,10 @@ where
                 0,
             )
             .map_err(|detail| {
-                crate::error::invalid_component_value(input.current_source_location(), detail)
+                crate::diagnostic::error::invalid_component_value(
+                    input.current_source_location(),
+                    detail,
+                )
             })?;
             let mut parser = Parser::new(&document);
             let result = parse(&mut parser, numeric);
@@ -1322,8 +1347,9 @@ fn advance_native_to(input: &mut cssparser::Parser<'_, '_>, offset: usize) {
 #[cfg(test)]
 mod native_adapter_tests {
     use super::*;
-    use crate::numeric::NumericInputContext;
-    use crate::{CssComponentValues, CssSourceSnapshot, parse_component_values};
+    use crate::component::CssComponentValues;
+    use crate::numeric::expression::NumericInputContext;
+    use crate::source::CssSourceSnapshot;
 
     #[test]
     fn source_url_prefix_does_not_admit_the_unconsumed_nested_suffix() {
@@ -1376,7 +1402,7 @@ mod native_adapter_tests {
                 input.expect_function_matching("f")?;
                 input.parse_nested_block(|nested| {
                     nested.expect_ident_matching("a")?;
-                    Ok::<_, ParseError<'_, crate::error::property::Error>>(42)
+                    Ok::<_, ParseError<'_, crate::diagnostic::error::property::Error>>(42)
                 })
             },
         )
@@ -1388,12 +1414,15 @@ mod native_adapter_tests {
 
     #[test]
     fn checked_prefix_adapter_borrows_the_original_component_across_inserted_separators() {
-        let values = CssComponentValues::try_new(vec![
-            CssComponentValue::try_ident("a").unwrap(),
-            CssComponentValue::try_ident("b").unwrap(),
-        ])
+        let values = CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_ident("a").unwrap(),
+                CssComponentValue::try_ident("b").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap();
-        let serialized = values.serialize().unwrap();
+        let serialized = values.serialize_tokens(Default::default()).unwrap();
         let mut storage = cssparser::ParserInput::new(serialized.as_css());
         let mut native = cssparser::Parser::new(&mut storage);
         let address = adapt_native(
@@ -1402,7 +1431,10 @@ mod native_adapter_tests {
             NativeValueRange::Component,
             |input, _| {
                 let component = input.collect_component().map_err(|error| {
-                    crate::error::property::invalid_component_value(input.position(), error)
+                    crate::diagnostic::error::property::invalid_component_value(
+                        input.position(),
+                        error,
+                    )
                 })?;
                 assert!(matches!(component, Cow::Borrowed(_)));
                 Ok(component.as_ref() as *const CssComponentValue as usize)
@@ -1418,8 +1450,8 @@ mod native_adapter_tests {
 
     #[test]
     fn checked_nested_adapter_maps_the_actual_child_path_to_existing_native_input() {
-        let values = parse_component_values("f(a wrong)").unwrap();
-        let serialized = values.serialize().unwrap();
+        let values = crate::component::values::parse_component_values("f(a wrong)").unwrap();
+        let serialized = values.serialize_tokens(Default::default()).unwrap();
         let mut storage = cssparser::ParserInput::new(serialized.as_css());
         let mut native = cssparser::Parser::new(&mut storage);
         let error = adapt_native(
@@ -1431,7 +1463,7 @@ mod native_adapter_tests {
                 input.parse_nested_block(|nested| {
                     nested.expect_ident_matching("a")?;
                     nested.expect_ident_matching("other")?;
-                    Ok::<_, ParseError<'_, crate::error::property::Error>>(())
+                    Ok::<_, ParseError<'_, crate::diagnostic::error::property::Error>>(())
                 })
             },
         )

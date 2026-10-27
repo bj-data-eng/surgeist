@@ -1,0 +1,1323 @@
+//! Immutable ordered contributions and shared authored rule/selector contexts.
+
+use std::fmt;
+use std::sync::Arc;
+
+use crate::CssParseReport;
+use crate::declaration::{CssDeclaration, CssDeclarationList};
+use crate::diagnostic::CssRecoveryDiagnostic;
+use crate::property::{CssExpansion, CssExpansionError};
+use crate::query::container::CssContainerPrelude;
+use crate::query::media::CssMediaQueryList;
+use crate::query::supports::CssSupportsLeaf;
+use crate::query::{CssCondition, CssWhenLeaf};
+use crate::rule::color_profile::CssColorProfileRule;
+use crate::rule::counter_style::CssCounterStyleRule;
+use crate::rule::font_face::CssFontFaceRule;
+use crate::rule::font_feature_values::CssFontFeatureValuesRule;
+use crate::rule::font_palette_values::CssFontPaletteValuesRule;
+use crate::rule::keyframes::CssKeyframesRule;
+use crate::rule::page::CssPageRule;
+use crate::rule::{CssCustomMediaRule, CssSupportsConditionRule};
+use crate::rule::{
+    CssImportRule, CssLayerName, CssLayerNameList, CssNamespaceRule, CssRule, CssScopeRule,
+    CssSheet,
+};
+use crate::selector::{
+    CssScopeSelectorList, CssSelector, CssSelectorCombinator, CssStyleSelector,
+    CssStyleSelectorList,
+};
+use crate::source::CssSourcePosition;
+
+/// Traversal and output budgets for one atomic stylesheet normalization.
+///
+/// Top-level rules have depth zero. Every visited rule, including an implicit
+/// nested-declaration run, counts once. Emitted declaration occurrences count
+/// once each; their longhand members count individually, while a custom,
+/// universal-reset, or pending expansion counts as one member. Declarations
+/// inside retained font, page, and keyframe payloads are not individually emitted.
+/// These budgets do not bound payload bytes, allocator usage, or process memory.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CssNormalizationLimits {
+    max_rule_depth: u32,
+    max_rules: usize,
+    max_declarations: usize,
+    max_contributions: usize,
+}
+
+impl CssNormalizationLimits {
+    /// Sets budgets without raising the shared 256-level structural ceiling.
+    /// Zero counts admit only output that consumes no units of that resource.
+    #[must_use]
+    pub const fn try_new(
+        max_rule_depth: u32,
+        max_rules: usize,
+        max_declarations: usize,
+        max_contributions: usize,
+    ) -> Option<Self> {
+        if max_rule_depth > crate::STRUCTURAL_NESTING_LIMIT {
+            None
+        } else {
+            Some(Self {
+                max_rule_depth,
+                max_rules,
+                max_declarations,
+                max_contributions,
+            })
+        }
+    }
+
+    /// Returns the maximum number of enclosing rule occurrences.
+    #[must_use]
+    pub const fn max_rule_depth(self) -> u32 {
+        self.max_rule_depth
+    }
+
+    /// Returns the maximum visited rule count.
+    #[must_use]
+    pub const fn max_rules(self) -> usize {
+        self.max_rules
+    }
+
+    /// Returns the maximum emitted declaration-occurrence count.
+    #[must_use]
+    pub const fn max_declarations(self) -> usize {
+        self.max_declarations
+    }
+
+    /// Returns the maximum emitted contribution-member count.
+    #[must_use]
+    pub const fn max_contributions(self) -> usize {
+        self.max_contributions
+    }
+}
+
+impl Default for CssNormalizationLimits {
+    /// Retains the structural ceiling and imposes no additional count policy.
+    fn default() -> Self {
+        Self {
+            max_rule_depth: crate::STRUCTURAL_NESTING_LIMIT,
+            max_rules: usize::MAX,
+            max_declarations: usize::MAX,
+            max_contributions: usize::MAX,
+        }
+    }
+}
+
+/// The exact traversal or output resource whose normalization budget was exceeded.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CssNormalizationResource {
+    /// Rule nesting depth.
+    RuleDepth,
+    /// Admitted rules.
+    Rules,
+    /// Emitted declarations.
+    Declarations,
+    /// Expanded longhand contributions.
+    Contributions,
+}
+
+impl CssNormalizationResource {
+    const fn description(self) -> &'static str {
+        match self {
+            Self::RuleDepth => "rule depth",
+            Self::Rules => "rule",
+            Self::Declarations => "declaration",
+            Self::Contributions => "contribution",
+        }
+    }
+}
+
+/// An atomic normalization failure, distinct from parser recovery diagnostics.
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum CssNormalizationErrorKind {
+    /// An emitted declaration requires intrinsic expansion that is not implemented.
+    UnsupportedDeclaration(CssExpansionError),
+    /// A traversal/output budget failed before admitting the responsible unit.
+    LimitExceeded {
+        resource: CssNormalizationResource,
+        limit: usize,
+    },
+}
+
+/// A typed failure retaining the responsible source occurrence and context.
+///
+/// Failure exposes no partially normalized sheet and never mutates authored
+/// syntax. Positions are optional provenance; absent coordinates are not
+/// replaced with generated byte offsets. Rule-admission failures identify their
+/// containing context, while declaration failures identify their owning rule.
+#[derive(Clone, Debug)]
+pub struct CssNormalizationError {
+    failure: Box<NormalizationFailure>,
+}
+
+#[derive(Clone, Debug)]
+struct NormalizationFailure {
+    kind: CssNormalizationErrorKind,
+    position: Option<CssSourcePosition>,
+    rule_context: Option<CssRuleContext>,
+    declaration: Option<CssDeclaration>,
+    declaration_order: Option<usize>,
+}
+
+impl CssNormalizationError {
+    /// Returns the exhausted traversal or output resource and its budget.
+    #[must_use]
+    pub fn exhausted_limit(&self) -> Option<(CssNormalizationResource, usize)> {
+        match self.failure.kind {
+            CssNormalizationErrorKind::LimitExceeded { resource, limit } => Some((resource, limit)),
+            CssNormalizationErrorKind::UnsupportedDeclaration(_) => None,
+        }
+    }
+
+    /// Returns the expansion failure of an emitted declaration whose intrinsic expansion
+    /// is not implemented.
+    #[must_use]
+    pub fn expansion(&self) -> Option<&CssExpansionError> {
+        match &self.failure.kind {
+            CssNormalizationErrorKind::UnsupportedDeclaration(error) => Some(error),
+            CssNormalizationErrorKind::LimitExceeded { .. } => None,
+        }
+    }
+
+    /// Returns the responsible authored position, when one exists.
+    #[must_use]
+    pub fn position(&self) -> Option<CssSourcePosition> {
+        self.failure.position
+    }
+
+    /// Returns the responsible declaration occurrence, when admitting a declaration failed.
+    #[must_use]
+    pub fn declaration(&self) -> Option<&CssDeclaration> {
+        self.failure.declaration.as_ref()
+    }
+
+    /// Returns its zero-based emitted-declaration ordinal, including the failed occurrence.
+    #[must_use]
+    pub fn declaration_order(&self) -> Option<usize> {
+        self.failure.declaration_order
+    }
+
+    /// Returns the owning rule for a declaration failure, or enclosing rule for rule admission.
+    #[must_use]
+    pub fn rule_context(&self) -> Option<&CssRuleContext> {
+        self.failure.rule_context.as_ref()
+    }
+
+    fn new(
+        kind: CssNormalizationErrorKind,
+        position: Option<CssSourcePosition>,
+        rule_context: Option<&CssRuleContext>,
+        declaration: Option<(&CssDeclaration, usize)>,
+    ) -> Self {
+        Self {
+            failure: Box::new(NormalizationFailure {
+                kind,
+                position,
+                rule_context: rule_context.cloned(),
+                declaration: declaration.map(|(source, _)| source.clone()),
+                declaration_order: declaration.map(|(_, order)| order),
+            }),
+        }
+    }
+}
+
+impl fmt::Display for CssNormalizationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.failure.kind {
+            CssNormalizationErrorKind::UnsupportedDeclaration(error) => {
+                write!(formatter, "stylesheet normalization failed: {error}")
+            }
+            CssNormalizationErrorKind::LimitExceeded { resource, limit } => {
+                write!(
+                    formatter,
+                    "stylesheet normalization exceeded its {} budget of {limit}",
+                    resource.description()
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for CssNormalizationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match &self.failure.kind {
+            CssNormalizationErrorKind::UnsupportedDeclaration(error) => Some(error),
+            CssNormalizationErrorKind::LimitExceeded { .. } => None,
+        }
+    }
+}
+
+/// How an authored selector binds to its shared enclosing selector or scope context.
+///
+/// A nested parent binding represents the complete parent list: each `&` uses
+/// that list's maximum specificity, including implied anchors. Without a parent
+/// list, explicit `&` anchors match the context's scope elements and contribute
+/// zero specificity. The enum does not calculate specificity or match anything.
+/// Scope anchors remain distinct from authored nesting anchors. Selector-function
+/// structure is retained, so downstream specificity rules such as `:where()`
+/// remain applicable.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CssSelectorBinding {
+    /// An ordinary or scoped selector with no implied parent anchor.
+    Absolute,
+    /// A nested selector with no explicit anchor or leading combinator.
+    ImplicitDescendant,
+    /// An authored leading combinator binds to the parent list, or nearest scope
+    /// when the selector belongs directly to a scoped style rule.
+    LeadingCombinator(CssSelectorCombinator),
+    /// One or more authored nesting anchors use the enclosing selector context.
+    /// With [`CssSelectorContext::parent`] present, they bind to that complete list
+    /// and use its maximum specificity. Without a parent, they match the context's
+    /// scope elements and contribute zero specificity. Containing selector functions
+    /// retain their own specificity rules.
+    ExplicitAnchors,
+    /// The scoped-selector grammar supplied an authored scope anchor.
+    ScopeAnchors,
+}
+
+/// An intact authored selector plus its intrinsic enclosing-context binding.
+#[derive(Clone, Debug)]
+pub struct CssNormalizedSelector {
+    selector: CssSelector,
+    binding: CssSelectorBinding,
+}
+
+impl CssNormalizedSelector {
+    /// Borrows the authored selector, including repeated and function-contained anchors.
+    #[must_use]
+    pub const fn selector(&self) -> &CssSelector {
+        &self.selector
+    }
+
+    /// Returns its binding without substituting or multiplying parent selectors.
+    #[must_use]
+    pub const fn binding(&self) -> CssSelectorBinding {
+        self.binding
+    }
+}
+
+/// A shared immutable selector list and its earlier parent/scope references.
+///
+/// Clones share one context. Distinct authored style rules have distinct
+/// contexts even when their selectors are structurally equal. Nested declaration
+/// runs reuse the exact enclosing context, including its per-selector specificity
+/// and pseudo-elements; they do not synthesize an `&` rule. This identity is not
+/// a mutable CSSOM object, revision, stable handle, or cross-normalization key.
+#[derive(Clone, Debug)]
+pub struct CssSelectorContext {
+    context: Arc<SelectorContextData>,
+}
+
+#[derive(Debug)]
+struct SelectorContextData {
+    selectors: Vec<CssNormalizedSelector>,
+    parent: Option<CssSelectorContext>,
+    scope: Option<CssRuleContext>,
+}
+
+impl CssSelectorContext {
+    /// Returns the complete authored list, with no selector Cartesian product.
+    #[must_use]
+    pub fn selectors(&self) -> &[CssNormalizedSelector] {
+        &self.context.selectors
+    }
+
+    /// Returns the parent style list for nesting; scoped style roots have no such parent.
+    #[must_use]
+    pub fn parent(&self) -> Option<&Self> {
+        self.context.parent.as_ref()
+    }
+
+    /// Returns the binding scope of this selector-bearing style occurrence.
+    /// Additional scopes around an inherited declaration run remain in its rule ancestry.
+    #[must_use]
+    pub fn scope_context(&self) -> Option<&CssRuleContext> {
+        self.context.scope.as_ref()
+    }
+
+    /// Reports whether both handles refer to the same immutable context occurrence.
+    #[must_use]
+    pub fn same_context(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.context, &other.context)
+    }
+
+    fn ordinary(selectors: &CssStyleSelectorList, context: TraversalContext<'_>) -> Self {
+        let selectors = selectors
+            .selectors()
+            .iter()
+            .map(|entry| match entry {
+                CssStyleSelector::Selector(selector) => {
+                    let binding = if selector_has_anchor(selector, AnchorKind::Nesting) {
+                        CssSelectorBinding::ExplicitAnchors
+                    } else if context.selectors.is_some() {
+                        CssSelectorBinding::ImplicitDescendant
+                    } else {
+                        CssSelectorBinding::Absolute
+                    };
+                    CssNormalizedSelector {
+                        selector: selector.clone(),
+                        binding,
+                    }
+                }
+                CssStyleSelector::Relative(relative) => CssNormalizedSelector {
+                    selector: relative.selector().clone(),
+                    binding: CssSelectorBinding::LeadingCombinator(relative.combinator()),
+                },
+            })
+            .collect();
+        Self {
+            context: Arc::new(SelectorContextData {
+                selectors,
+                parent: context.selectors.cloned(),
+                scope: context.scope.cloned(),
+            }),
+        }
+    }
+
+    fn scoped(selectors: &CssStyleSelectorList, context: TraversalContext<'_>) -> Self {
+        let selectors = selectors
+            .selectors()
+            .iter()
+            .map(|entry| match entry {
+                CssStyleSelector::Selector(selector) => CssNormalizedSelector {
+                    selector: selector.clone(),
+                    binding: if selector_has_anchor(selector, AnchorKind::Scope) {
+                        CssSelectorBinding::ScopeAnchors
+                    } else {
+                        CssSelectorBinding::Absolute
+                    },
+                },
+                CssStyleSelector::Relative(relative) => CssNormalizedSelector {
+                    selector: relative.selector().clone(),
+                    binding: CssSelectorBinding::LeadingCombinator(relative.combinator()),
+                },
+            })
+            .collect();
+        Self {
+            context: Arc::new(SelectorContextData {
+                selectors,
+                parent: None,
+                scope: context.scope.cloned(),
+            }),
+        }
+    }
+}
+
+/// A borrowed rule header or intact nonstyle payload in the normalized stream.
+///
+/// Group headers do not contain child subtrees. Even empty style rules expose
+/// their complete shared selector context. Terminal payloads preserve their
+/// typed authored contents without applying element-style declaration expansion.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug)]
+pub enum CssRuleContextKindRef<'a> {
+    /// A style rule; the shared selector context carries its complete resolved selectors.
+    Style(&'a CssSelectorContext),
+    /// A style rule nested in `@scope`, with its scope-relative selector context.
+    ScopedStyle(&'a CssSelectorContext),
+    /// A run of declarations that follows a nested rule inside a style rule.
+    NestedDeclarations(&'a CssSelectorContext),
+    /// A `@media` group header with its media query list.
+    Media(&'a CssMediaQueryList),
+    /// A `@supports` group header with its supports condition.
+    Supports(&'a CssCondition<CssSupportsLeaf>),
+    /// A `@supports` rule written in the named supports-condition form.
+    SupportsCondition(&'a CssSupportsConditionRule),
+    /// A `@when` group header with its condition.
+    When(&'a CssCondition<CssWhenLeaf>),
+    /// An `@else` group header; `None` for a bare `@else`.
+    Else(Option<&'a CssCondition<CssWhenLeaf>>),
+    /// A `@container` group header.
+    Container {
+        /// The container name list and condition.
+        prelude: &'a CssContainerPrelude,
+    },
+    /// A `@layer` block header; `None` for an anonymous layer.
+    LayerBlock(Option<&'a CssLayerName>),
+    /// A `@scope` group header.
+    Scope {
+        /// The scoping root selector list, when the prelude has one.
+        root: Option<&'a CssScopeSelectorList>,
+        /// The scoping limit selector list (the `to (...)` part), when the prelude has one.
+        limit: Option<&'a CssScopeSelectorList>,
+    },
+    /// A `@layer` statement naming its layers.
+    LayerStatement(&'a CssLayerNameList),
+    /// A `@import` rule payload.
+    Import(&'a CssImportRule),
+    /// A `@namespace` rule payload.
+    Namespace(&'a CssNamespaceRule),
+    /// A `@font-face` rule payload.
+    FontFace(&'a CssFontFaceRule),
+    /// A `@custom-media` rule payload.
+    CustomMedia(&'a CssCustomMediaRule),
+    /// A `@font-feature-values` rule payload.
+    FontFeatureValues(&'a CssFontFeatureValuesRule),
+    /// A `@font-palette-values` rule payload.
+    FontPaletteValues(&'a CssFontPaletteValuesRule),
+    /// A `@color-profile` rule payload.
+    ColorProfile(&'a CssColorProfileRule),
+    /// A `@keyframes` rule payload.
+    Keyframes(&'a CssKeyframesRule),
+    /// A `@counter-style` rule payload.
+    CounterStyle(&'a CssCounterStyleRule),
+    /// A `@page` rule payload.
+    Page(&'a CssPageRule),
+}
+
+#[derive(Debug)]
+enum RuleContextKind {
+    Style(CssSelectorContext),
+    ScopedStyle(CssSelectorContext),
+    NestedDeclarations(CssSelectorContext),
+    Media(CssMediaQueryList),
+    Supports(CssCondition<CssSupportsLeaf>),
+    SupportsCondition(CssSupportsConditionRule),
+    When(CssCondition<CssWhenLeaf>),
+    Else(Option<CssCondition<CssWhenLeaf>>),
+    Container {
+        prelude: CssContainerPrelude,
+    },
+    LayerBlock(Option<CssLayerName>),
+    Scope {
+        root: Option<CssScopeSelectorList>,
+        limit: Option<CssScopeSelectorList>,
+    },
+    LayerStatement(CssLayerNameList),
+    Import(CssImportRule),
+    Namespace(CssNamespaceRule),
+    FontFace(CssFontFaceRule),
+    CustomMedia(CssCustomMediaRule),
+    FontFeatureValues(CssFontFeatureValuesRule),
+    FontPaletteValues(CssFontPaletteValuesRule),
+    ColorProfile(CssColorProfileRule),
+    Keyframes(CssKeyframesRule),
+    CounterStyle(CssCounterStyleRule),
+    Page(CssPageRule),
+}
+
+/// One shared immutable authored rule occurrence and its enclosing rule reference.
+///
+/// Contexts contain only their header or terminal payload, never recursively
+/// cloned group children. Parent and selector/scope links refer only to earlier
+/// occurrences, preventing reference cycles. Equal anonymous layers and equal
+/// style rules remain distinct occurrences. No mutable CSSOM identity is assigned.
+#[derive(Clone, Debug)]
+pub struct CssRuleContext {
+    context: Arc<RuleContextData>,
+}
+
+#[derive(Debug)]
+struct RuleContextData {
+    kind: RuleContextKind,
+    parent: Option<CssRuleContext>,
+    position: Option<CssSourcePosition>,
+}
+
+impl CssRuleContext {
+    /// Borrows the header or complete terminal payload.
+    #[must_use]
+    pub fn kind(&self) -> CssRuleContextKindRef<'_> {
+        match &self.context.kind {
+            RuleContextKind::Style(value) => CssRuleContextKindRef::Style(value),
+            RuleContextKind::ScopedStyle(value) => CssRuleContextKindRef::ScopedStyle(value),
+            RuleContextKind::NestedDeclarations(value) => {
+                CssRuleContextKindRef::NestedDeclarations(value)
+            }
+            RuleContextKind::Media(value) => CssRuleContextKindRef::Media(value),
+            RuleContextKind::Supports(value) => CssRuleContextKindRef::Supports(value),
+            RuleContextKind::SupportsCondition(value) => {
+                CssRuleContextKindRef::SupportsCondition(value)
+            }
+            RuleContextKind::When(value) => CssRuleContextKindRef::When(value),
+            RuleContextKind::Else(value) => CssRuleContextKindRef::Else(value.as_ref()),
+            RuleContextKind::Container { prelude } => CssRuleContextKindRef::Container { prelude },
+            RuleContextKind::LayerBlock(value) => CssRuleContextKindRef::LayerBlock(value.as_ref()),
+            RuleContextKind::Scope { root, limit } => CssRuleContextKindRef::Scope {
+                root: root.as_ref(),
+                limit: limit.as_ref(),
+            },
+            RuleContextKind::LayerStatement(value) => CssRuleContextKindRef::LayerStatement(value),
+            RuleContextKind::Import(value) => CssRuleContextKindRef::Import(value),
+            RuleContextKind::Namespace(value) => CssRuleContextKindRef::Namespace(value),
+            RuleContextKind::CustomMedia(value) => CssRuleContextKindRef::CustomMedia(value),
+            RuleContextKind::FontFeatureValues(value) => {
+                CssRuleContextKindRef::FontFeatureValues(value)
+            }
+            RuleContextKind::FontPaletteValues(value) => {
+                CssRuleContextKindRef::FontPaletteValues(value)
+            }
+            RuleContextKind::ColorProfile(value) => CssRuleContextKindRef::ColorProfile(value),
+            RuleContextKind::FontFace(value) => CssRuleContextKindRef::FontFace(value),
+            RuleContextKind::Keyframes(value) => CssRuleContextKindRef::Keyframes(value),
+            RuleContextKind::CounterStyle(value) => CssRuleContextKindRef::CounterStyle(value),
+            RuleContextKind::Page(value) => CssRuleContextKindRef::Page(value),
+        }
+    }
+
+    /// Returns the immediate enclosing authored rule, including conditional groups.
+    #[must_use]
+    pub fn parent(&self) -> Option<&Self> {
+        self.context.parent.as_ref()
+    }
+
+    /// Returns authored provenance when present; this is not a precedence key.
+    #[must_use]
+    pub fn position(&self) -> Option<CssSourcePosition> {
+        self.context.position
+    }
+
+    /// Reports identity of this immutable normalization occurrence, not structural equality.
+    #[must_use]
+    pub fn same_context(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.context, &other.context)
+    }
+}
+
+/// One emitted declaration occurrence, preserving grouped intrinsic expansion.
+#[derive(Clone, Debug)]
+pub struct CssNormalizedDeclaration {
+    source: CssDeclaration,
+    expansion: CssExpansion,
+    selectors: CssSelectorContext,
+    rule: CssRuleContext,
+    order: usize,
+}
+
+impl CssNormalizedDeclaration {
+    /// Returns the original immutable authored declaration occurrence.
+    #[must_use]
+    pub const fn source(&self) -> &CssDeclaration {
+        &self.source
+    }
+
+    /// Returns intrinsic contributions or the unchanged symbolic pending handle.
+    #[must_use]
+    pub const fn expansion(&self) -> &CssExpansion {
+        &self.expansion
+    }
+
+    /// Returns the complete shared selector context, without applying matching.
+    /// Scopes introduced around a declaration run are retained separately in
+    /// `rule_context()` ancestry; they do not rebind this inherited selector handle.
+    #[must_use]
+    pub const fn selector_context(&self) -> &CssSelectorContext {
+        &self.selectors
+    }
+
+    /// Returns the immediate style or nested-declaration rule occurrence.
+    #[must_use]
+    pub const fn rule_context(&self) -> &CssRuleContext {
+        &self.rule
+    }
+
+    /// Returns zero-based emitted declaration order, independent of source coordinates.
+    /// Shorthand members share this ordinal; no cascade winner is selected.
+    #[must_use]
+    pub const fn order(&self) -> usize {
+        self.order
+    }
+}
+
+/// A rule occurrence or grouped declaration occurrence in authored depth-first order.
+#[non_exhaustive]
+#[derive(Clone, Debug)]
+pub enum CssNormalizedItem {
+    /// A rule header or terminal payload.
+    Rule(CssRuleContext),
+    /// A declaration of a style or nested-declarations rule.
+    Declaration(CssNormalizedDeclaration),
+}
+
+/// An immutable stylesheet normalization containing every retained rule occurrence.
+///
+/// Each rule precedes its leading declarations and ordered children. Empty
+/// groups, layer statements, imports, and nonstyle payloads remain observable.
+/// Conditions, imports, scopes, layers, and symbolic values remain unevaluated.
+/// Construction is owner-controlled and succeeds only for the implemented
+/// intrinsic declaration-expansion coverage; this is not a claim of full CSS
+/// grammar or expansion support.
+#[derive(Clone, Debug)]
+pub struct CssNormalizedSheet {
+    items: Vec<CssNormalizedItem>,
+}
+
+impl CssNormalizedSheet {
+    /// Returns the ordered rule/declaration stream, including empty rule occurrences.
+    #[must_use]
+    pub fn items(&self) -> &[CssNormalizedItem] {
+        &self.items
+    }
+}
+
+/// Normalized retained syntax alongside unchanged ordered parser diagnostics.
+///
+/// Normalization does not imply a clean parse. This separate report preserves
+/// the original diagnostic order, spans, and recovery actions without running
+/// parsing or selecting another grammar.
+#[derive(Clone, Debug)]
+pub struct CssNormalizedReport {
+    syntax: CssNormalizedSheet,
+    diagnostics: Vec<CssRecoveryDiagnostic>,
+}
+
+impl CssNormalizedReport {
+    /// Borrows the successfully normalized retained syntax.
+    #[must_use]
+    pub const fn syntax(&self) -> &CssNormalizedSheet {
+        &self.syntax
+    }
+
+    /// Returns the original parser diagnostics in their original order.
+    #[must_use]
+    pub fn diagnostics(&self) -> &[CssRecoveryDiagnostic] {
+        &self.diagnostics
+    }
+
+    /// Reports exactly whether the original diagnostic slice was empty.
+    #[must_use]
+    pub fn is_clean(&self) -> bool {
+        self.diagnostics.is_empty()
+    }
+
+    /// Transfers both outputs without discarding diagnostic provenance.
+    #[must_use]
+    pub fn into_parts(self) -> (CssNormalizedSheet, Vec<CssRecoveryDiagnostic>) {
+        (self.syntax, self.diagnostics)
+    }
+}
+
+impl CssSheet {
+    /// Normalizes retained authored syntax atomically under explicit traversal and output budgets.
+    ///
+    /// Only emitted style declarations require intrinsic expansion. Unsupported
+    /// known declarations return a typed error, even when their authored grammar
+    /// is supported. Custom values, `all`, pending substitution, conditional
+    /// headers, and terminal payloads stay symbolic. The source sheet remains
+    /// unchanged and no partial result is published. Keep the original parse
+    /// report when its diagnostics matter, or normalize the report with
+    /// [`CssParseReport::normalize`]. Whole-sheet checked Rust construction is
+    /// separate.
+    ///
+    /// Rule/declaration admission and contribution-member counts are checked
+    /// before allocating the corresponding header, expansion, or output item.
+    /// Rule depth is checked before rule count; declaration count precedes
+    /// expansion capability and member-budget checks. Terminal payload bytes have
+    /// no separate budget.
+    ///
+    /// # Errors
+    ///
+    /// Returns the exhausted budget or the declaration the expansion cannot admit.
+    pub fn normalize(
+        &self,
+        limits: CssNormalizationLimits,
+    ) -> Result<CssNormalizedSheet, CssNormalizationError> {
+        let mut builder = Normalizer {
+            limits,
+            items: Vec::new(),
+            rules: 0,
+            declarations: 0,
+            contributions: 0,
+        };
+        builder.rules(self.rules())?;
+        Ok(CssNormalizedSheet {
+            items: builder.items,
+        })
+    }
+}
+
+impl CssParseReport<CssSheet> {
+    /// Normalizes the retained sheet under explicit budgets while preserving all
+    /// recovery diagnostics unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Returns the failure of [`CssSheet::normalize`].
+    pub fn normalize(
+        &self,
+        limits: CssNormalizationLimits,
+    ) -> Result<CssNormalizedReport, CssNormalizationError> {
+        let syntax = self.syntax().normalize(limits)?;
+        Ok(CssNormalizedReport {
+            syntax,
+            diagnostics: self.diagnostics().to_vec(),
+        })
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+struct TraversalContext<'a> {
+    rule: Option<&'a CssRuleContext>,
+    selectors: Option<&'a CssSelectorContext>,
+    scope: Option<&'a CssRuleContext>,
+}
+
+#[derive(Default)]
+struct OwnedTraversalContext {
+    rule: Option<CssRuleContext>,
+    selectors: Option<CssSelectorContext>,
+    scope: Option<CssRuleContext>,
+}
+
+impl OwnedTraversalContext {
+    fn borrowed(&self) -> TraversalContext<'_> {
+        TraversalContext {
+            rule: self.rule.as_ref(),
+            selectors: self.selectors.as_ref(),
+            scope: self.scope.as_ref(),
+        }
+    }
+
+    fn within_rule(context: TraversalContext<'_>, rule: CssRuleContext) -> Self {
+        Self {
+            rule: Some(rule),
+            selectors: context.selectors.cloned(),
+            scope: context.scope.cloned(),
+        }
+    }
+
+    fn within_style(
+        context: TraversalContext<'_>,
+        rule: CssRuleContext,
+        selectors: CssSelectorContext,
+    ) -> Self {
+        Self {
+            rule: Some(rule),
+            selectors: Some(selectors),
+            scope: context.scope.cloned(),
+        }
+    }
+
+    fn within_scope(context: TraversalContext<'_>, rule: CssRuleContext) -> Self {
+        Self {
+            rule: Some(rule.clone()),
+            selectors: context.selectors.cloned(),
+            scope: Some(rule),
+        }
+    }
+}
+
+struct RuleFrame<'a> {
+    rules: &'a [CssRule],
+    next: usize,
+    context: OwnedTraversalContext,
+    depth: u32,
+    /// Whether this list is a `@scope` body, or a group inside one, so that its style
+    /// rules carry scope selectors; a style rule's own children are never scoped.
+    scoped: bool,
+}
+
+impl<'a> RuleFrame<'a> {
+    fn new(rules: &'a [CssRule], scoped: bool, context: OwnedTraversalContext, depth: u32) -> Self {
+        Self {
+            rules,
+            next: 0,
+            context,
+            depth,
+            scoped,
+        }
+    }
+}
+
+struct Normalizer {
+    limits: CssNormalizationLimits,
+    items: Vec<CssNormalizedItem>,
+    rules: usize,
+    declarations: usize,
+    contributions: usize,
+}
+
+impl Normalizer {
+    fn admit_rule(
+        &mut self,
+        position: Option<CssSourcePosition>,
+        context: TraversalContext<'_>,
+        depth: u32,
+    ) -> Result<(), CssNormalizationError> {
+        let failed = if depth > self.limits.max_rule_depth {
+            Some((
+                CssNormalizationResource::RuleDepth,
+                self.limits.max_rule_depth as usize,
+            ))
+        } else if self.rules >= self.limits.max_rules {
+            Some((CssNormalizationResource::Rules, self.limits.max_rules))
+        } else {
+            None
+        };
+        if let Some((resource, limit)) = failed {
+            return Err(CssNormalizationError::new(
+                CssNormalizationErrorKind::LimitExceeded { resource, limit },
+                position,
+                context.rule,
+                None,
+            ));
+        }
+        self.rules += 1;
+        Ok(())
+    }
+
+    fn record_rule(
+        &mut self,
+        kind: RuleContextKind,
+        position: Option<CssSourcePosition>,
+        parent: Option<&CssRuleContext>,
+    ) -> CssRuleContext {
+        let rule = CssRuleContext {
+            context: Arc::new(RuleContextData {
+                kind,
+                parent: parent.cloned(),
+                position,
+            }),
+        };
+        self.items.push(CssNormalizedItem::Rule(rule.clone()));
+        rule
+    }
+
+    fn declarations(
+        &mut self,
+        declarations: &CssDeclarationList,
+        rule: &CssRuleContext,
+        selectors: &CssSelectorContext,
+    ) -> Result<(), CssNormalizationError> {
+        for source in declarations.iter() {
+            let fail = |kind| {
+                CssNormalizationError::new(
+                    kind,
+                    source.position(),
+                    Some(rule),
+                    Some((source, self.declarations)),
+                )
+            };
+            if self.declarations >= self.limits.max_declarations {
+                return Err(fail(CssNormalizationErrorKind::LimitExceeded {
+                    resource: CssNormalizationResource::Declarations,
+                    limit: self.limits.max_declarations,
+                }));
+            }
+            let members = crate::property::expansion::expansion_member_count(source)
+                .map_err(|error| fail(CssNormalizationErrorKind::UnsupportedDeclaration(error)))?;
+            if members > self.limits.max_contributions - self.contributions {
+                return Err(fail(CssNormalizationErrorKind::LimitExceeded {
+                    resource: CssNormalizationResource::Contributions,
+                    limit: self.limits.max_contributions,
+                }));
+            }
+            let expansion = crate::property::expansion::expand_declaration(source)
+                .map_err(|error| fail(CssNormalizationErrorKind::UnsupportedDeclaration(error)))?;
+            self.items
+                .push(CssNormalizedItem::Declaration(CssNormalizedDeclaration {
+                    source: source.clone(),
+                    expansion,
+                    selectors: selectors.clone(),
+                    rule: rule.clone(),
+                    order: self.declarations,
+                }));
+            self.declarations += 1;
+            self.contributions += members;
+        }
+        Ok(())
+    }
+
+    fn rules(&mut self, rules: &[CssRule]) -> Result<(), CssNormalizationError> {
+        // Each frame retains its next sibling while a child list is visited.
+        let mut frames = vec![RuleFrame::new(
+            rules,
+            false,
+            OwnedTraversalContext::default(),
+            0,
+        )];
+        while let Some(frame) = frames.last_mut() {
+            if frame.next == frame.rules.len() {
+                frames.pop();
+                continue;
+            }
+            let rules = frame.rules;
+            let index = frame.next;
+            let depth = frame.depth;
+            let scoped = frame.scoped;
+            let context = frame.context.borrowed();
+            frame.next += 1;
+            if let Some(child) = self.ordinary_rule(&rules[index], context, depth, scoped)? {
+                frames.push(child);
+            }
+        }
+        Ok(())
+    }
+
+    fn ordinary_rule<'a>(
+        &mut self,
+        rule: &'a CssRule,
+        context: TraversalContext<'_>,
+        depth: u32,
+        scoped: bool,
+    ) -> Result<Option<RuleFrame<'a>>, CssNormalizationError> {
+        let position = ordinary_position(rule);
+        self.admit_rule(position, context, depth)?;
+        match rule {
+            CssRule::Style(style) => {
+                let (selectors, kind) = if scoped {
+                    let selectors = CssSelectorContext::scoped(style.selectors(), context);
+                    (selectors.clone(), RuleContextKind::ScopedStyle(selectors))
+                } else {
+                    let selectors = CssSelectorContext::ordinary(style.selectors(), context);
+                    (selectors.clone(), RuleContextKind::Style(selectors))
+                };
+                let rule = self.record_rule(kind, position, context.rule);
+                self.declarations(style.declarations(), &rule, &selectors)?;
+                return Ok(Some(RuleFrame::new(
+                    style.rules(),
+                    false,
+                    OwnedTraversalContext::within_style(context, rule, selectors),
+                    depth + 1,
+                )));
+            }
+            CssRule::NestedDeclarations(run) => {
+                let selectors = context.selectors.expect(
+                    "the authored parser only creates declaration runs inside a style context",
+                );
+                let rule = self.record_rule(
+                    RuleContextKind::NestedDeclarations(selectors.clone()),
+                    position,
+                    context.rule,
+                );
+                self.declarations(run.declarations(), &rule, selectors)?;
+            }
+            CssRule::Media(media) => {
+                let rule = self.record_rule(
+                    RuleContextKind::Media(media.query().clone()),
+                    position,
+                    context.rule,
+                );
+                return Ok(Some(RuleFrame::new(
+                    media.rules(),
+                    scoped,
+                    OwnedTraversalContext::within_rule(context, rule),
+                    depth + 1,
+                )));
+            }
+            CssRule::Supports(supports) => {
+                let rule = self.record_rule(
+                    RuleContextKind::Supports(supports.condition().clone()),
+                    position,
+                    context.rule,
+                );
+                return Ok(Some(RuleFrame::new(
+                    supports.rules(),
+                    scoped,
+                    OwnedTraversalContext::within_rule(context, rule),
+                    depth + 1,
+                )));
+            }
+            CssRule::SupportsCondition(value) => {
+                self.record_rule(
+                    RuleContextKind::SupportsCondition(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssRule::Container(container) => {
+                let rule = self.record_rule(
+                    RuleContextKind::Container {
+                        prelude: container.prelude().clone(),
+                    },
+                    position,
+                    context.rule,
+                );
+                return Ok(Some(RuleFrame::new(
+                    container.rules(),
+                    scoped,
+                    OwnedTraversalContext::within_rule(context, rule),
+                    depth + 1,
+                )));
+            }
+            CssRule::When(conditional) => {
+                let rule = self.record_rule(
+                    RuleContextKind::When(conditional.condition().clone()),
+                    position,
+                    context.rule,
+                );
+                return Ok(Some(RuleFrame::new(
+                    conditional.rules(),
+                    scoped,
+                    OwnedTraversalContext::within_rule(context, rule),
+                    depth + 1,
+                )));
+            }
+            CssRule::Else(conditional) => {
+                let rule = self.record_rule(
+                    RuleContextKind::Else(conditional.condition().cloned()),
+                    position,
+                    context.rule,
+                );
+                return Ok(Some(RuleFrame::new(
+                    conditional.rules(),
+                    scoped,
+                    OwnedTraversalContext::within_rule(context, rule),
+                    depth + 1,
+                )));
+            }
+            CssRule::LayerBlock(layer) => {
+                let rule = self.record_rule(
+                    RuleContextKind::LayerBlock(layer.name().cloned()),
+                    position,
+                    context.rule,
+                );
+                return Ok(Some(RuleFrame::new(
+                    layer.rules(),
+                    scoped,
+                    OwnedTraversalContext::within_rule(context, rule),
+                    depth + 1,
+                )));
+            }
+            CssRule::Scope(scope) => {
+                return Ok(Some(self.scope(scope, context, position, depth)));
+            }
+            CssRule::Import(value) => {
+                self.record_rule(
+                    RuleContextKind::Import(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssRule::Namespace(value) => {
+                self.record_rule(
+                    RuleContextKind::Namespace(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssRule::LayerStatement(value) => {
+                self.record_rule(
+                    RuleContextKind::LayerStatement(value.names().clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssRule::CustomMedia(value) => {
+                self.record_rule(
+                    RuleContextKind::CustomMedia(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssRule::FontFeatureValues(value) => {
+                self.record_rule(
+                    RuleContextKind::FontFeatureValues(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssRule::FontPaletteValues(value) => {
+                self.record_rule(
+                    RuleContextKind::FontPaletteValues(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssRule::ColorProfile(value) => {
+                self.record_rule(
+                    RuleContextKind::ColorProfile(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssRule::FontFace(value) => {
+                self.record_rule(
+                    RuleContextKind::FontFace(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssRule::Keyframes(value) => {
+                self.record_rule(
+                    RuleContextKind::Keyframes(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssRule::CounterStyle(value) => {
+                self.record_rule(
+                    RuleContextKind::CounterStyle(value.clone()),
+                    position,
+                    context.rule,
+                );
+            }
+            CssRule::Page(value) => {
+                self.record_rule(RuleContextKind::Page(value.clone()), position, context.rule);
+            }
+        }
+        Ok(None)
+    }
+
+    fn scope<'a>(
+        &mut self,
+        scope: &'a CssScopeRule,
+        context: TraversalContext<'_>,
+        position: Option<CssSourcePosition>,
+        depth: u32,
+    ) -> RuleFrame<'a> {
+        let rule = self.record_rule(
+            RuleContextKind::Scope {
+                root: scope.root().cloned(),
+                limit: scope.limit().cloned(),
+            },
+            position,
+            context.rule,
+        );
+        RuleFrame::new(
+            scope.rules().rules(),
+            true,
+            OwnedTraversalContext::within_scope(context, rule),
+            depth + 1,
+        )
+    }
+}
+
+fn ordinary_position(rule: &CssRule) -> Option<CssSourcePosition> {
+    Some(match rule {
+        CssRule::Style(value) => value.position(),
+        CssRule::NestedDeclarations(value) => {
+            return value
+                .declarations()
+                .first()
+                .and_then(CssDeclaration::position);
+        }
+        CssRule::Import(value) => return value.position(),
+        CssRule::Namespace(value) => return value.position(),
+        CssRule::CounterStyle(value) => value.position(),
+        CssRule::Page(value) => value.position(),
+        CssRule::LayerStatement(value) => value.position(),
+        CssRule::LayerBlock(value) => return value.position(),
+        CssRule::CustomMedia(value) => return value.position(),
+        CssRule::FontFeatureValues(value) => return value.position(),
+        CssRule::FontPaletteValues(value) => return value.position(),
+        CssRule::ColorProfile(value) => return value.position(),
+        CssRule::FontFace(value) => return value.position(),
+        CssRule::Keyframes(value) => value.position(),
+        CssRule::Media(value) => return value.position(),
+        CssRule::Supports(value) => return value.position(),
+        CssRule::SupportsCondition(value) => return value.position(),
+        CssRule::Container(value) => return value.position(),
+        CssRule::When(value) => return value.position(),
+        CssRule::Else(value) => return value.position(),
+        CssRule::Scope(value) => return value.position(),
+    })
+}
+
+use crate::selector::selector_anchors::AnchorKind;
+fn selector_has_anchor(selector: &CssSelector, kind: AnchorKind) -> bool {
+    match crate::selector::selector_anchors::selector_has_anchor(selector, kind, &mut |_| {
+        Ok::<_, std::convert::Infallible>(())
+    }) {
+        Ok(value) => value,
+        Err(never) => match never {},
+    }
+}
+
+#[cfg(test)]
+mod import_construction_tests {
+    use super::*;
+    use crate::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+    use crate::selector::CssNamespaceContext;
+
+    #[test]
+    fn constructed_namespace_normalization_preserves_absent_authored_coordinates() {
+        let declaration = crate::rule::CssNamespaceRule::new(
+            Some(crate::rule::CssNamespacePrefix::try_new("1").unwrap()),
+            crate::rule::CssNamespaceName::new(""),
+        );
+        let mut sheet = CssSheet::new();
+        sheet.push_rule(CssRule::Namespace(declaration.clone()));
+        let normalized = sheet.normalize(Default::default()).unwrap();
+        drop(sheet);
+        let [CssNormalizedItem::Rule(context)] = normalized.items() else {
+            panic!("constructed namespace retained as one normalization occurrence")
+        };
+        assert_eq!(context.position(), None);
+        let CssRuleContextKindRef::Namespace(retained) = context.kind() else {
+            panic!("constructed namespace payload")
+        };
+        assert_eq!(retained, &declaration);
+        assert_eq!(retained.position(), None);
+        assert!(context.parent().is_none());
+    }
+
+    #[test]
+    fn programmatic_and_parsed_import_origins_survive_normalization() {
+        let parsed_keyword = crate::component::values::parse_component_values("/*😀*/@import")
+            .unwrap()
+            .items()
+            .last()
+            .unwrap()
+            .clone();
+        let original_origin = parsed_keyword.origin().clone();
+        let mut sheet = CssSheet::new();
+        for (keyword, target) in [
+            (CssComponentValue::try_token("@import").unwrap(), "'a'"),
+            (parsed_keyword, "'b'"),
+        ] {
+            let components = CssComponentValues::try_new(
+                vec![
+                    keyword,
+                    CssComponentValue::try_token(" ").unwrap(),
+                    CssComponentValue::try_token(target).unwrap(),
+                    CssComponentValue::try_token(";").unwrap(),
+                ],
+                Default::default(),
+            )
+            .unwrap();
+            sheet.push_rule(CssRule::Import(
+                CssImportRule::try_from_components(
+                    components,
+                    &CssNamespaceContext::default(),
+                    Default::default(),
+                )
+                .unwrap(),
+            ));
+        }
+        let normalized = sheet.normalize(Default::default()).unwrap();
+        drop(sheet);
+        let [
+            CssNormalizedItem::Rule(first),
+            CssNormalizedItem::Rule(second),
+        ] = normalized.items()
+        else {
+            panic!("two intact import occurrences in authored order")
+        };
+        assert_eq!(first.position(), None);
+        let CssRuleContextKindRef::Import(first_import) = first.kind() else {
+            panic!("programmatic import")
+        };
+        assert_eq!(first_import.origin(), &CssValueOrigin::Programmatic);
+        assert_eq!(
+            first_import
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            "@import 'a';"
+        );
+        let CssRuleContextKindRef::Import(second_import) = second.kind() else {
+            panic!("import with original parsed at-keyword")
+        };
+        let (CssValueOrigin::Parsed(actual), CssValueOrigin::Parsed(expected)) =
+            (second_import.origin(), &original_origin)
+        else {
+            panic!("original parsed keyword provenance")
+        };
+        assert!(actual.source().same_snapshot(expected.source()));
+        assert_eq!(actual.span(), expected.span());
+        assert_eq!(second.position(), Some(expected.span().start()));
+        assert_eq!(
+            second_import
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            "@import 'b';"
+        );
+        assert!(first.parent().is_none());
+        assert!(second.parent().is_none());
+    }
+}

@@ -1,6 +1,7 @@
 //! CSS Values 4 function semantics, including exceptions to host math behavior.
-use super::{Function, Scalar, Unit};
-use crate::CssRoundingStrategy as Strategy;
+use super::{Scalar, Unit};
+use crate::numeric::CssMathFunction as Function;
+use crate::numeric::CssRoundingStrategy as Strategy;
 
 pub(super) fn extreme(a: f64, b: f64, minimum: bool) -> f64 {
     if a.is_nan() || b.is_nan() {

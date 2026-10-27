@@ -3,20 +3,31 @@
 //! The one property is an inherited longhand with an effective ordered pair.
 
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{CssLength, CssNonNegative, CssNumeric};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssPropertyKindRef,
+};
+use surgeist_css::values::common::CssSidePair;
 
-fn spacing(source: &CssDeclaration) -> &CssBorderSpacing {
+fn spacing(source: &CssDeclaration) -> &CssSidePair<CssNumeric<CssLength, CssNonNegative>> {
     let CssKnownPropertyValueRef::BorderSpacing(value) =
         source.known().unwrap().property_value().unwrap()
     else {
         panic!("typed border-spacing")
     };
-    value.spacing()
+    value.value()
 }
 
 fn expanded(source: &CssDeclaration) -> Vec<CssLonghandContribution> {
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(items)) = source.expand().unwrap()
     else {
         panic!("one border-spacing longhand contribution")
     };
@@ -45,11 +56,17 @@ fn border_spacing_metadata_is_inherited_with_zero_on_both_axes() {
     );
     let authored = declaration("border-spacing:0");
     assert!(exact_literal(
-        spacing(&authored).horizontal().literal_component(),
+        spacing(&authored)
+            .first()
+            .literal()
+            .map(|literal| literal.component()),
         "0"
     ));
     assert!(exact_literal(
-        spacing(&authored).vertical().literal_component(),
+        spacing(&authored)
+            .second()
+            .literal()
+            .map(|literal| literal.component()),
         "0"
     ));
     let items = expanded(&authored);
@@ -69,11 +86,11 @@ fn one_or_two_lengths_keep_horizontal_then_vertical_effective_values() {
         let source = declaration(&format!("border-spacing:{authored}!important"));
         let value = spacing(&source);
         assert!(exact_literal(
-            value.horizontal().literal_component(),
+            value.first().literal().map(|literal| literal.component()),
             horizontal
         ));
         assert!(exact_literal(
-            value.vertical().literal_component(),
+            value.second().literal().map(|literal| literal.component()),
             vertical
         ));
         let items = expanded(&source);
@@ -93,20 +110,21 @@ fn symbolic_pure_length_math_remains_in_the_authored_pair() {
     for authored in ["calc(1px + 2em)", "calc(1px + 2em) 3px"] {
         let source = declaration(&format!("border-spacing:{authored}"));
         let value = spacing(&source);
-        assert!(value.horizontal().calculation().is_some());
+        assert!(value.first().calculation().is_some());
         if authored.ends_with("3px") {
             assert!(exact_dimension(
-                value.vertical().literal_component(),
+                value.second().literal().map(|literal| literal.component()),
                 "3",
                 "px"
             ));
         } else {
-            assert_eq!(value.horizontal(), value.vertical());
+            assert_eq!(value.first(), value.second());
         }
         assert_eq!(expanded(&source).len(), 1);
     }
     for invalid in ["-1px", "1%", "1px 2px 3px"] {
-        let report = parse_style_attribute(&format!("border-spacing:{invalid};color:red"));
+        let report = CssParser::default()
+            .parse_block_contents(format!("border-spacing:{invalid};color:red"));
         assert_eq!(report.diagnostics().len(), 1, "{invalid}");
         assert_eq!(
             report.diagnostics()[0].action(),
@@ -123,27 +141,26 @@ fn symbolic_pure_length_math_remains_in_the_authored_pair() {
 #[test]
 fn pending_border_spacing_reentry_is_strict_repeatable_and_provenanced() {
     let source = declaration("border-spacing:var(--spacing)!important");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("substitution-dependent border-spacing remains pending")
     };
     assert!(pending.source().same_occurrence(&source));
     for invalid in ["1%", "-1px", "1px 2px 3px", "1px / 2px"] {
-        assert!(matches!(
+        assert!(
             pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
     }
-    assert_eq!(
+    assert!(
         pending
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
-    let replacement = parse_component_values("2px 3em").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "2px 3em").unwrap();
     for _ in 0..2 {
         let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
         else {
@@ -159,7 +176,7 @@ fn pending_border_spacing_reentry_is_strict_repeatable_and_provenanced() {
         assert_eq!(item.replacement_components(), Some(&replacement));
     }
     let CssContributions::Longhands(items) = pending
-        .reenter(parse_component_values("inherit").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "inherit").unwrap())
         .unwrap()
     else {
         panic!("reentered symbolic global")
@@ -173,9 +190,10 @@ fn pending_border_spacing_reentry_is_strict_repeatable_and_provenanced() {
 
 #[test]
 fn normalization_keeps_mixed_order_and_fails_at_exact_contribution_limit() {
-    let report = parse_sheet(".a{border-spacing:1px;flex-direction:column;border-spacing:2px 3em}");
+    let report = CssParser::default()
+        .parse_sheet(".a{border-spacing:1px;flex-direction:column;border-spacing:2px 3em}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -210,13 +228,10 @@ fn normalization_keeps_mixed_order_and_fails_at_exact_contribution_limit() {
         assert!(item.source().same_occurrence(declarations[index].source()));
     }
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+    let error = report.syntax().normalize(limits).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 2,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 2))
     );
     assert_eq!(error.declaration_order(), Some(2));
     assert_eq!(
@@ -226,17 +241,21 @@ fn normalization_keeps_mixed_order_and_fails_at_exact_contribution_limit() {
 }
 
 fn exact_dimension(
-    component: Option<&surgeist_css::CssComponentValue>,
+    component: Option<&surgeist_css::component::CssComponentValue>,
     representation: &str,
     expected_unit: &str,
 ) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
 }
-fn exact_literal(component: Option<&surgeist_css::CssComponentValue>, css: &str) -> bool {
-    use surgeist_css::{CssComponentValueRef as Component, CssValueTokenRef as Token};
-    let expected = surgeist_css::CssComponentValue::try_token(css).unwrap();
+fn exact_literal(
+    component: Option<&surgeist_css::component::CssComponentValue>,
+    css: &str,
+) -> bool {
+    use surgeist_css::component::CssComponentValueRef as Component;
+    use surgeist_css::component::CssValueTokenRef as Token;
+    let expected = surgeist_css::component::CssComponentValue::try_token(css).unwrap();
     match (
-        component.map(surgeist_css::CssComponentValue::view),
+        component.map(surgeist_css::component::CssComponentValue::view),
         expected.view(),
     ) {
         (

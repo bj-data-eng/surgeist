@@ -1,4 +1,7 @@
-use surgeist_css::*;
+use surgeist_css::rule::counter_style::{
+    CssCounterStyleDefinitionStatus, CssCounterStyleDescriptorKind,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 use surgeist_cssom::CssCounterStyleRule;
 use surgeist_cssom::*;
 
@@ -46,7 +49,7 @@ fn counter(
 fn descriptor(
     capture: &CssomCapture<CssCounterStyleRule>,
     kind: CssCounterStyleDescriptorKind,
-    limits: CssSpecifiedValueSerializationLimits,
+    limits: CssSerializationLimits,
 ) -> Result<String, CssomError> {
     use CssCounterStyleDescriptorKind::*;
     match kind {
@@ -389,15 +392,15 @@ fn request_resources_fail_atomically_and_retry_uses_same_current_state() {
             ..Default::default()
         },
         CssomDeclarationRequestLimits {
-            provider: CssSpecifiedValueSerializationLimits::new(0, 1000, 1000),
+            provider: CssSerializationLimits::new(0, 1000, 1000),
             ..Default::default()
         },
         CssomDeclarationRequestLimits {
-            provider: CssSpecifiedValueSerializationLimits::new(1000, 0, 1000),
+            provider: CssSerializationLimits::new(1000, 0, 1000),
             ..Default::default()
         },
         CssomDeclarationRequestLimits {
-            provider: CssSpecifiedValueSerializationLimits::new(1000, 1000, 0),
+            provider: CssSerializationLimits::new(1000, 1000, 0),
             ..Default::default()
         },
     ] {
@@ -412,8 +415,7 @@ fn request_resources_fail_atomically_and_retry_uses_same_current_state() {
         assert_eq!(read(&store.snapshot(), &rule, Suffix, &store), "");
     }
     assert!(matches!(
-        counter(&store, &before, &rule)
-            .symbols(CssSpecifiedValueSerializationLimits::new(1000, 1000, 1)),
+        counter(&store, &before, &rule).symbols(CssSerializationLimits::new(1000, 1000, 1)),
         Err(CssomError::Value(_))
     ));
     let mut edit = batch(&store);
@@ -633,14 +635,14 @@ fn name_and_current_collection_preserve_native_resource_errors() {
     let snapshot = store.snapshot();
     assert_eq!(
         counter(&store, &snapshot, &rule)
-            .name(CssSpecifiedValueSerializationLimits::new(1, 1, 6))
+            .name(CssSerializationLimits::new(1, 1, 6))
             .unwrap(),
         "custom"
     );
     for limits in [
-        CssSpecifiedValueSerializationLimits::new(0, 1, 6),
-        CssSpecifiedValueSerializationLimits::new(1, 0, 6),
-        CssSpecifiedValueSerializationLimits::new(1, 1, 5),
+        CssSerializationLimits::new(0, 1, 6),
+        CssSerializationLimits::new(1, 0, 6),
+        CssSerializationLimits::new(1, 1, 5),
     ] {
         assert!(matches!(
             counter(&store, &snapshot, &rule).name(limits),
@@ -652,7 +654,7 @@ fn name_and_current_collection_preserve_native_resource_errors() {
         snapshot
             .block(block)
             .unwrap()
-            .counter_descriptors(CssSpecifiedValueSerializationLimits::new(0, 1000, 1000)),
+            .counter_descriptors(CssSerializationLimits::new(0, 1000, 1000)),
         Err(CssomError::Value(_))
     ));
 }

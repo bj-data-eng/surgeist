@@ -1,18 +1,25 @@
 //! Component composition promises to preserve token identity and lexical numbers.
 //! The leading `--` in a CDC must not be consumed by its preceding token.
 
-use surgeist_css::{
-    CssComponentValue, CssComponentValueErrorKind, CssComponentValueLimits, CssComponentValueRef,
-    CssComponentValues, CssNumericTokenKind, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
-    parse_component_values,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssNumericTokenKind, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
 };
 
 const HAZARDOUS_LEFT_SPELLINGS: [&str; 7] = ["-", "@", "#", "1", "1e3", "+1", "-1"];
 
 fn parsed_pair(left: &str) -> CssComponentValues {
-    let mut items = parse_component_values(left).unwrap().items().to_vec();
-    items.extend_from_slice(parse_component_values("-->").unwrap().items());
-    CssComponentValues::try_new(items).unwrap()
+    let mut items = CssComponentValues::parse(&CssParser::default(), left)
+        .unwrap()
+        .items()
+        .to_vec();
+    items.extend_from_slice(
+        CssComponentValues::parse(&CssParser::default(), "-->")
+            .unwrap()
+            .items(),
+    );
+    CssComponentValues::try_new(items, Default::default()).unwrap()
 }
 
 fn assert_left_token(value: &CssComponentValue, spelling: &str) {
@@ -40,8 +47,8 @@ fn assert_left_token(value: &CssComponentValue, spelling: &str) {
 }
 
 fn assert_pair_survives(values: &CssComponentValues, left: &str) {
-    let output = values.serialize().unwrap();
-    let reparsed = parse_component_values(output.as_css()).unwrap();
+    let output = values.serialize_tokens(Default::default()).unwrap();
+    let reparsed = CssComponentValues::parse(&CssParser::default(), output.as_css()).unwrap();
     assert_left_token(&reparsed.items()[0], left);
     let [_, separator, cdc] = reparsed.items() else {
         panic!("retain the left token, separating comment, and CDC: {output:?}");
@@ -82,13 +89,16 @@ fn cdc_remains_separate_after_numbers_with_each_lexical_form() {
 #[test]
 fn checked_rust_tokens_preserve_the_same_cdc_boundaries() {
     for spelling in HAZARDOUS_LEFT_SPELLINGS {
-        let values = CssComponentValues::try_new(vec![
-            CssComponentValue::try_token(spelling).unwrap(),
-            CssComponentValue::try_token("-->").unwrap(),
-        ])
+        let values = CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_token(spelling).unwrap(),
+                CssComponentValue::try_token("-->").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap();
         assert_pair_survives(&values, spelling);
-        let output = values.serialize().unwrap();
+        let output = values.serialize_tokens(Default::default()).unwrap();
         assert!(matches!(
             output.origin_at(spelling.len()),
             Some(CssSerializedOrigin::Separator {
@@ -105,7 +115,7 @@ fn inserted_cdc_separators_map_both_original_parse_inputs() {
         let values = parsed_pair(spelling);
         let before = values.items()[0].origin();
         let after = values.items()[1].origin();
-        let output = values.serialize().unwrap();
+        let output = values.serialize_tokens(Default::default()).unwrap();
         for offset in 0..spelling.len() {
             assert!(matches!(output.origin_at(offset),
                 Some(CssSerializedOrigin::Token(origin)) if origin == before));
@@ -130,25 +140,30 @@ fn cdc_separator_bytes_count_in_construction_and_serialization_limits() {
         let values = parsed_pair(spelling);
         let required_bytes = spelling.len() + 4 + 3;
         for limit in [spelling.len(), spelling.len() + 3, required_bytes - 1] {
-            let error = values.serialize_with_limit(limit).unwrap_err();
-            assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
+            let error = values
+                .serialize_tokens(crate::css::support::byte_limits(limit))
+                .unwrap_err();
+            assert!(error.is_byte_limit(), "{error:?}");
             assert_eq!(error.origin(), values.items()[1].origin());
-            let error = CssComponentValues::try_new_with_limits(
+            let error = CssComponentValues::try_new(
                 values.items().to_vec(),
                 CssComponentValueLimits::try_new(0, 2, limit).unwrap(),
             )
             .unwrap_err();
-            assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
+            assert!(error.is_byte_limit(), "{error:?}");
             assert_eq!(error.origin(), values.items()[1].origin());
         }
-        let exact = CssComponentValues::try_new_with_limits(
+        let exact = CssComponentValues::try_new(
             values.items().to_vec(),
             CssComponentValueLimits::try_new(0, 2, required_bytes).unwrap(),
         )
         .unwrap();
         assert_eq!(exact.component_count(), 2);
         assert_eq!(
-            exact.serialize_with_limit(required_bytes).unwrap().as_css(),
+            exact
+                .serialize_tokens(crate::css::support::byte_limits(required_bytes))
+                .unwrap()
+                .as_css(),
             format!("{spelling}/**/-->")
         );
     }
@@ -158,9 +173,11 @@ fn cdc_separator_bytes_count_in_construction_and_serialization_limits() {
 fn harmless_delimiters_before_cdc_do_not_gain_separators() {
     for delimiter in ['+', '.', '/', '%', '<'] {
         let spelling = delimiter.to_string();
-        let output = parsed_pair(&spelling).serialize().unwrap();
+        let output = parsed_pair(&spelling)
+            .serialize_tokens(Default::default())
+            .unwrap();
         assert_eq!(output.as_css(), format!("{delimiter}-->"));
-        let reparsed = parse_component_values(output.as_css()).unwrap();
+        let reparsed = CssComponentValues::parse(&CssParser::default(), output.as_css()).unwrap();
         let [left, right] = reparsed.items() else {
             panic!("retain exactly the delimiter and CDC: {output:?}");
         };
@@ -176,10 +193,10 @@ fn harmless_delimiters_before_cdc_do_not_gain_separators() {
 #[test]
 fn authored_whitespace_and_comments_already_separate_cdc() {
     for source in ["- -->", "-/*kept*/-->", "1 -->", "1/*kept*/-->"] {
-        let values = parse_component_values(source).unwrap();
-        let output = values.serialize().unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
+        let output = values.serialize_tokens(Default::default()).unwrap();
         assert_eq!(output.as_css(), source);
-        let reparsed = parse_component_values(output.as_css()).unwrap();
+        let reparsed = CssComponentValues::parse(&CssParser::default(), output.as_css()).unwrap();
         let [left, separator, right] = reparsed.items() else {
             panic!("retain the original three components: {output:?}");
         };

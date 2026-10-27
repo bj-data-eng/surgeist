@@ -1,12 +1,12 @@
 //! Source: selected Alignment3/Grid3 omit these names; CSSWG resolution
 //! https://github.com/w3c/csswg-drafts/issues/8207#issuecomment-1747805578
 //! explicitly removed both former Masonry properties in October 2023.
-use surgeist_css::{
-    CssKnownProperty, CssRecoveryAction, ErrorKind, parse_style_attribute, validate_style_attribute,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::CssKnownProperty;
 
 fn require_unknown_declarations(source: &str, names: &[&str]) {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(
         report.syntax().is_empty(),
         "obsolete declarations survived: {report:?}"
@@ -14,10 +14,13 @@ fn require_unknown_declarations(source: &str, names: &[&str]) {
     assert_eq!(report.diagnostics().len(), names.len(), "{report:?}");
     for (diagnostic, expected) in report.diagnostics().iter().zip(names) {
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        let ErrorKind::UnknownProperty(detail) = diagnostic.error().kind() else {
-            panic!("expected unknown property for {expected}: {diagnostic:?}");
-        };
-        assert_eq!(detail.name().as_str(), *expected);
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::UnknownProperty,
+            "expected unknown property for {expected}: {diagnostic:?}"
+        );
+        assert_eq!(detail.property_name().unwrap().as_str(), *expected);
         assert_eq!(
             diagnostic.error().position().byte_offset().value(),
             source.find(expected).unwrap()
@@ -74,22 +77,28 @@ fn pending_substitutions_do_not_reintroduce_removed_properties() {
 #[test]
 fn strict_validation_rejects_removed_names_through_the_same_grammar() {
     for source in ["align-tracks: center", "justify-tracks: space-evenly"] {
-        let failure = validate_style_attribute(source)
+        let failure = CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("obsolete property must fail clean validation");
-        assert!(matches!(
-            failure.first().error().kind(),
-            ErrorKind::UnknownProperty(_)
-        ));
+        assert!(failure.first().error().code() == CssErrorCode::UnknownProperty);
     }
 }
 
 #[test]
 fn neighboring_alignment_and_custom_property_controls_remain_clean() {
     let source = "align-content: center; justify-content: space-between; align-items: start; justify-items: end; --align-tracks: center; --justify-tracks: var(--alignment); color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{report:?}");
     assert_eq!(report.syntax().len(), 7);
-    assert_eq!(validate_style_attribute(source).unwrap().len(), 7);
+    assert_eq!(
+        CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
+            .unwrap()
+            .len(),
+        7
+    );
 }
 
 #[test]

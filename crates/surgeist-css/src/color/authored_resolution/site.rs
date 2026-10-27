@@ -1,8 +1,8 @@
 //! Actual typed ancestry retained once in admitted Algorithm records.
 
-use super::CssColorPathStep;
 use super::input::Operand;
-use crate::CssValueOrigin;
+use crate::color::CssColorPathStep;
+use crate::component::CssValueOrigin;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct SiteRecord<'css> {

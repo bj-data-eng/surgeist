@@ -1,11 +1,30 @@
 //! Percentage tokens retain exact authored numeric spelling in checked lengths.
 //! Bounded scalar consumers retain their directly authored percentage magnitude.
 
+use crate::css::support::position_view::CartesianPosition as _;
 use crate::css::support::value_assertions::exact_percentage;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::keyframes::CssKeyframeSelector;
+use surgeist_css::values::border::CssBorderImageSliceComponent;
+use surgeist_css::values::effects::{CssFilter, CssFilterAmount, CssFilterFunction};
+use surgeist_css::values::image::{CssColorStopListItem, CssGradient, CssImageValue};
+use surgeist_css::values::layout::CssGridGeneralTrackComponent;
+use surgeist_css::values::position::CssHorizontalPosition;
+use surgeist_css::values::transform::{
+    CssTransform, CssTransformFunction, CssTransformScaleComponent,
+};
 
 fn first_object_position_percent(source: &str) -> String {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::ObjectPosition(value) = report.syntax()[0]
         .known()
@@ -15,11 +34,14 @@ fn first_object_position_percent(source: &str) -> String {
     else {
         panic!("expected object-position");
     };
-    let CssHorizontalPosition::Offset(offset) = value.position().horizontal() else {
+    let CssHorizontalPosition::Offset(offset) = value.value().horizontal() else {
         panic!("expected percentage offset");
     };
-    let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) =
-        offset.literal_component().unwrap().view()
+    let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) = offset
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("expected percentage length");
     };
@@ -28,7 +50,8 @@ fn first_object_position_percent(source: &str) -> String {
 
 #[test]
 fn parsed_gradient_stop_keeps_authored_thirty_percent() {
-    let report = parse_style_attribute("background-image: linear-gradient(red 30%, blue)");
+    let report = CssParser::default()
+        .parse_block_contents("background-image: linear-gradient(red 30%, blue)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BackgroundImage(images) = report.syntax()[0]
         .known()
@@ -38,15 +61,17 @@ fn parsed_gradient_stop_keeps_authored_thirty_percent() {
     else {
         panic!("expected background-image");
     };
-    let CssImageValue::Gradient(CssGradient::Linear(gradient)) = &images.images().images()[0]
-    else {
+    let CssImageValue::Gradient(CssGradient::Linear(gradient)) = &images.value().images()[0] else {
         panic!("expected linear gradient");
     };
     let CssColorStopListItem::Stop(stop) = &gradient.stops().items()[0] else {
         panic!("expected first color stop");
     };
     assert!(exact_percentage(
-        stop.position().unwrap().literal_component(),
+        stop.position()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component()),
         "30"
     ));
 }
@@ -63,8 +88,9 @@ fn parsed_generic_position_keeps_authored_thirty_percent_after_trivia() {
 }
 
 fn checked_object_position_percent(components: CssComponentValues) -> String {
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::ObjectPosition),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ObjectPosition)),
         components,
         CssImportance::Normal,
     )
@@ -74,11 +100,14 @@ fn checked_object_position_percent(components: CssComponentValues) -> String {
     else {
         panic!("expected checked object-position");
     };
-    let CssHorizontalPosition::Offset(offset) = value.position().horizontal() else {
+    let CssHorizontalPosition::Offset(offset) = value.value().horizontal() else {
         panic!("expected checked percentage offset");
     };
-    let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) =
-        offset.literal_component().unwrap().view()
+    let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) = offset
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("expected checked percentage length");
     };
@@ -88,21 +117,26 @@ fn checked_object_position_percent(components: CssComponentValues) -> String {
 #[test]
 fn checked_parsed_components_keep_authored_thirty_percent() {
     assert_eq!(
-        checked_object_position_percent(parse_component_values("30%").unwrap()),
+        checked_object_position_percent(
+            CssComponentValues::parse(&CssParser::default(), "30%").unwrap()
+        ),
         "30"
     );
 }
 
 #[test]
 fn checked_programmatic_components_keep_authored_thirty_percent() {
-    let components =
-        CssComponentValues::try_new(vec![CssComponentValue::try_token("30%").unwrap()]).unwrap();
+    let components = CssComponentValues::try_new(
+        vec![CssComponentValue::try_token("30%").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(checked_object_position_percent(components), "30");
 }
 
 #[test]
 fn grid_track_keeps_authored_thirty_percent() {
-    let report = parse_style_attribute("grid-template-columns: 30%");
+    let report = CssParser::default().parse_block_contents("grid-template-columns: 30%");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
 
     let CssKnownPropertyValueRef::GridTemplateColumns(grid) = report.syntax()[0]
@@ -123,7 +157,7 @@ fn grid_track_keeps_authored_thirty_percent() {
             .unwrap()
             .length_percentage()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "30%"
     );
@@ -131,7 +165,7 @@ fn grid_track_keeps_authored_thirty_percent() {
 
 #[test]
 fn transform_scale_keeps_authored_thirty_percent() {
-    let report = parse_style_attribute("transform: scale3d(1, 30%, 1)");
+    let report = CssParser::default().parse_block_contents("transform: scale3d(1, 30%, 1)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Transform(transform) = report.syntax()[0]
         .known()
@@ -148,13 +182,13 @@ fn transform_scale_keeps_authored_thirty_percent() {
         panic!("expected scale3d");
     };
     assert!(
-        matches!(scale.y(), CssTransformScaleComponent::Percentage(number) if exact_percentage(number.literal_component(), "30"))
+        matches!(scale.y(), CssTransformScaleComponent::Percentage(number) if exact_percentage(number.literal().map(|literal| literal.component()), "30"))
     );
 }
 
 #[test]
 fn filter_amount_keeps_authored_thirty_percent() {
-    let report = parse_style_attribute("filter: grayscale(30%)");
+    let report = CssParser::default().parse_block_contents("filter: grayscale(30%)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Filter(filter) = report.syntax()[0]
         .known()
@@ -168,13 +202,13 @@ fn filter_amount_keeps_authored_thirty_percent() {
         panic!("expected filter functions");
     };
     assert!(
-        matches!(&functions.functions()[0], CssFilterFunction::Grayscale(CssFilterAmount::Percentage(number)) if exact_percentage(number.literal_component(), "30"))
+        matches!(&functions.functions()[0], CssFilterFunction::Grayscale(CssFilterAmount::Percentage(number)) if exact_percentage(number.literal().map(|literal| literal.component()), "30"))
     );
 }
 
 #[test]
 fn border_image_slice_keeps_authored_thirty_percent() {
-    let report = parse_style_attribute("border-image-slice: 30%");
+    let report = CssParser::default().parse_block_contents("border-image-slice: 30%");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BorderImageSlice(slice) = report.syntax()[0]
         .known()
@@ -185,13 +219,13 @@ fn border_image_slice_keeps_authored_thirty_percent() {
         panic!("expected border-image-slice");
     };
     assert!(
-        matches!(&slice.slice().values()[0], CssBorderImageSliceComponent::Percentage(number) if exact_percentage(number.literal_component(), "30"))
+        matches!(&slice.value().values()[0], CssBorderImageSliceComponent::Percentage(number) if exact_percentage(number.literal().map(|literal| literal.component()), "30"))
     );
 }
 
 #[test]
 fn keyframe_selector_keeps_authored_thirty_percent() {
-    let sheet = parse_sheet("@keyframes fade { 30% { opacity: 1; } }");
+    let sheet = CssParser::default().parse_sheet("@keyframes fade { 30% { opacity: 1; } }");
     assert!(sheet.is_clean(), "{:?}", sheet.diagnostics());
     let CssRule::Keyframes(keyframes) = &sheet.syntax().rules()[0] else {
         panic!("expected keyframes");
@@ -230,7 +264,7 @@ fn invalid_unitless_negative_and_range_controls_recover_at_the_token() {
         "filter: grayscale(-30%); color: red",
         "border-image-slice: -30%; color: red",
     ] {
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         let error = report.diagnostics()[0].error();
@@ -257,7 +291,7 @@ fn invalid_unitless_negative_and_range_controls_recover_at_the_token() {
     }
 
     let source = "@keyframes fade { 101% { opacity: 1; } 25% { opacity: 0; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 1);
     let CssRule::Keyframes(keyframes) = &report.syntax().rules()[0] else {
         panic!("expected retained keyframes");
@@ -272,7 +306,7 @@ fn invalid_unitless_negative_and_range_controls_recover_at_the_token() {
 fn huge_finite_decimal_percentage_is_an_exact_authored_position() {
     let source = "object-position: 1e100%";
     assert_eq!(first_object_position_percent(source), "1e100");
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     let CssKnownPropertyValueRef::ObjectPosition(wrapper) = report.syntax()[0]
         .known()
         .unwrap()
@@ -281,7 +315,7 @@ fn huge_finite_decimal_percentage_is_an_exact_authored_position() {
     else {
         panic!("position")
     };
-    let CssHorizontalPosition::Offset(offset) = wrapper.position().horizontal() else {
+    let CssHorizontalPosition::Offset(offset) = wrapper.value().horizontal() else {
         panic!("percentage")
     };
     let CssValueOrigin::Parsed(origin) = offset.origin() else {

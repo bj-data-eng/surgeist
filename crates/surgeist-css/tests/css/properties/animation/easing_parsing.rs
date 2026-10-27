@@ -1,7 +1,6 @@
-use surgeist_css::{
-    CssErrorCode, CssKnownProperty, CssRecoveryAction, CssTokenKind, ErrorKind,
-    parse_style_attribute,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::property::CssKnownProperty;
 
 struct InvalidEasingCase {
     source: &'static str,
@@ -13,7 +12,7 @@ struct InvalidEasingCase {
 }
 
 fn assert_invalid_easing_is_dropped(case: &InvalidEasingCase) {
-    let report = parse_style_attribute(case.source);
+    let report = CssParser::default().parse_block_contents(case.source);
     let [declaration] = report.syntax().as_slice() else {
         panic!(
             "{}: invalid easing must be dropped while the valid sibling is retained; syntax={:?}",
@@ -66,12 +65,21 @@ fn assert_invalid_easing_is_dropped(case: &InvalidEasingCase) {
         "{}",
         case.source,
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("{}: expected typed property-value detail", case.source);
-    };
-    assert_eq!(detail.property(), case.property, "{}", case.source);
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.expectation().as_str(),
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "{}: expected typed property-value detail",
+        case.source
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        case.property,
+        "{}",
+        case.source
+    );
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "a value accepted by the property's grammar",
         "{}",
         case.source,
@@ -88,7 +96,9 @@ fn assert_invalid_easing_is_dropped(case: &InvalidEasingCase) {
     );
 
     {
-        let failure = surgeist_css::validate_style_attribute(case.source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(case.source)
+            .into_validation_result()
             .expect_err("strict validation must reject the recovered easing declaration");
         assert_eq!(
             failure.diagnostics(),

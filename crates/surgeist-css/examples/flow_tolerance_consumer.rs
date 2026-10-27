@@ -9,7 +9,24 @@
 //! Values, component origins, contribution ordering, and strict retry behavior
 //! below are asserted independently of serialization followed by reparsing.
 
-use surgeist_css::{CssKnownProperty as Property, *};
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationExpressionRef, CssCalculationProductOperator,
+    CssCalculationSumOperator, CssCalculationType, CssCalculationValueRef, CssLengthPercentage,
+    CssLengthUnit, CssNumeric,
+};
+use surgeist_css::property::CssKnownProperty as Property;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownPropertyValueRef,
+    CssLonghandContribution, CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::{CssFlowTolerance, CssFlowToleranceRef};
 
 fn value(declaration: &CssDeclaration) -> &CssFlowTolerance {
     let Some(CssKnownPropertyValueRef::FlowTolerance(value)) =
@@ -20,7 +37,7 @@ fn value(declaration: &CssDeclaration) -> &CssFlowTolerance {
     value.value()
 }
 
-fn length(value: &CssFlowTolerance) -> &CssSpecifiedLengthPercentage {
+fn length(value: &CssFlowTolerance) -> &CssNumeric<CssLengthPercentage> {
     match value.as_ref() {
         CssFlowToleranceRef::LengthPercentage(length) => length,
         other => panic!("a symbolic length-percentage: {other:?}"),
@@ -36,8 +53,9 @@ fn contribution(value: &CssLonghandContribution) -> &CssFlowTolerance {
 }
 
 fn checked(components: CssComponentValues, importance: CssImportance) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(Property::FlowTolerance),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(Property::FlowTolerance)),
         components,
         importance,
     )
@@ -90,7 +108,7 @@ fn constructors_preserve_symbolic_keywords_and_signed_numeric_payloads() {
         "thick",
     ] {
         assert!(
-            CssSpecifiedLengthPercentage::try_from_component(
+            CssNumeric::<CssLengthPercentage>::try_from_component(
                 CssComponentValue::try_ident(keyword).unwrap()
             )
             .is_err(),
@@ -101,24 +119,26 @@ fn constructors_preserve_symbolic_keywords_and_signed_numeric_payloads() {
 }
 
 fn checked_sum_construction_preserves_signed_math() {
-    let signed = CssLengthPercentageCalculation::try_sum(
-        CssLengthPercentageCalculation::try_dimension(-2.0, CssLengthUnit::Px).unwrap(),
+    let signed = CssCalculation::<CssLengthPercentage>::try_sum(
+        CssCalculation::<CssLengthPercentage>::try_dimension(-2.0, CssLengthUnit::Px).unwrap(),
         [(
             CssCalculationSumOperator::Subtract,
-            CssLengthPercentageCalculation::try_percentage(3.0).unwrap(),
+            CssCalculation::<CssLengthPercentage>::try_percentage(3.0).unwrap(),
         )],
+        Default::default(),
     )
     .unwrap();
-    let nested = CssLengthPercentageCalculation::try_sum(
+    let nested = CssCalculation::<CssLengthPercentage>::try_sum(
         signed.clone(),
         [(
             CssCalculationSumOperator::Subtract,
-            CssLengthPercentageCalculation::try_dimension(-4.0, CssLengthUnit::Em).unwrap(),
+            CssCalculation::<CssLengthPercentage>::try_dimension(-4.0, CssLengthUnit::Em).unwrap(),
         )],
+        Default::default(),
     )
     .unwrap();
     for valid in [signed, nested] {
-        let expected = CssSpecifiedLengthPercentage::try_from_calculation(valid).unwrap();
+        let expected = CssNumeric::<CssLengthPercentage>::try_from_calculation(valid).unwrap();
         let tolerance = CssFlowTolerance::length_percentage(expected.clone());
         assert_eq!(length(&tolerance), &expected);
     }
@@ -128,11 +148,13 @@ fn checked_sum_construction_preserves_signed_math() {
 fn parsed_and_constructed_payloads_match_independent_signed_expectations() {
     for source in ["0", "-2px", "-0.5em", "-25%", "+125%"] {
         let expected = signed_length_percentage(source);
-        let report = parse_style_attribute(&format!("flow-tolerance:{source}"));
+        let report = CssParser::default().parse_block_contents(format!("flow-tolerance:{source}"));
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let constructed = CssFlowTolerance::length_percentage(expected.clone());
         assert!(exact_literal(
-            length(value(&report.syntax()[0])).literal_component(),
+            length(value(&report.syntax()[0]))
+                .literal()
+                .map(|literal| literal.component()),
             source
         ));
         assert_eq!(length(&constructed), &expected);
@@ -142,7 +164,8 @@ fn parsed_and_constructed_payloads_match_independent_signed_expectations() {
         ("NoRmAl", CssFlowTolerance::normal()),
         (r"\69 nfinite", CssFlowTolerance::infinite()),
     ] {
-        let report = parse_style_attribute(&format!("flow-tolerance: {source} !important"));
+        let report = CssParser::default()
+            .parse_block_contents(format!("flow-tolerance: {source} !important"));
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(value(&report.syntax()[0]), &expected);
         let Some(CssKnownPropertyValueRef::FlowTolerance(wrapper)) =
@@ -153,7 +176,7 @@ fn parsed_and_constructed_payloads_match_independent_signed_expectations() {
         assert_eq!(wrapper.as_css(), source);
     }
 
-    let report = parse_style_attribute("flow-tolerance:calc(-2px - 3%)");
+    let report = CssParser::default().parse_block_contents("flow-tolerance:calc(-2px - 3%)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let calc = length(value(&report.syntax()[0]))
         .calculation()
@@ -170,13 +193,13 @@ fn parsed_and_constructed_payloads_match_independent_signed_expectations() {
     );
     assert_eq!(
         terms.term(1).unwrap().operator(),
-        Some(surgeist_css::CssCalculationSumOperator::Subtract)
+        Some(surgeist_css::numeric::CssCalculationSumOperator::Subtract)
     );
     assert!(
         matches!(terms.term(1).unwrap().expression(), CssCalculationExpressionRef::Value(CssCalculationValueRef::Percentage(v)) if v.representation() == "3")
     );
 
-    let report = parse_style_attribute("flow-tolerance:calc(-2 * 3px)");
+    let report = CssParser::default().parse_block_contents("flow-tolerance:calc(-2 * 3px)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let calculation = length(value(&report.syntax()[0]))
         .calculation()
@@ -207,13 +230,16 @@ fn parsed_and_constructed_payloads_match_independent_signed_expectations() {
 }
 
 fn component_construction_preserves_value_importance_and_origins() {
-    let components = CssComponentValues::try_new(vec![
-        CssComponentValue::try_dimension("-0.5", "em").unwrap(),
-    ])
+    let components = CssComponentValues::try_new(
+        vec![CssComponentValue::try_dimension("-0.5", "em").unwrap()],
+        Default::default(),
+    )
     .unwrap();
     let declaration = checked(components, CssImportance::Important);
     assert!(exact_literal(
-        length(value(&declaration)).literal_component(),
+        length(value(&declaration))
+            .literal()
+            .map(|literal| literal.component()),
         "-0.5em"
     ));
     assert_eq!(declaration.importance(), CssImportance::Important);
@@ -228,7 +254,7 @@ fn component_construction_preserves_value_importance_and_origins() {
             .all(|item| { matches!(item.origin(), CssValueOrigin::Programmatic) })
     );
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&declaration).unwrap()
+        declaration.expand().unwrap()
     else {
         panic!("completed longhand from programmatic components");
     };
@@ -247,9 +273,11 @@ fn normalization_keeps_occurrence_order_and_symbolic_values() {
         ".grid{flow-tolerance:normal!important;",
         "flow-tolerance:-25%;flow-tolerance:infinite}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_report(&report).expect("flow-tolerance expands as one longhand");
+    let normalized = report
+        .normalize(Default::default())
+        .expect("flow-tolerance expands as one longhand");
     let declarations: Vec<_> = normalized
         .syntax()
         .items()
@@ -317,11 +345,11 @@ fn global_keywords_are_not_resolved_to_ordinary_defaults() {
         ("revert-layer", CssGlobalKeyword::RevertLayer),
     ] {
         let declaration = checked(
-            parse_component_values(source).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
             CssImportance::Important,
         );
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&declaration).unwrap()
+            declaration.expand().unwrap()
         else {
             panic!("completed symbolic global longhand");
         };
@@ -340,16 +368,16 @@ fn global_keywords_are_not_resolved_to_ordinary_defaults() {
 
 fn pending_reentry_preserves_original_and_replacement_origins_and_is_retryable() {
     let source = r"\66 low-tolerance:var(--threshold,-1px)!important";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let authored = &report.syntax()[0];
-    let CssExpansion::Pending(pending) = expand_declaration(authored).unwrap() else {
+    let CssExpansion::Pending(pending) = authored.expand().unwrap() else {
         panic!("variable-dependent flow-tolerance stays pending");
     };
     assert!(pending.source().same_occurrence(authored));
     assert_eq!(pending.source().importance(), CssImportance::Important);
     for source in ["-25%", "normal", "infinite", "initial", "calc(-2px - 3%)"] {
-        let replacement = parse_component_values(source).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
         else {
             panic!("strict reentry produces one complete longhand");
@@ -360,7 +388,9 @@ fn pending_reentry_preserves_original_and_replacement_origins_and_is_retryable()
         assert_eq!(item.property(), Property::FlowTolerance);
         match source {
             "-25%" => assert!(exact_literal(
-                length(contribution(item)).literal_component(),
+                length(contribution(item))
+                    .literal()
+                    .map(|literal| literal.component()),
                 "-25%"
             )),
             "normal" => assert_eq!(contribution(item), &CssFlowTolerance::normal()),
@@ -390,7 +420,7 @@ fn pending_reentry_preserves_original_and_replacement_origins_and_is_retryable()
                 );
                 assert_eq!(
                     terms.term(1).unwrap().operator(),
-                    Some(surgeist_css::CssCalculationSumOperator::Subtract)
+                    Some(surgeist_css::numeric::CssCalculationSumOperator::Subtract)
                 );
                 assert!(
                     matches!(terms.term(1).unwrap().expression(), CssCalculationExpressionRef::Value(CssCalculationValueRef::Percentage(v)) if v.representation() == "3")
@@ -422,12 +452,9 @@ fn pending_reentry_preserves_original_and_replacement_origins_and_is_retryable()
         r"\76 ar(--again)",
     ] {
         let error = pending
-            .reenter(parse_component_values(source).unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), source).unwrap())
             .unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssExpansionErrorKind::ResidualSubstitution
-        ));
+        assert!(error.is_residual_substitution());
     }
     for source in [
         "auto",
@@ -438,20 +465,17 @@ fn pending_reentry_preserves_original_and_replacement_origins_and_is_retryable()
         "calc(1px + 1s)",
     ] {
         let error = pending
-            .reenter(parse_component_values(source).unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), source).unwrap())
             .unwrap_err();
-        let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+        let Some(error) = error.replacement_error() else {
             panic!("invalid replacement must fail strictly: {source}: {error:?}");
         };
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
+        assert!(error.code().is_some());
         assert!(pending.source().same_occurrence(authored));
     }
-    let replacement = parse_component_values("1px!important").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "1px!important").unwrap();
     let error = pending.reenter(replacement).unwrap_err();
-    let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+    let Some(error) = error.replacement_error() else {
         unreachable!()
     };
     let CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)) = error.origin() else {
@@ -462,7 +486,7 @@ fn pending_reentry_preserves_original_and_replacement_origins_and_is_retryable()
     assert_eq!(origin.span().end().byte_offset().value(), 4);
 
     let CssContributions::Longhands(values) = pending
-        .reenter(parse_component_values("-2px").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "-2px").unwrap())
         .unwrap()
     else {
         panic!("a valid retry succeeds after every prior failed replacement");
@@ -471,7 +495,9 @@ fn pending_reentry_preserves_original_and_replacement_origins_and_is_retryable()
         panic!("one contribution after retry");
     };
     assert!(exact_literal(
-        length(contribution(item)).literal_component(),
+        length(contribution(item))
+            .literal()
+            .map(|literal| literal.component()),
         "-2px"
     ));
     assert!(item.source().same_occurrence(authored));
@@ -499,48 +525,68 @@ fn main() {
 
 fn canonical_specified_values_keep_context_dependent_operands_symbolic() {
     assert_eq!(
-        CssFlowTolerance::normal().serialize_specified().unwrap(),
+        CssFlowTolerance::normal()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "normal"
     );
     assert_eq!(
-        CssFlowTolerance::infinite().serialize_specified().unwrap(),
+        CssFlowTolerance::infinite()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "infinite"
     );
     let tolerance =
         CssFlowTolerance::length_percentage(signed_length_percentage("calc(-2px - 3%)"));
-    assert_eq!(tolerance.serialize_specified().unwrap(), "calc(-3% - 2px)");
-    let before = tolerance.clone();
     assert_eq!(
+        tolerance.serialize_specified(Default::default()).unwrap(),
+        "calc(-3% - 2px)"
+    );
+    let before = tolerance.clone();
+    assert!(
         tolerance
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(100, 100, 1))
+            .serialize_specified(CssSerializationLimits::new(100, 100, 1))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(tolerance, before);
     println!("canonical symbolic specified serialization: ok");
 }
 
-fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercentage {
-    let components = surgeist_css::parse_component_values(css).unwrap();
+fn signed_length_percentage(
+    css: &str,
+) -> surgeist_css::numeric::CssNumeric<surgeist_css::numeric::CssLengthPercentage> {
+    let components = surgeist_css::component::CssComponentValues::parse(
+        &surgeist_css::CssParser::default(),
+        css,
+    )
+    .unwrap();
     if css.contains('(') {
-        surgeist_css::CssSpecifiedLengthPercentage::try_from_calculation(
-            surgeist_css::CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+        surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssLengthPercentage>::try_from_calculation(
+            surgeist_css::numeric::CssCalculation::<surgeist_css::numeric::CssLengthPercentage>::try_from_components(
+                components,
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap()
     } else {
-        surgeist_css::CssSpecifiedLengthPercentage::try_from_component(
-            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+        surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssLengthPercentage>::try_from_component(
+            surgeist_css::component::CssComponentValue::try_token(css).unwrap(),
         )
         .unwrap()
     }
 }
 
-fn exact_literal(component: Option<&surgeist_css::CssComponentValue>, css: &str) -> bool {
-    use surgeist_css::{CssComponentValueRef as Component, CssValueTokenRef as Token};
-    let expected = surgeist_css::CssComponentValue::try_token(css).unwrap();
+fn exact_literal(
+    component: Option<&surgeist_css::component::CssComponentValue>,
+    css: &str,
+) -> bool {
+    use surgeist_css::component::CssComponentValueRef as Component;
+    use surgeist_css::component::CssValueTokenRef as Token;
+    let expected = surgeist_css::component::CssComponentValue::try_token(css).unwrap();
     match (
-        component.map(surgeist_css::CssComponentValue::view),
+        component.map(surgeist_css::component::CssComponentValue::view),
         expected.view(),
     ) {
         (

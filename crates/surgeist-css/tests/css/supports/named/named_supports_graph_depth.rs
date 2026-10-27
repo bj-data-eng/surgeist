@@ -1,20 +1,21 @@
 //! #644's new graph-depth contract counts every actual native child edge.
-use surgeist_css::{
-    CssEditedGroupPreludeRef, CssKeyframeRuleView, CssMarginBox, CssMarginRuleView,
-    CssNamespaceContext, CssPageRuleView, CssRule, CssRuleCssomSerializationErrorKind,
-    CssRuleGraphInput as Input, CssRuleGraphSerializationLimits,
-    CssSpecifiedDeclarationBlock as Block, CssSpecifiedValueSerializationErrorKind as Resource,
-    CssStyleAncestor, parse_sheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssSpecifiedDeclarationBlock as Block;
+use surgeist_css::rule::keyframes::CssKeyframeRuleView;
+use surgeist_css::rule::page::{CssMarginBox, CssMarginRuleView, CssPageRuleView};
+use surgeist_css::rule::{CssRule, CssStyleAncestor};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssRuleGraphInput as Input;
+use surgeist_css::serialization::{CssGroupPreludeRef, CssRuleSerializationLimits};
 
 fn format(
     input: Input<'_>,
     depth: usize,
-) -> Result<String, surgeist_css::CssRuleCssomSerializationError> {
-    input.serialize_cssom_with_graph_limits(
+) -> Result<String, surgeist_css::serialization::CssRuleSerializationError> {
+    input.serialize_cssom(
         &CssNamespaceContext::default(),
         CssStyleAncestor::Absent,
-        CssRuleGraphSerializationLimits {
+        CssRuleSerializationLimits {
             max_depth: depth,
             ..Default::default()
         },
@@ -22,17 +23,24 @@ fn format(
 }
 fn depth_failure(input: Input<'_>, depth: usize, path: &[usize], block: Option<usize>) {
     let error = format(input, depth).expect_err("actual child edge must exhaust the depth bound");
-    assert_eq!(
-        error.kind(),
-        CssRuleCssomSerializationErrorKind::Resource(Resource::DepthLimit)
+    assert!(
+        error.is_resource_limit()
+            && error
+                .serialization_error()
+                .is_some_and(|error| error.is_depth_limit()),
+        "{error:?}"
     );
     assert_eq!(error.rule_path(), path);
     assert_eq!(error.keyframe_block_index(), block);
 }
-fn unchanged_legacy(input: Input<'_>, expected: &str) {
+fn serializes_within_default_limits(input: Input<'_>, expected: &str) {
     assert_eq!(
         input
-            .serialize_cssom(&CssNamespaceContext::default(), CssStyleAncestor::Absent)
+            .serialize_cssom(
+                &CssNamespaceContext::default(),
+                CssStyleAncestor::Absent,
+                Default::default()
+            )
             .unwrap(),
         expected
     );
@@ -40,12 +48,12 @@ fn unchanged_legacy(input: Input<'_>, expected: &str) {
 
 #[test]
 fn parsed_ordinary_graph_counts_child_edges_and_keeps_root_zero() {
-    let report = parse_sheet("@media all { a {} }");
+    let report = CssParser::default().parse_sheet("@media all { a {} }");
     assert!(report.is_clean());
     let input = Input::from_rule(&report.syntax().rules()[0]);
     let expected = "@media all {\n  a { }\n}";
     assert_eq!(format(input, 1).unwrap(), expected);
-    unchanged_legacy(input, expected);
+    serializes_within_default_limits(input, expected);
     let CssRule::Media(media) = &report.syntax().rules()[0] else {
         panic!()
     };
@@ -58,7 +66,7 @@ fn parsed_ordinary_graph_counts_child_edges_and_keeps_root_zero() {
 
 #[test]
 fn mixed_edited_parent_and_parsed_child_share_the_actual_depth() {
-    let report = parse_sheet("@media all { a {} }");
+    let report = CssParser::default().parse_sheet("@media all { a {} }");
     assert!(report.is_clean());
     let CssRule::Media(media) = &report.syntax().rules()[0] else {
         panic!()
@@ -66,97 +74,101 @@ fn mixed_edited_parent_and_parsed_child_share_the_actual_depth() {
     let leaf = Input::from_rule(&media.rules()[0]);
     assert_eq!(format(leaf, 0).unwrap(), "a { }");
     let children = [leaf];
-    let input = Input::group(CssEditedGroupPreludeRef::Media(media.query()), &children);
+    let input = Input::group(CssGroupPreludeRef::Media(media.query()), &children);
     let expected = "@media all {\n  a { }\n}";
     assert_eq!(format(input, 1).unwrap(), expected);
-    unchanged_legacy(input, expected);
+    serializes_within_default_limits(input, expected);
     depth_failure(input, 0, &[0], None);
 }
 
 #[test]
 fn parsed_scoped_graph_counts_the_same_child_edges() {
-    let report = parse_sheet("@scope { @media all { a {} } }");
+    let report = CssParser::default().parse_sheet("@scope { @media all { a {} } }");
     assert!(report.is_clean(), "{report:?}");
     let CssRule::Scope(scope) = &report.syntax().rules()[0] else {
         panic!()
     };
-    let input = Input::from_scoped_rule(&scope.rules().rules()[0]);
+    let input = Input::from_rule(&scope.rules().rules()[0]);
     let expected = "@media all {\n  a { }\n}";
     assert_eq!(format(input, 1).unwrap(), expected);
-    unchanged_legacy(input, expected);
+    serializes_within_default_limits(input, expected);
     depth_failure(input, 0, &[0], None);
 }
 
 #[test]
 fn parsed_page_margin_is_a_native_child_edge() {
-    let empty = parse_sheet("@page {}");
+    let empty = CssParser::default().parse_sheet("@page {}");
     assert!(empty.is_clean());
     assert_eq!(
         format(Input::from_rule(&empty.syntax().rules()[0]), 0).unwrap(),
         "@page { }"
     );
-    let report = parse_sheet("@page { @top-left {} }");
+    let report = CssParser::default().parse_sheet("@page { @top-left {} }");
     assert!(report.is_clean());
     let input = Input::from_rule(&report.syntax().rules()[0]);
     let expected = "@page { @top-left { } }";
     assert_eq!(format(input, 1).unwrap(), expected);
-    unchanged_legacy(input, expected);
+    serializes_within_default_limits(input, expected);
     depth_failure(input, 0, &[0], None);
 }
 
 #[test]
 fn selected_page_margin_is_a_native_child_edge() {
-    let report = parse_sheet("@page {}");
+    let report = CssParser::default().parse_sheet("@page {}");
     assert!(report.is_clean());
     let CssRule::Page(page) = &report.syntax().rules()[0] else {
         panic!()
     };
-    let selected = page.declarations().try_specified().unwrap();
-    let block = Block::try_from_margin_entries(&[]).unwrap();
+    let selected = page
+        .declarations()
+        .try_specified(Default::default())
+        .unwrap();
+    let block = Block::try_from_margin_entries(&[], Default::default()).unwrap();
     let margins = [CssMarginRuleView::try_new(CssMarginBox::TopLeft, &block).unwrap()];
     let input = Input::page(CssPageRuleView::new(page.selectors(), &selected, &margins));
     let expected = "@page { @top-left { } }";
     assert_eq!(format(input, 1).unwrap(), expected);
-    unchanged_legacy(input, expected);
+    serializes_within_default_limits(input, expected);
     depth_failure(input, 0, &[0], None);
 }
 
 #[test]
 fn parsed_keyframe_block_is_a_native_child_edge() {
-    let empty = parse_sheet("@keyframes k {}");
+    let empty = CssParser::default().parse_sheet("@keyframes k {}");
     assert!(empty.is_clean());
     assert_eq!(
         format(Input::from_rule(&empty.syntax().rules()[0]), 0).unwrap(),
         "@keyframes k { \n}"
     );
-    let report = parse_sheet("@keyframes k { from {} }");
+    let report = CssParser::default().parse_sheet("@keyframes k { from {} }");
     assert!(report.is_clean());
     let input = Input::from_rule(&report.syntax().rules()[0]);
     let expected = "@keyframes k {   0% { }\n}";
     assert_eq!(format(input, 1).unwrap(), expected);
-    unchanged_legacy(input, expected);
+    serializes_within_default_limits(input, expected);
     depth_failure(input, 0, &[], Some(0));
 }
 
 #[test]
 fn selected_keyframe_block_is_a_native_child_edge() {
-    let report = parse_sheet("@keyframes k { from {} }");
+    let report = CssParser::default().parse_sheet("@keyframes k { from {} }");
     assert!(report.is_clean());
     let CssRule::Keyframes(frames) = &report.syntax().rules()[0] else {
         panic!()
     };
-    let block = Block::try_from_keyframe_entries(&[]).unwrap();
+    let block = Block::try_from_keyframe_entries(&[], Default::default()).unwrap();
     let blocks = [CssKeyframeRuleView::try_new(frames.blocks()[0].selectors(), &block).unwrap()];
     let input = Input::keyframes(frames.name(), &blocks);
     let expected = "@keyframes k {   0% { }\n}";
     assert_eq!(format(input, 1).unwrap(), expected);
-    unchanged_legacy(input, expected);
+    serializes_within_default_limits(input, expected);
     depth_failure(input, 0, &[], Some(0));
 }
 
 #[test]
 fn rendering_ancestors_reduce_the_native_child_allowance_without_resets() {
-    let report = parse_sheet("@media all { @page { @top-left {} } @keyframes k { from {} } }");
+    let report = CssParser::default()
+        .parse_sheet("@media all { @page { @top-left {} } @keyframes k { from {} } }");
     assert!(report.is_clean(), "{report:?}");
     let CssRule::Media(media) = &report.syntax().rules()[0] else {
         panic!()
@@ -165,16 +177,13 @@ fn rendering_ancestors_reduce_the_native_child_allowance_without_resets() {
         Input::from_rule(&media.rules()[0]),
         Input::from_rule(&media.rules()[1]),
     ];
-    let input = Input::group(CssEditedGroupPreludeRef::Media(media.query()), &children);
+    let input = Input::group(CssGroupPreludeRef::Media(media.query()), &children);
     let expected = "@media all {\n  @page { @top-left { } }\n  @keyframes k {   0% { }\n}\n}";
     assert_eq!(format(input, 2).unwrap(), expected);
-    unchanged_legacy(input, expected);
+    serializes_within_default_limits(input, expected);
     depth_failure(input, 1, &[0, 0], None);
     let keyframe_children = [children[1]];
-    let keyframes = Input::group(
-        CssEditedGroupPreludeRef::Media(media.query()),
-        &keyframe_children,
-    );
+    let keyframes = Input::group(CssGroupPreludeRef::Media(media.query()), &keyframe_children);
     assert_eq!(
         format(keyframes, 2).unwrap(),
         format(keyframes, usize::MAX).unwrap()

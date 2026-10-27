@@ -1,14 +1,19 @@
 //! Existing-callable admission oracles from Selectors4 WD20260122 §3.10 and
 //! normative Appendix B. Unknown nonfunctional -webkit- pseudo-elements are
 //! valid authored selectors; their match-nothing meaning is downstream.
-use surgeist_css::{
-    CssNamespaceContext, CssRecoveryAction, CssRule, CssSelector, parse_selector, parse_sheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{CssNamespaceContext, CssSelector};
 
 fn admitted(source: &str) {
-    let selector = parse_selector(source, &CssNamespaceContext::default());
+    let selector = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     let sheet_source = format!("{source}{{color:red}}");
-    let sheet = parse_sheet(&sheet_source);
+    let sheet = CssParser::default().parse_sheet(&sheet_source);
     // Both real fronts execute before the shared admission assertion.
     assert_eq!(
         (
@@ -55,8 +60,12 @@ fn functional_unknowns_other_prefixes_and_colon_whitespace_remain_invalid() {
         ":: -webkit-asdf",
         ": :before",
     ] {
-        let selector = parse_selector(source, &CssNamespaceContext::default());
-        let sheet = parse_sheet(&format!("{source}{{}}.after{{color:red}}"));
+        let selector = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
+        let sheet = CssParser::default().parse_sheet(format!("{source}{{}}.after{{color:red}}"));
         assert_eq!(
             (
                 selector.is_clean(),

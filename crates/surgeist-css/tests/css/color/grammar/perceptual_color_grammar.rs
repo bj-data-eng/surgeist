@@ -11,7 +11,15 @@ use crate::css::support::color_components::{
     assert_component, assert_origin, assert_recovered, component, token,
 };
 use crate::css::support::parsed_color as parsed;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssColorHue, CssColorNumberLiteral, CssColorPercentageLiteral, CssLabColor,
+    CssLchColor,
+};
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::numeric::{
+    CssAngle, CssAngleUnit, CssCalculation, CssNumber, CssNumericLiteral, CssPercentage,
+};
 
 const FAMILIES: [&str; 4] = ["lab", "lch", "oklab", "oklch"];
 
@@ -19,22 +27,26 @@ fn hue(text: &str) -> CssColorHue {
     if text.eq_ignore_ascii_case("none") {
         CssColorHue::None
     } else if text.starts_with("calc(") {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         if ["deg", "grad", "rad", "turn"]
             .iter()
             .any(|unit| text.contains(unit))
         {
-            CssColorHue::AngleCalculation(CssAngleCalculation::try_from_components(values).unwrap())
+            CssColorHue::AngleCalculation(
+                CssCalculation::<CssAngle>::try_from_components(values, Default::default())
+                    .unwrap(),
+            )
         } else {
             CssColorHue::NumberCalculation(
-                CssNumberCalculation::try_from_components(values).unwrap(),
+                CssCalculation::<CssNumber>::try_from_components(values, Default::default())
+                    .unwrap(),
             )
         }
     } else if ["deg", "grad", "rad", "turn"]
         .iter()
         .any(|unit| text.ends_with(unit))
     {
-        CssColorHue::Angle(CssAngleLiteral::try_from_component(token(text)).unwrap())
+        CssColorHue::Angle(CssNumericLiteral::<CssAngle>::try_from_component(token(text)).unwrap())
     } else {
         CssColorHue::Number(CssColorNumberLiteral::try_from_component(token(text)).unwrap())
     }
@@ -97,11 +109,25 @@ fn assert_hue(value: &CssColorHue, expected: &str) {
             assert_origin(value.origin(), expected);
         }
         CssColorHue::NumberCalculation(value) => {
-            assert_eq!(value.components().serialize().unwrap().as_css(), expected);
+            assert_eq!(
+                value
+                    .components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                expected
+            );
             assert_origin(value.origin(), expected);
         }
         CssColorHue::AngleCalculation(value) => {
-            assert_eq!(value.components().serialize().unwrap().as_css(), expected);
+            assert_eq!(
+                value
+                    .components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                expected
+            );
             assert_origin(value.origin(), expected);
         }
         other => panic!("unexpected hue {other:?}"),
@@ -155,7 +181,11 @@ fn assert_case(family: &str, channels: [&str; 3], alpha: Option<&str>, expected:
     for color in [parsed(&source), constructed(family, channels, alpha)] {
         assert_fields(&color, family, channels, alpha);
         let before = color.clone();
-        assert_eq!(color.to_specified_css().unwrap(), expected, "{source}");
+        assert_eq!(
+            color.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{source}"
+        );
         assert_eq!(color, before);
         assert_fields(&color, family, channels, alpha);
     }
@@ -209,7 +239,7 @@ fn function_case_escapes_and_none_case_preserve_the_same_family() {
             let color = parsed(&format!("{spelling}(NoNe NONE nOnE / NoNe)"));
             assert_fields(&color, family, ["none", "none", "none"], Some("none"));
             assert_eq!(
-                color.to_specified_css().unwrap(),
+                color.serialize_specified(Default::default()).unwrap(),
                 format!("{family}(none none none / none)")
             );
         }
@@ -328,7 +358,12 @@ fn calculations_keep_wrappers_and_outlier_values_while_percentage_scales_apply()
         ] {
             assert_fields(&color, family, channels, None);
             let before = color.clone();
-            assert!(color.to_specified_css().unwrap().contains("calc("));
+            assert!(
+                color
+                    .serialize_specified(Default::default())
+                    .unwrap()
+                    .contains("calc(")
+            );
             assert_eq!(color, before);
         }
     }
@@ -366,61 +401,62 @@ fn malformed_perceptual_functions_drop_only_color_and_fail_strict_validation() {
 #[test]
 fn checked_scalar_front_doors_reject_dimensions_that_cannot_enter_the_models() {
     for text in ["1deg", "1px", "1s"] {
-        assert_eq!(
+        assert!(
             CssColorNumberLiteral::try_from_component(token(text))
                 .unwrap_err()
-                .kind(),
-            CssComponentValueErrorKind::InvalidToken
+                .is_invalid_token()
         );
-        assert_eq!(
+        assert!(
             CssColorPercentageLiteral::try_from_component(token(text))
                 .unwrap_err()
-                .kind(),
-            CssComponentValueErrorKind::InvalidToken
+                .is_invalid_token()
         );
     }
-    assert_eq!(
+    assert!(
         CssColorNumberLiteral::try_from_component(token("1%"))
             .unwrap_err()
-            .kind(),
-        CssComponentValueErrorKind::InvalidToken
+            .is_invalid_token()
     );
-    assert_eq!(
+    assert!(
         CssColorPercentageLiteral::try_from_component(token("1"))
             .unwrap_err()
-            .kind(),
-        CssComponentValueErrorKind::InvalidToken
+            .is_invalid_token()
     );
     for text in ["1", "1%", "1px", "1s"] {
-        assert_eq!(
-            CssAngleLiteral::try_from_component(token(text))
+        assert!(
+            CssNumericLiteral::<CssAngle>::try_from_component(token(text))
                 .unwrap_err()
-                .kind(),
-            CssComponentValueErrorKind::InvalidToken
+                .is_root_domain_mismatch()
         );
     }
     for text in ["calc(1px)", "calc(1deg)", "calc(1s)"] {
-        assert_eq!(
-            CssNumberCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap_err()
-                .kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch,
+        assert!(
+            CssCalculation::<CssNumber>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+                Default::default()
+            )
+            .unwrap_err()
+            .is_root_domain_mismatch(),
             "{text}"
         );
-        assert_eq!(
-            CssPercentageCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap_err()
-                .kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch,
+        assert!(
+            CssCalculation::<CssPercentage>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+                Default::default()
+            )
+            .unwrap_err()
+            .is_root_domain_mismatch(),
             "{text}"
         );
     }
     for text in ["calc(1px)", "calc(1%)", "calc(1s)"] {
-        assert_eq!(
-            CssAngleCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap_err()
-                .kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch,
+        assert!(
+            CssCalculation::<CssAngle>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+                Default::default()
+            )
+            .unwrap_err()
+            .is_root_domain_mismatch(),
             "{text}"
         );
     }

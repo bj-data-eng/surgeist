@@ -1,11 +1,32 @@
 //! Public authored font-variant contracts from CSS Fonts 4 WD 2026-09-07 §§6.4–6.11.
 
 use crate::css::support::checked_grammar_declaration as checked;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as parsed;
 use crate::css::support::named_property::assert_implicit_closure_rejection;
 use crate::css::support::named_property::invalid_named_value_at as invalid;
 use crate::css::support::selected_grammar as grammar;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValue, CssPropertyKindRef, CssPropertyTarget,
+};
+use surgeist_css::rule::font_feature_values::CssFontFeatureValueName;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::font::{
+    CssFontVariantAlternateNames, CssFontVariantAlternateValues, CssFontVariantAlternates,
+    CssFontVariantCaps, CssFontVariantEastAsianValues, CssFontVariantEmoji,
+    CssFontVariantLigatureState, CssFontVariantLigatureValues, CssFontVariantNumericFigure,
+    CssFontVariantNumericSpacing, CssFontVariantNumericValues, CssFontVariantPosition,
+    CssFontVariantValue, CssFontVariantValues,
+};
 
 const LONGHANDS: [&str; 7] = [
     "font-variant-ligatures",
@@ -24,7 +45,7 @@ fn name(value: &str) -> CssFontFeatureValueName {
 fn ordinary(name: &str, value: &str) -> CssLonghandValue {
     let source = parsed(name, value);
     let CssExpansion::Contributions(CssContributions::Longhands(contributions)) =
-        expand_declaration(&source).unwrap()
+        source.expand().unwrap()
     else {
         panic!("{name} has terminal expansion")
     };
@@ -47,7 +68,7 @@ fn alternates_functions_preserve_decoded_names_and_each_distinct_choice() {
     else {
         panic!("typed alternates wrapper")
     };
-    let CssFontVariantAlternates::Values(values) = wrapper.alternates() else {
+    let CssFontVariantAlternates::Values(values) = wrapper.value() else {
         panic!("seven alternate choices")
     };
     assert_eq!(values.stylistic().unwrap().as_str(), "A!");
@@ -76,7 +97,10 @@ fn alternates_functions_preserve_decoded_names_and_each_distinct_choice() {
     assert_eq!(values.ornaments().unwrap().as_str(), "Orn");
     assert_eq!(values.annotation().unwrap().as_str(), "AnNo");
     assert_eq!(
-        wrapper.alternates().serialize_specified().unwrap(),
+        wrapper
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "stylistic(A\\!) historical-forms styleset(normal, FOO, normal) character-variant(Second, first, Second) swash(Swash) ornaments(Orn) annotation(AnNo)"
     );
     assert!(declaration.value_components().items().len() >= 7);
@@ -145,7 +169,7 @@ fn alternate_models_reject_empty_states_and_inspect_borrowed_names() {
     assert!(aggregate.east_asian().is_none());
     assert_eq!(
         CssFontVariantValue::Values(aggregate)
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "stylistic(A\\!) historical-forms styleset(normal, ABC, normal) swash(Swash) text"
     );
@@ -165,7 +189,7 @@ fn full_shorthand_preserves_groups_but_serializes_in_fonts_four_order() {
     else {
         panic!("full shorthand wrapper")
     };
-    let CssFontVariantValue::Values(values) = wrapper.variant() else {
+    let CssFontVariantValue::Values(values) = wrapper.value() else {
         panic!("combined shorthand")
     };
     assert_eq!(
@@ -194,7 +218,10 @@ fn full_shorthand_preserves_groups_but_serializes_in_fonts_four_order() {
     );
     assert_eq!(values.emoji(), Some(CssFontVariantEmoji::Emoji));
     assert_eq!(
-        wrapper.variant().serialize_specified().unwrap(),
+        wrapper
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "no-contextual small-caps stylistic(NaMe) historical-forms annotation(Ann) oldstyle-nums tabular-nums ruby super emoji"
     );
 }
@@ -259,8 +286,14 @@ fn longhands_and_shorthand_reject_duplicate_or_malformed_alternates() {
             "unicode" => CssFontVariantEmoji::Unicode,
             _ => unreachable!(),
         };
-        assert_eq!(wrapper.emoji(), &expected);
-        assert_eq!(wrapper.emoji().serialize_specified().unwrap(), value);
+        assert_eq!(wrapper.value(), &expected);
+        assert_eq!(
+            wrapper
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            value
+        );
     }
 }
 
@@ -320,31 +353,39 @@ fn specified_serialization_orders_all_seven_groups_and_fails_atomically_at_limit
         panic!("shorthand wrapper")
     };
     let expected = "common-ligatures discretionary-ligatures historical-ligatures no-contextual titling-caps stylistic(E) historical-forms styleset(C, D) character-variant(A, B) swash(Swa) ornaments(Orn) annotation(Ann) oldstyle-nums tabular-nums stacked-fractions ordinal slashed-zero jis04 full-width ruby super unicode";
-    assert_eq!(wrapper.variant().serialize_specified().unwrap(), expected);
+    assert_eq!(
+        wrapper
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 1000, 1000),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(0, 1000, 1000),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1000, 0, 1000),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(1000, 0, 1000),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1000, 1000, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(1000, 1000, expected.len() - 1),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            wrapper
-                .variant()
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&wrapper.value().serialize_specified(limits).unwrap_err()),
             kind
         );
     }
-    assert_eq!(wrapper.variant().serialize_specified().unwrap(), expected);
+    assert_eq!(
+        wrapper
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     for (name, value, expected) in [
         (
             "font-variant-ligatures",
@@ -370,64 +411,55 @@ fn specified_serialization_orders_all_seven_groups_and_fails_atomically_at_limit
         let current = declaration.known().unwrap().property_value().unwrap();
         let output = match current {
             CssKnownPropertyValueRef::FontVariantLigatures(w) => {
-                w.ligatures().serialize_specified().unwrap()
+                w.value().serialize_specified(Default::default()).unwrap()
             }
-            CssKnownPropertyValueRef::FontVariantCaps(w) => w.caps().serialize_specified().unwrap(),
+            CssKnownPropertyValueRef::FontVariantCaps(w) => {
+                w.value().serialize_specified(Default::default()).unwrap()
+            }
             CssKnownPropertyValueRef::FontVariantAlternates(w) => {
-                w.alternates().serialize_specified().unwrap()
+                w.value().serialize_specified(Default::default()).unwrap()
             }
             CssKnownPropertyValueRef::FontVariantNumeric(w) => {
-                w.numeric().serialize_specified().unwrap()
+                w.value().serialize_specified(Default::default()).unwrap()
             }
             CssKnownPropertyValueRef::FontVariantEastAsian(w) => {
-                w.east_asian().serialize_specified().unwrap()
+                w.value().serialize_specified(Default::default()).unwrap()
             }
             CssKnownPropertyValueRef::FontVariantPosition(w) => {
-                w.position().serialize_specified().unwrap()
+                w.value().serialize_specified(Default::default()).unwrap()
             }
             CssKnownPropertyValueRef::FontVariantEmoji(w) => {
-                w.emoji().serialize_specified().unwrap()
+                w.value().serialize_specified(Default::default()).unwrap()
             }
             _ => panic!("{name} typed wrapper"),
         };
         assert_eq!(output, expected, "{name}");
-        let limited = CssSpecifiedValueSerializationLimits::new(1000, 1000, expected.len() - 1);
+        let limited = CssSerializationLimits::new(1000, 1000, expected.len() - 1);
         let error = match current {
-            CssKnownPropertyValueRef::FontVariantLigatures(w) => w
-                .ligatures()
-                .serialize_specified_with_limits(limited)
-                .unwrap_err(),
-            CssKnownPropertyValueRef::FontVariantCaps(w) => w
-                .caps()
-                .serialize_specified_with_limits(limited)
-                .unwrap_err(),
-            CssKnownPropertyValueRef::FontVariantAlternates(w) => w
-                .alternates()
-                .serialize_specified_with_limits(limited)
-                .unwrap_err(),
-            CssKnownPropertyValueRef::FontVariantNumeric(w) => w
-                .numeric()
-                .serialize_specified_with_limits(limited)
-                .unwrap_err(),
-            CssKnownPropertyValueRef::FontVariantEastAsian(w) => w
-                .east_asian()
-                .serialize_specified_with_limits(limited)
-                .unwrap_err(),
-            CssKnownPropertyValueRef::FontVariantPosition(w) => w
-                .position()
-                .serialize_specified_with_limits(limited)
-                .unwrap_err(),
-            CssKnownPropertyValueRef::FontVariantEmoji(w) => w
-                .emoji()
-                .serialize_specified_with_limits(limited)
-                .unwrap_err(),
+            CssKnownPropertyValueRef::FontVariantLigatures(w) => {
+                w.value().serialize_specified(limited).unwrap_err()
+            }
+            CssKnownPropertyValueRef::FontVariantCaps(w) => {
+                w.value().serialize_specified(limited).unwrap_err()
+            }
+            CssKnownPropertyValueRef::FontVariantAlternates(w) => {
+                w.value().serialize_specified(limited).unwrap_err()
+            }
+            CssKnownPropertyValueRef::FontVariantNumeric(w) => {
+                w.value().serialize_specified(limited).unwrap_err()
+            }
+            CssKnownPropertyValueRef::FontVariantEastAsian(w) => {
+                w.value().serialize_specified(limited).unwrap_err()
+            }
+            CssKnownPropertyValueRef::FontVariantPosition(w) => {
+                w.value().serialize_specified(limited).unwrap_err()
+            }
+            CssKnownPropertyValueRef::FontVariantEmoji(w) => {
+                w.value().serialize_specified(limited).unwrap_err()
+            }
             _ => panic!("{name} typed wrapper"),
         };
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
-            "{name}"
-        );
+        assert!(error.is_byte_limit(), "{name}");
     }
 }
 
@@ -465,7 +497,7 @@ fn expansion_has_exact_seven_inherited_targets_and_preserves_sources() {
     ] {
         let source = parsed("font-variant", value);
         let CssExpansion::Contributions(CssContributions::Longhands(contributions)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("seven contributions")
         };
@@ -500,7 +532,7 @@ fn expansion_has_exact_seven_inherited_targets_and_preserves_sources() {
         let source = parsed("font-variant", value);
         checked("font-variant", value);
         let CssExpansion::Contributions(CssContributions::Longhands(contributions)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("CSS-wide contributions")
         };
@@ -537,27 +569,30 @@ fn pending_reentry_is_strict_and_keeps_occurrence_and_replacement() {
     ] {
         for pending in ["var(--variant)", "env(--variant)"] {
             let source = parsed(property, pending);
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("pending {property}")
             };
             assert!(handle.source().same_occurrence(&source));
             for residual in ["var(--again)", "env(--again)"] {
-                assert!(matches!(
+                assert!(
                     handle
-                        .reenter(parse_component_values(residual).unwrap())
+                        .reenter(
+                            CssComponentValues::parse(&CssParser::default(), residual).unwrap()
+                        )
                         .unwrap_err()
-                        .kind(),
-                    CssExpansionErrorKind::ResidualSubstitution
-                ));
+                        .is_residual_substitution()
+                );
             }
-            assert!(matches!(
+            assert!(
                 handle
-                    .reenter(parse_component_values("unknown(A)").unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), "unknown(A)").unwrap()
+                    )
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
-            let components = parse_component_values(replacement).unwrap();
+                    .replacement_error()
+                    .is_some()
+            );
+            let components = CssComponentValues::parse(&CssParser::default(), replacement).unwrap();
             let CssContributions::Longhands(contributions) =
                 handle.reenter(components.clone()).unwrap()
             else {
@@ -579,7 +614,7 @@ fn pending_reentry_is_strict_and_keeps_occurrence_and_replacement() {
 #[test]
 fn recovered_eof_function_retains_diagnostic_but_strict_inputs_reject_it() {
     let source = "font-variant-alternates: stylistic(A";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 1);
     assert!(!report.is_clean());
     let CssKnownPropertyValueRef::FontVariantAlternates(wrapper) = report.syntax()[0]
@@ -590,15 +625,22 @@ fn recovered_eof_function_retains_diagnostic_but_strict_inputs_reject_it() {
     else {
         panic!("recovered alternates value")
     };
-    let CssFontVariantAlternates::Values(values) = wrapper.alternates() else {
+    let CssFontVariantAlternates::Values(values) = wrapper.value() else {
         panic!("recovered stylistic choice")
     };
     assert_eq!(values.stylistic().unwrap().as_str(), "A");
-    assert!(validate_style_attribute(source).is_err());
-    let recovered_components = parse_component_values("stylistic(A").unwrap();
+    assert!(
+        CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
+            .is_err()
+    );
+    let recovered_components =
+        CssComponentValues::parse(&CssParser::default(), "stylistic(A").unwrap();
     assert_implicit_closure_rejection(
-        &parse_property_value_for_grammar(
-            grammar("font-variant-alternates"),
+        &CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(grammar("font-variant-alternates")),
             recovered_components.clone(),
             CssImportance::Normal,
         )
@@ -606,19 +648,22 @@ fn recovered_eof_function_retains_diagnostic_but_strict_inputs_reject_it() {
         "stylistic(A",
     );
     let pending = parsed("font-variant-alternates", "var(--alt)");
-    let CssExpansion::Pending(handle) = expand_declaration(&pending).unwrap() else {
+    let CssExpansion::Pending(handle) = pending.expand().unwrap() else {
         panic!("pending alternates")
     };
-    assert!(matches!(
-        handle.reenter(recovered_components).unwrap_err().kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
+    assert!(
+        handle
+            .reenter(recovered_components)
+            .unwrap_err()
+            .replacement_error()
+            .is_some()
+    );
 }
 
 #[test]
 fn invalid_alternates_keep_parsed_and_programmatic_error_origins() {
     let source = "font-variant-alternates: stylistic(A) stylistic(B); color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 1);
     let [diagnostic] = report.diagnostics() else {
         panic!("one duplicate-function diagnostic")
@@ -628,66 +673,77 @@ fn invalid_alternates_keep_parsed_and_programmatic_error_origins() {
         CssErrorCode::InvalidPropertyValue
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("property-mapped diagnostic")
-    };
-    assert_eq!(detail.property(), CssKnownProperty::FontVariantAlternates);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "property-mapped diagnostic"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::FontVariantAlternates
+    );
     let duplicate = source.rfind("stylistic").unwrap();
     assert_eq!(
         diagnostic.error().position().byte_offset().value(),
         duplicate
     );
 
-    let checked_error = parse_property_value_for_grammar(
-        grammar("font-variant-alternates"),
-        parse_component_values("stylistic(A) stylistic(B)").unwrap(),
+    let checked_error = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(grammar("font-variant-alternates")),
+        CssComponentValues::parse(&CssParser::default(), "stylistic(A) stylistic(B)").unwrap(),
         CssImportance::Normal,
     )
     .unwrap_err();
-    assert!(matches!(
-        checked_error.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(_))
-    ));
+    assert!(checked_error.code() == Some(CssErrorCode::InvalidPropertyValue));
     assert!(matches!(
         checked_error.origin(),
         CssSerializedOrigin::Token(CssValueOrigin::Parsed(_))
     ));
 
-    let programmatic =
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("none").unwrap()]).unwrap();
-    let programmatic_error = parse_property_value_for_grammar(
-        grammar("font-variant-emoji"),
+    let programmatic = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("none").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
+    let programmatic_error = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(grammar("font-variant-emoji")),
         programmatic,
         CssImportance::Normal,
     )
     .unwrap_err();
-    assert!(matches!(
-        programmatic_error.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(_))
-    ));
+    assert!(programmatic_error.code() == Some(CssErrorCode::InvalidPropertyValue));
     assert_eq!(
         programmatic_error.origin(),
-        &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
+        CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
     );
 }
 
 #[test]
 fn reentry_keeps_programmatic_ident_token_boundaries() {
     let source = parsed("font-variant-alternates", "var(--alt)");
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending alternates")
     };
-    let separate_idents = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("historical-").unwrap(),
-        CssComponentValue::try_ident("forms").unwrap(),
-    ])
+    let separate_idents = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("historical-").unwrap(),
+            CssComponentValue::try_ident("forms").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
-    assert!(matches!(
-        handle.reenter(separate_idents).unwrap_err().kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
+    assert!(
+        handle
+            .reenter(separate_idents)
+            .unwrap_err()
+            .replacement_error()
+            .is_some()
+    );
     let CssContributions::Longhands(contributions) = handle
-        .reenter(parse_component_values("historical-forms").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "historical-forms").unwrap())
         .unwrap()
     else {
         panic!("one valid historical-forms contribution")
@@ -701,11 +757,11 @@ fn reentry_keeps_programmatic_ident_token_boundaries() {
 
 #[test]
 fn normalization_keeps_distinct_font_variant_occurrences_in_order() {
-    let report = parse_sheet(
+    let report = CssParser::default().parse_sheet(
         ".a{font-variant:emoji; font-variant-alternates:stylistic(A); font-variant:normal}",
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -722,7 +778,7 @@ fn normalization_keeps_distinct_font_variant_occurrences_in_order() {
             declaration
                 .source()
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css(),
             expected

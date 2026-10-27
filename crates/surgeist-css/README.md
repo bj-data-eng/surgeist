@@ -8,6 +8,70 @@ unsupported productions; consult the [support reference](docs/reference.md#confo
 for exact boundaries. Cascade, substitution, matching, resource loading, and
 layout belong to downstream consumers.
 
+## Start
+
+Everything a task needs starts at the crate root: `CssParser` (the configured front
+door), `CssParserContext`, `CssParserMode`, `CssParseReport` and
+`CssValidationFailure`. Every other item has exactly one path, in the module that owns
+its domain: `source`, `diagnostic`, `component`, `numeric`, `color`, `selector`,
+`query`, `rule`, `declaration`, `property`, `values`, `serialization`, `normalize` and
+`conformance`. The crate-level [rustdoc](src/lib.rs) lists them with the compiled
+examples these three tasks come from.
+
+### 1. Parse a stylesheet
+
+```rust
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::CssParser;
+
+let parser = CssParser::default();
+let report = parser.parse_sheet(".a { color: red } @unknown x; .b {}");
+assert_eq!(report.syntax().rules().len(), 2);
+assert_eq!(report.diagnostics()[0].action(), CssRecoveryAction::DropAtRule);
+```
+
+The two style rules survive, and the unknown at-rule produces one diagnostic.
+Bytes enter through `source::CssDecodedStylesheetInput::decode` and
+`CssParser::parse_sheet_bytes`; original UTF-16 enters through
+`CssParser::parse_sheet_utf16` under `source::CssUtf16InputLimits`.
+
+### 2. Parse declarations
+
+```rust
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::CssParser;
+
+let report = CssParser::default().parse_block_contents("color: red; width: 2px !important");
+let width = &report.syntax()[1];
+assert_eq!(width.importance(), CssImportance::Important);
+```
+
+A style attribute or a `cssText` value is a declaration list; it shares the ordinary
+declaration grammar of style-rule blocks.
+
+### 3. Parse and validate a property value
+
+```rust
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTextTarget};
+use surgeist_css::CssParser;
+
+let parser = CssParser::default();
+let target = CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width));
+let report = parser.parse_property_value("calc(100% - 12px)", target, CssImportance::Normal);
+let declaration = report.into_validation_result().expect("a clean report").expect("a declaration");
+```
+
+`CssParseReport::into_validation_result` accepts exactly a clean report and otherwise
+returns every diagnostic in a `CssValidationFailure`. Checked components (substitution,
+programmatic construction) use `CssDeclaration::try_from_components`. See
+[getting started](docs/getting-started.md) for local setup and verification and the
+[how-to](docs/how-to.md) for recovery reports, declaration inspection, clean-input
+validation, support metadata and literal selector output. The crate-level rustdoc adds
+serialization and expansion, color resolution and diagnostics.
+
+## Contracts
+
 `CssParserContext::with_svg_glyph_orientation_vertical()` explicitly selects
 the independent frozen SVG authored definition while ordinary fronts retain
 the finite Writing Modes shorthand. The SVG body preserves Auto, Angle-root
@@ -20,14 +84,14 @@ and uses the shared rounding policy; computation and quadrant rounding remain
 downstream. See the [glyph reference](docs/reference.md#independent-svg-glyph-definition)
 for precedence, sources and unresolved normative clauses.
 
-Byte stylesheets enter through `decode_stylesheet_bytes(bytes, hints)` and
-`parse_decoded_stylesheet(&input, optional_location)`. Decoding uses standard
+Byte stylesheets enter through `CssDecodedStylesheetInput::decode(bytes, hints, limits)` and
+`CssParser::parse_sheet_bytes(&input)`, with `with_location` attaching the optional location. Decoding uses standard
 Encoding labels, CSS fallback precedence and BOM overrides, with optional atomic
 byte limits. The immutable input retains original bytes and the exact unfiltered
 UTF-8 snapshot used by parsing. The stylesheet location is host-supplied symbolic
 text; see the [entry-point reference](docs/reference.md#entry-points-and-features).
 
-`CssParserContext::parse_sheet_utf16_with_limits` accepts shared original UTF16,
+`CssParser::parse_sheet_utf16` accepts shared original UTF16,
 uses the general CSS Syntax input cursor for newline/NUL/surrogate preprocessing,
 and invokes the ordinary stylesheet grammar in the supplied complete context.
 Finite preparation limits cover original units, normalized bytes, map entries,
@@ -38,11 +102,11 @@ and after grammar execution. The grammar retains its existing resource limits;
 it does not provide fine-grained cancellation or a whole-grammar work budget.
 Failure returns no partial report.
 
-`CssParserContext::parse_media_query_list_utf16_with_limits` uses the same private
+`CssMediaQueryList::parse_utf16` uses the same private
 prepared-source owner and ordinary media-query grammar. `CssUtf16InputLimits`
 and `CssUtf16InputError` apply to both real UTF16 grammar frontends; the UTF8
-media-query function remains its actual input format, with a context method for
-an explicit complete parser context. Parsed media lists retain a complete
+front, `CssMediaQueryList::parse(&parser, text)`, remains its actual input format and
+takes the complete parser context from the `CssParser`. Parsed media lists retain a complete
 `CssParseSource`, including empty/comment-only inputs and recovered members;
 constructed lists remain unqualified. Diagnostics share the actual immutable
 source and normalized coordinates. Media semantic equality excludes the added
@@ -65,7 +129,7 @@ provenance independently of formatting, resource execution or Arc strong counts.
 Source storage admission is separate from input parsing admission and caller-owned
 historical captures.
 
-`CssParserContext::parse_declaration_block_contents_utf16_with_limits` admits
+`CssParser::parse_block_contents_utf16` admits
 original UTF16 through that same preprocessing boundary and the existing raw
 declaration-block grammar. Its sealed `CssDeclarationBlockParseReport` retains
 the complete root source even for empty or wholly recovered input. Values and
@@ -79,7 +143,7 @@ do not promise per-action grammar work or live-allocation accounting. Consumers
 admit retained sources independently; a source receipt is not a complete report
 or checked-value storage receipt.
 
-`CssParserContext::parse_color_scheme_utf16_with_limits` supplies the independent
+`CssColorScheme::parse_utf16` supplies the independent
 bounded authored `color-scheme` value front. It preserves the shared original
 UTF16 and its preprocessed source through the existing component and property
 grammars, including arbitrary substitution fallbacks. Concrete values, CSS-wide
@@ -291,17 +355,20 @@ providers; palette lookup and color mixing remain downstream. See the
 
 ## Standalone used colors
 
-Use `parse_used_color` to resolve a standalone color over an original borrowed
+Use `color::parse_used_color` to resolve a standalone color over an original borrowed
 UTF-8 or UTF-16 input and explicit immutable `CssColorFacts`. Select
 `CssColorGrammarRequest::WholeColor` for a complete value or `PrefixColor` for a
 color prefix; the result retains the actual input, fact envelope and consumed
 original-unit range. `CssColorOrdinaryOutcome` contains a
 [`surgeist_color::Color`](../surgeist-color/README.md) or a
-`CssColorStandardFailure`. Parsing creates no output. Its explicit
+`CssColorStandardFailure`. Parsing creates no output. Its
 `CssColorOrdinaryLimits` bound source units, logical parse-bank records and
 actions; they do not bound allocator capacity or replace a consumer's resource
-controller. For a native numerical value, use Color's `serialize` with
-`SerializationRequest` and `SerializationLimits`. See the
+controller. Their `Default` covers inputs of up to 1,024 units; a caller with
+longer inputs passes explicit limits, and an input beyond a ceiling is refused
+with a `CssColorResolveError` whose `exhausted_limit()` names the resource. For
+a native numerical value, use Color's `serialize` with `SerializationRequest`
+and `SerializationLimits`. See the
 [public operation examples](tests/css/color/used_color_operations.rs).
 
 The shared grammar recognizes all 21 retained color branches: currentcolor,
@@ -314,15 +381,15 @@ or around Color's numerical operations. The ordinary authored parser also uses
 this grammar through its actual Parsed and Components inputs, preserving
 symbolic `CssColor` values and origins.
 
-For an existing checked `CssColor`, use `resolve_authored_color` with the same
+For an existing checked `CssColor`, use `CssColor::resolve` with the same
 explicit facts. Its `CssAuthoredColorResult` borrows the original value and facts;
 the outcome contains a numerical color or the actual standard-failure cause.
 `CssAuthoredColorOrdinaryLimits` bounds the three logical record banks, path
-steps and actions. The controlled `CssAuthoredColorOperation` services the same
-resolver with caller-owned banks and a `CssColorPathBuffer`, preserving Parsed,
+steps and actions; its `Default` covers authored colors of up to 1,024 source
+units. Internally a crate-private controlled operation services the
+same resolver with local banks and a path buffer, preserving Parsed,
 Programmatic and ImplicitClosure origins without serialization or reparsing.
-Authored numerical errors transfer their reached component path and applicable
-origin through `CssColorResolutionSite::Authored`. See the
+Colour numerics are total, so resolution has no numerical error. See the
 [public authored-resolution examples](tests/css/color/color_authored_resolution.rs).
 
 Resolution observes only reached dependencies. The no-element
@@ -364,41 +431,45 @@ pinned nonnormative byte-236 example disagrees with that algorithm. CSS retains
 authored exact-decimal formatting and specified serialization, preserving their
 existing precision contract.
 
-For a consumer with an existing controller, `CssColorOperation::parse_used`
-lends one `CssColorActionDescription` at a time. The consumer admits and polls
-before servicing each source read, fact read, bank read/write or fixed compute
-using the actual `CssColorActionLayout` and compiled register sizes. It owns the
-Algorithm, Arithmetic and Evaluation vectors and their real capacity, copy and
-release events. Opaque CSS slots are checked against the bank, exclusive
-`CssColorOperationOwner`, phase and ordinal. `CssColorOperation::take` accepts
-`&mut Option<Self>` and removes only a completed used or standard-failure
-outcome; refusal preserves the operation. Dropping an action leaves it pending;
-`abandon` does not dispose caller storage. The anchor is not a second resource
-controller.
+For a consumer with an existing controller, `CssColorParse::start` begins one
+typestate parse. Each `step` consumes the parse and yields either one typed
+`CssColorParseAction` or the completed `CssColorParseOutcome`. The consumer
+admits and polls before servicing each source read, fact read, bank read/write
+or fixed compute using the action's actual `CssColorActionLayout` and compiled
+register sizes; each action exposes only its own completion, which returns the
+parse. It owns the Algorithm, Arithmetic and Evaluation vectors and their real
+capacity, copy and release events. A write mints a `CssColorSlot` and a receipt
+whose `stored` acknowledges the actual storage. Lending a record of another
+parse, bank or index is a defect in the driving code and panics, as slice
+indexing does. `into_parse` declines an action without effect; dropping a parse
+or an action abandons it and does not dispose caller storage. Records borrow
+the exclusive `CssColorOperationOwner`, so it starts another parse only after
+they are dropped; the outcome borrows no owner. The anchor is not a second
+resource controller.
 
-Retire actual CSS scratch through its original owner before moving a used
-checkpoint to a transformation or serializer. `CssColorBankLengths` checks empty
-logical banks but cannot prove ticket disposal. Keep a separate
+Retire actual CSS scratch before or after transforming a used checkpoint; bank
+disposal is the consumer's policy. Keep a separate
 `surgeist_color::OperationOwner` stack local for the numerical continuation.
-`CssUsedColorCheckpoint::transform` lends that anchor to Color's computation;
-`serialize` lends it to Color's serializer and checks an empty numerical bank.
-The consumer owns a fourth bank of Color `DigitSlot` records, distinct from the
-three CSS parse banks. `ReadNumericalDigit`, `AppendNumericalDigit` and
-`UpdateNumericalDigit` actions expose its actual read/write layout; the
-serialization guard uses `read_numerical_digit`, `numerical_record` and
-`numerical_written`. Output remains one admitted unit at a time. Release and
-drop every digit record before reusing its numerical anchor.
+`CssUsedColorCheckpoint::transform` consumes the checkpoint and lends that
+anchor to Color's computation. CSS does not wrap serialization: the consumer serializes
+`checkpoint.value()` with `surgeist_color::Serialization` directly and keeps the
+checkpoint's `standard_failure()` and `source()` for publication. That
+serializer's own typed actions lend a fourth, consumer-owned bank of Color
+`DigitSlot` records, distinct from the three CSS parse banks, and emit one
+admitted unit at a time. Digit records borrow the numerical anchor, so it
+cannot be reused while any of them lives.
 
-Transformation and serialization `take(&mut Option<Self>)` remove only a
-completed success. A computed result becomes the checkpoint's committed value
-only at successful take. Refused take leaves the wrapper intact; `recover`
-removes it and returns its original committed checkpoint, including source,
-facts and standard-failure context. Recovery does not complete pending work or
-restart a cancelled controller. A standard-failure checkpoint can accept an
-explicitly checked caller fallback while retaining that context. Unavailable,
-unsupported, malformed-fact, numerical and protocol errors remain distinct from
-standard invalidity. Numerical errors carry Color's `ColorError` and the
-actual reached CSS recipe's `CssColorResolutionSite::Source` range. Resource
+A `CssColorTransform` is total: `compute` makes the transformed value the
+checkpoint's value, and `into_checkpoint` declines it and returns the original
+checkpoint, including source, facts and standard-failure context. Declining does
+not complete pending work or restart a cancelled controller. A standard-failure
+checkpoint can accept an explicitly checked caller fallback while retaining that
+context. Unavailable, unsupported, malformed-fact and malformed-input
+`CssColorError`s remain distinct from standard invalidity; the parse's
+compile-time and panic misuse contracts are listed on `CssColorParse`. A channel
+value beyond binary64, including a top-level infinite
+calculation, is the closest supported finite value, so no numerical error
+exists. Resource
 refusal and cancellation belong to the original controlled consumer. See the
 [controlled protocol](src/color/bounded.rs) and [fact carriers](src/color/facts.rs).
 
@@ -412,22 +483,6 @@ relative to the selected color field, while the original HTML source binding
 remains separate. This does not establish a complete contextual CSSOM/style
 consumer or close [#805](https://github.com/bj-data-eng/surgeist/issues/805)'s
 contextual and quirky-color/CSS.supports scope.
-
-## Start
-
-```rust
-use surgeist_css::{CssRecoveryAction, parse_sheet};
-
-let report = parse_sheet(
-    ".before { color: red; } @unknown value; .after { color: blue; }",
-);
-assert_eq!(report.syntax().rules().len(), 2);
-assert_eq!(report.diagnostics().len(), 1);
-assert_eq!(report.diagnostics()[0].action(), CssRecoveryAction::DropAtRule);
-```
-
-The two style rules survive, and the unknown at-rule produces one diagnostic.
-See [getting started](docs/getting-started.md) for local setup and verification.
 
 ## Documentation
 

@@ -3,9 +3,20 @@
 
 use crate::css::support::property_admission::assert_reentry_rejected;
 use crate::css::support::sole_declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssLonghandValueRef, CssPropertyNameRef,
+    CssPropertyTarget, CssPropertyValue,
+};
+use surgeist_css::values::effects::{CssOpacityScalar, CssOpacityScalarKind, CssOpacityValue};
 
-fn wrapper(declaration: &CssDeclaration) -> &CssOpacityPropertyValue {
+fn wrapper(declaration: &CssDeclaration) -> &CssPropertyValue<CssOpacityValue> {
     let CssKnownPropertyValueRef::Opacity(value) =
         declaration.known().unwrap().property_value().unwrap()
     else {
@@ -78,9 +89,10 @@ fn checked_scalar_constructor_retains_numeric_components_without_rounding() {
             text.trim_end_matches('%')
         );
         assert_eq!(scalar.origin(), &CssValueOrigin::Programmatic);
-        let values = CssComponentValues::try_new(vec![component]).unwrap();
-        let source = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Opacity),
+        let values = CssComponentValues::try_new(vec![component], Default::default()).unwrap();
+        let source = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Opacity)),
             values.clone(),
             CssImportance::Normal,
         )
@@ -105,17 +117,17 @@ fn checked_scalar_rejects_other_component_kinds_with_their_actual_origins() {
         "[1]",
         "{1}",
     ] {
-        let parsed = parse_component_values(text).unwrap();
+        let parsed = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let [component] = parsed.items() else {
             panic!("one component for {text}")
         };
         let error = CssOpacityScalar::try_from_component(component.clone()).unwrap_err();
-        assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+        assert!(error.is_invalid_token(), "{error:?}");
         assert_eq!(error.origin(), component.origin());
     }
     let component = CssComponentValue::try_token("name").unwrap();
     let error = CssOpacityScalar::try_from_component(component).unwrap_err();
-    assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+    assert!(error.is_invalid_token(), "{error:?}");
     assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
 }
 
@@ -189,8 +201,7 @@ fn contribution_scalar(value: &CssLonghandContribution) -> &CssOpacityScalar {
 fn expansion_and_strict_reentry_transport_the_same_exact_payload() {
     let source = sole_declaration(&format!("opacity: {} !important", "-1e-47%"));
     let expected = exact(wrapper(&source).value());
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("one longhand")
     };
@@ -202,10 +213,10 @@ fn expansion_and_strict_reentry_transport_the_same_exact_payload() {
         CssImportance::Important
     );
     let pending = sole_declaration("opacity: var(--fade) !important");
-    let CssExpansion::Pending(handle) = expand_declaration(&pending).unwrap() else {
+    let CssExpansion::Pending(handle) = pending.expand().unwrap() else {
         panic!("pending value")
     };
-    let replacement = parse_component_values("1e100%").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "1e100%").unwrap();
     let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap() else {
         panic!("completed reentry")
     };
@@ -223,7 +234,7 @@ fn expansion_and_strict_reentry_transport_the_same_exact_payload() {
         CssImportance::Important
     );
     assert_reentry_rejected(
-        handle.reenter(parse_component_values("1px").unwrap()),
+        handle.reenter(CssComponentValues::parse(&CssParser::default(), "1px").unwrap()),
         CssKnownProperty::Opacity,
         Some("1px"),
     );
@@ -231,9 +242,10 @@ fn expansion_and_strict_reentry_transport_the_same_exact_payload() {
 
 #[test]
 fn normalization_preserves_exact_values_and_declaration_order() {
-    let report = parse_sheet(".a { opacity: .1; opacity: 1e100% !important; }");
+    let report =
+        CssParser::default().parse_sheet(".a { opacity: .1; opacity: 1e100% !important; }");
     assert!(report.is_clean());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let values: Vec<_> = normalized
         .items()
         .iter()

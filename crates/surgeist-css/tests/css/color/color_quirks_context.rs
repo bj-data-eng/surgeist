@@ -3,8 +3,32 @@
 use crate::css::support::color_and_selector_fixtures::{
     assert_color_text_rejected, assert_color_value_rejected,
 };
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::component_failure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::{contextual_checked_declaration as checked, known_property as property};
-use surgeist_css::*;
+use surgeist_css::color::{CssColor, CssHexColor, CssNamedColor};
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget, CssPropertyTextTarget,
+    CssPropertyValueError,
+};
+use surgeist_css::query::supports::{CssSupportsDeclaration, CssSupportsLeaf};
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::{CssRule, CssStyleBlock};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 const QUIRKS: CssParserContext = CssParserContext::new(CssParserMode::Quirks);
 const NAMES: [&str; 7] = [
     "color",
@@ -37,21 +61,18 @@ fn color(source: &CssDeclaration) -> &CssColor {
         CssKnownPropertyValueRef::BorderRightColor(v) => v.value(),
         CssKnownPropertyValueRef::BorderBottomColor(v) => v.value(),
         CssKnownPropertyValueRef::BorderLeftColor(v) => v.value(),
-        CssKnownPropertyValueRef::BorderColor(v) => v.value().assigned_values()[0],
+        CssKnownPropertyValueRef::BorderColor(v) => v.value().assigned()[0],
         _ => panic!("direct Color owner"),
     }
 }
-fn test_declaration(condition: &CssSupportsCondition) -> &CssSupportsDeclaration {
-    let CssSupportsConditionKind::Declaration(v) = condition.kind() else {
+fn test_declaration(condition: &CssCondition<CssSupportsLeaf>) -> &CssSupportsDeclaration {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(v)) = condition.kind() else {
         panic!("declaration test")
     };
     v
 }
-fn strict_error(error: &CssPropertyValueParseError, original: &str) {
-    assert!(matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-    ));
+fn strict_error(error: &CssPropertyValueError, original: &str) {
+    assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
     let CssSerializedOrigin::End(Some(CssValueOrigin::ImplicitClosure { opening, at })) =
         error.origin()
     else {
@@ -67,13 +88,14 @@ fn defaults_and_color_functions_keep_standards_grammar() {
     assert_eq!(CssParserContext::default().mode(), CssParserMode::Standards);
     for name in NAMES {
         for text in ["ABC", "123", "12abc"] {
-            let values = parse_component_values(text).unwrap();
+            let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             let p = property(name);
             // Color 4 Appendix B: standards mode admits no quirky color, so
             // the sole token is the responsible one.
             assert_color_value_rejected(
-                parse_property_value(
-                    CssPropertyNameRef::Known(p),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(p)),
                     values.clone(),
                     CssImportance::Normal,
                 ),
@@ -82,8 +104,9 @@ fn defaults_and_color_functions_keep_standards_grammar() {
                 text,
             );
             assert_color_value_rejected(
-                CssParserContext::default().parse_property_value_for_grammar(
-                    p.grammar(),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(p.grammar()),
                     values,
                     CssImportance::Normal,
                 ),
@@ -92,9 +115,9 @@ fn defaults_and_color_functions_keep_standards_grammar() {
                 text,
             );
             assert_color_text_rejected(
-                CssParserContext::default().parse_property_value_text(
+                CssParser::default().parse_property_value(
                     text,
-                    CssPropertyNameRef::Known(p),
+                    CssPropertyTextTarget::Property(CssPropertyNameRef::Known(p)),
                     CssImportance::Normal,
                 ),
                 p,
@@ -102,9 +125,9 @@ fn defaults_and_color_functions_keep_standards_grammar() {
                 text,
             );
             assert_color_text_rejected(
-                CssParserContext::default().parse_property_value_text_for_grammar(
+                CssParser::default().parse_property_value(
                     text,
-                    p.grammar(),
+                    CssPropertyTextTarget::Grammar(p.grammar()),
                     CssImportance::Normal,
                 ),
                 p,
@@ -113,8 +136,8 @@ fn defaults_and_color_functions_keep_standards_grammar() {
             );
             let css = format!("{name}:{text};color:red");
             assert_eq!(
-                CssParserContext::default().parse_style_attribute(&css),
-                parse_style_attribute(&css)
+                CssParser::default().parse_block_contents(&css),
+                CssParser::default().parse_block_contents(&css)
             );
         }
     }
@@ -130,47 +153,49 @@ fn seven_properties_convert_quirky_tokens_across_all_declaration_fronts() {
     for name in NAMES {
         for &(text, hex, canonical) in GOLDENS {
             let css = format!("{name}:{text}!important");
-            let report = QUIRKS.parse_style_attribute(&css);
+            let report = CssParser::new(QUIRKS, Default::default()).parse_block_contents(&css);
             assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
             assert_eq!(
                 &report.clone().into_validation_result().unwrap(),
                 report.syntax()
             );
-            let raw = parse_component_values(text).unwrap();
-            let generated =
-                CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()])
-                    .unwrap();
+            let raw = CssComponentValues::parse(&CssParser::default(), text).unwrap();
+            let generated = CssComponentValues::try_new(
+                vec![CssComponentValue::try_token(text).unwrap()],
+                Default::default(),
+            )
+            .unwrap();
             let p = property(name);
-            let single = QUIRKS.parse_declaration(&css);
+            let single = CssDeclaration::parse(&CssParser::new(QUIRKS, Default::default()), &css);
             assert!(single.is_clean());
-            let name_text = QUIRKS.parse_property_value_text(
+            let name_text = CssParser::new(QUIRKS, Default::default()).parse_property_value(
                 text,
-                CssPropertyNameRef::Known(p),
+                CssPropertyTextTarget::Property(CssPropertyNameRef::Known(p)),
                 CssImportance::Important,
             );
-            let grammar_text = QUIRKS.parse_property_value_text_for_grammar(
+            let grammar_text = CssParser::new(QUIRKS, Default::default()).parse_property_value(
                 text,
-                p.grammar(),
+                CssPropertyTextTarget::Grammar(p.grammar()),
                 CssImportance::Important,
             );
             assert!(name_text.is_clean() && grammar_text.is_clean());
             for source in [
                 report.syntax()[0].clone(),
                 single.syntax().as_ref().unwrap().clone(),
-                QUIRKS
-                    .parse_property_value(
-                        CssPropertyNameRef::Known(p),
-                        raw.clone(),
-                        CssImportance::Important,
-                    )
-                    .unwrap(),
-                QUIRKS
-                    .parse_property_value_for_grammar(
-                        p.grammar(),
-                        generated.clone(),
-                        CssImportance::Important,
-                    )
-                    .unwrap(),
+                CssDeclaration::try_from_components(
+                    &CssParser::new(QUIRKS, Default::default()),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(p)),
+                    raw.clone(),
+                    CssImportance::Important,
+                )
+                .unwrap(),
+                CssDeclaration::try_from_components(
+                    &CssParser::new(QUIRKS, Default::default()),
+                    CssPropertyTarget::Grammar(p.grammar()),
+                    generated.clone(),
+                    CssImportance::Important,
+                )
+                .unwrap(),
                 name_text.syntax().as_ref().unwrap().clone(),
                 grammar_text.syntax().as_ref().unwrap().clone(),
             ] {
@@ -182,22 +207,31 @@ fn seven_properties_convert_quirky_tokens_across_all_declaration_fronts() {
                     &CssColor::from_hex(CssHexColor::try_new(hex).unwrap())
                 );
                 assert_eq!(
-                    source.to_specified_css().unwrap(),
+                    source.serialize_specified(Default::default()).unwrap(),
                     format!("{name}: {canonical} !important;")
                 );
                 assert_eq!(
-                    source.value_components().serialize().unwrap().as_css(),
+                    source
+                        .value_components()
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
                     text
                 );
-                let emitted = source.to_specified_css().unwrap();
-                let reparse = parse_style_attribute(&emitted);
+                let emitted = source.serialize_specified(Default::default()).unwrap();
+                let reparse = CssParser::default().parse_block_contents(&emitted);
                 assert!(reparse.is_clean());
                 assert_eq!(
-                    color(&reparse.syntax()[0]).to_specified_css().unwrap(),
+                    color(&reparse.syntax()[0])
+                        .serialize_specified(Default::default())
+                        .unwrap(),
                     canonical
                 );
             }
-            assert_eq!(raw.serialize().unwrap().as_css(), text);
+            assert_eq!(
+                raw.serialize_tokens(Default::default()).unwrap().as_css(),
+                text
+            );
             assert_eq!(generated.items()[0].origin(), &CssValueOrigin::Programmatic);
         }
     }
@@ -207,14 +241,18 @@ fn raw_quirky_escapes_fail_while_ordinary_escaped_named_colors_win() {
     for name in NAMES {
         for text in [r"\61 bc", r"12\61 bc", r"\61\62\63", r"12a\62 c"] {
             for values in [
-                parse_component_values(text).unwrap(),
-                CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()])
-                    .unwrap(),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+                CssComponentValues::try_new(
+                    vec![CssComponentValue::try_token(text).unwrap()],
+                    Default::default(),
+                )
+                .unwrap(),
             ] {
                 let before = values.clone();
                 assert_color_value_rejected(
-                    QUIRKS.parse_property_value_for_grammar(
-                        property(name).grammar(),
+                    CssDeclaration::try_from_components(
+                        &CssParser::new(QUIRKS, Default::default()),
+                        CssPropertyTarget::Grammar(property(name).grammar()),
                         values.clone(),
                         CssImportance::Normal,
                     ),
@@ -229,19 +267,23 @@ fn raw_quirky_escapes_fail_while_ordinary_escaped_named_colors_win() {
             color(&checked(QUIRKS, name, r"\72 ed")),
             &CssColor::from_named(CssNamedColor::try_new("red").unwrap())
         );
-        let values =
-            CssComponentValues::try_new(vec![CssComponentValue::try_ident("abc").unwrap()])
-                .unwrap();
-        let source = QUIRKS
-            .parse_property_value_for_grammar(
-                property(name).grammar(),
-                values.clone(),
-                CssImportance::Normal,
-            )
-            .unwrap();
+        let values = CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident("abc").unwrap()],
+            Default::default(),
+        )
+        .unwrap();
+        let source = CssDeclaration::try_from_components(
+            &CssParser::new(QUIRKS, Default::default()),
+            CssPropertyTarget::Grammar(property(name).grammar()),
+            values.clone(),
+            CssImportance::Normal,
+        )
+        .unwrap();
         assert_eq!(source.value_components(), &values);
         assert_eq!(
-            color(&source).to_specified_css().unwrap(),
+            color(&source)
+                .serialize_specified(Default::default())
+                .unwrap(),
             "rgb(170, 187, 204)"
         );
     }
@@ -264,24 +306,21 @@ fn lexical_flag_length_range_and_unit_failures_keep_original_error_anchors() {
             "\"abc\"",
             "calc(123)",
         ] {
-            let values = parse_component_values(text).unwrap();
+            let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             let before = values.clone();
-            let error = QUIRKS
-                .parse_property_value_for_grammar(
-                    property(name).grammar(),
-                    values.clone(),
-                    CssImportance::Normal,
-                )
-                .unwrap_err();
-            assert!(matches!(
-                error.kind(),
-                CssPropertyValueErrorKind::Grammar(_)
-            ));
+            let error = CssDeclaration::try_from_components(
+                &CssParser::new(QUIRKS, Default::default()),
+                CssPropertyTarget::Grammar(property(name).grammar()),
+                values.clone(),
+                CssImportance::Normal,
+            )
+            .unwrap_err();
+            assert!(error.code().is_some());
             let anchor = match error.origin() {
                 CssSerializedOrigin::Token(v) | CssSerializedOrigin::End(Some(v)) => v,
                 _ => panic!("original token"),
             };
-            assert_eq!(anchor, values.items()[0].origin());
+            assert_eq!(&anchor, values.items()[0].origin());
             assert_eq!(values, before);
         }
     }
@@ -312,10 +351,11 @@ fn rust_authored_number_and_dimension_flags_stay_faithful() {
             Err(r"12\61 bc"),
         ),
     ] {
-        let values = CssComponentValues::try_new(vec![token]).unwrap();
+        let values = CssComponentValues::try_new(vec![token], Default::default()).unwrap();
         let before = values.clone();
-        let result = QUIRKS.parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
+        let result = CssDeclaration::try_from_components(
+            &CssParser::new(QUIRKS, Default::default()),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
             values.clone(),
             CssImportance::Important,
         );
@@ -323,7 +363,12 @@ fn rust_authored_number_and_dimension_flags_stay_faithful() {
         match expected {
             Ok(text) => {
                 let source = result.unwrap();
-                assert_eq!(color(&source).to_specified_css().unwrap(), text);
+                assert_eq!(
+                    color(&source)
+                        .serialize_specified(Default::default())
+                        .unwrap(),
+                    text
+                );
                 assert_eq!(source.value_components(), &values);
                 assert!(source.position().is_none());
             }
@@ -355,9 +400,10 @@ fn referencing_shorthands_logical_owners_and_color_functions_do_not_acquire_quir
         // Color 4 Appendix B admits quirky colors only in its listed
         // properties, so the quirky token is responsible elsewhere.
         assert_color_value_rejected(
-            QUIRKS.parse_property_value_for_grammar(
-                property(name).grammar(),
-                parse_component_values(text).unwrap(),
+            CssDeclaration::try_from_components(
+                &CssParser::new(QUIRKS, Default::default()),
+                CssPropertyTarget::Grammar(property(name).grammar()),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 CssImportance::Normal,
             ),
             property(name),
@@ -366,13 +412,13 @@ fn referencing_shorthands_logical_owners_and_color_functions_do_not_acquire_quir
         );
     }
     assert!(
-        QUIRKS
-            .parse_property_value_for_grammar(
-                property("border-color").grammar(),
-                parse_component_values("logical ABC").unwrap(),
-                CssImportance::Normal
-            )
-            .is_err(),
+        CssDeclaration::try_from_components(
+            &CssParser::new(QUIRKS, Default::default()),
+            CssPropertyTarget::Grammar(property("border-color").grammar()),
+            CssComponentValues::parse(&CssParser::default(), "logical ABC").unwrap(),
+            CssImportance::Normal
+        )
+        .is_err(),
         "border-color:logical ABC"
     );
     for name in NAMES {
@@ -386,9 +432,10 @@ fn referencing_shorthands_logical_owners_and_color_functions_do_not_acquire_quir
             // Appendix B quirks apply only to a whole property value, never
             // to a color nested in a function.
             assert_color_value_rejected(
-                QUIRKS.parse_property_value_for_grammar(
-                    property(name).grammar(),
-                    parse_component_values(text).unwrap(),
+                CssDeclaration::try_from_components(
+                    &CssParser::new(QUIRKS, Default::default()),
+                    CssPropertyTarget::Grammar(property(name).grammar()),
+                    CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                     CssImportance::Normal,
                 ),
                 property(name),
@@ -398,8 +445,8 @@ fn referencing_shorthands_logical_owners_and_color_functions_do_not_acquire_quir
         }
     }
     assert!(
-        QUIRKS
-            .parse_style_attribute("border-color:logical red blue")
+        CssParser::new(QUIRKS, Default::default())
+            .parse_block_contents("border-color:logical red blue")
             .is_clean()
     );
 }
@@ -427,7 +474,7 @@ fn physical_border_color_assigns_one_through_four_colors_without_extra_resets() 
     ] {
         let source = checked(QUIRKS, "border-color", text);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("physical members")
         };
@@ -454,22 +501,22 @@ fn physical_border_color_assigns_one_through_four_colors_without_extra_resets() 
                 | CssLonghandValueRef::BorderLeftColor(v) => v,
                 _ => panic!("physical color"),
             };
-            assert_eq!(color.to_specified_css().unwrap(), text);
+            assert_eq!(color.serialize_specified(Default::default()).unwrap(), text);
         }
     }
     assert!(
-        QUIRKS
-            .parse_style_attribute("border-color:ABC red 123 blue 12abc")
+        CssParser::new(QUIRKS, Default::default())
+            .parse_block_contents("border-color:ABC red 123 blue 12abc")
             .syntax()
             .is_empty()
     );
 }
 #[test]
 fn sheet_rule_and_block_fronts_keep_mode_through_nested_declaration_runs() {
-    let report = QUIRKS
+    let report = CssParser::new(QUIRKS, Default::default())
         .parse_sheet("@media all{.a{color:ABC;& .b{background-color:123}border-color:12abc}}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -484,13 +531,21 @@ fn sheet_rule_and_block_fronts_keep_mode_through_nested_declaration_runs() {
         assert_eq!(v.source().parser_context(), QUIRKS);
     }
     let namespaces = CssNamespaceContext::default();
-    let report = QUIRKS.parse_rule(".a{color:123}", &namespaces);
+    let report = CssRule::parse(
+        &CssParser::new(QUIRKS, Default::default()),
+        ".a{color:123}",
+        &namespaces,
+    );
     assert!(report.is_clean());
     let CssRule::Style(rule) = report.syntax().as_ref().unwrap() else {
         panic!("style rule")
     };
     assert_eq!(rule.declarations()[0].parser_context(), QUIRKS);
-    let report = QUIRKS.parse_style_block("{color:ABC}", &namespaces);
+    let report = CssStyleBlock::parse(
+        &CssParser::new(QUIRKS, Default::default()),
+        "{color:ABC}",
+        &namespaces,
+    );
     assert!(report.is_clean());
     assert_eq!(
         report.syntax().as_ref().unwrap().declarations()[0].parser_context(),
@@ -502,9 +557,9 @@ fn mode_survives_bounded_deep_sheet_recovery() {
     let mut css = "@media all{".repeat(140);
     css.push_str(".a{color:123}");
     css.push_str(&"}".repeat(140));
-    let report = QUIRKS.parse_sheet(&css);
+    let report = CssParser::new(QUIRKS, Default::default()).parse_sheet(&css);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -516,14 +571,16 @@ fn mode_survives_bounded_deep_sheet_recovery() {
     assert_eq!(declarations.len(), 1);
     assert_eq!(declarations[0].source().parser_context(), QUIRKS);
     assert_eq!(
-        color(declarations[0].source()).to_specified_css().unwrap(),
+        color(declarations[0].source())
+            .serialize_specified(Default::default())
+            .unwrap(),
         "rgb(0, 1, 35)"
     );
 }
 #[test]
 fn parsed_and_mixed_rust_authored_origins_are_preserved() {
     let css = "/*😀*/ COLOR:ABC!important";
-    let report = QUIRKS.parse_style_attribute(css);
+    let report = CssParser::new(QUIRKS, Default::default()).parse_block_contents(css);
     assert!(report.is_clean());
     let source = &report.syntax()[0];
     assert_eq!(
@@ -535,19 +592,19 @@ fn parsed_and_mixed_rust_authored_origins_are_preserved() {
         "/*😀*/ ".encode_utf16().count()
     );
     assert_eq!(source.parsed_value().unwrap().source().as_str(), css);
-    let parsed = parse_component_values("ABC").unwrap();
+    let parsed = CssComponentValues::parse(&CssParser::default(), "ABC").unwrap();
     let mut items = parsed.items().to_vec();
     items.push(CssComponentValue::try_token(" ").unwrap());
     items.push(CssComponentValue::try_number("123").unwrap());
-    let values = CssComponentValues::try_new(items).unwrap();
+    let values = CssComponentValues::try_new(items, Default::default()).unwrap();
     let before = values.clone();
-    let source = QUIRKS
-        .parse_property_value_for_grammar(
-            CssKnownProperty::BorderColor.grammar(),
-            values.clone(),
-            CssImportance::Important,
-        )
-        .unwrap();
+    let source = CssDeclaration::try_from_components(
+        &CssParser::new(QUIRKS, Default::default()),
+        CssPropertyTarget::Grammar(CssKnownProperty::BorderColor.grammar()),
+        values.clone(),
+        CssImportance::Important,
+    )
+    .unwrap();
     assert_eq!(source.value_components(), &values);
     assert!(
         source.position().is_none()
@@ -570,30 +627,34 @@ fn pending_handles_keep_mode_importance_and_origins_across_failed_successful_ret
         for pending in ["var(--paint)", "env(paint)", "attr(data-paint *)"] {
             let source = checked(QUIRKS, name, pending);
             let before = source.clone();
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("pending")
             };
             for bad in ["1.0", "abcd", "inherit extra", "123!important"] {
-                assert!(matches!(
+                assert!(
                     handle
-                        .reenter(parse_component_values(bad).unwrap())
+                        .reenter(CssComponentValues::parse(&CssParser::default(), bad).unwrap())
                         .unwrap_err()
-                        .kind(),
-                    CssExpansionErrorKind::InvalidReplacement(_)
-                ));
+                        .replacement_error()
+                        .is_some()
+                );
             }
-            assert_eq!(
+            assert!(
                 handle
-                    .reenter(parse_component_values("var(--again)").unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap()
+                    )
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
             for replacement in [
-                parse_component_values("ABC").unwrap(),
-                CssComponentValues::try_new(vec![CssComponentValue::try_number("123").unwrap()])
-                    .unwrap(),
-                parse_component_values("unset").unwrap(),
+                CssComponentValues::parse(&CssParser::default(), "ABC").unwrap(),
+                CssComponentValues::try_new(
+                    vec![CssComponentValue::try_number("123").unwrap()],
+                    Default::default(),
+                )
+                .unwrap(),
+                CssComponentValues::parse(&CssParser::default(), "unset").unwrap(),
             ] {
                 for _ in 0..2 {
                     let CssContributions::Longhands(values) =
@@ -615,15 +676,15 @@ fn pending_handles_keep_mode_importance_and_origins_across_failed_successful_ret
             }
             assert_eq!(source, before);
             let standard = checked(CssParserContext::default(), name, pending);
-            let CssExpansion::Pending(handle) = expand_declaration(&standard).unwrap() else {
+            let CssExpansion::Pending(handle) = standard.expand().unwrap() else {
                 panic!("standard pending")
             };
             // Standards-mode reentry admits no quirky color, so the sole
             // replacement token is responsible.
             let error = handle
-                .reenter(parse_component_values("ABC").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "ABC").unwrap())
                 .unwrap_err();
-            let CssExpansionErrorKind::InvalidReplacement(cause) = error.kind() else {
+            let Some(cause) = error.replacement_error() else {
                 panic!("{name}: invalid replacement: {error:?}")
             };
             assert_color_value_rejected(Err(cause.clone()), property(name), "ABC", "ABC");
@@ -634,42 +695,46 @@ fn pending_handles_keep_mode_importance_and_origins_across_failed_successful_ret
 fn contextual_checked_and_reentry_failures_report_original_implicit_eof() {
     for original in ["ABC/*", "initial/*", "var(--paint"] {
         strict_error(
-            &QUIRKS
-                .parse_property_value_for_grammar(
-                    CssKnownProperty::Color.grammar(),
-                    parse_component_values(original).unwrap(),
-                    CssImportance::Important,
-                )
-                .unwrap_err(),
+            &CssDeclaration::try_from_components(
+                &CssParser::new(QUIRKS, Default::default()),
+                CssPropertyTarget::Grammar(CssKnownProperty::Color.grammar()),
+                CssComponentValues::parse(&CssParser::default(), original).unwrap(),
+                CssImportance::Important,
+            )
+            .unwrap_err(),
             original,
         );
     }
     let source = checked(QUIRKS, "color", "var(--paint)");
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending")
     };
     let error = handle
-        .reenter(parse_component_values("ABC/*").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "ABC/*").unwrap())
         .unwrap_err();
-    let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+    let Some(error) = error.replacement_error() else {
         panic!("strict original")
     };
     strict_error(error, "ABC/*");
     assert!(
         handle
-            .reenter(parse_component_values("ABC/**/").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "ABC/**/").unwrap())
             .is_ok()
     );
     let mut items = vec![CssComponentValue::try_ident("ABC").unwrap()];
-    items.extend_from_slice(parse_component_values("/*").unwrap().items());
+    items.extend_from_slice(
+        CssComponentValues::parse(&CssParser::default(), "/*")
+            .unwrap()
+            .items(),
+    );
     strict_error(
-        &QUIRKS
-            .parse_property_value_for_grammar(
-                CssKnownProperty::Color.grammar(),
-                CssComponentValues::try_new(items).unwrap(),
-                CssImportance::Normal,
-            )
-            .unwrap_err(),
+        &CssDeclaration::try_from_components(
+            &CssParser::new(QUIRKS, Default::default()),
+            CssPropertyTarget::Grammar(CssKnownProperty::Color.grammar()),
+            CssComponentValues::try_new(items, Default::default()).unwrap(),
+            CssImportance::Normal,
+        )
+        .unwrap_err(),
         "/*",
     );
 }
@@ -678,26 +743,42 @@ fn supports_rules_retain_document_mode_while_both_method_overloads_force_standar
     let namespaces = CssNamespaceContext::default();
     for name in NAMES {
         let text = format!("({name}:123)");
-        let rule = QUIRKS.parse_supports_condition(&text, &namespaces).unwrap();
+        let rule = CssCondition::<CssSupportsLeaf>::parse(
+            &CssParser::new(QUIRKS, Default::default()),
+            &text,
+            &namespaces,
+        )
+        .unwrap();
         assert!(test_declaration(&rule).known().is_some());
-        assert_eq!(rule.serialize().unwrap().as_css(), text);
-        let method = parse_css_supports_condition(&text).unwrap();
+        assert_eq!(
+            rule.serialize_tokens(Default::default()).unwrap().as_css(),
+            text
+        );
+        let method =
+            CssCondition::<CssSupportsLeaf>::parse_condition_text(&CssParser::default(), &text)
+                .unwrap();
         assert!(test_declaration(&method).known().is_none());
-        assert_eq!(method.serialize().unwrap().as_css(), text);
-        let method = parse_css_supports_declaration(name, "123").unwrap();
+        assert_eq!(
+            method
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            text
+        );
+        let method = CssSupportsDeclaration::parse(&CssParser::default(), name, "123").unwrap();
         assert!(method.known().is_none());
         let CssValueOrigin::Parsed(origin) = method.value_components()[0].origin() else {
             panic!("independent value argument source");
         };
         assert_eq!(origin.source().as_str(), "123");
         let css = format!("@supports {text} {{.a{{{name}:123}}}}");
-        let report = QUIRKS.parse_sheet(&css);
+        let report = CssParser::new(QUIRKS, Default::default()).parse_sheet(&css);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let CssRule::Supports(rule) = &report.syntax().rules()[0] else {
             panic!("group")
         };
         assert!(test_declaration(rule.condition()).known().is_some());
-        let report = parse_sheet(&format!("@supports {text} {{}}"));
+        let report = CssParser::default().parse_sheet(format!("@supports {text} {{}}"));
         assert!(report.is_clean());
         let CssRule::Supports(rule) = &report.syntax().rules()[0] else {
             panic!("standard group")
@@ -705,25 +786,34 @@ fn supports_rules_retain_document_mode_while_both_method_overloads_force_standar
         assert!(test_declaration(rule.condition()).known().is_none());
     }
     for name in ["color:red", "color red", "", "#color"] {
-        assert!(parse_css_supports_declaration(name, "red").is_err());
+        assert!(CssSupportsDeclaration::parse(&CssParser::default(), name, "red").is_err());
     }
     assert!(
-        test_declaration(&parse_css_supports_condition("(color:red)").unwrap())
-            .known()
-            .is_some()
+        test_declaration(
+            &CssCondition::<CssSupportsLeaf>::parse_condition_text(
+                &CssParser::default(),
+                "(color:red)"
+            )
+            .unwrap()
+        )
+        .known()
+        .is_some()
     );
     assert!(
-        parse_css_supports_declaration("color", "red")
+        CssSupportsDeclaration::parse(&CssParser::default(), "color", "red")
             .unwrap()
             .known()
             .is_some()
     );
     assert!(matches!(
-        QUIRKS
-            .parse_supports_condition("future(ABC)", &namespaces)
-            .unwrap()
-            .kind(),
-        CssSupportsConditionKind::GeneralEnclosed(_)
+        CssCondition::<CssSupportsLeaf>::parse(
+            &CssParser::new(QUIRKS, Default::default()),
+            "future(ABC)",
+            &namespaces
+        )
+        .unwrap()
+        .kind(),
+        CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(_))
     ));
 }
 #[test]
@@ -733,9 +823,12 @@ fn supports_resources_keep_original_component_errors_and_allow_retry() {
     let exact = CssComponentValueLimits::try_new(1, 4, text.len()).unwrap();
     assert!(
         test_declaration(
-            &QUIRKS
-                .parse_supports_condition_with_limits(text, &namespaces, exact)
-                .unwrap()
+            &CssCondition::<CssSupportsLeaf>::parse(
+                &CssParser::new(QUIRKS, exact),
+                text,
+                &namespaces
+            )
+            .unwrap()
         )
         .known()
         .is_some()
@@ -743,25 +836,28 @@ fn supports_resources_keep_original_component_errors_and_allow_retry() {
     for (limits, kind) in [
         (
             CssComponentValueLimits::try_new(1, 3, text.len()).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             CssComponentValueLimits::try_new(1, 4, text.len() - 1).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
         (
             CssComponentValueLimits::try_new(0, 4, text.len()).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
         ),
     ] {
-        let CssSupportsConstructionError::Component(error) = QUIRKS
-            .parse_supports_condition_with_limits(text, &namespaces, limits)
-            .unwrap_err()
-        else {
+        let outer = CssCondition::<CssSupportsLeaf>::parse(
+            &CssParser::new(QUIRKS, limits),
+            text,
+            &namespaces,
+        )
+        .unwrap_err();
+        let Some(error) = outer.component_error() else {
             panic!("component resource")
         };
-        assert_eq!(error.kind(), kind);
-        if kind == CssComponentValueErrorKind::ByteLimit {
+        assert_eq!(component_failure(error), kind);
+        if kind == ComponentFailure::ByteLimit {
             // The byte preflight rejects before allocating a source snapshot.
             assert_eq!(
                 error.origin(),
@@ -777,8 +873,7 @@ fn supports_resources_keep_original_component_errors_and_allow_retry() {
         }
     }
     assert!(
-        QUIRKS
-            .parse_supports_condition_with_limits(text, &namespaces, exact)
+        CssCondition::<CssSupportsLeaf>::parse(&CssParser::new(QUIRKS, exact), text, &namespaces)
             .is_ok()
     );
 }
@@ -805,15 +900,15 @@ fn ordinary_color_providers_and_css_wide_branches_are_unchanged() {
         let quirky = checked(QUIRKS, "color", text);
         assert_eq!(color(&quirky), color(&standard));
         assert_eq!(
-            quirky.to_specified_css().unwrap(),
-            standard.to_specified_css().unwrap()
+            quirky.serialize_specified(Default::default()).unwrap(),
+            standard.serialize_specified(Default::default()).unwrap()
         );
     }
     for text in ["initial", "inherit", "unset", "revert", "revert-layer"] {
         for name in NAMES {
             let source = checked(QUIRKS, name, text);
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{name}: {text} !important;")
             );
             assert_eq!(source.parser_context(), QUIRKS);
@@ -822,11 +917,12 @@ fn ordinary_color_providers_and_css_wide_branches_are_unchanged() {
 }
 #[test]
 fn conversion_shares_cumulative_normalization_and_sheet_byte_budgets() {
-    let report = QUIRKS.parse_sheet(".a{color:ABC}.b{background-color:123}");
+    let report = CssParser::new(QUIRKS, Default::default())
+        .parse_sheet(".a{color:ABC}.b{background-color:123}");
     assert!(report.is_clean());
     let before = report.clone();
     let exact = CssNormalizationLimits::try_new(1, 2, 2, 2).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -836,17 +932,13 @@ fn conversion_shares_cumulative_normalization_and_sheet_byte_budgets() {
         })
         .collect();
     assert_eq!(declarations.len(), 2);
-    let error = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(1, 2, 2, 1).unwrap(),
-    )
-    .unwrap_err();
+    let error = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(1, 2, 2, 1).unwrap())
+        .unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 1
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 1))
     );
     assert_eq!(error.declaration_order(), Some(1));
     assert!(
@@ -856,29 +948,20 @@ fn conversion_shares_cumulative_normalization_and_sheet_byte_budgets() {
             .same_occurrence(declarations[1].source())
     );
     let expected = ".a { color: rgb(170, 187, 204); }\n.b { background-color: rgb(0, 1, 35); }";
-    let exact = CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
+    let exact = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
-    let short =
-        CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1);
+    let short = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1);
     for _ in 0..2 {
-        let error = report
-            .syntax()
-            .to_specified_css_with_limits(short)
-            .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
-            )
-        );
+        let error = report.syntax().serialize_specified(short).unwrap_err();
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(report, before);
     }
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
 }
@@ -889,59 +972,60 @@ fn converted_hex_keeps_leaf_node_tariffs_and_atomic_writer_retry() {
     let expected = "color: rgb(170, 187, 204) !important;";
     // Declaration + semantic property name + Hex Color leaf: 3 input/3 projection.
     // Hex's legacy RGB text adds bytes, not newly authored channel graph nodes.
-    let exact = CssSpecifiedValueSerializationLimits::new(3, 3, expected.len());
-    assert_eq!(
-        source.to_specified_css_with_limits(exact).unwrap(),
-        expected
-    );
+    let exact = CssSerializationLimits::new(3, 3, expected.len());
+    assert_eq!(source.serialize_specified(exact).unwrap(), expected);
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(2, 3, expected.len()),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(3, 2, expected.len()),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(3, 3, expected.len() - 1),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            source
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&source.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(source, before);
     }
-    assert_eq!(
-        source.to_specified_css_with_limits(exact).unwrap(),
-        expected
-    );
+    assert_eq!(source.serialize_specified(exact).unwrap(), expected);
 }
 
 #[test]
 fn long_zero_prefixed_integer_is_exact_and_nonrepresentable_magnitudes_and_units_reject() {
     let zeros = format!("{}123", "0".repeat(20000));
     let source = checked(QUIRKS, "color", &zeros);
-    assert_eq!(color(&source).to_specified_css().unwrap(), "rgb(0, 1, 35)");
     assert_eq!(
-        source.value_components().serialize().unwrap().as_css(),
+        color(&source)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "rgb(0, 1, 35)"
+    );
+    assert_eq!(
+        source
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         zeros
     );
     for text in [
         format!("1{}", "0".repeat(2000)),
         format!("12{}", "a".repeat(2000)),
     ] {
-        let values = parse_component_values(&text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
         let before = values.clone();
         // A quirky hex color has at most six digits.
         assert_color_value_rejected(
-            QUIRKS.parse_property_value_for_grammar(
-                CssKnownProperty::Color.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::new(QUIRKS, Default::default()),
+                CssPropertyTarget::Grammar(CssKnownProperty::Color.grammar()),
                 values.clone(),
                 CssImportance::Normal,
             ),
@@ -956,7 +1040,7 @@ fn long_zero_prefixed_integer_is_exact_and_nonrepresentable_magnitudes_and_units
 fn contextual_browser_recovery_retains_unclean_occurrences_with_their_original_mode() {
     for text in ["ABC/*", "initial/*", "var(--paint"] {
         let css = format!("color:{text}");
-        let report = QUIRKS.parse_style_attribute(&css);
+        let report = CssParser::new(QUIRKS, Default::default()).parse_block_contents(&css);
         assert!(!report.is_clean());
         let [source] = report.syntax().as_slice() else {
             panic!("retained recovered occurrence")

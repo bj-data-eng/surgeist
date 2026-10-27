@@ -24,6 +24,7 @@ unicode-segmentation = "=1.13.3"
 serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.145"
 stats_alloc = { version = "=0.1.10", default-features = false }
+surgeist-fuzz = { path = "../surgeist-fuzz", features = ["property"] }
 
 # Integration tests share the `css` binary (tests/css.rs). The targets below
 # install a global allocator to count allocations, so each keeps its own

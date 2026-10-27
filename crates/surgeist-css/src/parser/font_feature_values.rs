@@ -1,13 +1,29 @@
 use super::property_input::{NativeValueRange, adapt_native};
 use super::recovery::RecoveryState;
 use super::{Recovered, parse_descriptor_boundary};
-use crate::descriptor_values::{FontFeatureDisplayData, FontFeatureValueData};
-use crate::error::{
-    Error, basic, descriptor_name_error, invalid_syntax, with_at_rule_prelude_context,
+use crate::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssNumericTokenKind,
+    CssSerializedValue, CssValueOrigin, CssValueTokenRef,
+};
+use crate::declaration::{CssAuthoredDeclarationValue, CssSubstitutionDependentValue};
+use crate::diagnostic::CssError;
+use crate::diagnostic::error::{
+    basic, descriptor_name_error, invalid_syntax, with_at_rule_prelude_context,
     with_descriptor_context,
 };
-use crate::numeric::NumericInputContext;
-use crate::*;
+use crate::diagnostic::{CssFeatureId, CssRecoveryDiagnostic};
+use crate::numeric::expression::NumericInputContext;
+use crate::rule::font_face::CssFontFaceFamily;
+use crate::rule::font_feature_values::descriptor_values::{
+    FontFeatureDisplayData, FontFeatureValueData,
+};
+use crate::rule::font_feature_values::{
+    CssFontFeatureDisplayOccurrence, CssFontFeatureDisplayValue, CssFontFeatureValue,
+    CssFontFeatureValueBlock, CssFontFeatureValueDefinition, CssFontFeatureValueIndex,
+    CssFontFeatureValueKind, CssFontFeatureValueName, CssFontFeatureValuesItem,
+    CssFontFeatureValuesRule,
+};
+use crate::source::{CssParsedOrigin, CssSourcePosition, CssSourceSnapshot};
 use cssparser::{
     AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, ParserState,
     QualifiedRuleParser, RuleBodyItemParser,
@@ -20,7 +36,7 @@ pub(super) fn parse_families<'i>(
     source: &'i str,
     input: &mut Parser<'i, '_>,
     recovery: &RecoveryState,
-) -> Result<Vec<CssFontFaceFamily>, ParseError<'i, Error>> {
+) -> Result<Vec<CssFontFaceFamily>, ParseError<'i, CssError>> {
     parse_families_observed(source, input, recovery, |_, _| Ok(()))
 }
 
@@ -33,8 +49,8 @@ pub(super) fn parse_families_observed<'i>(
     mut observe: impl FnMut(
         std::ops::Range<usize>,
         cssparser::SourceLocation,
-    ) -> Result<(), ParseError<'i, Error>>,
-) -> Result<Vec<CssFontFaceFamily>, ParseError<'i, Error>> {
+    ) -> Result<(), ParseError<'i, CssError>>,
+) -> Result<Vec<CssFontFaceFamily>, ParseError<'i, CssError>> {
     recovery.check_specialized_components(source, input, "later.rule.font-feature-values")?;
     input
         .parse_comma_separated(|input| {
@@ -66,7 +82,7 @@ pub(super) fn parse_rule<'i>(
     start: &ParserState,
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: RecoveryState,
-) -> Result<CssFontFeatureValuesRule, ParseError<'i, Error>> {
+) -> Result<CssFontFeatureValuesRule, ParseError<'i, CssError>> {
     let recovered = parse_outer_body(source, input, recovery);
     diagnostics.extend(recovered.diagnostics);
     CssFontFeatureValuesRule::try_new(families, recovered.syntax)
@@ -154,12 +170,12 @@ impl<'i> super::descriptor_body::Receiver<'i, Member> for BodyParser<'i> {
 impl<'i> AtRuleParser<'i> for BodyParser<'i> {
     type Prelude = CssFontFeatureValueKind;
     type AtRule = Member;
-    type Error = Error;
+    type Error = CssError;
     fn parse_prelude<'t>(
         &mut self,
         name: CowRcStr<'i>,
         input: &mut Parser<'i, 't>,
-    ) -> Result<Self::Prelude, ParseError<'i, Error>> {
+    ) -> Result<Self::Prelude, ParseError<'i, CssError>> {
         self.recovery.check_specialized_components(
             self.source,
             input,
@@ -179,7 +195,7 @@ impl<'i> AtRuleParser<'i> for BodyParser<'i> {
         kind: Self::Prelude,
         start: &ParserState,
         input: &mut Parser<'i, 't>,
-    ) -> Result<Self::AtRule, ParseError<'i, Error>> {
+    ) -> Result<Self::AtRule, ParseError<'i, CssError>> {
         let mut depth =
             self.recovery
                 .enter_rule_block(self.source, input, "later.rule.font-feature-values")?;
@@ -195,9 +211,9 @@ impl<'i> AtRuleParser<'i> for BodyParser<'i> {
 impl<'i> QualifiedRuleParser<'i> for BodyParser<'i> {
     type Prelude = ();
     type QualifiedRule = Member;
-    type Error = Error;
+    type Error = CssError;
 }
-impl<'i> RuleBodyItemParser<'i, Member, Error> for BodyParser<'i> {
+impl<'i> RuleBodyItemParser<'i, Member, CssError> for BodyParser<'i> {
     fn parse_declarations(&self) -> bool {
         true
     }
@@ -209,19 +225,19 @@ impl<'i> RuleBodyItemParser<'i, Member, Error> for BodyParser<'i> {
 }
 impl<'i> DeclarationParser<'i> for BodyParser<'i> {
     type Declaration = Member;
-    type Error = Error;
+    type Error = CssError;
     fn parse_value<'t>(
         &mut self,
         name: CowRcStr<'i>,
         input: &mut Parser<'i, 't>,
         start: &ParserState,
-    ) -> Result<Member, ParseError<'i, Error>> {
+    ) -> Result<Member, ParseError<'i, CssError>> {
         let implicit =
             self.recovery
                 .check_component_values(self.source, input, "css.descriptor")?;
         let owner = self
             .kind
-            .map_or("font-feature-values", CssFontFeatureValueKind::css_name);
+            .map_or("font-feature-values", CssFontFeatureValueKind::as_str);
         let value_start = input.state();
         input.reset(start);
         input.expect_ident().map_err(basic)?;
@@ -273,8 +289,8 @@ impl<'i> DeclarationParser<'i> for BodyParser<'i> {
 // (reference "Source coordinates and diagnostics") with this exact token grammar.
 pub(super) fn indexes_from_components<'i>(
     values: &CssComponentValues,
-    error_for_component: impl Fn(&CssComponentValue) -> ParseError<'i, Error>,
-) -> Result<Vec<CssFontFeatureValueIndex>, ParseError<'i, Error>> {
+    error_for_component: impl Fn(&CssComponentValue) -> ParseError<'i, CssError>,
+) -> Result<Vec<CssFontFeatureValueIndex>, ParseError<'i, CssError>> {
     let mut indexes = Vec::new();
     for value in values.items() {
         match value.view() {
@@ -302,13 +318,13 @@ fn qualifies(
     components: &CssComponentValues,
     numeric: &NumericInputContext<'_>,
     location: cssparser::SourceLocation,
-) -> Result<bool, ParseError<'static, Error>> {
+) -> Result<bool, ParseError<'static, CssError>> {
     super::variables::descriptor_environment_qualifies(components.items(), numeric)
-        .map_err(|error| crate::error::invalid_component_value(location, error))
+        .map_err(|error| crate::diagnostic::error::invalid_component_value(location, error))
 }
 fn pending<'i>(
     input: &mut Parser<'i, '_>,
-) -> Result<CssSubstitutionDependentValue, ParseError<'i, Error>> {
+) -> Result<CssSubstitutionDependentValue, ParseError<'i, CssError>> {
     let start = input.position();
     super::descriptor_values::consume_remaining_components(input)?;
     Ok(CssSubstitutionDependentValue::new(
@@ -318,11 +334,11 @@ fn pending<'i>(
 pub(super) fn parse_display_value<'i>(
     input: &mut Parser<'i, '_>,
     snapshot: &CssSourceSnapshot,
-) -> Result<FontFeatureDisplayData, ParseError<'i, Error>> {
+) -> Result<FontFeatureDisplayData, ParseError<'i, CssError>> {
     super::descriptor_values::validate_root(input, "font-feature-values", "font-display")?;
     let start = input.state();
     let components = CssComponentValues::collect_from_parser(input, snapshot).map_err(|error| {
-        crate::error::invalid_component_value(input.current_source_location(), error)
+        crate::diagnostic::error::invalid_component_value(input.current_source_location(), error)
     })?;
     input.reset(&start);
     display_data(input, &components, &NumericInputContext::parsed(snapshot))
@@ -331,7 +347,7 @@ fn display_data<'i>(
     input: &mut Parser<'i, '_>,
     components: &CssComponentValues,
     numeric: &NumericInputContext<'_>,
-) -> Result<FontFeatureDisplayData, ParseError<'i, Error>> {
+) -> Result<FontFeatureDisplayData, ParseError<'i, CssError>> {
     if qualifies(components, numeric, input.current_source_location())? {
         return Ok(FontFeatureDisplayData::Pending(pending(input)?));
     }
@@ -342,7 +358,7 @@ fn display_data<'i>(
 pub(crate) fn construct_display_value(
     components: &CssComponentValues,
     serialized: &CssSerializedValue,
-) -> Result<FontFeatureDisplayData, Error> {
+) -> Result<FontFeatureDisplayData, CssError> {
     let source = crate::tokenization::prepare(serialized.as_css());
     let mut parser_input = cssparser::ParserInput::new(&source);
     let mut input = Parser::new(&mut parser_input);
@@ -353,17 +369,17 @@ pub(crate) fn construct_display_value(
             display_data(input, components, &numeric)
         })
     })();
-    result.map_err(|error| crate::error::from_parse_error(serialized.as_css(), error))
+    result.map_err(|error| crate::diagnostic::error::from_parse_error(serialized.as_css(), error))
 }
 
 pub(super) fn parse_feature_value<'i>(
     input: &mut Parser<'i, '_>,
     kind: CssFontFeatureValueKind,
     snapshot: &CssSourceSnapshot,
-) -> Result<FontFeatureValueData, ParseError<'i, Error>> {
+) -> Result<FontFeatureValueData, ParseError<'i, CssError>> {
     let start = input.state();
     let components = CssComponentValues::collect_from_parser(input, snapshot).map_err(|error| {
-        crate::error::invalid_component_value(input.current_source_location(), error)
+        crate::diagnostic::error::invalid_component_value(input.current_source_location(), error)
     })?;
     input.reset(&start);
     feature_data(
@@ -371,7 +387,7 @@ pub(super) fn parse_feature_value<'i>(
         kind,
         &components,
         &NumericInputContext::parsed(snapshot),
-        crate::error::unexpected_component_value,
+        crate::diagnostic::error::unexpected_component_value,
     )
 }
 fn feature_data<'i>(
@@ -379,8 +395,8 @@ fn feature_data<'i>(
     kind: CssFontFeatureValueKind,
     components: &CssComponentValues,
     numeric: &NumericInputContext<'_>,
-    error: impl Fn(&CssComponentValue, &'static str) -> ParseError<'i, Error>,
-) -> Result<FontFeatureValueData, ParseError<'i, Error>> {
+    error: impl Fn(&CssComponentValue, &'static str) -> ParseError<'i, CssError>,
+) -> Result<FontFeatureValueData, ParseError<'i, CssError>> {
     // Annotation/boundary tokens are disallowed before whole-value qualification.
     for component in components.items() {
         if matches!(
@@ -412,7 +428,7 @@ fn feature_data<'i>(
             .find(|(index, _)| kind.validate_index_count(index + 1).is_err());
         match surplus {
             Some((_, component)) => error(component, "the selected feature-value index count"),
-            None => crate::error::unexpected_end_at(
+            None => crate::diagnostic::error::unexpected_end_at(
                 input.current_source_location(),
                 "the selected feature-value index count",
             ),
@@ -424,7 +440,7 @@ pub(crate) fn construct_feature_value(
     kind: CssFontFeatureValueKind,
     components: &CssComponentValues,
     serialized: &CssSerializedValue,
-) -> Result<FontFeatureValueData, Error> {
+) -> Result<FontFeatureValueData, CssError> {
     let source = crate::tokenization::prepare(serialized.as_css());
     let mut parser_input = cssparser::ParserInput::new(&source);
     let mut input = Parser::new(&mut parser_input);
@@ -443,12 +459,12 @@ pub(crate) fn construct_feature_value(
             let offset = serialized
                 .component_offset_for_path(&[index])
                 .expect("serialized root component");
-            crate::error::unexpected_component_value_at(
+            crate::diagnostic::error::unexpected_component_value_at(
                 component,
                 expectation,
                 CssSourcePosition::from_byte_offset_in(serialized.as_css(), offset),
             )
         },
     )
-    .map_err(|error| crate::error::from_parse_error(serialized.as_css(), error))
+    .map_err(|error| crate::diagnostic::error::from_parse_error(serialized.as_css(), error))
 }

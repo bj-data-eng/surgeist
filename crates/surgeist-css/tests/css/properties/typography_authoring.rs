@@ -1,28 +1,53 @@
 //! Fonts 4, Text 3/4 and Text Decoration 4 property families keep authored
 //! syntax and reject cross-family values.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssNamedColor};
+use surgeist_css::component::CssComponentValue;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::numeric::{CssLengthPercentage, CssNonNegative, CssNumber, CssNumeric};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::values::font::{
+    CssAbsoluteFontWeight, CssAuthoredFontFeature, CssAuthoredFontFeatureList,
+    CssAuthoredFontFeatureSettings, CssAuthoredFontFeatureValue, CssExplicitFont,
+    CssFontFamilyList, CssFontFamilyName, CssFontSize, CssFontStyle, CssFontStyleKeyword,
+    CssFontValue, CssFontVariant, CssFontVariantCaps, CssFontVariantValue, CssFontWeight,
+    CssFontWeightRange, CssFontWidth, CssFontWidthKeyword, CssGenericFontFamily, CssOpenTypeTag,
+};
+use surgeist_css::values::text::{
+    CssLineHeight, CssOverflowWrap, CssTextAlign, CssTextAlignAllValue, CssTextAlignLastValue,
+    CssTextAlignValue, CssTextDecoration, CssTextDecorationLine, CssTextDecorationLineComponent,
+    CssTextDecorationStyle, CssTextDecorationThickness, CssTextIndent, CssTextOverflow,
+    CssTextSpacingAdjustment, CssTextTransform, CssTextTransformCase, CssTextTransformSet,
+    CssTextWrap, CssTextWrapStyle, CssVerticalAlign, CssWhiteSpace, CssWhiteSpaceKeyword,
+    CssWordBreak, CssWritingMode,
+};
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;
 
 #[test]
 fn rejects_line_height_auto() {
-    let error = parse_sheet(".panel { line-height: auto; }").expect_err("rejected parse report");
-    assert!(matches!(error.kind(), ErrorKind::InvalidPropertyValue(_)));
+    let error = CssParser::default()
+        .parse_sheet(".panel { line-height: auto; }")
+        .expect_err("rejected parse report");
+    assert!(error.code() == CssErrorCode::InvalidPropertyValue);
 }
 
 #[test]
 fn rejects_line_height_min_content() {
-    let error =
-        parse_sheet(".panel { line-height: min-content; }").expect_err("rejected parse report");
-    assert!(matches!(error.kind(), ErrorKind::InvalidPropertyValue(_)));
+    let error = CssParser::default()
+        .parse_sheet(".panel { line-height: min-content; }")
+        .expect_err("rejected parse report");
+    assert!(error.code() == CssErrorCode::InvalidPropertyValue);
 }
 
 #[test]
 fn rejects_font_size_auto() {
-    let error = parse_sheet(".panel { font-size: auto; }").expect_err("rejected parse report");
-    assert!(matches!(error.kind(), ErrorKind::InvalidPropertyValue(_)));
+    let error = CssParser::default()
+        .parse_sheet(".panel { font-size: auto; }")
+        .expect_err("rejected parse report");
+    assert!(error.code() == CssErrorCode::InvalidPropertyValue);
 }
 
 #[test]
@@ -172,12 +197,16 @@ fn parses_typography_and_text_length_families() {
     assert!(matches!(
         spacing.value(),
         CssTextSpacingAdjustment::LengthPercentage(value)
-            if value.serialize_specified().unwrap() == "0.1em"
+            if value.serialize_specified(Default::default()).unwrap() == "0.1em"
     ));
     let CssTextSpacingAdjustment::LengthPercentage(length) = spacing.value() else {
         panic!("exact letter spacing")
     };
-    assert_length_literal(length.literal_component().unwrap(), "0.1", "em");
+    assert_length_literal(
+        length.literal().map(|literal| literal.component()).unwrap(),
+        "0.1",
+        "em",
+    );
     let spacing = property_payload!(
         declaration(
             ".panel { letter-spacing: 0.25em; }",
@@ -189,7 +218,11 @@ fn parses_typography_and_text_length_families() {
     let CssTextSpacingAdjustment::LengthPercentage(length) = spacing else {
         panic!("exact letter spacing")
     };
-    assert_length_literal(length.literal_component().unwrap(), "0.25", "em");
+    assert_length_literal(
+        length.literal().map(|literal| literal.component()).unwrap(),
+        "0.25",
+        "em",
+    );
     assert_eq!(
         property_payload!(
             declaration(
@@ -228,7 +261,7 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
     else {
         panic!("expected authored font-family");
     };
-    let family = value.families();
+    let family = value.value();
     assert_eq!(
         family.families(),
         [
@@ -288,7 +321,7 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
     else {
         panic!("expected authored font-variant");
     };
-    let CssFontVariantValue::Values(values) = variant.variant() else {
+    let CssFontVariantValue::Values(values) = variant.value() else {
         panic!("expected small-caps subgroup");
     };
     assert_eq!(values.caps(), Some(CssFontVariantCaps::SmallCaps));
@@ -302,7 +335,7 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
     else {
         panic!("expected authored font-feature-settings");
     };
-    let CssAuthoredFontFeatureSettings::Features(list) = features.settings() else {
+    let CssAuthoredFontFeatureSettings::Features(list) = features.value() else {
         panic!("expected feature list");
     };
     assert_eq!(list.features()[0].tag().as_str(), "kern");
@@ -312,7 +345,7 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
     ));
     assert_eq!(list.features()[1].tag().as_str(), "liga");
     assert!(
-        matches!(list.features()[1].value(), CssAuthoredFontFeatureValue::Index(index) if index.i32_value() == Some(0))
+        matches!(list.features()[1].value(), CssAuthoredFontFeatureValue::Index(index) if index.literal().and_then(|literal| literal.value()) == Some(0))
     );
 
     let font_declaration = declaration(
@@ -324,7 +357,7 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
     else {
         panic!("expected authored font shorthand");
     };
-    let CssFontValue::Explicit(font) = value.font() else {
+    let CssFontValue::Explicit(font) = value.value() else {
         panic!("expected an explicit font");
     };
     assert_eq!(
@@ -342,7 +375,7 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
     assert_eq!(
         font.size(),
         &CssFontSize::LengthPercentage(
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
                 CssComponentValue::try_token("16px").unwrap()
             )
             .unwrap()
@@ -429,15 +462,21 @@ fn parses_text_decoration_family() {
 fn checked_typography_constructors_reject_invalid_states() {
     assert_eq!(CssFontFamilyList::try_new(Vec::new()), None);
     assert!(
-        CssFontWeightNumber::try_from_component(CssComponentValue::try_number("0").unwrap())
-            .is_err()
+        CssNumeric::<CssNumber, CssFontWeightRange>::try_from_component(
+            CssComponentValue::try_number("0").unwrap()
+        )
+        .is_err()
     );
     assert!(
-        CssFontWeightNumber::try_from_component(CssComponentValue::try_number("1001").unwrap())
-            .is_err()
+        CssNumeric::<CssNumber, CssFontWeightRange>::try_from_component(
+            CssComponentValue::try_number("1001").unwrap()
+        )
+        .is_err()
     );
     assert_eq!(
-        CssFontWeightNumber::try_from_component(CssComponentValue::try_number("500").unwrap()),
+        CssNumeric::<CssNumber, CssFontWeightRange>::try_from_component(
+            CssComponentValue::try_number("500").unwrap()
+        ),
         Ok(weight_number("500"))
     );
     assert_eq!(CssAuthoredFontFeatureList::try_new(Vec::new()), None);
@@ -449,7 +488,7 @@ fn checked_typography_constructors_reject_invalid_states() {
             None,
             None,
             CssFontSize::LengthPercentage(
-                CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+                CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
                     CssComponentValue::try_token("12px").unwrap()
                 )
                 .unwrap()
@@ -463,7 +502,7 @@ fn checked_typography_constructors_reject_invalid_states() {
         .is_some(),
     );
     assert!(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
             CssComponentValue::try_token("auto").unwrap()
         )
         .is_err()
@@ -484,19 +523,19 @@ fn checked_typography_constructors_reject_invalid_states() {
     );
     assert_eq!(feature.tag().as_str(), "kern");
     assert!(
-        CssSpecifiedLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage>::try_from_component(
             CssComponentValue::try_token("auto").unwrap()
         )
         .is_err()
     );
     assert!(
-        CssSpecifiedLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage>::try_from_component(
             CssComponentValue::try_token("auto").unwrap()
         )
         .is_err()
     );
     assert!(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
             CssComponentValue::try_dimension("-1", "px").unwrap()
         )
         .is_err()
@@ -512,8 +551,9 @@ fn checked_typography_constructors_reject_invalid_states() {
 
 #[test]
 fn typography_and_text_property_families_accept_supported_values() {
-    let sheet = parse_sheet(
-        ".panel {
+    let sheet = CssParser::default()
+        .parse_sheet(
+            ".panel {
             writing-mode: horizontal-tb;
             text-align: center;
             text-align-last: auto;
@@ -539,8 +579,8 @@ fn typography_and_text_property_families_accept_supported_values() {
             text-decoration-thickness: auto;
             text-transform: capitalize;
         }",
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
     let declarations = style_rule(&sheet.rules()[0]).declarations();
 
     for property in [

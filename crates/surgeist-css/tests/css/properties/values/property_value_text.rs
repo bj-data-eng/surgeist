@@ -1,16 +1,22 @@
 //! Supplemental public contracts for source-only property values. Expectations
 //! follow the supplied grammar, explicit importance and original source coordinates.
-use surgeist_css::{
-    CssCustomPropertyName, CssGlobalKeyword, CssImportance, CssKnownProperty,
-    CssKnownPropertyValueRef, CssPropertyGrammar, CssPropertyNameRef, CssRecoveryAction,
-    CssValueOrigin, parse_component_values, parse_declaration, parse_property_value,
-    parse_property_value_text, parse_property_value_text_for_grammar,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{
+    CssCustomPropertyName, CssDeclaration, CssGlobalKeyword, CssImportance,
+};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyGrammar, CssPropertyNameRef,
+    CssPropertyTarget, CssPropertyTextTarget,
 };
 
-fn width(source: &str) -> surgeist_css::CssParseReport<Option<surgeist_css::CssDeclaration>> {
-    parse_property_value_text(
+fn width(
+    source: &str,
+) -> surgeist_css::CssParseReport<Option<surgeist_css::declaration::CssDeclaration>> {
+    CssParser::default().parse_property_value(
         source,
-        CssPropertyNameRef::Known(CssKnownProperty::Width),
+        CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
         CssImportance::Normal,
     )
 }
@@ -27,9 +33,9 @@ fn rejected(source: &str) {
 
 #[test]
 fn literal_width_has_independently_expected_typed_value_and_supplied_importance() {
-    let report = parse_property_value_text(
+    let report = CssParser::default().parse_property_value(
         "10px",
-        CssPropertyNameRef::Known(CssKnownProperty::Width),
+        CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
         CssImportance::Important,
     );
     assert!(report.is_clean(), "{report:?}");
@@ -44,7 +50,13 @@ fn literal_width_has_independently_expected_typed_value_and_supplied_importance(
     else {
         panic!("width")
     };
-    assert_eq!(value.value().serialize_specified().unwrap(), "10px");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "10px"
+    );
     assert!(declaration.same_occurrence(&declaration.clone()));
 }
 
@@ -68,16 +80,17 @@ fn raw_value_origin_is_distinct_from_parsed_declaration_and_checked_construction
     assert_eq!(token.span().start().byte_offset().value(), 10);
     assert_eq!(token.span().start().line().value(), 1);
     assert_eq!(token.span().start().column().value(), 0);
-    let constructed = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Width),
-        parse_component_values(source).unwrap(),
+    let constructed = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
     assert!(constructed.parsed_name().is_none());
     assert!(constructed.parsed_value().is_none());
     assert!(constructed.position().is_none());
-    let declaration = parse_declaration("width:10px");
+    let declaration = CssDeclaration::parse(&CssParser::default(), "width:10px");
     let declaration = declaration.syntax().as_ref().unwrap();
     assert!(declaration.parsed_name().is_some());
     assert!(declaration.parsed_value().is_some());
@@ -94,9 +107,9 @@ fn custom_values_preserve_empty_regions_and_nested_punctuation() {
         "{a:b;c:!important} [x] f(;!)",
         "\";!})]\" /*;!})]*/ tail",
     ] {
-        let report = parse_property_value_text(
+        let report = CssParser::default().parse_property_value(
             source,
-            CssPropertyNameRef::Custom(&name),
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Custom(&name)),
             CssImportance::Important,
         );
         assert!(report.is_clean(), "{source:?}: {report:?}");
@@ -141,7 +154,11 @@ fn root_annotations_and_delimiters_reject_even_after_symbolic_substitution() {
 fn canonical_and_legacy_grammars_retain_global_and_symbolic_values() {
     let grammar = CssPropertyGrammar::from_name("glyph-orientation-vertical").unwrap();
     for source in ["0deg", "inherit", "var(--orientation)"] {
-        let report = parse_property_value_text_for_grammar(source, grammar, CssImportance::Normal);
+        let report = CssParser::default().parse_property_value(
+            source,
+            CssPropertyTextTarget::Grammar(grammar),
+            CssImportance::Normal,
+        );
         assert!(report.is_clean(), "{source:?}: {report:?}");
         let known = report.syntax().as_ref().unwrap().known().unwrap();
         assert_eq!(known.property(), CssKnownProperty::TextOrientation);

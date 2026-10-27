@@ -1,10 +1,12 @@
 //! Retention diagnostics belong to the accepted grammar unit that opened them.
 //! CSS Syntax closes blocks at EOF; Surgeist only reports retained closures.
 
-use surgeist_css::{CssErrorCode, CssRecoveryAction, CssRule, parse_sheet, validate_sheet};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::CssRule;
 
 fn assert_actions(source: &str, discarded: usize, retained_closures: usize) {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(
         !report.syntax().rules().is_empty(),
         "retained rules must survive: {source}"
@@ -36,7 +38,11 @@ fn assert_actions(source: &str, discarded: usize, retained_closures: usize) {
         assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
     }
     assert_eq!(
-        validate_sheet(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
 }
@@ -49,7 +55,7 @@ fn completed_declarations_cannot_retain_later_discarded_components() {
         ".before{color:red}@font-face{src:url(valid),local(",
         ".before{--value:fn(x)}@font-face{src:url(valid),dummy(nested(",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let Some(CssRule::FontFace(face)) = report.syntax().rules().last() else {
             panic!("expected the retained font face: {source}");
         };
@@ -110,11 +116,11 @@ fn escaped_retained_function_names_keep_their_eof_closures() {
         r"@font-face{src:lo\63 al(Last",
         r"@font-face{font-family:Demo;src:l\6f cal(Last",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let [CssRule::FontFace(face)] = report.syntax().rules() else {
             panic!("expected retained font face: {source}");
         };
-        let [surgeist_css::CssFontFaceSource::Local(local)] =
+        let [surgeist_css::rule::font_face::CssFontFaceSource::Local(local)] =
             ordinary_face!(face.descriptors(), Src).unwrap().sources()
         else {
             panic!("expected retained local source: {source}");
@@ -130,11 +136,11 @@ fn unquoted_url_tokens_keep_their_eof_closures() {
         "@font-face{src:url(valid",
         "@font-face{font-family:Demo;src:url(valid",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let [CssRule::FontFace(face)] = report.syntax().rules() else {
             panic!("expected retained font face: {source}");
         };
-        let [surgeist_css::CssFontFaceSource::Url(url)] =
+        let [surgeist_css::rule::font_face::CssFontFaceSource::Url(url)] =
             ordinary_face!(face.descriptors(), Src).unwrap().sources()
         else {
             panic!("expected retained URL token: {source}");

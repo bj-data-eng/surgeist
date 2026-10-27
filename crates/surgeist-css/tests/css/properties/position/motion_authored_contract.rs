@@ -3,14 +3,27 @@
 //! has six names. Direct Motion positions import the full Values5 position grammar.
 //! Bearing, paths, anchors, tangent rotation and resource loading stay symbolic.
 
+use crate::css::support::failure_classes::SerializationFailure as K;
+use crate::css::support::failure_classes::serialization_failure;
+use crate::css::support::property_admission::property_value_facts;
 use crate::css::support::serialization_limits::LimitLadder;
 use crate::css::support::{
     authored_declaration_through_front as declaration, check_property_components as checked,
     discoverable_property as property,
 };
-use surgeist_css::{
-    CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
 };
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssLonghandContributions, CssPropertyKindRef, CssPropertyNameRef,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::serialization::CssSerializationLimits as L;
 const LONGHANDS: [&str; 5] = [
     "offset-position",
     "offset-path",
@@ -41,19 +54,22 @@ fn accept(name: &str, cases: &[(&str, &str)]) {
             let before = source.clone();
             let output = format!("{name}: {expected} !important;");
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 output,
                 "{input} front {front}"
             );
             assert_eq!(source, before);
-            let reparse = parse_style_attribute(&output);
+            let reparse = CssParser::default().parse_block_contents(&output);
             assert!(reparse.is_clean(), "{output}: {:?}", reparse.diagnostics());
             let [reparsed] = reparse.syntax().as_slice() else {
                 panic!("one reentered occurrence")
             };
             assert_eq!(reparsed.known().unwrap().property(), property(name));
             assert_eq!(reparsed.importance(), CssImportance::Important);
-            assert_eq!(reparsed.to_specified_css().unwrap(), output);
+            assert_eq!(
+                reparsed.serialize_specified(Default::default()).unwrap(),
+                output
+            );
         }
     }
 }
@@ -63,7 +79,7 @@ fn invalid(name: &str, values: &[&str]) {
     for value in values {
         let middle = format!("{name}:{value};");
         let css = format!("/*😀*/color:red!important;{middle}color:blue");
-        let report = parse_style_attribute(&css);
+        let report = CssParser::default().parse_block_contents(&css);
         let [before, after] = report.syntax().as_slice() else {
             panic!("only adjacent colors survive {css}")
         };
@@ -74,10 +90,13 @@ fn invalid(name: &str, values: &[&str]) {
         let [diagnostic] = report.diagnostics() else {
             panic!("one atomic diagnostic {css}")
         };
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("actual property grammar diagnostic")
-        };
-        assert_eq!(detail.property(), p);
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "actual property grammar diagnostic"
+        );
+        assert_eq!(detail.known_property().unwrap(), p);
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
         let start = css.find(&middle).unwrap();
         assert_eq!(diagnostic.span().start().byte_offset().value(), start);
@@ -90,10 +109,14 @@ fn invalid(name: &str, values: &[&str]) {
             css[..start].encode_utf16().count()
         );
         assert_eq!(
-            validate_style_attribute(&css).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&css)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
-        let components = parse_component_values(value).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
         let original = components.clone();
         for grammar in [false, true] {
             assert!(
@@ -501,8 +524,7 @@ fn shorthand_rejects_empty_required_group_and_distance_rotation_without_a_path()
     );
 }
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(items)) = source.expand().unwrap()
     else {
         panic!("ordinary longhand contribution")
     };
@@ -581,7 +603,7 @@ fn globals(name: &str) {
                 assert!(item.ordinary_value().is_none());
             }
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{name}: {input} !important;")
             );
         }
@@ -598,19 +620,19 @@ fn pending(name: &str, valid: &str, invalid: &str) {
         for front in 0..5 {
             let source = declaration(name, authored, front);
             let original = source.clone();
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("whole pending source")
             };
             assert!(handle.source().same_occurrence(&source));
             for _ in 0..2 {
                 for bad in [invalid, "inherit bogus", "bogus"] {
-                    let components = parse_component_values(bad).unwrap();
+                    let components = CssComponentValues::parse(&CssParser::default(), bad).unwrap();
                     let direct = checked(p, components.clone(), false).unwrap_err();
                     let error = handle.reenter(components).unwrap_err();
-                    let CssExpansionErrorKind::InvalidReplacement(actual) = error.kind() else {
+                    let Some(actual) = error.replacement_error() else {
                         panic!("typed strict replacement error")
                     };
-                    assert_eq!(actual.kind(), direct.kind());
+                    assert_eq!(property_value_facts(actual), property_value_facts(&direct));
                     assert_eq!(actual.origin(), direct.origin());
                 }
                 for residual in [
@@ -619,15 +641,18 @@ fn pending(name: &str, valid: &str, invalid: &str) {
                     "f(attr(data-motion))",
                     r"f(v\61 r(--again))",
                 ] {
-                    assert_eq!(
+                    assert!(
                         handle
-                            .reenter(parse_component_values(residual).unwrap())
+                            .reenter(
+                                CssComponentValues::parse(&CssParser::default(), residual).unwrap()
+                            )
                             .unwrap_err()
-                            .kind(),
-                        &CssExpansionErrorKind::ResidualSubstitution
+                            .is_residual_substitution()
                     );
                 }
-                let replacement = parse_component_values(&format!("/*😀*/{valid}")).unwrap();
+                let replacement =
+                    CssComponentValues::parse(&CssParser::default(), format!("/*😀*/{valid}"))
+                        .unwrap();
                 let before = replacement.clone();
                 let CssContributions::Longhands(values) =
                     handle.reenter(replacement.clone()).unwrap()
@@ -643,7 +668,8 @@ fn pending(name: &str, valid: &str, invalid: &str) {
                 );
                 assert_eq!(replacement, before);
                 for (text, keyword) in GLOBALS {
-                    let replacement = parse_component_values(text).unwrap();
+                    let replacement =
+                        CssComponentValues::parse(&CssParser::default(), text).unwrap();
                     let CssContributions::Longhands(values) =
                         handle.reenter(replacement.clone()).unwrap()
                     else {
@@ -657,7 +683,7 @@ fn pending(name: &str, valid: &str, invalid: &str) {
             }
             assert_eq!(source, original);
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("{name}: {authored} !important;")
             );
         }
@@ -762,7 +788,7 @@ fn omitted_shorthand_members_contribute_all_five_ordinary_terminals_in_source_or
 }
 
 fn implicit_origin(components: &CssComponentValues) -> CssValueOrigin {
-    let output = components.serialize().unwrap();
+    let output = components.serialize_tokens(Default::default()).unwrap();
     (0..output.as_css().len())
         .find_map(|offset| match output.origin_at(offset) {
             Some(CssSerializedOrigin::Token(origin @ CssValueOrigin::ImplicitClosure { .. })) => {
@@ -785,21 +811,18 @@ fn strict_original(name: &str, ordinary: &str, unclosed: &str) {
         "var(--motion)/*unfinished".into(),
     ];
     for input in inputs {
-        let components = parse_component_values(&input).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), &input).unwrap();
         let original = components.clone();
         let origin = implicit_origin(&components);
         for grammar in [false, true] {
             let error = checked(p, components.clone(), grammar).unwrap_err();
             assert!(
-                matches!(
-                    error.kind(),
-                    CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-                ),
+                error.code() == Some(CssErrorCode::UnexpectedEnd),
                 "{input}: {error:?}"
             );
             assert_eq!(
                 error.origin(),
-                &CssSerializedOrigin::End(Some(origin.clone()))
+                CssSerializedOrigin::End(Some(origin.clone()))
             );
         }
         assert_eq!(components, original);
@@ -831,28 +854,27 @@ fn pending_reentry_rejects_original_closure_after_residual_scan_and_keeps_handle
         ("offset", "none", "url('#p'"),
     ] {
         let source = declaration(name, "var(--motion)", 0);
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending")
         };
-        let replacement = parse_component_values(open).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), open).unwrap();
         let origin = implicit_origin(&replacement);
         let error = handle.reenter(replacement).unwrap_err();
-        let CssExpansionErrorKind::InvalidReplacement(actual) = error.kind() else {
+        let Some(actual) = error.replacement_error() else {
             panic!("closure failure")
         };
-        assert!(matches!(
-            actual.kind(),
-            CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-        ));
-        assert_eq!(actual.origin(), &CssSerializedOrigin::End(Some(origin)));
-        assert_eq!(
+        assert!(actual.code() == Some(CssErrorCode::UnexpectedEnd));
+        assert_eq!(actual.origin(), CssSerializedOrigin::End(Some(origin)));
+        assert!(
             handle
-                .reenter(parse_component_values("future(var(--again)").unwrap())
+                .reenter(
+                    CssComponentValues::parse(&CssParser::default(), "future(var(--again)")
+                        .unwrap()
+                )
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
-        let replacement = parse_component_values(valid).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), valid).unwrap();
         let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
         else {
             panic!("resolved terminals")
@@ -865,14 +887,14 @@ fn pending_reentry_rejects_original_closure_after_residual_scan_and_keeps_handle
 #[test]
 fn composed_normalization_keeps_six_declarations_and_ten_ordered_terminal_contributions() {
     let input = ".a{offset:normal ray(90deg) 25% reverse / auto!important;offset-position:normal;offset-path:url('#p') view-box;offset-distance:var(--distance);offset-rotate:reverse;offset-anchor:initial!important}";
-    let report = parse_sheet(input);
+    let report = CssParser::default().parse_sheet(input);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssRule::Style(style) = &report.syntax().rules()[0] else {
         panic!("style")
     };
     let before = report.clone();
     let exact = CssNormalizationLimits::try_new(0, 1, 6, 10).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let items: Vec<_> = normalized
         .items()
         .iter()
@@ -911,16 +933,13 @@ fn composed_normalization_keeps_six_declarations_and_ten_ordered_terminal_contri
             CssNormalizationResource::Contributions,
         ),
     ] {
-        let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+        let error = report.syntax().normalize(limits).unwrap_err();
         let limit = if resource == CssNormalizationResource::Declarations {
             5
         } else {
             9
         };
-        assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded { resource, limit }
-        );
+        assert_eq!(error.exhausted_limit(), Some((resource, limit)));
         assert_eq!(error.declaration_order(), Some(5));
         assert!(
             error
@@ -931,14 +950,14 @@ fn composed_normalization_keeps_six_declarations_and_ten_ordered_terminal_contri
         assert!(error.rule_context().is_some());
         assert_eq!(report, before);
     }
-    assert!(normalize_report_with_limits(&report, exact).is_ok());
+    assert!(report.normalize(exact).is_ok());
 }
 
 #[test]
 fn universal_reset_includes_five_motion_longhands_without_resolving_path_context() {
     let source = declaration("all", "initial", 0);
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&source).unwrap()
+        source.expand().unwrap()
     else {
         panic!("all")
     };
@@ -953,10 +972,12 @@ fn budget(name: &str, input: &str, value: &str, nodes: usize) {
     let output = format!("{name}: {value} !important;");
     for front in 0..5 {
         let source = declaration(name, input, front);
-        LimitLadder::new(&output, nodes, nodes).assert_unchanged(&source, |source, limits| {
-            source.to_specified_css_with_limits(limits)
-        });
-        assert_eq!(source.to_specified_css().unwrap(), output);
+        LimitLadder::new(&output, nodes, nodes)
+            .assert_unchanged(&source, |source, limits| source.serialize_specified(limits));
+        assert_eq!(
+            source.serialize_specified(Default::default()).unwrap(),
+            output
+        );
     }
 }
 
@@ -1028,7 +1049,7 @@ fn nested_shape_numeric_children_retain_shared_work_and_byte_failure_atomicity()
         let output = format!("{name}: {expected} !important;");
         assert_eq!(
             source
-                .to_specified_css_with_limits(L::new(128, 256, output.len()))
+                .serialize_specified(L::new(128, 256, output.len()))
                 .unwrap(),
             output
         );
@@ -1038,10 +1059,7 @@ fn nested_shape_numeric_children_retain_shared_work_and_byte_failure_atomicity()
             (L::new(128, 256, output.len() - 1), K::ByteLimit),
         ] {
             assert_eq!(
-                source
-                    .to_specified_css_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&source.serialize_specified(limits).unwrap_err()),
                 kind
             );
             assert_eq!(source, before);
@@ -1084,18 +1102,21 @@ fn accepted_shape_position_url_and_angle_provider_controls_have_independent_gold
 #[test]
 fn valid_attributes_and_structurally_deep_pending_motion_values_keep_whole_value_reentry() {
     let text = format!("{}var(--motion){}", "f(".repeat(255), ")".repeat(255));
-    let components = parse_component_values(&text).expect("shared depth256 ceiling");
+    let components =
+        CssComponentValues::parse(&CssParser::default(), &text).expect("shared depth256 ceiling");
     assert_eq!(components.nesting_depth(), 256);
     for name in NAMES {
         let p = property(name);
         for grammar in [false, true] {
             let source = checked(p, components.clone(), grammar).unwrap();
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("deep whole pending")
             };
-            assert_eq!(
-                handle.reenter(components.clone()).unwrap_err().kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+            assert!(
+                handle
+                    .reenter(components.clone())
+                    .unwrap_err()
+                    .is_residual_substitution()
             );
             let valid = match name {
                 "offset-path" | "offset" => "ray(90deg)",
@@ -1103,7 +1124,7 @@ fn valid_attributes_and_structurally_deep_pending_motion_values_keep_whole_value
                 "offset-rotate" => "reverse",
                 _ => "auto",
             };
-            let replacement = parse_component_values(valid).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), valid).unwrap();
             let CssContributions::Longhands(items) = handle.reenter(replacement.clone()).unwrap()
             else {
                 panic!("resolved motion terminals")
@@ -1111,14 +1132,11 @@ fn valid_attributes_and_structurally_deep_pending_motion_values_keep_whole_value
             member(&items, &source, Some(&replacement));
         }
         let source = declaration(name, "attr(data-motion)", 0);
-        assert!(matches!(
-            expand_declaration(&source).unwrap(),
-            CssExpansion::Pending(_)
-        ));
+        assert!(matches!(source.expand().unwrap(), CssExpansion::Pending(_)));
     }
     let excess = format!("f({text})");
-    let error = parse_component_values(&excess).unwrap_err();
-    assert_eq!(error.kind(), CssComponentValueErrorKind::NestingLimit);
+    let error = CssComponentValues::parse(&CssParser::default(), &excess).unwrap_err();
+    assert!(error.is_nesting_limit(), "{error:?}");
     let CssValueOrigin::Parsed(origin) = error.origin() else {
         panic!("first excess opening retains original source")
     };

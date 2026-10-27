@@ -2,16 +2,21 @@
 //! remnants algorithm. Section 4.3.14 consumes valid escapes before recognizing
 //! an unescaped closing parenthesis; the first escape cannot be discarded.
 
-use surgeist_css::{
-    CssComponentValueErrorKind, CssComponentValueRef, CssDeclarationList, CssErrorCode,
-    CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSupportsTestItem, CssTokenKind,
-    CssValueOrigin, CssValueTokenRef, ErrorKind, parse_component_values, parse_sheet,
-    parse_style_attribute, validate_style_attribute,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::declaration::CssDeclarationList;
+use surgeist_css::diagnostic::{
+    CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, CssTokenKind,
+};
+use surgeist_css::query::supports::CssSupportsTestItem;
+use surgeist_css::rule::CssRule;
 
 fn assert_bad_url_range(source: &str, end: usize) {
-    let error = parse_component_values(source).expect_err("invalid trailing URL content");
-    assert_eq!(error.kind(), CssComponentValueErrorKind::BadUrl);
+    let error = CssComponentValues::parse(&CssParser::default(), source)
+        .expect_err("invalid trailing URL content");
+    assert!(error.is_bad_url(), "{error:?}");
     let CssValueOrigin::Parsed(origin) = error.origin() else {
         panic!("bad URL retains its genuine authored source");
     };
@@ -40,8 +45,9 @@ fn preceding_nonmember_and_quote_controls_keep_their_unescaped_final_boundary() 
 }
 
 fn assert_bad_url_origin(source: &str, range: std::ops::Range<usize>) {
-    let error = parse_component_values(source).expect_err("bad URL rejects the component sequence");
-    assert_eq!(error.kind(), CssComponentValueErrorKind::BadUrl);
+    let error = CssComponentValues::parse(&CssParser::default(), source)
+        .expect_err("bad URL rejects the component sequence");
+    assert!(error.is_bad_url(), "{error:?}");
     let CssValueOrigin::Parsed(origin) = error.origin() else {
         panic!("original bad-URL origin");
     };
@@ -71,12 +77,15 @@ fn assert_bad_url_diagnostic(
 ) {
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
     assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedToken);
-    let ErrorKind::UnexpectedToken(detail) = diagnostic.error().kind() else {
-        panic!("custom bad-token diagnostic");
-    };
-    assert_eq!(detail.encountered().kind(), CssTokenKind::BadUrl);
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.encountered().authored(),
+        detail.code(),
+        CssErrorCode::UnexpectedToken,
+        "custom bad-token diagnostic"
+    );
+    assert_eq!(detail.encountered().unwrap().kind(), CssTokenKind::BadUrl);
+    assert_eq!(
+        detail.encountered().unwrap().authored(),
         authored,
         "complete original bad token"
     );
@@ -91,14 +100,18 @@ fn assert_bad_url_diagnostic(
 fn assert_bad_declaration_keeps_after(bad_url: &str, suffix: &str) {
     let discarded = format!("--bad:{bad_url}{suffix}");
     let source = format!("{discarded}--after:kept");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_custom_values(report.syntax(), &[("--after", "kept")]);
     let [diagnostic] = report.diagnostics() else {
         panic!("one bad URL, no extra lexical diagnostics: {report:?}");
     };
     assert_bad_url_diagnostic(diagnostic, bad_url, (6, 0, 6), 0..discarded.len());
     assert_eq!(
-        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     assert_bad_url_origin(&source, 6..6 + bad_url.len());
@@ -128,7 +141,7 @@ fn odd_and_even_first_escape_runs_preserve_following_rules() {
     ] {
         let bad_declaration = format!("--bad:{bad_url}tail;");
         let source = format!(".bad{{{bad_declaration}}}.after{{--after:kept}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::Style(before), CssRule::Style(after)] = report.syntax().rules() else {
             panic!("both surrounding style rules survive: {report:?}");
         };
@@ -152,7 +165,7 @@ fn odd_and_even_first_escape_runs_preserve_following_rules() {
 fn bad_url_boundaries_preserve_original_utf8_crlf_coordinates_and_spelling() {
     let source = "--prefix:😀;--bad:url(a \r\n\\)still);--after:kept";
     let bad_url = "url(a \r\n\\)still)";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_custom_values(report.syntax(), &[("--prefix", "😀"), ("--after", "kept")]);
     let [diagnostic] = report.diagnostics() else {
         panic!("one original bad-URL diagnostic");
@@ -185,7 +198,7 @@ fn nested_function_collectors_keep_the_actual_bad_url_source_range() {
         let value = format!("outer({bad_url} tail)");
         let discarded = format!("--bad:{value};");
         let source = format!("{discarded}--after:kept");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_custom_values(report.syntax(), &[("--after", "kept")]);
         let [diagnostic] = report.diagnostics() else {
             panic!("one bad nested URL");
@@ -199,7 +212,7 @@ fn recovering_named_tests_preserve_declaration_neighbors_and_bad_token_origins()
     let prefix = "@supports-condition --probe{head:yes;bad:";
     for bad_url in [r"url(a \)still)", r"url(a \\)"] {
         let source = format!("{prefix}{bad_url}tail;tail:yes;}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::SupportsCondition(rule)] = report.syntax().rules() else {
             panic!("retained named definition: {report:?}");
         };
@@ -221,10 +234,10 @@ fn recovering_named_tests_preserve_declaration_neighbors_and_bad_token_origins()
             panic!("one bad token, no payload escape event: {report:?}");
         };
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        let ErrorKind::InvalidComponentValue(error) = diagnostic.error().kind() else {
+        let Some(error) = diagnostic.error().component_error() else {
             panic!("named collector owns its typed bad token");
         };
-        assert_eq!(error.kind(), CssComponentValueErrorKind::BadUrl);
+        assert!(error.is_bad_url(), "{error:?}");
         let CssValueOrigin::Parsed(origin) = error.origin() else {
             panic!("original bad-URL origin");
         };
@@ -258,7 +271,7 @@ fn adjacent_bad_urls_report_once_each_without_swallowing_middle_or_final_values(
     let middle = "--middle:kept;";
     let second = format!("--two:{second_url};");
     let source = format!("{first}{middle}{second}--after:kept");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_custom_values(
         report.syntax(),
         &[("--middle", "kept"), ("--after", "kept")],
@@ -281,7 +294,7 @@ fn eof_remnants_stay_inside_the_bad_token_without_extra_escape_or_closure_events
     for bad_url in [r"url(a \)still", "url(a \\", r"url(a b\)still"] {
         assert_bad_url_range(bad_url, bad_url.len());
         let source = format!("--bad:{bad_url}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.syntax().is_empty());
         let [diagnostic] = report.diagnostics() else {
             panic!("bad URL owns EOF recovery: {report:?}");
@@ -299,7 +312,7 @@ fn valid_url_escape_and_hex_terminator_whitespace_controls_remain_clean() {
         (r"url( \000061 \)still)", "a)still"),
         (r"url(a\29 still)", "a)still"),
     ] {
-        let values = parse_component_values(source).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         let [component] = values.items() else {
             panic!("one complete valid URL");
         };
@@ -307,12 +320,12 @@ fn valid_url_escape_and_hex_terminator_whitespace_controls_remain_clean() {
             matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Url(actual)) if actual == expected)
         );
         let attribute = format!("--url:{source};--after:kept");
-        let report = parse_style_attribute(&attribute);
+        let report = CssParser::default().parse_block_contents(&attribute);
         assert!(report.is_clean(), "{attribute:?}: {report:?}");
         assert_custom_values(report.syntax(), &[("--url", source), ("--after", "kept")]);
     }
     let quoted = r#"URL("a \)still")"#;
-    let values = parse_component_values(quoted).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), quoted).unwrap();
     let [component] = values.items() else {
         panic!("one quoted URL function");
     };

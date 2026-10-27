@@ -2,8 +2,20 @@
 //! component omission. Existing-public preimplementation RED is in
 //! speech_cue_lifecycle.rs; resources stay authored and are never loaded.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::{
+    CssIdent, CssSidePair, CssUrl, CssUrlFunction, CssUrlModifier, CssUrlModifierFunction,
+};
+use surgeist_css::values::speech::{CssAudioCue, CssCue, CssDecibelLiteral};
 
 fn audio(target: &str, offset: Option<&str>) -> CssCue {
     CssCue::Audio(
@@ -23,7 +35,7 @@ fn cue(source: &CssDeclaration) -> &CssCue {
     }
 }
 
-fn pair(source: &CssDeclaration) -> &CssCuePair {
+fn pair(source: &CssDeclaration) -> &CssSidePair<CssCue> {
     let CssKnownPropertyValueRef::Cue(value) = source.known().unwrap().property_value().unwrap()
     else {
         panic!("cue shorthand wrapper")
@@ -41,7 +53,7 @@ fn decibel_literal_preserves_exact_signed_coefficients_units_and_origins() {
         "-1e-400dB",
         r"-3d\42",
     ] {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let component = values.items()[0].clone();
         let value = CssDecibelLiteral::try_from_component(component.clone()).unwrap();
         assert_eq!(value.component(), &component);
@@ -53,9 +65,9 @@ fn decibel_literal_preserves_exact_signed_coefficients_units_and_origins() {
         };
         assert_eq!(value.numeric().representation(), number.representation());
         assert_eq!(
-            CssComponentValues::try_new(vec![value.component().clone()])
+            CssComponentValues::try_new(vec![value.component().clone()], Default::default())
                 .unwrap()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css(),
             text
@@ -71,9 +83,12 @@ fn decibel_literal_preserves_exact_signed_coefficients_units_and_origins() {
 #[test]
 fn decibel_literal_rejects_wrong_domains_and_invalid_coefficients_at_the_original_origin() {
     for text in ["3", "3%", "3px", "3s", "none", "calc(3dB)"] {
-        let component = parse_component_values(text).unwrap().items()[0].clone();
+        let component = CssComponentValues::parse(&CssParser::default(), text)
+            .unwrap()
+            .items()[0]
+            .clone();
         let error = CssDecibelLiteral::try_from_component(component.clone()).unwrap_err();
-        assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+        assert!(error.is_invalid_token(), "{error:?}");
         assert_eq!(error.origin(), component.origin());
     }
     for text in ["NaN", "infinity", "3 4", "", "3dB"] {
@@ -127,15 +142,18 @@ fn cue_models_retain_none_resources_and_authored_offset_omission() {
 fn cue_models_keep_pair_authored_presence_and_effective_after() {
     let single = declaration("cue", "url(a) -3dB");
     let single = pair(&single);
-    assert!(single.authored_after().is_none());
-    assert_eq!(single.after(), single.before());
+    assert!(single.authored_second().is_none());
+    assert_eq!(single.second(), single.first());
     let explicit = declaration("cue", "url(a) -3dB url(a) -3dB");
     let explicit = pair(&explicit);
-    assert!(explicit.authored_after().is_some());
-    assert_eq!(explicit.after(), explicit.authored_after().unwrap());
-    let mixed = CssCuePair::try_new(audio("a", Some("-3")), Some(CssCue::None)).unwrap();
-    assert_eq!(mixed.after(), &CssCue::None);
-    assert_eq!(mixed.serialize_specified().unwrap(), "url(\"a\") -3db none");
+    assert!(explicit.authored_second().is_some());
+    assert_eq!(explicit.second(), explicit.authored_second().unwrap());
+    let mixed = CssSidePair::<CssCue>::try_new(audio("a", Some("-3")), Some(CssCue::None)).unwrap();
+    assert_eq!(mixed.second(), &CssCue::None);
+    assert_eq!(
+        mixed.serialize_specified(Default::default()).unwrap(),
+        "url(\"a\") -3db none"
+    );
 }
 
 #[test]
@@ -147,23 +165,29 @@ fn cue_serialization_uses_shared_url_escaping_and_exact_canonical_decibel_payloa
         ("-1e-400", "0db"),
     ] {
         let value = CssDecibelLiteral::try_new(number).unwrap();
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     // The accepted shared exact formatter uses its fixed-decimal form here;
     // authored coefficient spelling stays 1e400 independently of output.
     let huge = CssDecibelLiteral::try_new("1e400").unwrap();
     assert_eq!(
-        huge.serialize_specified().unwrap(),
+        huge.serialize_specified(Default::default()).unwrap(),
         format!("1{}db", "0".repeat(400))
     );
     assert_eq!(huge.numeric().representation(), "1e400");
     // Shared specified precision rounds this output to zero; exact authored
     // zero detection and equivalence must still see the nonzero coefficient.
     let tiny = CssDecibelLiteral::try_new("-1e-400").unwrap();
-    assert_eq!(tiny.serialize_specified().unwrap(), "0db");
+    assert_eq!(tiny.serialize_specified(Default::default()).unwrap(), "0db");
     assert_eq!(tiny.numeric().representation(), "-1e-400");
     let tiny_audio = audio("a", Some("-1e-400"));
-    assert_eq!(tiny_audio.serialize_specified().unwrap(), "url(\"a\") 0db");
+    assert_eq!(
+        tiny_audio.serialize_specified(Default::default()).unwrap(),
+        "url(\"a\") 0db"
+    );
     let CssCue::Audio(retained_tiny) = &tiny_audio else {
         panic!("audio")
     };
@@ -171,15 +195,15 @@ fn cue_serialization_uses_shared_url_escaping_and_exact_canonical_decibel_payloa
         retained_tiny.decibel().unwrap().numeric().representation(),
         "-1e-400"
     );
-    let distinct = CssCuePair::try_new(tiny_audio, Some(audio("a", None))).unwrap();
+    let distinct = CssSidePair::<CssCue>::try_new(tiny_audio, Some(audio("a", None))).unwrap();
     assert_eq!(
-        distinct.serialize_specified().unwrap(),
+        distinct.serialize_specified(Default::default()).unwrap(),
         "url(\"a\") 0db url(\"a\")"
     );
     for target in ["", "a b", "#clip", "a\" ); height: 1px; /*", "a\n\\b"] {
         let value = audio(target, Some("-3.500"));
         let retained = value.clone();
-        let css = value.serialize_specified().unwrap();
+        let css = value.serialize_specified(Default::default()).unwrap();
         let parsed = declaration("cue-before", &css);
         let CssCue::Audio(parsed) = cue(&parsed) else {
             panic!("serialized audio")
@@ -190,7 +214,9 @@ fn cue_serialization_uses_shared_url_escaping_and_exact_canonical_decibel_payloa
     }
     let source = declaration("cue-before", "src(\"a\" symbolic modifier(x)) +3DB");
     assert_eq!(
-        cue(&source).serialize_specified().unwrap(),
+        cue(&source)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "src(\"a\" symbolic modifier(x)) 3db"
     );
 }
@@ -199,7 +225,10 @@ fn cue_serialization_uses_shared_url_escaping_and_exact_canonical_decibel_payloa
 fn cue_serialization_omits_implied_zero_and_equivalent_after_without_discarding_authorship() {
     for zero in ["0", "-0", "+0.00e999999999999999999999999999999999999999"] {
         let value = audio("a", Some(zero));
-        assert_eq!(value.serialize_specified().unwrap(), "url(\"a\")");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            "url(\"a\")"
+        );
         let CssCue::Audio(value) = &value else {
             panic!("audio")
         };
@@ -208,10 +237,13 @@ fn cue_serialization_omits_implied_zero_and_equivalent_after_without_discarding_
             (audio("a", None), CssCue::Audio(value.clone())),
             (CssCue::Audio(value.clone()), audio("a", None)),
         ] {
-            let model = CssCuePair::try_new(before, Some(after)).unwrap();
+            let model = CssSidePair::<CssCue>::try_new(before, Some(after)).unwrap();
             let retained = model.clone();
-            assert_eq!(model.serialize_specified().unwrap(), "url(\"a\")");
-            assert!(model.authored_after().is_some());
+            assert_eq!(
+                model.serialize_specified(Default::default()).unwrap(),
+                "url(\"a\")"
+            );
+            assert!(model.authored_second().is_some());
             assert_eq!(model, retained);
         }
     }
@@ -221,19 +253,22 @@ fn cue_serialization_omits_implied_zero_and_equivalent_after_without_discarding_
         ("9007199254740993", "90071992547409930e-1"),
     ] {
         let model =
-            CssCuePair::try_new(audio("a", Some(left)), Some(audio("a", Some(right)))).unwrap();
+            CssSidePair::<CssCue>::try_new(audio("a", Some(left)), Some(audio("a", Some(right))))
+                .unwrap();
         assert_eq!(
-            model.serialize_specified().unwrap(),
-            audio("a", Some(left)).serialize_specified().unwrap()
+            model.serialize_specified(Default::default()).unwrap(),
+            audio("a", Some(left))
+                .serialize_specified(Default::default())
+                .unwrap()
         );
     }
-    let different = CssCuePair::try_new(
+    let different = CssSidePair::<CssCue>::try_new(
         audio("a", Some("9007199254740992")),
         Some(audio("a", Some("9007199254740993"))),
     )
     .unwrap();
     assert_eq!(
-        different.serialize_specified().unwrap(),
+        different.serialize_specified(Default::default()).unwrap(),
         "url(\"a\") 9007199254740992db url(\"a\") 9007199254740993db"
     );
 }
@@ -242,74 +277,69 @@ fn cue_serialization_omits_implied_zero_and_equivalent_after_without_discarding_
 fn cue_budgets_are_cumulative_and_atomic_even_for_omitted_authored_children() {
     // Pair + two audio aggregates + two URL/target pairs + two dB terminals.
     let model =
-        CssCuePair::try_new(audio("a", Some("-3")), Some(audio("a", Some("-3.0")))).unwrap();
+        CssSidePair::<CssCue>::try_new(audio("a", Some("-3")), Some(audio("a", Some("-3.0"))))
+            .unwrap();
     let retained = model.clone();
     let expected = "url(\"a\") -3db";
     assert_eq!(
         model
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                9,
-                9,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(9, 9, expected.len()))
             .unwrap(),
         expected
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(8, 9, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(8, 9, expected.len()),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(9, 8, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(9, 8, expected.len()),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(9, 9, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(9, 9, expected.len() - 1),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            model
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&model.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(model, retained);
-        assert_eq!(model.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            model.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     // No duplicate traversal for a second component that was never authored.
-    let single = CssCuePair::try_new(audio("a", Some("-3")), None).unwrap();
+    let single = CssSidePair::<CssCue>::try_new(audio("a", Some("-3")), None).unwrap();
     assert_eq!(
         single
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                5,
-                5,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(5, 5, expected.len()))
             .unwrap(),
         expected
     );
     // Explicit zero remains input work even when its output is omitted.
     let zero = audio("a", Some("0"));
     assert_eq!(
-        zero.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(4, 4, 8))
+        zero.serialize_specified(CssSerializationLimits::new(4, 4, 8))
             .unwrap(),
         "url(\"a\")"
     );
-    assert_eq!(
-        zero.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 4, 8))
+    assert!(
+        zero.serialize_specified(CssSerializationLimits::new(3, 4, 8))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
 }
 
 #[test]
 fn cue_url_modifier_components_share_cumulative_budgets_and_safe_boundaries() {
-    let argument =
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("x").unwrap()]).unwrap();
+    let argument = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("x").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     let modifier = CssUrlModifier::Function(
         CssUrlModifierFunction::try_new(CssIdent::try_new("mod").unwrap(), argument).unwrap(),
     );
@@ -320,40 +350,33 @@ fn cue_url_modifier_components_share_cumulative_budgets_and_safe_boundaries() {
     // Audio aggregate + URL + target + modifier + argument + dB.
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                6,
-                6,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(6, 6, expected.len()))
             .unwrap(),
         expected
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(5, 6, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(5, 6, expected.len()),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(6, 5, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(6, 5, expected.len()),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(6, 6, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(6, 6, expected.len() - 1),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(value, retained);
     }
     assert_eq!(
         cue(&declaration("cue-after", expected))
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         expected
     );
@@ -363,35 +386,29 @@ fn cue_url_modifier_components_share_cumulative_budgets_and_safe_boundaries() {
 fn equivalent_after_with_url_modifiers_consumes_nodes_without_extra_output_bytes() {
     let before = declaration("cue-before", "src(\"a\" mod(x)) -3dB");
     let after = declaration("cue-after", "src(\"a\" mod(x)) -3.0dB");
-    let value = CssCuePair::try_new(cue(&before).clone(), Some(cue(&after).clone())).unwrap();
+    let value =
+        CssSidePair::<CssCue>::try_new(cue(&before).clone(), Some(cue(&after).clone())).unwrap();
     let retained = value.clone();
     let expected = "src(\"a\" mod(x)) -3db";
     // Pair plus two complete six-node audio cue providers, including hidden after.
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                13,
-                13,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(13, 13, expected.len()))
             .unwrap(),
         expected
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(12, 13, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(12, 13, expected.len()),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(13, 12, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(13, 12, expected.len()),
+            SerializationFailure::ProjectionNodeLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(value, retained);
@@ -400,7 +417,7 @@ fn equivalent_after_with_url_modifiers_consumes_nodes_without_extra_output_bytes
 
 #[test]
 fn checked_cue_models_reject_retained_url_modifier_argument_recovery() {
-    let report = parse_style_attribute("cue-before:url(\"a\" mod([");
+    let report = CssParser::default().parse_block_contents("cue-before:url(\"a\" mod([");
     assert!(!report.is_clean());
     let [source] = report.syntax().as_slice() else {
         panic!("retained recovered cue")
@@ -409,15 +426,15 @@ fn checked_cue_models_reject_retained_url_modifier_argument_recovery() {
         panic!("audio")
     };
     let error = CssAudioCue::try_new(value.url().clone(), value.decibel().cloned()).unwrap_err();
-    assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidFunction);
+    assert!(error.is_invalid_function(), "{error:?}");
     assert!(matches!(
         error.origin(),
         CssValueOrigin::ImplicitClosure { .. }
     ));
-    let error = CssCuePair::try_new(cue(source).clone(), None).unwrap_err();
+    let error = CssSidePair::<CssCue>::try_new(cue(source).clone(), None).unwrap_err();
     assert!(matches!(
         error.origin(),
         CssValueOrigin::ImplicitClosure { .. }
     ));
-    assert!(CssCuePair::try_new(CssCue::None, Some(cue(source).clone())).is_err());
+    assert!(CssSidePair::<CssCue>::try_new(CssCue::None, Some(cue(source).clone())).is_err());
 }

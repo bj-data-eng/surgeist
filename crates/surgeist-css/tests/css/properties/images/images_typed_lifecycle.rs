@@ -3,14 +3,33 @@
 //! selected Images 3 CRD 2023-12-18 §§4.5–5.2, including §5.2 standard legacy
 //! acceptance, and imported physical Values 3 positions. No missing-symbol RED.
 
+use crate::css::support::position_view::CartesianPosition as _;
 use crate::css::support::property_expectations;
 
 use crate::css::support::authored_property;
 use crate::css::support::authored_property::parsed;
-use surgeist_css::{
-    CssKnownProperty as P, CssSpecifiedValueSerializationErrorKind as K,
-    CssSpecifiedValueSerializationLimits as L, *,
+use crate::css::support::failure_classes::SerializationFailure as K;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::conformance::{
+    CssSupportStatus, property_support_metadata, specification_source,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::normalize::{CssNormalizationLimits, CssNormalizedItem};
+use surgeist_css::numeric::CssAngleUnit;
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownPropertyValueRef,
+    CssLonghandContribution, CssLonghandContributions, CssLonghandValueRef, CssPendingSubstitution,
+    CssPropertyKindRef,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::image::{CssImageOrientation, CssImageRendering, CssObjectFit};
+use surgeist_css::values::position::{CssHorizontalPosition, CssVerticalPosition};
 
 // Specialized rendering identity/output cases; generic property/initial inventory
 // remains in the shared independent common records.
@@ -28,8 +47,7 @@ fn checked(property: P, components: CssComponentValues, grammar: bool) -> CssDec
         .unwrap()
 }
 fn ordinary(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(items)) = source.expand().unwrap()
     else {
         panic!("one completed ordinary longhand")
     };
@@ -70,19 +88,19 @@ fn terminal_matches_authored(item: &CssLonghandContribution, source: &CssDeclara
         (
             CssLonghandValueRef::ObjectPosition(terminal),
             CssKnownPropertyValueRef::ObjectPosition(authored),
-        ) => assert_eq!(terminal, authored.position()),
+        ) => assert_eq!(terminal, authored.value()),
         (
             CssLonghandValueRef::ImageOrientation(terminal),
             CssKnownPropertyValueRef::ImageOrientation(authored),
-        ) => assert_eq!(terminal, authored.orientation()),
+        ) => assert_eq!(terminal, authored.value()),
         (
             CssLonghandValueRef::ImageRendering(terminal),
             CssKnownPropertyValueRef::ImageRendering(authored),
-        ) => assert_eq!(terminal, authored.rendering()),
+        ) => assert_eq!(terminal, authored.value()),
         (
             CssLonghandValueRef::ObjectFit(terminal),
             CssKnownPropertyValueRef::ObjectFit(authored),
-        ) => assert_eq!(terminal, authored.fit()),
+        ) => assert_eq!(terminal, authored.value()),
         _ => panic!("ordinary terminal preserves its property's borrowed type"),
     }
 }
@@ -95,17 +113,20 @@ fn all_seven_rendering_variants_construct_serialize_parse_and_expand_without_ali
                 .skip(index + 1)
                 .all(|(other, _)| *other != expected)
         );
-        assert_eq!(expected.serialize_specified().unwrap(), css);
+        assert_eq!(
+            expected.serialize_specified(Default::default()).unwrap(),
+            css
+        );
         for source in [
             parsed(P::ImageRendering, &css.to_ascii_uppercase()),
             checked(
                 P::ImageRendering,
-                parse_component_values(css).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), css).unwrap(),
                 false,
             ),
             checked(
                 P::ImageRendering,
-                parse_component_values(css).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), css).unwrap(),
                 true,
             ),
         ] {
@@ -114,7 +135,7 @@ fn all_seven_rendering_variants_construct_serialize_parse_and_expand_without_ali
             else {
                 panic!("rendering typed wrapper")
             };
-            assert_eq!(value.rendering(), &expected);
+            assert_eq!(value.value(), &expected);
             let values = ordinary(&source);
             terminal_matches_authored(&values.items()[0], &source);
             let CssLonghandValueRef::ImageRendering(terminal) =
@@ -124,13 +145,16 @@ fn all_seven_rendering_variants_construct_serialize_parse_and_expand_without_ali
             };
             assert_eq!(*terminal, expected);
             assert_eq!(
-                source.to_specified_css().unwrap(),
+                source.serialize_specified(Default::default()).unwrap(),
                 format!("image-rendering: {css} !important;")
             );
             assert_eq!(
-                parsed(P::ImageRendering, &terminal.serialize_specified().unwrap())
-                    .to_specified_css()
-                    .unwrap(),
+                parsed(
+                    P::ImageRendering,
+                    &terminal.serialize_specified(Default::default()).unwrap()
+                )
+                .serialize_specified(Default::default())
+                .unwrap(),
                 format!("image-rendering: {css} !important;")
             );
         }
@@ -149,7 +173,7 @@ fn new_rendering_keywords_keep_exact_primitive_and_declaration_work_budgets() {
     for (value, expected) in RENDERING {
         assert_eq!(
             value
-                .serialize_specified_with_limits(L::new(1, 1, expected.len()))
+                .serialize_specified(L::new(1, 1, expected.len()))
                 .unwrap(),
             expected
         );
@@ -160,10 +184,7 @@ fn new_rendering_keywords_keep_exact_primitive_and_declaration_work_budgets() {
         ] {
             for _ in 0..2 {
                 assert_eq!(
-                    value
-                        .serialize_specified_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
+                    serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                     kind
                 );
             }
@@ -173,7 +194,7 @@ fn new_rendering_keywords_keep_exact_primitive_and_declaration_work_budgets() {
         let output = format!("image-rendering: {expected} !important;");
         assert_eq!(
             source
-                .to_specified_css_with_limits(L::new(3, 3, output.len()))
+                .serialize_specified(L::new(3, 3, output.len()))
                 .unwrap(),
             output
         );
@@ -183,15 +204,15 @@ fn new_rendering_keywords_keep_exact_primitive_and_declaration_work_budgets() {
             (L::new(3, 3, output.len() - 1), K::ByteLimit),
         ] {
             assert_eq!(
-                source
-                    .to_specified_css_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&source.serialize_specified(limits).unwrap_err()),
                 kind
             );
             assert_eq!(source, before);
         }
-        assert_eq!(source.to_specified_css().unwrap(), output);
+        assert_eq!(
+            source.serialize_specified(Default::default()).unwrap(),
+            output
+        );
     }
 }
 #[test]
@@ -221,11 +242,14 @@ fn selected_fixed_initials_are_exact_typed_values_with_programmatic_percentage_o
                 for offset in [x, y] {
                     assert_eq!(offset.origin(), &CssValueOrigin::Programmatic);
                     assert!(
-                        matches!(offset.literal_component().unwrap().view(), CssComponentValueRef::Token(
+                        matches!(offset.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(
                         CssValueTokenRef::Percentage(number)) if number.representation() == "50")
                     );
                 }
-                assert_eq!(position.serialize_specified().unwrap(), "50% 50%");
+                assert_eq!(
+                    position.serialize_specified(Default::default()).unwrap(),
+                    "50% 50%"
+                );
                 assert!(!longhand.inherited_by_default());
             }
             (P::ImageOrientation, CssLonghandValueRef::ImageOrientation(value)) => {
@@ -255,8 +279,16 @@ fn parsed_and_checked_terminal_payloads_preserve_raw_scalars_origins_and_propert
     ] {
         for source in [
             parsed(property, input),
-            checked(property, parse_component_values(input).unwrap(), false),
-            checked(property, parse_component_values(input).unwrap(), true),
+            checked(
+                property,
+                CssComponentValues::parse(&CssParser::default(), input).unwrap(),
+                false,
+            ),
+            checked(
+                property,
+                CssComponentValues::parse(&CssParser::default(), input).unwrap(),
+                true,
+            ),
         ] {
             let before = source.clone();
             let values = ordinary(&source);
@@ -277,11 +309,11 @@ fn parsed_and_checked_terminal_payloads_preserve_raw_scalars_origins_and_propert
                     exact_origin(x.origin(), text, "-1e-2px");
                     exact_origin(y.origin(), text, "-2.00%");
                     assert!(
-                        matches!(x.literal_component().unwrap().view(), CssComponentValueRef::Token(
+                        matches!(x.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(
                         CssValueTokenRef::Dimension { number, unit }) if number.representation() == "-1e-2" && unit == "px")
                     );
                     assert!(
-                        matches!(y.literal_component().unwrap().view(), CssComponentValueRef::Token(
+                        matches!(y.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(
                         CssValueTokenRef::Percentage(number)) if number.representation() == "-2.00")
                     );
                 }
@@ -305,7 +337,7 @@ fn parsed_and_checked_terminal_payloads_preserve_raw_scalars_origins_and_propert
 }
 fn pending(property: P) -> (CssDeclaration, CssPendingSubstitution) {
     let source = parsed(property, "var(--image)");
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending typed Images role")
     };
     (source, handle)
@@ -332,7 +364,7 @@ fn physical_position_reentry_preserves_mixed_scalar_origins_and_original_pending
     let (source, handle) = pending(P::ObjectPosition);
     let before = source.clone();
     let text = "/*😀*/right -1e-2px bottom -2.00%";
-    let components = parse_component_values(text).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let mut items = components.items().to_vec();
     let x_index = items
         .iter()
@@ -342,7 +374,7 @@ fn physical_position_reentry_preserves_mixed_scalar_origins_and_original_pending
         })
         .unwrap();
     items[x_index] = CssComponentValue::try_token("-1e-2px").unwrap();
-    let replacement = CssComponentValues::try_new(items).unwrap();
+    let replacement = CssComponentValues::try_new(items, Default::default()).unwrap();
     let old = replacement.clone();
     for _ in 0..2 {
         let values = reentered(&handle, &source, &replacement);
@@ -359,7 +391,7 @@ fn physical_position_reentry_preserves_mixed_scalar_origins_and_original_pending
         assert_eq!(x.origin(), &CssValueOrigin::Programmatic);
         exact_origin(y.origin(), text, "-2.00%");
         assert_eq!(
-            position.serialize_specified().unwrap(),
+            position.serialize_specified(Default::default()).unwrap(),
             "right -0.01px bottom -2%"
         );
         assert_eq!(replacement, old);
@@ -371,10 +403,13 @@ fn physical_position_reentry_preserves_mixed_scalar_origins_and_original_pending
 fn orientation_reentry_preserves_authored_angle_units_math_and_programmatic_origin() {
     let (source, handle) = pending(P::ImageOrientation);
     let before = source.clone();
-    let components = CssComponentValues::try_new(vec![
-        CssComponentValue::try_token("flip").unwrap(),
-        CssComponentValue::try_token("-0.25turn").unwrap(),
-    ])
+    let components = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_token("flip").unwrap(),
+            CssComponentValue::try_token("-0.25turn").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let old = components.clone();
     for _ in 0..2 {
@@ -391,7 +426,7 @@ fn orientation_reentry_preserves_authored_angle_units_math_and_programmatic_orig
         assert_eq!(source, before);
     }
     let text = "/*😀*/flip calc(15deg + 15deg)";
-    let replacement = parse_component_values(text).unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let values = reentered(&handle, &source, &replacement);
     let CssLonghandValueRef::ImageOrientation(orientation @ CssImageOrientation::Flip(Some(angle))) =
         values.items()[0].ordinary_value().unwrap().view()
@@ -408,11 +443,15 @@ fn orientation_reentry_preserves_authored_angle_units_math_and_programmatic_orig
     };
     exact_origin(function.closing_origin(), text, ")");
     assert_eq!(
-        calculation.components().serialize().unwrap().as_css(),
+        calculation
+            .components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "calc(15deg + 15deg)"
     );
     assert_eq!(
-        orientation.serialize_specified().unwrap(),
+        orientation.serialize_specified(Default::default()).unwrap(),
         "calc(30deg) flip"
     );
     assert_eq!(source, before);
@@ -422,7 +461,8 @@ fn all_rendering_and_fit_replacements_preserve_exact_typed_alternatives() {
     let (render_source, render_handle) = pending(P::ImageRendering);
     let before = render_source.clone();
     for (expected, css) in RENDERING {
-        let replacement = parse_component_values(&css.to_ascii_uppercase()).unwrap();
+        let replacement =
+            CssComponentValues::parse(&CssParser::default(), css.to_ascii_uppercase()).unwrap();
         for _ in 0..2 {
             let values = reentered(&render_handle, &render_source, &replacement);
             let CssLonghandValueRef::ImageRendering(actual) =
@@ -443,7 +483,7 @@ fn all_rendering_and_fit_replacements_preserve_exact_typed_alternatives() {
         (CssObjectFit::None, "none"),
         (CssObjectFit::ScaleDown, "scale-down"),
     ] {
-        let replacement = parse_component_values(css).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), css).unwrap();
         let values = reentered(&handle, &source, &replacement);
         let CssLonghandValueRef::ObjectFit(actual) =
             values.items()[0].ordinary_value().unwrap().view()
@@ -456,7 +496,7 @@ fn all_rendering_and_fit_replacements_preserve_exact_typed_alternatives() {
 }
 #[test]
 fn rendering_normalization_retains_seven_typed_occurrences_with_authored_order_and_importance() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         ".image{image-rendering:auto;image-rendering:smooth!important;image-rendering:high-quality;",
         "image-rendering:pixelated;image-rendering:crisp-edges;image-rendering:optimizeSpeed;image-rendering:optimizeQuality}"
     ));
@@ -465,11 +505,10 @@ fn rendering_normalization_retains_seven_typed_occurrences_with_authored_order_a
     let CssRule::Style(style) = &report.syntax().rules()[0] else {
         panic!("image rule")
     };
-    let normalized = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 7, 7).unwrap(),
-    )
-    .unwrap();
+    let normalized = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 7, 7).unwrap())
+        .unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -508,7 +547,7 @@ fn rendering_normalization_retains_seven_typed_occurrences_with_authored_order_a
             panic!("rendering terminal")
         };
         assert_eq!(*actual, expected);
-        assert_eq!(actual.serialize_specified().unwrap(), css);
+        assert_eq!(actual.serialize_specified(Default::default()).unwrap(), css);
     }
     assert_eq!(report, before);
 }
@@ -547,6 +586,7 @@ fn programmatic_components_keep_programmatic_scalar_origins_in_all_four_terminal
                 .into_iter()
                 .map(|token| CssComponentValue::try_token(token).unwrap())
                 .collect(),
+            Default::default(),
         )
         .unwrap();
         let before = components.clone();

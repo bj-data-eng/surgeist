@@ -12,7 +12,8 @@
 //! ```
 use crate::object_operations::execute;
 use crate::*;
-use surgeist_css::{CssRecoveryDiagnostic, CssSpecifiedValueSerializationLimits};
+use surgeist_css::diagnostic::CssRecoveryDiagnostic;
+use surgeist_css::serialization::CssSerializationLimits;
 
 /// Explicit constructor media input. Captured lists are copied through CSSOM text,
 /// including across owners; the constructed sheet receives a fresh MediaList.
@@ -294,7 +295,7 @@ impl MediaList {
     pub fn media_text(
         &self,
         store: &CssomStore,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String, CssomError> {
         store.snapshot().media_text(self.id(), limits)
     }
@@ -305,7 +306,7 @@ impl MediaList {
         &self,
         store: &CssomStore,
         index: usize,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<Option<String>, CssomError> {
         store.snapshot().media_item(self.id(), index, limits)
     }
@@ -347,10 +348,7 @@ impl MediaList {
     }
 }
 impl CssomCapture<MediaList> {
-    pub fn media_text(
-        &self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssomError> {
+    pub fn media_text(&self, limits: CssSerializationLimits) -> Result<String, CssomError> {
         self.snapshot.media_text(self.handle.id(), limits)
     }
     pub fn length(&self) -> Result<usize, CssomError> {
@@ -359,7 +357,7 @@ impl CssomCapture<MediaList> {
     pub fn item(
         &self,
         index: usize,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<Option<String>, CssomError> {
         self.snapshot.media_item(self.handle.id(), index, limits)
     }

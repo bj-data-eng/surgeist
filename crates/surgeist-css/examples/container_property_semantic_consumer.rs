@@ -1,6 +1,14 @@
 //! Builds a checked authored container declaration from semantic values.
 #![forbid(unsafe_code)]
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValueLimits;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::query::container::{
+    CssContainer, CssContainerName, CssContainerNameList, CssContainerNames, CssContainerType,
+};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let names = CssContainerNames::Names(
         CssContainerNameList::try_new(vec![
@@ -10,18 +18,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     let value = CssContainer::new(names, CssContainerType::InlineSizeScrollState);
     let limits = CssComponentValueLimits::try_new(0, 16, 128).expect("leaf limits");
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Container),
-        value.to_components_with_limits(limits)?,
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Container)),
+        value.to_components(limits)?,
         CssImportance::Normal,
     )?;
     assert!(declaration.position().is_none());
-    let CssExpansion::Contributions(CssContributions::Longhands(members)) =
-        expand_declaration(&declaration)?
+    let CssExpansion::Contributions(CssContributions::Longhands(members)) = declaration.expand()?
     else {
         panic!("ordinary shorthand")
     };
-    println!("container: {}", value.serialize_with_limit(128)?.as_css());
+    println!("container: {}", value.serialize_tokens(limits)?.as_css());
     for member in members.items() {
         println!(
             "{}: {:?}",

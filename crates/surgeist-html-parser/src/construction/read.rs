@@ -551,10 +551,10 @@ impl<'a> HtmlParseColorComputation<'a> {
     pub fn alpha_present(&self) -> bool {
         self.value.operands[0].is_some()
     }
-    pub fn standard_failure(&self) -> Option<surgeist_css::CssColorStandardFailure> {
+    pub fn standard_failure(&self) -> Option<surgeist_css::color::CssColorStandardFailure> {
         self.value.standard_failure
     }
-    pub fn environment(&self) -> surgeist_css::CssColorFactIdentity {
+    pub fn environment(&self) -> surgeist_css::color::CssColorFactIdentity {
         self.value.environment
     }
     pub fn value(&self) -> surgeist_color::Color {

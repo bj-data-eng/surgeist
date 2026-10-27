@@ -1,12 +1,15 @@
-use surgeist_css::{
+use crate::css::support::value_assertions::positive_literal;
+use surgeist_css::CssParser;
+use surgeist_css::numeric::{
+    CssInteger, CssNonNegative, CssNumeric, CssNumericLiteral, CssPositive, CssTime, CssTimeUnit,
+};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::animation::{
     CssAnimation, CssAnimationComponents, CssAnimationDirection, CssAnimationFillMode,
     CssAnimationIterationCount, CssAnimationList, CssAnimationName, CssAnimationPlayState,
-    CssCubicBezier, CssDuration, CssEasing, CssEasingKeyword, CssIntegerLiteral,
-    CssKnownPropertyValueRef, CssPositiveIntegerLiteral, CssPositiveIntegerValue, CssStepPosition,
-    CssSteps, CssTimeUnit, CssTransition, CssTransitionList, CssTransitionProperty,
-    parse_style_attribute,
+    CssCubicBezier, CssEasing, CssEasingKeyword, CssStepPosition, CssSteps, CssTransition,
+    CssTransitionList, CssTransitionProperty,
 };
-use surgeist_css::{CssTimeLiteral, CssTimeValue};
 
 #[test]
 fn checked_aggregates_reject_empty_items_and_lists() {
@@ -18,13 +21,14 @@ fn checked_aggregates_reject_empty_items_and_lists() {
 
 #[test]
 fn checked_transition_preserves_distinct_time_domains_and_omissions() {
-    let duration = CssDuration::try_new(CssTimeValue::from_literal(
-        CssTimeLiteral::try_new("1", CssTimeUnit::Seconds).unwrap(),
-    ))
+    let duration = CssNumeric::<CssTime, CssNonNegative>::try_from_literal(
+        CssNumericLiteral::<CssTime>::try_new("1", CssTimeUnit::Seconds).unwrap(),
+    )
     .unwrap();
-    let delay = CssTimeValue::from_literal(
-        CssTimeLiteral::try_new("-250", CssTimeUnit::Milliseconds).unwrap(),
-    );
+    let delay = CssNumeric::<CssTime>::try_from_literal(
+        CssNumericLiteral::<CssTime>::try_new("-250", CssTimeUnit::Milliseconds).unwrap(),
+    )
+    .unwrap();
     let transition = CssTransition::try_new(
         Some(CssTransitionProperty::All),
         Some(duration),
@@ -37,7 +41,7 @@ fn checked_transition_preserves_distinct_time_domains_and_omissions() {
         Some(CssTransitionProperty::All)
     ));
     assert!(
-        matches!(transition.duration().and_then(|value| value.time().literal()), Some(value)
+        matches!(transition.duration().and_then(|value| value.literal()), Some(value)
         if value.numeric().representation() == "1" && value.unit() == CssTimeUnit::Seconds)
     );
     assert!(
@@ -59,18 +63,24 @@ fn checked_animation_preserves_eight_semantic_slots() {
     let animation = CssAnimation::try_new(CssAnimationComponents {
         name: Some(CssAnimationName::None),
         duration: Some(
-            CssDuration::try_new(CssTimeValue::from_literal(
-                CssTimeLiteral::try_new("2", CssTimeUnit::Seconds).unwrap(),
-            ))
+            CssNumeric::<CssTime, CssNonNegative>::try_from_literal(
+                CssNumericLiteral::<CssTime>::try_new("2", CssTimeUnit::Seconds).unwrap(),
+            )
             .unwrap(),
         ),
-        delay: Some(CssTimeValue::from_literal(
-            CssTimeLiteral::try_new("-1", CssTimeUnit::Seconds).unwrap(),
-        )),
+        delay: Some(
+            CssNumeric::<CssTime>::try_from_literal(
+                CssNumericLiteral::<CssTime>::try_new("-1", CssTimeUnit::Seconds).unwrap(),
+            )
+            .unwrap(),
+        ),
         timing_function: Some(CssEasing::Keyword(CssEasingKeyword::EaseOut)),
         iteration_count: Some(CssAnimationIterationCount::Number(
-            surgeist_css::CssSpecifiedNonNegativeNumber::try_from_component(
-                surgeist_css::CssComponentValue::try_number("3").unwrap(),
+            surgeist_css::numeric::CssNumeric::<
+                surgeist_css::numeric::CssNumber,
+                surgeist_css::numeric::CssNonNegative,
+            >::try_from_component(
+                surgeist_css::component::CssComponentValue::try_number("3").unwrap(),
             )
             .unwrap(),
         )),
@@ -81,7 +91,7 @@ fn checked_animation_preserves_eight_semantic_slots() {
     .unwrap();
     assert!(matches!(animation.name(), Some(CssAnimationName::None)));
     assert!(
-        matches!(animation.duration().and_then(|value| value.time().literal()), Some(value) if value.numeric().representation() == "2")
+        matches!(animation.duration().and_then(|value| value.literal()), Some(value) if value.numeric().representation() == "2")
     );
     assert!(
         matches!(animation.delay().and_then(|value| value.literal()), Some(value) if value.numeric().representation() == "-1")
@@ -91,7 +101,7 @@ fn checked_animation_preserves_eight_semantic_slots() {
         Some(CssEasing::Keyword(CssEasingKeyword::EaseOut))
     ));
     assert!(
-        matches!(animation.iteration_count(), Some(CssAnimationIterationCount::Number(value)) if value.serialize_specified().unwrap() == "3")
+        matches!(animation.iteration_count(), Some(CssAnimationIterationCount::Number(value)) if value.serialize_specified(Default::default()).unwrap() == "3")
     );
     assert_eq!(
         animation.direction(),
@@ -121,18 +131,20 @@ fn easing_construction_checks_bezier_and_step_ranges() {
     );
     assert!(
         CssSteps::try_new(
-            CssPositiveIntegerValue::Literal(
-                CssPositiveIntegerLiteral::try_new(CssIntegerLiteral::from_i32(1)).unwrap()
-            ),
+            CssNumeric::<CssInteger, CssPositive>::try_from_literal(
+                positive_literal(CssNumericLiteral::<CssInteger>::from_i32(1)).unwrap()
+            )
+            .unwrap(),
             Some(CssStepPosition::JumpNone)
         )
         .is_none()
     );
     assert!(
         CssSteps::try_new(
-            CssPositiveIntegerValue::Literal(
-                CssPositiveIntegerLiteral::try_new(CssIntegerLiteral::from_i32(2)).unwrap()
-            ),
+            CssNumeric::<CssInteger, CssPositive>::try_from_literal(
+                positive_literal(CssNumericLiteral::<CssInteger>::from_i32(2)).unwrap()
+            )
+            .unwrap(),
             Some(CssStepPosition::JumpNone)
         )
         .is_some()
@@ -141,7 +153,8 @@ fn easing_construction_checks_bezier_and_step_ranges() {
 
 #[test]
 fn parsed_symbolic_easing_remains_typed_through_checked_aggregates() {
-    let report = parse_style_attribute("transition-timing-function: steps(calc(1 + 1), jump-none)");
+    let report = CssParser::default()
+        .parse_block_contents("transition-timing-function: steps(calc(1 + 1), jump-none)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::TransitionTimingFunction(wrapper) = report.syntax()[0]
         .known()
@@ -151,13 +164,10 @@ fn parsed_symbolic_easing_remains_typed_through_checked_aggregates() {
     else {
         panic!("timing function wrapper");
     };
-    let [easing @ CssEasing::Steps(steps)] = wrapper.timing_functions().values() else {
+    let [easing @ CssEasing::Steps(steps)] = wrapper.value().values() else {
         panic!("one steps function");
     };
-    assert!(matches!(
-        steps.count(),
-        CssPositiveIntegerValue::Calculation(_)
-    ));
+    assert!(steps.count().calculation().is_some());
     assert_eq!(steps.position(), Some(CssStepPosition::JumpNone));
     let transition = CssTransition::try_new(None, None, None, Some(easing.clone())).unwrap();
     let animation = CssAnimation::try_new(CssAnimationComponents {
@@ -166,18 +176,20 @@ fn parsed_symbolic_easing_remains_typed_through_checked_aggregates() {
     })
     .unwrap();
     assert!(
-        matches!(transition.timing_function(), Some(CssEasing::Steps(value)) if matches!(value.count(), CssPositiveIntegerValue::Calculation(_)))
+        matches!(transition.timing_function(), Some(CssEasing::Steps(value)) if value.count().calculation().is_some())
     );
     assert!(
-        matches!(animation.timing_function(), Some(CssEasing::Steps(value)) if matches!(value.count(), CssPositiveIntegerValue::Calculation(_)))
+        matches!(animation.timing_function(), Some(CssEasing::Steps(value)) if value.count().calculation().is_some())
     );
     assert!(animation.name().is_none());
     assert!(animation.duration().is_none());
 }
 
-fn checked_number(representation: &str) -> surgeist_css::CssSpecifiedNumber {
-    surgeist_css::CssSpecifiedNumber::try_from_component(
-        surgeist_css::CssComponentValue::try_number(representation).unwrap(),
+fn checked_number(
+    representation: &str,
+) -> surgeist_css::numeric::CssNumeric<surgeist_css::numeric::CssNumber> {
+    surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssNumber>::try_from_component(
+        surgeist_css::component::CssComponentValue::try_number(representation).unwrap(),
     )
     .unwrap()
 }

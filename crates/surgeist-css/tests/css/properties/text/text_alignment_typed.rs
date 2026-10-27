@@ -1,10 +1,24 @@
 //! Functional current-value evidence for Text 4 (2026-08-14) and UAX29 r47.
 
-use surgeist_css::*;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValue,
+    CssLonghandValueRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::text::{
+    CssCharacterAlignment, CssTextAlign, CssTextAlignAllValue, CssTextAlignLastValue,
+    CssTextAlignPosition, CssTextAlignValue,
+};
 
 fn one(name: &str, value: &str) -> CssDeclaration {
     let source = format!("{name}:{value}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
         panic!("one {name} declaration")
@@ -43,8 +57,7 @@ fn last(value: &str) -> CssTextAlignLastValue {
 
 fn assigned(value: &str) -> (CssTextAlignAllValue, CssTextAlignLastValue) {
     let source = one("text-align", value);
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("text-align has two terminal targets")
     };
@@ -162,7 +175,7 @@ fn character_fallback_omission_is_authored_and_expansion_resets_last_to_auto() {
             CssValueOrigin::Parsed(_)
         ));
         assert_eq!(
-            parsed.serialize_specified().unwrap(),
+            parsed.serialize_specified(Default::default()).unwrap(),
             if let Some(fallback) = fallback {
                 format!(
                     "\".\" {}",
@@ -188,7 +201,9 @@ fn character_fallback_omission_is_authored_and_expansion_resets_last_to_auto() {
         assert_eq!(last, CssTextAlignLastValue::Auto);
     }
     assert_eq!(
-        all("\".\" right").serialize_specified().unwrap(),
+        all("\".\" right")
+            .serialize_specified(Default::default())
+            .unwrap(),
         "\".\" right"
     );
 }
@@ -207,13 +222,13 @@ fn decoded_unicode_clusters_and_source_graphs_share_checked_construction() {
             panic!("one decoded cluster")
         };
         assert_eq!(parsed.decoded(), text);
-        assert_eq!(parsed.serialize_specified().unwrap(), css);
+        assert_eq!(parsed.serialize_specified(Default::default()).unwrap(), css);
         assert!(matches!(
             parsed.component().origin(),
             CssValueOrigin::Parsed(_)
         ));
     }
-    let escaped = parse_component_values("\"\\65\\301 \"").unwrap();
+    let escaped = CssComponentValues::parse(&CssParser::default(), "\"\\65\\301 \"").unwrap();
     let original = escaped.items()[0].clone();
     let value = CssCharacterAlignment::try_from_component(original.clone(), None).unwrap();
     assert_eq!(value.decoded(), "é");
@@ -226,36 +241,40 @@ fn decoded_unicode_clusters_and_source_graphs_share_checked_construction() {
         panic!("escaped source character")
     };
     assert_eq!(parsed.decoded(), "é");
-    assert_eq!(parsed.serialize_specified().unwrap(), "\"é\"");
+    assert_eq!(
+        parsed.serialize_specified(Default::default()).unwrap(),
+        "\"é\""
+    );
 }
 
 #[test]
 fn invalid_decoded_clusters_components_and_literal_bad_newlines_are_rejected() {
     for text in ["", "ab", "🇺🇸🇨"] {
-        assert_eq!(
+        assert!(
             CssCharacterAlignment::try_new(text, None)
                 .unwrap_err()
-                .kind(),
-            CssCharacterAlignmentErrorKind::InvalidCharacter
+                .is_invalid_character()
         );
     }
     let error = CssCharacterAlignment::try_new("\0", None).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        CssCharacterAlignmentErrorKind::Component(CssComponentValueErrorKind::InvalidString)
+    assert!(
+        error
+            .component_error()
+            .is_some_and(|error| error.is_invalid_string()),
+        "{error:?}"
     );
     assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
     let identifier = CssComponentValue::try_ident("red").unwrap();
-    assert_eq!(
+    assert!(
         CssCharacterAlignment::try_from_component(identifier, None)
             .unwrap_err()
-            .kind(),
-        CssCharacterAlignmentErrorKind::Component(CssComponentValueErrorKind::InvalidString)
+            .component_error()
+            .is_some_and(|error| error.is_invalid_string())
     );
     for name in ["text-align", "text-align-all"] {
-        let report = parse_style_attribute(&format!("{name}:\"a\nb\""));
+        let report = CssParser::default().parse_block_contents(format!("{name}:\"a\nb\""));
         assert!(!report.is_clean(), "literal newline in string is invalid");
-        let report = parse_style_attribute(&format!("{name}:\".\\\n\""));
+        let report = CssParser::default().parse_block_contents(format!("{name}:\".\\\n\""));
         assert!(
             report.is_clean(),
             "escaped newline preserves one decoded character"
@@ -324,7 +343,7 @@ fn specified_serialization_is_canonical_and_atomically_bounded() {
         assert_eq!(
             CssCharacterAlignment::try_new(decoded, None)
                 .unwrap()
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             expected
         );
@@ -335,59 +354,63 @@ fn specified_serialization_is_canonical_and_atomically_bounded() {
         (shorthand("\".\""), "\".\"", 1),
         (shorthand("left \".\""), "\".\" left", 2),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    nodes,
-                    nodes,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(nodes, nodes, expected.len()))
                 .unwrap(),
             expected
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(nodes - 1, nodes, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(nodes - 1, nodes, expected.len()),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(nodes, nodes - 1, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(nodes, nodes - 1, expected.len()),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(nodes, nodes, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(nodes, nodes, expected.len() - 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind
             );
         }
     }
     assert_eq!(
-        last("MATCH-PARENT").serialize_specified().unwrap(),
+        last("MATCH-PARENT")
+            .serialize_specified(Default::default())
+            .unwrap(),
         "match-parent"
     );
-    assert_eq!(all("CENTER").serialize_specified().unwrap(), "center");
+    assert_eq!(
+        all("CENTER")
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "center"
+    );
 
     let one_long_cluster = format!("e{}", "\u{301}".repeat(4096));
-    let parsed = parse_component_values(&format!("\"{one_long_cluster}\"")).unwrap();
+    let parsed =
+        CssComponentValues::parse(&CssParser::default(), format!("\"{one_long_cluster}\""))
+            .unwrap();
     let value = CssCharacterAlignment::try_from_component(parsed.items()[0].clone(), None).unwrap();
     assert_eq!(value.decoded(), one_long_cluster);
-    assert_eq!(
+    assert!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 8))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 8))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         format!("\"{one_long_cluster}\"")
     );
 }
@@ -401,10 +424,10 @@ fn shared_text4_source_matches_complete_text_wrap_authored_grammar() {
         metadata.feature().source().url(),
         Some("https://www.w3.org/TR/2026/WD-css-text-4-20260814/")
     );
-    let report = parse_style_attribute("text-wrap:balance");
+    let report = CssParser::default().parse_block_contents("text-wrap:balance");
     assert!(report.is_clean());
-    let report = parse_style_attribute("text-wrap:auto");
+    let report = CssParser::default().parse_block_contents("text-wrap:auto");
     assert!(report.is_clean());
-    let report = parse_style_attribute("text-wrap:wrap nowrap");
+    let report = CssParser::default().parse_block_contents("text-wrap:wrap nowrap");
     assert!(!report.is_clean());
 }

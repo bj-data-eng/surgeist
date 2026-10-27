@@ -2,23 +2,43 @@
 //! 2021-08-26 generic numbers. Decimal ties use the adopted FIXED policy:
 //! nearest, ties away from zero. Expectations use exact authored decimals,
 //! destination percentage factors, and conversion before six-place rounding.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::{
     checked_color as color, checked_color_declaration as declaration,
     component_values as components, declaration_color,
 };
-use surgeist_css::*;
-type Limits = CssSpecifiedValueSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssAlphaColor, CssColor, CssColorComponent, CssColorNumberLiteral, CssColorPercentageLiteral,
+    CssColorSyntax, CssNamedColor, CssRelativeColor, CssRelativeColorEnvironment,
+    CssRelativeColorExpression, CssRelativeColorExpressionValue, CssRelativeColorFunction,
+    CssRelativeColorResultDomain, CssRgbColor,
+};
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::property::{CssExpansion, CssKnownProperty};
+use surgeist_css::serialization::CssSerializationLimits;
+type Limits = CssSerializationLimits;
+type Kind = SerializationFailure;
 fn assert_text(source: &str, expected: &str) {
     let d = declaration(source);
     let before = d.clone();
     assert_eq!(d.value_components(), &components(source));
-    let first = declaration_color(&d).to_specified_css();
-    assert_eq!(first, declaration_color(&d).to_specified_css());
+    let first = declaration_color(&d).serialize_specified(Default::default());
+    assert_eq!(
+        first,
+        declaration_color(&d).serialize_specified(Default::default())
+    );
     assert_eq!(d, before);
     assert_eq!(first.unwrap(), expected, "{source}");
     // Reparse supplements the independent literal oracle.
-    assert_eq!(color(expected).to_specified_css().unwrap(), expected);
+    assert_eq!(
+        color(expected)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 }
 macro_rules! text_case {
     ($name:ident, $source:literal, $expected:literal) => {
@@ -613,23 +633,22 @@ fn assert_bytes(source: &str, expected: &str) {
     let value = color(source);
     let before = value.clone();
     let n = expected.len();
-    assert_eq!(
+    assert!(
         value
-            .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, n - 1))
+            .serialize_specified(Limits::new(usize::MAX, usize::MAX, n - 1))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
     assert_eq!(
         value
-            .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, n))
+            .serialize_specified(Limits::new(usize::MAX, usize::MAX, n))
             .unwrap(),
         expected
     );
     assert_eq!(
         value
-            .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, n))
+            .serialize_specified(Limits::new(usize::MAX, usize::MAX, n))
             .unwrap(),
         expected
     );
@@ -688,12 +707,11 @@ byte_case!(
 fn huge_positive_output_is_bounded_and_atomic() {
     let value = color("rgb(from red 1e1000000000% g b)");
     let before = value.clone();
-    assert_eq!(
+    assert!(
         value
-            .to_specified_css_with_limits(Limits::new(10000, 10000, 128))
+            .serialize_specified(Limits::new(10000, 10000, 128))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
 }
@@ -707,23 +725,21 @@ fn symbolic_routes_have_independent_exact_cumulative_counts() {
     let text = "rgb(from red none g b)";
     assert_eq!(
         value
-            .to_specified_css_with_limits(Limits::new(5, 5, text.len()))
+            .serialize_specified(Limits::new(5, 5, text.len()))
             .unwrap(),
         text
     );
-    assert_eq!(
+    assert!(
         value
-            .to_specified_css_with_limits(Limits::new(4, usize::MAX, usize::MAX))
+            .serialize_specified(Limits::new(4, usize::MAX, usize::MAX))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
-            .to_specified_css_with_limits(Limits::new(usize::MAX, 4, usize::MAX))
+            .serialize_specified(Limits::new(usize::MAX, 4, usize::MAX))
             .unwrap_err()
-            .kind(),
-        Kind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
     assert_eq!(value, before);
 }
@@ -735,23 +751,21 @@ fn nested_roots_and_references_share_cumulative_counts() {
     let text = "rgb(from rgb(from red none g b) r g b)";
     assert_eq!(
         value
-            .to_specified_css_with_limits(Limits::new(9, 9, text.len()))
+            .serialize_specified(Limits::new(9, 9, text.len()))
             .unwrap(),
         text
     );
-    assert_eq!(
+    assert!(
         value
-            .to_specified_css_with_limits(Limits::new(8, usize::MAX, usize::MAX))
+            .serialize_specified(Limits::new(8, usize::MAX, usize::MAX))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
-            .to_specified_css_with_limits(Limits::new(usize::MAX, 8, usize::MAX))
+            .serialize_specified(Limits::new(usize::MAX, 8, usize::MAX))
             .unwrap_err()
-            .kind(),
-        Kind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
 }
 
@@ -761,16 +775,15 @@ fn literal_input_visits_are_charged_once() {
     let value = color("rgb(from red .1234567 .1234567 b)");
     let before = value.clone();
     let text = "rgb(from red 0.123457 0.123457 b)";
-    assert_eq!(
+    assert!(
         value
-            .to_specified_css_with_limits(Limits::new(4, usize::MAX, usize::MAX))
+            .serialize_specified(Limits::new(4, usize::MAX, usize::MAX))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
     assert_eq!(
         value
-            .to_specified_css_with_limits(Limits::new(5, usize::MAX, text.len()))
+            .serialize_specified(Limits::new(5, usize::MAX, text.len()))
             .unwrap(),
         text
     );
@@ -784,10 +797,7 @@ macro_rules! zero_limit_case {
             let value = color("rgb(from red .1234567 g b)");
             let before = value.clone();
             assert_eq!(
-                value
-                    .to_specified_css_with_limits($limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified($limits).unwrap_err()),
                 $kind
             );
             assert_eq!(value, before);
@@ -814,12 +824,18 @@ zero_limit_case!(
 fn checked_programmatic_graph_retains_literal_kind_spelling_and_origin() {
     use CssRelativeColorEnvironment as E;
     use CssRelativeColorResultDomain as D;
-    let raw =
-        CssComponentValues::try_new(vec![CssComponentValue::try_number("-.0078125").unwrap()])
-            .unwrap();
-    let expression =
-        CssRelativeColorExpression::try_from_components(raw.clone(), E::Rgb, D::NumberPercentage)
-            .unwrap();
+    let raw = CssComponentValues::try_new(
+        vec![CssComponentValue::try_number("-.0078125").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
+    let expression = CssRelativeColorExpression::try_from_components(
+        raw.clone(),
+        E::Rgb,
+        D::NumberPercentage,
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(expression.origin(), &CssValueOrigin::Programmatic);
     let CssRelativeColorExpressionValue::Number(literal) = expression.value() else {
         panic!("number")
@@ -827,9 +843,14 @@ fn checked_programmatic_graph_retains_literal_kind_spelling_and_origin() {
     assert_eq!(literal.numeric().representation(), "-.0078125");
     let channel = |name| {
         CssRelativeColorExpression::try_from_components(
-            CssComponentValues::try_new(vec![CssComponentValue::try_ident(name).unwrap()]).unwrap(),
+            CssComponentValues::try_new(
+                vec![CssComponentValue::try_ident(name).unwrap()],
+                Default::default(),
+            )
+            .unwrap(),
             E::Rgb,
             D::NumberPercentage,
+            Default::default(),
         )
         .unwrap()
     };
@@ -845,7 +866,7 @@ fn checked_programmatic_graph_retains_literal_kind_spelling_and_origin() {
     assert_eq!(relative.channels()[0], expression);
     let value = CssColor::from_relative(relative);
     let before = value.clone();
-    let result = value.to_specified_css();
+    let result = value.serialize_specified(Default::default());
     assert_eq!(value, before);
     assert_eq!(raw.items()[0].origin(), &CssValueOrigin::Programmatic);
     assert_eq!(result.unwrap(), "rgb(from red -0.007813 g b)");
@@ -876,7 +897,7 @@ fn checked_programmatic_origin_retains_number_and_percentage_categories() {
     let source = CssColor::from_rgb(rgb);
     let value = CssColor::from_alpha(CssAlphaColor::try_new(source.clone(), None).unwrap());
     let before = value.clone();
-    let result = value.to_specified_css();
+    let result = value.serialize_specified(Default::default());
     assert_eq!(value, before);
     assert_eq!(
         source.rgb_value().unwrap().channels()[0],
@@ -895,8 +916,11 @@ fn checked_programmatic_origin_retains_number_and_percentage_categories() {
 #[test]
 fn declarations_validate_and_keep_raw_graph_importance_and_siblings() {
     let source = "color: rgb(from red .1234567 g b) !important; opacity: .5";
-    let validated = validate_style_attribute(source).unwrap();
-    let report = parse_style_attribute(source);
+    let validated = CssParser::default()
+        .parse_block_contents(source)
+        .into_validation_result()
+        .unwrap();
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(&validated, report.syntax());
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2);
@@ -904,17 +928,21 @@ fn declarations_validate_and_keep_raw_graph_importance_and_siblings() {
     let d = &report.syntax()[0];
     assert_eq!(d.importance(), CssImportance::Important);
     assert_eq!(
-        d.value_components().serialize().unwrap().as_css(),
+        d.value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         " rgb(from red .1234567 g b) "
     );
-    let result = declaration_color(d).to_specified_css();
+    let result = declaration_color(d).serialize_specified(Default::default());
     assert_eq!(report.syntax(), &before);
     assert_eq!(result.unwrap(), "rgb(from red 0.123457 g b)");
 }
 
 #[test]
 fn hue_percentages_stay_invalid_and_recovery_retains_sibling() {
-    let report = parse_style_attribute("color: hsl(from red 20% s l); opacity: .5");
+    let report =
+        CssParser::default().parse_block_contents("color: hsl(from red 20% s l); opacity: .5");
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(report.syntax().len(), 1);
     assert_eq!(
@@ -936,22 +964,17 @@ fn substitutions_remain_pending_and_checked_construction_reports_origin() {
             .as_css(),
         source
     );
-    assert!(matches!(
-        expand_declaration(&d).unwrap(),
-        CssExpansion::Pending(_)
-    ));
+    assert!(matches!(d.expand().unwrap(), CssExpansion::Pending(_)));
     let raw = components("var(--n)");
     let before = raw.clone();
     let error = CssRelativeColorExpression::try_from_components(
         raw,
         CssRelativeColorEnvironment::Rgb,
         CssRelativeColorResultDomain::NumberPercentage,
+        Default::default(),
     )
     .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::SubstitutionRequired
-    );
+    assert!(error.is_substitution_required(), "{error:?}");
     assert!(error.origin().is_some());
     assert_eq!(before, components("var(--n)"));
 }

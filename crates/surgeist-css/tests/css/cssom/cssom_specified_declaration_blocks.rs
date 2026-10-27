@@ -2,10 +2,28 @@
 //! §3.2/§4, Cascade 5 §3, Logical 1 §4, and the adopted intrinsic tariff.
 //! Expected bytes and counts are authored from those contracts, not captured.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_expectations as expectations;
 use crate::css::support::value_assertions::specified_property_value as read;
 use expectations::{CASES, INDEPENDENT_TERMINALS, MetadataExpectation};
-use surgeist_css::*;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{
+    CssDeclaration, CssDeclarationBlockError, CssDeclarationList, CssImportance,
+    CssInvalidKeyframeSourceReason, CssSpecifiedDeclarationBlock, CssSpecifiedDeclarationEntry,
+    CssSpecifiedDeclarationValueRef,
+};
+use surgeist_css::diagnostic::CssTokenSummary;
+use surgeist_css::numeric::{CssCalculation, CssNumeric, CssTime};
+use surgeist_css::property::{
+    CssExpansion, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyKindRef,
+    CssPropertyNameRef, CssPropertyTarget, CssSvgGlyphOrientationVerticalDeclaration,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::keyframes::CssKeyframesRule;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::CssOverflow;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 fn all_terminal_expectations() -> Vec<(CssPropertyNameRef<'static>, u8, &'static str)> {
     let mut values: Vec<_> = CASES
@@ -59,12 +77,13 @@ fn keyframe_terminal_expected(name: CssPropertyNameRef<'_>) -> bool {
 }
 
 fn declarations(source: &str) -> CssDeclarationList {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{source}: {report:?}");
     report.syntax().clone()
 }
 fn specified_block(source: &str) -> CssSpecifiedDeclarationBlock {
-    CssSpecifiedDeclarationBlock::try_from_declarations(&declarations(source)).unwrap()
+    CssSpecifiedDeclarationBlock::try_from_declarations(&declarations(source), Default::default())
+        .unwrap()
 }
 
 #[test]
@@ -95,6 +114,7 @@ fn gradient_inverses_preserve_conic_interpolation_and_double_stop_roles() {
         let rule = keyframes(&format!("@keyframes k {{ from {{ {source} }} }}"));
         let keyframe = CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(
             rule.blocks()[0].declarations(),
+            Default::default(),
         )
         .unwrap();
         for block in [&ordinary, &keyframe] {
@@ -104,19 +124,12 @@ fn gradient_inverses_preserve_conic_interpolation_and_double_stop_roles() {
                 Some(expected)
             );
             let css = format!("background: {expected};");
-            assert_eq!(block.serialize_cssom().unwrap(), css);
+            assert_eq!(block.serialize_cssom(Default::default()).unwrap(), css);
             let error = block
-                .serialize_cssom_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    usize::MAX,
-                    usize::MAX,
-                    0,
-                ))
+                .serialize_cssom(CssSerializationLimits::new(usize::MAX, usize::MAX, 0))
                 .unwrap_err();
-            assert_eq!(
-                resource(&error),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
-            );
-            assert_eq!(block.serialize_cssom().unwrap(), css);
+            assert_eq!(resource(&error), SerializationFailure::ByteLimit);
+            assert_eq!(block.serialize_cssom(Default::default()).unwrap(), css);
             for (entry, source) in block.entries().iter().zip(&sources) {
                 assert!(entry.source().same_occurrence(source));
             }
@@ -125,27 +138,28 @@ fn gradient_inverses_preserve_conic_interpolation_and_double_stop_roles() {
 }
 
 fn keyframes(source: &str) -> CssKeyframesRule {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {report:?}");
     let [CssRule::Keyframes(rule)] = report.syntax().rules() else {
         panic!("expected keyframes")
     };
     rule.clone()
 }
-fn resource(error: &CssDeclarationBlockError) -> CssSpecifiedValueSerializationErrorKind {
-    let CssDeclarationBlockErrorKind::Serialization(error) = error.kind() else {
+fn resource(error: &CssDeclarationBlockError) -> SerializationFailure {
+    let Some(error) = error.serialization() else {
         panic!("{error:?}")
     };
-    error.kind()
+    serialization_failure(error)
 }
 
 #[test]
 fn priority_winners_keep_their_own_expanded_positions_and_occurrences() {
     let list = declarations("width:1px!important;height:4px;width:2px;width:3px!important");
-    let block = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap();
+    let block =
+        CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default()).unwrap();
     assert_eq!(list.len(), 4);
     assert_eq!(
-        block.serialize_cssom().unwrap(),
+        block.serialize_cssom(Default::default()).unwrap(),
         "height: 4px; width: 3px !important;"
     );
     assert_eq!(
@@ -160,7 +174,7 @@ fn priority_winners_keep_their_own_expanded_positions_and_occurrences() {
     assert!(block.entries()[1].source().same_occurrence(&list[3]));
     let block = specified_block("width:1px!important;height:4px;width:2px");
     assert_eq!(
-        block.serialize_cssom().unwrap(),
+        block.serialize_cssom(Default::default()).unwrap(),
         "width: 1px !important; height: 4px;"
     );
 }
@@ -168,8 +182,12 @@ fn priority_winners_keep_their_own_expanded_positions_and_occurrences() {
 #[test]
 fn custom_code_point_keys_and_payload_trivia_survive_winner_selection() {
     let list = declarations("--Case:A/**/ B;--case:C;--Case:D");
-    let block = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap();
-    assert_eq!(block.serialize_cssom().unwrap(), "--case: C; --Case: D;");
+    let block =
+        CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default()).unwrap();
+    assert_eq!(
+        block.serialize_cssom(Default::default()).unwrap(),
+        "--case: C; --Case: D;"
+    );
     assert_eq!(
         block
             .entries()
@@ -179,13 +197,15 @@ fn custom_code_point_keys_and_payload_trivia_survive_winner_selection() {
         [1, 2]
     );
     assert_eq!(
-        specified_block("--Case:A/**/ B").serialize_cssom().unwrap(),
+        specified_block("--Case:A/**/ B")
+            .serialize_cssom(Default::default())
+            .unwrap(),
         "--Case: A/**/ B;"
     );
     let name = list[1].custom().unwrap().name();
     assert_eq!(
         block
-            .property_value(CssPropertyNameRef::Custom(name))
+            .property_value(CssPropertyNameRef::Custom(name), Default::default())
             .unwrap()
             .as_deref(),
         Some("C")
@@ -196,13 +216,13 @@ fn custom_code_point_keys_and_payload_trivia_survive_winner_selection() {
 fn canonical_aliases_share_a_winner_and_distinct_legacy_grammar_does_not_reappear() {
     assert_eq!(
         specified_block("page-break-before:always;color:red;break-before:avoid")
-            .serialize_cssom()
+            .serialize_cssom(Default::default())
             .unwrap(),
         "color: red; break-before: avoid;"
     );
     assert_eq!(
         specified_block("font-stretch:condensed;font-width:expanded")
-            .serialize_cssom()
+            .serialize_cssom(Default::default())
             .unwrap(),
         "font-width: expanded;"
     );
@@ -210,7 +230,7 @@ fn canonical_aliases_share_a_winner_and_distinct_legacy_grammar_does_not_reappea
     // eligible under CSSOM preference despite its deprecation.
     assert_eq!(
         specified_block("print-color-adjust:exact")
-            .serialize_cssom()
+            .serialize_cssom(Default::default())
             .unwrap(),
         "color-adjust: exact;"
     );
@@ -236,17 +256,20 @@ fn immutable_priority_transition_shares_original_payload_without_occurrence_iden
     assert_eq!(important.parsed_name(), original.parsed_name());
     assert_eq!(important.parsed_value(), original.parsed_value());
     assert_eq!(
-        important.to_specified_css().unwrap(),
+        important.serialize_specified(Default::default()).unwrap(),
         "margin: 1px !important;"
     );
-    assert_eq!(original.to_specified_css().unwrap(), "margin: 1px;");
+    assert_eq!(
+        original.serialize_specified(Default::default()).unwrap(),
+        "margin: 1px;"
+    );
 }
 
 #[test]
 fn complete_quad_reconstructs_over_unrelated_intervening_members() {
     let block = specified_block("margin:1px 2px;color:red;margin-left:3px");
     assert_eq!(
-        block.serialize_cssom().unwrap(),
+        block.serialize_cssom(Default::default()).unwrap(),
         "margin: 1px 2px 1px 3px; color: red;"
     );
     assert_eq!(
@@ -281,7 +304,7 @@ fn mixed_importance_blocks_getter_and_logical_interference_blocks_coalescing() {
     );
     assert_eq!(read(&block, CssKnownProperty::Margin), None);
     assert_eq!(
-        block.serialize_cssom().unwrap(),
+        block.serialize_cssom(Default::default()).unwrap(),
         "margin-top: 1px !important; margin-right: 2px; margin-bottom: 3px; margin-left: 4px;"
     );
     let block = specified_block(
@@ -292,7 +315,7 @@ fn mixed_importance_blocks_getter_and_logical_interference_blocks_coalescing() {
         Some("1px 2px 3px 4px")
     );
     assert_eq!(
-        block.serialize_cssom().unwrap(),
+        block.serialize_cssom(Default::default()).unwrap(),
         "margin-top: 1px; margin-inline-start: 7px; margin-right: 2px; margin-bottom: 3px; margin-left: 4px;"
     );
     let block = specified_block(
@@ -310,7 +333,7 @@ fn global_quad_uses_physical_mode_and_rejects_mixed_declared_phases() {
         specified_block(
             "margin-top:inherit;margin-right:inherit;margin-bottom:inherit;margin-left:inherit"
         )
-        .serialize_cssom()
+        .serialize_cssom(Default::default())
         .unwrap(),
         "margin: inherit;"
     );
@@ -337,8 +360,12 @@ fn global_quad_uses_physical_mode_and_rejects_mixed_declared_phases() {
 #[test]
 fn fixed_pending_members_reconstruct_only_the_original_complete_shorthand() {
     let list = declarations("pause:var(--P)");
-    let block = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap();
-    assert_eq!(block.serialize_cssom().unwrap(), "pause: var(--P);");
+    let block =
+        CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default()).unwrap();
+    assert_eq!(
+        block.serialize_cssom(Default::default()).unwrap(),
+        "pause: var(--P);"
+    );
     assert_eq!(
         read(&block, CssKnownProperty::PauseBefore).as_deref(),
         Some("")
@@ -355,13 +382,13 @@ fn fixed_pending_members_reconstruct_only_the_original_complete_shorthand() {
     );
     assert_eq!(
         specified_block("pause:var(--P);pause-after:1s")
-            .serialize_cssom()
+            .serialize_cssom(Default::default())
             .unwrap(),
         "pause-before: ; pause-after: 1s;"
     );
     assert_eq!(
         specified_block("pause-before:var(--B)")
-            .serialize_cssom()
+            .serialize_cssom(Default::default())
             .unwrap(),
         "pause-before: var(--B);"
     );
@@ -380,33 +407,36 @@ fn all_eight_pending_mode_families_fail_at_the_real_occurrence_and_retry_in_both
         (CssKnownProperty::ScrollMargin, "scroll-margin", "1px"),
     ] {
         let list = declarations(&format!("{name}:var(--M);opacity:1"));
-        let error = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap_err();
-        assert!(
-            matches!(error.kind(), CssDeclarationBlockErrorKind::PendingFootprintUndetermined { property: p } if *p == property)
-        );
+        let error = CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default())
+            .unwrap_err();
+        assert!(error.pending_footprint_property() == Some(property));
         assert_eq!(error.authored_ordinal(), Some(0));
         assert_eq!(error.member_ordinal(), None);
         assert!(error.declaration().unwrap().same_occurrence(&list[0]));
         assert_eq!(
-            list[0].to_specified_css().unwrap(),
+            list[0].serialize_specified(Default::default()).unwrap(),
             format!("{name}: var(--M);")
         );
-        let CssExpansion::Pending(pending) = expand_declaration(&list[0]).unwrap() else {
+        let CssExpansion::Pending(pending) = list[0].expand().unwrap() else {
             panic!("pending")
         };
-        let following = expand_declaration(&list[1]).unwrap();
+        let following = list[1].expand().unwrap();
         for (replacement, expected) in [
             (scalar.to_string(), scalar.to_string()),
             (format!("logical {scalar}"), format!("logical {scalar}")),
         ] {
             let completed = CssExpansion::Contributions(
                 pending
-                    .reenter(parse_component_values(&replacement).unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), &replacement).unwrap(),
+                    )
                     .unwrap(),
             );
-            let block =
-                CssSpecifiedDeclarationBlock::try_from_expansions(&[completed, following.clone()])
-                    .unwrap();
+            let block = CssSpecifiedDeclarationBlock::try_from_expansions(
+                &[completed, following.clone()],
+                Default::default(),
+            )
+            .unwrap();
             assert_eq!(block.entries().len(), 5, "{name}");
             assert!(
                 block.entries()[..4]
@@ -415,7 +445,7 @@ fn all_eight_pending_mode_families_fail_at_the_real_occurrence_and_retry_in_both
             );
             assert_eq!(read(&block, property), Some(expected.clone()));
             assert_eq!(
-                block.serialize_cssom().unwrap(),
+                block.serialize_cssom(Default::default()).unwrap(),
                 format!("{name}: {expected}; opacity: 1;")
             );
         }
@@ -426,36 +456,42 @@ fn all_eight_pending_mode_families_fail_at_the_real_occurrence_and_retry_in_both
 #[test]
 fn completed_mode_footprints_override_only_their_selected_members() {
     let list = declarations("margin:var(--M);margin-left:7px");
-    let CssExpansion::Pending(pending) = expand_declaration(&list[0]).unwrap() else {
+    let CssExpansion::Pending(pending) = list[0].expand().unwrap() else {
         panic!("pending")
     };
-    let after = expand_declaration(&list[1]).unwrap();
+    let after = list[1].expand().unwrap();
     for (input, expected) in [
         ("1px", "margin: 1px 1px 1px 7px;"),
         ("logical 1px", "margin: logical 1px; margin-left: 7px;"),
     ] {
         let complete = CssExpansion::Contributions(
             pending
-                .reenter(parse_component_values(input).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), input).unwrap())
                 .unwrap(),
         );
-        let block =
-            CssSpecifiedDeclarationBlock::try_from_expansions(&[complete, after.clone()]).unwrap();
-        assert_eq!(block.serialize_cssom().unwrap(), expected);
+        let block = CssSpecifiedDeclarationBlock::try_from_expansions(
+            &[complete, after.clone()],
+            Default::default(),
+        )
+        .unwrap();
+        assert_eq!(block.serialize_cssom(Default::default()).unwrap(), expected);
     }
-    let inline = expand_declaration(&declarations("margin-inline-start:7px")[0]).unwrap();
+    let inline = declarations("margin-inline-start:7px")[0].expand().unwrap();
     for (input, expected) in [
         ("1px", "margin: 1px; margin-inline-start: 7px;"),
         ("logical 1px", "margin: logical 1px 7px 1px 1px;"),
     ] {
         let complete = CssExpansion::Contributions(
             pending
-                .reenter(parse_component_values(input).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), input).unwrap())
                 .unwrap(),
         );
-        let block =
-            CssSpecifiedDeclarationBlock::try_from_expansions(&[complete, inline.clone()]).unwrap();
-        assert_eq!(block.serialize_cssom().unwrap(), expected);
+        let block = CssSpecifiedDeclarationBlock::try_from_expansions(
+            &[complete, inline.clone()],
+            Default::default(),
+        )
+        .unwrap();
+        assert_eq!(block.serialize_cssom(Default::default()).unwrap(), expected);
     }
 }
 
@@ -489,21 +525,22 @@ fn system_font_reconstructs_complete_environment_state_and_partial_override_fail
         read(&complete, CssKnownProperty::Font).as_deref(),
         Some("caption")
     );
-    assert_eq!(complete.serialize_cssom().unwrap(), "font: caption;");
+    assert_eq!(
+        complete.serialize_cssom(Default::default()).unwrap(),
+        "font: caption;"
+    );
     let partial = specified_block("font:caption;font-size:12px");
     assert_eq!(read(&partial, CssKnownProperty::Font), None);
-    let error = partial.serialize_cssom().unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssDeclarationBlockErrorKind::UnresolvedEnvironment { .. }
-    ));
+    let error = partial.serialize_cssom(Default::default()).unwrap_err();
+    assert!(error.unresolved_environment_property().is_some());
     assert_eq!(error.authored_ordinal(), Some(0));
 }
 
 #[test]
 fn complete_supported_all_universe_includes_independent_svg_with_custom_and_direction_exclusions() {
     let list = declarations("all:inherit;direction:rtl;--X:A");
-    let block = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap();
+    let block =
+        CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default()).unwrap();
     let expected: Vec<_> = all_terminal_expectations()
         .into_iter()
         .map(|(name, _, _)| name)
@@ -523,7 +560,7 @@ fn complete_supported_all_universe_includes_independent_svg_with_custom_and_dire
             .all(|e| e.source().same_occurrence(&list[0]))
     );
     assert_eq!(
-        block.serialize_cssom().unwrap(),
+        block.serialize_cssom(Default::default()).unwrap(),
         "all: inherit; direction: rtl; --X: A;"
     );
 }
@@ -547,25 +584,26 @@ fn every_supported_finite_shorthand_uses_its_own_independent_inverse_literal() {
             continue;
         };
         let source = format!("{}:{}", row.name, expected.authored);
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         if !report.is_clean() {
             failures.push(format!("{source:?}: independent stimulus was rejected"));
             continue;
         }
         let list = report.syntax();
-        let block = match CssSpecifiedDeclarationBlock::try_from_declarations(list) {
-            Ok(block) => block,
-            Err(error) => {
-                failures.push(format!(
-                    "{source:?}: build error {:?}, source {:?}, member {:?}",
-                    error.kind(),
-                    error.authored_ordinal(),
-                    error.member_ordinal()
-                ));
-                continue;
-            }
-        };
-        match block.property_value(CssPropertyNameRef::Known(row.property)) {
+        let block =
+            match CssSpecifiedDeclarationBlock::try_from_declarations(list, Default::default()) {
+                Ok(block) => block,
+                Err(error) => {
+                    failures.push(format!(
+                        "{source:?}: build error {:?}, source {:?}, member {:?}",
+                        error,
+                        error.authored_ordinal(),
+                        error.member_ordinal()
+                    ));
+                    continue;
+                }
+            };
+        match block.property_value(CssPropertyNameRef::Known(row.property), Default::default()) {
             Ok(actual) if actual.as_deref() == Some(expected.value) => {}
             Ok(actual) => failures.push(format!(
                 "{source:?}: expected {:?}, actual {actual:?}",
@@ -573,7 +611,7 @@ fn every_supported_finite_shorthand_uses_its_own_independent_inverse_literal() {
             )),
             Err(error) => failures.push(format!(
                 "{source:?}: read error {:?}, source {:?}, member {:?}; expected {:?}",
-                error.kind(),
+                error,
                 error.authored_ordinal(),
                 error.member_ordinal(),
                 expected.value
@@ -611,35 +649,29 @@ fn ordinary_atomic_list_front_shares_build_output_and_retained_value_costs() {
         ("--X:A;--X:B", 14, 10, "--X: B;"),
     ] {
         let list = declarations(source);
-        let limits = CssSpecifiedValueSerializationLimits::new(input, projection, expected.len());
-        assert_eq!(list.serialize_cssom_with_limits(limits).unwrap(), expected);
+        let limits = CssSerializationLimits::new(input, projection, expected.len());
+        assert_eq!(list.serialize_cssom(limits).unwrap(), expected);
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(input - 1, projection, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(input - 1, projection, expected.len()),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(input, projection - 1, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(input, projection - 1, expected.len()),
+                SerializationFailure::ProjectionNodeLimit,
             ),
         ] {
-            assert_eq!(
-                resource(&list.serialize_cssom_with_limits(limits).unwrap_err()),
-                kind
-            );
+            assert_eq!(resource(&list.serialize_cssom(limits).unwrap_err()), kind);
         }
         if !expected.is_empty() {
             let error = list
-                .serialize_cssom_with_limits(CssSpecifiedValueSerializationLimits::new(
+                .serialize_cssom(CssSerializationLimits::new(
                     input,
                     projection,
                     expected.len() - 1,
                 ))
                 .unwrap_err();
-            assert_eq!(
-                resource(&error),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
-            );
+            assert_eq!(resource(&error), SerializationFailure::ByteLimit);
             assert_eq!(error.authored_ordinal(), Some(list.len() - 1));
             assert_eq!(error.member_ordinal(), Some(0));
             assert!(
@@ -649,11 +681,11 @@ fn ordinary_atomic_list_front_shares_build_output_and_retained_value_costs() {
                     .same_occurrence(&list[list.len() - 1])
             );
         }
-        assert_eq!(list.serialize_cssom().unwrap(), expected);
+        assert_eq!(list.serialize_cssom(Default::default()).unwrap(), expected);
     }
     let list = declarations("width:1px!important;height:4px;width:2px;width:3px!important");
     assert_eq!(
-        list.serialize_cssom().unwrap(),
+        list.serialize_cssom(Default::default()).unwrap(),
         "height: 4px; width: 3px !important;"
     );
     assert_eq!(list.len(), 4);
@@ -668,29 +700,29 @@ fn keyframe_atomic_list_front_adds_closed_source_and_terminal_admission_to_share
     ] {
         let rule = keyframes(&format!("@keyframes k{{from{{{source}}}}}"));
         let list = rule.blocks()[0].declarations();
-        let limits = CssSpecifiedValueSerializationLimits::new(input, projection, expected.len());
-        assert_eq!(list.serialize_cssom_with_limits(limits).unwrap(), expected);
+        let limits = CssSerializationLimits::new(input, projection, expected.len());
+        assert_eq!(list.serialize_cssom(limits).unwrap(), expected);
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(input - 1, projection, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(input - 1, projection, expected.len()),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(input, projection - 1, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(input, projection - 1, expected.len()),
+                SerializationFailure::ProjectionNodeLimit,
             ),
         ] {
-            assert_eq!(
-                resource(&list.serialize_cssom_with_limits(limits).unwrap_err()),
-                kind
-            );
+            assert_eq!(resource(&list.serialize_cssom(limits).unwrap_err()), kind);
         }
-        assert_eq!(list.serialize_cssom().unwrap(), expected);
+        assert_eq!(list.serialize_cssom(Default::default()).unwrap(), expected);
     }
     let rule =
         keyframes("@keyframes k { from { opacity:0;opacity:1;pause:var(--P);pause-after:1s } }");
     assert_eq!(
-        rule.blocks()[0].declarations().serialize_cssom().unwrap(),
+        rule.blocks()[0]
+            .declarations()
+            .serialize_cssom(Default::default())
+            .unwrap(),
         "opacity: 1; pause-before: ; pause-after: 1s;"
     );
 }
@@ -722,7 +754,7 @@ fn failed_all_reconstruction_preserves_logical_before_physical_margin_order() {
             "margin-top"
         ]
     );
-    let css = block.serialize_cssom().unwrap();
+    let css = block.serialize_cssom(Default::default()).unwrap();
     let margin_declarations: Vec<_> = css
         .split("; ")
         .filter(|s| {
@@ -750,24 +782,23 @@ fn construction_tariff_charges_losers_and_zero_byte_build_budget_is_unspent() {
         ("opacity:0;opacity:1", 9, 5),
     ] {
         let list = declarations(source);
-        let exact = CssSpecifiedValueSerializationLimits::new(input, projection, 0);
-        CssSpecifiedDeclarationBlock::try_from_declarations_with_limits(&list, exact).unwrap();
+        let exact = CssSerializationLimits::new(input, projection, 0);
+        CssSpecifiedDeclarationBlock::try_from_declarations(&list, exact).unwrap();
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(input - 1, projection, 0),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(input - 1, projection, 0),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(input, projection - 1, 0),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(input, projection - 1, 0),
+                SerializationFailure::ProjectionNodeLimit,
             ),
         ] {
             let error =
-                CssSpecifiedDeclarationBlock::try_from_declarations_with_limits(&list, limits)
-                    .unwrap_err();
+                CssSpecifiedDeclarationBlock::try_from_declarations(&list, limits).unwrap_err();
             assert_eq!(resource(&error), kind);
         }
-        CssSpecifiedDeclarationBlock::try_from_declarations_with_limits(&list, exact).unwrap();
+        CssSpecifiedDeclarationBlock::try_from_declarations(&list, exact).unwrap();
     }
 }
 
@@ -800,9 +831,11 @@ fn keyframe_sources_keep_exact_original_byte_utf16_origins_and_occurrence_identi
         assert_eq!(retained.body(), declaration.body());
         assert_eq!(retained.importance(), CssImportance::Normal);
     }
-    let block = CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(list).unwrap();
+    let block =
+        CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(list, Default::default())
+            .unwrap();
     assert_eq!(
-        block.serialize_cssom().unwrap(),
+        block.serialize_cssom(Default::default()).unwrap(),
         "margin: 1px; --X: /*a*/ready;"
     );
 }
@@ -812,9 +845,11 @@ fn keyframe_normalization_and_expansion_domain_reject_important_and_excluded_sou
     let rule =
         keyframes("@keyframes k { from { opacity:0;opacity:1;pause:var(--P);pause-after:1s } }");
     let list = rule.blocks()[0].declarations();
-    let block = CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(list).unwrap();
+    let block =
+        CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(list, Default::default())
+            .unwrap();
     assert_eq!(
-        block.serialize_cssom().unwrap(),
+        block.serialize_cssom(Default::default()).unwrap(),
         "opacity: 1; pause-before: ; pause-after: 1s;"
     );
     assert!(
@@ -833,24 +868,27 @@ fn keyframe_normalization_and_expansion_domain_reject_important_and_excluded_sou
         ),
     ] {
         let declaration = &declarations(source)[0];
-        let expansion = expand_declaration(declaration).unwrap();
+        let expansion = declaration.expand().unwrap();
         let error = CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(
             std::slice::from_ref(&expansion),
+            Default::default(),
         )
         .unwrap_err();
-        assert!(
-            matches!(error.kind(), CssDeclarationBlockErrorKind::InvalidKeyframeSource { reason: r } if *r == reason)
-        );
+        assert!(error.invalid_keyframe_source() == Some(reason));
         assert_eq!(error.authored_ordinal(), Some(0));
         assert!(error.declaration().unwrap().same_occurrence(declaration));
-        CssSpecifiedDeclarationBlock::try_from_expansions(&[expansion]).unwrap();
+        CssSpecifiedDeclarationBlock::try_from_expansions(&[expansion], Default::default())
+            .unwrap();
     }
-    let expansion = expand_declaration(&declarations("--animation-duration:1s")[0]).unwrap();
+    let expansion = declarations("--animation-duration:1s")[0].expand().unwrap();
     assert_eq!(
-        CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(&[expansion])
-            .unwrap()
-            .serialize_cssom()
-            .unwrap(),
+        CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(
+            &[expansion],
+            Default::default()
+        )
+        .unwrap()
+        .serialize_cssom(Default::default())
+        .unwrap(),
         "--animation-duration: 1s;"
     );
 }
@@ -860,9 +898,13 @@ fn keyframe_all_uses_filtered_universe_and_never_emits_a_forbidden_animation_pro
     let complete = keyframes("@keyframes k { from { all:inherit } }");
     let block = CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(
         complete.blocks()[0].declarations(),
+        Default::default(),
     )
     .unwrap();
-    assert_eq!(block.serialize_cssom().unwrap(), "all: inherit;");
+    assert_eq!(
+        block.serialize_cssom(Default::default()).unwrap(),
+        "all: inherit;"
+    );
     for entry in block.entries() {
         assert!(keyframe_terminal_expected(entry.property_name()));
         if let CssPropertyNameRef::Known(p) = entry.property_name()
@@ -874,6 +916,7 @@ fn keyframe_all_uses_filtered_universe_and_never_emits_a_forbidden_animation_pro
     let partial = keyframes("@keyframes k { from { all:inherit;width:2px } }");
     let block = CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(
         partial.blocks()[0].declarations(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(read(&block, CssKnownProperty::All), None);
@@ -882,7 +925,7 @@ fn keyframe_all_uses_filtered_universe_and_never_emits_a_forbidden_animation_pro
         read(&block, CssKnownProperty::AnimationTimingFunction).as_deref(),
         Some("inherit")
     );
-    let css = block.serialize_cssom().unwrap();
+    let css = block.serialize_cssom(Default::default()).unwrap();
     assert!(!css.contains("animation-duration:") && !css.contains("animation:"));
     assert!(css.contains("animation-timing-function: inherit;"));
 }
@@ -896,25 +939,22 @@ fn keyframe_build_tariff_accounts_for_source_and_generated_terminal_admission() 
     ] {
         let rule = keyframes(&format!("@keyframes k{{from{{{source}}}}}"));
         let list = rule.blocks()[0].declarations();
-        let exact = CssSpecifiedValueSerializationLimits::new(input, projection, 0);
-        CssSpecifiedDeclarationBlock::try_from_keyframe_declarations_with_limits(list, exact)
-            .unwrap();
+        let exact = CssSerializationLimits::new(input, projection, 0);
+        CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(list, exact).unwrap();
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(input - 1, projection, 0),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(input - 1, projection, 0),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(input, projection - 1, 0),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(input, projection - 1, 0),
+                SerializationFailure::ProjectionNodeLimit,
             ),
         ] {
             assert_eq!(
                 resource(
-                    &CssSpecifiedDeclarationBlock::try_from_keyframe_declarations_with_limits(
-                        list, limits
-                    )
-                    .unwrap_err()
+                    &CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(list, limits)
+                        .unwrap_err()
                 ),
                 kind
             );
@@ -940,41 +980,42 @@ fn keyframe_pending_mode_error_and_completed_fronts_keep_the_real_original_sourc
         let list = rule.blocks()[0].declarations();
         let original = list.as_slice()[1].source();
         for error in [
-            CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(list).unwrap_err(),
-            list.serialize_cssom().unwrap_err(),
+            CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(list, Default::default())
+                .unwrap_err(),
+            list.serialize_cssom(Default::default()).unwrap_err(),
         ] {
-            assert!(
-                matches!(error.kind(), CssDeclarationBlockErrorKind::PendingFootprintUndetermined { property: p } if *p == property)
-            );
+            assert!(error.pending_footprint_property() == Some(property));
             assert_eq!(error.authored_ordinal(), Some(1));
             assert_eq!(error.member_ordinal(), None);
             assert!(error.declaration().unwrap().same_occurrence(original));
         }
         assert_eq!(
-            original.to_specified_css().unwrap(),
+            original.serialize_specified(Default::default()).unwrap(),
             format!("{name}: var(--M);")
         );
-        let CssExpansion::Pending(pending) = expand_declaration(original).unwrap() else {
+        let CssExpansion::Pending(pending) = original.expand().unwrap() else {
             panic!("pending")
         };
-        let before = expand_declaration(list.as_slice()[0].source()).unwrap();
+        let before = list.as_slice()[0].source().expand().unwrap();
         for replacement in [scalar.to_string(), format!("logical {scalar}")] {
             let completed = CssExpansion::Contributions(
                 pending
-                    .reenter(parse_component_values(&replacement).unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), &replacement).unwrap(),
+                    )
                     .unwrap(),
             );
-            let block = CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(&[
-                before.clone(),
-                completed,
-            ])
+            let block = CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(
+                &[before.clone(), completed],
+                Default::default(),
+            )
             .unwrap();
             assert_eq!(
                 read(&block, property).as_deref(),
                 Some(replacement.as_str())
             );
             assert_eq!(
-                block.serialize_cssom().unwrap(),
+                block.serialize_cssom(Default::default()).unwrap(),
                 format!("opacity: 1; {name}: {replacement};")
             );
             assert!(
@@ -990,32 +1031,40 @@ fn keyframe_pending_mode_error_and_completed_fronts_keep_the_real_original_sourc
 #[test]
 fn keyframe_reentry_preserves_quirks_context_and_genuine_programmatic_absence() {
     let context = CssParserContext::new(CssParserMode::Quirks);
-    let report = context.parse_sheet("@keyframes k{from{width:var(--W)}}");
+    let report = CssParser::new(context, Default::default())
+        .parse_sheet("@keyframes k{from{width:var(--W)}}");
     assert!(report.is_clean());
     let [CssRule::Keyframes(rule)] = report.syntax().rules() else {
         panic!("keyframes")
     };
     let source = rule.blocks()[0].declarations().as_slice()[0].source();
     assert_eq!(source.parser_context(), context);
-    let CssExpansion::Pending(pending) = expand_declaration(source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending")
     };
     let completed = CssExpansion::Contributions(
         pending
-            .reenter(parse_component_values("1").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "1").unwrap())
             .unwrap(),
     );
-    let block = CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(&[completed]).unwrap();
-    assert_eq!(block.serialize_cssom().unwrap(), "width: 1px;");
+    let block = CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(
+        &[completed],
+        Default::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        block.serialize_cssom(Default::default()).unwrap(),
+        "width: 1px;"
+    );
     assert!(block.entries()[0].source().same_occurrence(source));
     assert_eq!(block.entries()[0].source().parser_context(), context);
     assert_eq!(block.entries()[0].source().position(), source.position());
     let ordinary = declarations("width:var(--W)");
-    let CssExpansion::Pending(pending) = expand_declaration(&ordinary[0]).unwrap() else {
+    let CssExpansion::Pending(pending) = ordinary[0].expand().unwrap() else {
         panic!("pending")
     };
     let detail = crate::css::support::value_assertions::replacement_rejection(
-        pending.reenter(parse_component_values("1").unwrap()),
+        pending.reenter(CssComponentValues::parse(&CssParser::default(), "1").unwrap()),
         CssKnownProperty::Width,
     );
     assert_eq!(
@@ -1023,16 +1072,24 @@ fn keyframe_reentry_preserves_quirks_context_and_genuine_programmatic_absence() 
         Some("1")
     );
 
-    let source = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Opacity),
-        parse_component_values("1").unwrap(),
+    let source = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Opacity)),
+        CssComponentValues::parse(&CssParser::default(), "1").unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
     assert_eq!(source.position(), None);
-    let expansion = expand_declaration(&source).unwrap();
-    let block = CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(&[expansion]).unwrap();
-    assert_eq!(block.serialize_cssom().unwrap(), "opacity: 1;");
+    let expansion = source.expand().unwrap();
+    let block = CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(
+        &[expansion],
+        Default::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        block.serialize_cssom(Default::default()).unwrap(),
+        "opacity: 1;"
+    );
     assert_eq!(block.entries()[0].source().position(), None);
     assert!(block.entries()[0].source().same_occurrence(&source));
 }
@@ -1050,20 +1107,15 @@ fn keyframe_all_charges_even_the_filtered_generated_terminal_checks() {
     let projection = 2 + 2 * universe + retained;
     let rule = keyframes("@keyframes k{from{all:inherit}}");
     let list = rule.blocks()[0].declarations();
-    let exact = CssSpecifiedValueSerializationLimits::new(5, projection, 0);
-    let block =
-        CssSpecifiedDeclarationBlock::try_from_keyframe_declarations_with_limits(list, exact)
-            .unwrap();
+    let exact = CssSerializationLimits::new(5, projection, 0);
+    let block = CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(list, exact).unwrap();
     assert_eq!(block.entries().len(), retained);
-    let error = CssSpecifiedDeclarationBlock::try_from_keyframe_declarations_with_limits(
+    let error = CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(
         list,
-        CssSpecifiedValueSerializationLimits::new(5, projection - 1, 0),
+        CssSerializationLimits::new(5, projection - 1, 0),
     )
     .unwrap_err();
-    assert_eq!(
-        resource(&error),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
-    );
+    assert_eq!(resource(&error), SerializationFailure::ProjectionNodeLimit);
     assert_eq!(error.authored_ordinal(), Some(0));
     assert_eq!(
         error.member_ordinal(),
@@ -1075,22 +1127,26 @@ fn keyframe_all_charges_even_the_filtered_generated_terminal_checks() {
             .unwrap()
             .same_occurrence(list.as_slice()[0].source())
     );
-    assert_eq!(block.serialize_cssom().unwrap(), "all: inherit;");
+    assert_eq!(
+        block.serialize_cssom(Default::default()).unwrap(),
+        "all: inherit;"
+    );
 }
 
 #[test]
 fn failed_byte_output_retains_snapshot_and_retry_is_atomic() {
     let list = declarations("margin:1px 2px;color:red;margin-left:3px");
-    let block = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap();
+    let block =
+        CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default()).unwrap();
     let expected = "margin: 1px 2px 1px 3px; color: red;";
-    let limits = CssSpecifiedValueSerializationLimits::new(65_536, 262_144, expected.len());
-    assert_eq!(block.serialize_cssom_with_limits(limits).unwrap(), expected);
-    let limits = CssSpecifiedValueSerializationLimits::new(65_536, 262_144, expected.len() - 1);
+    let limits = CssSerializationLimits::new(65_536, 262_144, expected.len());
+    assert_eq!(block.serialize_cssom(limits).unwrap(), expected);
+    let limits = CssSerializationLimits::new(65_536, 262_144, expected.len() - 1);
     assert_eq!(
-        resource(&block.serialize_cssom_with_limits(limits).unwrap_err()),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+        resource(&block.serialize_cssom(limits).unwrap_err()),
+        SerializationFailure::ByteLimit
     );
-    assert_eq!(block.serialize_cssom().unwrap(), expected);
+    assert_eq!(block.serialize_cssom(Default::default()).unwrap(), expected);
     assert!(
         block
             .entries()
@@ -1105,26 +1161,26 @@ fn requested_value_probe_adds_output_aggregate_to_exact_success_and_rejection_co
     let name = CssPropertyNameRef::Known(CssKnownProperty::Pause);
     // I1/P1 aggregate + intrinsic P18 probe + owning I2/P2 pair output.
     assert_eq!(
-        pair.property_value_with_limits(name, CssSpecifiedValueSerializationLimits::new(3, 21, 4))
+        pair.property_value(name, CssSerializationLimits::new(3, 21, 4))
             .unwrap()
             .as_deref(),
         Some("none")
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 21, 4),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(2, 21, 4),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 20, 4),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(3, 20, 4),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 21, 3),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(3, 21, 3),
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        let error = pair.property_value_with_limits(name, limits).unwrap_err();
+        let error = pair.property_value(name, limits).unwrap_err();
         assert_eq!(resource(&error), kind);
         assert_eq!(error.authored_ordinal(), Some(0));
         assert_eq!(error.member_ordinal(), Some(0));
@@ -1142,23 +1198,17 @@ fn requested_value_probe_adds_output_aggregate_to_exact_success_and_rejection_co
         let block = specified_block(source);
         assert_eq!(
             block
-                .property_value_with_limits(
-                    name,
-                    CssSpecifiedValueSerializationLimits::new(1, cost, 0)
-                )
+                .property_value(name, CssSerializationLimits::new(1, cost, 0))
                 .unwrap(),
             None
         );
         assert_eq!(
             resource(
                 &block
-                    .property_value_with_limits(
-                        name,
-                        CssSpecifiedValueSerializationLimits::new(1, cost - 1, 0)
-                    )
+                    .property_value(name, CssSerializationLimits::new(1, cost - 1, 0))
                     .unwrap_err()
             ),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            SerializationFailure::ProjectionNodeLimit
         );
     }
     assert_eq!(
@@ -1170,34 +1220,23 @@ fn requested_value_probe_adds_output_aggregate_to_exact_success_and_rejection_co
 #[test]
 fn requested_shorthand_output_error_reports_its_member_after_an_unrelated_source() {
     let list = declarations("opacity:0;pause-before:inherit;pause-after:inherit");
-    let block = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap();
+    let block =
+        CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default()).unwrap();
     let name = CssPropertyNameRef::Known(CssKnownProperty::Pause);
-    let exact = CssSpecifiedValueSerializationLimits::new(65_536, 262_144, 7);
+    let exact = CssSerializationLimits::new(65_536, 262_144, 7);
     assert_eq!(
-        block
-            .property_value_with_limits(name, exact)
-            .unwrap()
-            .as_deref(),
+        block.property_value(name, exact).unwrap().as_deref(),
         Some("inherit")
     );
     let error = block
-        .property_value_with_limits(
-            name,
-            CssSpecifiedValueSerializationLimits::new(65_536, 262_144, 6),
-        )
+        .property_value(name, CssSerializationLimits::new(65_536, 262_144, 6))
         .unwrap_err();
-    assert_eq!(
-        resource(&error),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
-    );
+    assert_eq!(resource(&error), SerializationFailure::ByteLimit);
     assert_eq!(error.authored_ordinal(), Some(1));
     assert_eq!(error.member_ordinal(), Some(0));
     assert!(error.declaration().unwrap().same_occurrence(&list[1]));
     assert_eq!(
-        block
-            .property_value_with_limits(name, exact)
-            .unwrap()
-            .as_deref(),
+        block.property_value(name, exact).unwrap().as_deref(),
         Some("inherit")
     );
 }
@@ -1255,10 +1294,15 @@ fn inverse_numeric_graph_equality_ignores_original_coordinates_and_preserves_pha
         read(&graphs, CssKnownProperty::Margin).as_deref(),
         Some("calc(3px) calc(3px)")
     );
-    let report = CssParserContext::new(CssParserMode::Quirks)
-        .parse_style_attribute("margin-top:1;margin-right:1px;margin-bottom:1;margin-left:1px");
+    let report = CssParser::new(
+        CssParserContext::new(CssParserMode::Quirks),
+        Default::default(),
+    )
+    .parse_block_contents("margin-top:1;margin-right:1px;margin-bottom:1;margin-left:1px");
     assert!(report.is_clean());
-    let quirky = CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax()).unwrap();
+    let quirky =
+        CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
+            .unwrap();
     assert_eq!(
         read(&quirky, CssKnownProperty::Margin).as_deref(),
         Some("1px")
@@ -1537,29 +1581,26 @@ fn inverse_math_arena_allocations_pay_their_independent_generated_node_tariff() 
     // Complete pair work = eligibility6 + hypothetical19 + check3 + compare38
     // = P66, including three real four-node comparison work lists. Shortened
     // pair output adds I5/P4; the requested read aggregate adds I1/P1.
-    let exact = CssSpecifiedValueSerializationLimits::new(6, 71, 8);
+    let exact = CssSerializationLimits::new(6, 71, 8);
     assert_eq!(
-        block
-            .property_value_with_limits(name, exact)
-            .unwrap()
-            .as_deref(),
+        block.property_value(name, exact).unwrap().as_deref(),
         Some("calc(3s)")
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(5, 71, 8),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(5, 71, 8),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(6, 70, 8),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(6, 70, 8),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(6, 71, 7),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(6, 71, 7),
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        let error = block.property_value_with_limits(name, limits).unwrap_err();
+        let error = block.property_value(name, limits).unwrap_err();
         assert_eq!(resource(&error), kind);
         assert!(
             error
@@ -1570,10 +1611,7 @@ fn inverse_math_arena_allocations_pay_their_independent_generated_node_tariff() 
         assert_eq!(error.authored_ordinal(), Some(0));
     }
     assert_eq!(
-        block
-            .property_value_with_limits(name, exact)
-            .unwrap()
-            .as_deref(),
+        block.property_value(name, exact).unwrap().as_deref(),
         Some("calc(3s)")
     );
 }
@@ -1581,34 +1619,32 @@ fn inverse_math_arena_allocations_pay_their_independent_generated_node_tariff() 
 #[test]
 fn complete_pause_read_pays_all_comparison_work_and_owns_final_emission_errors() {
     let list = declarations("pause-before:calc(1s + 2s);pause-after:calc(1s + 2s)");
-    let block = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap();
+    let block =
+        CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default()).unwrap();
     let name = CssPropertyNameRef::Known(CssKnownProperty::Pause);
     // The independent complete private probe is I5/P70/B8: eligibility6 +
     // hypothetical19 + check3 + verification38 + final provider4. This public
     // request adds its own I1/P1 aggregate, giving I6/P71/B8.
-    let exact = CssSpecifiedValueSerializationLimits::new(6, 71, 8);
+    let exact = CssSerializationLimits::new(6, 71, 8);
     assert_eq!(
-        block
-            .property_value_with_limits(name, exact)
-            .unwrap()
-            .as_deref(),
+        block.property_value(name, exact).unwrap().as_deref(),
         Some("calc(3s)")
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(5, 71, 8),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(5, 71, 8),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(6, 70, 8),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(6, 70, 8),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(6, 71, 7),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(6, 71, 7),
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        let error = block.property_value_with_limits(name, limits).unwrap_err();
+        let error = block.property_value(name, limits).unwrap_err();
         assert_eq!(resource(&error), kind);
         // Each one-under reaches the final shortened pair's before value:
         // input visits, the last generated numeric node, or temporary bytes.
@@ -1616,10 +1652,7 @@ fn complete_pause_read_pays_all_comparison_work_and_owns_final_emission_errors()
         assert_eq!(error.authored_ordinal(), Some(0));
         assert_eq!(error.member_ordinal(), Some(0));
         assert_eq!(
-            block
-                .property_value_with_limits(name, exact)
-                .unwrap()
-                .as_deref(),
+            block.property_value(name, exact).unwrap().as_deref(),
             Some("calc(3s)")
         );
     }
@@ -1633,9 +1666,11 @@ fn complete_grid_area_reads_own_the_original_last_terminal_in_both_domains() {
     let ordinary = declarations(source);
     let keyframes = keyframes(&format!("@keyframes k{{from{{{source}}}}}"));
     let keyframe = keyframes.blocks()[0].declarations();
-    let ordinary_block = CssSpecifiedDeclarationBlock::try_from_declarations(&ordinary).unwrap();
+    let ordinary_block =
+        CssSpecifiedDeclarationBlock::try_from_declarations(&ordinary, Default::default()).unwrap();
     let keyframe_block =
-        CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(keyframe).unwrap();
+        CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(keyframe, Default::default())
+            .unwrap();
     let keyframe_sources: Vec<_> = keyframe
         .as_slice()
         .iter()
@@ -1646,7 +1681,7 @@ fn complete_grid_area_reads_own_the_original_last_terminal_in_both_domains() {
     // requested-value aggregate adds I1/P1, giving I17/P159/B37. Every one-under
     // reaches the last emitted column-end calculation, whose original source
     // is declaration 3, member 0; no shorthand-authored occurrence exists.
-    let exact = CssSpecifiedValueSerializationLimits::new(17, 159, 37);
+    let exact = CssSerializationLimits::new(17, 159, 37);
     let name = CssPropertyNameRef::Known(CssKnownProperty::GridArea);
     let expected = "calc(3) / calc(3) / calc(3) / calc(3)";
     for (block, sources, domain) in [
@@ -1654,27 +1689,24 @@ fn complete_grid_area_reads_own_the_original_last_terminal_in_both_domains() {
         (&keyframe_block, keyframe_sources.as_slice(), "keyframe"),
     ] {
         assert_eq!(
-            block
-                .property_value_with_limits(name, exact)
-                .unwrap()
-                .as_deref(),
+            block.property_value(name, exact).unwrap().as_deref(),
             Some(expected)
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(16, 159, 37),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(16, 159, 37),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(17, 158, 37),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(17, 158, 37),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(17, 159, 36),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(17, 159, 36),
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            let error = block.property_value_with_limits(name, limits).unwrap_err();
+            let error = block.property_value(name, limits).unwrap_err();
             assert_eq!(resource(&error), kind, "{domain:?} {limits:?}");
             assert!(
                 error.declaration().unwrap().same_occurrence(&sources[3]),
@@ -1683,10 +1715,7 @@ fn complete_grid_area_reads_own_the_original_last_terminal_in_both_domains() {
             assert_eq!(error.authored_ordinal(), Some(3), "{domain:?} {limits:?}");
             assert_eq!(error.member_ordinal(), Some(0), "{domain:?} {limits:?}");
             assert_eq!(
-                block
-                    .property_value_with_limits(name, exact)
-                    .unwrap()
-                    .as_deref(),
+                block.property_value(name, exact).unwrap().as_deref(),
                 Some(expected)
             );
         }
@@ -1727,22 +1756,20 @@ fn reconstructed_owner_orders_attach_byte_exhaustion_to_the_field_being_written(
         ),
     ] {
         let list = declarations(source);
-        let block = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap();
+        let block =
+            CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default()).unwrap();
         let name = CssPropertyNameRef::Known(property);
-        let exact = CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, bytes);
+        let exact = CssSerializationLimits::new(usize::MAX, usize::MAX, bytes);
         assert_eq!(
-            block
-                .property_value_with_limits(name, exact)
-                .unwrap()
-                .as_deref(),
+            block.property_value(name, exact).unwrap().as_deref(),
             Some(expected),
             "{property:?}"
         );
-        let under = CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, bytes - 1);
-        let error = block.property_value_with_limits(name, under).unwrap_err();
+        let under = CssSerializationLimits::new(usize::MAX, usize::MAX, bytes - 1);
+        let error = block.property_value(name, under).unwrap_err();
         assert_eq!(
             resource(&error),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
             "{property:?}"
         );
         if !error
@@ -1756,10 +1783,7 @@ fn reconstructed_owner_orders_attach_byte_exhaustion_to_the_field_being_written(
             ));
         }
         assert_eq!(
-            block
-                .property_value_with_limits(name, exact)
-                .unwrap()
-                .as_deref(),
+            block.property_value(name, exact).unwrap().as_deref(),
             Some(expected),
             "{property:?} atomic retry"
         );
@@ -1777,37 +1801,26 @@ fn reconstructed_owner_orders_attach_byte_exhaustion_to_the_field_being_written(
 #[test]
 fn suppressed_columns_count_keeps_its_original_source_when_input_is_exhausted() {
     let list = declarations("column-width:10px;column-count:auto");
-    let block = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap();
+    let block =
+        CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default()).unwrap();
     let name = CssPropertyNameRef::Known(CssKnownProperty::Columns);
     // Public request1 + actual columns aggregate1 + width1 + suppressed count1
     // = I4. The final count visits its owning provider even though CSSOM omits
     // its auto token. No input is charged by the preceding semantic probes.
-    let exact = CssSpecifiedValueSerializationLimits::new(4, usize::MAX, 4);
+    let exact = CssSerializationLimits::new(4, usize::MAX, 4);
     assert_eq!(
-        block
-            .property_value_with_limits(name, exact)
-            .unwrap()
-            .as_deref(),
+        block.property_value(name, exact).unwrap().as_deref(),
         Some("10px")
     );
     let error = block
-        .property_value_with_limits(
-            name,
-            CssSpecifiedValueSerializationLimits::new(3, usize::MAX, 4),
-        )
+        .property_value(name, CssSerializationLimits::new(3, usize::MAX, 4))
         .unwrap_err();
-    assert_eq!(
-        resource(&error),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
-    );
+    assert_eq!(resource(&error), SerializationFailure::InputNodeLimit);
     assert!(error.declaration().unwrap().same_occurrence(&list[1]));
     assert_eq!(error.authored_ordinal(), Some(1));
     assert_eq!(error.member_ordinal(), Some(0));
     assert_eq!(
-        block
-            .property_value_with_limits(name, exact)
-            .unwrap()
-            .as_deref(),
+        block.property_value(name, exact).unwrap().as_deref(),
         Some("10px")
     );
     for (index, entry) in block.entries().iter().enumerate() {
@@ -1821,7 +1834,7 @@ fn suppressed_columns_count_keeps_its_original_source_when_input_is_exhausted() 
 fn retained_unequal_time_reads_pay_the_emission_comparison_and_own_second_value_errors() {
     // The private retained-pair probe admits I9/P77/B17, including the owning
     // emitter's existing second comparison. The public request adds I1/P1.
-    let exact = CssSpecifiedValueSerializationLimits::new(10, 78, 17);
+    let exact = CssSerializationLimits::new(10, 78, 17);
     for (property, source) in [
         (
             CssKnownProperty::Pause,
@@ -1837,30 +1850,28 @@ fn retained_unequal_time_reads_pay_the_emission_comparison_and_own_second_value_
         ),
     ] {
         let list = declarations(source);
-        let block = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap();
+        let block =
+            CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default()).unwrap();
         let name = CssPropertyNameRef::Known(property);
         assert_eq!(
-            block
-                .property_value_with_limits(name, exact)
-                .unwrap()
-                .as_deref(),
+            block.property_value(name, exact).unwrap().as_deref(),
             Some("calc(3s) calc(4s)")
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(9, 78, 17),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(9, 78, 17),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(10, 77, 17),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(10, 77, 17),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(10, 78, 16),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(10, 78, 16),
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            let error = block.property_value_with_limits(name, limits).unwrap_err();
+            let error = block.property_value(name, limits).unwrap_err();
             assert_eq!(resource(&error), kind);
             // All three boundaries reach the retained second value: its final
             // input visit, last generated arena node, or captured output byte.
@@ -1868,10 +1879,7 @@ fn retained_unequal_time_reads_pay_the_emission_comparison_and_own_second_value_
             assert_eq!(error.authored_ordinal(), Some(1));
             assert_eq!(error.member_ordinal(), Some(0));
             assert_eq!(
-                block
-                    .property_value_with_limits(name, exact)
-                    .unwrap()
-                    .as_deref(),
+                block.property_value(name, exact).unwrap().as_deref(),
                 Some("calc(3s) calc(4s)")
             );
         }
@@ -1901,34 +1909,34 @@ fn ordinary_time_pair_providers_keep_their_own_comparison_and_projection_tariffs
         let list = declarations(source);
         let value = list[0].known().unwrap().property_value().unwrap();
         let render = |limits| match &value {
-            CssKnownPropertyValueRef::Pause(value) => {
-                value.value().serialize_specified_with_limits(limits)
-            }
-            CssKnownPropertyValueRef::Rest(value) => {
-                value.value().serialize_specified_with_limits(limits)
-            }
+            CssKnownPropertyValueRef::Pause(value) => value.value().serialize_specified(limits),
+            CssKnownPropertyValueRef::Rest(value) => value.value().serialize_specified(limits),
             CssKnownPropertyValueRef::InterestDelay(value) => {
-                value.delay().serialize_specified_with_limits(limits)
+                value.value().serialize_specified(limits)
             }
             _ => panic!("ordinary owning time pair"),
         };
-        let exact = CssSpecifiedValueSerializationLimits::new(9, 7, bytes);
+        let exact = CssSerializationLimits::new(9, 7, bytes);
         assert_eq!(render(exact).unwrap(), expected, "{source}");
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(8, 7, bytes),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(8, 7, bytes),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(9, 6, bytes),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(9, 6, bytes),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(9, 7, bytes - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(9, 7, bytes - 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(render(limits).unwrap_err().kind(), kind, "{source}");
+            assert_eq!(
+                serialization_failure(&render(limits).unwrap_err()),
+                kind,
+                "{source}"
+            );
             assert_eq!(render(exact).unwrap(), expected, "{source}");
         }
     }
@@ -1936,41 +1944,37 @@ fn ordinary_time_pair_providers_keep_their_own_comparison_and_projection_tariffs
 
 #[test]
 fn ordinary_numeric_owner_keeps_its_math_and_keyword_tariffs() {
-    let calculation =
-        CssTimeCalculation::try_from_components(parse_component_values("calc(1s + 2s)").unwrap())
-            .unwrap();
-    let value = CssTimeValue::try_from_calculation(calculation).unwrap();
-    let exact = CssSpecifiedValueSerializationLimits::new(4, 3, 8);
-    assert_eq!(
-        value.serialize_specified_with_limits(exact).unwrap(),
-        "calc(3s)"
-    );
+    let calculation = CssCalculation::<CssTime>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "calc(1s + 2s)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
+    let value = CssNumeric::<CssTime>::try_from_calculation(calculation).unwrap();
+    let exact = CssSerializationLimits::new(4, 3, 8);
+    assert_eq!(value.serialize_specified(exact).unwrap(), "calc(3s)");
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, 8),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(3, 3, 8),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 2, 8),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(4, 2, 8),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 3, 7),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(4, 3, 7),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
     let keyword = CssOverflow::Hidden;
     assert_eq!(
         keyword
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 6))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 6))
             .unwrap(),
         "hidden"
     );
@@ -1998,7 +2002,8 @@ fn color_inverse_omits_exact_ordinary_alpha_and_ignores_parsed_coordinates() {
             "border-block-start-color:{left};border-block-end-color:{right}"
         ));
         let before = list.clone();
-        let block = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap();
+        let block =
+            CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default()).unwrap();
         assert_eq!(
             read(&block, CssKnownProperty::BorderBlockColor).as_deref(),
             Some(expected),
@@ -2224,7 +2229,7 @@ fn color_mix_inverse_compares_exact_effective_declared_shares_and_default_interp
 
 #[test]
 fn ordinary_color_owner_keeps_its_exact_coefficient_tariff() {
-    let report = parse_style_attribute("color:color(srgb 1 0 0)");
+    let report = CssParser::default().parse_block_contents("color:color(srgb 1 0 0)");
     assert!(report.is_clean());
     let CssKnownPropertyValueRef::Color(value) = report.syntax()[0]
         .known()
@@ -2234,31 +2239,27 @@ fn ordinary_color_owner_keeps_its_exact_coefficient_tariff() {
     else {
         panic!("color payload")
     };
-    let exact = CssSpecifiedValueSerializationLimits::new(4, 4, 17);
+    let exact = CssSerializationLimits::new(4, 4, 17);
     assert_eq!(
-        value.value().to_specified_css_with_limits(exact).unwrap(),
+        value.value().serialize_specified(exact).unwrap(),
         "color(srgb 1 0 0)"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(3, 4, 17),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(3, 4, 17),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 3, 17),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(4, 3, 17),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 4, 16),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(4, 4, 16),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .value()
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.value().serialize_specified(limits).unwrap_err()),
             kind
         );
     }
@@ -2269,12 +2270,14 @@ fn second_terminal_probe_errors_retain_the_actual_source_member_and_allow_retry(
     let list = declarations(
         "border-block-start-color:currentcolor;border-block-end-color:color(srgb 1 0 0)",
     );
-    let ordinary = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap();
+    let ordinary =
+        CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default()).unwrap();
     let parsed = keyframes(
         "@keyframes x{from{border-block-start-color:currentcolor;border-block-end-color:color(srgb 1 0 0)}}",
     );
     let keyframe = CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(
         parsed.blocks()[0].declarations(),
+        Default::default(),
     )
     .unwrap();
     for block in [&ordinary, &keyframe] {
@@ -2283,24 +2286,21 @@ fn second_terminal_probe_errors_retain_the_actual_source_member_and_allow_retry(
         // first keyword visit P1 + second Color root P1 = P10. The next
         // second-terminal channel visit fails before coefficient construction.
         for limits in [
-            CssSpecifiedValueSerializationLimits::new(1, 10, 0), // Original witness unchanged.
-            CssSpecifiedValueSerializationLimits::new(1, 3, 0),  // Second presence check.
-            CssSpecifiedValueSerializationLimits::new(1, 5, 0),  // Second importance check.
-            CssSpecifiedValueSerializationLimits::new(1, 25, 0), // Original right value visit.
-            CssSpecifiedValueSerializationLimits::new(1, 32, 0), // Generated right value visit.
-            CssSpecifiedValueSerializationLimits::new(1, 39, 0), // Right exact comparison.
-            CssSpecifiedValueSerializationLimits::new(usize::MAX, 46, 30), // Actual second color output.
+            CssSerializationLimits::new(1, 10, 0), // Original witness unchanged.
+            CssSerializationLimits::new(1, 3, 0),  // Second presence check.
+            CssSerializationLimits::new(1, 5, 0),  // Second importance check.
+            CssSerializationLimits::new(1, 25, 0), // Original right value visit.
+            CssSerializationLimits::new(1, 32, 0), // Generated right value visit.
+            CssSerializationLimits::new(1, 39, 0), // Right exact comparison.
+            CssSerializationLimits::new(usize::MAX, 46, 30), // Actual second color output.
         ] {
             let error = block
-                .property_value_with_limits(
+                .property_value(
                     CssPropertyNameRef::Known(CssKnownProperty::BorderBlockColor),
                     limits,
                 )
                 .unwrap_err();
-            assert_eq!(
-                resource(&error),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
-            );
+            assert_eq!(resource(&error), SerializationFailure::ProjectionNodeLimit);
             assert_eq!(error.authored_ordinal(), Some(1), "{limits:?}");
             assert_eq!(error.member_ordinal(), Some(0));
             assert!(
@@ -2333,29 +2333,26 @@ fn exact_color_coefficient_probe_and_output_share_the_whole_new_request_budget()
     // Eligibility6 + hypothetical15 + Color pair equality5 + check3 + two
     // comparison initiations with both visits and Color equality (2 * 20)
     // = P69. Actual pair output I5/P5; read aggregate I1/P1 => I6/P75/B17.
-    let exact = CssSpecifiedValueSerializationLimits::new(6, 75, 17);
+    let exact = CssSerializationLimits::new(6, 75, 17);
     assert_eq!(
-        block
-            .property_value_with_limits(name, exact)
-            .unwrap()
-            .as_deref(),
+        block.property_value(name, exact).unwrap().as_deref(),
         Some("color(srgb 1 0 0)")
     );
     for (limits, expected) in [
         (
-            CssSpecifiedValueSerializationLimits::new(5, 75, 17),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(5, 75, 17),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(6, 74, 17),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(6, 74, 17),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(6, 75, 16),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(6, 75, 16),
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        let error = block.property_value_with_limits(name, limits).unwrap_err();
+        let error = block.property_value(name, limits).unwrap_err();
         assert_eq!(resource(&error), expected);
         assert!(
             error
@@ -2367,10 +2364,7 @@ fn exact_color_coefficient_probe_and_output_share_the_whole_new_request_budget()
         assert_eq!(error.member_ordinal(), Some(0));
     }
     assert_eq!(
-        block
-            .property_value_with_limits(name, exact)
-            .unwrap()
-            .as_deref(),
+        block.property_value(name, exact).unwrap().as_deref(),
         Some("color(srgb 1 0 0)")
     );
 }
@@ -2381,32 +2375,32 @@ fn color_pair_and_quad_owners_keep_their_ordering_and_tariffs() {
         let list = declarations(&format!("{property}:currentcolor color(srgb 1 0 0)"));
         let serialize = |limits| match list[0].known().unwrap().property_value().unwrap() {
             CssKnownPropertyValueRef::BorderBlockColor(value) => {
-                value.value().serialize_specified_with_limits(limits)
+                value.value().serialize_specified(limits)
             }
             CssKnownPropertyValueRef::BorderColor(value) => {
-                value.value().serialize_specified_with_limits(limits)
+                value.value().serialize_specified(limits)
             }
             _ => panic!("color shorthand"),
         };
         // Aggregate I1/P1 + keyword Color I1/P1 + predefined Color I4/P4.
-        let exact = CssSpecifiedValueSerializationLimits::new(6, 6, 30);
+        let exact = CssSerializationLimits::new(6, 6, 30);
         assert_eq!(serialize(exact).unwrap(), "currentcolor color(srgb 1 0 0)");
         for (limits, expected) in [
             (
-                CssSpecifiedValueSerializationLimits::new(5, 6, 30),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(5, 6, 30),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(6, 5, 30),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(6, 5, 30),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(6, 6, 29),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(6, 6, 29),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                serialize(limits).unwrap_err().kind(),
+                serialization_failure(&serialize(limits).unwrap_err()),
                 expected,
                 "{property}"
             );
@@ -2452,22 +2446,20 @@ fn reconstructed_capture_layers_and_nested_shapes_keep_original_terminal_sources
     ] {
         let list = declarations(source);
         let before = list.clone();
-        let block = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap();
+        let block =
+            CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default()).unwrap();
         let name = CssPropertyNameRef::Known(property);
-        let exact = CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, bytes);
+        let exact = CssSerializationLimits::new(usize::MAX, usize::MAX, bytes);
         assert_eq!(
-            block
-                .property_value_with_limits(name, exact)
-                .unwrap()
-                .as_deref(),
+            block.property_value(name, exact).unwrap().as_deref(),
             Some(expected),
             "{property:?}"
         );
-        let under = CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, bytes - 1);
-        let error = block.property_value_with_limits(name, under).unwrap_err();
+        let under = CssSerializationLimits::new(usize::MAX, usize::MAX, bytes - 1);
+        let error = block.property_value(name, under).unwrap_err();
         assert_eq!(
             resource(&error),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
             "{property:?}"
         );
         assert!(
@@ -2477,10 +2469,7 @@ fn reconstructed_capture_layers_and_nested_shapes_keep_original_terminal_sources
         assert_eq!(error.authored_ordinal(), Some(ordinal), "{property:?}");
         assert_eq!(error.member_ordinal(), Some(0), "{property:?}");
         assert_eq!(
-            block
-                .property_value_with_limits(name, exact)
-                .unwrap()
-                .as_deref(),
+            block.property_value(name, exact).unwrap().as_deref(),
             Some(expected),
             "{property:?} atomic retry"
         );
@@ -2537,28 +2526,26 @@ fn grid_templates_reorder_real_area_and_auto_flow_fields_without_replacing_sourc
         ),
     ] {
         let list = declarations(source);
-        let block = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap();
+        let block =
+            CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default()).unwrap();
         let name = CssPropertyNameRef::Known(property);
-        let exact = CssSpecifiedValueSerializationLimits::new(inputs, usize::MAX, bytes);
+        let exact = CssSerializationLimits::new(inputs, usize::MAX, bytes);
         assert_eq!(
-            block
-                .property_value_with_limits(name, exact)
-                .unwrap()
-                .as_deref(),
+            block.property_value(name, exact).unwrap().as_deref(),
             Some(expected),
             "{source}"
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(inputs - 1, usize::MAX, bytes),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(inputs - 1, usize::MAX, bytes),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(inputs, usize::MAX, bytes - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(inputs, usize::MAX, bytes - 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            let error = block.property_value_with_limits(name, limits).unwrap_err();
+            let error = block.property_value(name, limits).unwrap_err();
             assert_eq!(resource(&error), kind, "{source} {limits:?}");
             assert!(
                 error.declaration().unwrap().same_occurrence(&list[ordinal]),
@@ -2571,10 +2558,7 @@ fn grid_templates_reorder_real_area_and_auto_flow_fields_without_replacing_sourc
             );
             assert_eq!(error.member_ordinal(), Some(0), "{source} {limits:?}");
             assert_eq!(
-                block
-                    .property_value_with_limits(name, exact)
-                    .unwrap()
-                    .as_deref(),
+                block.property_value(name, exact).unwrap().as_deref(),
                 Some(expected),
                 "{source} atomic retry"
             );
@@ -2619,32 +2603,30 @@ fn nonauto_flex_verification_pays_its_complete_basis_comparison_work() {
     ] {
         let list = declarations(&format!("flex-grow:1;flex-shrink:1;flex-basis:{basis}"));
         let before = list.clone();
-        let block = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap();
+        let block =
+            CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default()).unwrap();
         let name = CssPropertyNameRef::Known(CssKnownProperty::Flex);
-        let exact = CssSpecifiedValueSerializationLimits::new(inputs, projections, bytes);
+        let exact = CssSerializationLimits::new(inputs, projections, bytes);
         assert_eq!(
-            block
-                .property_value_with_limits(name, exact)
-                .unwrap()
-                .as_deref(),
+            block.property_value(name, exact).unwrap().as_deref(),
             Some(expected),
             "{basis}"
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(inputs - 1, projections, bytes),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(inputs - 1, projections, bytes),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(inputs, projections - 1, bytes),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(inputs, projections - 1, bytes),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(inputs, projections, bytes - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(inputs, projections, bytes - 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            match block.property_value_with_limits(name, limits) {
+            match block.property_value(name, limits) {
                 Err(error) => {
                     assert_eq!(resource(&error), kind, "{basis} {limits:?}");
                     // Every one-under reaches actual final basis work, never
@@ -2661,10 +2643,7 @@ fn nonauto_flex_verification_pays_its_complete_basis_comparison_work() {
                 )),
             }
             assert_eq!(
-                block
-                    .property_value_with_limits(name, exact)
-                    .unwrap()
-                    .as_deref(),
+                block.property_value(name, exact).unwrap().as_deref(),
                 Some(expected),
                 "{basis}: adequate atomic retry"
             );
@@ -2708,36 +2687,33 @@ fn ordinary_flex_basis_writers_keep_numeric_and_outer_function_tariffs() {
             panic!("ordinary flex basis")
         };
         let value = wrapper.value();
-        let exact = CssSpecifiedValueSerializationLimits::new(inputs, projections, bytes);
+        let exact = CssSerializationLimits::new(inputs, projections, bytes);
         assert_eq!(
-            value.serialize_specified_with_limits(exact).unwrap(),
+            value.serialize_specified(exact).unwrap(),
             expected,
             "{source}"
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(inputs - 1, projections, bytes),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(inputs - 1, projections, bytes),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(inputs, projections - 1, bytes),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(inputs, projections - 1, bytes),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(inputs, projections, bytes - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(inputs, projections, bytes - 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind,
                 "{source} {limits:?}"
             );
             assert_eq!(
-                value.serialize_specified_with_limits(exact).unwrap(),
+                value.serialize_specified(exact).unwrap(),
                 expected,
                 "{source}: adequate retry"
             );
@@ -2779,22 +2755,21 @@ fn mask_position_omission_preserves_structure_math_phase_layers_and_final_source
     ] {
         let declarations = declarations(source);
         let before = declarations.clone();
-        let block = CssSpecifiedDeclarationBlock::try_from_declarations(&declarations).unwrap();
+        let block =
+            CssSpecifiedDeclarationBlock::try_from_declarations(&declarations, Default::default())
+                .unwrap();
         let name = CssPropertyNameRef::Known(CssKnownProperty::Mask);
-        let exact = CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, bytes);
+        let exact = CssSerializationLimits::new(usize::MAX, usize::MAX, bytes);
         assert_eq!(
-            block
-                .property_value_with_limits(name, exact)
-                .unwrap()
-                .as_deref(),
+            block.property_value(name, exact).unwrap().as_deref(),
             Some(expected),
             "{source}"
         );
-        let under = CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, bytes - 1);
-        let error = block.property_value_with_limits(name, under).unwrap_err();
+        let under = CssSerializationLimits::new(usize::MAX, usize::MAX, bytes - 1);
+        let error = block.property_value(name, under).unwrap_err();
         assert_eq!(
             resource(&error),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
             "{source}"
         );
         assert!(
@@ -2807,10 +2782,7 @@ fn mask_position_omission_preserves_structure_math_phase_layers_and_final_source
         assert_eq!(error.authored_ordinal(), Some(authored), "{source}");
         assert_eq!(error.member_ordinal(), Some(member), "{source}");
         assert_eq!(
-            block
-                .property_value_with_limits(name, exact)
-                .unwrap()
-                .as_deref(),
+            block.property_value(name, exact).unwrap().as_deref(),
             Some(expected),
             "{source}: adequate atomic retry"
         );
@@ -2835,30 +2807,39 @@ fn all_source_block(
     value: &str,
 ) -> (CssDeclaration, CssSpecifiedDeclarationBlock) {
     if keyframe {
-        let report = context.parse_sheet(&format!("@keyframes k{{from{{all:{value}}}}}"));
+        let report = CssParser::new(context, Default::default())
+            .parse_sheet(format!("@keyframes k{{from{{all:{value}}}}}"));
         assert!(report.is_clean());
         let CssRule::Keyframes(rule) = &report.syntax().rules()[0] else {
             panic!("keyframes")
         };
         let list = rule.blocks()[0].declarations();
         let source = list[0].source().clone();
-        let block = CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(list).unwrap();
+        let block =
+            CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(list, Default::default())
+                .unwrap();
         (source, block)
     } else {
-        let report = context.parse_style_attribute(&format!("all:{value}"));
+        let report = CssParser::new(context, Default::default())
+            .parse_block_contents(format!("all:{value}"));
         assert!(report.is_clean());
         let source = report.syntax()[0].clone();
-        let block = CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax()).unwrap();
+        let block = CssSpecifiedDeclarationBlock::try_from_declarations(
+            report.syntax(),
+            Default::default(),
+        )
+        .unwrap();
         (source, block)
     }
 }
 
 #[test]
 fn explicit_svg_terminal_winners_and_legacy_alias_keep_distinct_semantic_owners() {
-    let report = svg_context().parse_style_attribute("glyph-orientation-vertical:180deg!important;glyph-orientation-vertical:90deg;text-orientation:upright");
+    let report = CssParser::new(svg_context(), Default::default()).parse_block_contents("glyph-orientation-vertical:180deg!important;glyph-orientation-vertical:90deg;text-orientation:upright");
     assert!(report.is_clean());
     let list = report.syntax();
-    let block = CssSpecifiedDeclarationBlock::try_from_declarations(list).unwrap();
+    let block =
+        CssSpecifiedDeclarationBlock::try_from_declarations(list, Default::default()).unwrap();
     let name = CssPropertyNameRef::SvgGlyphOrientationVertical;
     assert_eq!(block.entries().len(), 2);
     let entry = &block.entries()[0];
@@ -2875,7 +2856,10 @@ fn explicit_svg_terminal_winners_and_legacy_alias_keep_distinct_semantic_owners(
     assert!(value.source().same_occurrence(&list[0]));
     assert!(value.replacement_components().is_none());
     assert_eq!(
-        block.property_value(name).unwrap().as_deref(),
+        block
+            .property_value(name, Default::default())
+            .unwrap()
+            .as_deref(),
         Some("180deg")
     );
     assert_eq!(
@@ -2883,13 +2867,14 @@ fn explicit_svg_terminal_winners_and_legacy_alias_keep_distinct_semantic_owners(
         Some("upright")
     );
     assert_eq!(
-        block.serialize_cssom().unwrap(),
+        block.serialize_cssom(Default::default()).unwrap(),
         "glyph-orientation-vertical: 180deg !important; text-orientation: upright;"
     );
 
-    let explicit = parse_property_value(
-        name,
-        parse_component_values("180deg").unwrap(),
+    let explicit = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(name),
+        CssComponentValues::parse(&CssParser::default(), "180deg").unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
@@ -2897,11 +2882,9 @@ fn explicit_svg_terminal_winners_and_legacy_alias_keep_distinct_semantic_owners(
     assert_eq!(explicit.position(), None);
     let legacy = declarations("glyph-orientation-vertical:0")[0].clone();
     assert!(legacy.svg_glyph_orientation_vertical().is_none());
-    let expansions = [
-        expand_declaration(&explicit).unwrap(),
-        expand_declaration(&legacy).unwrap(),
-    ];
-    let combined = CssSpecifiedDeclarationBlock::try_from_expansions(&expansions).unwrap();
+    let expansions = [explicit.expand().unwrap(), legacy.expand().unwrap()];
+    let combined =
+        CssSpecifiedDeclarationBlock::try_from_expansions(&expansions, Default::default()).unwrap();
     assert_eq!(
         combined
             .entries()
@@ -2914,7 +2897,7 @@ fn explicit_svg_terminal_winners_and_legacy_alias_keep_distinct_semantic_owners(
         ]
     );
     assert_eq!(
-        combined.serialize_cssom().unwrap(),
+        combined.serialize_cssom(Default::default()).unwrap(),
         "glyph-orientation-vertical: 180deg; text-orientation: upright;"
     );
     assert!(combined.entries()[0].source().same_occurrence(&explicit));
@@ -2923,7 +2906,7 @@ fn explicit_svg_terminal_winners_and_legacy_alias_keep_distinct_semantic_owners(
 
 #[test]
 fn svg_keyframe_accessors_borrow_the_actual_retained_body_and_normal_occurrence() {
-    let report = svg_context().parse_sheet(
+    let report = CssParser::new(svg_context(), Default::default()).parse_sheet(
         "@keyframes k{from{glyph-orientation-vertical:180deg;glyph-orientation-vertical:90deg}}",
     );
     assert!(report.is_clean());
@@ -2949,7 +2932,9 @@ fn svg_keyframe_accessors_borrow_the_actual_retained_body_and_normal_occurrence(
         assert!(source.parsed_name().is_some() && source.parsed_value().is_some());
         assert!(declaration.clone().source().same_occurrence(source));
     }
-    let block = CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(list).unwrap();
+    let block =
+        CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(list, Default::default())
+            .unwrap();
     assert_eq!(block.entries().len(), 1);
     assert!(
         block.entries()[0]
@@ -2957,29 +2942,34 @@ fn svg_keyframe_accessors_borrow_the_actual_retained_body_and_normal_occurrence(
             .same_occurrence(list[1].source())
     );
     assert_eq!(
-        block.serialize_cssom().unwrap(),
+        block.serialize_cssom(Default::default()).unwrap(),
         "glyph-orientation-vertical: 90deg;"
     );
     assert_eq!(
-        list.serialize_cssom().unwrap(),
+        list.serialize_cssom(Default::default()).unwrap(),
         "glyph-orientation-vertical: 90deg;"
     );
 }
 
 #[test]
 fn svg_direct_pending_and_completed_reentry_keep_original_and_replacement_origins() {
-    let report = svg_context().parse_style_attribute("glyph-orientation-vertical:var(--G)");
+    let report = CssParser::new(svg_context(), Default::default())
+        .parse_block_contents("glyph-orientation-vertical:var(--G)");
     assert!(report.is_clean());
     let original = report.syntax()[0].clone();
     let name = CssPropertyNameRef::SvgGlyphOrientationVertical;
-    let CssExpansion::Pending(pending) = expand_declaration(&original).unwrap() else {
+    let CssExpansion::Pending(pending) = original.expand().unwrap() else {
         panic!("SVG pending")
     };
     let pending_block =
-        CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax()).unwrap();
+        CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
+            .unwrap();
     assert_eq!(pending_block.entries().len(), 1);
     assert_eq!(
-        pending_block.property_value(name).unwrap().as_deref(),
+        pending_block
+            .property_value(name, Default::default())
+            .unwrap()
+            .as_deref(),
         Some("var(--G)")
     );
     assert!(matches!(
@@ -2987,25 +2977,32 @@ fn svg_direct_pending_and_completed_reentry_keep_original_and_replacement_origin
         CssSpecifiedDeclarationValueRef::UnresolvedLonghand(_)
     ));
     assert_eq!(
-        pending_block.serialize_cssom().unwrap(),
+        pending_block.serialize_cssom(Default::default()).unwrap(),
         "glyph-orientation-vertical: var(--G);"
     );
     assert_eq!(
-        original.to_specified_css().unwrap(),
+        original.serialize_specified(Default::default()).unwrap(),
         "glyph-orientation-vertical: var(--G);"
     );
-    let replacement = parse_component_values("45deg").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "45deg").unwrap();
     let completed = CssExpansion::Contributions(pending.reenter(replacement.clone()).unwrap());
     for block in [
-        CssSpecifiedDeclarationBlock::try_from_expansions(std::slice::from_ref(&completed))
-            .unwrap(),
-        CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(std::slice::from_ref(
-            &completed,
-        ))
+        CssSpecifiedDeclarationBlock::try_from_expansions(
+            std::slice::from_ref(&completed),
+            Default::default(),
+        )
+        .unwrap(),
+        CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(
+            std::slice::from_ref(&completed),
+            Default::default(),
+        )
         .unwrap(),
     ] {
         assert_eq!(
-            block.property_value(name).unwrap().as_deref(),
+            block
+                .property_value(name, Default::default())
+                .unwrap()
+                .as_deref(),
             Some("45deg")
         );
         let entry = &block.entries()[0];
@@ -3020,47 +3017,53 @@ fn svg_direct_pending_and_completed_reentry_keep_original_and_replacement_origin
         assert_eq!(value.replacement_components(), Some(&replacement));
     }
     let error = pending
-        .reenter(parse_component_values("var(--G)").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "var(--G)").unwrap())
         .unwrap_err();
-    assert!(
-        matches!(error.kind(), CssExpansionErrorKind::ResidualSubstitution),
-        "{error:?}"
-    );
+    assert!(error.is_residual_substitution(), "{error:?}");
     assert!(pending.source().same_occurrence(&original));
     assert_eq!(
-        pending.source().to_specified_css().unwrap(),
+        pending
+            .source()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "glyph-orientation-vertical: var(--G);"
     );
     pending.reenter(replacement).unwrap();
 
     // The explicit SVG name has SVG semantics even with the default finite
     // alias lookup selector. Its Normal constructed source has no position.
-    let explicit = parse_property_value(
-        name,
-        parse_component_values("var(--G)").unwrap(),
+    let explicit = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(name),
+        CssComponentValues::parse(&CssParser::default(), "var(--G)").unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
     assert_eq!(explicit.parser_context(), CssParserContext::default());
     assert_eq!(explicit.position(), None);
-    let CssExpansion::Pending(pending) = expand_declaration(&explicit).unwrap() else {
+    let CssExpansion::Pending(pending) = explicit.expand().unwrap() else {
         panic!("explicit SVG pending")
     };
     let complete = CssExpansion::Contributions(
         pending
-            .reenter(parse_component_values("45deg").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "45deg").unwrap())
             .unwrap(),
     );
-    let block = CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(&[complete]).unwrap();
+    let block =
+        CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(&[complete], Default::default())
+            .unwrap();
     assert_eq!(
-        block.property_value(name).unwrap().as_deref(),
+        block
+            .property_value(name, Default::default())
+            .unwrap()
+            .as_deref(),
         Some("45deg")
     );
     assert!(block.entries()[0].source().same_occurrence(&explicit));
     assert_eq!(block.entries()[0].source().position(), None);
 
-    let report =
-        svg_context().parse_sheet("@keyframes k{from{glyph-orientation-vertical:var(--G)}}");
+    let report = CssParser::new(svg_context(), Default::default())
+        .parse_sheet("@keyframes k{from{glyph-orientation-vertical:var(--G)}}");
     assert!(report.is_clean());
     let CssRule::Keyframes(rule) = &report.syntax().rules()[0] else {
         panic!("keyframes")
@@ -3068,25 +3071,29 @@ fn svg_direct_pending_and_completed_reentry_keep_original_and_replacement_origin
     let list = rule.blocks()[0].declarations();
     let original = list[0].source();
     assert_eq!(
-        list.serialize_cssom().unwrap(),
+        list.serialize_cssom(Default::default()).unwrap(),
         "glyph-orientation-vertical: var(--G);"
     );
-    let CssExpansion::Pending(pending) = expand_declaration(original).unwrap() else {
+    let CssExpansion::Pending(pending) = original.expand().unwrap() else {
         panic!("keyframe SVG pending")
     };
     let completed = CssExpansion::Contributions(
         pending
-            .reenter(parse_component_values("90deg").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "90deg").unwrap())
             .unwrap(),
     );
-    let block = CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(&[completed]).unwrap();
+    let block = CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(
+        &[completed],
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(
-        block.serialize_cssom().unwrap(),
+        block.serialize_cssom(Default::default()).unwrap(),
         "glyph-orientation-vertical: 90deg;"
     );
     assert!(block.entries()[0].source().same_occurrence(original));
     assert_eq!(
-        list.serialize_cssom().unwrap(),
+        list.serialize_cssom(Default::default()).unwrap(),
         "glyph-orientation-vertical: var(--G);"
     );
 }
@@ -3138,34 +3145,52 @@ fn all_supported_union_ignores_lookup_selection_and_preserves_complete_pending_i
                     .unwrap();
                 assert!(svg.source().same_occurrence(&source));
                 assert_eq!(
-                    block.property_value(svg_name).unwrap().as_deref(),
+                    block
+                        .property_value(svg_name, Default::default())
+                        .unwrap()
+                        .as_deref(),
                     Some(svg_value)
                 );
                 assert_eq!(read(&block, CssKnownProperty::All).as_deref(), Some(value));
-                assert_eq!(block.serialize_cssom().unwrap(), format!("all: {value};"));
+                assert_eq!(
+                    block.serialize_cssom(Default::default()).unwrap(),
+                    format!("all: {value};")
+                );
                 if value == "var(--A)" {
                     let CssSpecifiedDeclarationValueRef::PendingShorthand(original) = svg.value()
                     else {
                         panic!("All SVG pending member")
                     };
                     assert!(original.same_occurrence(&source));
-                    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap()
-                    else {
+                    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
                         panic!("All pending")
                     };
                     let complete = CssExpansion::Contributions(
                         pending
-                            .reenter(parse_component_values("inherit").unwrap())
+                            .reenter(
+                                CssComponentValues::parse(&CssParser::default(), "inherit")
+                                    .unwrap(),
+                            )
                             .unwrap(),
                     );
                     let completed = if keyframe {
-                        CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(&[complete])
-                            .unwrap()
+                        CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(
+                            &[complete],
+                            Default::default(),
+                        )
+                        .unwrap()
                     } else {
-                        CssSpecifiedDeclarationBlock::try_from_expansions(&[complete]).unwrap()
+                        CssSpecifiedDeclarationBlock::try_from_expansions(
+                            &[complete],
+                            Default::default(),
+                        )
+                        .unwrap()
                     };
                     assert_eq!(
-                        completed.property_value(svg_name).unwrap().as_deref(),
+                        completed
+                            .property_value(svg_name, Default::default())
+                            .unwrap()
+                            .as_deref(),
                         Some("inherit")
                     );
                     assert_eq!(
@@ -3178,7 +3203,10 @@ fn all_supported_union_ignores_lookup_selection_and_preserves_complete_pending_i
                             .iter()
                             .all(|entry| entry.source().same_occurrence(&source))
                     );
-                    assert_eq!(source.to_specified_css().unwrap(), "all: var(--A);");
+                    assert_eq!(
+                        source.serialize_specified(Default::default()).unwrap(),
+                        "all: var(--A);"
+                    );
                 }
             }
         }
@@ -3199,13 +3227,17 @@ fn svg_all_overrides_mixed_priority_and_different_pending_occurrences_disqualify
             "var(--A)",
         ),
     ] {
-        let report = svg_context().parse_style_attribute(source);
+        let report = CssParser::new(svg_context(), Default::default()).parse_block_contents(source);
         assert!(report.is_clean());
         let list = report.syntax();
-        let block = CssSpecifiedDeclarationBlock::try_from_declarations(list).unwrap();
+        let block =
+            CssSpecifiedDeclarationBlock::try_from_declarations(list, Default::default()).unwrap();
         assert_eq!(read(&block, CssKnownProperty::All), None, "{source}");
         assert_eq!(
-            block.property_value(name).unwrap().as_deref(),
+            block
+                .property_value(name, Default::default())
+                .unwrap()
+                .as_deref(),
             Some(expected)
         );
         let entry = block
@@ -3217,11 +3249,16 @@ fn svg_all_overrides_mixed_priority_and_different_pending_occurrences_disqualify
         assert_eq!(entry.authored_ordinal(), 1);
         assert_eq!(entry.member_ordinal(), 0);
     }
-    let report = svg_context()
-        .parse_style_attribute("all:inherit!important;glyph-orientation-vertical:auto");
+    let report = CssParser::new(svg_context(), Default::default())
+        .parse_block_contents("all:inherit!important;glyph-orientation-vertical:auto");
     assert!(report.is_clean());
-    let block = CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax()).unwrap();
-    assert_eq!(block.serialize_cssom().unwrap(), "all: inherit !important;");
+    let block =
+        CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
+            .unwrap();
+    assert_eq!(
+        block.serialize_cssom(Default::default()).unwrap(),
+        "all: inherit !important;"
+    );
     assert!(
         block
             .entries()
@@ -3231,11 +3268,16 @@ fn svg_all_overrides_mixed_priority_and_different_pending_occurrences_disqualify
 
     // Completed globals compare exact semantic values, while pending members
     // require one original occurrence. Equal Normal globals may coalesce.
-    let report =
-        svg_context().parse_style_attribute("all:inherit;glyph-orientation-vertical:inherit");
+    let report = CssParser::new(svg_context(), Default::default())
+        .parse_block_contents("all:inherit;glyph-orientation-vertical:inherit");
     assert!(report.is_clean());
-    let block = CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax()).unwrap();
-    assert_eq!(block.serialize_cssom().unwrap(), "all: inherit;");
+    let block =
+        CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
+            .unwrap();
+    assert_eq!(
+        block.serialize_cssom(Default::default()).unwrap(),
+        "all: inherit;"
+    );
     let svg = block
         .entries()
         .iter()
@@ -3247,13 +3289,16 @@ fn svg_all_overrides_mixed_priority_and_different_pending_occurrences_disqualify
         "all:inherit;glyph-orientation-vertical:auto",
         "all:var(--A);glyph-orientation-vertical:var(--A)",
     ] {
-        let report = svg_context().parse_sheet(&format!("@keyframes k{{from{{{source}}}}}"));
+        let report = CssParser::new(svg_context(), Default::default())
+            .parse_sheet(format!("@keyframes k{{from{{{source}}}}}"));
         assert!(report.is_clean());
         let CssRule::Keyframes(rule) = &report.syntax().rules()[0] else {
             panic!("keyframes")
         };
         let list = rule.blocks()[0].declarations();
-        let block = CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(list).unwrap();
+        let block =
+            CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(list, Default::default())
+                .unwrap();
         assert_eq!(read(&block, CssKnownProperty::All), None);
         assert_eq!(read(&block, CssKnownProperty::AnimationDuration), None);
         let entry = block
@@ -3263,21 +3308,20 @@ fn svg_all_overrides_mixed_priority_and_different_pending_occurrences_disqualify
             .unwrap();
         assert!(entry.source().same_occurrence(list[1].source()));
     }
-    let important = parse_property_value(
-        name,
-        parse_component_values("auto").unwrap(),
+    let important = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(name),
+        CssComponentValues::parse(&CssParser::default(), "auto").unwrap(),
         CssImportance::Important,
     )
     .unwrap();
-    let expansion = expand_declaration(&important).unwrap();
-    let error =
-        CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(&[expansion]).unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssDeclarationBlockErrorKind::InvalidKeyframeSource {
-            reason: CssInvalidKeyframeSourceReason::Importance
-        }
-    ));
+    let expansion = important.expand().unwrap();
+    let error = CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(
+        &[expansion],
+        Default::default(),
+    )
+    .unwrap_err();
+    assert!(error.invalid_keyframe_source() == Some(CssInvalidKeyframeSourceReason::Importance));
     assert!(error.declaration().unwrap().same_occurrence(&important));
     assert_eq!(error.authored_ordinal(), Some(0));
     assert_eq!(error.member_ordinal(), None);
@@ -3292,33 +3336,34 @@ fn svg_and_all_union_pay_exact_source_projection_and_atomic_output_work() {
         ("180deg", "180deg", 2, 2, 6),
         ("calc(30deg + 60deg)", "calc(90deg)", 5, 4, 11),
     ] {
-        let report =
-            svg_context().parse_style_attribute(&format!("glyph-orientation-vertical:{value}"));
+        let report = CssParser::new(svg_context(), Default::default())
+            .parse_block_contents(format!("glyph-orientation-vertical:{value}"));
         assert!(report.is_clean());
-        let block = CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax()).unwrap();
-        let exact = CssSpecifiedValueSerializationLimits::new(inputs, projections, bytes);
+        let block = CssSpecifiedDeclarationBlock::try_from_declarations(
+            report.syntax(),
+            Default::default(),
+        )
+        .unwrap();
+        let exact = CssSerializationLimits::new(inputs, projections, bytes);
         assert_eq!(
-            block
-                .property_value_with_limits(name, exact)
-                .unwrap()
-                .as_deref(),
+            block.property_value(name, exact).unwrap().as_deref(),
             Some(expected)
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(inputs - 1, projections, bytes),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(inputs - 1, projections, bytes),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(inputs, projections - 1, bytes),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(inputs, projections - 1, bytes),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(inputs, projections, bytes - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(inputs, projections, bytes - 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            let error = block.property_value_with_limits(name, limits).unwrap_err();
+            let error = block.property_value(name, limits).unwrap_err();
             assert_eq!(resource(&error), kind);
             assert!(
                 error
@@ -3329,10 +3374,7 @@ fn svg_and_all_union_pay_exact_source_projection_and_atomic_output_work() {
             assert_eq!(error.authored_ordinal(), Some(0));
             assert_eq!(error.member_ordinal(), Some(0));
             assert_eq!(
-                block
-                    .property_value_with_limits(name, exact)
-                    .unwrap()
-                    .as_deref(),
+                block.property_value(name, exact).unwrap().as_deref(),
                 Some(expected)
             );
         }
@@ -3348,33 +3390,30 @@ fn svg_and_all_union_pay_exact_source_projection_and_atomic_output_work() {
         let admitted = if keyframe { r } else { n };
         // Requested aggregate1; eligibility3m; hypothetical/check2+2m;
         // comparisons3m; emitted global1 = P8m+4 and I2, independent of lookup.
-        let exact = CssSpecifiedValueSerializationLimits::new(2, 8 * admitted + 4, 7);
+        let exact = CssSerializationLimits::new(2, 8 * admitted + 4, 7);
         assert_eq!(
             block
-                .property_value_with_limits(CssPropertyNameRef::Known(CssKnownProperty::All), exact)
+                .property_value(CssPropertyNameRef::Known(CssKnownProperty::All), exact)
                 .unwrap()
                 .as_deref(),
             Some("inherit")
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(1, 8 * admitted + 4, 7),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(1, 8 * admitted + 4, 7),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(2, 8 * admitted + 3, 7),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(2, 8 * admitted + 3, 7),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(2, 8 * admitted + 4, 6),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(2, 8 * admitted + 4, 6),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             let error = block
-                .property_value_with_limits(
-                    CssPropertyNameRef::Known(CssKnownProperty::All),
-                    limits,
-                )
+                .property_value(CssPropertyNameRef::Known(CssKnownProperty::All), limits)
                 .unwrap_err();
             assert_eq!(resource(&error), kind);
             assert!(error.declaration().unwrap().same_occurrence(&source));
@@ -3382,10 +3421,7 @@ fn svg_and_all_union_pay_exact_source_projection_and_atomic_output_work() {
             assert_eq!(error.member_ordinal(), Some(0));
             assert_eq!(
                 block
-                    .property_value_with_limits(
-                        CssPropertyNameRef::Known(CssKnownProperty::All),
-                        exact
-                    )
+                    .property_value(CssPropertyNameRef::Known(CssKnownProperty::All), exact)
                     .unwrap()
                     .as_deref(),
                 Some("inherit")
@@ -3394,63 +3430,65 @@ fn svg_and_all_union_pay_exact_source_projection_and_atomic_output_work() {
     }
     // A single SVG Auto source builds I5/P3 (keyframe P5), then output costs
     // I4/P5 plus the one All presence pass, whose admitted footprint is n/r.
-    let report = svg_context().parse_style_attribute("glyph-orientation-vertical:auto");
+    let report = CssParser::new(svg_context(), Default::default())
+        .parse_block_contents("glyph-orientation-vertical:auto");
     assert!(report.is_clean());
     let list = report.syntax();
-    let exact = CssSpecifiedValueSerializationLimits::new(9, n + 8, 33);
+    let exact = CssSerializationLimits::new(9, n + 8, 33);
     assert_eq!(
-        list.serialize_cssom_with_limits(exact).unwrap(),
+        list.serialize_cssom(exact).unwrap(),
         "glyph-orientation-vertical: auto;"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(8, n + 8, 33),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(8, n + 8, 33),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(9, n + 7, 33),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(9, n + 7, 33),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(9, n + 8, 32),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(9, n + 8, 32),
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        let error = list.serialize_cssom_with_limits(limits).unwrap_err();
+        let error = list.serialize_cssom(limits).unwrap_err();
         assert_eq!(resource(&error), kind);
         assert!(error.declaration().unwrap().same_occurrence(&list[0]));
         assert_eq!(error.member_ordinal(), Some(0));
         assert_eq!(
-            list.serialize_cssom_with_limits(exact).unwrap(),
+            list.serialize_cssom(exact).unwrap(),
             "glyph-orientation-vertical: auto;"
         );
     }
-    let report = svg_context().parse_sheet("@keyframes k{from{glyph-orientation-vertical:auto}}");
+    let report = CssParser::new(svg_context(), Default::default())
+        .parse_sheet("@keyframes k{from{glyph-orientation-vertical:auto}}");
     assert!(report.is_clean());
     let CssRule::Keyframes(rule) = &report.syntax().rules()[0] else {
         panic!("keyframes")
     };
     let list = rule.blocks()[0].declarations();
-    let exact = CssSpecifiedValueSerializationLimits::new(9, r + 10, 33);
+    let exact = CssSerializationLimits::new(9, r + 10, 33);
     assert_eq!(
-        list.serialize_cssom_with_limits(exact).unwrap(),
+        list.serialize_cssom(exact).unwrap(),
         "glyph-orientation-vertical: auto;"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(8, r + 10, 33),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(8, r + 10, 33),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(9, r + 9, 33),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(9, r + 9, 33),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(9, r + 10, 32),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(9, r + 10, 32),
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        let error = list.serialize_cssom_with_limits(limits).unwrap_err();
+        let error = list.serialize_cssom(limits).unwrap_err();
         assert_eq!(resource(&error), kind);
         assert!(
             error
@@ -3460,7 +3498,7 @@ fn svg_and_all_union_pay_exact_source_projection_and_atomic_output_work() {
         );
         assert_eq!(error.member_ordinal(), Some(0));
         assert_eq!(
-            list.serialize_cssom_with_limits(exact).unwrap(),
+            list.serialize_cssom(exact).unwrap(),
             "glyph-orientation-vertical: auto;"
         );
     }
@@ -3484,33 +3522,24 @@ fn all_svg_winner_work_retains_the_full_unfiltered_member_ordinal() {
         .count();
     for keyframe in [false, true] {
         let (source, _) = all_source_block(CssParserContext::default(), keyframe, "inherit");
-        let expansions = [expand_declaration(&source).unwrap()];
+        let expansions = [source.expand().unwrap()];
         let build = |limits| {
             if keyframe {
-                CssSpecifiedDeclarationBlock::try_from_keyframe_expansions_with_limits(
-                    &expansions,
-                    limits,
-                )
+                CssSpecifiedDeclarationBlock::try_from_keyframe_expansions(&expansions, limits)
             } else {
-                CssSpecifiedDeclarationBlock::try_from_expansions_with_limits(&expansions, limits)
+                CssSpecifiedDeclarationBlock::try_from_expansions(&expansions, limits)
             }
         };
         // I5 visits aggregate, occurrence, name, value-list and keyword.
         // Before winner lookup: ordinary P1+n, keyframe P2+2n. The s/t
         // prior retained winners spend one each; SVG's next lookup must fail.
         let before_svg = if keyframe { 2 + 2 * n + t } else { 1 + n + s };
-        let exact = CssSpecifiedValueSerializationLimits::new(
-            5,
-            if keyframe { 2 + 2 * n + r } else { 1 + 2 * n },
-            0,
-        );
+        let exact =
+            CssSerializationLimits::new(5, if keyframe { 2 + 2 * n + r } else { 1 + 2 * n }, 0);
         let block = build(exact).unwrap();
         assert_eq!(block.entries().len(), if keyframe { r } else { n });
-        let error = build(CssSpecifiedValueSerializationLimits::new(5, before_svg, 0)).unwrap_err();
-        assert_eq!(
-            resource(&error),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
-        );
+        let error = build(CssSerializationLimits::new(5, before_svg, 0)).unwrap_err();
+        assert_eq!(resource(&error), SerializationFailure::ProjectionNodeLimit);
         assert!(error.declaration().unwrap().same_occurrence(&source));
         assert_eq!(error.authored_ordinal(), Some(0));
         assert_eq!(error.member_ordinal(), Some(s));
@@ -3522,7 +3551,10 @@ fn all_svg_winner_work_retains_the_full_unfiltered_member_ordinal() {
             .unwrap();
         assert!(svg.source().same_occurrence(&source));
         assert_eq!(svg.member_ordinal(), s);
-        assert_eq!(retry.serialize_cssom().unwrap(), "all: inherit;");
+        assert_eq!(
+            retry.serialize_cssom(Default::default()).unwrap(),
+            "all: inherit;"
+        );
     }
 }
 
@@ -3594,41 +3626,39 @@ fn reconstructed_column_aliases_pay_complete_comparison_and_emission_tariffs() {
     ] {
         let list = declarations(source);
         let before = list.clone();
-        let block = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap();
+        let block =
+            CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default()).unwrap();
         let entries_before = block.entries().to_vec();
         let name = CssPropertyNameRef::Known(property);
-        let exact = CssSpecifiedValueSerializationLimits::new(inputs, projections, bytes);
+        let exact = CssSerializationLimits::new(inputs, projections, bytes);
         assert_eq!(
-            block
-                .property_value_with_limits(name, exact)
-                .unwrap()
-                .as_deref(),
+            block.property_value(name, exact).unwrap().as_deref(),
             Some(expected),
             "{source}"
         );
         for (limits, kind, ordinal) in [
             (
-                CssSpecifiedValueSerializationLimits::new(inputs, comparison_cutoff, bytes),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(inputs, comparison_cutoff, bytes),
+                SerializationFailure::ProjectionNodeLimit,
                 0,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(inputs - 1, projections, bytes),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(inputs - 1, projections, bytes),
+                SerializationFailure::InputNodeLimit,
                 final_ordinal,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(inputs, projections - 1, bytes),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(inputs, projections - 1, bytes),
+                SerializationFailure::ProjectionNodeLimit,
                 final_ordinal,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(inputs, projections, bytes - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(inputs, projections, bytes - 1),
+                SerializationFailure::ByteLimit,
                 byte_ordinal,
             ),
         ] {
-            let error = block.property_value_with_limits(name, limits).unwrap_err();
+            let error = block.property_value(name, limits).unwrap_err();
             assert_eq!(resource(&error), kind, "{source} {limits:?}");
             assert!(
                 error.declaration().unwrap().same_occurrence(&list[ordinal]),
@@ -3641,10 +3671,7 @@ fn reconstructed_column_aliases_pay_complete_comparison_and_emission_tariffs() {
             );
             assert_eq!(error.member_ordinal(), Some(0), "{source} {limits:?}");
             assert_eq!(
-                block
-                    .property_value_with_limits(name, exact)
-                    .unwrap()
-                    .as_deref(),
+                block.property_value(name, exact).unwrap().as_deref(),
                 Some(expected),
                 "{source}: adequate atomic retry"
             );
@@ -3701,41 +3728,39 @@ fn grid_template_counted_repeat_verification_pays_complete_work_and_keeps_select
         );
         let list = declarations(&source);
         let before = list.clone();
-        let block = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap();
+        let block =
+            CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default()).unwrap();
         let entries_before = block.entries().to_vec();
         let name = CssPropertyNameRef::Known(CssKnownProperty::GridTemplate);
-        let exact = CssSpecifiedValueSerializationLimits::new(inputs, projections, bytes);
+        let exact = CssSerializationLimits::new(inputs, projections, bytes);
         assert_eq!(
-            block
-                .property_value_with_limits(name, exact)
-                .unwrap()
-                .as_deref(),
+            block.property_value(name, exact).unwrap().as_deref(),
             Some(expected),
             "{rows}"
         );
         for (limits, kind, ordinal) in [
             (
-                CssSpecifiedValueSerializationLimits::new(inputs, comparison_cutoff, bytes),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(inputs, comparison_cutoff, bytes),
+                SerializationFailure::ProjectionNodeLimit,
                 0,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(inputs - 1, projections, bytes),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(inputs - 1, projections, bytes),
+                SerializationFailure::InputNodeLimit,
                 1,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(inputs, projections - 1, bytes),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(inputs, projections - 1, bytes),
+                SerializationFailure::ProjectionNodeLimit,
                 1,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(inputs, projections, bytes - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(inputs, projections, bytes - 1),
+                SerializationFailure::ByteLimit,
                 1,
             ),
         ] {
-            let error = block.property_value_with_limits(name, limits).unwrap_err();
+            let error = block.property_value(name, limits).unwrap_err();
             assert_eq!(resource(&error), kind, "{rows} {limits:?}");
             assert!(
                 error.declaration().unwrap().same_occurrence(&list[ordinal]),
@@ -3744,10 +3769,7 @@ fn grid_template_counted_repeat_verification_pays_complete_work_and_keeps_select
             assert_eq!(error.authored_ordinal(), Some(ordinal), "{rows} {limits:?}");
             assert_eq!(error.member_ordinal(), Some(0), "{rows} {limits:?}");
             assert_eq!(
-                block
-                    .property_value_with_limits(name, exact)
-                    .unwrap()
-                    .as_deref(),
+                block.property_value(name, exact).unwrap().as_deref(),
                 Some(expected),
                 "{rows}: adequate atomic retry"
             );
@@ -3789,32 +3811,30 @@ fn cue_inverse_shortens_separately_authored_exact_offsets_and_zero_defaults() {
             "cue-before:{before_value};cue-after:{after_value}"
         ));
         let before = list.clone();
-        let block = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap();
+        let block =
+            CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default()).unwrap();
         let entries_before = block.entries().to_vec();
         let name = CssPropertyNameRef::Known(CssKnownProperty::Cue);
-        let exact = CssSpecifiedValueSerializationLimits::new(inputs, projections, bytes);
+        let exact = CssSerializationLimits::new(inputs, projections, bytes);
         assert_eq!(
-            block
-                .property_value_with_limits(name, exact)
-                .unwrap()
-                .as_deref(),
+            block.property_value(name, exact).unwrap().as_deref(),
             Some(expected)
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(inputs - 1, projections, bytes),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(inputs - 1, projections, bytes),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(inputs, projections - 1, bytes),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(inputs, projections - 1, bytes),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(inputs, projections, bytes - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(inputs, projections, bytes - 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            let error = block.property_value_with_limits(name, limits).unwrap_err();
+            let error = block.property_value(name, limits).unwrap_err();
             assert_eq!(resource(&error), kind);
             assert!(
                 error.declaration().unwrap().same_occurrence(&list[0]),
@@ -3823,10 +3843,7 @@ fn cue_inverse_shortens_separately_authored_exact_offsets_and_zero_defaults() {
             assert_eq!(error.authored_ordinal(), Some(0));
             assert_eq!(error.member_ordinal(), Some(0));
             assert_eq!(
-                block
-                    .property_value_with_limits(name, exact)
-                    .unwrap()
-                    .as_deref(),
+                block.property_value(name, exact).unwrap().as_deref(),
                 Some(expected),
                 "adequate retry"
             );
@@ -3867,41 +3884,39 @@ fn nested_grid_math_verification_admits_selected_leaf_work_and_original_terminal
             "grid-template-rows:{rows};grid-template-columns:none;grid-template-areas:none"
         ));
         let before = list.clone();
-        let block = CssSpecifiedDeclarationBlock::try_from_declarations(&list).unwrap();
+        let block =
+            CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default()).unwrap();
         let entries_before = block.entries().to_vec();
         let name = CssPropertyNameRef::Known(CssKnownProperty::GridTemplate);
-        let exact = CssSpecifiedValueSerializationLimits::new(inputs, projections, bytes);
+        let exact = CssSerializationLimits::new(inputs, projections, bytes);
         assert_eq!(
-            block
-                .property_value_with_limits(name, exact)
-                .unwrap()
-                .as_deref(),
+            block.property_value(name, exact).unwrap().as_deref(),
             Some(expected),
             "{rows}"
         );
         for (limits, kind, ordinal) in [
             (
-                CssSpecifiedValueSerializationLimits::new(inputs, cutoff, bytes),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(inputs, cutoff, bytes),
+                SerializationFailure::ProjectionNodeLimit,
                 0,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(inputs - 1, projections, bytes),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(inputs - 1, projections, bytes),
+                SerializationFailure::InputNodeLimit,
                 1,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(inputs, projections - 1, bytes),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(inputs, projections - 1, bytes),
+                SerializationFailure::ProjectionNodeLimit,
                 1,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(inputs, projections, bytes - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(inputs, projections, bytes - 1),
+                SerializationFailure::ByteLimit,
                 1,
             ),
         ] {
-            let error = block.property_value_with_limits(name, limits).unwrap_err();
+            let error = block.property_value(name, limits).unwrap_err();
             assert_eq!(resource(&error), kind, "{rows} {limits:?}");
             assert!(
                 error.declaration().unwrap().same_occurrence(&list[ordinal]),
@@ -3910,10 +3925,7 @@ fn nested_grid_math_verification_admits_selected_leaf_work_and_original_terminal
             assert_eq!(error.authored_ordinal(), Some(ordinal));
             assert_eq!(error.member_ordinal(), Some(0));
             assert_eq!(
-                block
-                    .property_value_with_limits(name, exact)
-                    .unwrap()
-                    .as_deref(),
+                block.property_value(name, exact).unwrap().as_deref(),
                 Some(expected),
                 "adequate retry"
             );
@@ -3937,44 +3949,129 @@ fn normal_cue_pair_provider_visits_explicit_redundant_children() {
         panic!("cue pair")
     };
     let value = wrapper.value();
-    assert!(value.authored_after().is_some());
+    assert!(value.authored_second().is_some());
     assert_ne!(
-        value.before(),
-        value.after(),
+        value.first(),
+        value.second(),
         "ordinary Eq retains exact authored decibel spelling"
     );
     // Pair1 + two Audio owner/URL aggregate/target/dB groups4 each = I9/P9.
-    let exact = CssSpecifiedValueSerializationLimits::new(9, 9, 12);
-    assert_eq!(
-        value.serialize_specified_with_limits(exact).unwrap(),
-        "url(\"a\") 1db"
-    );
+    let exact = CssSerializationLimits::new(9, 9, 12);
+    assert_eq!(value.serialize_specified(exact).unwrap(), "url(\"a\") 1db");
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(8, 9, 12),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(8, 9, 12),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(9, 8, 12),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(9, 8, 12),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(9, 9, 11),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(9, 9, 11),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
-        assert_eq!(
-            value.serialize_specified_with_limits(exact).unwrap(),
-            "url(\"a\") 1db"
-        );
+        assert_eq!(value.serialize_specified(exact).unwrap(), "url(\"a\") 1db");
     }
     assert_eq!(list, before);
-    assert!(value.authored_after().is_some());
+    assert!(value.authored_second().is_some());
+}
+
+/// The smallest input-node limit at which `accepts` holds, searching upward from zero.
+fn smallest_limit(accepts: impl Fn(usize) -> bool) -> usize {
+    (0..).find(|limit| accepts(*limit)).unwrap()
+}
+
+#[test]
+fn a_node_limit_that_fails_exactly_at_a_shape_aggregate_names_its_first_longhand() {
+    // The aggregate node of a one-to-four or one-to-two value is the first node the value
+    // charges. Giving the block exactly the input nodes that precede the value (its total
+    // minus the value's own typed charge) makes the aggregate the node that fails, and the
+    // failure must belong to the declaration that supplied the value's first longhand, as it
+    // did for the flow-relative margin, padding, inset and scroll forms before the shapes.
+    macro_rules! check {
+        ($variant:ident, $property:ident, $typed:literal, $longhands:literal) => {{
+            let declaration = crate::css::support::sole_declaration($typed);
+            let Some(CssKnownPropertyValueRef::$variant(value)) =
+                declaration.known().unwrap().property_value()
+            else {
+                panic!("{}", $typed);
+            };
+            let typed = smallest_limit(|nodes| {
+                value
+                    .value()
+                    .serialize_specified(CssSerializationLimits::new(nodes, usize::MAX, usize::MAX))
+                    .is_ok()
+            });
+            let list = declarations($longhands);
+            let block =
+                CssSpecifiedDeclarationBlock::try_from_declarations(&list, Default::default())
+                    .unwrap();
+            let name = CssPropertyNameRef::Known(CssKnownProperty::$property);
+            let total = smallest_limit(|nodes| {
+                block
+                    .property_value(
+                        name,
+                        CssSerializationLimits::new(nodes, usize::MAX, usize::MAX),
+                    )
+                    .is_ok()
+            });
+            let error = block
+                .property_value(
+                    name,
+                    CssSerializationLimits::new(total - typed, usize::MAX, usize::MAX),
+                )
+                .unwrap_err();
+            assert_eq!(
+                resource(&error),
+                SerializationFailure::InputNodeLimit,
+                "{}",
+                $typed
+            );
+            assert!(error.declaration().is_some(), "{}", $typed);
+            assert_eq!(error.member_ordinal(), Some(0), "{}", $typed);
+        }};
+    }
+    check!(
+        BorderBlockColor,
+        BorderBlockColor,
+        "border-block-color: red blue",
+        "border-block-start-color:red;border-block-end-color:blue"
+    );
+    check!(
+        Pause,
+        Pause,
+        "pause: 1s 2s",
+        "pause-before:1s;pause-after:2s"
+    );
+    check!(Rest, Rest, "rest: 1s 2s", "rest-before:1s;rest-after:2s");
+    check!(
+        InterestDelay,
+        InterestDelay,
+        "interest-delay: 1s 2s",
+        "interest-delay-start:1s;interest-delay-end:2s"
+    );
+    check!(
+        BorderColor,
+        BorderColor,
+        "border-color: red blue green yellow",
+        "border-top-color:red;border-right-color:blue;border-bottom-color:green;border-left-color:yellow"
+    );
+    check!(
+        MarginBlock,
+        MarginBlock,
+        "margin-block: 1px 2px",
+        "margin-block-start:1px;margin-block-end:2px"
+    );
+    check!(
+        Margin,
+        Margin,
+        "margin: 1px 2px 3px 4px",
+        "margin-top:1px;margin-right:2px;margin-bottom:3px;margin-left:4px"
+    );
 }

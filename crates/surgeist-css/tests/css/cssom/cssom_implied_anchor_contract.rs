@@ -2,11 +2,14 @@
 //! absolutizes relative nested selectors; §3.1 preserves selectors containing
 //! an ampersand, including retained invalid forgiving members. Compact authored
 //! and general-relative output remain distinct.
-use surgeist_css::{
-    CssAdmittedStyleSelectors, CssEditedRuleView, CssNamespaceContext, CssRecoveryAction, CssRule,
-    CssSpecifiedDeclarationBlock, CssStyleAncestor, CssStyleSelectorContext,
-    parse_relative_selector_list, parse_sheet, parse_style_selector_list,
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssSpecifiedDeclarationBlock;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::rule::{CssRule, CssStyleAncestor};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssParsedStyleSelectors, CssRelativeSelectorList, CssStyleSelectorContext,
 };
+use surgeist_css::serialization::CssRuleGraphInput;
 
 #[test]
 fn nested_literal_implicit_descendant_and_each_leading_combinator_have_implied_anchor() {
@@ -20,16 +23,16 @@ fn nested_literal_implicit_descendant_and_each_leading_combinator_have_implied_a
         ("|| .child", "& || .child"),
     ] {
         let source = format!("/*😀*/ .parent {{{prelude}{{}}}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{prelude}: {report:?}");
         let before = report.clone();
         let value = &report.syntax().rules()[0];
         assert_eq!(
-            value.to_specified_css().unwrap(),
+            value.serialize_specified(Default::default()).unwrap(),
             format!(".parent {{ {prelude} {{ }} }}")
         );
         expected.push(format!(".parent {{\n  {literal} {{ }}\n}}"));
-        actual.push(value.serialize_cssom().unwrap());
+        actual.push(value.serialize_cssom(Default::default()).unwrap());
         assert_eq!(report, before);
     }
     assert_eq!(actual, expected);
@@ -37,15 +40,18 @@ fn nested_literal_implicit_descendant_and_each_leading_combinator_have_implied_a
 
 #[test]
 fn parsed_multilevel_children_add_their_own_implied_anchor_only_in_literal_output() {
-    let report = parse_sheet(".outer { .middle { > .inner {} } }");
+    let report = CssParser::default().parse_sheet(".outer { .middle { > .inner {} } }");
     assert!(report.is_clean());
     let before = report.clone();
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         ".outer { .middle { > .inner { } } }"
     );
     assert_eq!(
-        report.syntax().serialize_cssom().unwrap(),
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
         ".outer {\n  & .middle {\n  & > .inner { }\n}\n}"
     );
     assert_eq!(report, before);
@@ -54,7 +60,8 @@ fn parsed_multilevel_children_add_their_own_implied_anchor_only_in_literal_outpu
 #[test]
 fn checked_scoped_nested_role_absolutizes_relative_payload_without_mutating_source() {
     let source = " /*😀*/ > .child, + .sibling ";
-    let report = parse_style_selector_list(
+    let report = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
         source,
         &CssNamespaceContext::default(),
         CssStyleSelectorContext::Scoped(CssStyleAncestor::Present),
@@ -62,14 +69,26 @@ fn checked_scoped_nested_role_absolutizes_relative_payload_without_mutating_sour
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
     let parsed = report.syntax().as_ref().unwrap();
-    let CssAdmittedStyleSelectors::Scoped(list) = parsed.selectors() else {
-        panic!("scoped")
-    };
-    let declarations = CssSpecifiedDeclarationBlock::try_from_entries(&[]).unwrap();
-    let view = CssEditedRuleView::try_scoped_style(list, &declarations, &[]).unwrap();
-    assert_eq!(view.to_specified_css().unwrap(), "> .child, + .sibling { }");
+    assert!(matches!(
+        parsed.context(),
+        CssStyleSelectorContext::Scoped(_)
+    ));
+    let list = parsed.selectors();
+    let declarations =
+        CssSpecifiedDeclarationBlock::try_from_entries(&[], Default::default()).unwrap();
+    let input = CssRuleGraphInput::style(list, &declarations, &[]);
     assert_eq!(
-        view.serialize_cssom().unwrap(),
+        input.serialize_specified(Default::default()).unwrap(),
+        "> .child, + .sibling { }"
+    );
+    assert_eq!(
+        input
+            .serialize_cssom(
+                &CssNamespaceContext::default(),
+                CssStyleAncestor::Absent,
+                Default::default()
+            )
+            .unwrap(),
         "& > .child, & + .sibling { }"
     );
     assert_eq!(parsed.origin().source().as_str(), source);
@@ -78,13 +97,14 @@ fn checked_scoped_nested_role_absolutizes_relative_payload_without_mutating_sour
 
 #[test]
 fn explicit_repeated_and_retained_invalid_anchors_are_controls_without_an_extra_anchor() {
-    let report = parse_sheet(".parent { &.one {} &&.two {} .before & {} }");
+    let report = CssParser::default().parse_sheet(".parent { &.one {} &&.two {} .before & {} }");
     assert!(report.is_clean());
     assert_eq!(
-        report.syntax().serialize_cssom().unwrap(),
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
         ".parent {\n  &.one { }\n  &&.two { }\n  .before & { }\n}"
     );
-    let raw = parse_style_selector_list(
+    let raw = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
         "&:is(.ok,&.bad:unknown())",
         &CssNamespaceContext::default(),
         CssStyleSelectorContext::Nested,
@@ -95,30 +115,38 @@ fn explicit_repeated_and_retained_invalid_anchors_are_controls_without_an_extra_
             .iter()
             .any(|d| d.action() == CssRecoveryAction::PreserveInvalidSelectorListItem)
     );
-    let CssAdmittedStyleSelectors::Ordinary(list) = raw.syntax().as_ref().unwrap().selectors()
-    else {
-        panic!("ordinary")
-    };
-    let declarations = CssSpecifiedDeclarationBlock::try_from_entries(&[]).unwrap();
-    let view = CssEditedRuleView::try_style(list, &declarations, &[]).unwrap();
+    let list = raw.syntax().as_ref().unwrap().selectors();
+    let declarations =
+        CssSpecifiedDeclarationBlock::try_from_entries(&[], Default::default()).unwrap();
+    let input = CssRuleGraphInput::style(list, &declarations, &[]);
     assert_eq!(
-        view.serialize_cssom().unwrap(),
+        input
+            .serialize_cssom(
+                &CssNamespaceContext::default(),
+                CssStyleAncestor::Absent,
+                Default::default()
+            )
+            .unwrap(),
         "&:is(.ok,&.bad:unknown()) { }"
     );
     // Nesting §3.1 counts the ampersand even when it only occurs in an
     // invalid retained member: that selector is already non-relative.
-    let raw = parse_style_selector_list(
+    let raw = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
         ":is(.ok,&.bad:unknown())",
         &CssNamespaceContext::default(),
         CssStyleSelectorContext::Nested,
     );
-    let CssAdmittedStyleSelectors::Ordinary(list) = raw.syntax().as_ref().unwrap().selectors()
-    else {
-        panic!("ordinary")
-    };
-    let view = CssEditedRuleView::try_style(list, &declarations, &[]).unwrap();
+    let list = raw.syntax().as_ref().unwrap().selectors();
+    let input = CssRuleGraphInput::style(list, &declarations, &[]);
     assert_eq!(
-        view.serialize_cssom().unwrap(),
+        input
+            .serialize_cssom(
+                &CssNamespaceContext::default(),
+                CssStyleAncestor::Absent,
+                Default::default()
+            )
+            .unwrap(),
         ":is(.ok,&.bad:unknown()) { }"
     );
 }
@@ -126,7 +154,8 @@ fn explicit_repeated_and_retained_invalid_anchors_are_controls_without_an_extra_
 #[test]
 fn general_relative_output_and_strict_rejection_are_unchanged_controls() {
     let namespaces = CssNamespaceContext::default();
-    let report = parse_relative_selector_list(
+    let report = CssRelativeSelectorList::parse(
+        &CssParser::default(),
         ".implicit, > .child, + .next, ~ .later, || .column",
         &namespaces,
     );
@@ -136,17 +165,23 @@ fn general_relative_output_and_strict_rejection_are_unchanged_controls() {
             .syntax()
             .as_ref()
             .unwrap()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         ".implicit, > .child, + .next, ~ .later, || .column"
     );
     assert!(
-        parse_style_selector_list("> .child", &namespaces, CssStyleSelectorContext::Ordinary)
-            .syntax()
-            .is_none()
+        CssParsedStyleSelectors::parse(
+            &CssParser::default(),
+            "> .child",
+            &namespaces,
+            CssStyleSelectorContext::Ordinary
+        )
+        .syntax()
+        .is_none()
     );
     assert!(
-        parse_style_selector_list(
+        CssParsedStyleSelectors::parse(
+            &CssParser::default(),
             ":not(.ok,&.bad:unknown())",
             &namespaces,
             CssStyleSelectorContext::Nested
@@ -154,9 +189,12 @@ fn general_relative_output_and_strict_rejection_are_unchanged_controls() {
         .syntax()
         .is_none()
     );
-    let report = parse_sheet(".plain {}");
+    let report = CssParser::default().parse_sheet(".plain {}");
     let [CssRule::Style(_)] = report.syntax().rules() else {
         panic!("ordinary style")
     };
-    assert_eq!(report.syntax().serialize_cssom().unwrap(), ".plain { }");
+    assert_eq!(
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
+        ".plain { }"
+    );
 }

@@ -9,18 +9,32 @@
 use crate::css::support::color_and_selector_fixtures::{
     assert_color_limit_error as assert_error, assert_color_limits,
 };
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::{
     checked_color as color, checked_color_declaration as declaration,
     component_values as components, declaration_color,
 };
-use surgeist_css::*;
-type Limits = CssSpecifiedValueSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssColorComponent, CssColorHue, CssColorNumberLiteral, CssColorSyntax, CssHslColor,
+    CssHwbColor, CssRgbColor,
+};
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssCalculation, CssNumber};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::CssSidePair;
+type Limits = CssSerializationLimits;
+type Kind = SerializationFailure;
 
 fn assert_value(value: &CssColor, expected: &str) {
     let before = value.clone();
-    let result = value.to_specified_css();
-    assert_eq!(result, value.to_specified_css());
+    let result = value.serialize_specified(Default::default());
+    assert_eq!(result, value.serialize_specified(Default::default()));
     assert_eq!(value, &before);
     assert_eq!(result.unwrap(), expected);
     // Grammar reentry complements the explicit scalar oracle above.
@@ -28,7 +42,8 @@ fn assert_value(value: &CssColor, expected: &str) {
 }
 fn assert_text(source: &str, expected: &str) {
     let checked = declaration(source);
-    let report = parse_style_attribute(&format!("color:{source}!important;opacity:.5"));
+    let report =
+        CssParser::default().parse_block_contents(format!("color:{source}!important;opacity:.5"));
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2);
     assert_eq!(
@@ -39,7 +54,11 @@ fn assert_text(source: &str, expected: &str) {
         let before = value.clone();
         assert_eq!(value.importance(), CssImportance::Important);
         assert_eq!(
-            value.value_components().serialize().unwrap().as_css(),
+            value
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             source
         );
         let CssValueOrigin::Parsed(origin) = value.value_components().items()[0].origin() else {
@@ -650,8 +669,8 @@ fn maximum_finite_hsl_lightness_keeps_every_whole_digit() {
 
 fn assert_limited(value: &CssColor, limits: Limits, expected: &str) {
     let before = value.clone();
-    let result = value.to_specified_css_with_limits(limits);
-    assert_eq!(result, value.to_specified_css_with_limits(limits));
+    let result = value.serialize_specified(limits);
+    assert_eq!(result, value.serialize_specified(limits));
     assert_eq!(value, &before);
     assert_eq!(result.unwrap(), expected);
     declaration(expected);
@@ -768,23 +787,26 @@ fn maximum_finite_negative_final_bytes() {
 
 #[test]
 fn sibling_numeric_colors_share_visits_and_output_atomically() {
-    let value = color("rgb(none calc(255) calc(0))");
-    let pair = CssBorderColorPair::new(value.clone(), Some(value));
+    // The second color differs (255 against 0 in the last channel) so that it is written.
+    let pair = CssSidePair::new(
+        color("rgb(none calc(255) calc(0))"),
+        Some(color("rgb(none calc(255) calc(255))")),
+    );
     let before = pair.clone();
-    let expected = "color(srgb none 1 0) color(srgb none 1 0)";
+    let expected = "color(srgb none 1 0) color(srgb none 1 1)";
     // Pair root + two colors: inputs 1 + 2*6 = 13; projections 1 + 2*8 =17.
     for (limits, kind) in [
         (Limits::new(12, 17, usize::MAX), Kind::InputNodeLimit),
         (Limits::new(13, 16, usize::MAX), Kind::ProjectionNodeLimit),
         (Limits::new(13, 17, expected.len() - 1), Kind::ByteLimit),
     ] {
-        let result = pair.serialize_specified_with_limits(limits);
-        assert_eq!(result, pair.serialize_specified_with_limits(limits));
+        let result = pair.serialize_specified(limits);
+        assert_eq!(result, pair.serialize_specified(limits));
         assert_eq!(pair, before);
-        assert_eq!(result.unwrap_err().kind(), kind);
+        assert_eq!(serialization_failure(&result.unwrap_err()), kind);
     }
     assert_eq!(
-        pair.serialize_specified_with_limits(Limits::new(13, 17, expected.len()))
+        pair.serialize_specified(Limits::new(13, 17, expected.len()))
             .unwrap(),
         expected
     );
@@ -793,7 +815,7 @@ fn sibling_numeric_colors_share_visits_and_output_atomically() {
 
 #[test]
 fn utf8_prefix_spends_bytes_before_shrinking_hsl_scratch() {
-    let pair = CssBorderColorPair::new(
+    let pair = CssSidePair::new(
         color("color(--é 0)"),
         Some(color("hsl(none calc(-10000000000) 50%)")),
     );
@@ -803,17 +825,13 @@ fn utf8_prefix_spends_bytes_before_shrinking_hsl_scratch() {
     assert_eq!(prefix.len(), 14);
     assert_eq!(expected.len(), 30);
     let limits = Limits::new(usize::MAX, usize::MAX, prefix.len() + 18);
-    let result = pair.serialize_specified_with_limits(limits);
-    assert_eq!(result, pair.serialize_specified_with_limits(limits));
+    let result = pair.serialize_specified(limits);
+    assert_eq!(result, pair.serialize_specified(limits));
     assert_eq!(pair, before);
-    assert_eq!(result.unwrap_err().kind(), Kind::ByteLimit);
+    assert!(result.unwrap_err().is_byte_limit());
     assert_eq!(
-        pair.serialize_specified_with_limits(Limits::new(
-            usize::MAX,
-            usize::MAX,
-            prefix.len() + 19
-        ))
-        .unwrap(),
+        pair.serialize_specified(Limits::new(usize::MAX, usize::MAX, prefix.len() + 19))
+            .unwrap(),
         expected
     );
     assert_eq!(pair, before);
@@ -827,16 +845,16 @@ fn number(value: &str, programmatic: bool) -> CssColorComponent {
     };
     CssColorComponent::Number(CssColorNumberLiteral::try_from_component(token).unwrap())
 }
-fn number_calc(value: &str, programmatic: bool) -> CssNumberCalculation {
+fn number_calc(value: &str, programmatic: bool) -> CssCalculation<CssNumber> {
     let raw = if programmatic {
         let leaf = CssComponentValue::try_number(value).unwrap();
-        let args = CssComponentValues::try_new(vec![leaf]).unwrap();
+        let args = CssComponentValues::try_new(vec![leaf], Default::default()).unwrap();
         let function = CssComponentValue::try_function("calc", args).unwrap();
-        CssComponentValues::try_new(vec![function]).unwrap()
+        CssComponentValues::try_new(vec![function], Default::default()).unwrap()
     } else {
         components(&format!("calc({value})"))
     };
-    CssNumberCalculation::try_from_components(raw).unwrap()
+    CssCalculation::<CssNumber>::try_from_components(raw, Default::default()).unwrap()
 }
 /// All-zero limits fail on input nodes first, a zero projection limit fails
 /// on projection nodes, and a one-byte limit fails on bytes.
@@ -879,7 +897,10 @@ fn checked_rgb_graph(programmatic: bool) {
         CssColorComponent::NumberCalculation(calculation)
     );
     assert_eq!(raw, raw_before);
-    assert_eq!(raw.serialize().unwrap().as_css(), "calc(127.5)");
+    assert_eq!(
+        raw.serialize_tokens(Default::default()).unwrap().as_css(),
+        "calc(127.5)"
+    );
     assert_value(&value, "color(srgb none 0.5 0)");
 }
 fn checked_hsl_graph(programmatic: bool) {
@@ -938,8 +959,9 @@ fn programmatic_hwb_numeric_graph_keeps_its_origin() {
 }
 
 fn composition_text(property: CssKnownProperty, source: &str) -> String {
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(property),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
         components(source),
         CssImportance::Important,
     )
@@ -948,21 +970,28 @@ fn composition_text(property: CssKnownProperty, source: &str) -> String {
     let before = declaration.clone();
     let value = declaration.known().unwrap().property_value().unwrap();
     let text = match value {
-        CssKnownPropertyValueRef::BackgroundImage(value) => {
-            value.images().serialize_specified().unwrap()
-        }
-        CssKnownPropertyValueRef::Background(value) => {
-            value.background().serialize_specified().unwrap()
-        }
-        CssKnownPropertyValueRef::BorderColor(value) => {
-            value.value().serialize_specified().unwrap()
-        }
-        CssKnownPropertyValueRef::BoxShadow(value) => value.value().serialize_specified().unwrap(),
+        CssKnownPropertyValueRef::BackgroundImage(value) => value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        CssKnownPropertyValueRef::Background(value) => value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        CssKnownPropertyValueRef::BorderColor(value) => value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        CssKnownPropertyValueRef::BoxShadow(value) => value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         _ => panic!("selected composition front door"),
     };
     assert_eq!(declaration, before);
-    parse_property_value(
-        CssPropertyNameRef::Known(property),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
         components(&text),
         CssImportance::Important,
     )

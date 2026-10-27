@@ -1,7 +1,22 @@
 //! Box model, spacing, borders, radii and shadows keep authored syntax, and
 //! their checked constructors reject invalid states.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssHexColor, CssNamedColor};
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueTokenRef,
+};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationType, CssLength, CssLengthPercentage, CssNonNegative, CssNumeric,
+};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::values::border::{CssBorder, CssLineStyle, CssLineWidth};
+use surgeist_css::values::box_model::{
+    CssBoxDecorationBreak, CssInsetValue, CssMarginValue, CssZIndexValue,
+};
+use surgeist_css::values::common::CssSidePair;
+use surgeist_css::values::effects::{CssBoxShadow, CssShadow};
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;
@@ -15,20 +30,26 @@ fn assert_percentage_literal(component: &CssComponentValue, expected_number: &st
 
 #[test]
 fn rejects_padding_auto() {
-    let error = parse_sheet(".panel { padding: auto; }").expect_err("rejected parse report");
-    assert!(matches!(error.kind(), ErrorKind::InvalidPropertyValue(_)));
+    let error = CssParser::default()
+        .parse_sheet(".panel { padding: auto; }")
+        .expect_err("rejected parse report");
+    assert!(error.code() == CssErrorCode::InvalidPropertyValue);
 }
 
 #[test]
 fn rejects_border_width_percent() {
-    let error = parse_sheet(".panel { border-width: 10%; }").expect_err("rejected parse report");
-    assert!(matches!(error.kind(), ErrorKind::InvalidPropertyValue(_)));
+    let error = CssParser::default()
+        .parse_sheet(".panel { border-width: 10%; }")
+        .expect_err("rejected parse report");
+    assert!(error.code() == CssErrorCode::InvalidPropertyValue);
 }
 
 #[test]
 fn rejects_gap_auto() {
-    let error = parse_sheet(".panel { gap: auto; }").expect_err("rejected parse report");
-    assert!(matches!(error.kind(), ErrorKind::InvalidPropertyValue(_)));
+    let error = CssParser::default()
+        .parse_sheet(".panel { gap: auto; }")
+        .expect_err("rejected parse report");
+    assert!(error.code() == CssErrorCode::InvalidPropertyValue);
 }
 
 #[test]
@@ -40,7 +61,7 @@ fn accepts_margin_auto() {
     );
     assert!(
         margin
-            .assigned_values()
+            .assigned()
             .iter()
             .all(|value| matches!(value, CssMarginValue::Auto))
     );
@@ -53,14 +74,15 @@ fn parses_spacing_inset_and_z_index_values() {
         Inset,
         value
     );
-    assert_eq!(inset.authored_values().len(), 3);
-    let [top, right, bottom, left] = inset.assigned_values();
+    assert_eq!(inset.authored().len(), 3);
+    let [top, right, bottom, left] = inset.assigned();
     assert_eq!(top, &CssInsetValue::Auto);
     assert_length_literal(
         right
             .length_percentage()
             .unwrap()
-            .literal_component()
+            .literal()
+            .map(|literal| literal.component())
             .unwrap(),
         "10",
         "px",
@@ -69,14 +91,16 @@ fn parses_spacing_inset_and_z_index_values() {
         bottom
             .length_percentage()
             .unwrap()
-            .literal_component()
+            .literal()
+            .map(|literal| literal.component())
             .unwrap(),
         "5",
     );
     assert_length_literal(
         left.length_percentage()
             .unwrap()
-            .literal_component()
+            .literal()
+            .map(|literal| literal.component())
             .unwrap(),
         "10",
         "px",
@@ -88,7 +112,10 @@ fn parses_spacing_inset_and_z_index_values() {
     );
     let top = top.length_percentage().unwrap().calculation().unwrap();
     assert_eq!(top.result_type(), CssCalculationType::LengthPercentage);
-    assert_eq!(top.serialize().unwrap().as_css(), "calc(10px + 5%)");
+    assert_eq!(
+        top.serialize_tokens(Default::default()).unwrap().as_css(),
+        "calc(10px + 5%)"
+    );
     let CssZIndexValue::Integer(value) = property_payload!(
         declaration(".panel { z-index: -2; }", CssKnownProperty::ZIndex),
         ZIndex,
@@ -132,7 +159,7 @@ fn parses_spacing_longhands_with_existing_component_rules() {
             PaddingTop,
             value
         )
-        .serialize_specified()
+        .serialize_specified(Default::default())
         .unwrap(),
         "12px"
     );
@@ -144,10 +171,14 @@ fn parses_spacing_longhands_with_existing_component_rules() {
         BorderRightWidth,
         value
     );
-    let CssBorderWidth::Length(length) = width else {
+    let CssLineWidth::Length(length) = width else {
         panic!("exact border width")
     };
-    assert_length_literal(length.literal_component().unwrap(), "2", "px");
+    assert_length_literal(
+        length.literal().map(|literal| literal.component()).unwrap(),
+        "2",
+        "px",
+    );
 }
 
 #[test]
@@ -161,16 +192,16 @@ fn parses_border_style_and_border_shorthand_values() {
         value
     );
     assert_eq!(
-        styles.authored_values(),
-        &[CssBorderStyle::Solid, CssBorderStyle::Dashed]
+        styles.authored(),
+        &[CssLineStyle::Solid, CssLineStyle::Dashed]
     );
     assert_eq!(
-        styles.assigned_values(),
+        styles.assigned(),
         [
-            &CssBorderStyle::Solid,
-            &CssBorderStyle::Dashed,
-            &CssBorderStyle::Solid,
-            &CssBorderStyle::Dashed
+            &CssLineStyle::Solid,
+            &CssLineStyle::Dashed,
+            &CssLineStyle::Solid,
+            &CssLineStyle::Dashed
         ]
     );
     assert_eq!(
@@ -182,7 +213,7 @@ fn parses_border_style_and_border_shorthand_values() {
             BorderLeftStyle,
             value
         ),
-        CssBorderStyle::Groove
+        CssLineStyle::Groove
     );
     let border = property_payload!(
         declaration(
@@ -192,14 +223,18 @@ fn parses_border_style_and_border_shorthand_values() {
         Border,
         value
     );
-    assert_eq!(border.style(), Some(CssBorderStyle::Solid));
+    assert_eq!(border.style(), Some(CssLineStyle::Solid));
     assert_eq!(
-        border.width().unwrap().serialize_specified().unwrap(),
+        border
+            .width()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "2px"
     );
     assert_eq!(border.color().unwrap().hex_value().unwrap().digits(), "fff");
     assert_eq!(
-        border.serialize_specified().unwrap(),
+        border.serialize_specified(Default::default()).unwrap(),
         "2px solid rgb(255, 255, 255)"
     );
 
@@ -212,7 +247,7 @@ fn parses_border_style_and_border_shorthand_values() {
         value
     );
     assert!(top.width().is_none());
-    assert_eq!(top.style(), Some(CssBorderStyle::Dotted));
+    assert_eq!(top.style(), Some(CssLineStyle::Dotted));
     assert_eq!(top.color().unwrap().named().unwrap().name(), "black");
 }
 
@@ -226,16 +261,32 @@ fn parses_border_radius_shorthand_and_longhands() {
         BorderTopLeftRadius,
         value
     );
-    assert_length_literal(corner.horizontal().literal_component().unwrap(), "4", "px");
+    assert_length_literal(
+        corner
+            .first()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
+        "4",
+        "px",
+    );
     assert_percentage_literal(
         corner
-            .authored_vertical()
+            .authored_second()
             .unwrap()
-            .literal_component()
+            .literal()
+            .map(|literal| literal.component())
             .unwrap(),
         "10",
     );
-    assert_percentage_literal(corner.vertical().literal_component().unwrap(), "10");
+    assert_percentage_literal(
+        corner
+            .second()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
+        "10",
+    );
     let radii = property_payload!(
         declaration(
             ".panel { border-radius: 1px 2px 3px / 4px 5px; }",
@@ -253,21 +304,30 @@ fn parses_border_radius_shorthand_and_longhands() {
         (radii.bottom_left(), "2", "5"),
     ] {
         assert_length_literal(
-            corner.horizontal().literal_component().unwrap(),
+            corner
+                .first()
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap(),
             horizontal,
             "px",
         );
         assert_length_literal(
             corner
-                .authored_vertical()
+                .authored_second()
                 .unwrap()
-                .literal_component()
+                .literal()
+                .map(|literal| literal.component())
                 .unwrap(),
             vertical,
             "px",
         );
         assert_length_literal(
-            corner.vertical().literal_component().unwrap(),
+            corner
+                .second()
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap(),
             vertical,
             "px",
         );
@@ -329,9 +389,9 @@ fn parses_box_shadow_none_and_shadow_lists() {
 #[test]
 fn checked_border_constructor_rejects_empty_shorthands() {
     assert_eq!(CssBorder::try_new(None, None, None), None);
-    let border = CssBorder::try_new(None, Some(CssBorderStyle::Solid), None).unwrap();
+    let border = CssBorder::try_new(None, Some(CssLineStyle::Solid), None).unwrap();
     assert!(border.width().is_none());
-    assert_eq!(border.style(), Some(CssBorderStyle::Solid));
+    assert_eq!(border.style(), Some(CssLineStyle::Solid));
     assert!(border.color().is_none());
 }
 
@@ -339,25 +399,29 @@ fn checked_border_constructor_rejects_empty_shorthands() {
 fn checked_border_width_rejects_negative_and_percentage_values() {
     for invalid in ["-1px", "10%", "auto", "min-content"] {
         assert!(
-            CssSpecifiedNonNegativeLength::try_from_component(
+            CssNumeric::<CssLength, CssNonNegative>::try_from_component(
                 CssComponentValue::try_token(invalid).unwrap()
             )
             .is_err(),
             "{invalid}"
         );
     }
-    let width = CssSpecifiedNonNegativeLength::try_from_component(
+    let width = CssNumeric::<CssLength, CssNonNegative>::try_from_component(
         CssComponentValue::try_token("1px").unwrap(),
     )
     .unwrap();
     let border = CssBorder::try_new(
-        Some(CssBorderWidth::Length(width)),
-        Some(CssBorderStyle::Solid),
+        Some(CssLineWidth::Length(width)),
+        Some(CssLineStyle::Solid),
         None,
     )
     .unwrap();
     assert_eq!(
-        border.width().unwrap().serialize_specified().unwrap(),
+        border
+            .width()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "1px"
     );
 }
@@ -374,7 +438,7 @@ fn checked_corner_radius_constructor_rejects_parser_invalid_values() {
         "-1%",
     ] {
         assert!(
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
                 CssComponentValue::try_token(css).unwrap()
             )
             .is_err(),
@@ -382,25 +446,27 @@ fn checked_corner_radius_constructor_rejects_parser_invalid_values() {
         );
     }
     for css in ["-1px", "-1%"] {
-        let calculation = CssLengthPercentageCalculation::try_from_components(
-            parse_component_values(css).unwrap(),
+        let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), css).unwrap(),
+            Default::default(),
         )
         .unwrap();
         assert!(
-            CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(calculation).is_err()
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(calculation)
+                .is_err()
         );
     }
-    let radius = CssCornerRadiusValue::new(
+    let radius = CssSidePair::new(
         nonnegative_length_percentage("1px"),
         Some(nonnegative_length_percentage("25%")),
     );
     assert!(exact_dimension(
-        radius.horizontal().literal_component(),
+        radius.first().literal().map(|literal| literal.component()),
         "1",
         "px"
     ));
     assert!(exact_percentage(
-        radius.vertical().literal_component(),
+        radius.second().literal().map(|literal| literal.component()),
         "25"
     ));
 }
@@ -408,11 +474,11 @@ fn checked_corner_radius_constructor_rejects_parser_invalid_values() {
 #[test]
 fn checked_shadow_constructor_rejects_invalid_pairings_and_lengths() {
     assert!(
-        CssSpecifiedLength::try_from_component(CssComponentValue::try_token("auto").unwrap())
+        CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_token("auto").unwrap())
             .is_err()
     );
     assert!(
-        CssSpecifiedNonNegativeLength::try_from_component(
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component(
             CssComponentValue::try_dimension("-3", "px").unwrap()
         )
         .is_err()
@@ -438,22 +504,36 @@ fn checked_shadow_constructor_rejects_invalid_pairings_and_lengths() {
     )
     .unwrap();
     assert!(exact_dimension(
-        shadow.offset_x().literal_component(),
+        shadow
+            .offset_x()
+            .literal()
+            .map(|literal| literal.component()),
         "-1",
         "px"
     ));
     assert!(exact_dimension(
-        shadow.offset_y().literal_component(),
+        shadow
+            .offset_y()
+            .literal()
+            .map(|literal| literal.component()),
         "2",
         "px"
     ));
     assert!(exact_dimension(
-        shadow.blur_radius().unwrap().literal_component(),
+        shadow
+            .blur_radius()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component()),
         "3",
         "px"
     ));
     assert!(exact_dimension(
-        shadow.spread_radius().unwrap().literal_component(),
+        shadow
+            .spread_radius()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component()),
         "-4",
         "px"
     ));
@@ -461,8 +541,9 @@ fn checked_shadow_constructor_rejects_invalid_pairings_and_lengths() {
 
 #[test]
 fn box_model_property_families_accept_supported_values() {
-    let sheet = parse_sheet(
-        ".panel {
+    let sheet = CssParser::default()
+        .parse_sheet(
+            ".panel {
             inset: auto 1px 2%;
             top: auto;
             right: 1px;
@@ -503,8 +584,8 @@ fn box_model_property_families_accept_supported_values() {
             border-bottom-left-radius: calc(1px + 2%);
             box-shadow: 1px 2px;
         }",
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
     let declarations = style_rule(&sheet.rules()[0]).declarations();
 
     for property in [
@@ -566,8 +647,8 @@ fn non_negative_box_model_properties_reject_negative_lengths() {
         ".panel { border-width: -1px; }",
         ".panel { box-shadow: 1px 2px -3px; }",
     ] {
-        let error = parse_sheet(input).expect_err(input);
-        assert!(matches!(error.kind(), ErrorKind::InvalidPropertyValue(_)));
+        let error = CssParser::default().parse_sheet(input).expect_err(input);
+        assert!(error.code() == CssErrorCode::InvalidPropertyValue);
     }
 }
 

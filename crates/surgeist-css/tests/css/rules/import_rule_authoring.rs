@@ -1,7 +1,15 @@
 //! `@import` (Cascade 5) targets, layers, conditions and placement through the
 //! public stylesheet parser and constructors.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{CssMediaLeaf, CssMediaQuery, CssMediaType};
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::rule::{
+    CssImportLayer, CssImportRule, CssImportString, CssImportTarget, CssImportUrl, CssLayerName,
+    CssRule,
+};
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;
@@ -37,7 +45,7 @@ fn import_layer_name_preserves_decoded_identifier_components() {
         let name = CssLayerName::try_new(["outer", component]).unwrap();
         assert_eq!(name.components(), &["outer", component]);
         assert_eq!(
-            name.serialize_specified().unwrap(),
+            name.serialize_specified(Default::default()).unwrap(),
             format!("outer.{spelling}")
         );
     }
@@ -56,13 +64,13 @@ fn import_layer_name_rejects_reserved_components() {
 fn import_target_constructors_preserve_decoded_values() {
     for value in ["", " \t\n "] {
         assert_eq!(
-            CssImportUrl::new(surgeist_css::CssUrl::new(value)).as_str(),
+            CssImportUrl::new(surgeist_css::values::common::CssUrl::new(value)).as_str(),
             value
         );
         assert_eq!(CssImportString::new(value).as_str(), value);
     }
     assert_eq!(
-        CssImportUrl::new(surgeist_css::CssUrl::new("theme.css")).as_str(),
+        CssImportUrl::new(surgeist_css::values::common::CssUrl::new("theme.css")).as_str(),
         "theme.css"
     );
     assert_eq!(CssImportString::new("theme.css").as_str(), "theme.css");
@@ -70,10 +78,13 @@ fn import_target_constructors_preserve_decoded_values() {
 
 #[test]
 fn import_rule_accessors_expose_authored_structure() {
-    let target = CssImportTarget::Url(CssImportUrl::new(surgeist_css::CssUrl::new("theme.css")));
+    let target = CssImportTarget::Url(CssImportUrl::new(
+        surgeist_css::values::common::CssUrl::new("theme.css"),
+    ));
     let layer = CssImportLayer::Named(CssLayerName::try_new(["theme", "components"]).unwrap());
     let location = source_position(3, 7);
-    let sheet = parse_sheet("\n\n\n       @import url(theme.css) layer(theme.components) screen;")
+    let sheet = CssParser::default()
+        .parse_sheet("\n\n\n       @import url(theme.css) layer(theme.components) screen;")
         .expect("clean parse report");
     let [CssRule::Import(rule)] = sheet.rules() else {
         panic!("expected parsed import")
@@ -98,7 +109,9 @@ fn import_rule_accessors_expose_authored_structure() {
 
 #[test]
 fn import_rule_parser_accepts_targets_layers_and_media() {
-    let sheet = parse_sheet(r#"@import "theme.css";"#).expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet(r#"@import "theme.css";"#)
+        .expect("clean parse report");
     let [rule] = sheet.rules() else {
         panic!("expected one import rule");
     };
@@ -110,27 +123,36 @@ fn import_rule_parser_accepts_targets_layers_and_media() {
     assert_eq!(rule.layer(), None);
     assert_eq!(rule.media(), None);
 
-    let sheet = parse_sheet(r#"@import url("layout.css");"#).expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet(r#"@import url("layout.css");"#)
+        .expect("clean parse report");
     let [rule] = sheet.rules() else {
         panic!("expected one import rule");
     };
     assert_eq!(
         import_rule(rule).target(),
-        &CssImportTarget::Url(CssImportUrl::new(surgeist_css::CssUrl::new("layout.css")))
+        &CssImportTarget::Url(CssImportUrl::new(
+            surgeist_css::values::common::CssUrl::new("layout.css")
+        ))
     );
 
-    let sheet = parse_sheet("@import url(tokens.css) layer;").expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet("@import url(tokens.css) layer;")
+        .expect("clean parse report");
     let [rule] = sheet.rules() else {
         panic!("expected one import rule");
     };
     let rule = import_rule(rule);
     assert_eq!(
         rule.target(),
-        &CssImportTarget::Url(CssImportUrl::new(surgeist_css::CssUrl::new("tokens.css")))
+        &CssImportTarget::Url(CssImportUrl::new(
+            surgeist_css::values::common::CssUrl::new("tokens.css")
+        ))
     );
     assert_eq!(rule.layer(), Some(&CssImportLayer::Anonymous));
 
-    let sheet = parse_sheet(r#"@import url("components.css") layer(components.buttons);"#)
+    let sheet = CssParser::default()
+        .parse_sheet(r#"@import url("components.css") layer(components.buttons);"#)
         .expect("clean parse report");
     let [rule] = sheet.rules() else {
         panic!("expected one import rule");
@@ -143,7 +165,9 @@ fn import_rule_parser_accepts_targets_layers_and_media() {
         ))
     );
 
-    let sheet = parse_sheet(r#"@import url("print.css") print;"#).expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet(r#"@import url("print.css") print;"#)
+        .expect("clean parse report");
     let [rule] = sheet.rules() else {
         panic!("expected one import rule");
     };
@@ -152,7 +176,8 @@ fn import_rule_parser_accepts_targets_layers_and_media() {
     };
     assert_eq!(print_query.media_type(), CssMediaType::Print);
 
-    let sheet = parse_sheet(r#"@import url("wide.css") screen and (min-width: 900px);"#)
+    let sheet = CssParser::default()
+        .parse_sheet(r#"@import url("wide.css") screen and (min-width: 900px);"#)
         .expect("clean parse report");
     let [rule] = sheet.rules() else {
         panic!("expected one import rule");
@@ -163,10 +188,11 @@ fn import_rule_parser_accepts_targets_layers_and_media() {
     assert_eq!(query.media_type(), CssMediaType::Screen);
     assert!(query.condition().is_some());
 
-    let sheet = parse_sheet(
-        r#"@import url("components.css") layer(components) screen and (min-width: 900px);"#,
-    )
-    .expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet(
+            r#"@import url("components.css") layer(components) screen and (min-width: 900px);"#,
+        )
+        .expect("clean parse report");
     let [rule] = sheet.rules() else {
         panic!("expected one import rule");
     };
@@ -182,14 +208,15 @@ fn import_rule_parser_accepts_targets_layers_and_media() {
 
 #[test]
 fn import_rule_parser_allows_imports_before_style_rules() {
-    let sheet = parse_sheet(
-        r#"
+    let sheet = CssParser::default()
+        .parse_sheet(
+            r#"
             @import "theme.css";
             @import url("components.css") layer(components) screen;
             .panel { color: black; }
         "#,
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
 
     assert!(matches!(
         sheet.rules(),
@@ -224,14 +251,14 @@ fn import_rule_parser_rejects_late_nested_unsupported_and_malformed_imports() {
 
 #[test]
 fn import_rule_parser_retains_repeated_supports_as_opaque_media() {
-    let sheet =
-        parse_sheet(r#"@import url("theme.css") supports(display: grid) supports(color: red);"#)
-            .expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet(r#"@import url("theme.css") supports(display: grid) supports(color: red);"#)
+        .expect("clean parse report");
     let [CssRule::Import(rule)] = sheet.rules() else {
         panic!("expected retained import")
     };
     assert_eq!(rule.layer(), None);
-    let CssSupportsConditionKind::Declaration(declaration) = rule
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) = rule
         .supports()
         .expect("first supports clause")
         .condition()
@@ -244,7 +271,7 @@ fn import_rule_parser_retains_repeated_supports_as_opaque_media() {
     else {
         panic!("expected one media condition")
     };
-    let CssMediaConditionKind::GeneralEnclosed(enclosed) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(enclosed)) = condition.kind() else {
         panic!("expected repeated supports function as media")
     };
     assert_eq!(enclosed.authored(), Some("supports(color: red)"));

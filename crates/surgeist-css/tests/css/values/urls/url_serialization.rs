@@ -1,19 +1,25 @@
 //! Values 4 (2024-03-12) §4.5 authored `<url>` functions and modifiers:
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#urls
 
-use surgeist_css::{
-    CssComponentValue, CssComponentValueErrorKind, CssComponentValueRef, CssComponentValues,
-    CssIdent, CssImageValue, CssKnownPropertyValueRef, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits, CssUrl, CssUrlFunction, CssUrlModifier,
-    CssUrlModifierFunction, CssValueTokenRef, parse_component_values, parse_style_attribute,
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueTokenRef,
 };
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::{
+    CssIdent, CssUrl, CssUrlFunction, CssUrlModifier, CssUrlModifierFunction,
+};
+use surgeist_css::values::image::CssImageValue;
 
-fn limits(nodes: usize, bytes: usize) -> CssSpecifiedValueSerializationLimits {
-    CssSpecifiedValueSerializationLimits::new(nodes, nodes, bytes)
+fn limits(nodes: usize, bytes: usize) -> CssSerializationLimits {
+    CssSerializationLimits::new(nodes, nodes, bytes)
 }
 
 fn parsed_background_url(source: &str) -> (CssUrl, bool) {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     let [declaration] = report.syntax().as_slice() else {
         panic!("one retained declaration: {source}")
     };
@@ -22,7 +28,7 @@ fn parsed_background_url(source: &str) -> (CssUrl, bool) {
     else {
         panic!("typed background image: {source}")
     };
-    let [CssImageValue::Url(url)] = image.images().images() else {
+    let [CssImageValue::Url(url)] = image.value().images() else {
         panic!("one retained URL image: {source}")
     };
     (url.clone(), report.is_clean())
@@ -45,10 +51,15 @@ fn checked_urls_emit_explicit_lowercase_function_identity_and_decoded_target() {
         let value = CssUrl::from_parts(function, target, Vec::new());
         assert_eq!(value.function(), function);
         assert_eq!(value.as_str(), target);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     assert_eq!(
-        CssUrl::new("icon.svg").serialize_specified().unwrap(),
+        CssUrl::new("icon.svg")
+            .serialize_specified(Default::default())
+            .unwrap(),
         "url(\"icon.svg\")"
     );
 }
@@ -62,7 +73,7 @@ fn parsed_function_and_modifier_names_keep_decoded_case_and_order() {
     assert_eq!(value.function(), CssUrlFunction::Src);
     assert_eq!(value.modifiers().len(), 3);
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "src(\"asset.svg\" CORS integrity(\"sha256\") a\\ b)"
     );
 
@@ -71,12 +82,15 @@ fn parsed_function_and_modifier_names_keep_decoded_case_and_order() {
         "asset.svg",
         vec![
             CssUrlModifier::Ident(CssIdent::try_new("CORS").unwrap()),
-            function_modifier("integrity", parse_component_values("\"sha256\"").unwrap()),
+            function_modifier(
+                "integrity",
+                CssComponentValues::parse(&CssParser::default(), "\"sha256\"").unwrap(),
+            ),
             CssUrlModifier::Ident(CssIdent::try_new("a b").unwrap()),
         ],
     );
     assert_eq!(
-        constructed.serialize_specified().unwrap(),
+        constructed.serialize_specified(Default::default()).unwrap(),
         "src(\"asset.svg\" CORS integrity(\"sha256\") a\\ b)"
     );
 }
@@ -86,11 +100,17 @@ fn decoded_string_escaping_preserves_quotes_backslashes_controls_and_unicode() {
     let target = "é\"\\\n\u{0001}";
     let value = CssUrl::new(target);
     let expected = "url(\"é\\\"\\\\\\a \\1 \")";
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(value.as_str(), target);
 
     let nul = CssUrl::from_parts(CssUrlFunction::Src, "a\0b", Vec::new());
-    assert_eq!(nul.serialize_specified().unwrap(), "src(\"a�b\")");
+    assert_eq!(
+        nul.serialize_specified(Default::default()).unwrap(),
+        "src(\"a�b\")"
+    );
     assert_eq!(nul.as_str(), "a\0b");
 }
 
@@ -102,7 +122,10 @@ fn retained_eof_modifier_components_gain_explicit_closures_without_losing_identi
         panic!("one function modifier")
     };
     assert_eq!(modifier.arguments().as_css(), "f(");
-    assert_eq!(nested.serialize_specified().unwrap(), "url(\"x\" m(f()))");
+    assert_eq!(
+        nested.serialize_specified(Default::default()).unwrap(),
+        "url(\"x\" m(f()))"
+    );
 
     let (escaped, clean) = parsed_background_url("background-image: src(\"x\" m(a\\");
     assert!(!clean);
@@ -123,24 +146,27 @@ fn retained_eof_modifier_components_gain_explicit_closures_without_losing_identi
     // `fffd `, which reparses to the same `a\u{FFFD}` ident (§4.3.7) without
     // rewriting authored bytes or letting the escape consume the closing `)`.
     assert_eq!(
-        escaped.serialize_specified().unwrap(),
+        escaped.serialize_specified(Default::default()).unwrap(),
         "src(\"x\" m(a\\fffd ))"
     );
 }
 
 #[test]
 fn checked_adjacent_argument_tokens_keep_their_distinct_meaning() {
-    let arguments = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("a").unwrap(),
-        CssComponentValue::try_number("1").unwrap(),
-    ])
+    let arguments = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("a").unwrap(),
+            CssComponentValue::try_number("1").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let value = CssUrl::from_parts(
         CssUrlFunction::Url,
         "x",
         vec![function_modifier("m", arguments)],
     );
-    let output = value.serialize_specified().unwrap();
+    let output = value.serialize_specified(Default::default()).unwrap();
     assert_eq!(output, "url(\"x\" m(a/**/1))");
     let (reparsed, clean) = parsed_background_url(&format!("background-image: {output}"));
     assert!(clean);
@@ -164,11 +190,11 @@ fn comments_and_whitespace_in_opaque_arguments_remain_meaningful() {
         "x",
         vec![function_modifier(
             "m",
-            parse_component_values(" a/**/b ").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), " a/**/b ").unwrap(),
         )],
     );
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "src(\"x\" m( a/**/b ))"
     );
     assert_eq!(value.modifiers().len(), 1);
@@ -181,39 +207,42 @@ fn one_url_charges_aggregate_target_modifiers_and_nested_argument_nodes() {
         "x",
         vec![
             CssUrlModifier::Ident(CssIdent::try_new("cors").unwrap()),
-            function_modifier("m", parse_component_values("a b").unwrap()),
+            function_modifier(
+                "m",
+                CssComponentValues::parse(&CssParser::default(), "a b").unwrap(),
+            ),
         ],
     );
     let expected = "url(\"x\" cors m(a b))";
     assert_eq!(
         value
-            .serialize_specified_with_limits(limits(7, expected.len()))
+            .serialize_specified(limits(7, expected.len()))
             .unwrap(),
         expected
     );
     for (limit, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(6, 7, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(6, 7, expected.len()),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(7, 6, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(7, 6, expected.len()),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             limits(7, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limit)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limit).unwrap_err()),
             kind
         );
     }
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 
 #[test]
@@ -228,75 +257,65 @@ fn escaped_utf8_bytes_and_many_modifiers_share_one_budget() {
     let expected = format!("src(\"é\\a \"{})", " cors".repeat(12));
     assert_eq!(
         value
-            .serialize_specified_with_limits(limits(14, expected.len()))
+            .serialize_specified(limits(14, expected.len()))
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         value
-            .serialize_specified_with_limits(limits(14, expected.len() - 1))
+            .serialize_specified(limits(14, expected.len() - 1))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
-    assert_eq!(
+    assert!(
         value
-            .serialize_specified_with_limits(limits(13, expected.len()))
+            .serialize_specified(limits(13, expected.len()))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                14,
-                13,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(14, 13, expected.len()))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
 }
 
 #[test]
 fn malformed_checked_components_fail_before_url_construction() {
-    assert_eq!(
-        CssIdent::try_new("").unwrap_err().kind(),
-        CssComponentValueErrorKind::InvalidIdentifier
+    assert!(CssIdent::try_new("").unwrap_err().is_invalid_identifier());
+    assert!(
+        CssIdent::try_new("a\0b")
+            .unwrap_err()
+            .is_invalid_identifier()
     );
-    assert_eq!(
-        CssIdent::try_new("a\0b").unwrap_err().kind(),
-        CssComponentValueErrorKind::InvalidIdentifier
+    assert!(
+        CssComponentValue::try_token("a b")
+            .unwrap_err()
+            .is_invalid_token()
     );
-    assert_eq!(
-        CssComponentValue::try_token("a b").unwrap_err().kind(),
-        CssComponentValueErrorKind::InvalidToken
-    );
-    assert_eq!(
-        CssComponentValue::try_string("a\0b").unwrap_err().kind(),
-        CssComponentValueErrorKind::InvalidString
+    assert!(
+        CssComponentValue::try_string("a\0b")
+            .unwrap_err()
+            .is_invalid_string()
     );
     let valid = CssUrl::from_parts(CssUrlFunction::Url, "x", Vec::new());
-    assert_eq!(
+    assert!(
         valid
-            .serialize_specified_with_limits(limits(0, 8))
+            .serialize_specified(limits(0, 8))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         valid
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 0, 8))
+            .serialize_specified(CssSerializationLimits::new(2, 0, 8))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
-    assert_eq!(
+    assert!(
         valid
-            .serialize_specified_with_limits(limits(2, 0))
+            .serialize_specified(limits(2, 0))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }

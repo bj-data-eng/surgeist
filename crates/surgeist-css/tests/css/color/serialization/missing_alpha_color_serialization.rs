@@ -5,40 +5,57 @@
 //! ordinary mix children still use ordinary specified serialization.
 
 use crate::css::support::color_and_selector_fixtures::assert_color_limit_error as assert_error;
+use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::{
     checked_color as color, checked_color_declaration as declaration,
     component_values as components, declaration_color,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssColorComponent, CssColorHue, CssColorNumberLiteral, CssColorSyntax, CssHslColor,
+    CssHwbColor, CssRgbColor,
+};
+use surgeist_css::component::{CssComponentValue, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssCalculation, CssNumber};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::CssSidePair;
 
-type Limits = CssSpecifiedValueSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Limits = CssSerializationLimits;
+type Kind = SerializationFailure;
 
 fn assert_value(value: &CssColor, expected: &str) {
     let before = value.clone();
-    let text = value.to_specified_css();
-    assert_eq!(text, value.to_specified_css());
+    let text = value.serialize_specified(Default::default());
+    assert_eq!(text, value.serialize_specified(Default::default()));
     assert_eq!(value, &before);
     assert_eq!(text.unwrap(), expected);
     // A independently required canonical value must also be admitted by the
     // real property grammar; this does not assert equality across color spaces.
     let reparsed = declaration(expected);
     assert_eq!(
-        declaration_color(&reparsed).to_specified_css().unwrap(),
+        declaration_color(&reparsed)
+            .serialize_specified(Default::default())
+            .unwrap(),
         expected
     );
 }
 
 fn assert_text(source: &str, expected: &str) {
     let checked = declaration(source);
-    let report = parse_style_attribute(&format!("color:{source}!important"));
+    let report = CssParser::default().parse_block_contents(format!("color:{source}!important"));
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1);
     for value in [&checked, &report.syntax()[0]] {
         let before = value.clone();
         assert_eq!(value.importance(), CssImportance::Important);
         assert_eq!(
-            value.value_components().serialize().unwrap().as_css(),
+            value
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             source
         );
         assert_value(declaration_color(value), expected);
@@ -265,7 +282,11 @@ fn parsed_none_alpha_kind_and_raw_tokens_survive_repeated_serialization() {
     assert_value(declaration_color(&declared), "color(srgb 1 0 0 / none)");
     assert_eq!(declared, before);
     assert_eq!(
-        declared.value_components().serialize().unwrap().as_css(),
+        declared
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         source
     );
 }
@@ -314,9 +335,15 @@ text_case!(
 #[test]
 fn important_checked_declaration_and_validation_keep_sibling_properties() {
     let source = "color:hsla(0 100 50 / none)!important;opacity:.5";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    assert_eq!(&validate_style_attribute(source).unwrap(), report.syntax());
+    assert_eq!(
+        &CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
+            .unwrap(),
+        report.syntax()
+    );
     assert_eq!(report.syntax().len(), 2);
     assert_eq!(report.syntax()[0].importance(), CssImportance::Important);
     assert_eq!(
@@ -336,7 +363,11 @@ fn omitted_direct_unity_and_calculated_alpha_are_distinct_from_none() {
     let omitted = checked_rgb(true, None);
     let missing = checked_rgb(true, Some(CssColorComponent::None));
     let calculated = CssColorComponent::NumberCalculation(
-        CssNumberCalculation::try_from_components(components("calc(1 / 128)")).unwrap(),
+        CssCalculation::<CssNumber>::try_from_components(
+            components("calc(1 / 128)"),
+            Default::default(),
+        )
+        .unwrap(),
     );
     let retained = checked_rgb(true, Some(calculated.clone()));
     assert_eq!(omitted.rgb_value().unwrap().alpha(), None);
@@ -421,9 +452,10 @@ fn serialized_missing_alpha_reenters_real_property_grammar() {
         "hwb(0 0 0 / none)",
     ] {
         let value = color(source);
-        let text = value.to_specified_css().unwrap();
-        let result = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
+        let text = value.serialize_specified(Default::default()).unwrap();
+        let result = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
             components(&text),
             CssImportance::Normal,
         );
@@ -459,8 +491,8 @@ macro_rules! byte_case {
             let value = color($source);
             let before = value.clone();
             let limits = Limits::new(usize::MAX, usize::MAX, $expected.len());
-            let result = value.to_specified_css_with_limits(limits);
-            assert_eq!(result, value.to_specified_css_with_limits(limits));
+            let result = value.serialize_specified(limits);
+            assert_eq!(result, value.serialize_specified(limits));
             assert_eq!(value, before);
             assert_eq!(result.unwrap(), $expected);
             assert_error(
@@ -490,42 +522,41 @@ byte_case!(
 
 #[test]
 fn border_pair_siblings_share_final_bytes_and_spent_prefix() {
-    let pair = CssBorderColorPair::new(
+    let pair = CssSidePair::new(
         color("rgb(255 0 0 / none)"),
         Some(color("hsl(0 100 50 / none)")),
     );
     let expected = "color(srgb 1 0 0 / none) hsl(0 100% 50% / none)";
     let before = pair.clone();
     let limits = Limits::new(usize::MAX, usize::MAX, expected.len());
-    let result = pair.serialize_specified_with_limits(limits);
-    assert_eq!(result, pair.serialize_specified_with_limits(limits));
+    let result = pair.serialize_specified(limits);
+    assert_eq!(result, pair.serialize_specified(limits));
     assert_eq!(pair, before);
     assert_eq!(result.unwrap(), expected);
     let error = pair
-        .serialize_specified_with_limits(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
+        .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
         .unwrap_err();
-    assert_eq!(error.kind(), Kind::ByteLimit);
+    assert!(error.is_byte_limit(), "{error:?}");
     assert_eq!(pair, before);
 }
 
 #[test]
 fn border_pair_input_limit_is_cumulative_across_literal_colors() {
-    let pair = CssBorderColorPair::new(
+    let pair = CssSidePair::new(
         color("rgb(255 0 0 / none)"),
         Some(color("hsl(0 100 50 / none)")),
     );
     let before = pair.clone();
     // Pair root: one input. Each color: root, three literal channels, missing
     // alpha = five inputs. Literal exact-rational work adds no input visits.
-    assert_eq!(
-        pair.serialize_specified_with_limits(Limits::new(10, usize::MAX, usize::MAX))
+    assert!(
+        pair.serialize_specified(Limits::new(10, usize::MAX, usize::MAX))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
     assert_eq!(pair, before);
     assert_eq!(
-        pair.serialize_specified_with_limits(Limits::new(11, usize::MAX, usize::MAX))
+        pair.serialize_specified(Limits::new(11, usize::MAX, usize::MAX))
             .unwrap(),
         "color(srgb 1 0 0 / none) hsl(0 100% 50% / none)"
     );
@@ -563,27 +594,27 @@ fn hwb_one_below_required_preserving_form_bytes_is_atomic() {
 fn utf8_caller_prefix_and_missing_alpha_share_exact_final_bytes() {
     // The non-ASCII custom profile is a valid CSS identifier. Its UTF-8 bytes,
     // the separator, and the RGB child's preserving form share one byte budget.
-    let pair = CssBorderColorPair::new(color("color(--é 0)"), Some(color("rgb(255 0 0 / none)")));
+    let pair = CssSidePair::new(color("color(--é 0)"), Some(color("rgb(255 0 0 / none)")));
     let expected = "color(--é 0) color(srgb 1 0 0 / none)";
     let before = pair.clone();
     let limits = Limits::new(usize::MAX, usize::MAX, expected.len());
-    let result = pair.serialize_specified_with_limits(limits);
-    assert_eq!(result, pair.serialize_specified_with_limits(limits));
+    let result = pair.serialize_specified(limits);
+    assert_eq!(result, pair.serialize_specified(limits));
     assert_eq!(pair, before);
     assert_eq!(result.unwrap(), expected);
 }
 
 #[test]
 fn utf8_caller_prefix_leaves_one_below_missing_alpha_final_bytes() {
-    let pair = CssBorderColorPair::new(color("color(--é 0)"), Some(color("rgb(255 0 0 / none)")));
+    let pair = CssSidePair::new(color("color(--é 0)"), Some(color("rgb(255 0 0 / none)")));
     let before = pair.clone();
     let limits = Limits::new(
         usize::MAX,
         usize::MAX,
         "color(--é 0) color(srgb 1 0 0 / none)".len() - 1,
     );
-    let result = pair.serialize_specified_with_limits(limits);
-    assert_eq!(result, pair.serialize_specified_with_limits(limits));
+    let result = pair.serialize_specified(limits);
+    assert_eq!(result, pair.serialize_specified(limits));
     assert_eq!(pair, before);
-    assert_eq!(result.unwrap_err().kind(), Kind::ByteLimit);
+    assert!(result.unwrap_err().is_byte_limit());
 }

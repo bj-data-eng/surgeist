@@ -2,12 +2,20 @@
 //! MQ5 WD 2026-02-19 §11: authored MediaList versus true/false, no evaluation.
 //! Color5 WD 2026-09-08 §12.1: serialize associated names/descriptors;
 //! absent descriptors return empty, independently of unavailable whole formats.
-use surgeist_css::*;
-use surgeist_css::{CssColorProfileRule, CssCustomMediaRule, CssRule};
+use surgeist_css::color::CssColorProfileName;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::query::media::{CssCustomMediaBody, CssCustomMediaName};
+use surgeist_css::rule::CssSheet;
+use surgeist_css::rule::color_profile::CssColorProfileRule;
+use surgeist_css::rule::color_profile::{CssColorProfileDescriptorKind, CssColorProfileRuleName};
+use surgeist_css::rule::{CssCustomMediaRule, CssRule};
+use surgeist_css::serialization::{
+    CssRuleCssomFormat, CssSerializationError, CssSerializationLimits,
+};
 use surgeist_cssom::*;
 
-fn limits() -> CssSpecifiedValueSerializationLimits {
-    CssSpecifiedValueSerializationLimits::default()
+fn limits() -> CssSerializationLimits {
+    CssSerializationLimits::default()
 }
 fn batch(store: &CssomStore) -> CssomBatch {
     store
@@ -172,15 +180,18 @@ fn query_collection_keeps_identity_current_recovery_and_historical_provenance() 
         panic!("current genuine media input")
     };
     assert_eq!(current_origin.source().as_str(), "screen,,speech");
-    let CssomAuthoredRule::Ordinary(native) = after.rule(&rule).unwrap().authored() else {
+    let CssomAuthoredRule::Rule(native) = after.rule(&rule).unwrap().authored() else {
         panic!("ordinary")
     };
     assert_eq!(
-        native.serialize_cssom().unwrap_err().kind(),
-        CssRuleCssomSerializationErrorKind::FormatUnavailable(CssRuleCssomFormat::CustomMedia)
+        native
+            .serialize_cssom(Default::default())
+            .unwrap_err()
+            .unavailable_format(),
+        Some(CssRuleCssomFormat::CustomMedia)
     );
 
-    let CssomAuthoredRule::Ordinary(CssRule::CustomMedia(original)) =
+    let CssomAuthoredRule::Rule(CssRule::CustomMedia(original)) =
         after.rule(&rule).unwrap().authored()
     else {
         panic!("genuine original")
@@ -188,7 +199,13 @@ fn query_collection_keeps_identity_current_recovery_and_historical_provenance() 
     let CssCustomMediaBody::Media(original_query) = original.body() else {
         panic!("authored original list")
     };
-    assert_eq!(original_query.serialize_cssom().unwrap().as_css(), "print");
+    assert_eq!(
+        original_query
+            .serialize_cssom(Default::default())
+            .unwrap()
+            .as_css(),
+        "print"
+    );
     let CssValueOrigin::Parsed(origin) = original.name().origin() else {
         panic!("original source occurrence")
     };
@@ -215,7 +232,7 @@ fn query_collection_keeps_identity_current_recovery_and_historical_provenance() 
     assert_eq!(
         list_capture(&store, &empty, &id)
             .unwrap()
-            .item(0, CssSpecifiedValueSerializationLimits::new(0, 0, 0))
+            .item(0, CssSerializationLimits::new(0, 0, 0))
             .unwrap(),
         None
     );
@@ -282,7 +299,7 @@ fn profile_getters_serialize_effective_values_and_distinguish_absence_from_empty
         assert_eq!(
             getter(
                 &profile_capture(&store, &snapshot, &ids[1]).unwrap(),
-                CssSpecifiedValueSerializationLimits::new(0, 0, 0)
+                CssSerializationLimits::new(0, 0, 0)
             )
             .unwrap(),
             ""
@@ -294,12 +311,15 @@ fn profile_getters_serialize_effective_values_and_distinguish_absence_from_empty
             .unwrap(),
         "env(channels)"
     );
-    let CssomAuthoredRule::Ordinary(original) = snapshot.rule(&ids[0]).unwrap().authored() else {
+    let CssomAuthoredRule::Rule(original) = snapshot.rule(&ids[0]).unwrap().authored() else {
         panic!("ordinary source")
     };
     assert_eq!(
-        original.serialize_cssom().unwrap_err().kind(),
-        CssRuleCssomSerializationErrorKind::FormatUnavailable(CssRuleCssomFormat::ColorProfile)
+        original
+            .serialize_cssom(Default::default())
+            .unwrap_err()
+            .unavailable_format(),
+        Some(CssRuleCssomFormat::ColorProfile)
     );
 }
 
@@ -340,7 +360,7 @@ fn profile_replacement_keeps_detached_old_objects_and_original_value_coordinates
         "url(\"relative.icc\")"
     );
     let CssomRuleData::Leaf {
-        current: CssomAuthoredRule::Ordinary(CssRule::ColorProfile(profile)),
+        current: CssomAuthoredRule::Rule(CssRule::ColorProfile(profile)),
     } = after.rule(&old).unwrap().data()
     else {
         panic!("checked profile")
@@ -404,6 +424,7 @@ fn scoped_and_programmatic_checked_payloads_use_the_same_facets() {
             CssCustomMediaRule::try_new(
                 CssCustomMediaName::try_new("--Made").unwrap(),
                 CssCustomMediaBody::True,
+                Default::default(),
             )
             .unwrap(),
         ),
@@ -476,39 +497,41 @@ fn owner_kind_missing_capture_and_output_limits_return_typed_errors_without_muta
         Err(CssomError::ForeignOwner)
     ));
     let expected = r"A, a\+b";
-    let exact = CssSpecifiedValueSerializationLimits::new(2, 2, expected.len());
+    let exact = CssSerializationLimits::new(2, 2, expected.len());
     assert_eq!(
         profile_capture(&store, &snapshot, &ids[1])
             .and_then(|value| value.components(exact))
             .unwrap(),
         expected
     );
-    for (policy, kind) in [
+    type Case = (CssSerializationLimits, fn(&CssSerializationError) -> bool);
+    let cases: [Case; 3] = [
         (
-            CssSpecifiedValueSerializationLimits::new(1, 2, 99),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(1, 2, 99),
+            CssSerializationError::is_input_node_limit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 1, 99),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(2, 1, 99),
+            CssSerializationError::is_projection_node_limit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 2, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(2, 2, expected.len() - 1),
+            CssSerializationError::is_byte_limit,
         ),
-    ] {
+    ];
+    for (policy, kind) in cases {
         assert!(
-            matches!(profile_capture(&store, &snapshot, &ids[1]).and_then(|value| value.components(policy)), Err(CssomError::Value(error)) if error.kind() == kind)
+            matches!(profile_capture(&store, &snapshot, &ids[1]).and_then(|value| value.components(policy)), Err(CssomError::Value(error)) if kind(&error))
         );
     }
     assert!(
-        matches!(profile_capture(&store, &snapshot, &ids[1]).and_then(|value| value.name(CssSpecifiedValueSerializationLimits::new(0,1,99))), Err(CssomError::Value(error)) if error.kind() == CssSpecifiedValueSerializationErrorKind::InputNodeLimit)
+        matches!(profile_capture(&store, &snapshot, &ids[1]).and_then(|value| value.name(CssSerializationLimits::new(0,1,99))), Err(CssomError::Value(error)) if error.is_input_node_limit())
     );
     let media = media(&store, &snapshot, &ids[0]);
     assert!(matches!(
         list_capture(&store, &snapshot, &media)
             .unwrap()
-            .media_text(CssSpecifiedValueSerializationLimits::new(99, 99, 0)),
+            .media_text(CssSerializationLimits::new(99, 99, 0)),
         Err(CssomError::Media(_))
     ));
     assert_eq!(

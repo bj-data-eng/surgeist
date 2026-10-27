@@ -1,8 +1,20 @@
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssGlobalKeyword;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+};
+use surgeist_css::values::background::{
+    CssBackgroundAttachment, CssBackgroundBox, CssBackgroundBoxList, CssBackgroundLayerBoxes,
+    CssBackgroundRepeat, CssBackgroundRepeatStyle, CssBackgroundSize,
+};
+use surgeist_css::values::common::CssAutoOr;
+use surgeist_css::values::image::{CssGradient, CssImageValue};
+use surgeist_css::values::position::{CssHorizontalPosition, CssVerticalPosition};
 
 #[test]
 fn c13_background_layers_retain_typed_structure() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "background: url(hero.png) left 10px top 20px / 40px auto ",
         "no-repeat fixed padding-box content-box, ",
         "linear-gradient(red, blue) center / cover repeat-y local border-box #123456",
@@ -23,7 +35,7 @@ fn c13_background_layers_retain_typed_structure() {
     else {
         panic!("expected background wrapper");
     };
-    let [first, second] = value.background().layers() else {
+    let [first, second] = value.value().layers() else {
         panic!("expected two authored background layers");
     };
     assert!(matches!(
@@ -34,19 +46,19 @@ fn c13_background_layers_retain_typed_structure() {
     assert!(matches!(
         first_position.horizontal(),
         CssHorizontalPosition::LeftOffset(offset)
-            if exact_dimension(offset.literal_component(), "10", "px")
+            if exact_dimension(offset.literal().map(|literal| literal.component()), "10", "px")
     ));
     assert!(matches!(
         first_position.vertical(),
         CssVerticalPosition::TopOffset(offset)
-            if exact_dimension(offset.literal_component(), "20", "px")
+            if exact_dimension(offset.literal().map(|literal| literal.component()), "20", "px")
     ));
     assert!(matches!(
         first.size(),
         Some(CssBackgroundSize::Explicit {
-            width: CssBackgroundSizeComponent::Length(width),
-            height: Some(CssBackgroundSizeComponent::Auto),
-        }) if exact_dimension(width.literal_component(), "40", "px")
+            width: CssAutoOr::Value(width),
+            height: Some(CssAutoOr::Auto),
+        }) if exact_dimension(width.literal().map(|literal| literal.component()), "40", "px")
     ));
     assert_eq!(
         first.repeat(),
@@ -90,7 +102,7 @@ fn c13_background_layers_retain_typed_structure() {
 fn background_longhands_preserve_ordered_semantic_lists() {
     assert!(CssBackgroundBoxList::try_new(Vec::new()).is_none());
 
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "background-image: none, linear-gradient(red, blue); ",
         "background-position: left top, right 10px bottom; ",
         "background-size: cover, 10px auto; ",
@@ -116,9 +128,9 @@ fn background_longhands_preserve_ordered_semantic_lists() {
     let CssKnownPropertyValueRef::BackgroundImage(images) = values[0] else {
         panic!("expected background-image");
     };
-    assert_eq!(images.images().images().len(), 2);
+    assert_eq!(images.value().images().len(), 2);
     assert!(matches!(
-        images.images().images(),
+        images.value().images(),
         [
             CssImageValue::None,
             CssImageValue::Gradient(CssGradient::Linear(_))
@@ -128,39 +140,39 @@ fn background_longhands_preserve_ordered_semantic_lists() {
     let CssKnownPropertyValueRef::BackgroundPosition(positions) = values[1] else {
         panic!("expected background-position");
     };
-    assert_eq!(positions.positions().positions().len(), 2);
+    assert_eq!(positions.value().positions().len(), 2);
     assert!(matches!(
-        positions.positions().positions()[0].horizontal(),
+        positions.value().positions()[0].horizontal(),
         CssHorizontalPosition::Left
     ));
     assert!(matches!(
-        positions.positions().positions()[0].vertical(),
+        positions.value().positions()[0].vertical(),
         CssVerticalPosition::Top
     ));
-    assert!(matches!(positions.positions().positions()[1].horizontal(),
+    assert!(matches!(positions.value().positions()[1].horizontal(),
         CssHorizontalPosition::RightOffset(offset)
-            if exact_dimension(offset.literal_component(), "10", "px")));
+            if exact_dimension(offset.literal().map(|literal| literal.component()), "10", "px")));
     assert!(matches!(
-        positions.positions().positions()[1].vertical(),
+        positions.value().positions()[1].vertical(),
         CssVerticalPosition::Bottom
     ));
 
     let CssKnownPropertyValueRef::BackgroundSize(sizes) = values[2] else {
         panic!("expected background-size");
     };
-    assert!(matches!(sizes.sizes().sizes(), [
+    assert!(matches!(sizes.value().sizes(), [
         CssBackgroundSize::Cover,
         CssBackgroundSize::Explicit {
-            width: CssBackgroundSizeComponent::Length(length),
-            height: Some(CssBackgroundSizeComponent::Auto),
+            width: CssAutoOr::Value(length),
+            height: Some(CssAutoOr::Auto),
         },
-    ] if exact_dimension(length.literal_component(), "10", "px")));
+    ] if exact_dimension(length.literal().map(|literal| literal.component()), "10", "px")));
 
     let CssKnownPropertyValueRef::BackgroundRepeat(repeats) = values[3] else {
         panic!("expected background-repeat");
     };
     assert!(matches!(
-        repeats.repeats().repeats(),
+        repeats.value().repeats(),
         [
             CssBackgroundRepeat::RepeatX,
             CssBackgroundRepeat::Axes {
@@ -174,20 +186,20 @@ fn background_longhands_preserve_ordered_semantic_lists() {
         panic!("expected background-origin");
     };
     assert_eq!(
-        origin.boxes().boxes(),
+        origin.value().boxes(),
         [CssBackgroundBox::BorderBox, CssBackgroundBox::ContentBox]
     );
 
     let CssKnownPropertyValueRef::BackgroundClip(clip) = values[5] else {
         panic!("expected background-clip");
     };
-    assert_eq!(clip.boxes().boxes(), [CssBackgroundBox::PaddingBox]);
+    assert_eq!(clip.value().boxes(), [CssBackgroundBox::PaddingBox]);
 
     let CssKnownPropertyValueRef::BackgroundAttachment(attachments) = values[6] else {
         panic!("expected background-attachment");
     };
     assert_eq!(
-        attachments.attachments().attachments(),
+        attachments.value().attachments(),
         [
             CssBackgroundAttachment::Fixed,
             CssBackgroundAttachment::Local,
@@ -197,7 +209,7 @@ fn background_longhands_preserve_ordered_semantic_lists() {
 
 #[test]
 fn mask_size_and_repeat_expose_ordered_symbolic_lists() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "mask-size: cover, calc(10% + 2px) auto; ",
         "mask-repeat: repeat-x, no-repeat round; ",
         "mask-size: inherit; mask-repeat: var(--repeat)",
@@ -211,13 +223,13 @@ fn mask_size_and_repeat_expose_ordered_symbolic_lists() {
     let [
         CssBackgroundSize::Cover,
         CssBackgroundSize::Explicit { width, height },
-    ] = sizes.sizes().sizes()
+    ] = sizes.value().sizes()
     else {
         panic!("ordered cover and symbolic explicit mask sizes");
     };
-    assert!(matches!(width, CssBackgroundSizeComponent::Length(length)
-        if length.calculation().is_some_and(|calc| calc.components().serialize().unwrap().as_css() == "calc(10% + 2px)")));
-    assert!(matches!(height, Some(CssBackgroundSizeComponent::Auto)));
+    assert!(matches!(width, CssAutoOr::Value(length)
+        if length.calculation().is_some_and(|calc| calc.components().serialize_tokens(Default::default()).unwrap().as_css() == "calc(10% + 2px)")));
+    assert!(matches!(height, Some(CssAutoOr::Auto)));
 
     let CssKnownDeclaredValueRef::Property(CssKnownPropertyValueRef::MaskRepeat(repeats)) =
         report.syntax()[1].known().unwrap().declared_value()
@@ -225,7 +237,7 @@ fn mask_size_and_repeat_expose_ordered_symbolic_lists() {
         panic!("ordinary mask-repeat list");
     };
     assert!(matches!(
-        repeats.repeats().repeats(),
+        repeats.value().repeats(),
         [
             CssBackgroundRepeat::RepeatX,
             CssBackgroundRepeat::Axes {
@@ -246,7 +258,7 @@ fn mask_size_and_repeat_expose_ordered_symbolic_lists() {
 
 #[test]
 fn background_globals_substitutions_and_layer_colors_remain_distinct() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "background: inherit; ",
         "background: var(--surface, url(hero.png) center / cover); ",
         "background: red; ",
@@ -268,7 +280,7 @@ fn background_globals_substitutions_and_layer_colors_remain_distinct() {
         panic!("expected color-only background");
     };
     assert_eq!(
-        color_only.background().layers()[0]
+        color_only.value().layers()[0]
             .color()
             .unwrap()
             .named()
@@ -282,8 +294,8 @@ fn background_globals_substitutions_and_layer_colors_remain_distinct() {
     else {
         panic!("expected image-only background");
     };
-    assert!(image_only.background().layers()[0].image().is_some());
-    assert!(image_only.background().layers()[0].color().is_none());
+    assert!(image_only.value().layers()[0].image().is_some());
+    assert!(image_only.value().layers()[0].color().is_none());
 }
 
 #[test]
@@ -297,7 +309,7 @@ fn background_shared_longhands_keep_global_and_substitution_branches() {
         ("background-clip", "inherit", "var(--clip)"),
     ] {
         let source = format!("{property}: {global}; {property}: {substitution}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let [global_value, substitution_value] = report.syntax().as_slice() else {
             panic!("{source}: expected two declarations");
@@ -337,7 +349,7 @@ fn background_layer_mutations_drop_exact_declaration_and_keep_siblings() {
     for (property, invalid, responsible_text) in cases {
         let declaration = format!("{property}: {invalid};");
         let source = format!("--😀: kept; {declaration} color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 2, "{source}");
         let [diagnostic] = report.diagnostics() else {
             panic!("{source}: expected one diagnostic");
@@ -380,13 +392,22 @@ fn background_layer_mutations_drop_exact_declaration_and_keep_siblings() {
             source[..responsible].encode_utf16().count(),
             "{source}",
         );
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("{source}: expected property-specific diagnostic");
-        };
-        assert_eq!(detail.property().canonical_name(), property, "{source}");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "{source}: expected property-specific diagnostic"
+        );
+        assert_eq!(
+            detail.known_property().unwrap().canonical_name(),
+            property,
+            "{source}"
+        );
 
         assert_eq!(
-            surgeist_css::validate_style_attribute(&source)
+            surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect_err("strict validation rejects invalid background syntax")
                 .diagnostics(),
             report.diagnostics(),
@@ -413,7 +434,7 @@ fn background_empty_comma_items_and_eof_report_exact_recovery() {
         ("background-image: none,;", "background-image: none".len()),
     ] {
         let source = format!("{invalid} color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(
             report.syntax()[0].known().unwrap().property(),
@@ -440,16 +461,18 @@ fn background_empty_comma_items_and_eof_report_exact_recovery() {
             source[..responsible].encode_utf16().count(),
             "{source}",
         );
-        let ErrorKind::InvalidPropertyValue(_) = diagnostic.error().kind() else {
-            panic!("{source}: expected property-specific diagnostic");
-        };
+        assert_eq!(
+            diagnostic.error().code(),
+            CssErrorCode::InvalidPropertyValue,
+            "{source}: expected property-specific diagnostic"
+        );
     }
 }
 
 fn exact_dimension(
-    component: Option<&surgeist_css::CssComponentValue>,
+    component: Option<&surgeist_css::component::CssComponentValue>,
     representation: &str,
     expected_unit: &str,
 ) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
 }

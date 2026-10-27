@@ -14,10 +14,29 @@
 //! Exact typed values, occurrence identity, and original token origins are
 //! Surgeist contracts. This consumer neither resolves style nor loads resources.
 
-use surgeist_css::{CssKnownProperty as Property, *};
-
-#[path = "../tests/css/support/property_expectations.rs"]
-mod property_expectations;
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssColorComponent};
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{
+    CssCustomPropertyName, CssDeclaration, CssGlobalKeyword, CssImportance,
+};
+use surgeist_css::numeric::{CssLength, CssNonNegative, CssNumeric};
+use surgeist_css::property::CssKnownProperty as Property;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssExpansionError,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssLonghandContributions,
+    CssLonghandValueRef, CssPendingSubstitution, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::border::{
+    CssBorderImageOutsetComponent, CssBorderImageRepeatKeyword, CssBorderImageSliceComponent,
+    CssBorderImageWidthComponent, CssLineStyle, CssLineWidth,
+};
+use surgeist_css::values::image::CssImageValue;
+use surgeist_css::values::text::{
+    CssTextAlign, CssTextAlignAllValue, CssTextAlignLastValue, CssTextAlignValue,
+};
 
 fn assert_selected_four(result: Result<CssExpansion, CssExpansionError>) {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) = result.unwrap() else {
@@ -74,16 +93,17 @@ const IMAGE_LONGHANDS: [Property; 5] = [
 const MODERN_COLOR: &str = "color(display-p3 1 0.5 0 / 150%)";
 
 fn declaration(property: Property, value: &str, importance: CssImportance) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(property),
-        parse_component_values(value).expect("valid component syntax"),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
+        CssComponentValues::parse(&CssParser::default(), value).expect("valid component syntax"),
         importance,
     )
     .expect("valid authored property grammar")
 }
 
 fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
-    match expand_declaration(source).expect("supported expansion") {
+    match source.expand().expect("supported expansion") {
         CssExpansion::Contributions(CssContributions::Longhands(values)) => {
             for item in values.items() {
                 assert!(item.source().same_occurrence(source));
@@ -96,7 +116,7 @@ fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
 }
 
 fn pending_expansion(source: &CssDeclaration) -> CssPendingSubstitution {
-    match expand_declaration(source).expect("supported pending declaration") {
+    match source.expand().expect("supported pending declaration") {
         CssExpansion::Pending(value) => value,
         other => panic!("expected pending substitution: {other:?}"),
     }
@@ -121,16 +141,16 @@ fn assert_members(values: &CssLonghandContributions, expected: &[Property]) {
     }
 }
 
-fn border_px(number: &str) -> CssBorderWidth {
-    CssBorderWidth::Length(
-        CssSpecifiedNonNegativeLength::try_from_component(
+fn border_px(number: &str) -> CssLineWidth {
+    CssLineWidth::Length(
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component(
             CssComponentValue::try_dimension(number, "px").unwrap(),
         )
         .unwrap(),
     )
 }
 
-fn length(item: &CssLonghandContribution) -> &CssBorderWidth {
+fn length(item: &CssLonghandContribution) -> &CssLineWidth {
     match (item.property(), item.value()) {
         (
             Property::BorderTopWidth,
@@ -160,20 +180,24 @@ fn spacing(item: &CssLonghandContribution) -> String {
             | CssLonghandValueRef::MarginBottom(value)
             | CssLonghandValueRef::MarginLeft(value)
             | CssLonghandValueRef::MarginBlockStart(value)
-            | CssLonghandValueRef::MarginBlockEnd(value) => value.serialize_specified().unwrap(),
+            | CssLonghandValueRef::MarginBlockEnd(value) => {
+                value.serialize_specified(Default::default()).unwrap()
+            }
             CssLonghandValueRef::PaddingTop(value)
             | CssLonghandValueRef::PaddingRight(value)
             | CssLonghandValueRef::PaddingBottom(value)
             | CssLonghandValueRef::PaddingLeft(value)
             | CssLonghandValueRef::PaddingBlockStart(value)
-            | CssLonghandValueRef::PaddingBlockEnd(value) => value.serialize_specified().unwrap(),
+            | CssLonghandValueRef::PaddingBlockEnd(value) => {
+                value.serialize_specified(Default::default()).unwrap()
+            }
             other => panic!("expected spacing value: {other:?}"),
         },
         other => panic!("expected ordinary spacing value: {other:?}"),
     }
 }
 
-fn style(item: &CssLonghandContribution) -> CssBorderStyle {
+fn style(item: &CssLonghandContribution) -> CssLineStyle {
     match (item.property(), item.value()) {
         (
             Property::BorderTopStyle,
@@ -256,21 +280,21 @@ fn assert_image_initials(values: &CssLonghandContributions) {
     };
     assert!(!slice.fill());
     assert!(slice.values().iter().all(|value| matches!(value,
-        CssBorderImageSliceComponent::Percentage(number) if exact_literal(number.literal_component(), "100%"))));
+        CssBorderImageSliceComponent::Percentage(number) if exact_literal(number.literal().map(|literal| literal.component()), "100%"))));
     let CssContributionValueRef::Ordinary(CssLonghandValueRef::BorderImageWidth(width)) =
         member(values, Property::BorderImageWidth).value()
     else {
         panic!("typed border-image-width initial");
     };
     assert!(width.values().iter().all(|value| matches!(value,
-        CssBorderImageWidthComponent::Number(number) if exact_literal(number.literal_component(), "1"))));
+        CssBorderImageWidthComponent::Number(number) if exact_literal(number.literal().map(|literal| literal.component()), "1"))));
     let CssContributionValueRef::Ordinary(CssLonghandValueRef::BorderImageOutset(outset)) =
         member(values, Property::BorderImageOutset).value()
     else {
         panic!("typed border-image-outset initial");
     };
     assert!(outset.values().iter().all(|value| matches!(value,
-        CssBorderImageOutsetComponent::Number(number) if exact_literal(number.literal_component(), "0"))));
+        CssBorderImageOutsetComponent::Number(number) if exact_literal(number.literal().map(|literal| literal.component()), "0"))));
     let CssContributionValueRef::Ordinary(CssLonghandValueRef::BorderImageRepeat(repeat)) =
         member(values, Property::BorderImageRepeat).value()
     else {
@@ -295,21 +319,21 @@ fn four_sided_length_shorthands() {
                     assert_eq!(value.as_css(), css);
                     value
                         .value()
-                        .assigned_values()
-                        .map(|side| side.serialize_specified().unwrap())
+                        .assigned()
+                        .map(|side| side.serialize_specified(Default::default()).unwrap())
                 }
                 CssKnownPropertyValueRef::Padding(value) => {
                     assert_eq!(value.as_css(), css);
                     value
                         .value()
-                        .assigned_values()
-                        .map(|side| side.serialize_specified().unwrap())
+                        .assigned()
+                        .map(|side| side.serialize_specified(Default::default()).unwrap())
                 }
                 other => panic!("expected checked box spacing: {other:?}"),
             };
             assert_eq!(assigned, expected);
             assert_eq!(sides.len(), assigned.len());
-            assert_selected_four(expand_declaration(&source));
+            assert_selected_four(source.expand());
         }
     }
     for (css, expected) in [
@@ -327,11 +351,11 @@ fn four_sided_length_shorthands() {
         assert_eq!(
             authored
                 .value()
-                .assigned_values()
-                .map(|width| width.serialize_specified().unwrap()),
+                .assigned()
+                .map(|width| width.serialize_specified(Default::default()).unwrap()),
             expected.map(|n| format!("{n}px"))
         );
-        assert_selected_four(expand_declaration(&source));
+        assert_selected_four(source.expand());
     }
     let source = declaration(Property::Margin, "auto 10% -3px", CssImportance::Normal);
     let Some(CssKnownPropertyValueRef::Margin(authored)) = source.known().unwrap().property_value()
@@ -341,43 +365,43 @@ fn four_sided_length_shorthands() {
     assert_eq!(
         authored
             .value()
-            .assigned_values()
-            .map(|side| side.serialize_specified().unwrap()),
+            .assigned()
+            .map(|side| side.serialize_specified(Default::default()).unwrap()),
         ["auto", "10%", "-3px", "10%"]
     );
     assert_eq!(authored.as_css(), "auto 10% -3px");
-    assert_selected_four(expand_declaration(&source));
+    assert_selected_four(source.expand());
     println!("four-sided authored values and reset boundary: ok");
 }
 
 fn four_sided_styles_and_current_colors() {
     for (css, expected) in [
-        ("solid", [CssBorderStyle::Solid; 4]),
+        ("solid", [CssLineStyle::Solid; 4]),
         (
             "solid dashed",
             [
-                CssBorderStyle::Solid,
-                CssBorderStyle::Dashed,
-                CssBorderStyle::Solid,
-                CssBorderStyle::Dashed,
+                CssLineStyle::Solid,
+                CssLineStyle::Dashed,
+                CssLineStyle::Solid,
+                CssLineStyle::Dashed,
             ],
         ),
         (
             "solid dashed dotted",
             [
-                CssBorderStyle::Solid,
-                CssBorderStyle::Dashed,
-                CssBorderStyle::Dotted,
-                CssBorderStyle::Dashed,
+                CssLineStyle::Solid,
+                CssLineStyle::Dashed,
+                CssLineStyle::Dotted,
+                CssLineStyle::Dashed,
             ],
         ),
         (
             "solid dashed dotted double",
             [
-                CssBorderStyle::Solid,
-                CssBorderStyle::Dashed,
-                CssBorderStyle::Dotted,
-                CssBorderStyle::Double,
+                CssLineStyle::Solid,
+                CssLineStyle::Dashed,
+                CssLineStyle::Dotted,
+                CssLineStyle::Double,
             ],
         ),
     ] {
@@ -389,13 +413,10 @@ fn four_sided_styles_and_current_colors() {
         };
         assert_eq!(
             authored.value().kind(),
-            surgeist_css::CssBoxSideKind::Physical
+            surgeist_css::values::common::CssBoxSideKind::Physical
         );
-        assert_eq!(
-            authored.value().assigned_values().map(|value| *value),
-            expected
-        );
-        assert_selected_four(expand_declaration(&source));
+        assert_eq!(authored.value().assigned().map(|value| *value), expected);
+        assert_selected_four(source.expand());
     }
     for (css, expected) in [
         ("red", ["red", "red", "red", "red"]),
@@ -411,12 +432,12 @@ fn four_sided_styles_and_current_colors() {
         };
         assert_eq!(
             authored.value().kind(),
-            surgeist_css::CssBoxSideKind::Physical
+            surgeist_css::values::common::CssBoxSideKind::Physical
         );
-        for (side, expected) in authored.value().assigned_values().into_iter().zip(expected) {
+        for (side, expected) in authored.value().assigned().into_iter().zip(expected) {
             assert_eq!(side.named().unwrap().name(), expected);
         }
-        assert_selected_four(expand_declaration(&source));
+        assert_selected_four(source.expand());
     }
     let source = declaration(
         Property::BorderColor,
@@ -428,7 +449,7 @@ fn four_sided_styles_and_current_colors() {
     else {
         panic!("authored current border-color");
     };
-    let [top, right, bottom, left] = authored.value().assigned_values();
+    let [top, right, bottom, left] = authored.value().assigned();
     assert_modern_color(top);
     assert_modern_color(bottom);
     assert!(right.is_current_color());
@@ -441,26 +462,21 @@ fn side_borders_supply_defaults_without_image_resets() {
         for (css, expected_width, expected_style, modern) in [
             (
                 "solid".to_owned(),
-                CssBorderWidth::Medium,
-                CssBorderStyle::Solid,
+                CssLineWidth::Medium,
+                CssLineStyle::Solid,
                 false,
             ),
-            (
-                "2px".to_owned(),
-                border_px("2"),
-                CssBorderStyle::None,
-                false,
-            ),
+            ("2px".to_owned(), border_px("2"), CssLineStyle::None, false),
             (
                 MODERN_COLOR.to_owned(),
-                CssBorderWidth::Medium,
-                CssBorderStyle::None,
+                CssLineWidth::Medium,
+                CssLineStyle::None,
                 true,
             ),
             (
                 format!("{MODERN_COLOR} dashed 3px"),
                 border_px("3"),
-                CssBorderStyle::Dashed,
+                CssLineStyle::Dashed,
                 true,
             ),
         ] {
@@ -484,20 +500,20 @@ fn full_border_resets_all_five_image_values() {
     for (css, expected_width, expected_style, modern) in [
         (
             "none".to_owned(),
-            CssBorderWidth::Medium,
-            CssBorderStyle::None,
+            CssLineWidth::Medium,
+            CssLineStyle::None,
             false,
         ),
         (
             "solid".to_owned(),
-            CssBorderWidth::Medium,
-            CssBorderStyle::Solid,
+            CssLineWidth::Medium,
+            CssLineStyle::Solid,
             false,
         ),
         (
             format!("2px dashed {MODERN_COLOR}"),
             border_px("2"),
-            CssBorderStyle::Dashed,
+            CssLineStyle::Dashed,
             true,
         ),
     ] {
@@ -509,7 +525,7 @@ fn full_border_resets_all_five_image_values() {
                 panic!("authored border");
             };
             let border = authored.value();
-            assert_eq!(border.style(), Some(CssBorderStyle::Dashed));
+            assert_eq!(border.style(), Some(CssLineStyle::Dashed));
         }
         let values = expanded(&source);
         assert_members(&values, &border_members());
@@ -542,7 +558,7 @@ fn ordinary_longhands_retain_typed_values() {
     for property in STYLES {
         let values = expanded(&declaration(property, "dashed", CssImportance::Normal));
         assert_members(&values, &[property]);
-        assert_eq!(style(member(&values, property)), CssBorderStyle::Dashed);
+        assert_eq!(style(member(&values, property)), CssLineStyle::Dashed);
     }
     for property in COLORS {
         let values = expanded(&declaration(property, MODERN_COLOR, CssImportance::Normal));
@@ -576,10 +592,16 @@ fn ordinary_longhands_retain_typed_values() {
                 ]) {
                     match component {
                         CssBorderImageSliceComponent::Percentage(number) if percentage => {
-                            assert!(exact_literal(number.literal_component(), expected))
+                            assert!(exact_literal(
+                                number.literal().map(|literal| literal.component()),
+                                expected
+                            ))
                         }
                         CssBorderImageSliceComponent::Number(number) if !percentage => {
-                            assert!(exact_literal(number.literal_component(), expected))
+                            assert!(exact_literal(
+                                number.literal().map(|literal| literal.component()),
+                                expected
+                            ))
                         }
                         other => panic!("preserved slice component: {other:?}"),
                     }
@@ -589,30 +611,30 @@ fn ordinary_longhands_retain_typed_values() {
                 assert_eq!(property, Property::BorderImageWidth);
                 let [first, second, third, fourth] = value.values();
                 assert!(
-                    matches!(first, CssBorderImageWidthComponent::Number(number) if exact_literal(number.literal_component(), "2"))
+                    matches!(first, CssBorderImageWidthComponent::Number(number) if exact_literal(number.literal().map(|literal| literal.component()), "2"))
                 );
                 assert!(matches!(second, CssBorderImageWidthComponent::Auto));
                 assert!(
-                    matches!(third, CssBorderImageWidthComponent::LengthPercentage(value) if exact_literal(value.literal_component(), "3%"))
+                    matches!(third, CssBorderImageWidthComponent::LengthPercentage(value) if exact_literal(value.literal().map(|literal| literal.component()), "3%"))
                 );
                 assert!(
-                    matches!(fourth, CssBorderImageWidthComponent::LengthPercentage(value) if exact_literal(value.literal_component(), "4px"))
+                    matches!(fourth, CssBorderImageWidthComponent::LengthPercentage(value) if exact_literal(value.literal().map(|literal| literal.component()), "4px"))
                 );
             }
             CssContributionValueRef::Ordinary(CssLonghandValueRef::BorderImageOutset(value)) => {
                 assert_eq!(property, Property::BorderImageOutset);
                 let [first, second, third, fourth] = value.values();
                 assert!(
-                    matches!(first, CssBorderImageOutsetComponent::Number(number) if exact_literal(number.literal_component(), "1"))
+                    matches!(first, CssBorderImageOutsetComponent::Number(number) if exact_literal(number.literal().map(|literal| literal.component()), "1"))
                 );
                 assert!(
-                    matches!(second, CssBorderImageOutsetComponent::Length(value) if exact_literal(value.literal_component(), "2px"))
+                    matches!(second, CssBorderImageOutsetComponent::Length(value) if exact_literal(value.literal().map(|literal| literal.component()), "2px"))
                 );
                 assert!(
-                    matches!(third, CssBorderImageOutsetComponent::Number(number) if exact_literal(number.literal_component(), "3"))
+                    matches!(third, CssBorderImageOutsetComponent::Number(number) if exact_literal(number.literal().map(|literal| literal.component()), "3"))
                 );
                 assert!(
-                    matches!(fourth, CssBorderImageOutsetComponent::Length(value) if exact_literal(value.literal_component(), "4px"))
+                    matches!(fourth, CssBorderImageOutsetComponent::Length(value) if exact_literal(value.literal().map(|literal| literal.component()), "4px"))
                 );
             }
             CssContributionValueRef::Ordinary(CssLonghandValueRef::BorderImageRepeat(value)) => {
@@ -667,14 +689,14 @@ fn globals_include_reset_only_members_and_all_stays_symbolic() {
             }
         }
         let border_width = declaration(Property::BorderWidth, css, CssImportance::Important);
-        assert_selected_four(expand_declaration(&border_width));
+        assert_selected_four(border_width.expand());
         let border_style = declaration(Property::BorderStyle, css, CssImportance::Important);
-        assert_selected_four(expand_declaration(&border_style));
+        assert_selected_four(border_style.expand());
         let border_color = declaration(Property::BorderColor, css, CssImportance::Important);
-        assert_selected_four(expand_declaration(&border_color));
+        assert_selected_four(border_color.expand());
         let source = declaration(Property::All, css, CssImportance::Important);
         let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("all remains a symbolic universal reset");
         };
@@ -702,7 +724,7 @@ fn globals_include_reset_only_members_and_all_stays_symbolic() {
 
 fn contribution_sources_preserve_occurrence_and_importance() {
     let css = "/*😀*/ margin-block: 1px 2px !important";
-    let report = parse_style_attribute(css);
+    let report = CssParser::default().parse_block_contents(css);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let source = report.syntax()[0].clone();
     let source_clone = source.clone();
@@ -760,17 +782,20 @@ fn contribution_sources_preserve_occurrence_and_importance() {
 
 fn pending_reentry_preserves_original_and_replacement_provenance() {
     let source_text = "margin-block: var(--gap) !important";
-    let report = parse_style_attribute(source_text);
+    let report = CssParser::default().parse_block_contents(source_text);
     assert!(report.is_clean());
     let source = &report.syntax()[0];
     let pending = pending_expansion(source);
-    let first = parse_component_values("7px").unwrap();
-    let second = parse_component_values("11%").unwrap();
-    let replacement = CssComponentValues::try_new(vec![
-        first.items()[0].clone(),
-        CssComponentValue::try_token(" ").unwrap(),
-        second.items()[0].clone(),
-    ])
+    let first = CssComponentValues::parse(&CssParser::default(), "7px").unwrap();
+    let second = CssComponentValues::parse(&CssParser::default(), "11%").unwrap();
+    let replacement = CssComponentValues::try_new(
+        vec![
+            first.items()[0].clone(),
+            CssComponentValue::try_token(" ").unwrap(),
+            second.items()[0].clone(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let completed: CssContributions = pending.reenter(replacement.clone()).unwrap();
     let CssContributions::Longhands(values) = completed else {
@@ -805,12 +830,18 @@ fn pending_reentry_preserves_original_and_replacement_provenance() {
                 assert!(actual.source().same_snapshot(expected.source()));
             }
         }
-        assert_eq!(actual.serialize().unwrap().as_css(), "7px 11%");
+        assert_eq!(
+            actual
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            "7px 11%"
+        );
     }
     for property in [Property::Border, Property::All] {
         let source = declaration(property, "var(--reset)", CssImportance::Important);
         let pending = pending_expansion(&source);
-        let replacement = parse_component_values("revert-layer").unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), "revert-layer").unwrap();
         let result: CssContributions = pending.reenter(replacement.clone()).unwrap();
         match result {
             CssContributions::Longhands(values) if property == Property::Border => {
@@ -850,15 +881,12 @@ fn strict_reentry_rejects_atomically_and_preserves_out_of_slice_identity() {
         "calc(var(--still-pending) + 1px)",
     ] {
         let error = pending
-            .reenter(parse_component_values(css).unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), css).unwrap())
             .unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssExpansionErrorKind::ResidualSubstitution
-        ));
+        assert!(error.is_residual_substitution());
         assert!(pending.source().same_occurrence(&source));
         let completed: CssContributions = pending
-            .reenter(parse_component_values("3px").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "3px").unwrap())
             .unwrap();
         let CssContributions::Longhands(values) = completed else {
             panic!("complete valid retry after residual substitution");
@@ -875,25 +903,23 @@ fn strict_reentry_rejects_atomically_and_preserves_out_of_slice_identity() {
         ("1px;color:red", Some(";")),
         ("1px!important", Some("!")),
     ] {
-        let replacement = parse_component_values(css).unwrap();
-        let expected_error = parse_property_value(
-            CssPropertyNameRef::Known(Property::PaddingBlock),
+        let replacement = CssComponentValues::parse(&CssParser::default(), css).unwrap();
+        let expected_error = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(Property::PaddingBlock)),
             replacement.clone(),
             CssImportance::Normal,
         )
         .expect_err("the owning property grammar rejects this replacement");
         let error = pending.reenter(replacement).unwrap_err();
-        let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+        let Some(error) = error.replacement_error() else {
             panic!("replacement grammar rejection: {error:?}");
         };
         assert_eq!(
             error, &expected_error,
             "strict reentry preserves the owner's complete mapped error"
         );
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
+        assert!(error.code().is_some());
         if let Some(responsible) = responsible {
             let CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)) = error.origin() else {
                 panic!("responsible replacement token: {error:?}");
@@ -907,7 +933,7 @@ fn strict_reentry_rejects_atomically_and_preserves_out_of_slice_identity() {
         }
         assert!(pending.source().same_occurrence(&source));
         let completed: CssContributions = pending
-            .reenter(parse_component_values("3px").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "3px").unwrap())
             .unwrap();
         let CssContributions::Longhands(values) = completed else {
             panic!("complete valid retry");
@@ -917,28 +943,6 @@ fn strict_reentry_rejects_atomically_and_preserves_out_of_slice_identity() {
             assert_eq!(spacing(member(&values, property)), "3px");
         }
     }
-    for case in property_expectations::CASES {
-        if !matches!(
-            case.metadata,
-            property_expectations::MetadataExpectation::Unavailable
-        ) {
-            continue;
-        }
-        let source = declaration(
-            case.property,
-            case.ordinary_stimulus()
-                .expect("authored unavailable-property stimulus"),
-            CssImportance::Normal,
-        );
-        let before = source.clone();
-        let error = expand_declaration(&source).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssExpansionErrorKind::UnsupportedProperty(case.property)
-        );
-        assert_eq!(source.known().unwrap().property(), case.property);
-        assert_eq!(source, before);
-    }
     let source = declaration(Property::TextAlign, "justify-all", CssImportance::Normal);
     let Some(CssKnownPropertyValueRef::TextAlign(value)) = source.known().unwrap().property_value()
     else {
@@ -946,8 +950,7 @@ fn strict_reentry_rejects_atomically_and_preserves_out_of_slice_identity() {
     };
     assert_eq!(value.value(), &CssTextAlignValue::JustifyAll);
     assert_eq!(value.as_css(), "justify-all");
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("two alignment targets")
     };
@@ -983,9 +986,10 @@ fn custom_properties_preserve_symbolic_values_and_occurrences() {
             "[a] / f(2)",
         ] {
             for importance in [CssImportance::Normal, CssImportance::Important] {
-                let components = parse_component_values(value).unwrap();
-                let checked = parse_property_value(
-                    CssPropertyNameRef::Custom(&name),
+                let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
+                let checked = CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Custom(&name)),
                     components.clone(),
                     importance,
                 )
@@ -996,11 +1000,11 @@ fn custom_properties_preserve_symbolic_values_and_occurrences() {
                     ""
                 };
                 let source = format!("{}:{value}{suffix}", name.as_str());
-                let report = parse_style_attribute(&source);
+                let report = CssParser::default().parse_block_contents(&source);
                 assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
                 for declaration in [&checked, &report.syntax()[0]] {
                     let CssExpansion::Contributions(CssContributions::Custom(contribution)) =
-                        expand_declaration(declaration).unwrap()
+                        declaration.expand().unwrap()
                     else {
                         panic!("custom contribution");
                     };
@@ -1025,7 +1029,11 @@ fn custom_properties_preserve_symbolic_values_and_occurrences() {
                 }
                 assert_eq!(checked.position(), None);
                 assert_eq!(
-                    checked.value_components().serialize().unwrap().as_css(),
+                    checked
+                        .value_components()
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
                     value
                 );
                 for (actual, expected) in checked
@@ -1049,17 +1057,20 @@ fn custom_properties_preserve_symbolic_values_and_occurrences() {
             ("revert", CssGlobalKeyword::Revert),
             ("revert-layer", CssGlobalKeyword::RevertLayer),
         ] {
-            let components =
-                CssComponentValues::try_new(vec![CssComponentValue::try_ident(css).unwrap()])
-                    .unwrap();
-            let checked = parse_property_value(
-                CssPropertyNameRef::Custom(&name),
+            let components = CssComponentValues::try_new(
+                vec![CssComponentValue::try_ident(css).unwrap()],
+                Default::default(),
+            )
+            .unwrap();
+            let checked = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Custom(&name)),
                 components,
                 CssImportance::Important,
             )
             .unwrap();
             let CssExpansion::Contributions(CssContributions::Custom(contribution)) =
-                expand_declaration(&checked).unwrap()
+                checked.expand().unwrap()
             else {
                 panic!("custom global contribution");
             };
@@ -1087,11 +1098,15 @@ fn main() {
     custom_properties_preserve_symbolic_values_and_occurrences();
 }
 
-fn exact_literal(component: Option<&surgeist_css::CssComponentValue>, css: &str) -> bool {
-    use surgeist_css::{CssComponentValueRef as Component, CssValueTokenRef as Token};
-    let expected = surgeist_css::CssComponentValue::try_token(css).unwrap();
+fn exact_literal(
+    component: Option<&surgeist_css::component::CssComponentValue>,
+    css: &str,
+) -> bool {
+    use surgeist_css::component::CssComponentValueRef as Component;
+    use surgeist_css::component::CssValueTokenRef as Token;
+    let expected = surgeist_css::component::CssComponentValue::try_token(css).unwrap();
     match (
-        component.map(surgeist_css::CssComponentValue::view),
+        component.map(surgeist_css::component::CssComponentValue::view),
         expected.view(),
     ) {
         (

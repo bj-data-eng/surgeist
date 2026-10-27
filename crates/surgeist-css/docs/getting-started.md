@@ -24,10 +24,11 @@ dependencies to be available in your local Cargo cache.
 2. Put this program in the consumer's `src/main.rs`:
 
    ```rust
-   use surgeist_css::{CssRecoveryAction, parse_sheet};
+   use surgeist_css::diagnostic::CssRecoveryAction;
+   use surgeist_css::CssParser;
 
    fn main() {
-       let report = parse_sheet(
+       let report = CssParser::default().parse_sheet(
            ".before { color: red; } @unknown value; .after { color: blue; }",
        );
        assert_eq!(report.syntax().rules().len(), 2);
@@ -41,7 +42,7 @@ dependencies to be available in your local Cargo cache.
    exactly one `DropAtRule` diagnostic. The report is recovered, so `is_clean()`
    is false even though every retained rule is valid.
 
-The example follows the public [stylesheet recovery documentation](../src/lib.rs).
+The example follows the compiled stylesheet task in the [crate documentation](../src/lib.rs); `CssParser` is a crate-root item and everything else is reached through its domain module, here `diagnostic`.
 It does not evaluate or apply the retained styles.
 
 ## Verify an existing checkout

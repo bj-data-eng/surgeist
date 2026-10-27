@@ -1,26 +1,15 @@
 //! Raw literal family preludes through the native feature-value grammar.
-use super::{StyleContextCaptures, fragments, recovery::RecoveryState, syntax_bridge};
-use crate::*;
+use super::recovery::RecoveryState;
+use super::{fragments, syntax_bridge};
+use crate::component::values::CssComponentValueErrorKind;
+use crate::component::{CssComponentValueError, CssComponentValueLimits, CssValueOrigin};
+use crate::diagnostic::CssRecoveryAction;
+use crate::parser::recovery::StyleContextCaptures;
+use crate::rule::font_feature_values::CssFontFeatureValuesFamilyList;
+use crate::source::CssParsedOrigin;
+use crate::{CssParseReport, CssParserContext};
 use cssparser::{Parser, ParserInput};
 
-/// Parses one complete nonempty nongeneric literal-family prelude, without
-/// constructing an enclosing rule. Retention is independent of report cleanliness.
-#[must_use]
-pub fn parse_font_feature_values_family_list(
-    source: &str,
-) -> CssParseReport<Option<CssFontFeatureValuesFamilyList>> {
-    parse_font_feature_values_family_list_with_limits(source, CssComponentValueLimits::default())
-}
-/// Charges the complete original input once, including trivia and later members.
-/// Syntax rejection and resource exhaustion both return `None`, distinguished
-/// by typed diagnostics. Native valid EOF recovery can retain a list with notes.
-#[must_use]
-pub fn parse_font_feature_values_family_list_with_limits(
-    source: &str,
-    limits: CssComponentValueLimits,
-) -> CssParseReport<Option<CssFontFeatureValuesFamilyList>> {
-    parse_with_context(source, limits, CssParserContext::default())
-}
 pub(crate) fn parse_with_context(
     source: &str,
     limits: CssComponentValueLimits,
@@ -60,7 +49,7 @@ pub(crate) fn parse_with_context(
                     let origin = CssParsedOrigin::from_range(&snapshot, range)
                         .expect("native member source range");
                     origins.try_reserve(1).map_err(|_| {
-                        crate::error::invalid_component_value(
+                        crate::diagnostic::error::invalid_component_value(
                             location,
                             CssComponentValueError::new(
                                 CssComponentValueErrorKind::CapacityOverflow,
@@ -72,7 +61,9 @@ pub(crate) fn parse_with_context(
                     Ok(())
                 },
             )?;
-            input.expect_exhausted().map_err(crate::error::basic)?;
+            input
+                .expect_exhausted()
+                .map_err(crate::diagnostic::error::basic)?;
             Ok(families)
         })();
         match result {

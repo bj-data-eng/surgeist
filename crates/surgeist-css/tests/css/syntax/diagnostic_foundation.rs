@@ -1,6 +1,5 @@
-use surgeist_css::{
-    CssParseReport, CssRecoveryAction, CssRecoveryDiagnostic, CssValidationFailure,
-};
+use surgeist_css::diagnostic::{CssRecoveryAction, CssRecoveryDiagnostic};
+use surgeist_css::{CssParseReport, CssValidationFailure};
 
 fn inspect_report(report: &CssParseReport<usize>) {
     let _: &usize = report.syntax();

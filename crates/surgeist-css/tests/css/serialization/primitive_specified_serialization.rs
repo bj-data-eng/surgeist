@@ -6,21 +6,34 @@
 //! Transforms1 2019-02-14 #propdef-transform-box; Compositing1 2024-03-21 #propdef-mix-blend-mode, #propdef-isolation.
 //! These functional tests accompany new specified-text APIs; broader grammar admission is separate.
 use crate::css::support::serialization_limits::assert_node_limits;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::background::CssBlendMode;
+use surgeist_css::values::common::CssBoxEdgeKeyword;
+use surgeist_css::values::effects::CssIsolation;
+use surgeist_css::values::image::{CssImageRendering, CssObjectFit};
+use surgeist_css::values::text::{
+    CssTextDecorationStyle, CssTextTransform, CssTextTransformCase, CssTextTransformSet,
+    CssTextWrap, CssTextWrapMode, CssTextWrapStyle, CssWhiteSpace, CssWhiteSpaceCollapse,
+    CssWhiteSpaceKeyword, CssWordBreak,
+};
+use surgeist_css::values::transform::CssTransformBox;
+use surgeist_css::values::ui::{CssPointerEvents, CssResize, CssUserSelect};
 
 macro_rules! cases {
     ($property:literal, $view:ident, $accessor:ident, [$(($value:expr, $expected:literal)),+ $(,)?]) => {
         for (value, expected) in [$(($value, $expected)),+] {
-            assert_eq!(value.serialize_specified().unwrap(), expected);
-            assert_node_limits(expected, 1, |limits| value.serialize_specified_with_limits(limits));
+            assert_eq!(value.serialize_specified(Default::default()).unwrap(), expected);
+            assert_node_limits(expected, 1, |limits| value.serialize_specified(limits));
             let authored = expected.to_ascii_uppercase();
-            let report = parse_declaration(&format!("{}:{}!important", $property, authored));
+            let report = CssDeclaration::parse(&CssParser::default(), &format!("{}:{}!important", $property, authored));
             assert!(report.is_clean(), "{}:{}: {:?}", $property, authored, report.diagnostics());
             let declaration = report.syntax().as_ref().unwrap();
             let CssKnownPropertyValueRef::$view(wrapper) = declaration.known().unwrap().property_value().unwrap()
             else { panic!("expected typed {}", $property); };
             assert_eq!(wrapper.$accessor(), &value);
-            assert_eq!(wrapper.$accessor().serialize_specified().unwrap(), expected);
+            assert_eq!(wrapper.$accessor().serialize_specified(Default::default()).unwrap(), expected);
             assert_eq!(wrapper.as_css(), authored);
             assert_eq!(declaration.importance(), CssImportance::Important);
         }
@@ -176,7 +189,7 @@ fn image_rendering_represented_states_emit_canonical_keywords() {
     cases!(
         "image-rendering",
         ImageRendering,
-        rendering,
+        value,
         [
             (CssImageRendering::Auto, "auto"),
             (CssImageRendering::CrispEdges, "crisp-edges"),
@@ -190,7 +203,7 @@ fn object_fit_represented_states_emit_canonical_keywords() {
     cases!(
         "object-fit",
         ObjectFit,
-        fit,
+        value,
         [
             (CssObjectFit::Fill, "fill"),
             (CssObjectFit::Contain, "contain"),
@@ -235,7 +248,7 @@ fn resize_represented_states_emit_canonical_keywords() {
     cases!(
         "resize",
         Resize,
-        resize,
+        value,
         [
             (CssResize::None, "none"),
             (CssResize::Both, "both"),
@@ -250,7 +263,7 @@ fn isolation_represented_states_emit_canonical_keywords() {
     cases!(
         "isolation",
         Isolation,
-        isolation,
+        value,
         [
             (CssIsolation::Auto, "auto"),
             (CssIsolation::Isolate, "isolate"),
@@ -263,7 +276,7 @@ fn blend_mode_represented_states_emit_canonical_keywords() {
     cases!(
         "mix-blend-mode",
         MixBlendMode,
-        mode,
+        value,
         [
             (CssBlendMode::Normal, "normal"),
             (CssBlendMode::Darken, "darken"),
@@ -290,7 +303,7 @@ fn transform_box_checked_edges_emit_canonical_keywords() {
     cases!(
         "transform-box",
         TransformBox,
-        reference_box,
+        value,
         [
             (
                 CssTransformBox::try_new(CssBoxEdgeKeyword::ContentBox).unwrap(),
@@ -318,7 +331,8 @@ fn transform_box_checked_edges_emit_canonical_keywords() {
 
 #[test]
 fn escaped_keyword_identity_canonicalizes_without_changing_authored_text() {
-    let report = parse_declaration(r"object-fit:s\63 ale-down!important");
+    let report =
+        CssDeclaration::parse(&CssParser::default(), r"object-fit:s\63 ale-down!important");
     assert!(report.is_clean());
     let declaration = report.syntax().as_ref().unwrap();
     let CssKnownPropertyValueRef::ObjectFit(wrapper) =
@@ -326,7 +340,13 @@ fn escaped_keyword_identity_canonicalizes_without_changing_authored_text() {
     else {
         panic!("object-fit");
     };
-    assert_eq!(wrapper.fit().serialize_specified().unwrap(), "scale-down");
+    assert_eq!(
+        wrapper
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "scale-down"
+    );
     assert_eq!(wrapper.as_css(), r"s\63 ale-down");
     assert_eq!(declaration.importance(), CssImportance::Important);
 }

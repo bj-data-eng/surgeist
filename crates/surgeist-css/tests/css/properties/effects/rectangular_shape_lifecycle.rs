@@ -8,7 +8,18 @@
 
 use crate::css::support::property_admission::assert_checked_matches_diagnostic;
 use crate::css::support::property_admission::validated_declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::effects::CssClipPath;
 
 fn clip(source: &CssDeclaration) -> &CssClipPath {
     let CssKnownPropertyValueRef::ClipPath(value) =
@@ -32,20 +43,31 @@ fn clip_path_declaration(value: &str) -> CssDeclaration {
 
 fn accept(authored: &str, expected: &str) {
     let source = clip_path_declaration(authored);
-    assert_eq!(clip(&source).serialize_specified().unwrap(), expected);
-    let components = parse_component_values(authored).unwrap();
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::ClipPath),
+    assert_eq!(
+        clip(&source)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
+    let components = CssComponentValues::parse(&CssParser::default(), authored).unwrap();
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ClipPath)),
         components.clone(),
         CssImportance::Important,
     )
     .unwrap_or_else(|error| panic!("{authored}: {error:?}"));
     assert_eq!(checked.value_components(), &components);
     assert_eq!(checked.importance(), CssImportance::Important);
-    assert_eq!(clip(&checked).serialize_specified().unwrap(), expected);
+    assert_eq!(
+        clip(&checked)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     for declaration in [&source, &checked] {
         let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-            expand_declaration(declaration).unwrap()
+            declaration.expand().unwrap()
         else {
             panic!("ordinary rectangle terminal")
         };
@@ -59,7 +81,10 @@ fn accept(authored: &str, expected: &str) {
         let CssLonghandValueRef::ClipPath(value) = item.ordinary_value().unwrap().view() else {
             panic!("typed rectangle terminal")
         };
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 
@@ -190,7 +215,7 @@ fn reject(value: &str) {
     let prefix = "/*😀*/ ";
     let unit = format!("clip-path:{value};");
     let source = format!("{prefix}{unit} color:blue");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     let [sibling] = report.syntax().as_slice() else {
         panic!("only sibling survives {source}: {:?}", report.syntax())
     };
@@ -226,7 +251,11 @@ fn reject(value: &str) {
         source[..byte].encode_utf16().count()
     );
     assert_eq!(
-        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     assert_checked_matches_diagnostic(CssKnownProperty::ClipPath, value, diagnostic);
@@ -301,7 +330,7 @@ fn malformed_round_arity_slash_range_and_placement_recover_once() {
 #[test]
 fn raw_rect_function_origins_distinguish_opener_closer_and_coordinate_tokens() {
     let source = "/*😀*/ clip-path:ReCt(auto -1e-999px calc(10% - 2px) 4% round 0)!important";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let component = &report.syntax()[0].value_components().items()[0];
     let CssComponentValueRef::Function(function) = component.view() else {
@@ -389,10 +418,11 @@ fn assert_origin(origin: &CssValueOrigin, source: &str, text: &str, start: usize
 
 #[test]
 fn rectangle_pending_reentry_checks_full_grammar_and_preserves_replacement_origins() {
-    let report = parse_style_attribute("/*😀*/ clip-path:var(--rectangle)!important");
+    let report =
+        CssParser::default().parse_block_contents("/*😀*/ clip-path:var(--rectangle)!important");
     assert!(report.is_clean());
     let source = &report.syntax()[0];
-    let CssExpansion::Pending(pending) = expand_declaration(source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending rectangle")
     };
     for invalid in [
@@ -401,20 +431,22 @@ fn rectangle_pending_reentry_checks_full_grammar_and_preserves_replacement_origi
         "xywh(0 0 -1e-999px 2px)",
         "xywh(0 0 1px 2px round / 0)",
     ] {
-        assert!(matches!(
+        assert!(
             pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
     }
-    assert_eq!(
+    assert!(
         pending
-            .reenter(parse_component_values("rect(var(--again) 2px 3px 4px)").unwrap())
+            .reenter(
+                CssComponentValues::parse(&CssParser::default(), "rect(var(--again) 2px 3px 4px)")
+                    .unwrap()
+            )
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     for (authored, expected) in [
         (
@@ -427,7 +459,7 @@ fn rectangle_pending_reentry_checks_full_grammar_and_preserves_replacement_origi
         ),
         ("xywh(1%2%3%4%)", "xywh(1% 2% 3% 4%)"),
     ] {
-        let replacement = parse_component_values(authored).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), authored).unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
             else {
@@ -447,10 +479,13 @@ fn rectangle_pending_reentry_checks_full_grammar_and_preserves_replacement_origi
             let CssLonghandValueRef::ClipPath(value) = item.ordinary_value().unwrap().view() else {
                 panic!("clip-path replacement")
             };
-            assert_eq!(value.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
         }
     }
-    let replacement = parse_component_values("inherit").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "inherit").unwrap();
     let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("global terminal")
     };
@@ -469,9 +504,9 @@ fn rectangle_pending_reentry_checks_full_grammar_and_preserves_replacement_origi
 #[test]
 fn normalization_preserves_rectangle_family_importance_and_surviving_order() {
     let source = ".a{clip-path:rect(auto -2px 3% 4px)!important;clip-path:xywh(0 0 -1px 2px);clip-path:border-box xywh(-1px 2% 3px 4px round 0);clip-path:inherit;clip-path:var(--rectangle)}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 1, "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -530,7 +565,7 @@ fn normalization_preserves_rectangle_family_importance_and_surviving_order() {
                     panic!("rectangle")
                 };
                 assert_eq!(
-                    value.serialize_specified().unwrap(),
+                    value.serialize_specified(Default::default()).unwrap(),
                     if order == 0 {
                         "rect(auto -2px 3% 4px)"
                     } else {

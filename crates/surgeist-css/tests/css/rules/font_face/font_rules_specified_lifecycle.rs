@@ -5,15 +5,16 @@ use crate::css::support::descriptor_phases;
 use crate::css::support::rules::clean_sheet as sheet;
 use descriptor_phases::*;
 
-use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue as Authored, CssFontDisplay,
-    CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Value,
-    CssFontFeatureValueKind as BlockKind, CssFontFeatureValuesItem as Item,
-    CssFontFeatureValuesRule, CssNormalizedItem, CssRule, CssRuleContextKindRef,
-    CssSpecifiedRuleSerializationErrorKind as RuleError,
-    CssSpecifiedValueSerializationErrorKind as ValueError,
-    CssSpecifiedValueSerializationLimits as Limits, normalize_sheet,
-};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue as Authored;
+use surgeist_css::rule::font_face::CssFontDisplay;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind as Kind;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorValue as Value;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValueKind as BlockKind;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValuesItem as Item;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValuesRule;
+use surgeist_css::serialization::CssSerializationLimits as Limits;
 
 fn features(rule: &CssRule) -> &CssFontFeatureValuesRule {
     let CssRule::FontFeatureValues(rule) = rule else {
@@ -60,7 +61,9 @@ fn font_face_emits_effective_descriptors_in_canonical_relative_order() {
     }"#,
     );
     let before = input.clone();
-    let output = input.rules()[0].to_specified_css().unwrap();
+    let output = input.rules()[0]
+        .serialize_specified(Default::default())
+        .unwrap();
     let reparsed = sheet(&output);
     let [CssRule::FontFace(face)] = reparsed.rules() else {
         panic!("font-face")
@@ -86,7 +89,10 @@ fn font_face_emits_effective_descriptors_in_canonical_relative_order() {
     let Authored::Ordinary(Value::FontWeight(weight)) = record.value() else {
         panic!("weight")
     };
-    assert_eq!(weight.serialize_specified().unwrap(), "600");
+    assert_eq!(
+        weight.serialize_specified(Default::default()).unwrap(),
+        "600"
+    );
     assert_eq!(input, before);
 }
 
@@ -95,7 +101,9 @@ fn empty_and_partial_font_faces_emit_only_present_descriptors() {
     for source in ["@font-face {}", "@font-face { font-weight: 500; }"] {
         let input = sheet(source);
         let before = input.clone();
-        let output = input.rules()[0].to_specified_css().unwrap();
+        let output = input.rules()[0]
+            .serialize_specified(Default::default())
+            .unwrap();
         let reparsed = sheet(&output);
         let [CssRule::FontFace(face)] = reparsed.rules() else {
             panic!("font-face")
@@ -127,7 +135,9 @@ fn all_seven_feature_blocks_and_outer_display_round_trip() {
     }"#,
     );
     let before = input.clone();
-    let output = input.rules()[0].to_specified_css().unwrap();
+    let output = input.rules()[0]
+        .serialize_specified(Default::default())
+        .unwrap();
     let reparsed = sheet(&output);
     let original = features(&input.rules()[0]);
     let emitted = features(&reparsed.rules()[0]);
@@ -157,7 +167,9 @@ fn feature_blocks_merge_last_names_in_last_occurrence_order() {
     }",
     );
     let before = input.clone();
-    let output = input.rules()[0].to_specified_css().unwrap();
+    let output = input.rules()[0]
+        .serialize_specified(Default::default())
+        .unwrap();
     let reparsed = sheet(&output);
     let emitted = features(&reparsed.rules()[0]);
     assert_eq!(
@@ -197,7 +209,7 @@ fn sheet_composes_fonts_in_source_order_with_atomic_output_byte_limits() {
         @font-face { font-family: Other; }",
     );
     let before = input.clone();
-    let output = input.to_specified_css().unwrap();
+    let output = input.serialize_specified(Default::default()).unwrap();
     let reparsed = sheet(&output);
     assert!(matches!(
         reparsed.rules(),
@@ -210,19 +222,19 @@ fn sheet_composes_fonts_in_source_order_with_atomic_output_byte_limits() {
     let pieces = input
         .rules()
         .iter()
-        .map(|rule| rule.to_specified_css().unwrap())
+        .map(|rule| rule.serialize_specified(Default::default()).unwrap())
         .collect::<Vec<_>>();
     assert_eq!(output, pieces.join("\n"));
     assert_eq!(
         input
-            .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, output.len()))
+            .serialize_specified(Limits::new(usize::MAX, usize::MAX, output.len()))
             .unwrap(),
         output
     );
     let error = input
-        .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, output.len() - 1))
+        .serialize_specified(Limits::new(usize::MAX, usize::MAX, output.len() - 1))
         .unwrap_err();
-    assert_eq!(error.kind(), RuleError::Resource(ValueError::ByteLimit));
+    assert!(error.is_byte_limit(), "{error:?}");
     assert_eq!(error.rule_index(), Some(2));
     assert_eq!(input, before);
 }
@@ -248,7 +260,7 @@ fn authored_duplicates_provenance_and_normalized_payloads_are_retained() {
     assert!(feature.items().iter().all(|item| matches!(item,
         Item::Block(block) if block.position().is_some()
             && block.definitions().iter().all(|definition| definition.position().is_some()))));
-    let normalized = normalize_sheet(&input).unwrap();
+    let normalized = input.normalize(Default::default()).unwrap();
     let contexts = normalized
         .items()
         .iter()
@@ -269,7 +281,7 @@ fn generic_group_composes_the_font_rule_provider() {
     let input = sheet("@media all { @font-face { font-family: Demo; } }");
     let before = input.clone();
     assert_eq!(
-        input.to_specified_css().unwrap(),
+        input.serialize_specified(Default::default()).unwrap(),
         "@media all { @font-face { font-family: Demo; } }"
     );
     assert_eq!(input, before);

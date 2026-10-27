@@ -9,10 +9,12 @@
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types
 //! https://www.w3.org/TR/2023/CRD-css-easing-1-20230213/#cubic-bezier-easing-functions
 
-use surgeist_css::{CssKnownProperty, CssRecoveryAction, parse_style_attribute};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::CssKnownProperty;
 
 fn assert_clean_typed_property(source: &str, expected: CssKnownProperty) {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(
         report.is_clean(),
         "{source}: expected clean authored admission, got {:?}",
@@ -29,7 +31,7 @@ fn assert_clean_typed_property(source: &str, expected: CssKnownProperty) {
 
 fn assert_rejected_property_preserves_neighbor(declaration: &str) {
     let source = format!("{declaration}; color: red");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(
         !report.is_clean(),
         "{source}: expected ordinary grammar rejection"

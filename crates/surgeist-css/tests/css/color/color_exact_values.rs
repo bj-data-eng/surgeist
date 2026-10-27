@@ -7,7 +7,23 @@ use std::error::Error as _;
 
 use crate::css::support::color_components::token as component;
 use crate::css::support::color_property::color_property_value as wrapper;
-use surgeist_css::*;
+use surgeist_css::color::{
+    CssColorComponent, CssColorHue, CssColorMixPercentage, CssColorNumberLiteral,
+    CssColorPercentageLiteral, CssRelativeColorEnvironment, CssRelativeColorExpressionValue,
+    CssRelativeColorResultDomain,
+};
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssAngle, CssAngleUnit, CssCalculationExpressionRef, CssCalculationType, CssNumericLiteral,
+};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::common::CssBoxSideKind;
+use surgeist_css::{CssParser, CssParserContext};
 
 fn number<'a>(value: &'a CssColorComponent, expected: &str) -> &'a CssColorNumberLiteral {
     let CssColorComponent::Number(value) = value else {
@@ -39,7 +55,7 @@ fn checked_literal_wrappers_preserve_domains_units_and_origins() {
         ("1e100d\\65 g", CssAngleUnit::Degrees),
     ] {
         let supplied = component(text);
-        let value = CssAngleLiteral::try_from_component(supplied.clone()).unwrap();
+        let value = CssNumericLiteral::<CssAngle>::try_from_component(supplied.clone()).unwrap();
         assert_eq!(value.unit(), unit);
         assert_eq!(value.numeric().representation(), "1e100");
         assert_eq!(value.component(), &supplied);
@@ -56,20 +72,21 @@ fn wrong_literal_domains_report_the_original_invalid_token() {
     for text in ["1%", "1deg", "red", "calc(1)"] {
         let supplied = component(text);
         let error = CssColorNumberLiteral::try_from_component(supplied.clone()).unwrap_err();
-        assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+        assert!(error.is_invalid_token(), "{error:?}");
         assert_eq!(error.origin(), supplied.origin());
     }
     for text in ["1", "1deg", "none"] {
         let supplied = component(text);
         let error = CssColorPercentageLiteral::try_from_component(supplied.clone()).unwrap_err();
-        assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+        assert!(error.is_invalid_token(), "{error:?}");
         assert_eq!(error.origin(), supplied.origin());
     }
     for text in ["1", "1%", "1px"] {
         let supplied = component(text);
-        let error = CssAngleLiteral::try_from_component(supplied.clone()).unwrap_err();
-        assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
-        assert_eq!(error.origin(), supplied.origin());
+        let error =
+            CssNumericLiteral::<CssAngle>::try_from_component(supplied.clone()).unwrap_err();
+        assert!(error.is_root_domain_mismatch(), "{error:?}");
+        assert_eq!(error.origin(), Some(supplied.origin()));
     }
 }
 
@@ -96,20 +113,28 @@ fn ordinary_huge_and_nonzero_underflow_channels_remain_exact() {
 fn checked_mixed_origin_graph_keeps_the_actual_scalar_sources() {
     let mut children = vec![CssComponentValue::try_number("0.1").unwrap()];
     children.extend(
-        parse_component_values("1e100 0")
+        CssComponentValues::parse(&CssParser::default(), "1e100 0")
             .unwrap()
             .items()
             .iter()
             .cloned(),
     );
-    let children = CssComponentValues::try_new(children).unwrap();
-    let values = CssComponentValues::try_new(vec![
-        CssComponentValue::try_function("rgb", children).unwrap(),
-    ])
+    let children = CssComponentValues::try_new(children, Default::default()).unwrap();
+    let values = CssComponentValues::try_new(
+        vec![CssComponentValue::try_function("rgb", children).unwrap()],
+        Default::default(),
+    )
     .unwrap();
-    assert_eq!(values.serialize().unwrap().as_css(), "rgb(0.1/**/1e100 0)");
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
+    assert_eq!(
+        values
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "rgb(0.1/**/1e100 0)"
+    );
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
         values.clone(),
         CssImportance::Normal,
     )
@@ -189,9 +214,10 @@ fn formerly_overflowing_relative_slots_keep_their_typed_environment() {
         ("rgb(from red 1e999deg g b)", "1e999deg"),
     ] {
         assert_color_value_rejected(
-            parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Color),
-                parse_component_values(text).unwrap(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 CssImportance::Normal,
             ),
             CssKnownProperty::Color,
@@ -247,14 +273,14 @@ fn mix_weights_distinguish_exact_range_errors_from_component_errors() {
     ] {
         let supplied = component(&text);
         let error = CssColorMixPercentage::try_from_component(supplied.clone()).unwrap_err();
-        assert_eq!(error.kind(), CssColorScalarErrorKind::OutOfRange);
-        assert_eq!(error.origin(), supplied.origin());
+        assert!(error.is_out_of_range(), "{error:?}");
+        assert_eq!(error.origin(), Some(supplied.origin()));
         assert!(error.source().is_none());
     }
     let supplied = CssComponentValue::try_number("25").unwrap();
     let error = CssColorMixPercentage::try_from_component(supplied).unwrap_err();
-    assert_eq!(error.kind(), CssColorScalarErrorKind::InvalidComponent);
-    assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
+    assert!(error.component_error().is_some(), "{error:?}");
+    assert_eq!(error.origin(), Some(&CssValueOrigin::Programmatic));
     assert!(error.source().is_some());
 }
 
@@ -342,7 +368,7 @@ fn percentage_slots_retain_the_authored_coefficient_without_scaling() {
 #[test]
 fn border_color_assignments_retain_exact_nested_colors() {
     for text in ["hsl(0 30% 50%)", "color-mix(in srgb, red 0.1%, blue)"] {
-        let report = parse_style_attribute(&format!("border-color:{text}"));
+        let report = CssParser::default().parse_block_contents(format!("border-color:{text}"));
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let CssKnownPropertyValueRef::BorderColor(value) = report.syntax()[0]
             .known()
@@ -354,8 +380,8 @@ fn border_color_assignments_retain_exact_nested_colors() {
         };
         let colors = value.value();
         assert_eq!(colors.kind(), CssBoxSideKind::Physical);
-        assert_eq!(colors.authored_values().len(), 1);
-        let [top, right, bottom, left] = colors.assigned_values();
+        assert_eq!(colors.authored().len(), 1);
+        let [top, right, bottom, left] = colors.assigned();
         assert_eq!(top, right);
         assert_eq!(top, bottom);
         assert_eq!(top, left);
@@ -373,7 +399,7 @@ fn border_color_assignments_retain_exact_nested_colors() {
             assert_eq!(weight.literal().numeric().representation(), "0.1");
         }
     }
-    let report = parse_style_attribute("border-color:hsl(0 25% 50%)");
+    let report = CssParser::default().parse_block_contents("border-color:hsl(0 25% 50%)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BorderColor(value) = report.syntax()[0]
         .known()
@@ -384,11 +410,9 @@ fn border_color_assignments_retain_exact_nested_colors() {
         panic!("border colors")
     };
     assert!(
-        matches!(value.value().assigned_values()[0].hsl_value().unwrap().saturation(), CssColorComponent::Percentage(value) if value.numeric().representation() == "25")
+        matches!(value.value().assigned()[0].hsl_value().unwrap().saturation(), CssColorComponent::Percentage(value) if value.numeric().representation() == "25")
     );
-    let report = parse_style_attribute(
-        "border-color: red hsl(0 30% 50%) color-mix(in srgb, blue 0.1%, green) currentcolor !important",
-    );
+    let report = CssParser::default().parse_block_contents("border-color: red hsl(0 30% 50%) color-mix(in srgb, blue 0.1%, green) currentcolor !important");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax()[0].importance(), CssImportance::Important);
     let CssKnownPropertyValueRef::BorderColor(value) = report.syntax()[0]
@@ -399,7 +423,7 @@ fn border_color_assignments_retain_exact_nested_colors() {
     else {
         panic!("border colors")
     };
-    let [top, right, bottom, left] = value.value().assigned_values();
+    let [top, right, bottom, left] = value.value().assigned();
     assert_eq!(top.named().unwrap().name(), "red");
     assert!(
         matches!(right.hsl_value().unwrap().saturation(), CssColorComponent::Percentage(value)
@@ -464,12 +488,17 @@ fn decimal_proof_capacity_does_not_limit_exact_literal_admission() {
     }
     let source = "rgb(1e100 0 0)";
     let limits = CssComponentValueLimits::try_new(256, usize::MAX, source.len() - 1).unwrap();
-    let error = parse_component_values_with_limits(source, limits).unwrap_err();
-    assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
+    let error =
+        CssComponentValues::parse(&CssParser::new(CssParserContext::default(), limits), source)
+            .unwrap_err();
+    assert!(error.is_byte_limit(), "{error:?}");
     let limits = CssComponentValueLimits::try_new(256, usize::MAX, source.len()).unwrap();
-    let values = parse_component_values_with_limits(source, limits).unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
+    let values =
+        CssComponentValues::parse(&CssParser::new(CssParserContext::default(), limits), source)
+            .unwrap();
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
         values,
         CssImportance::Normal,
     )
@@ -573,19 +602,19 @@ fn deep_mixed_color_graph_retains_exact_leaf_at_the_shared_depth_boundary() {
         }
     }
     let text = nested(257);
-    let report = parse_style_attribute(&format!("color:{text};opacity:.5"));
-    let [diagnostic] = report.diagnostics() else {
-        panic!("one depth failure")
-    };
-    assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
-    assert_eq!(report.syntax().len(), 1);
-    assert_eq!(
-        report.syntax()[0].known().unwrap().property(),
-        CssKnownProperty::Opacity
+    let contents = format!("color:{text};opacity:.5");
+    let report = CssParser::default().parse_block_contents(&contents);
+    // Block contents charges the component limits for the whole input.
+    assert!(report.syntax().is_empty());
+    crate::css::support::parse_report::assert_contents_refused(
+        &report,
+        &contents,
+        "exact depth 257",
     );
     // Checked property input cannot bypass the component graph's same ceiling.
-    assert_eq!(
-        parse_component_values(&text).unwrap_err().kind(),
-        CssComponentValueErrorKind::NestingLimit
+    assert!(
+        CssComponentValues::parse(&CssParser::default(), &text)
+            .unwrap_err()
+            .is_nesting_limit()
     );
 }

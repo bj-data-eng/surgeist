@@ -8,7 +8,24 @@ use crate::css::support::color_and_selector_fixtures::{
     assert_selector_report_rejected, assert_unrepresentable_construction,
     originating_compound as compound,
 };
-use surgeist_css::*;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix, CssRule, CssSheet};
+use surgeist_css::selector::{
+    CssComplexSelector, CssNamespaceConstraint, CssNamespaceContext, CssParsedStyleSelectors,
+    CssPartName, CssPartNameList, CssPseudoClass, CssPseudoElement, CssPseudoElementSegment,
+    CssPseudoElementSequence, CssPseudoSelectorList, CssScopeSelectorList, CssSelector,
+    CssSelectorList, CssStyleSelector, CssStyleSelectorContext, CssUnknownWebkitPseudoElement,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn unknown(value: &CssSelector) -> &CssUnknownWebkitPseudoElement {
     let [CssPseudoElementSegment::PseudoElement(CssPseudoElement::UnknownWebkit(value))] =
@@ -22,12 +39,18 @@ fn unknown(value: &CssSelector) -> &CssUnknownWebkitPseudoElement {
 fn exact(source: &str, expected: &str) -> CssSelector {
     let value = selector(source);
     let before = value.clone();
-    assert_eq!(value.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(value, before);
     assert_eq!(selector(expected), value);
-    let list = CssSelectorList::try_new(vec![value.clone()]).unwrap();
+    let list = CssSelectorList::try_new(vec![value.clone()], Default::default()).unwrap();
     assert_eq!(list.selectors(), std::slice::from_ref(&value));
-    assert_eq!(list.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        list.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     value
 }
 
@@ -46,7 +69,10 @@ fn autofill_aliases_have_the_standard_identity_and_canonical_output() {
     }
     let standard = selector("input:autofill");
     assert_eq!(selector("input:-WEBKIT-AUTOFILL"), standard);
-    assert_eq!(standard.to_specified_css().unwrap(), "input:autofill");
+    assert_eq!(
+        standard.serialize_specified(Default::default()).unwrap(),
+        "input:autofill"
+    );
 }
 
 #[test]
@@ -82,9 +108,9 @@ fn unknown_webkit_names_are_ascii_canonical_decoded_identifiers_not_function_tok
     }
     for invalid in ["", "webkit-x", "-moz-x", ":-webkit-x", "-webkit-\0x"] {
         let error = CssUnknownWebkitPseudoElement::try_new(invalid).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssSelectorConstructionErrorKind::InvalidUnknownWebkitPseudoElementName
+        assert!(
+            error.is_invalid_unknown_webkit_pseudo_element_name(),
+            "{error:?}"
         );
     }
     for functional in ["::-webkit-x()", "::-WebKit-X(arg)", r"::-\77 ebkit-x()"] {
@@ -121,7 +147,7 @@ fn originating_compound_and_implied_universal_do_not_absorb_pseudo_suffix_condit
         Some(CssNamespacePrefix::try_new("Svg").unwrap()),
         CssNamespaceName::new("urn:svg"),
     )]);
-    let report = parse_selector("Svg|*::-WebKit-X", &context);
+    let report = CssSelector::parse(&CssParser::default(), "Svg|*::-WebKit-X", &context);
     assert!(report.is_clean(), "{report:?}");
     let value = report.syntax().as_ref().unwrap();
     let name = compound(value).type_selector().unwrap();
@@ -130,7 +156,10 @@ fn originating_compound_and_implied_universal_do_not_absorb_pseudo_suffix_condit
         name.namespace(),
         &CssNamespaceConstraint::Named(CssNamespacePrefix::try_new("Svg").unwrap())
     );
-    assert_eq!(value.to_specified_css().unwrap(), "Svg|*::-webkit-x");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "Svg|*::-webkit-x"
+    );
 }
 
 #[test]
@@ -262,10 +291,14 @@ fn generic_suffixes_are_admitted_and_part_permission_resets_after_unknown_segmen
     reject("::part(label)::-webkit-x:autofill");
     selector("::part(label)::-webkit-x:focus");
     let source = "::part(label)::-webkit-x:is(:autofill,:hover)";
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     let value = report.syntax().as_ref().unwrap();
     assert_eq!(
-        value.to_specified_css().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "::part(label)::-webkit-x:is(:hover)"
     );
     assert_selector_item_dropped(source, report, ":autofill");
@@ -278,7 +311,10 @@ fn legacy_colons_stay_pseudo_elements_and_function_adjacency_is_preserved() {
         let two = selector(&format!("::{name}"));
         assert_eq!(one, two);
         assert!(one.has_pseudo_elements());
-        assert_eq!(one.to_specified_css().unwrap(), format!("::{name}"));
+        assert_eq!(
+            one.serialize_specified(Default::default()).unwrap(),
+            format!("::{name}")
+        );
         reject(&format!(":not(:{name})"));
     }
     for invalid in [
@@ -327,25 +363,34 @@ fn all_current_pseudo_rows_reject_internal_and_sibling_combinators() {
         panic!("terminal pseudo complex")
     };
     assert_eq!(
-        CssComplexSelector::try_new(value.first().clone(), value.rest().to_vec()).unwrap(),
+        CssComplexSelector::try_new(
+            value.first().clone(),
+            value.rest().to_vec(),
+            Default::default()
+        )
+        .unwrap(),
         value
     );
     let wrong_first = value.rest()[0].selector().clone();
-    let error = CssComplexSelector::try_new(wrong_first, value.rest().to_vec()).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssSelectorConstructionErrorKind::NonTerminalPseudoElement { compound_index: 0 }
-    );
+    let error = CssComplexSelector::try_new(wrong_first, value.rest().to_vec(), Default::default())
+        .unwrap_err();
+    assert_eq!(error.non_terminal_pseudo_element(), Some(0));
 }
 
 #[test]
 fn strict_and_forgiving_contexts_preserve_pseudo_exclusion_and_original_function_diagnostics() {
     let vendor = selector("::-webkit-x");
-    assert_unrepresentable_construction(CssPseudoSelectorList::try_new(vec![vendor.clone()]));
+    assert_unrepresentable_construction(CssPseudoSelectorList::try_new(
+        vec![vendor.clone()],
+        Default::default(),
+    ));
     assert!(
-        CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(vendor.clone())]).is_none()
+        CssScopeSelectorList::try_new(vec![CssStyleSelector::Selector(vendor.clone())]).is_none()
     );
-    assert_unrepresentable_construction(CssPseudoSelectorList::try_new_forgiving(vec![vendor]));
+    assert_unrepresentable_construction(CssPseudoSelectorList::try_new_forgiving(
+        vec![vendor],
+        Default::default(),
+    ));
     for strict in [
         ":not(.Keep,::-webkit-x)",
         ":has(> ::-webkit-x)",
@@ -356,13 +401,17 @@ fn strict_and_forgiving_contexts_preserve_pseudo_exclusion_and_original_function
     }
     for function in ["is", "where"] {
         let source = format!(":{function}(::-webkit-x,.Keep)");
-        let report = parse_selector(&source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            &source,
+            &CssNamespaceContext::default(),
+        );
         assert_eq!(
             report
                 .syntax()
                 .as_ref()
                 .unwrap()
-                .to_specified_css()
+                .serialize_specified(Default::default())
                 .unwrap(),
             format!(":{function}(.Keep)")
         );
@@ -374,9 +423,15 @@ fn strict_and_forgiving_contexts_preserve_pseudo_exclusion_and_original_function
     let list = ".Keep,::-webkit-jkl(),.Tail";
     assert_selector_report_rejected(
         list,
-        parse_selector_list(list, &CssNamespaceContext::default()),
+        CssParsedStyleSelectors::parse(
+            &CssParser::default(),
+            list,
+            &CssNamespaceContext::default(),
+            CssStyleSelectorContext::Ordinary,
+        ),
     );
-    let scope = parse_sheet("@scope(::-webkit-x){.lost{color:red}}.after{color:blue}");
+    let scope =
+        CssParser::default().parse_sheet("@scope(::-webkit-x){.lost{color:red}}.after{color:blue}");
     assert!(matches!(scope.syntax().rules(), [CssRule::Style(_)]));
     assert!(
         scope
@@ -386,10 +441,10 @@ fn strict_and_forgiving_contexts_preserve_pseudo_exclusion_and_original_function
     );
 
     let raw = "/*😀*/\r\n/*é*/::-WeBkIt-JkL(x)";
-    let fragment = parse_selector(raw, &CssNamespaceContext::default());
+    let fragment = CssSelector::parse(&CssParser::default(), raw, &CssNamespaceContext::default());
     let rejected = format!("{raw}{{}}");
     let sheet_source = format!("{rejected}.after{{color:red}}");
-    let sheet = parse_sheet(&sheet_source);
+    let sheet = CssParser::default().parse_sheet(&sheet_source);
     assert!(fragment.syntax().is_none());
     let [CssRule::Style(after)] = sheet.syntax().rules() else {
         panic!("later valid sibling survives")
@@ -429,9 +484,12 @@ fn strict_and_forgiving_contexts_preserve_pseudo_exclusion_and_original_function
         );
         assert_eq!(diagnostic.span().start().byte_offset().value(), span_start);
         assert_eq!(diagnostic.span().end().byte_offset().value(), span_end);
-        let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-            panic!("structured selector failure")
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidSelector,
+            "structured selector failure"
+        );
         let token = detail.encountered().unwrap();
         assert_eq!(token.kind(), CssTokenKind::Function);
         assert_eq!(token.authored(), "-WeBkIt-JkL(");
@@ -442,10 +500,10 @@ fn strict_and_forgiving_contexts_preserve_pseudo_exclusion_and_original_function
 fn canonical_pseudos_survive_nested_scoped_normalization_and_original_supports_components() {
     let source = "/*😀*/.Parent:-WEBKIT-AUTOFILL{color:red;@supports selector(.probe::-WebKit-X){color:blue;& .child::-WebKit-Y:focus{color:green}}}@scope(.root){.scoped::-WebKit-Z:hover{color:black}}";
     let expected = ".Parent:autofill { color: red; @supports selector(.probe::-WebKit-X) { color: blue; & .child::-webkit-y:focus { color: green; } } }\n@scope (.root) { .scoped::-webkit-z:hover { color: black; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -465,7 +523,7 @@ fn canonical_pseudos_survive_nested_scoped_normalization_and_original_supports_c
             value
                 .source()
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css()
                 .trim(),
@@ -490,7 +548,10 @@ fn canonical_pseudos_survive_nested_scoped_normalization_and_original_supports_c
     assert!(child.parent().unwrap().same_context(parent));
     assert!(child.selectors()[0].selector().has_pseudo_elements());
     assert_eq!(
-        child.selectors()[0].selector().to_specified_css().unwrap(),
+        child.selectors()[0]
+            .selector()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "& .child::-webkit-y:focus"
     );
     assert!(declarations[3].selector_context().scope_context().is_some());
@@ -511,10 +572,13 @@ fn canonical_pseudos_survive_nested_scoped_normalization_and_original_supports_c
         })
         .unwrap();
     assert!(
-        matches!(supports.kind(), CssSupportsConditionKind::Selector(value) if value == &selector(".probe::-webkit-x"))
+        matches!(supports.kind(), CssConditionKind::Leaf(CssSupportsLeaf::Selector(value)) if value == &selector(".probe::-webkit-x"))
     );
     assert_eq!(
-        supports.serialize().unwrap().as_css(),
+        supports
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         " selector(.probe::-WebKit-X)"
     );
     let function = supports
@@ -538,37 +602,54 @@ fn canonical_pseudos_survive_nested_scoped_normalization_and_original_supports_c
         origin.span().end().byte_offset().value(),
         source.find("-WebKit-X").unwrap() + "-WebKit-X".len()
     );
-    let checked = CssSupportsCondition::try_from_components(
-        CssComponentValues::try_new(supports.components().to_vec()).unwrap(),
+    let checked = CssCondition::<CssSupportsLeaf>::try_from_components(
+        CssComponentValues::try_new(supports.components().to_vec(), Default::default()).unwrap(),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(&checked, supports);
-    assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     let reused = CssSheet::try_from_rules(report.syntax().rules().to_vec()).unwrap();
     assert_eq!(reused.rules(), report.syntax().rules());
-    assert_eq!(reused.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        reused.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(report, before);
     drop(report);
     assert_eq!(
         parent.selectors()[0].selector(),
         &selector(".Parent:autofill")
     );
-    let replay = parse_sheet(expected);
+    let replay = CssParser::default().parse_sheet(expected);
     assert!(replay.is_clean(), "{replay:?}");
-    assert_eq!(replay.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        replay
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     // Conditional 4 §2.1 (CRD 2025-09-04, #dfn-support-selector) supports a selector
     // only if it "doesn't contain unknown -webkit- pseudo-elements". CSS owns
     // the syntax: both conditions are `selector()` functions, and the checked
     // selector identifies the standard autofill alias and the symbolic unknown
     // vendor pseudo-element that a supports evaluator must treat as unsupported.
     let supported = |source: &str| {
-        let condition = CssSupportsCondition::try_from_components(
-            parse_component_values(source).unwrap(),
+        let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
             &CssNamespaceContext::default(),
+            Default::default(),
         )
         .unwrap();
-        let CssSupportsConditionKind::Selector(value) = condition.kind() else {
+        let CssConditionKind::Leaf(CssSupportsLeaf::Selector(value)) = condition.kind() else {
             panic!("{source}: selector() condition")
         };
         value.clone()
@@ -580,14 +661,15 @@ fn canonical_pseudos_survive_nested_scoped_normalization_and_original_supports_c
     assert!(vendor.has_pseudo_elements());
     assert_eq!(unknown(&vendor).as_str(), "-webkit-x");
     assert!(compound(&vendor).type_selector().is_none());
-    let invalid = CssSupportsCondition::try_from_components(
-        parse_component_values("selector(::-webkit-x())").unwrap(),
+    let invalid = CssCondition::<CssSupportsLeaf>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "selector(::-webkit-x())").unwrap(),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap();
     assert!(matches!(
         invalid.kind(),
-        CssSupportsConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(_))
     ));
 }
 
@@ -599,37 +681,42 @@ fn canonical_escaping_and_list_byte_budget_are_cumulative_and_atomic_for_checked
         selector("::-WebKit-ΔA"),
     ];
     let expected = r":autofill, ::-webkit-a\ b, ::-webkit-Δa";
-    let exact = CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
-    let list = CssSelectorList::try_new_with_limits(members.clone(), exact).unwrap();
+    let exact = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
+    let list = CssSelectorList::try_new(members.clone(), exact).unwrap();
     let before = list.clone();
-    assert_eq!(list.to_specified_css_with_limits(exact).unwrap(), expected);
-    let short =
-        CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1);
+    assert_eq!(list.serialize_specified(exact).unwrap(), expected);
+    let short = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1);
     for member in &members {
-        assert!(member.to_specified_css_with_limits(short).is_ok());
+        assert!(member.serialize_specified(short).is_ok());
     }
-    let error = CssSelectorList::try_new_with_limits(members.clone(), short).unwrap_err();
-    let CssSelectorConstructionErrorKind::Specified(error) = error.kind() else {
+    let error = CssSelectorList::try_new(members.clone(), short).unwrap_err();
+    let Some(error) = error.serialization_error() else {
         panic!("shared specified-byte construction failure")
     };
     assert_eq!(
-        error.kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+        serialization_failure(error),
+        SerializationFailure::ByteLimit
     );
-    assert_eq!(
-        list.to_specified_css_with_limits(short).unwrap_err().kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
-    );
+    assert!(list.serialize_specified(short).unwrap_err().is_byte_limit());
     assert_eq!(list, before);
-    assert_eq!(list.to_specified_css_with_limits(exact).unwrap(), expected);
-    assert_eq!(CssSelectorList::try_new(members).unwrap(), list);
-    let replay = parse_selector_list(expected, &CssNamespaceContext::default());
+    assert_eq!(list.serialize_specified(exact).unwrap(), expected);
+    assert_eq!(
+        CssSelectorList::try_new(members, Default::default()).unwrap(),
+        list
+    );
+    let replay = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
+        expected,
+        &CssNamespaceContext::default(),
+        CssStyleSelectorContext::Ordinary,
+    );
     assert!(replay.is_clean(), "{replay:?}");
     assert_eq!(
         replay
             .syntax()
             .as_ref()
             .unwrap()
+            .selectors()
             .selectors()
             .iter()
             .map(CssStyleSelector::selector)

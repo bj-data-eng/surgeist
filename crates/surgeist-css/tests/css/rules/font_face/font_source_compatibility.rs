@@ -5,10 +5,12 @@
 //! Decoded strings, authored technology order, descriptor positions, and recovery
 //! diagnostics are Surgeist contracts. This suite uses the existing public API.
 
-use surgeist_css::{
-    CssErrorCode, CssFontFaceSource, CssFontFaceUrlSource, CssFontFormatHint, CssFontTechHint,
-    CssParseReport, CssRecoveryAction, CssRule, CssSheet, parse_sheet, validate_sheet,
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::font_face::{
+    CssFontFaceSource, CssFontFaceUrlSource, CssFontFormatHint, CssFontTechHint,
 };
+use surgeist_css::rule::{CssRule, CssSheet};
+use surgeist_css::{CssParseReport, CssParser};
 
 fn url_sources(report: &CssParseReport<CssSheet>) -> Vec<&CssFontFaceUrlSource> {
     let [CssRule::FontFace(face), CssRule::Style(_)] = report.syntax().rules() else {
@@ -33,15 +35,21 @@ fn url_sources(report: &CssParseReport<CssSheet>) -> Vec<&CssFontFaceUrlSource> 
 
 fn clean_sources(value: &str) -> CssParseReport<CssSheet> {
     let source = format!("@font-face{{font-family:Demo;src:{value}}}.after{{color:red}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
-    assert_eq!(&validate_sheet(&source).unwrap(), report.syntax());
+    assert_eq!(
+        &CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .unwrap(),
+        report.syntax()
+    );
     let [CssRule::FontFace(face), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("expected the font face and following style rule");
     };
     assert_eq!(
         face.descriptors()
-            .effective(surgeist_css::CssFontFaceDescriptorKind::Src)
+            .effective(surgeist_css::rule::font_face::CssFontFaceDescriptorKind::Src)
             .unwrap()
             .position()
             .unwrap()
@@ -69,7 +77,7 @@ fn legacy_variation_strings_project_to_their_base_format_without_rewriting_autho
         };
         assert_eq!(
             url.format()
-                .and_then(surgeist_css::CssFontFormat::recognized_format),
+                .and_then(surgeist_css::rule::font_face::CssFontFormat::recognized_format),
             Some(expected),
             "{authored}"
         );
@@ -120,7 +128,7 @@ fn compatibility_matching_preserves_ascii_case_and_decodes_css_string_escapes() 
         };
         assert_eq!(
             url.format()
-                .and_then(surgeist_css::CssFontFormat::recognized_format),
+                .and_then(surgeist_css::rule::font_face::CssFontFormat::recognized_format),
             Some(expected),
             "{argument}"
         );
@@ -147,7 +155,7 @@ fn missing_and_unrecognized_format_hints_remain_distinct_authored_states() {
     for url in urls {
         assert_eq!(
             url.format()
-                .and_then(surgeist_css::CssFontFormat::recognized_format),
+                .and_then(surgeist_css::rule::font_face::CssFontFormat::recognized_format),
             None
         );
         assert!(url.tech().is_empty());
@@ -173,7 +181,7 @@ fn compatibility_does_not_trim_strings_fold_unicode_or_accept_arbitrary_variatio
         };
         assert_eq!(
             url.format()
-                .and_then(surgeist_css::CssFontFormat::recognized_format),
+                .and_then(surgeist_css::rule::font_face::CssFontFormat::recognized_format),
             None,
             "{authored}"
         );
@@ -194,7 +202,7 @@ fn legacy_format_projection_preserves_explicit_technology_order_and_repetition()
     };
     assert_eq!(
         url.format()
-            .and_then(surgeist_css::CssFontFormat::recognized_format),
+            .and_then(surgeist_css::rule::font_face::CssFontFormat::recognized_format),
         Some(CssFontFormatHint::Woff2)
     );
     assert_eq!(string_format!(url), "woff2-variations");
@@ -228,7 +236,7 @@ fn string_compatibility_does_not_expand_the_keyword_or_hint_function_grammar() {
         let source = format!(
             "@font-face{{font-family:Demo;src:url(first),{invalid},url(last)}}.after{{color:red}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_eq!(
             url_sources(&report)
                 .iter()
@@ -255,7 +263,11 @@ fn string_compatibility_does_not_expand_the_keyword_or_hint_function_grammar() {
             start + invalid.len()
         );
         assert_eq!(
-            validate_sheet(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }

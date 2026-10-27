@@ -4,34 +4,41 @@ use std::rc::Rc;
 
 use cssparser::{ParseError, Parser, ParserInput, Token};
 
-use crate::error::{Error, is_nesting_limit_error, nesting_limit};
+use crate::diagnostic::CssError;
+use crate::diagnostic::error::{is_nesting_limit_error, nesting_limit};
+use crate::rule::{CssNamespaceName, CssNamespacePrefix};
 use crate::source::CssSourcePosition;
-use crate::syntax::{CssNamespaceName, CssNamespacePrefix};
 
 use super::CssNamespaceBindings;
 
-pub(super) static IMPLEMENTED_RULES: &[crate::CssFeatureId] =
-    &[crate::CssFeatureId::new("official.rule.at-rule")];
+pub(super) static IMPLEMENTED_RULES: &[crate::diagnostic::CssFeatureId] =
+    &[crate::diagnostic::CssFeatureId::new(
+        "official.rule.at-rule",
+    )];
 
-pub(super) static IMPLEMENTED_QUALIFIED_RULES: &[crate::CssFeatureId] =
-    &[crate::CssFeatureId::new("official.qualified-rule.generic")];
+pub(super) static IMPLEMENTED_QUALIFIED_RULES: &[crate::diagnostic::CssFeatureId] =
+    &[crate::diagnostic::CssFeatureId::new(
+        "official.qualified-rule.generic",
+    )];
 
-pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::CssFeatureId] = &[
-    crate::CssFeatureId::new("official.value.rule-list"),
-    crate::CssFeatureId::new("official.value.style-block"),
+pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::diagnostic::CssFeatureId] = &[
+    crate::diagnostic::CssFeatureId::new("official.value.rule-list"),
+    crate::diagnostic::CssFeatureId::new("official.value.style-block"),
 ];
 
 pub(super) use crate::STRUCTURAL_NESTING_LIMIT;
 
 /// Domain replacement/admission must not publish a payload after a typed
 /// resource failure, including one recovered inside a member callback.
-pub(super) fn has_resource_failure(diagnostics: &[crate::CssRecoveryDiagnostic]) -> bool {
+pub(super) fn has_resource_failure(
+    diagnostics: &[crate::diagnostic::CssRecoveryDiagnostic],
+) -> bool {
     diagnostics
         .iter()
         .any(|diagnostic| match diagnostic.error().kind() {
-            crate::ErrorKind::NestingLimit(_) => true,
-            crate::ErrorKind::InvalidComponentValue(error) => {
-                crate::error::is_component_resource_error(error)
+            crate::diagnostic::error::ErrorKind::NestingLimit(_) => true,
+            crate::diagnostic::error::ErrorKind::InvalidComponentValue(error) => {
+                crate::diagnostic::error::is_component_resource_error(error)
             }
             _ => false,
         })
@@ -61,7 +68,7 @@ pub(crate) fn finish_report<T>(
             diagnostics.push(escape_diagnostic(
                 source,
                 token_start..token_end,
-                crate::CssEscapeError::Newline,
+                crate::diagnostic::CssEscapeFailure::Newline,
             ));
             continue;
         }
@@ -74,12 +81,14 @@ pub(crate) fn finish_report<T>(
                     | Token::IDHash(_)
                     | Token::Dimension { .. }
             )
-            && crate::component_values::odd_trailing_backslashes(&source[token_start..token_end])
+            && crate::component::values::parse::odd_trailing_backslashes(
+                &source[token_start..token_end],
+            )
         {
             diagnostics.push(escape_diagnostic(
                 source,
                 token_end - 1..token_end,
-                crate::CssEscapeError::EndOfInput,
+                crate::diagnostic::CssEscapeFailure::EndOfInput,
             ));
             continue;
         }
@@ -98,11 +107,12 @@ pub(crate) fn finish_report<T>(
         }
         let start = CssSourcePosition::from_byte_offset_in(source, token_start);
         let eof = CssSourcePosition::from_byte_offset_in(source, source.len());
-        let span = crate::CssSourceSpan::new(start, eof).expect("comment ends at source EOF");
-        let diagnostic = crate::CssRecoveryDiagnostic::new(
-            crate::error::implicit_eof(source),
+        let span =
+            crate::source::CssSourceSpan::new(start, eof).expect("comment ends at source EOF");
+        let diagnostic = crate::diagnostic::CssRecoveryDiagnostic::new(
+            crate::diagnostic::error::implicit_eof(source),
             span,
-            crate::CssRecoveryAction::IgnoreUnterminatedComment,
+            crate::diagnostic::CssRecoveryAction::IgnoreUnterminatedComment,
         )
         .expect("comment EOF belongs to its consumed source span");
         diagnostics.push(diagnostic);
@@ -113,21 +123,21 @@ pub(crate) fn finish_report<T>(
 fn escape_diagnostic(
     source: &str,
     range: std::ops::Range<usize>,
-    detail: crate::CssEscapeError,
-) -> crate::CssRecoveryDiagnostic {
+    detail: crate::diagnostic::CssEscapeFailure,
+) -> crate::diagnostic::CssRecoveryDiagnostic {
     let responsible = match detail {
-        crate::CssEscapeError::Newline => range.start,
-        crate::CssEscapeError::EndOfInput => range.end,
+        crate::diagnostic::CssEscapeFailure::Newline => range.start,
+        crate::diagnostic::CssEscapeFailure::EndOfInput => range.end,
     };
-    let span = crate::CssSourceSpan::new(
+    let span = crate::source::CssSourceSpan::new(
         CssSourcePosition::from_byte_offset_in(source, range.start),
         CssSourcePosition::from_byte_offset_in(source, range.end),
     )
     .expect("consumed escape ranges are ordered UTF-8 boundaries");
-    crate::CssRecoveryDiagnostic::new(
-        crate::error::escape_parse_error(source, responsible, detail),
+    crate::diagnostic::CssRecoveryDiagnostic::new(
+        crate::diagnostic::error::escape_parse_error(source, responsible, detail),
         span,
-        crate::CssRecoveryAction::RecoverEscape,
+        crate::diagnostic::CssRecoveryAction::RecoverEscape,
     )
     .expect("escape error is anchored within its consumed backslash range")
 }
@@ -267,7 +277,7 @@ fn scan_delimiters(source: &str, base_depth: u32, list: StructuralListContext) -
             // termination reports recovery without adding structural nesting.
             // Reuse the component owner's exact escaped-terminator predicate.
             if source.get(token_start..token_end).is_some_and(|spelling| {
-                !crate::component_values::has_unescaped_final(spelling, closing)
+                !crate::component::values::parse::has_unescaped_final(spelling, closing)
             }) {
                 unclosed_token = Some(token_start);
             }
@@ -386,12 +396,12 @@ fn source_normalization_view(
 pub(crate) struct RecoveryState {
     parser_context: crate::CssParserContext,
     depth: Rc<Cell<u32>>,
-    source_snapshot: crate::CssSourceSnapshot,
+    source_snapshot: crate::source::CssSourceSnapshot,
     style_context_captures: StyleContextCaptures,
     namespace_bindings: Rc<RefCell<CssNamespaceBindings>>,
     implicit_openings: Rc<Vec<usize>>,
     retained_implicit_openings: Rc<RefCell<Vec<usize>>>,
-    retained_navigation_diagnostics: Rc<RefCell<Vec<crate::CssRecoveryDiagnostic>>>,
+    retained_navigation_diagnostics: Rc<RefCell<Vec<crate::diagnostic::CssRecoveryDiagnostic>>>,
     syntax_base_depth: u32,
     syntax_document: Rc<RefCell<Option<Rc<crate::syntax_consumption::SyntaxDocument<'static>>>>>,
 }
@@ -406,15 +416,15 @@ impl RecoveryState {
             source,
             depth,
             style_context_captures,
-            crate::CssSourceSnapshot::new(source),
+            crate::source::CssSourceSnapshot::new(source),
         )
     }
 
-    pub(super) fn at_depth_with_snapshot(
+    pub(crate) fn at_depth_with_snapshot(
         source: &str,
         depth: u32,
         style_context_captures: StyleContextCaptures,
-        source_snapshot: crate::CssSourceSnapshot,
+        source_snapshot: crate::source::CssSourceSnapshot,
     ) -> Self {
         let namespace_bindings = Rc::clone(&style_context_captures.namespace_bindings);
         Self {
@@ -431,7 +441,7 @@ impl RecoveryState {
         }
     }
 
-    pub(super) fn with_parser_context(mut self, context: crate::CssParserContext) -> Self {
+    pub(crate) fn with_parser_context(mut self, context: crate::CssParserContext) -> Self {
         self.parser_context = context;
         self
     }
@@ -462,7 +472,7 @@ impl RecoveryState {
         Self {
             parser_context: self.parser_context,
             depth: Rc::clone(&self.depth),
-            source_snapshot: crate::CssSourceSnapshot::new(source),
+            source_snapshot: crate::source::CssSourceSnapshot::new(source),
             style_context_captures: self.style_context_captures.clone(),
             namespace_bindings: Rc::clone(&self.namespace_bindings),
             implicit_openings: Rc::new(unclosed_openings(source)),
@@ -476,8 +486,10 @@ impl RecoveryState {
     pub(super) fn syntax_document(
         &self,
         source: &str,
-    ) -> Result<Rc<crate::syntax_consumption::SyntaxDocument<'static>>, crate::CssComponentValueError>
-    {
+    ) -> Result<
+        Rc<crate::syntax_consumption::SyntaxDocument<'static>>,
+        crate::component::CssComponentValueError,
+    > {
         if let Some(document) = self.syntax_document.borrow().as_ref() {
             return Ok(Rc::clone(document));
         }
@@ -497,12 +509,15 @@ impl RecoveryState {
         self.retained_implicit_openings.borrow().clone()
     }
 
-    pub(super) fn source_snapshot(&self) -> &crate::CssSourceSnapshot {
+    pub(super) fn source_snapshot(&self) -> &crate::source::CssSourceSnapshot {
         &self.source_snapshot
     }
 
-    pub(super) fn source_position(&self, byte_offset: usize) -> crate::CssSourcePosition {
-        crate::CssSourcePosition::from_byte_offset_in(self.source_snapshot.as_str(), byte_offset)
+    pub(super) fn source_position(&self, byte_offset: usize) -> crate::source::CssSourcePosition {
+        crate::source::CssSourcePosition::from_byte_offset_in(
+            self.source_snapshot.as_str(),
+            byte_offset,
+        )
     }
 
     pub(super) fn activate_namespace(
@@ -543,7 +558,7 @@ impl RecoveryState {
         source: &str,
         input: &Parser<'i, '_>,
         enclosing_production: &'static str,
-    ) -> Result<RecoveryDepthGuard, ParseError<'i, Error>> {
+    ) -> Result<RecoveryDepthGuard, ParseError<'i, CssError>> {
         let opening_offset = input.position().byte_index().saturating_sub(1);
         self.enter(source, opening_offset, enclosing_production)
     }
@@ -559,7 +574,7 @@ impl RecoveryState {
         source: &str,
         input: &Parser<'i, '_>,
         enclosing_production: &'static str,
-    ) -> Result<RecoveryDepthGuard, ParseError<'i, Error>> {
+    ) -> Result<RecoveryDepthGuard, ParseError<'i, CssError>> {
         let opening_offset = input.position().byte_index().saturating_sub(1);
         self.enter(source, opening_offset, enclosing_production)
     }
@@ -569,7 +584,7 @@ impl RecoveryState {
         source: &'i str,
         input: &Parser<'i, '_>,
         enclosing_production: &'static str,
-    ) -> Result<Vec<usize>, ParseError<'i, Error>> {
+    ) -> Result<Vec<usize>, ParseError<'i, CssError>> {
         let start = input.position().byte_index();
         let end = scan_nested_tokens(
             source,
@@ -581,35 +596,12 @@ impl RecoveryState {
         Ok(self.component_openings_in(start..end))
     }
 
-    // Raw lists are unwrapped: unmatched closing braces are ordinary components,
-    // and a generic at-rule ends immediately after its first root curly block.
-    pub(super) fn check_declaration_list_unit<'i>(
-        &self,
-        source: &'i str,
-        input: &Parser<'i, '_>,
-        at_rule: bool,
-    ) -> Result<Vec<usize>, ParseError<'i, Error>> {
-        let start = input.position().byte_index();
-        let end = scan_nested_tokens(
-            source,
-            start,
-            self.depth.get(),
-            "css.declaration",
-            if at_rule {
-                ScanBoundary::RawAtRule
-            } else {
-                ScanBoundary::RawDeclaration
-            },
-        )?;
-        Ok(self.component_openings_in(start..end))
-    }
-
     pub(super) fn check_specialized_components<'i>(
         &self,
         source: &str,
         input: &Parser<'i, '_>,
         enclosing_production: &'static str,
-    ) -> Result<Vec<usize>, ParseError<'i, Error>> {
+    ) -> Result<Vec<usize>, ParseError<'i, CssError>> {
         let start = input.position().byte_index();
         let end = scan_nested_tokens(
             source,
@@ -626,7 +618,7 @@ impl RecoveryState {
         source: &str,
         input: &Parser<'i, '_>,
         enclosing_production: &'static str,
-    ) -> Result<(), ParseError<'i, Error>> {
+    ) -> Result<(), ParseError<'i, CssError>> {
         scan_nested_tokens(
             source,
             input.position().byte_index(),
@@ -642,7 +634,7 @@ impl RecoveryState {
         source: &str,
         input: &Parser<'i, '_>,
         enclosing_production: &'static str,
-    ) -> Result<Vec<usize>, ParseError<'i, Error>> {
+    ) -> Result<Vec<usize>, ParseError<'i, CssError>> {
         let start = input.position().byte_index();
         let end = scan_nested_tokens(
             source,
@@ -675,28 +667,31 @@ impl RecoveryState {
     }
 
     // Called only after a complete declaration survived its grammar boundary.
-    pub(super) fn retain_navigation_diagnostic(&self, body: &crate::CssDeclarationBody) {
-        let crate::CssDeclarationBody::Known(known) = body else {
+    pub(super) fn retain_navigation_diagnostic(
+        &self,
+        body: &crate::declaration::CssDeclarationBody,
+    ) {
+        let crate::declaration::CssDeclarationBody::Known(known) = body else {
             return;
         };
         let navigation = match known.property_value() {
-            Some(crate::CssKnownPropertyValueRef::NavUp(value)) => value.navigation(),
-            Some(crate::CssKnownPropertyValueRef::NavRight(value)) => value.navigation(),
-            Some(crate::CssKnownPropertyValueRef::NavDown(value)) => value.navigation(),
-            Some(crate::CssKnownPropertyValueRef::NavLeft(value)) => value.navigation(),
+            Some(crate::property::CssKnownPropertyValueRef::NavUp(value)) => value.value(),
+            Some(crate::property::CssKnownPropertyValueRef::NavRight(value)) => value.value(),
+            Some(crate::property::CssKnownPropertyValueRef::NavDown(value)) => value.value(),
+            Some(crate::property::CssKnownPropertyValueRef::NavLeft(value)) => value.value(),
             _ => return,
         };
         let Some(target) = navigation.legacy_target() else {
             return;
         };
-        let crate::CssValueOrigin::Parsed(origin) = target.origin() else {
+        let crate::component::CssValueOrigin::Parsed(origin) = target.origin() else {
             return;
         };
         let span = origin.span();
-        let diagnostic = crate::CssRecoveryDiagnostic::new(
-            crate::error::legacy_navigation_target(target.as_str(), span.start()),
+        let diagnostic = crate::diagnostic::CssRecoveryDiagnostic::new(
+            crate::diagnostic::error::legacy_navigation_target(target.as_str(), span.start()),
             span,
-            crate::CssRecoveryAction::RetainLegacyNavigationTarget,
+            crate::diagnostic::CssRecoveryAction::RetainLegacyNavigationTarget,
         )
         .expect("target error belongs to original string span");
         self.retained_navigation_diagnostics
@@ -707,9 +702,9 @@ impl RecoveryState {
     pub(super) fn take_implicit_closure_diagnostics(
         &self,
         source: &str,
-    ) -> Vec<crate::CssRecoveryDiagnostic> {
+    ) -> Vec<crate::diagnostic::CssRecoveryDiagnostic> {
         let eof = CssSourcePosition::from_byte_offset_in(source, source.len());
-        let Some(span) = crate::CssSourceSpan::new(eof, eof) else {
+        let Some(span) = crate::source::CssSourceSpan::new(eof, eof) else {
             return Vec::new();
         };
         let mut diagnostics: Vec<_> = self
@@ -717,10 +712,10 @@ impl RecoveryState {
             .borrow_mut()
             .drain(..)
             .filter_map(|opening| {
-                crate::CssRecoveryDiagnostic::new(
-                    crate::error::implicit_eof(source),
+                crate::diagnostic::CssRecoveryDiagnostic::new(
+                    crate::diagnostic::error::implicit_eof(source),
                     span,
-                    crate::CssRecoveryAction::RetainWithImplicitClosure,
+                    crate::diagnostic::CssRecoveryAction::RetainWithImplicitClosure,
                 )
                 .map(|diagnostic| diagnostic.with_opening_owner(opening))
             })
@@ -734,7 +729,7 @@ impl RecoveryState {
         source: &'i str,
         input: &Parser<'i, '_>,
         enclosing_production: &'static str,
-    ) -> Option<ParseError<'i, Error>> {
+    ) -> Option<ParseError<'i, CssError>> {
         let content_start = input.position().byte_index();
         let opening_offset = content_start.saturating_sub(1);
         if self.depth.get() >= STRUCTURAL_NESTING_LIMIT {
@@ -760,7 +755,7 @@ impl RecoveryState {
         source: &'i str,
         input: &Parser<'i, '_>,
         enclosing_production: &'static str,
-    ) -> Result<(), ParseError<'i, Error>> {
+    ) -> Result<(), ParseError<'i, CssError>> {
         scan_nested_tokens(
             source,
             input.position().byte_index(),
@@ -776,7 +771,7 @@ impl RecoveryState {
         source: &str,
         opening_offset: usize,
         enclosing_production: &'static str,
-    ) -> Result<RecoveryDepthGuard, ParseError<'i, Error>> {
+    ) -> Result<RecoveryDepthGuard, ParseError<'i, CssError>> {
         let depth = self.depth.get();
         if depth >= STRUCTURAL_NESTING_LIMIT {
             return Err(nesting_limit(
@@ -798,7 +793,7 @@ impl RecoveryState {
 }
 
 #[derive(Clone, Default)]
-pub(super) struct StyleContextCaptures {
+pub(crate) struct StyleContextCaptures {
     entries: Rc<RefCell<Vec<StyleContextCapture>>>,
     namespace_bindings: Rc<RefCell<CssNamespaceBindings>>,
 }
@@ -809,7 +804,7 @@ struct StyleContextCapture {
 }
 
 impl StyleContextCaptures {
-    pub(super) fn with_namespaces(context: &super::CssNamespaceContext) -> Self {
+    pub(crate) fn with_namespaces(context: &crate::selector::CssNamespaceContext) -> Self {
         Self {
             entries: Rc::new(RefCell::new(Vec::new())),
             namespace_bindings: Rc::new(RefCell::new(context.0.clone())),
@@ -1254,8 +1249,6 @@ enum BlockKind {
 #[derive(Clone, Copy)]
 enum ScanBoundary {
     DeclarationValue,
-    RawDeclaration,
-    RawAtRule,
     FailedCurlyBlock,
     SpecializedPrelude,
     CommaMember,
@@ -1271,7 +1264,7 @@ fn scan_nested_tokens<'i>(
     base_depth: u32,
     enclosing_production: &'static str,
     boundary: ScanBoundary,
-) -> Result<usize, ParseError<'i, Error>> {
+) -> Result<usize, ParseError<'i, CssError>> {
     let mut offset = start.min(source.len());
     let mut blocks: Vec<BlockKind> = Vec::new();
     while let Some((token_start, token_end, token)) = next_source_token(source, offset) {
@@ -1279,12 +1272,6 @@ fn scan_nested_tokens<'i>(
         if let Some(closing) = closing_block(&token) {
             if blocks.last().is_some_and(|kind| *kind == closing) {
                 blocks.pop();
-                if blocks.is_empty()
-                    && closing == BlockKind::Curly
-                    && matches!(boundary, ScanBoundary::RawAtRule)
-                {
-                    return Ok(token_end);
-                }
                 continue;
             }
             // The caller has already entered this component. Its closing
@@ -1308,12 +1295,7 @@ fn scan_nested_tokens<'i>(
             continue;
         }
         if blocks.is_empty()
-            && matches!(
-                boundary,
-                ScanBoundary::DeclarationValue
-                    | ScanBoundary::RawDeclaration
-                    | ScanBoundary::RawAtRule
-            )
+            && matches!(boundary, ScanBoundary::DeclarationValue)
             && matches!(token, Token::Semicolon)
         {
             return Ok(token_start);
@@ -1400,14 +1382,14 @@ impl Drop for RecoveryDepthGuard {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum RecoveryLoopOutcome {
+pub(crate) enum RecoveryLoopOutcome {
     Retained,
     Advanced,
     Terminated,
 }
 
 /// One iteration's byte-progress witness for a bounded recovery coordinator.
-pub(super) struct RecoveryProgress {
+pub(crate) struct RecoveryProgress {
     start_byte: usize,
 }
 
@@ -1439,12 +1421,12 @@ impl RecoveryProgress {
     }
 }
 
-pub(super) fn recovery_action_for_error(
-    error: &ParseError<'_, Error>,
-    ordinary: crate::CssRecoveryAction,
-) -> crate::CssRecoveryAction {
+pub(crate) fn recovery_action_for_error(
+    error: &ParseError<'_, CssError>,
+    ordinary: crate::diagnostic::CssRecoveryAction,
+) -> crate::diagnostic::CssRecoveryAction {
     if is_nesting_limit_error(error) {
-        crate::CssRecoveryAction::StopAtNestingLimit
+        crate::diagnostic::CssRecoveryAction::StopAtNestingLimit
     } else {
         ordinary
     }
@@ -1483,7 +1465,7 @@ pub(super) fn comma_member_span(
     member_end: usize,
     following_comma: Option<(usize, usize)>,
     preceding_comma: Option<(usize, usize)>,
-) -> Option<crate::CssSourceSpan> {
+) -> Option<crate::source::CssSourceSpan> {
     let (span_start, span_end) = if member_start < member_end {
         (member_start, member_end)
     } else if let Some(comma) = following_comma {
@@ -1493,7 +1475,7 @@ pub(super) fn comma_member_span(
     } else {
         (member_start, member_end)
     };
-    crate::CssSourceSpan::new(
+    crate::source::CssSourceSpan::new(
         CssSourcePosition::from_byte_offset_in(source, span_start),
         CssSourcePosition::from_byte_offset_in(source, span_end),
     )
@@ -1547,7 +1529,8 @@ mod tests {
         assert_eq!(document.metrics.maximum_depth, 256);
         assert_eq!(document.metrics.known_spelling_bytes, source.len());
         assert_eq!(document.metrics.unspelled_tokens, 0);
-        let crate::CssValueOrigin::Parsed(origin) = document.nodes[denied].token().origin.as_ref()
+        let crate::component::CssValueOrigin::Parsed(origin) =
+            document.nodes[denied].token().origin.as_ref()
         else {
             panic!("actual original denied opening");
         };
@@ -1559,7 +1542,7 @@ mod tests {
         assert_eq!(origin.span().start().column().value(), 6);
         assert_eq!(origin.span().end().byte_offset().value(), 7);
         assert_eq!(origin.span().end().column().value(), 7);
-        let crate::CssValueOrigin::Parsed(layer_origin) =
+        let crate::component::CssValueOrigin::Parsed(layer_origin) =
             document.nodes[layer.name].token().origin.as_ref()
         else {
             panic!("original Layer coordinates after Unicode and CRLF");
@@ -1569,15 +1552,15 @@ mod tests {
         assert_eq!(layer_origin.span().start().line().value(), 1);
         assert_eq!(layer_origin.span().start().column().value(), 11);
         let denied_origin = document.nodes[denied].token().origin.clone().into_owned();
-        let promoted = crate::component_values::promote_nodes(
+        let promoted = crate::component::values::parse::promote_nodes(
             &document,
             &[denied],
-            crate::CssComponentValueLimits::default(),
+            crate::component::CssComponentValueLimits::default(),
         )
         .unwrap_err();
         assert_eq!(
             promoted.kind(),
-            crate::CssComponentValueErrorKind::NestingLimit
+            crate::component::values::CssComponentValueErrorKind::NestingLimit
         );
         assert_eq!(promoted.origin(), &denied_origin);
         let reused = syntax::normalize(
@@ -1592,7 +1575,7 @@ mod tests {
         .expect("denied grouped input cannot be admitted");
         assert_eq!(
             reused.kind(),
-            crate::CssComponentValueErrorKind::NestingLimit
+            crate::component::values::CssComponentValueErrorKind::NestingLimit
         );
         assert_eq!(reused.origin(), &denied_origin);
         let direct = syntax::source_document(source, state.source_snapshot(), 256)
@@ -1600,7 +1583,7 @@ mod tests {
             .expect("direct source has no recovery admission");
         assert_eq!(
             direct.kind(),
-            crate::CssComponentValueErrorKind::NestingLimit
+            crate::component::values::CssComponentValueErrorKind::NestingLimit
         );
         assert_eq!(direct.origin(), &denied_origin);
     }
@@ -1673,8 +1656,8 @@ mod tests {
         let state = super::RecoveryState::at_depth(source, 7, captures.clone())
             .with_parser_context(context);
         state.retain_component_closures(vec![8]);
-        let prefix = crate::CssNamespacePrefix::try_new("Svg").unwrap();
-        let name = crate::CssNamespaceName::new("urn:svg");
+        let prefix = crate::rule::CssNamespacePrefix::try_new("Svg").unwrap();
+        let name = crate::rule::CssNamespaceName::new("urn:svg");
         state.activate_namespace(Some(prefix.clone()), name.clone());
         let probe = state.generated_selector_probe(":is(.A)");
         assert_eq!(probe.parser_context(), context);

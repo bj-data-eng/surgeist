@@ -5,7 +5,19 @@
 use crate::css::support::checked_grammar_declaration as checked;
 use crate::css::support::important_declaration as parsed;
 use crate::css::support::selected_grammar as grammar;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssLonghandContribution, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::selector::CssSelector;
 
 const SHORTHAND: &str = "text-align";
 const ALL: &str = "text-align-all";
@@ -21,26 +33,37 @@ fn accepted(name: &str, value: &str) {
 
 fn invalid(name: &str, value: &str) {
     let source = format!("color:red;{name}:{value};color:blue");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     let [diagnostic] = report.diagnostics() else {
         panic!("one invalid-value diagnostic: {source}")
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
     assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
     assert_eq!(report.syntax().len(), 2, "neighbors survive: {source}");
-    assert!(validate_style_attribute(&source).is_err());
-    if let Ok(components) = parse_component_values(value) {
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .is_err()
+    );
+    if let Ok(components) = CssComponentValues::parse(&CssParser::default(), value) {
         assert!(
-            parse_property_value_for_grammar(grammar(name), components, CssImportance::Normal)
-                .is_err(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(grammar(name)),
+                components,
+                CssImportance::Normal
+            )
+            .is_err(),
             "checked construction accepted {name}:{value}"
         );
     }
 }
 
 fn contributions(source: &CssDeclaration, members: &[&str]) -> Vec<CssLonghandContribution> {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).expect("selected intrinsic alignment expansion")
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source
+        .expand()
+        .expect("selected intrinsic alignment expansion")
     else {
         panic!("terminal alignment expansion")
     };
@@ -192,9 +215,14 @@ fn character_alignment_accepts_one_decoded_cluster_and_both_pair_orders() {
     invalid(ALL, "\"a\\\nb\"");
     for name in [SHORTHAND, ALL] {
         let source = format!("color:red;{name}:\"unterminated;color:blue");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(!report.is_clean(), "bad string must be diagnosed");
-        assert!(validate_style_attribute(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_err()
+        );
     }
 }
 
@@ -230,7 +258,7 @@ fn css_wide_keywords_and_universal_all_remain_symbolic() {
     }
     let source = parsed("all", "revert-layer");
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&source).unwrap()
+        source.expand().unwrap()
     else {
         panic!("universal reset")
     };
@@ -248,29 +276,33 @@ fn pending_alignment_reentry_is_strict_retryable_and_keeps_original_occurrence()
     ] {
         for pending in ["var(--align)", "env(--align)"] {
             let source = parsed(name, pending);
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("{name} remains pending")
             };
             assert!(handle.source().same_occurrence(&source));
             for invalid_value in ["start end", "inherit center"] {
-                assert!(matches!(
+                assert!(
                     handle
-                        .reenter(parse_component_values(invalid_value).unwrap())
+                        .reenter(
+                            CssComponentValues::parse(&CssParser::default(), invalid_value)
+                                .unwrap()
+                        )
                         .unwrap_err()
-                        .kind(),
-                    CssExpansionErrorKind::InvalidReplacement(_)
-                ));
-            }
-            for residual in ["var(--again)", "env(--again)"] {
-                assert_eq!(
-                    handle
-                        .reenter(parse_component_values(residual).unwrap())
-                        .unwrap_err()
-                        .kind(),
-                    &CssExpansionErrorKind::ResidualSubstitution
+                        .replacement_error()
+                        .is_some()
                 );
             }
-            let replacement = parse_component_values(valid).unwrap();
+            for residual in ["var(--again)", "env(--again)"] {
+                assert!(
+                    handle
+                        .reenter(
+                            CssComponentValues::parse(&CssParser::default(), residual).unwrap()
+                        )
+                        .unwrap_err()
+                        .is_residual_substitution()
+                );
+            }
+            let replacement = CssComponentValues::parse(&CssParser::default(), valid).unwrap();
             for _ in 0..2 {
                 let CssContributions::Longhands(values) =
                     handle.reenter(replacement.clone()).unwrap()
@@ -286,7 +318,7 @@ fn pending_alignment_reentry_is_strict_retryable_and_keeps_original_occurrence()
                 }
             }
             let CssContributions::Longhands(values) = handle
-                .reenter(parse_component_values("unset").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "unset").unwrap())
                 .unwrap()
             else {
                 panic!("global replacement")
@@ -302,9 +334,9 @@ fn pending_alignment_reentry_is_strict_retryable_and_keeps_original_occurrence()
 #[test]
 fn normalization_preserves_alignment_order_context_and_atomic_two_member_limit() {
     let text = ".a{text-align:center;text-align-all:\".\" left;text-align-last:match-parent;text-align:justify-all!important}";
-    let report = parse_sheet(text);
+    let report = CssParser::default().parse_sheet(text);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -361,16 +393,13 @@ fn normalization_preserves_alignment_order_context_and_atomic_two_member_limit()
         CssImportance::Important
     );
     let limit = CssNormalizationLimits::try_new(0, 1, 1, 1).unwrap();
-    let one = parse_sheet(".a{text-align:justify-all}");
+    let one = CssParser::default().parse_sheet(".a{text-align:justify-all}");
     assert!(one.is_clean());
     let before = one.syntax().clone();
-    let error = normalize_sheet_with_limits(one.syntax(), limit).unwrap_err();
+    let error = one.syntax().normalize(limit).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 1
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 1))
     );
     assert_eq!(error.declaration_order(), Some(0));
     assert_eq!(error.position().unwrap().byte_offset().value(), 3);

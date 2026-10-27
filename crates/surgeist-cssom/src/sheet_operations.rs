@@ -1,7 +1,11 @@
 //! Source stylesheet construction, attributes and collection operations.
 use crate::parser_resources::check_resource_diagnostics;
 use crate::*;
-use surgeist_css::*;
+use surgeist_css::diagnostic::CssRecoveryDiagnostic;
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::rule::CssSheet;
+use surgeist_css::source::CssRetainedPayloadError;
+use surgeist_css::{CssParseReport, CssParser, CssParserContext};
 
 /// Supplied current-global Document facts; no document or URL resolution occurs.
 #[derive(Clone, Debug)]
@@ -121,15 +125,16 @@ fn processing_diagnostic_backing<E>(
     diagnostics: &Vec<CssRecoveryDiagnostic>,
     mut admit: impl FnMut() -> Result<(), E>,
 ) -> Result<usize, CssRetainedPayloadError<E>> {
-    use CssRetainedPayloadError::{Admission, CapacityOverflow};
-    admit().map_err(Admission)?;
+    admit().map_err(CssRetainedPayloadError::admission)?;
     let mut bytes = diagnostics
         .capacity()
         .checked_mul(std::mem::size_of::<CssRecoveryDiagnostic>())
-        .ok_or(CapacityOverflow)?;
+        .ok_or_else(CssRetainedPayloadError::capacity_overflow)?;
     for diagnostic in diagnostics {
         let backing = diagnostic.retained_backing_bytes_with(&mut admit)?;
-        bytes = bytes.checked_add(backing).ok_or(CapacityOverflow)?;
+        bytes = bytes
+            .checked_add(backing)
+            .ok_or_else(CssRetainedPayloadError::capacity_overflow)?;
     }
     Ok(bytes)
 }
@@ -271,7 +276,7 @@ impl CssomBatch {
                 CssomInitialMedia::List { snapshot, id } => {
                     let text = snapshot
                         .media(id)?
-                        .serialize_cssom_with_limits(this.limits.css)
+                        .serialize_cssom(this.limits.css)
                         .map_err(CssomError::Media)?;
                     parse_media(
                         text.as_css(),
@@ -372,10 +377,10 @@ impl CssomBatch {
                             maximum: this.limits.max_input_bytes,
                         });
                     }
-                    this.staged
-                        .context
-                        .parser_context()
-                        .parse_media_query_list(text)
+                    CssMediaQueryList::parse(
+                        &CssParser::new(this.staged.context.parser_context(), Default::default()),
+                        text,
+                    )
                 }
                 CssomOwnerMediaInput::Parsed(report) => report,
             };
@@ -455,7 +460,7 @@ fn parse_media(
             maximum: limits.max_input_bytes,
         });
     }
-    let report = context.parse_media_query_list(source);
+    let report = CssMediaQueryList::parse(&CssParser::new(context, Default::default()), source);
     check_resource_diagnostics(report.diagnostics())?;
     Ok(report.into_parts())
 }
@@ -472,7 +477,7 @@ impl CssomBatch {
     ) -> Result<i32, CssomError> {
         // Product handle validation precedes reading the list default. Source
         // Security/NotAllowed and syntax guards belong to insert_sheet_rule.
-        let (source, index) = self.apply(|this| {
+        let (source, index) = self.apply(|this| -> Result<_, CssomError> {
             let current = this.staged.sheet(sheet)?;
             let index = index.unwrap_or_else(|| this.staged.lists[&current.rules].len());
             let selector = selector.unwrap_or("undefined");

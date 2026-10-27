@@ -5,11 +5,13 @@
 
 use std::{borrow::Cow, ops::Range};
 
-use crate::utf16_value::Control;
-use crate::{
-    CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
-    CssComponentValueRef, CssParsedOrigin, CssSourceSnapshot, CssValueOrigin, CssValueTokenRef,
+use crate::component::values::CssComponentValueErrorKind;
+use crate::component::{
+    CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueRef, CssValueOrigin,
+    CssValueTokenRef,
 };
+use crate::source::{CssParsedOrigin, CssSourceSnapshot};
+use crate::values::color_adjust::utf16_value::Control;
 use cssparser::Token;
 
 pub(crate) type NodeId = usize;
@@ -429,25 +431,6 @@ impl<'a> SyntaxDocument<'a> {
             (range.start + node.token().spelling.as_ref()?.len() == offset).then_some(children)
         })
     }
-    /// A cursor at the root-list node that starts at `offset`. Root nodes are
-    /// in source order, so this is a binary search.
-    pub(crate) fn root_cursor_at_source(&self, offset: usize) -> Option<SyntaxCursor<'_>> {
-        let nodes = &self.lists[self.root];
-        let next = nodes
-            .partition_point(|node| self.range(*node).is_some_and(|range| range.start < offset));
-        nodes
-            .get(next)
-            .and_then(|node| self.range(*node))
-            .is_some_and(|range| range.start == offset)
-            .then_some(SyntaxCursor {
-                document: self,
-                list: self.root,
-                next,
-                end: nodes.len(),
-                current: None,
-                reconsume: false,
-            })
-    }
     pub(crate) fn cursor_at_source(&self, offset: usize) -> Option<SyntaxCursor<'_>> {
         self.lists.iter().enumerate().find_map(|(list, nodes)| {
             let next = nodes
@@ -783,14 +766,14 @@ pub(crate) fn source_document(
 
 pub(crate) fn source_document_with_limits(
     text: &str,
-    limits: crate::CssComponentValueLimits,
+    limits: crate::component::CssComponentValueLimits,
 ) -> Result<SyntaxDocument<'static>, CssComponentValueError> {
     source_document_with_optional_snapshot(text, None, limits)
 }
 
 pub(crate) fn source_document_snapshot_with_limits(
     original: &CssSourceSnapshot,
-    limits: crate::CssComponentValueLimits,
+    limits: crate::component::CssComponentValueLimits,
 ) -> Result<SyntaxDocument<'static>, CssComponentValueError> {
     source_document_with_optional_snapshot(original.as_str(), Some(original), limits)
 }
@@ -798,7 +781,7 @@ pub(crate) fn source_document_snapshot_with_limits(
 fn source_document_with_optional_snapshot(
     text: &str,
     original: Option<&CssSourceSnapshot>,
-    limits: crate::CssComponentValueLimits,
+    limits: crate::component::CssComponentValueLimits,
 ) -> Result<SyntaxDocument<'static>, CssComponentValueError> {
     if text.len() > limits.max_css_bytes() {
         return Err(CssComponentValueError::new(
@@ -1618,22 +1601,18 @@ pub(crate) fn consume_declaration(
     while let CursorItem::Node(node) = cursor.consume() {
         value.push(node);
     }
-    let meaningful: Vec<_> = value
-        .iter()
-        .enumerate()
-        .filter(|(_, node)| !cursor.document.nodes[**node].is_trivia())
-        .map(|(index, _)| index)
-        .collect();
     let mut important = false;
     let mut importance_range = None;
     let mut value_end = cursor.position();
-    if let [.., bang, word] = meaningful.as_slice()
-        && cursor.document.nodes[value[*bang]].token().kind() == TokenKind::Delim('!')
-        && matches!(cursor.document.nodes[value[*word]].token().kind(), TokenKind::Ident(name) if name.eq_ignore_ascii_case("important"))
-    {
+    if let Some((bang, word)) = crate::parser::trailing_importance(
+        &value,
+        |node| cursor.document.nodes[*node].is_trivia(),
+        |node| cursor.document.nodes[*node].token().kind() == TokenKind::Delim('!'),
+        |node| matches!(cursor.document.nodes[*node].token().kind(), TokenKind::Ident(name) if name.eq_ignore_ascii_case("important")),
+    ) {
         let bang_index = cursor.document.lists[cursor.list][value_start..cursor.position()]
             .iter()
-            .position(|node| *node == value[*bang])
+            .position(|node| *node == value[bang])
             .expect("value node belongs to candidate")
             + value_start;
         value_end = bang_index;
@@ -1642,8 +1621,8 @@ pub(crate) fn consume_declaration(
             start: bang_index,
             end: cursor.position(),
         });
-        value.remove(*word);
-        value.remove(*bang);
+        value.remove(word);
+        value.remove(bang);
         important = true;
     }
     while value_end > value_start
@@ -1677,8 +1656,8 @@ pub(crate) fn consume_declaration(
 }
 
 // Selected block-contents Syntax §5.5.6 step 8, after importance removal.
-// Keep this separate from the historical declaration-list consumer: only the
-// selected block-contents caller applies this value-shape restriction.
+// Keep this separate from `consume_declaration`: only the selected
+// block-contents caller applies this value-shape restriction.
 pub(crate) fn consume_block_declaration(
     cursor: &mut SyntaxCursor<'_>,
 ) -> Result<GenericDeclaration, GenericSyntaxFault> {
@@ -1721,8 +1700,7 @@ pub(crate) fn consume_declaration_candidate(cursor: &mut SyntaxCursor<'_>) -> Sy
     }
 }
 
-// Current block-contents consumes nested units only up to a root closer. The
-// historical raw declaration-list selector intentionally does not use this.
+// Block contents consumes nested units only up to a root closer (Syntax §5.5.5).
 pub(crate) fn block_contents_end(cursor: &SyntaxCursor<'_>) -> bool {
     match cursor.peek() {
         CursorItem::EndOfInput(_) => true,
@@ -1749,55 +1727,23 @@ pub(crate) fn consume_block_declaration_candidate(cursor: &mut SyntaxCursor<'_>)
     }
 }
 
-pub(crate) enum GenericDeclarationListItem {
-    At(GenericAtRule),
-    Declaration {
-        range: SyntaxRange,
-        parsed: Result<GenericDeclaration, GenericSyntaxFault>,
-    },
-}
-
-pub(crate) fn consume_declaration_list(
-    cursor: &mut SyntaxCursor<'_>,
-) -> Vec<GenericDeclarationListItem> {
-    let mut items = Vec::new();
-    loop {
-        cursor.skip_trivia();
-        let CursorItem::Node(node) = cursor.peek() else {
-            break;
-        };
-        if cursor.document.nodes[node].token().kind() == TokenKind::Semicolon {
-            cursor.consume();
-        } else if rule_dispatch(cursor.document.nodes[node].token().kind())
-            == GenericRuleDispatch::At
-        {
-            items.push(GenericDeclarationListItem::At(consume_at_rule(cursor)));
-        } else {
-            let range = consume_declaration_candidate(cursor);
-            let parsed = consume_declaration(&mut cursor.document.cursor_range(&range));
-            items.push(GenericDeclarationListItem::Declaration { range, parsed });
-        }
-    }
-    items
-}
+#[cfg(test)]
+pub(crate) mod tests;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod independent_tests;
 
 #[cfg(test)]
-mod independent_tests;
+pub(crate) mod finer_recovery_independent_tests;
 
 #[cfg(test)]
-mod finer_recovery_independent_tests;
+pub(crate) mod source_payload_tests;
 
 #[cfg(test)]
-mod source_payload_tests;
+pub(crate) mod declaration_boundary_tests;
 
 #[cfg(test)]
-mod declaration_boundary_tests;
-
-#[cfg(test)]
-mod raw_component_boundaries;
+pub(crate) mod raw_component_boundaries;
 
 // The controlled entry borrows checked components, so these are the only owned
 // normalization allocations. Other normalization fronts retain their old owner.

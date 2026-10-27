@@ -1,17 +1,22 @@
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::assert_component_rejected;
-use surgeist_css::CssNumericConstructionErrorKind;
-use surgeist_css::{
-    CssBoxSize, CssCalcSize, CssKnownPropertyValueRef, CssMaxSizeValue, CssSizeValue,
-    CssSpecifiedNonNegativeLengthPercentage, parse_component_values, parse_style_attribute,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::numeric::{CssLengthPercentage, CssNonNegative, CssNumeric};
+use surgeist_css::property::{CssKnownPropertyValueRef, CssPropertyTarget};
+use surgeist_css::values::box_model::{CssBoxSize, CssCalcSize, CssMaxSizeValue, CssSizeValue};
 
-fn component(text: &str) -> surgeist_css::CssComponentValue {
-    parse_component_values(text).unwrap().items()[0].clone()
+fn component(text: &str) -> surgeist_css::component::CssComponentValue {
+    CssComponentValues::parse(&CssParser::default(), text)
+        .unwrap()
+        .items()[0]
+        .clone()
 }
 
 fn size(name: &str, text: &str) -> CssSizeValue {
     let source = format!("{name}:{text}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let value = report.syntax()[0]
         .known()
@@ -34,28 +39,36 @@ fn size(name: &str, text: &str) -> CssSizeValue {
 #[test]
 fn checked_literal_preserves_exact_lexeme_and_rejects_tiny_negative() {
     let literal =
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(component("1e999px")).unwrap();
-    let surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension {
-        number,
-        unit,
-    }) = literal.literal_component().unwrap().view()
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(component("1e999px"))
+            .unwrap();
+    let surgeist_css::component::CssComponentValueRef::Token(
+        surgeist_css::component::CssValueTokenRef::Dimension { number, unit },
+    ) = literal
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("exact authored dimension")
     };
     assert_eq!(number.representation(), "1e999");
     assert_eq!(unit, "px");
     assert_eq!(
-        literal.literal_component().unwrap().origin(),
+        literal
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap()
+            .origin(),
         literal.origin()
     );
     let box_size = CssBoxSize::LengthPercentage(literal);
-    let canonical = box_size.serialize_specified().unwrap();
+    let canonical = box_size.serialize_specified(Default::default()).unwrap();
     assert!(canonical.ends_with("px"));
     assert_eq!(canonical.len(), 1002); // 1 followed by 999 zeroes, then px.
     assert_component_rejected(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component,
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component,
         component("-1e-999%"),
-        CssNumericConstructionErrorKind::OutOfRange,
+        NumericFailure::OutOfRange,
     );
 }
 
@@ -76,31 +89,43 @@ fn parsed_intrinsic_and_fit_content_values_have_distinct_typed_branches() {
         panic!("typed fit-content argument")
     };
     assert!(argument.calculation().is_some());
-    assert_eq!(argument.serialize_specified().unwrap(), "calc(2% + 1px)");
+    assert_eq!(
+        argument.serialize_specified(Default::default()).unwrap(),
+        "calc(2% + 1px)"
+    );
 }
 
 #[test]
 fn programmatic_checked_values_preserve_their_typed_boundary() {
-    let length = CssSpecifiedNonNegativeLengthPercentage::try_from_component(component("2.5%"))
-        .expect("checked percentage");
+    let length =
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(component("2.5%"))
+            .expect("checked percentage");
     let preferred = CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length));
-    assert_eq!(preferred.serialize_specified().unwrap(), "2.5%");
-    let calc = CssCalcSize::try_from_component(component("calc-size(min-content, size + 1px)"))
-        .expect("checked calc-size");
+    assert_eq!(
+        preferred.serialize_specified(Default::default()).unwrap(),
+        "2.5%"
+    );
+    let calc = CssCalcSize::try_from_component(
+        component("calc-size(min-content, size + 1px)"),
+        Default::default(),
+    )
+    .expect("checked calc-size");
     let maximum = CssMaxSizeValue::try_box_size(CssBoxSize::CalcSize(calc.try_into().unwrap()))
         .expect("maximum permits intrinsic basis");
     assert_eq!(
-        maximum.serialize_specified().unwrap(),
+        maximum.serialize_specified(Default::default()).unwrap(),
         "calc-size(min-content, 1px + size)"
     );
 }
 
 #[test]
 fn maximum_constructor_rejects_auto_in_nested_calc_size_basis() {
-    let nested =
-        CssCalcSize::try_from_component(component("calc-size(calc-size(auto, 1px), size + 1px)"))
-            .unwrap();
-    let surgeist_css::CssCalcSizeBasisRef::Nested(child) = nested.basis() else {
+    let nested = CssCalcSize::try_from_component(
+        component("calc-size(calc-size(auto, 1px), size + 1px)"),
+        Default::default(),
+    )
+    .unwrap();
+    let surgeist_css::values::box_model::CssCalcSizeBasisRef::Nested(child) = nested.basis() else {
         panic!("nested basis")
     };
     let auto_origin = child.basis_origin().clone();
@@ -109,7 +134,10 @@ fn maximum_constructor_rejects_auto_in_nested_calc_size_basis() {
     assert_eq!(error.origin(), Some(&auto_origin));
     let max = CssMaxSizeValue::try_box_size(CssBoxSize::Contain).unwrap();
     assert_eq!(max.box_size(), Some(&CssBoxSize::Contain));
-    assert_eq!(max.serialize_specified().unwrap(), "contain");
+    assert_eq!(
+        max.serialize_specified(Default::default()).unwrap(),
+        "contain"
+    );
     assert!(CssMaxSizeValue::NONE.is_none());
 }
 
@@ -120,13 +148,13 @@ fn invalid_nested_basis_and_fit_argument_report_original_token_positions() {
         ("inline-size", "fit-content(-1px)", "-1px"),
     ] {
         let source = format!("color:red;/*😀*/\n{name}:{value};color:blue");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         let [diagnostic] = report.diagnostics() else {
             panic!("one invalid sizing value: {source}")
         };
         assert_eq!(
             diagnostic.error().code(),
-            surgeist_css::CssErrorCode::InvalidPropertyValue
+            surgeist_css::diagnostic::CssErrorCode::InvalidPropertyValue
         );
         assert_eq!(
             diagnostic.error().position().byte_offset().value(),
@@ -138,7 +166,8 @@ fn invalid_nested_basis_and_fit_argument_report_original_token_positions() {
 
 #[test]
 fn checked_maximum_reports_nested_auto_origin_after_programmatic_trivia() {
-    let parsed = parse_style_attribute("/*😀*/\nwidth:calc-size(calc-size(auto, 1px), 1px)");
+    let parsed = CssParser::default()
+        .parse_block_contents("/*😀*/\nwidth:calc-size(calc-size(auto, 1px), 1px)");
     assert!(parsed.is_clean());
     let width = &parsed.syntax()[0];
     let CssKnownPropertyValueRef::Width(value) = width.known().unwrap().property_value().unwrap()
@@ -148,25 +177,31 @@ fn checked_maximum_reports_nested_auto_origin_after_programmatic_trivia() {
     let CssSizeValue::BoxSize(CssBoxSize::CalcSize(calc)) = value.value() else {
         panic!("parsed nested calc-size")
     };
-    let surgeist_css::CssCalcSizeBasisRef::Nested(child) = calc.as_calc_size().basis() else {
+    let surgeist_css::values::box_model::CssCalcSizeBasisRef::Nested(child) =
+        calc.as_calc_size().basis()
+    else {
         panic!("nested calc-size basis")
     };
     let expected_origin = child.basis_origin().clone();
-    let mut items = parse_component_values("/* programmatic */ ")
+    let mut items = CssComponentValues::parse(&CssParser::default(), "/* programmatic */ ")
         .unwrap()
         .items()
         .to_vec();
     items.extend(width.value_components().items().iter().cloned());
-    let components = surgeist_css::CssComponentValues::try_new(items).unwrap();
-    let error = surgeist_css::parse_property_value_for_grammar(
-        surgeist_css::CssPropertyGrammar::from_name("max-width").unwrap(),
+    let components =
+        surgeist_css::component::CssComponentValues::try_new(items, Default::default()).unwrap();
+    let error = surgeist_css::declaration::CssDeclaration::try_from_components(
+        &surgeist_css::CssParser::default(),
+        surgeist_css::property::CssPropertyTarget::Grammar(
+            surgeist_css::property::CssPropertyGrammar::from_name("max-width").unwrap(),
+        ),
         components,
-        surgeist_css::CssImportance::Normal,
+        surgeist_css::declaration::CssImportance::Normal,
     )
     .unwrap_err();
     assert_eq!(
         error.origin(),
-        &surgeist_css::CssSerializedOrigin::Token(expected_origin)
+        surgeist_css::component::CssSerializedOrigin::Token(expected_origin)
     );
 }
 
@@ -174,8 +209,8 @@ fn checked_maximum_reports_nested_auto_origin_after_programmatic_trivia() {
 fn sizing_equality_preserves_structure_across_distinct_origins() {
     let parsed = size("width", "2px");
     let checked = CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
-            surgeist_css::CssComponentValue::try_dimension("2", "px").unwrap(),
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
+            surgeist_css::component::CssComponentValue::try_dimension("2", "px").unwrap(),
         )
         .unwrap(),
     ));
@@ -190,10 +225,10 @@ fn sizing_equality_preserves_structure_across_distinct_origins() {
     assert_ne!(parsed_length.origin(), checked_length.origin());
     assert_eq!(
         checked_length.origin(),
-        &surgeist_css::CssValueOrigin::Programmatic
+        &surgeist_css::component::CssValueOrigin::Programmatic
     );
 
-    let parsed_max = parse_style_attribute("max-width:2px");
+    let parsed_max = CssParser::default().parse_block_contents("max-width:2px");
     assert!(parsed_max.is_clean());
     let CssKnownPropertyValueRef::MaxWidth(parsed_max_value) = parsed_max.syntax()[0]
         .known()
@@ -204,8 +239,8 @@ fn sizing_equality_preserves_structure_across_distinct_origins() {
         panic!("parsed maximum")
     };
     let checked_max = CssMaxSizeValue::try_box_size(CssBoxSize::LengthPercentage(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
-            surgeist_css::CssComponentValue::try_dimension("2", "px").unwrap(),
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
+            surgeist_css::component::CssComponentValue::try_dimension("2", "px").unwrap(),
         )
         .unwrap(),
     ))
@@ -213,29 +248,38 @@ fn sizing_equality_preserves_structure_across_distinct_origins() {
     assert_eq!(parsed_max_value.value(), &checked_max);
 
     let authored_fit = size("height", "fit-content(calc(1px + 2%))");
-    let checked_fit = CssSizeValue::BoxSize(CssBoxSize::FitContentFunction(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-            surgeist_css::CssLengthPercentageCalculation::try_from_components(
-                parse_component_values("calc(1px + 2%)").unwrap(),
-            )
-            .unwrap(),
-        )
-        .unwrap(),
-    ));
+    let checked_fit =
+        CssSizeValue::BoxSize(
+            CssBoxSize::FitContentFunction(
+                CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
+                    surgeist_css::numeric::CssCalculation::<
+                        surgeist_css::numeric::CssLengthPercentage,
+                    >::try_from_components(
+                        CssComponentValues::parse(&CssParser::default(), "calc(1px + 2%)").unwrap(),
+                        Default::default(),
+                    )
+                    .unwrap(),
+                )
+                .unwrap(),
+            ),
+        );
     assert_eq!(authored_fit, checked_fit);
 
     let authored_calc = size("inline-size", "calc-size(min-content, size + 1px)");
     let checked_calc = CssSizeValue::BoxSize(CssBoxSize::CalcSize(
-        CssCalcSize::try_from_component(component("calc-size(min-content, size + 1px)"))
-            .unwrap()
-            .try_into()
-            .unwrap(),
+        CssCalcSize::try_from_component(
+            component("calc-size(min-content, size + 1px)"),
+            Default::default(),
+        )
+        .unwrap()
+        .try_into()
+        .unwrap(),
     ));
     assert_eq!(authored_calc, checked_calc);
 
     assert_ne!(parsed, size("width", "3px"));
-    assert_ne!(parsed, size("width", "02px"));
-    assert_ne!(parsed, size("width", "2.0px"));
+    assert_eq!(parsed, size("width", "02px"));
+    assert_eq!(parsed, size("width", "2.0px"));
     assert_ne!(parsed, CssSizeValue::Auto);
     assert_ne!(
         size("width", "calc(1px + 2%)"),
@@ -245,7 +289,8 @@ fn sizing_equality_preserves_structure_across_distinct_origins() {
         size("width", "calc(1px + 2%)"),
         size("width", "calc(1px - 2%)")
     );
-    assert_ne!(
+    // Redundant grouping is not a calculation node (Values 4 parse a calculation).
+    assert_eq!(
         size("width", "calc(1px + 2%)"),
         size("width", "calc((1px + 2%))")
     );
@@ -266,37 +311,41 @@ fn sizing_equality_preserves_structure_across_distinct_origins() {
 
 #[test]
 fn coupled_declaration_equality_keeps_identity_importance_and_position_distinct() {
-    use surgeist_css::{CssImportance, CssKnownProperty, CssPropertyNameRef, parse_property_value};
+    use surgeist_css::declaration::CssImportance;
+    use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef};
 
-    let report = parse_style_attribute("width:2px");
+    let report = CssParser::default().parse_block_contents("width:2px");
     assert!(report.is_clean());
     let parsed = &report.syntax()[0];
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Width),
-        parse_component_values("2px").unwrap(),
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
+        CssComponentValues::parse(&CssParser::default(), "2px").unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
     assert_eq!(parsed.body(), checked.body());
     assert_ne!(parsed, &checked); // Only the parsed declaration has a name position.
     assert!(!parsed.same_occurrence(&checked));
-    let important = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Width),
-        parse_component_values("2px").unwrap(),
+    let important = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
+        CssComponentValues::parse(&CssParser::default(), "2px").unwrap(),
         CssImportance::Important,
     )
     .unwrap();
     assert_eq!(checked.body(), important.body());
     assert_ne!(checked, important);
-    let height = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Height),
-        parse_component_values("2px").unwrap(),
+    let height = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Height)),
+        CssComponentValues::parse(&CssParser::default(), "2px").unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
     assert_ne!(checked.body(), height.body());
-    let lower = parse_style_attribute("width:calc-size(min-content, size)");
-    let upper = parse_style_attribute("width:calc-size(MIN-CONTENT, size)");
+    let lower = CssParser::default().parse_block_contents("width:calc-size(min-content, size)");
+    let upper = CssParser::default().parse_block_contents("width:calc-size(MIN-CONTENT, size)");
     assert!(lower.is_clean() && upper.is_clean());
     let (
         CssKnownPropertyValueRef::Width(lower_value),

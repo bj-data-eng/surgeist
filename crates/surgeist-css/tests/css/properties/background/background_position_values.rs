@@ -1,11 +1,24 @@
 //! Functional tests for Backgrounds 3 §2.6 and §2.6.1 and Values 4 §8.3.2.
 //! https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#bg-position-serialization
 
+use crate::css::support::failure_classes::SerializationFailure as E;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::{
-    CssHorizontalPosition as H, CssSpecifiedValueSerializationErrorKind as E,
-    CssSpecifiedValueSerializationLimits as L, CssVerticalPosition as V, *,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssCalculation, CssLengthPercentage, CssNumeric};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandContribution, CssLonghandValueRef, CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::background::{CssBackgroundPosition, CssBackgroundPositionList};
+use surgeist_css::values::position::CssHorizontalPosition as H;
+use surgeist_css::values::position::CssPhysicalPosition;
+use surgeist_css::values::position::CssVerticalPosition as V;
 
 fn authored(source: &CssDeclaration) -> &CssBackgroundPositionList {
     let CssKnownPropertyValueRef::BackgroundPosition(value) =
@@ -13,21 +26,24 @@ fn authored(source: &CssDeclaration) -> &CssBackgroundPositionList {
     else {
         panic!("background position")
     };
-    value.positions()
+    value.value()
 }
 
-fn offset(css: &str) -> CssSpecifiedLengthPercentage {
+fn offset(css: &str) -> CssNumeric<CssLengthPercentage> {
     if css.starts_with("calc(") {
-        CssSpecifiedLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(
-                parse_component_values(css).unwrap(),
+        CssNumeric::<CssLengthPercentage>::try_from_calculation(
+            CssCalculation::<CssLengthPercentage>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), css).unwrap(),
+                Default::default(),
             )
             .unwrap(),
         )
         .unwrap()
     } else {
-        CssSpecifiedLengthPercentage::try_from_component(CssComponentValue::try_token(css).unwrap())
-            .unwrap()
+        CssNumeric::<CssLengthPercentage>::try_from_component(
+            CssComponentValue::try_token(css).unwrap(),
+        )
+        .unwrap()
     }
 }
 
@@ -69,7 +85,10 @@ fn intrinsic_initial_is_one_pair_of_zero_percentages_without_authored_provenance
     )])
     .unwrap();
     assert_eq!(positions, &expected);
-    assert_eq!(positions.serialize_specified().unwrap(), "0% 0%");
+    assert_eq!(
+        positions.serialize_specified(Default::default()).unwrap(),
+        "0% 0%"
+    );
     let [position] = positions.positions() else {
         panic!("one initial layer")
     };
@@ -78,9 +97,11 @@ fn intrinsic_initial_is_one_pair_of_zero_percentages_without_authored_provenance
     };
     for axis in [x, y] {
         assert!(matches!(axis.origin(), CssValueOrigin::Programmatic));
-        assert!(matches!(axis.literal_component().unwrap().view(),
+        assert!(
+            matches!(axis.literal().map(|literal| literal.component()).unwrap().view(),
             CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
-            if number.representation() == "0"));
+            if number.representation() == "0")
+        );
     }
 }
 
@@ -96,8 +117,7 @@ fn ordinary_contributions_preserve_exact_edge_axes_signed_values_and_layer_order
     ])
     .unwrap();
     assert_eq!(authored(&source), &expected);
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(&source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(items)) = source.expand().unwrap()
     else {
         panic!("completed position")
     };
@@ -115,7 +135,9 @@ fn ordinary_contributions_preserve_exact_edge_axes_signed_values_and_layer_order
     };
     assert!(matches!(x.origin(), CssValueOrigin::Parsed(_)));
     assert_eq!(
-        contributed(item).serialize_specified().unwrap(),
+        contributed(item)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "right -10px bottom -20%, left 5px top"
     );
 }
@@ -123,13 +145,16 @@ fn ordinary_contributions_preserve_exact_edge_axes_signed_values_and_layer_order
 #[test]
 fn reentry_preserves_checked_programmatic_axes_and_symbolic_calculation() {
     let source = declaration("background-position:var(--position)!important");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending position")
     };
-    let replacement = CssComponentValues::try_new(vec![
-        CssComponentValue::try_token("-5%").unwrap(),
-        CssComponentValue::try_ident("top").unwrap(),
-    ])
+    let replacement = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_token("-5%").unwrap(),
+            CssComponentValue::try_ident("top").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let expected =
         CssBackgroundPositionList::try_new(vec![position(H::Offset(offset("-5%")), V::Top)])
@@ -151,7 +176,8 @@ fn reentry_preserves_checked_programmatic_axes_and_symbolic_calculation() {
         };
         assert!(matches!(x.origin(), CssValueOrigin::Programmatic));
     }
-    let replacement = parse_component_values("calc(2px + 3%) center").unwrap();
+    let replacement =
+        CssComponentValues::parse(&CssParser::default(), "calc(2px + 3%) center").unwrap();
     let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("symbolic replacement")
     };
@@ -160,10 +186,10 @@ fn reentry_preserves_checked_programmatic_axes_and_symbolic_calculation() {
         panic!("symbolic axis")
     };
     assert!(x.calculation().is_some());
-    assert!(x.literal_component().is_none());
+    assert!(x.literal().map(|literal| literal.component()).is_none());
     assert!(matches!(value.positions()[0].vertical(), V::Center));
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "calc(3% + 2px) center"
     );
     assert_eq!(
@@ -193,11 +219,21 @@ fn specified_positions_follow_horizontal_first_order_and_keep_omitted_offsets() 
         let [value] = list.positions() else {
             panic!("one position")
         };
-        assert_eq!(value.serialize_specified().unwrap(), expected, "{css}");
-        assert_eq!(list.serialize_specified().unwrap(), expected, "{css}");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{css}"
+        );
+        assert_eq!(
+            list.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{css}"
+        );
         let roundtrip = declaration(&format!("background-position:{expected}"));
         assert_eq!(
-            authored(&roundtrip).serialize_specified().unwrap(),
+            authored(&roundtrip)
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected,
             "{css}"
         );
@@ -212,7 +248,7 @@ fn specified_positions_follow_horizontal_first_order_and_keep_omitted_offsets() 
             ));
             assert!(
                 matches!(authored(&roundtrip).positions()[0].vertical(), V::Offset(value)
-                if value.calculation().is_some() && value.literal_component().is_none())
+                if value.calculation().is_some() && value.literal().map(|literal| literal.component()).is_none())
             );
         }
     }
@@ -227,13 +263,18 @@ fn checked_list_serialization_retains_domain_distinctions_and_comma_order() {
     ])
     .unwrap();
     assert_eq!(
-        expected.serialize_specified().unwrap(),
+        expected.serialize_specified(Default::default()).unwrap(),
         "right 10px top, left bottom -20%"
     );
-    assert_eq!(three.serialize_specified().unwrap(), "right 10px top");
     assert_eq!(
-        CssPhysicalPosition::try_new(H::RightOffset(offset("10px")), V::Top),
-        Err(CssPositionConstructionError::UnpairedEdgeOffsets)
+        three.serialize_specified(Default::default()).unwrap(),
+        "right 10px top"
+    );
+    assert!(
+        CssPhysicalPosition::try_new(H::RightOffset(offset("10px")), V::Top)
+            .as_ref()
+            .unwrap_err()
+            .is_unpaired_edge_offsets()
     );
     assert!(
         CssBackgroundPosition::try_new(H::RightOffset(offset("10px")), V::Offset(offset("2px")))
@@ -260,7 +301,7 @@ fn scalar_serialization_charges_axes_numeric_children_and_output_atomically() {
         let original = value.clone();
         assert_eq!(
             value
-                .serialize_specified_with_limits(L::new(nodes, nodes, expected.len()))
+                .serialize_specified(L::new(nodes, nodes, expected.len()))
                 .unwrap(),
             expected
         );
@@ -276,15 +317,15 @@ fn scalar_serialization_charges_axes_numeric_children_and_output_atomically() {
             (L::new(nodes, nodes, 0), E::ByteLimit),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 error
             );
             assert_eq!(value, original);
         }
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 
@@ -298,7 +339,7 @@ fn list_serialization_uses_one_budget_for_all_layers_and_separators() {
     let expected = "left top, right bottom";
     // One list node plus two positions, each with its two axis nodes.
     assert_eq!(
-        list.serialize_specified_with_limits(L::new(7, 7, expected.len()))
+        list.serialize_specified(L::new(7, 7, expected.len()))
             .unwrap(),
         expected
     );
@@ -310,14 +351,15 @@ fn list_serialization_uses_one_budget_for_all_layers_and_separators() {
         (L::new(4, 4, expected.len()), E::InputNodeLimit),
     ] {
         assert_eq!(
-            list.serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&list.serialize_specified(limits).unwrap_err()),
             error
         );
         assert_eq!(list, original);
     }
-    assert_eq!(list.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        list.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 
 #[test]
@@ -327,7 +369,7 @@ fn calculation_projection_work_is_cumulative_across_axes_and_layers() {
     let scalar_css = "calc(2em + 1px) calc(2em + 1px)";
     assert_eq!(
         scalar
-            .serialize_specified_with_limits(L::new(11, 13, scalar_css.len()))
+            .serialize_specified(L::new(11, 13, scalar_css.len()))
             .unwrap(),
         scalar_css
     );
@@ -337,10 +379,7 @@ fn calculation_projection_work_is_cumulative_across_axes_and_layers() {
         (L::new(11, 13, scalar_css.len() - 1), E::ByteLimit),
     ] {
         assert_eq!(
-            scalar
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&scalar.serialize_specified(limits).unwrap_err()),
             error
         );
     }
@@ -351,7 +390,7 @@ fn calculation_projection_work_is_cumulative_across_axes_and_layers() {
     .unwrap();
     let expected = "calc(2em + 1px) center, calc(2em + 1px) top";
     assert_eq!(
-        list.serialize_specified_with_limits(L::new(15, 17, expected.len()))
+        list.serialize_specified(L::new(15, 17, expected.len()))
             .unwrap(),
         expected
     );
@@ -361,11 +400,12 @@ fn calculation_projection_work_is_cumulative_across_axes_and_layers() {
         (L::new(15, 17, expected.len() - 1), E::ByteLimit),
     ] {
         assert_eq!(
-            list.serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&list.serialize_specified(limits).unwrap_err()),
             error
         );
     }
-    assert_eq!(list.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        list.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }

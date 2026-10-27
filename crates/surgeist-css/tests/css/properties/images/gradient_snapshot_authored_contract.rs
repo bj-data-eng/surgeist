@@ -18,9 +18,25 @@
 
 use crate::css::support::authored_property;
 use crate::css::support::authored_property::parsed;
-use surgeist_css::{
-    CssKnownProperty as P, CssSpecifiedValueSerializationErrorKind as K,
-    CssSpecifiedValueSerializationLimits as L, *,
+use crate::css::support::failure_classes::SerializationFailure as K;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{CssLengthPercentage, CssNumeric};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::image::{
+    CssColorStopList, CssColorStopListItem, CssGradient, CssGradientColorStop, CssImage,
+    CssImageValue, CssImageValueList, CssLinearGradient,
 };
 
 const LINEAR: [&str; 2] = ["linear-gradient", "repeating-linear-gradient"];
@@ -47,7 +63,7 @@ fn image(declaration: &CssDeclaration) -> &CssImageValue {
     else {
         panic!("background image")
     };
-    let [image] = value.images().images() else {
+    let [image] = value.value().images() else {
         panic!("one image")
     };
     image
@@ -58,17 +74,29 @@ fn round_trip(value: &str) {
         let before = declaration.clone();
         assert!(matches!(image(&declaration), CssImageValue::Gradient(_)));
         let checked_image = CssImage::try_new(image(&declaration).clone()).unwrap();
-        let specified = checked_image.serialize_specified().unwrap();
+        let specified = checked_image
+            .serialize_specified(Default::default())
+            .unwrap();
         let reparsed = parsed(P::BackgroundImage, &specified);
         // Intrinsic normalization may collapse standard aliases/default spellings;
         // its output must retain meaning and have a stable semantic reparse.
-        assert_eq!(image(&reparsed).serialize_specified().unwrap(), specified);
-        let output = declaration.to_specified_css().unwrap();
-        let report = parse_style_attribute(&output);
+        assert_eq!(
+            image(&reparsed)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            specified
+        );
+        let output = declaration.serialize_specified(Default::default()).unwrap();
+        let report = CssParser::default().parse_block_contents(&output);
         assert!(report.is_clean(), "{output}: {:?}", report.diagnostics());
-        assert_eq!(report.syntax()[0].to_specified_css().unwrap(), output);
+        assert_eq!(
+            report.syntax()[0]
+                .serialize_specified(Default::default())
+                .unwrap(),
+            output
+        );
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&declaration).unwrap()
+            declaration.expand().unwrap()
         else {
             panic!("ordinary image expansion")
         };
@@ -88,12 +116,18 @@ fn rejects(value: &str) {
     let prefix = "/*😀*/color:red;\n";
     let unit = format!("background-image:{value};");
     let source = format!("{prefix}{unit}color:blue!important");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     let [first, last] = report.syntax().as_slice() else {
         panic!("two neighbors: {source}")
     };
-    assert_eq!(first.to_specified_css().unwrap(), "color: red;");
-    assert_eq!(last.to_specified_css().unwrap(), "color: blue !important;");
+    assert_eq!(
+        first.serialize_specified(Default::default()).unwrap(),
+        "color: red;"
+    );
+    assert_eq!(
+        last.serialize_specified(Default::default()).unwrap(),
+        "color: blue !important;"
+    );
     let [diagnostic] = report.diagnostics() else {
         panic!("one rejection: {source}")
     };
@@ -117,20 +151,26 @@ fn rejects(value: &str) {
             .count()
     );
     assert_eq!(
-        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     for grammar in [false, true] {
-        let components = parse_component_values(value).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
         let result = if grammar {
-            parse_property_value_for_grammar(
-                P::BackgroundImage.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(P::BackgroundImage.grammar()),
                 components,
                 CssImportance::Normal,
             )
         } else {
-            parse_property_value(
-                CssPropertyNameRef::Known(P::BackgroundImage),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(P::BackgroundImage)),
                 components,
                 CssImportance::Normal,
             )
@@ -498,14 +538,14 @@ fn checked_singleton_stop_list_and_image_construction_accept_one_real_stop() {
     let gradient = CssLinearGradient::new(None, list);
     let image = CssImage::try_new(CssImageValue::Gradient(CssGradient::Linear(gradient))).unwrap();
     assert_eq!(
-        image.serialize_specified().unwrap(),
+        image.serialize_specified(Default::default()).unwrap(),
         "linear-gradient(currentcolor)"
     );
 }
 #[test]
 fn checked_stop_list_rejects_empty_and_hint_only_or_endpoint_hints() {
     assert!(CssColorStopList::try_new(vec![]).is_none());
-    let hint = CssSpecifiedLengthPercentage::try_from_component(
+    let hint = CssNumeric::<CssLengthPercentage>::try_from_component(
         CssComponentValue::try_token("50%").unwrap(),
     )
     .unwrap();
@@ -547,7 +587,7 @@ fn selected_gradients_compose_through_actual_image_consumers_and_nested_images()
         ] {
             for declaration in fronts(property, value) {
                 let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                    expand_declaration(&declaration).unwrap()
+                    declaration.expand().unwrap()
                 else {
                     panic!("consumer expansion")
                 };
@@ -558,14 +598,19 @@ fn selected_gradients_compose_through_actual_image_consumers_and_nested_images()
                         .iter()
                         .all(|item| item.source().same_occurrence(&declaration))
                 );
-                let output = declaration.to_specified_css().unwrap();
-                let reparsed = parse_style_attribute(&output);
+                let output = declaration.serialize_specified(Default::default()).unwrap();
+                let reparsed = CssParser::default().parse_block_contents(&output);
                 assert!(
                     reparsed.is_clean(),
                     "{output}: {:?}",
                     reparsed.diagnostics()
                 );
-                assert_eq!(reparsed.syntax()[0].to_specified_css().unwrap(), output);
+                assert_eq!(
+                    reparsed.syntax()[0]
+                        .serialize_specified(Default::default())
+                        .unwrap(),
+                    output
+                );
             }
         }
         for nested in [
@@ -574,10 +619,10 @@ fn selected_gradients_compose_through_actual_image_consumers_and_nested_images()
         ] {
             let declaration = parsed(P::BackgroundImage, &nested);
             assert!(CssImage::try_new(image(&declaration).clone()).is_ok());
-            let output = declaration.to_specified_css().unwrap();
+            let output = declaration.serialize_specified(Default::default()).unwrap();
             assert_eq!(
-                parse_style_attribute(&output).syntax()[0]
-                    .to_specified_css()
+                CssParser::default().parse_block_contents(&output).syntax()[0]
+                    .serialize_specified(Default::default())
                     .unwrap(),
                 output
             );
@@ -597,9 +642,10 @@ fn cursor_url_only_import_remains_narrow_when_gradient_image_support_expands() {
             format!("image-set({value} 1x), auto"),
         ] {
             assert!(
-                parse_property_value(
-                    CssPropertyNameRef::Known(P::Cursor),
-                    parse_component_values(&authored).unwrap(),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(P::Cursor)),
+                    CssComponentValues::parse(&CssParser::default(), &authored).unwrap(),
                     CssImportance::Normal
                 )
                 .is_err()
@@ -620,7 +666,7 @@ fn pending_substitution_is_whole_value_strict_reusable_and_preserves_source_iden
         let source = parsed(property, "bogus var(--gradient)");
         let before = source.clone();
         assert!(source.known().unwrap().substitution_dependent().is_some());
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending")
         };
         for _ in 0..2 {
@@ -629,24 +675,27 @@ fn pending_substitution_is_whole_value_strict_reusable_and_preserves_source_iden
                 "linear-gradient(in lab longer hue, red, blue)",
                 "radial-gradient(red 0 1% 2%, blue)",
             ] {
-                assert!(matches!(
+                assert!(
                     handle
-                        .reenter(parse_component_values(invalid).unwrap())
+                        .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                         .unwrap_err()
-                        .kind(),
-                    CssExpansionErrorKind::InvalidReplacement(_)
-                ));
+                        .replacement_error()
+                        .is_some()
+                );
             }
-            assert_eq!(
+            assert!(
                 handle
-                    .reenter(parse_component_values("var(--again)").unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap()
+                    )
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
-            let replacement =
-                parse_component_values("/*😀*/conic-gradient(from 0 in lab, red 0 50%, blue)")
-                    .unwrap();
+            let replacement = CssComponentValues::parse(
+                &CssParser::default(),
+                "/*😀*/conic-gradient(from 0 in lab, red 0 50%, blue)",
+            )
+            .unwrap();
             let replacement_before = replacement.clone();
             let CssContributions::Longhands(values) = handle
                 .reenter(replacement.clone())
@@ -667,16 +716,14 @@ fn pending_substitution_is_whole_value_strict_reusable_and_preserves_source_iden
 }
 #[test]
 fn normalization_preserves_gradient_order_importance_pending_and_occurrence_provenance() {
-    let report = parse_sheet(
-        ".a{background-image:conic-gradient(red,blue)!important;background-image:linear-gradient(in lab,red 0 20%,blue);background-image:var(--g);background-image:unset}",
-    );
+    let report = CssParser::default().parse_sheet(".a{background-image:conic-gradient(red,blue)!important;background-image:linear-gradient(in lab,red 0 20%,blue);background-image:var(--g);background-image:unset}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
     let CssRule::Style(style) = &report.syntax().rules()[0] else {
         panic!("style")
     };
     let limits = CssNormalizationLimits::try_new(0, 1, 4, 4).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), limits).unwrap();
+    let normalized = report.syntax().normalize(limits).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -700,21 +747,17 @@ fn normalization_preserves_gradient_order_importance_pending_and_occurrence_prov
             _ => panic!("ordinary or pending gradient expansion"),
         }
     }
-    let error = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 4, 3).unwrap(),
-    )
-    .unwrap_err();
+    let error = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 4, 3).unwrap())
+        .unwrap_err();
     assert_eq!(error.declaration_order(), Some(3));
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 3
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 3))
     );
     assert_eq!(report, before);
-    assert!(normalize_report_with_limits(&report, limits).is_ok());
+    assert!(report.normalize(limits).is_ok());
 }
 #[test]
 fn selected_gradient_serialization_limits_are_atomic_reusable_and_cumulative() {
@@ -723,11 +766,11 @@ fn selected_gradient_serialization_limits_are_atomic_reusable_and_cumulative() {
         "conic-gradient(from 45deg at left 10px top 20% in lab, red 0 25%, 50%, blue 75% 1turn)",
     );
     let before = source.clone();
-    let specified = source.to_specified_css().unwrap();
+    let specified = source.serialize_specified(Default::default()).unwrap();
     let unlimited = usize::MAX;
     assert_eq!(
         source
-            .to_specified_css_with_limits(L::new(unlimited, unlimited, specified.len()))
+            .serialize_specified(L::new(unlimited, unlimited, specified.len()))
             .unwrap(),
         specified
     );
@@ -741,46 +784,47 @@ fn selected_gradient_serialization_limits_are_atomic_reusable_and_cumulative() {
     ] {
         for _ in 0..2 {
             assert_eq!(
-                source
-                    .to_specified_css_with_limits(limit)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&source.serialize_specified(limit).unwrap_err()),
                 kind
             );
         }
-        assert_eq!(source.to_specified_css().unwrap(), specified);
+        assert_eq!(
+            source.serialize_specified(Default::default()).unwrap(),
+            specified
+        );
         assert_eq!(source, before);
     }
-    let single = image(&source).serialize_specified().unwrap();
+    let single = image(&source)
+        .serialize_specified(Default::default())
+        .unwrap();
     let CssKnownPropertyValueRef::BackgroundImage(authored) =
         source.known().unwrap().property_value().unwrap()
     else {
         panic!("image list")
     };
     let repeated = CssImageValueList::try_new(vec![
-        authored.images().images()[0].clone(),
-        authored.images().images()[0].clone(),
+        authored.value().images()[0].clone(),
+        authored.value().images()[0].clone(),
     ])
     .unwrap();
     assert_eq!(
-        repeated.serialize_specified().unwrap(),
+        repeated.serialize_specified(Default::default()).unwrap(),
         format!("{single}, {single}")
     );
     // Each child's output fits separately; the composed list fails the total cap.
     assert!(
         image(&source)
-            .serialize_specified_with_limits(L::new(unlimited, unlimited, single.len()))
+            .serialize_specified(L::new(unlimited, unlimited, single.len()))
             .is_ok()
     );
-    assert_eq!(
+    assert!(
         repeated
-            .serialize_specified_with_limits(L::new(unlimited, unlimited, single.len()))
+            .serialize_specified(L::new(unlimited, unlimited, single.len()))
             .unwrap_err()
-            .kind(),
-        K::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(
-        repeated.serialize_specified().unwrap(),
+        repeated.serialize_specified(Default::default()).unwrap(),
         format!("{single}, {single}")
     );
 }
@@ -815,18 +859,20 @@ fn checked_property_and_grammar_fronts_admit_the_selected_gradient_extensions() 
         "repeating-linear-gradient(red 10% 20%, blue)",
         "repeating-radial-gradient(red)",
     ] {
-        let components = parse_component_values(text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let before = components.clone();
         for grammar in [false, true] {
             let declaration = if grammar {
-                parse_property_value_for_grammar(
-                    P::BackgroundImage.grammar(),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(P::BackgroundImage.grammar()),
                     components.clone(),
                     CssImportance::Important,
                 )
             } else {
-                parse_property_value(
-                    CssPropertyNameRef::Known(P::BackgroundImage),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(P::BackgroundImage)),
                     components.clone(),
                     CssImportance::Important,
                 )
@@ -845,13 +891,19 @@ fn checked_property_and_grammar_fronts_admit_the_selected_gradient_extensions() 
 fn checked_interpolation_admission_reuses_the_real_property_parser() {
     for function in LINEAR.into_iter().chain(RADIAL) {
         let text = format!("{function}(in lab, red, blue)");
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(P::BackgroundImage),
-            parse_component_values(&text).unwrap(),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(P::BackgroundImage)),
+            CssComponentValues::parse(&CssParser::default(), &text).unwrap(),
             CssImportance::Normal,
         )
         .expect("Images4 explicit interpolation is valid at checked boundary");
-        assert_eq!(image(&checked).serialize_specified().unwrap(), text);
+        assert_eq!(
+            image(&checked)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            text
+        );
     }
 }
 
@@ -859,13 +911,19 @@ fn checked_interpolation_admission_reuses_the_real_property_parser() {
 fn checked_radial_at_admission_uses_the_full_imported_position_owner() {
     for function in RADIAL {
         let text = format!("{function}(at block-start inline-end, red, blue)");
-        let checked = parse_property_value_for_grammar(
-            P::BackgroundImage.grammar(),
-            parse_component_values(&text).unwrap(),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(P::BackgroundImage.grammar()),
+            CssComponentValues::parse(&CssParser::default(), &text).unwrap(),
             CssImportance::Normal,
         )
         .expect("specific Values5 at-position import permits named flow axes");
-        assert_eq!(image(&checked).serialize_specified().unwrap(), text);
+        assert_eq!(
+            image(&checked)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            text
+        );
     }
 }
 
@@ -881,9 +939,14 @@ fn specified_output_keeps_both_positions_and_nondefault_interpolation_semantics(
         };
         let expected = format!("{function}(in lab, {stops})");
         for declaration in fronts(P::BackgroundImage, &expected) {
-            assert_eq!(image(&declaration).serialize_specified().unwrap(), expected);
             assert_eq!(
-                declaration.to_specified_css().unwrap(),
+                image(&declaration)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                expected
+            );
+            assert_eq!(
+                declaration.serialize_specified(Default::default()).unwrap(),
                 format!("background-image: {expected} !important;")
             );
         }
@@ -908,7 +971,9 @@ fn named_and_relative_flow_positions_keep_the_adopted_symbolic_output() {
                 &format!("{function}(at {input}, red, blue)"),
             );
             assert_eq!(
-                image(&declaration).serialize_specified().unwrap(),
+                image(&declaration)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 format!("{function}(at {canonical}, red, blue)")
             );
         }
@@ -922,7 +987,9 @@ fn line_stop_calculations_remain_symbolic_without_geometry() {
             P::BackgroundImage,
             &format!("{function}(red calc(10px + 5%) calc(20px + 10%), calc(30px + 15%), blue)"),
         ) {
-            let output = image(&declaration).serialize_specified().unwrap();
+            let output = image(&declaration)
+                .serialize_specified(Default::default())
+                .unwrap();
             assert_eq!(
                 output,
                 format!("{function}(red calc(5% + 10px) calc(10% + 20px), calc(15% + 30px), blue)")
@@ -935,7 +1002,7 @@ fn line_stop_calculations_remain_symbolic_without_geometry() {
 fn double_stop_payload_keeps_original_first_position_hint_and_color_occurrences() {
     let source =
         "/*😀*/background-image:linear-gradient(red -10px 20%, 40%, blue 80% 120px)!important";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let declaration = &report.syntax()[0];
     let CssImageValue::Gradient(CssGradient::Linear(gradient)) = image(declaration) else {
@@ -949,14 +1016,30 @@ fn double_stop_payload_keeps_original_first_position_hint_and_color_occurrences(
     else {
         panic!("authored double-position stops must not be expanded or fixed up")
     };
-    assert_eq!(first.color().to_specified_css().unwrap(), "red");
-    assert_eq!(last.color().to_specified_css().unwrap(), "blue");
+    assert_eq!(
+        first
+            .color()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "red"
+    );
+    assert_eq!(
+        last.color()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "blue"
+    );
     for (value, text) in [
         (first.position().unwrap(), "-10px"),
         (hint, "40%"),
         (last.position().unwrap(), "80%"),
     ] {
-        let CssValueOrigin::Parsed(origin) = value.literal_component().unwrap().origin() else {
+        let CssValueOrigin::Parsed(origin) = value
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap()
+            .origin()
+        else {
             panic!("original parsed numeric occurrence")
         };
         assert_eq!(origin.source().as_str(), source);
@@ -987,7 +1070,7 @@ fn singleton_gradient_lists_share_exact_graph_work_caps_across_siblings() {
     let list = CssImageValueList::try_new(vec![single.clone(), single]).unwrap();
     let expected = "linear-gradient(red), linear-gradient(red)";
     assert_eq!(
-        list.serialize_specified_with_limits(L::new(9, 9, expected.len()))
+        list.serialize_specified(L::new(9, 9, expected.len()))
             .unwrap(),
         expected
     );
@@ -998,23 +1081,23 @@ fn singleton_gradient_lists_share_exact_graph_work_caps_across_siblings() {
     ] {
         for _ in 0..2 {
             assert_eq!(
-                list.serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&list.serialize_specified(limits).unwrap_err()),
                 kind
             );
         }
-        assert_eq!(list.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            list.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     assert!(
         image(&source)
-            .serialize_specified_with_limits(L::new(4, 4, "linear-gradient(red)".len()))
+            .serialize_specified(L::new(4, 4, "linear-gradient(red)".len()))
             .is_ok()
     );
-    assert_eq!(
-        list.serialize_specified_with_limits(L::new(4, 9, expected.len()))
+    assert!(
+        list.serialize_specified(L::new(4, 9, expected.len()))
             .unwrap_err()
-            .kind(),
-        K::InputNodeLimit
+            .is_input_node_limit()
     );
 }

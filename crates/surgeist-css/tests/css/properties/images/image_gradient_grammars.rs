@@ -1,8 +1,18 @@
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssGlobalKeyword;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+};
+use surgeist_css::values::image::{
+    CssColorStopListItem, CssGradient, CssHorizontalGradientSide, CssImageValue,
+    CssLinearGradientDirection, CssRadialExtent, CssRadialShape, CssRadialSize,
+    CssVerticalGradientSide,
+};
 
 #[test]
 fn images_and_gradients_retain_typed_structure() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "background-image: url(hero.png), none, ",
         "linear-gradient(to right top, red 0%, 25%, blue), ",
         "radial-gradient(circle closest-side at left 10px top 20%, red, blue 75%), ",
@@ -19,14 +29,14 @@ fn images_and_gradients_retain_typed_structure() {
     else {
         panic!("expected background-image wrapper");
     };
-    assert_eq!(value.images().images().len(), 6);
+    assert_eq!(value.value().images().len(), 6);
     assert!(matches!(
-        &value.images().images()[0],
+        &value.value().images()[0],
         CssImageValue::Url(url) if url.as_str() == "hero.png"
     ));
-    assert!(matches!(value.images().images()[1], CssImageValue::None));
+    assert!(matches!(value.value().images()[1], CssImageValue::None));
 
-    let CssImageValue::Gradient(CssGradient::Linear(linear)) = &value.images().images()[2] else {
+    let CssImageValue::Gradient(CssGradient::Linear(linear)) = &value.value().images()[2] else {
         panic!("expected linear gradient");
     };
     assert!(matches!(
@@ -42,11 +52,11 @@ fn images_and_gradients_retain_typed_structure() {
             CssColorStopListItem::Hint(hint),
             CssColorStopListItem::Stop(last),
         ] if first.position().is_some()
-            && exact_percentage(hint.literal_component(), "25")
+            && exact_percentage(hint.literal().map(|literal| literal.component()), "25")
             && last.position().is_none()
     ));
 
-    let CssImageValue::Gradient(CssGradient::Radial(radial)) = &value.images().images()[3] else {
+    let CssImageValue::Gradient(CssGradient::Radial(radial)) = &value.value().images()[3] else {
         panic!("expected radial gradient");
     };
     assert_eq!(radial.shape(), Some(CssRadialShape::Circle));
@@ -58,11 +68,11 @@ fn images_and_gradients_retain_typed_structure() {
     assert_eq!(radial.stops().items().len(), 2);
 
     assert!(matches!(
-        value.images().images()[4],
+        value.value().images()[4],
         CssImageValue::Gradient(CssGradient::RepeatingLinear(_))
     ));
     assert!(matches!(
-        value.images().images()[5],
+        value.value().images()[5],
         CssImageValue::Gradient(CssGradient::RepeatingRadial(_))
     ));
 }
@@ -80,7 +90,7 @@ fn radial_extent_rules_accept_only_shape_compatible_sizes() {
         "radial-gradient(ellipse closest-side, red, blue)",
     ] {
         let source = format!("background-image: {valid}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{valid}: {:?}", report.diagnostics());
     }
 
@@ -93,7 +103,7 @@ fn radial_extent_rules_accept_only_shape_compatible_sizes() {
         "radial-gradient(ellipse 10px -2px, red, blue)",
     ] {
         let source = format!("background-image: {invalid}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "retained {invalid}");
         assert_eq!(
             report.syntax()[0].known().map(|known| known.property()),
@@ -115,7 +125,7 @@ fn color_stop_hints_require_interleaved_stop_order() {
         "linear-gradient(red 20% blue)",
     ] {
         let source = format!("background-image: {invalid}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "retained {invalid}");
         assert_eq!(
             report.syntax()[0].known().map(|known| known.property()),
@@ -128,7 +138,7 @@ fn color_stop_hints_require_interleaved_stop_order() {
 
 #[test]
 fn images_keep_globals_substitutions_and_exact_invalid_recovery_distinct() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "background-image: inherit; ",
         "background-image: var(--hero, linear-gradient(red, blue)); ",
         "background-image: url(hero.png)"
@@ -147,14 +157,14 @@ fn images_keep_globals_substitutions_and_exact_invalid_recovery_distinct() {
     else {
         panic!("expected ordinary URL image");
     };
-    assert!(matches!(url.images().images(), [CssImageValue::Url(_)]));
+    assert!(matches!(url.value().images(), [CssImageValue::Url(_)]));
 
     let source = concat!(
         "--😀: kept; ",
         "background-image: radial-gradient(circle 10% at center, red, blue); ",
         "color: red"
     );
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("expected one invalid background-image diagnostic");
@@ -183,14 +193,15 @@ fn images_keep_globals_substitutions_and_exact_invalid_recovery_distinct() {
         diagnostic.error().position().column().value() as usize,
         source[..responsible].encode_utf16().count(),
     );
-    assert!(matches!(
-        diagnostic.error().kind(),
-        ErrorKind::InvalidPropertyValue(detail)
-            if detail.property() == CssKnownProperty::BackgroundImage
-    ));
+    assert!(
+        (diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
+            && diagnostic.error().known_property().unwrap() == CssKnownProperty::BackgroundImage)
+    );
 
     assert_eq!(
-        surgeist_css::validate_style_attribute(source)
+        surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects invalid radial size")
             .diagnostics(),
         report.diagnostics(),
@@ -198,8 +209,8 @@ fn images_keep_globals_substitutions_and_exact_invalid_recovery_distinct() {
 }
 
 fn exact_percentage(
-    component: Option<&surgeist_css::CssComponentValue>,
+    component: Option<&surgeist_css::component::CssComponentValue>,
     representation: &str,
 ) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
 }

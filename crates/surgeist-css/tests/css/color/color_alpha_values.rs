@@ -1,12 +1,20 @@
 //! Color 5 alpha and authored absolute-eligibility contracts.
 use crate::css::support::checked_color as color;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssAbsoluteColorEligibility, CssAbsoluteColorExclusion, CssAlphaColor, CssColor,
+    CssRelativeColorChannel, CssRelativeColorEnvironment, CssRelativeColorExpression,
+    CssRelativeColorExpressionValue, CssRelativeColorResultDomain,
+};
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::numeric::{CssCalculationExpressionRef, CssCalculationType};
 
 fn alpha(text: &str) -> CssRelativeColorExpression {
     CssRelativeColorExpression::try_from_components(
-        parse_component_values(text).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), text).unwrap(),
         CssRelativeColorEnvironment::Alpha,
         CssRelativeColorResultDomain::Alpha,
+        Default::default(),
     )
     .unwrap()
 }
@@ -57,9 +65,10 @@ fn alpha_math_keeps_transparency_references_and_rejects_foreign_environments() {
     ] {
         assert!(
             CssRelativeColorExpression::try_from_components(
-                parse_component_values(text).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 CssRelativeColorEnvironment::Alpha,
                 CssRelativeColorResultDomain::Alpha,
+                Default::default(),
             )
             .is_err(),
             "{text}"
@@ -68,9 +77,10 @@ fn alpha_math_keeps_transparency_references_and_rejects_foreign_environments() {
     let rgb = color("rgb(from red r g b / alpha)");
     let foreign = rgb.relative_value().unwrap().alpha().unwrap().clone();
     assert_eq!(foreign.result_domain(), CssRelativeColorResultDomain::Alpha);
-    assert_eq!(
-        CssAlphaColor::try_new(color("red"), Some(foreign)).unwrap_err(),
-        CssColorConstructionError::InvalidExpressionEnvironment
+    assert!(
+        CssAlphaColor::try_new(color("red"), Some(foreign))
+            .unwrap_err()
+            .is_invalid_expression_environment()
     );
 }
 
@@ -162,9 +172,10 @@ fn checked_alpha_graph_enforces_depth_without_discarding_children() {
         current.absolute_eligibility(),
         CssAbsoluteColorEligibility::Eligible
     );
-    assert_eq!(
-        CssAlphaColor::try_new(current, None).unwrap_err(),
-        CssColorConstructionError::NestingLimit
+    assert!(
+        CssAlphaColor::try_new(current, None)
+            .unwrap_err()
+            .is_nesting_limit()
     );
     for depth in [254, 255, 256] {
         let text = format!("{}alpha{}", "calc(".repeat(depth), ")".repeat(depth));
@@ -172,7 +183,7 @@ fn checked_alpha_graph_enforces_depth_without_discarding_children() {
         if depth < 256 {
             assert!(result.is_ok());
         } else {
-            assert_eq!(result.unwrap_err(), CssColorConstructionError::NestingLimit);
+            assert!(result.unwrap_err().is_nesting_limit());
         }
     }
 }
@@ -217,19 +228,26 @@ fn nested_alpha_custom_and_mix_branches_remain_typed() {
 
 #[test]
 fn alpha_math_retains_parsed_leaf_in_a_programmatic_function() {
-    let leaf = parse_component_values("alpha").unwrap().items()[0].clone();
-    let graph = CssComponentValues::try_new(vec![
-        CssComponentValue::try_function(
-            "calc",
-            CssComponentValues::try_new(vec![leaf.clone()]).unwrap(),
-        )
-        .unwrap(),
-    ])
+    let leaf = CssComponentValues::parse(&CssParser::default(), "alpha")
+        .unwrap()
+        .items()[0]
+        .clone();
+    let graph = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_function(
+                "calc",
+                CssComponentValues::try_new(vec![leaf.clone()], Default::default()).unwrap(),
+            )
+            .unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let value = CssRelativeColorExpression::try_from_components(
         graph,
         CssRelativeColorEnvironment::Alpha,
         CssRelativeColorResultDomain::Alpha,
+        Default::default(),
     )
     .unwrap();
     let CssRelativeColorExpressionValue::Calculation(calculation) = value.value() else {

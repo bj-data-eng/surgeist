@@ -3,8 +3,22 @@
 use crate::css::support::color_and_selector_fixtures::{
     assert_selector_input_rejected, assert_strict_validation_rejects,
 };
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::validated_selector_in as parsed;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizedItem, CssSelectorBinding};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix, CssRule};
+use surgeist_css::selector::{
+    CssComplexSelector, CssCompoundSelectorArgument, CssNamespaceConstraint, CssNamespaceContext,
+    CssNthChildPattern, CssNthPattern, CssPseudoClass, CssPseudoElement, CssPseudoElementSegment,
+    CssPseudoSelectorList, CssQualifiedNamePrefix, CssRelativeSelector, CssRelativeSelectorList,
+    CssSelector, CssSelectorCombinator, CssStyleSelector,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn complex(selector: &CssSelector) -> &CssComplexSelector {
     let CssSelector::Complex(value) = selector else {
@@ -15,10 +29,13 @@ fn complex(selector: &CssSelector) -> &CssComplexSelector {
 
 fn column_has(selector: CssSelector) -> CssSelector {
     CssSelector::PseudoClass(CssPseudoClass::Has(
-        CssRelativeSelectorList::try_new(vec![CssRelativeSelector::new(
-            CssSelectorCombinator::Column,
-            selector,
-        )])
+        CssRelativeSelectorList::try_new(
+            vec![CssRelativeSelector::new(
+                CssSelectorCombinator::Column,
+                selector,
+            )],
+            Default::default(),
+        )
         .unwrap(),
     ))
 }
@@ -47,7 +64,10 @@ fn column_tokens_preserve_relation_and_namespace_boundaries() {
             panic!("one relation")
         };
         assert_eq!(part.combinator(), CssSelectorCombinator::Column);
-        assert_eq!(selector.to_specified_css().unwrap(), expected);
+        assert_eq!(
+            selector.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         let roundtrip = parsed(expected, &namespaces);
         assert_eq!(roundtrip, selector);
         assert_eq!(selector, before);
@@ -71,7 +91,10 @@ fn column_tokens_preserve_relation_and_namespace_boundaries() {
         &CssQualifiedNamePrefix::ExplicitNone
     );
     for source in ["col||", "col|||", "||td", "svg| Col", "[svg |Data]"] {
-        assert_selector_input_rejected(source, parse_selector(source, &namespaces));
+        assert_selector_input_rejected(
+            source,
+            CssSelector::parse(&CssParser::default(), source, &namespaces),
+        );
     }
 }
 
@@ -79,7 +102,10 @@ fn column_tokens_preserve_relation_and_namespace_boundaries() {
 fn constructed_column_relatives_emit_and_reparse_with_shadow_outer_compounds() {
     let value = column_has(CssSelector::Class("Cell".into()));
     let before = value.clone();
-    assert_eq!(value.to_specified_css().unwrap(), ":has(|| .Cell)");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        ":has(|| .Cell)"
+    );
     let reparsed = parsed(":has(|| .Cell)", &CssNamespaceContext::default());
     let CssSelector::PseudoClass(CssPseudoClass::Has(list)) = &reparsed else {
         panic!("has")
@@ -95,14 +121,17 @@ fn constructed_column_relatives_emit_and_reparse_with_shadow_outer_compounds() {
     assert_eq!(value, before);
     let argument = CssCompoundSelectorArgument::try_new(value).unwrap();
     let host = CssSelector::PseudoClass(CssPseudoClass::HostFunction(argument.clone()));
-    assert_eq!(host.to_specified_css().unwrap(), ":host(:has(|| .Cell))");
+    assert_eq!(
+        host.serialize_specified(Default::default()).unwrap(),
+        ":host(:has(|| .Cell))"
+    );
     assert_eq!(
         parsed(":host(:has(|| .Cell))", &CssNamespaceContext::default()),
         host
     );
     let slotted = parsed("::slotted(:has(|| .Cell))", &CssNamespaceContext::default());
     assert_eq!(
-        slotted.to_specified_css().unwrap(),
+        slotted.serialize_specified(Default::default()).unwrap(),
         "::slotted(:has(|| .Cell))"
     );
     let CssSelector::Compound(compound) = slotted else {
@@ -125,44 +154,40 @@ fn constructed_column_relatives_share_the_node_and_utf8_limits() {
     // contributes punctuation bytes without adding a fourth node.
     assert_eq!(
         value
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                3,
-                3,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(3, 3, expected.len()))
             .unwrap(),
         expected
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(2, 3, expected.len()),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(3, 2, expected.len()),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(3, 3, expected.len() - 1),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(value, before);
     }
-    assert_eq!(value.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 
 #[test]
 fn column_nested_rules_keep_the_complete_parent_binding_in_normalization() {
     let source = ".Parent, #Alternate { || .Cell { color:red; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::Style(parent)] = report.syntax().rules() else {
         panic!("parent")
@@ -175,7 +200,7 @@ fn column_nested_rules_keep_the_complete_parent_binding_in_normalization() {
     };
     assert_eq!(relative.combinator(), CssSelectorCombinator::Column);
     assert_eq!(relative.selector(), &CssSelector::Class("Cell".into()));
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -207,9 +232,12 @@ fn column_nested_rules_keep_the_complete_parent_binding_in_normalization() {
         parent.selectors()[1].selector(),
         &CssSelector::Key("Alternate".into())
     );
-    let emitted = report.syntax().to_specified_css().unwrap();
+    let emitted = report
+        .syntax()
+        .serialize_specified(Default::default())
+        .unwrap();
     assert!(emitted.contains("|| .Cell"), "{emitted}");
-    assert!(parse_sheet(&emitted).is_clean());
+    assert!(CssParser::default().parse_sheet(&emitted).is_clean());
     assert_eq!(
         child.position().byte_offset().value(),
         source.find("||").unwrap()
@@ -218,7 +246,8 @@ fn column_nested_rules_keep_the_complete_parent_binding_in_normalization() {
 
 #[test]
 fn column_scope_and_supports_hosts_reuse_the_same_typed_provider() {
-    let report = parse_sheet("@scope (col||td) { || .Cell {} } @supports selector(.x || .y) {}");
+    let report = CssParser::default()
+        .parse_sheet("@scope (col||td) { || .Cell {} } @supports selector(.x || .y) {}");
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::Scope(scope), CssRule::Supports(supports)] = report.syntax().rules() else {
         panic!("two hosts")
@@ -228,23 +257,30 @@ fn column_scope_and_supports_hosts_reuse_the_same_typed_provider() {
         complex(root).rest()[0].combinator(),
         CssSelectorCombinator::Column
     );
-    let [CssScopedRule::Style(style)] = scope.rules().rules() else {
+    let [CssRule::Style(style)] = scope.rules().rules() else {
         panic!("scoped child")
     };
-    let [CssScopedStyleSelector::Relative(relative)] = style.selectors().selectors() else {
+    let [CssStyleSelector::Relative(relative)] = style.selectors().selectors() else {
         panic!("scoped relative")
     };
     assert_eq!(relative.combinator(), CssSelectorCombinator::Column);
-    let CssSupportsConditionKind::Selector(selector) = supports.condition().kind() else {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Selector(selector)) = supports.condition().kind()
+    else {
         panic!("typed selector test")
     };
     assert_eq!(
         complex(selector).rest()[0].combinator(),
         CssSelectorCombinator::Column
     );
-    assert_eq!(selector.to_specified_css().unwrap(), ".x || .y");
-    let emitted = report.syntax().to_specified_css().unwrap();
-    let roundtrip = parse_sheet(&emitted);
+    assert_eq!(
+        selector.serialize_specified(Default::default()).unwrap(),
+        ".x || .y"
+    );
+    let emitted = report
+        .syntax()
+        .serialize_specified(Default::default())
+        .unwrap();
+    let roundtrip = CssParser::default().parse_sheet(&emitted);
     assert!(roundtrip.is_clean(), "{emitted}: {roundtrip:?}");
 }
 
@@ -252,11 +288,11 @@ fn column_scope_and_supports_hosts_reuse_the_same_typed_provider() {
 fn column_relative_graphs_inherit_nested_has_and_pseudo_element_exclusions() {
     let nested = column_has(CssSelector::Class("Nested".into()));
     let logical = CssSelector::PseudoClass(CssPseudoClass::Is(
-        CssPseudoSelectorList::try_new(vec![nested.clone()]).unwrap(),
+        CssPseudoSelectorList::try_new(vec![nested.clone()], Default::default()).unwrap(),
     ));
     let nth = CssSelector::PseudoClass(CssPseudoClass::NthChild(CssNthChildPattern::new(
         CssNthPattern::Odd,
-        Some(CssPseudoSelectorList::try_new(vec![nested.clone()]).unwrap()),
+        Some(CssPseudoSelectorList::try_new(vec![nested.clone()], Default::default()).unwrap()),
     )));
     let shadow = CssSelector::PseudoClass(CssPseudoClass::HostFunction(
         CssCompoundSelectorArgument::try_new(nested).unwrap(),
@@ -265,14 +301,18 @@ fn column_relative_graphs_inherit_nested_has_and_pseudo_element_exclusions() {
     for child in [logical, nth, shadow, pseudo_element] {
         let value = column_has(child);
         let before = value.clone();
-        assert_eq!(
-            value.to_specified_css().unwrap_err().kind(),
-            CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
+        assert!(
+            value
+                .serialize_specified(Default::default())
+                .unwrap_err()
+                .is_unrepresentable_value()
         );
         assert_eq!(value, before);
-        assert_eq!(
-            value.to_specified_css().unwrap_err().kind(),
-            CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
+        assert!(
+            value
+                .serialize_specified(Default::default())
+                .unwrap_err()
+                .is_unrepresentable_value()
         );
     }
 }
@@ -280,7 +320,11 @@ fn column_relative_graphs_inherit_nested_has_and_pseudo_element_exclusions() {
 #[test]
 fn class_dot_reports_the_first_whitespace_after_comments_in_original_coordinates() {
     for source in ["./*😀*/ Name", "./*😀\r\né*/ Name"] {
-        let report = parse_selector(source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.syntax().is_none(), "{report:?}");
         let [diagnostic] = report.diagnostics() else {
             panic!("one rejection")
@@ -310,7 +354,10 @@ fn class_dot_adjacency_is_shared_by_nested_scope_logical_has_and_supports_hosts(
         ":is(./**/Cell) {}",
         ":has(> ./**/Cell) {}",
     ] {
-        assert!(parse_sheet(source).is_clean(), "{source:?}");
+        assert!(
+            CssParser::default().parse_sheet(source).is_clean(),
+            "{source:?}"
+        );
     }
     for source in [
         ".Parent { > . Cell {} }",
@@ -318,19 +365,19 @@ fn class_dot_adjacency_is_shared_by_nested_scope_logical_has_and_supports_hosts(
         ":is(. Cell) {}",
         ":has(> . Cell) {}",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(!report.is_clean(), "{source:?}");
         assert_strict_validation_rejects(report);
     }
     // Balanced unsupported selector syntax is the existing general-enclosed
     // supports alternative; it must not become a typed selector test.
-    let report = parse_sheet("@supports selector(. Cell) {}");
+    let report = CssParser::default().parse_sheet("@supports selector(. Cell) {}");
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::Supports(supports)] = report.syntax().rules() else {
         panic!("supports")
     };
     assert!(matches!(
         supports.condition().kind(),
-        CssSupportsConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(_))
     ));
 }

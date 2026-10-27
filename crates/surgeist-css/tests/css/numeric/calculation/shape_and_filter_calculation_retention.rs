@@ -1,10 +1,14 @@
 //! Selected basic shapes retain symbolic calculations in the sole authored graph.
 
 use crate::css::support::value_assertions::exact_dimension;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::effects::CssClipPath;
+use surgeist_css::values::position::{CssHorizontalPosition, CssPositionRef, CssVerticalPosition};
+use surgeist_css::values::shape::{CssBasicShape, CssEllipseRadius};
 
 fn parsed_shape(shape: &str) -> CssBasicShape {
-    let report = parse_style_attribute(&format!("clip-path: {shape}"));
+    let report = CssParser::default().parse_block_contents(format!("clip-path: {shape}"));
     assert!(report.is_clean(), "{shape}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::ClipPath(value) = report.syntax()[0]
         .known()
@@ -26,7 +30,7 @@ macro_rules! calculation_text {
         $value
             .calculation()
             .expect("retained symbolic calculation")
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css()
             .to_owned()
@@ -47,7 +51,8 @@ fn calculated_circle_radius_keeps_typed_shape() {
     let CssBasicShape::Circle(circle) = parsed_shape("circle(calc(1px + 2px))") else {
         panic!("circle");
     };
-    let surgeist_css::CssCircleRadius::LengthPercentage(radius) = circle.radius() else {
+    let surgeist_css::values::shape::CssCircleRadius::LengthPercentage(radius) = circle.radius()
+    else {
         panic!("length-percentage radius");
     };
     assert_eq!(calculation_text!(radius), "calc(1px + 2px)");
@@ -60,10 +65,15 @@ fn calculated_shape_position_keeps_typed_shape() {
     else {
         panic!("circle");
     };
-    let surgeist_css::CssCircleRadius::LengthPercentage(radius) = circle.radius() else {
+    let surgeist_css::values::shape::CssCircleRadius::LengthPercentage(radius) = circle.radius()
+    else {
         panic!("length-percentage radius");
     };
-    assert!(exact_dimension(radius.literal_component(), "1", "px"));
+    assert!(exact_dimension(
+        radius.literal().map(|literal| literal.component()),
+        "1",
+        "px"
+    ));
     let CssPositionRef::Cartesian(position) = circle.position().expect("position").view() else {
         panic!("Cartesian position");
     };
@@ -87,7 +97,11 @@ fn calculated_ellipse_keeps_typed_shape() {
     let CssEllipseRadius::LengthPercentage(vertical) = radii.vertical() else {
         panic!("vertical length-percentage radius");
     };
-    assert!(exact_dimension(vertical.literal_component(), "4", "px"));
+    assert!(exact_dimension(
+        vertical.literal().map(|literal| literal.component()),
+        "4",
+        "px"
+    ));
     assert!(ellipse.position().is_none());
 }
 
@@ -113,14 +127,26 @@ fn calculated_polygon_keeps_typed_shape() {
         panic!("two authored polygon points");
     };
     assert_eq!(calculation_text!(first.x()), "calc(1px + 2px)");
-    assert!(exact_dimension(first.y().literal_component(), "0", "px"));
-    assert!(exact_dimension(second.x().literal_component(), "1", "px"));
-    assert!(exact_dimension(second.y().literal_component(), "1", "px"));
+    assert!(exact_dimension(
+        first.y().literal().map(|literal| literal.component()),
+        "0",
+        "px"
+    ));
+    assert!(exact_dimension(
+        second.x().literal().map(|literal| literal.component()),
+        "1",
+        "px"
+    ));
+    assert!(exact_dimension(
+        second.y().literal().map(|literal| literal.component()),
+        "1",
+        "px"
+    ));
 }
 
 #[test]
 fn calculated_blur_keeps_typed_filter_expression() {
-    let report = parse_style_attribute("filter: blur(calc(1px + 2px))");
+    let report = CssParser::default().parse_block_contents("filter: blur(calc(1px + 2px))");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Filter(value) = report.syntax()[0]
         .known()
@@ -130,10 +156,11 @@ fn calculated_blur_keeps_typed_filter_expression() {
     else {
         panic!("filter retains its property identity")
     };
-    let surgeist_css::CssFilter::Functions(functions) = value.value() else {
+    let surgeist_css::values::effects::CssFilter::Functions(functions) = value.value() else {
         panic!("filter list");
     };
-    let [surgeist_css::CssFilterFunction::Blur(blur)] = functions.functions() else {
+    let [surgeist_css::values::effects::CssFilterFunction::Blur(blur)] = functions.functions()
+    else {
         panic!("one blur function");
     };
     assert_eq!(calculation_text!(blur.length()), "calc(1px + 2px)");
@@ -165,7 +192,7 @@ fn literal_shapes_and_percentage_circle_use_typed_graph() {
 
 #[test]
 fn literal_blur_keeps_typed_filter_length() {
-    let report = parse_style_attribute("filter: blur(3px)");
+    let report = CssParser::default().parse_block_contents("filter: blur(3px)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Filter(value) = report.syntax()[0]
         .known()
@@ -175,11 +202,11 @@ fn literal_blur_keeps_typed_filter_length() {
     else {
         panic!("filter retains its property identity")
     };
-    let surgeist_css::CssFilter::Functions(functions) = value.value() else {
+    let surgeist_css::values::effects::CssFilter::Functions(functions) = value.value() else {
         panic!("filter list");
     };
     assert!(
-        matches!(functions.functions(), [surgeist_css::CssFilterFunction::Blur(blur)]
-        if exact_dimension(blur.length().literal_component(), "3", "px"))
+        matches!(functions.functions(), [surgeist_css::values::effects::CssFilterFunction::Blur(blur)]
+        if exact_dimension(blur.length().literal().map(|literal| literal.component()), "3", "px"))
     );
 }

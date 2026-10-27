@@ -6,30 +6,37 @@
 //! Fonts 4 vocabularies: https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-format-values
 //! and https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-tech-values
 
-use surgeist_css::{
-    CssNamespaceContext, CssRule, CssSupportsCondition, CssSupportsConditionKind,
-    parse_component_values, parse_sheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::CssNamespaceContext;
 
 fn assert_opaque_classification(condition: &str, expected_opaque: bool) {
-    let checked = CssSupportsCondition::try_from_components(
-        parse_component_values(condition).expect("valid component syntax"),
+    let checked = CssCondition::<CssSupportsLeaf>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), condition)
+            .expect("valid component syntax"),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .expect("valid authored supports condition");
 
     let source = format!("@supports {condition} {{}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::Supports(parsed)] = report.syntax().rules() else {
         panic!("{source}: expected one retained supports group");
     };
 
     // Both real fronts run before checking the shared classification contract.
-    let checked_opaque = matches!(checked.kind(), CssSupportsConditionKind::GeneralEnclosed(_));
+    let checked_opaque = matches!(
+        checked.kind(),
+        CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(_))
+    );
     let parsed_opaque = matches!(
         parsed.condition().kind(),
-        CssSupportsConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(_))
     );
     assert_eq!(
         (checked_opaque, parsed_opaque),

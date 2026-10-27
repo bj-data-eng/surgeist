@@ -4,14 +4,18 @@
 //! Section 5.4 permits explicit grouped operands and homogeneous operator lists.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-rule
 use crate::css::support::authored_syntax::{component_list as components, component_token};
-use surgeist_css::{
-    CssBlockKind, CssComponentValue, CssComponentValueRef, CssContainerCondition, CssErrorCode,
-    CssGeneralEnclosed, CssRecoveryAction, CssRule, CssValueOrigin, parse_sheet, validate_sheet,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssBlockKind, CssComponentValue, CssComponentValueRef, CssValueOrigin,
 };
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::container::CssContainerLeaf;
+use surgeist_css::query::{CssCondition, CssGeneralEnclosed};
+use surgeist_css::rule::CssRule;
 
-fn parsed_condition(query: &str) -> CssContainerCondition {
+fn parsed_condition(query: &str) -> CssCondition<CssContainerLeaf> {
     let source = format!("@container {query} {{}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {report:?}");
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("one retained container rule: {source}: {report:?}");
@@ -47,12 +51,12 @@ fn assert_programmatic(component: &CssComponentValue) {
     }
 }
 
-fn checked(component: CssComponentValue) -> CssContainerCondition {
+fn checked(component: CssComponentValue) -> CssCondition<CssContainerLeaf> {
     // No parsed-source components are supplied. Every opener, token and
     // synthesized delimiter has the same Programmatic provenance, so different
     // source snapshots or offsets cannot supply the required distinction.
     assert_programmatic(&component);
-    CssContainerCondition::try_from_enclosed(
+    CssCondition::<CssContainerLeaf>::try_from_enclosed(
         CssGeneralEnclosed::try_from_component(component).unwrap(),
     )
     .unwrap()
@@ -158,8 +162,11 @@ fn explicit_grouping_allows_boolean_combinations_without_ungrouped_negation() {
         parsed_condition(query);
         let source = format!("@container {query} {{}}");
         assert_eq!(
-            validate_sheet(&source).unwrap(),
-            *parse_sheet(&source).syntax(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap(),
+            *CssParser::default().parse_sheet(&source).syntax(),
             "{query}"
         );
     }
@@ -174,7 +181,7 @@ fn ungrouped_operator_mixtures_reject_only_the_container_rule() {
         "(width > 1px) and (height > 2px) or (inline-size > 3px)",
     ] {
         let source = format!(".before {{}} @container {query} {{ .inside {{}} }} .after {{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             matches!(
                 report.syntax().rules(),
@@ -195,6 +202,12 @@ fn ungrouped_operator_mixtures_reject_only_the_container_rule() {
             CssErrorCode::InvalidAtRulePrelude,
             "{query}"
         );
-        assert!(validate_sheet(&source).is_err(), "{query}");
+        assert!(
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .is_err(),
+            "{query}"
+        );
     }
 }

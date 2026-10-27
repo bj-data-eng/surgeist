@@ -1,0 +1,132 @@
+//! Checked authored container construction and lexical serialization.
+use crate::component::values::serialize::CssCanonicalBuilder;
+use crate::component::{
+    CssComponentValueError, CssComponentValueLimits, CssComponentValues, CssSerializedValue,
+    CssValueOrigin,
+};
+use crate::query::container::{
+    CssContainerConstructionError, CssContainerLeaf, CssContainerPrelude, CssContainerQueryEntry,
+};
+use crate::query::{CssCondition, CssGeneralEnclosed};
+use crate::serialization::CssSerializationError;
+
+fn construct<T: Send>(
+    deep: bool,
+    action: impl FnOnce() -> Result<T, CssContainerConstructionError> + Send,
+) -> Result<T, CssContainerConstructionError> {
+    if !deep {
+        return action();
+    }
+    // Grammar recursion is bounded by the component ceiling. Keep the owned
+    // closure on the caller until the larger-stack worker actually starts.
+    let mut action = Some(action);
+    std::thread::scope(|scope| {
+        let worker = std::thread::Builder::new()
+            .name("surgeist-css-container".into())
+            .stack_size(16 * 1024 * 1024)
+            .spawn_scoped(scope, || {
+                action.take().expect("single construction worker")()
+            })
+            .map_err(|_| {
+                CssContainerConstructionError::from(
+                    crate::query::container::syntax::ContainerConstructionKind::WorkerUnavailable {
+                        origin: CssValueOrigin::Programmatic,
+                    },
+                )
+            })?;
+        match worker.join() {
+            Ok(result) => result,
+            Err(panic) => std::panic::resume_unwind(panic),
+        }
+    })
+}
+
+impl CssCondition<CssContainerLeaf> {
+    /// Admits complete component syntax with the same grammar as parsed conditions.
+    /// Explicit tokens, operators and grouping retain their supplied origins.
+    ///
+    /// Checks nesting, component count and serialized bytes before classification.
+    /// Trusted parser-produced EOF closures retain their original provenance.
+    pub fn try_from_components(
+        values: CssComponentValues,
+        limits: CssComponentValueLimits,
+    ) -> Result<Self, CssContainerConstructionError> {
+        construct(values.nesting_depth() >= 32, || {
+            crate::parser::container_query::construct_container_condition(values, limits)
+        })
+    }
+    /// Classifies one lexical enclosure without reparsing, preserving trusted
+    /// parser-produced EOF closures. Recognized branches precede opaque fallback.
+    pub fn try_from_enclosed(
+        enclosed: CssGeneralEnclosed,
+    ) -> Result<Self, CssContainerConstructionError> {
+        construct(
+            crate::query::media::construction::component_depth(enclosed.component()) >= 32,
+            || crate::parser::container_query::container_condition_from_enclosed(enclosed),
+        )
+    }
+}
+
+impl CssContainerPrelude {
+    /// Admits a complete, nonempty comma list with the stylesheet grammar.
+    ///
+    /// Bounds the complete input before entry admission, retaining supplied origins.
+    pub fn try_from_components(
+        values: CssComponentValues,
+        limits: CssComponentValueLimits,
+    ) -> Result<Self, CssContainerConstructionError> {
+        construct(values.nesting_depth() >= 32, || {
+            crate::parser::container_query::construct_container_prelude(values, limits)
+        })
+    }
+    pub(crate) fn append_specified(
+        &self,
+        context: &mut crate::serialization::specified_serialization::SpecifiedSerializationContext,
+        output: &mut String,
+    ) -> Result<(), CssSerializationError> {
+        // Entries and conditions are views of this single lexical region.
+        context.charge_nodes(1)?;
+        crate::component::values::charge_specified_components(context, self.components())?;
+        if context.output_suppressed() {
+            return Ok(());
+        }
+        let mut out = CssCanonicalBuilder::new(context.remaining_bytes());
+        out.push_components(crate::component::values::specified_root_components(
+            self.components(),
+        ))
+        .map_err(crate::component::values::specified_component_error)?;
+        let value = out
+            .finish()
+            .map_err(crate::component::values::specified_component_error)?;
+        context.append(output, value.as_css())
+    }
+    /// Emits the complete authored prelude, including separators and grouping.
+    ///
+    /// `limits.max_css_bytes()` caps the output, including inserted syntax; the other component
+    /// limits do not apply.
+    pub fn serialize_tokens(
+        &self,
+        limits: crate::component::CssComponentValueLimits,
+    ) -> Result<CssSerializedValue, CssComponentValueError> {
+        let max_css_bytes = limits.max_css_bytes();
+        let mut out = CssCanonicalBuilder::new(max_css_bytes);
+        out.push_components(self.components())?;
+        out.finish()
+    }
+}
+
+impl CssContainerQueryEntry {
+    /// Emits only this entry, preserving its name, query and supplied origins.
+    ///
+    /// `limits.max_css_bytes()` caps the output, including inserted syntax; the other component
+    /// limits do not apply.
+    pub fn serialize_tokens(
+        &self,
+        limits: crate::component::CssComponentValueLimits,
+    ) -> Result<CssSerializedValue, CssComponentValueError> {
+        let max_css_bytes = limits.max_css_bytes();
+        let mut out = CssCanonicalBuilder::new(max_css_bytes);
+        out.push_components(self.components())?;
+        out.finish()
+    }
+}

@@ -4,7 +4,17 @@
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nest-selector
 //! https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/#scope-bounds
 use crate::css::support::rules::sole_scope_selector as single;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizedItem, CssNormalizedSheet, CssRuleContext, CssRuleContextKindRef,
+};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssCompoundSelector, CssPseudoClass, CssPseudoSelectorListItem, CssScopeSelectorList,
+    CssSelector, CssStyleSelector,
+};
 
 fn compound(selector: &CssSelector) -> &CssCompoundSelector {
     let CssSelector::Compound(compound) = selector else {
@@ -39,9 +49,9 @@ fn scope_context(normalized: &CssNormalizedSheet, offset: usize) -> &CssRuleCont
 
 fn check_three(list: &CssScopeSelectorList, nesting: bool) {
     let [
-        CssScopeSelector::Selector(zero),
-        CssScopeSelector::Selector(one),
-        CssScopeSelector::Selector(multiple),
+        CssStyleSelector::Selector(zero),
+        CssStyleSelector::Selector(one),
+        CssStyleSelector::Selector(multiple),
     ] = list.selectors()
     else {
         panic!("all three authored members retained")
@@ -66,11 +76,11 @@ fn root_limit_and_body_counts_survive_clone_and_normalization() {
         let source = format!(
             "{prefix}@scope(.zero:scope,&:scope,&&&:scope) to (.zero:scope,&:scope,&&&:scope){{.zero:scope,&:scope,&&&:scope{{color:red}}}}{suffix}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let inner = match &report.syntax().rules()[0] {
             CssRule::Scope(outer) if !prefix.is_empty() => {
-                let [CssScopedRule::Scope(inner)] = outer.rules().rules() else {
+                let [CssRule::Scope(inner)] = outer.rules().rules() else {
                     panic!("inner scope")
                 };
                 inner
@@ -87,7 +97,7 @@ fn root_limit_and_body_counts_survive_clone_and_normalization() {
         let nesting = prefix != "@scope(.outer){";
         check_three(inner.root().unwrap(), nesting);
         check_three(inner.limit().unwrap(), false);
-        let [CssScopedRule::Style(body)] = inner.rules().rules() else {
+        let [CssRule::Style(body)] = inner.rules().rules() else {
             panic!("scoped body style")
         };
         let body_members = body.selectors().selectors();
@@ -97,14 +107,14 @@ fn root_limit_and_body_counts_survive_clone_and_normalization() {
             (&body_members[1], 1, true),
             (&body_members[2], 3, true),
         ] {
-            let CssScopedStyleSelector::Selector(selector) = member else {
+            let CssStyleSelector::Selector(selector) = member else {
                 panic!("nonrelative body selector")
             };
             counts(selector, 0, expected, present);
             assert_eq!(compound(selector).pseudo_classes(), [CssPseudoClass::Scope]);
         }
         let detached = inner.clone();
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let offset = source.find("@scope(.zero").unwrap();
         let CssRuleContextKindRef::Scope {
             root: Some(root),
@@ -149,9 +159,9 @@ fn function_members(selector: &CssSelector) -> &[CssPseudoSelectorListItem] {
 #[test]
 fn functional_members_retain_zero_one_and_multiple_anchors_in_each_context() {
     let source = "@scope(.outer){@scope(:is(.zero:scope,&:scope,&&&:scope)) to (:not(.zero:scope,&:scope,&&&:scope)){:is(.zero:scope,&:scope,&&&:scope){color:red}}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let CssRuleContextKindRef::Scope {
         root: Some(root),
         limit: Some(limit),
@@ -207,9 +217,7 @@ fn functional_members_retain_zero_one_and_multiple_anchors_in_each_context() {
 
 #[test]
 fn style_nested_function_root_counts_remain_separate_from_scope_limit_counts() {
-    let report = parse_sheet(
-        ".parent{@scope(:is(.zero:scope,&:scope,&&&:scope)) to (:not(.zero:scope,&:scope,&&&:scope)){.child{color:red}}}",
-    );
+    let report = CssParser::default().parse_sheet(".parent{@scope(:is(.zero:scope,&:scope,&&&:scope)) to (:not(.zero:scope,&:scope,&&&:scope)){.child{color:red}}}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Style(parent)] = report.syntax().rules() else {
         panic!("parent")
@@ -269,7 +277,7 @@ fn scope_boundary_parenthesis_and_functions_share_the_structural_ceiling() {
             "{prefix}{}){{.child{{color:red}}}}.after{{color:blue}}",
             nested_function(255)
         );
-        let report = parse_sheet(&accepted);
+        let report = CssParser::default().parse_sheet(&accepted);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let [CssRule::Scope(scope), CssRule::Style(after)] = report.syntax().rules() else {
             panic!("accepted scope and following neighbor")
@@ -289,7 +297,7 @@ fn scope_boundary_parenthesis_and_functions_share_the_structural_ceiling() {
             "{prefix}{}){{.child{{color:red}}}}.after{{color:blue}}",
             nested_function(256)
         );
-        let report = parse_sheet(&exceeded);
+        let report = CssParser::default().parse_sheet(&exceeded);
         let [diagnostic] = report.diagnostics() else {
             panic!("one rejected over-limit scope: {:?}", report.diagnostics())
         };
@@ -321,7 +329,7 @@ fn deep_root_and_limit_payloads_remain_owned_after_parent_drop_on_two_mib_stack(
         .spawn(|| {
             let function = nested_function(255);
             let source = format!("@scope({function}) to ({function}){{.child{{color:red}}}}");
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(report.is_clean(), "{:?}", report.diagnostics());
             let [CssRule::Scope(scope)] = report.syntax().rules() else {
                 panic!("scope")
@@ -329,7 +337,7 @@ fn deep_root_and_limit_payloads_remain_owned_after_parent_drop_on_two_mib_stack(
             let detached_root = single(scope.root().unwrap()).clone();
             let detached_limit = single(scope.limit().unwrap()).clone();
             let cloned_sheet = report.syntax().clone();
-            let normalized = normalize_sheet(report.syntax()).unwrap();
+            let normalized = report.syntax().normalize(Default::default()).unwrap();
             let CssRuleContextKindRef::Scope {
                 root: Some(root),
                 limit: Some(limit),

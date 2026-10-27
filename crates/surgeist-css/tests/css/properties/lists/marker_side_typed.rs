@@ -1,8 +1,18 @@
 //! Functional specified-value expectations from CSS Lists 3 (2020-11-17) §3.7.
 //! The keywords are symbolic; element or parent directionality is selected later.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::normal_declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::content::CssMarkerSide;
 
 fn current(declaration: &CssDeclaration) -> CssMarkerSide {
     let CssKnownPropertyValueRef::MarkerSide(wrapper) =
@@ -23,13 +33,20 @@ fn both_checked_values_and_parsed_wrappers_have_distinct_symbolic_meanings() {
     ] {
         let declaration = normal_declaration("marker-side", value);
         assert_eq!(current(&declaration), expected);
-        assert_eq!(expected.serialize_specified().unwrap(), canonical);
         assert_eq!(
-            declaration.value_components().serialize().unwrap().as_css(),
+            expected.serialize_specified(Default::default()).unwrap(),
+            canonical
+        );
+        assert_eq!(
+            declaration
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&declaration).unwrap()
+            declaration.expand().unwrap()
         else {
             panic!("one ordinary marker-side contribution")
         };
@@ -47,18 +64,23 @@ fn both_checked_values_and_parsed_wrappers_have_distinct_symbolic_meanings() {
 
 #[test]
 fn programmatic_declaration_retains_origin_and_the_constructed_keyword() {
-    let components =
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("match-parent").unwrap()])
-            .unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::MarkerSide),
+    let components = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("match-parent").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::MarkerSide)),
         components,
         CssImportance::Important,
     )
     .unwrap();
     assert_eq!(current(&declaration), CssMarkerSide::MatchParent);
     assert_eq!(
-        CssMarkerSide::MatchParent.serialize_specified().unwrap(),
+        CssMarkerSide::MatchParent
+            .serialize_specified(Default::default())
+            .unwrap(),
         "match-parent"
     );
     assert!(matches!(
@@ -66,7 +88,7 @@ fn programmatic_declaration_retains_origin_and_the_constructed_keyword() {
         CssValueOrigin::Programmatic
     ));
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&declaration).unwrap()
+        declaration.expand().unwrap()
     else {
         panic!("programmatic declaration expands")
     };
@@ -83,33 +105,30 @@ fn keyword_serialization_has_exact_independent_node_and_byte_limits() {
         (CssMarkerSide::MatchSelf, "match-self"),
         (CssMarkerSide::MatchParent, "match-parent"),
     ] {
-        let exact = CssSpecifiedValueSerializationLimits::new(1, 1, canonical.len());
-        assert_eq!(
-            value.serialize_specified_with_limits(exact).unwrap(),
-            canonical
-        );
+        let exact = CssSerializationLimits::new(1, 1, canonical.len());
+        assert_eq!(value.serialize_specified(exact).unwrap(), canonical);
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, canonical.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(0, 1, canonical.len()),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, canonical.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(1, 0, canonical.len()),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, canonical.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(1, 1, canonical.len() - 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind
             );
-            assert_eq!(value.serialize_specified().unwrap(), canonical);
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                canonical
+            );
         }
     }
 }

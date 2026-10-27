@@ -7,10 +7,10 @@
 //! Expected values are independent of the parser, serializer, and cssparser table.
 
 use crate::css::support::parsed_color;
-use surgeist_css::{
-    CssColor, CssHexColor, CssKnownProperty, CssNamedColor, CssRecoveryAction, CssSystemColor,
-    parse_style_attribute, validate_style_attribute,
-};
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssHexColor, CssNamedColor, CssSystemColor};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::CssKnownProperty;
 
 const NAMED_COLORS: [(&str, [u8; 3]); 148] = [
     ("aliceblue", [240, 248, 255]),
@@ -174,7 +174,7 @@ fn assert_named(color: &CssColor, name: &str, [red, green, blue]: [u8; 3]) {
     assert!(!color.is_transparent(), "{name}");
     assert!(color.rgb_value().is_none(), "{name}");
     assert!(color.system().is_none(), "{name}");
-    assert_eq!(color.to_specified_css().unwrap(), name);
+    assert_eq!(color.serialize_specified(Default::default()).unwrap(), name);
 }
 
 fn mixed_case(name: &str) -> String {
@@ -215,7 +215,7 @@ fn every_named_keyword_case_and_escape_has_clean_validation_and_exact_numeric_me
             let color = parsed_color(&spelling);
             assert_named(&color, name, expected);
             // Reparse only after independently observing the initial projection.
-            let canonical = color.to_specified_css().unwrap();
+            let canonical = color.serialize_specified(Default::default()).unwrap();
             assert_eq!(parsed_color(&canonical), color);
         }
     }
@@ -262,8 +262,14 @@ fn transparent_is_distinct_transparent_black_before_serialization_in_every_spell
         assert!(color.rgb_value().is_none());
         assert_eq!(color, direct);
         assert_ne!(color, opaque_black);
-        assert_eq!(color.to_specified_css().unwrap(), "transparent");
-        assert_eq!(parsed_color(&color.to_specified_css().unwrap()), direct);
+        assert_eq!(
+            color.serialize_specified(Default::default()).unwrap(),
+            "transparent"
+        );
+        assert_eq!(
+            parsed_color(&color.serialize_specified(Default::default()).unwrap()),
+            direct
+        );
     }
     assert_eq!(opaque_black.keyword_srgba8(), Some([0, 0, 0, 255]));
     assert!(CssNamedColor::try_new("transparent").is_none());
@@ -281,7 +287,7 @@ fn unknown_keyword_recovery_keeps_valid_siblings_without_a_numeric_keyword_value
     ] {
         assert!(CssNamedColor::try_new(invalid).is_none(), "{invalid}");
         let source = format!("color: {invalid}; opacity: 0.5");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
@@ -293,7 +299,11 @@ fn unknown_keyword_recovery_keeps_valid_siblings_without_a_numeric_keyword_value
             CssKnownProperty::Opacity
         );
         assert_eq!(
-            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics(),
             "{source}"
         );

@@ -2,12 +2,27 @@
 use crate::css::support::color_components::token as component;
 use crate::css::support::color_declaration as parsed;
 use crate::css::support::color_property::color_property_value as wrapper;
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
-use surgeist_css::*;
+use surgeist_css::color::{
+    CssColor, CssColorComponent, CssColorInterpolation, CssColorInterpolationMethod, CssColorMix,
+    CssColorMixComponent, CssColorMixPercentage, CssColorMixWeight, CssColorProfileName,
+};
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationExpressionRef, CssCalculationType, CssPercentage,
+};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
+use surgeist_css::{CssParser, CssParserContext};
 
 fn checked_components(values: CssComponentValues) -> CssDeclaration {
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
         values.clone(),
         CssImportance::Normal,
     )
@@ -17,7 +32,7 @@ fn checked_components(values: CssComponentValues) -> CssDeclaration {
 }
 
 fn checked(text: &str) -> CssDeclaration {
-    checked_components(parse_component_values(text).unwrap())
+    checked_components(CssComponentValues::parse(&CssParser::default(), text).unwrap())
 }
 
 fn color(text: &str) -> CssColor {
@@ -112,23 +127,25 @@ fn custom_profile_identity_decodes_escapes_without_folding_case() {
 fn bare_percentage_roots_cannot_masquerade_as_calculated_mix_weights() {
     for coefficient in [-5.0, 120.0, 25.0] {
         for root in [
-            CssPercentageCalculation::try_literal(coefficient).unwrap(),
-            CssPercentageCalculation::try_from_components(
-                parse_component_values(&format!("{coefficient}%")).unwrap(),
+            CssCalculation::<CssPercentage>::try_literal(coefficient).unwrap(),
+            CssCalculation::<CssPercentage>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), format!("{coefficient}%"))
+                    .unwrap(),
+                Default::default(),
             )
             .unwrap(),
         ] {
             let origin = root.components().items()[0].origin().clone();
             let error = CssColorMixWeight::try_calculation(root).unwrap_err();
-            assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+            assert!(error.is_invalid_token(), "{error:?}");
             assert_eq!(error.origin(), &origin);
         }
     }
     for text in ["-5%", "120%", "100.0000000000000000000001%"] {
         let supplied = component(text);
         let error = CssColorMixPercentage::try_from_component(supplied.clone()).unwrap_err();
-        assert_eq!(error.kind(), CssColorScalarErrorKind::OutOfRange);
-        assert_eq!(error.origin(), supplied.origin());
+        assert!(error.is_out_of_range(), "{error:?}");
+        assert_eq!(error.origin(), Some(supplied.origin()));
     }
     let literal = CssColorMixWeight::literal(
         CssColorMixPercentage::try_from_component(component("25%")).unwrap(),
@@ -149,20 +166,28 @@ fn bare_percentage_roots_cannot_masquerade_as_calculated_mix_weights() {
 fn genuine_calculations_preserve_the_graph_origins_and_specified_range() {
     for coefficient in ["-5", "120", "25"] {
         let source = format!("calc({coefficient}%)");
-        let parsed_graph = parse_component_values(&source).unwrap();
-        let programmatic_graph = CssComponentValues::try_new(vec![
-            CssComponentValue::try_function(
-                "calc",
-                CssComponentValues::try_new(vec![
-                    CssComponentValue::try_token(&format!("{coefficient}%")).unwrap(),
-                ])
+        let parsed_graph = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
+        let programmatic_graph = CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_function(
+                    "calc",
+                    CssComponentValues::try_new(
+                        vec![CssComponentValue::try_token(&format!("{coefficient}%")).unwrap()],
+                        Default::default(),
+                    )
+                    .unwrap(),
+                )
                 .unwrap(),
-            )
-            .unwrap(),
-        ])
+            ],
+            Default::default(),
+        )
         .unwrap();
         for graph in [parsed_graph, programmatic_graph] {
-            let root = CssPercentageCalculation::try_from_components(graph.clone()).unwrap();
+            let root = CssCalculation::<CssPercentage>::try_from_components(
+                graph.clone(),
+                Default::default(),
+            )
+            .unwrap();
             let origin = root.origin().clone();
             let weight = CssColorMixWeight::try_calculation(root.clone()).unwrap();
             assert!(weight.literal_value().is_none());
@@ -182,7 +207,11 @@ fn genuine_calculations_preserve_the_graph_origins_and_specified_range() {
                 assert!(weight.literal_value().is_none());
                 let calculation = weight.calculation().unwrap();
                 assert_eq!(
-                    calculation.components().serialize().unwrap().as_css(),
+                    calculation
+                        .components()
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
                     source
                 );
                 let CssValueOrigin::Parsed(origin) = calculation.origin() else {
@@ -196,18 +225,21 @@ fn genuine_calculations_preserve_the_graph_origins_and_specified_range() {
 
 #[test]
 fn checked_list_and_interpolation_constructors_enforce_their_domains() {
-    assert_eq!(
-        CssColorMix::try_new(None, vec![]).unwrap_err(),
-        CssColorMixConstructionError::EmptyComponents
+    assert!(
+        CssColorMix::try_new(None, vec![])
+            .unwrap_err()
+            .is_empty_components()
     );
     for space in [
         ColorSpace::Oklab,
         ColorSpace::Lab,
         ColorSpace::Predefined(PredefinedColorSpace::Srgb),
     ] {
-        assert_eq!(
-            CssColorInterpolationMethod::try_new(space, Some(HueInterpolation::Longer)),
-            Err(CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace)
+        assert!(
+            CssColorInterpolationMethod::try_new(space, Some(HueInterpolation::Longer))
+                .as_ref()
+                .unwrap_err()
+                .is_hue_requires_polar_space()
         );
     }
     for space in [
@@ -244,17 +276,18 @@ fn checked_mixed_origin_weights_keep_the_actual_leaf_source() {
     let leaf = component("-5%");
     let calculation = CssComponentValue::try_function(
         "calc",
-        CssComponentValues::try_new(vec![leaf.clone()]).unwrap(),
+        CssComponentValues::try_new(vec![leaf.clone()], Default::default()).unwrap(),
     )
     .unwrap();
-    let children = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("red").unwrap(),
-        calculation,
-    ])
+    let children = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("red").unwrap(), calculation],
+        Default::default(),
+    )
     .unwrap();
-    let values = CssComponentValues::try_new(vec![
-        CssComponentValue::try_function("color-mix", children).unwrap(),
-    ])
+    let values = CssComponentValues::try_new(
+        vec![CssComponentValue::try_function("color-mix", children).unwrap()],
+        Default::default(),
+    )
     .unwrap();
     let declaration = checked_components(values);
     let mix = wrapper(&declaration).value().color_mix_value().unwrap();
@@ -279,9 +312,11 @@ fn checked_mixed_origin_weights_keep_the_actual_leaf_source() {
 fn enclosing_mix_counts_calculation_depth_in_its_composed_graph() {
     for (depth, succeeds) in [(255, true), (256, false)] {
         let source = format!("{}25%{}", "calc(".repeat(depth), ")".repeat(depth));
-        let calculation =
-            CssPercentageCalculation::try_from_components(parse_component_values(&source).unwrap())
-                .unwrap();
+        let calculation = CssCalculation::<CssPercentage>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), &source).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
         let weight = CssColorMixWeight::try_calculation(calculation).unwrap();
         let result = CssColorMix::try_new(
             None,
@@ -290,10 +325,7 @@ fn enclosing_mix_counts_calculation_depth_in_its_composed_graph() {
         if succeeds {
             assert_eq!(result.unwrap().components().len(), 1);
         } else {
-            assert_eq!(
-                result.unwrap_err(),
-                CssColorMixConstructionError::NestingLimit
-            );
+            assert!(result.unwrap_err().is_nesting_limit());
         }
     }
 }
@@ -379,25 +411,21 @@ fn mixed_nary_relative_graphs_obey_the_shared_boundary_and_drop_normally() {
         }
     }
     let source = nested_list(257);
-    assert_eq!(
-        parse_component_values(&source).unwrap_err().kind(),
-        CssComponentValueErrorKind::NestingLimit
+    assert!(
+        CssComponentValues::parse(&CssParser::default(), &source)
+            .unwrap_err()
+            .is_nesting_limit()
     );
-    let report = parse_style_attribute(&format!("color:{source};opacity:.5"));
-    assert_eq!(report.diagnostics().len(), 1);
-    assert_eq!(
-        report.diagnostics()[0].error().code(),
-        CssErrorCode::NestingLimit
-    );
-    assert_eq!(report.syntax().len(), 1);
-    assert_eq!(
-        report.syntax()[0].known().unwrap().property(),
-        CssKnownProperty::Opacity
-    );
+    let contents = format!("color:{source};opacity:.5");
+    let report = CssParser::default().parse_block_contents(&contents);
+    // Block contents charges the component limits for the whole input.
+    assert!(report.syntax().is_empty());
+    crate::css::support::parse_report::assert_contents_refused(&report, &contents, "mix depth 257");
     let child = color(&nested_list(256));
-    assert_eq!(
-        CssColorMix::try_new(None, vec![CssColorMixComponent::new(child, None)]).unwrap_err(),
-        CssColorMixConstructionError::NestingLimit
+    assert!(
+        CssColorMix::try_new(None, vec![CssColorMixComponent::new(child, None)])
+            .unwrap_err()
+            .is_nesting_limit()
     );
 }
 
@@ -408,7 +436,11 @@ fn moderately_wide_lists_charge_component_and_byte_budgets_cumulatively() {
     // One function, 128 identifiers and 127 commas: exactly 256 components.
     let count = 2 * width;
     let limits = CssComponentValueLimits::try_new(256, count, source.len()).unwrap();
-    let graph = parse_component_values_with_limits(&source, limits).unwrap();
+    let graph = CssComponentValues::parse(
+        &CssParser::new(CssParserContext::default(), limits),
+        &source,
+    )
+    .unwrap();
     let declaration = checked_components(graph.clone());
     let mix = wrapper(&declaration).value().color_mix_value().unwrap();
     assert_eq!(mix.components().len(), width);
@@ -418,28 +450,24 @@ fn moderately_wide_lists_charge_component_and_byte_budgets_cumulatively() {
             .all(|item| item.color().named().unwrap().name() == "red" && item.weight().is_none())
     );
     for (components, bytes, expected) in [
-        (
-            count - 1,
-            source.len(),
-            CssComponentValueErrorKind::ComponentLimit,
-        ),
-        (
-            count,
-            source.len() - 1,
-            CssComponentValueErrorKind::ByteLimit,
-        ),
+        (count - 1, source.len(), ComponentFailure::ComponentLimit),
+        (count, source.len() - 1, ComponentFailure::ByteLimit),
     ] {
         let limits = CssComponentValueLimits::try_new(256, components, bytes).unwrap();
         assert_eq!(
-            parse_component_values_with_limits(&source, limits)
+            component_failure(
+                &CssComponentValues::parse(
+                    &CssParser::new(CssParserContext::default(), limits),
+                    &source
+                )
                 .unwrap_err()
-                .kind(),
+            ),
             expected
         );
         assert_eq!(
-            CssComponentValues::try_new_with_limits(graph.items().to_vec(), limits)
-                .unwrap_err()
-                .kind(),
+            component_failure(
+                &CssComponentValues::try_new(graph.items().to_vec(), limits).unwrap_err()
+            ),
             expected
         );
     }
@@ -462,10 +490,7 @@ fn enclosing_mix_counts_absolute_and_relative_channel_math_depth() {
                 if succeeds {
                     assert_eq!(result.unwrap().components().len(), 1);
                 } else {
-                    assert_eq!(
-                        result.unwrap_err(),
-                        CssColorMixConstructionError::NestingLimit
-                    );
+                    assert!(result.unwrap_err().is_nesting_limit());
                 }
             }
         }

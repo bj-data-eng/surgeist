@@ -1,13 +1,33 @@
 use crate::css::support::parse_report as common;
+use crate::css::support::position_view::CartesianPosition as _;
 use crate::css::support::property_expectations;
 use surgeist_color::{ColorSpace, PredefinedColorSpace};
 
 use common::CssParseReportTestExt;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssColorComponent, CssRelativeColorChannel, CssRelativeColorEnvironment,
+    CssRelativeColorExpressionValue, CssRelativeColorFunction, CssSystemColor,
+};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::values::animation::CssEasing;
+use surgeist_css::values::border::{CssLineStyle, CssOutlineStyle};
+use surgeist_css::values::effects::{
+    CssBoxShadow, CssClipPath, CssFilter, CssFilterAmount, CssFilterFunction,
+};
+use surgeist_css::values::font::{CssFontVariantCaps, CssFontVariantValue};
+use surgeist_css::values::shape::{CssBasicShape, CssCircleRadius};
+use surgeist_css::values::text::CssTextDecorationLineComponent;
+use surgeist_css::values::transform::{CssTransform, CssTransformFunction};
 
 #[test]
 fn direct_color_wrappers_keep_system_named_global_and_substitution_branches_distinct() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "color: ActiveBorder; ",
         "background-color: red; ",
         "outline-color: inherit; ",
@@ -50,7 +70,7 @@ fn direct_color_wrappers_keep_system_named_global_and_substitution_branches_dist
 
 #[test]
 fn core_font_wrappers_keep_current_global_and_substitution_branches_distinct() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "font-size: 16px; line-height: normal; ",
         "font-family: Arial, serif; font: italic 16px/normal Arial; ",
         "font-feature-settings: \"kern\"; ",
@@ -66,28 +86,28 @@ fn core_font_wrappers_keep_current_global_and_substitution_branches_distinct() {
             .unwrap();
         match value {
             CssKnownPropertyValueRef::FontSize(value) => {
-                let _ = value.size();
+                let _ = value.value();
             }
             CssKnownPropertyValueRef::LineHeight(value) => {
-                let _ = value.line_height();
+                let _ = value.value();
             }
             CssKnownPropertyValueRef::FontFamily(value) => {
-                assert_eq!(value.families().families()[0].as_str(), "Arial");
+                assert_eq!(value.value().families()[0].as_str(), "Arial");
                 assert_eq!(
-                    value.families().families()[1].generic_family(),
-                    Some(surgeist_css::CssGenericFontFamily::Serif)
+                    value.value().families()[1].generic_family(),
+                    Some(surgeist_css::values::font::CssGenericFontFamily::Serif)
                 );
             }
             CssKnownPropertyValueRef::Font(value) => {
-                let surgeist_css::CssFontValue::Explicit(font) = value.font() else {
+                let surgeist_css::values::font::CssFontValue::Explicit(font) = value.value() else {
                     panic!("expected explicit font");
                 };
                 assert_eq!(font.families().families()[0].as_str(), "Arial");
             }
             CssKnownPropertyValueRef::FontFeatureSettings(value) => {
                 assert!(matches!(
-                    value.settings(),
-                    surgeist_css::CssAuthoredFontFeatureSettings::Features(_)
+                    value.value(),
+                    surgeist_css::values::font::CssAuthoredFontFeatureSettings::Features(_)
                 ));
             }
             _ => panic!("expected core font wrapper"),
@@ -105,7 +125,7 @@ fn core_font_wrappers_keep_current_global_and_substitution_branches_distinct() {
 
 #[test]
 fn font_variant_wrappers_keep_current_global_and_substitution_branches_distinct() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "font-variant: small-caps; font-variant: all-small-caps; ",
         "font-variant-caps: petite-caps; font-variant-east-asian: ruby; ",
         "font-variant-ligatures: none; font-variant-numeric: ordinal; ",
@@ -122,7 +142,7 @@ fn font_variant_wrappers_keep_current_global_and_substitution_branches_distinct(
     else {
         panic!("expected font-variant");
     };
-    let CssFontVariantValue::Values(small_caps_values) = small_caps.variant() else {
+    let CssFontVariantValue::Values(small_caps_values) = small_caps.value() else {
         panic!("expected small-caps shorthand value")
     };
     assert_eq!(
@@ -143,7 +163,7 @@ fn font_variant_wrappers_keep_current_global_and_substitution_branches_distinct(
     else {
         panic!("expected font-variant");
     };
-    let CssFontVariantValue::Values(current_values) = current.variant() else {
+    let CssFontVariantValue::Values(current_values) = current.value() else {
         panic!("expected all-small-caps shorthand value")
     };
     assert_eq!(
@@ -188,7 +208,7 @@ fn font_variant_wrappers_keep_current_global_and_substitution_branches_distinct(
 
 #[test]
 fn direct_color_wrappers_expose_perceptual_and_predefined_channels() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "color: lab(calc(40% + 10%) 20 30); ",
         "background-color: color(xyz none calc(2 + 1) -3 / 120%)",
     ));
@@ -250,7 +270,7 @@ fn direct_color_wrappers_expose_perceptual_and_predefined_channels() {
 
 #[test]
 fn direct_color_wrappers_preserve_typed_relative_channels() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "color: rgb(from red r g b); ",
         "background-color: color(from red xyz x y z / alpha)",
     ));
@@ -325,7 +345,7 @@ fn property_schema_dispatch_exposes_property_specific_authored_wrappers() {
         };
         let (name, authored) = (case.name, dispatch.ordinary);
         let source = format!("{}: {}", name, authored);
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let declaration = report.syntax()[0].known().expect("known declaration");
         let value = declaration
@@ -365,9 +385,11 @@ fn explicit_property_dispatch_cases_preserve_ordinary_and_important_behavior() {
             name.to_ascii_uppercase(),
             important_value
         );
-        let important_sheet = parse_sheet(&important_source).unwrap_or_else(|error| {
-            panic!("`{name}: {important_value} !important` must parse: {error}")
-        });
+        let important_sheet = CssParser::default()
+            .parse_sheet(&important_source)
+            .unwrap_or_else(|error| {
+                panic!("`{name}: {important_value} !important` must parse: {error}")
+            });
         let [CssRule::Style(important_rule)] = important_sheet.rules() else {
             panic!("`{name}` importance path should produce one style rule");
         };
@@ -386,26 +408,31 @@ fn explicit_property_dispatch_cases_preserve_ordinary_and_important_behavior() {
                 important_declaration
                     .known()
                     .and_then(|known| known.global()),
-                Some(surgeist_css::CssGlobalKeyword::Inherit),
+                Some(surgeist_css::declaration::CssGlobalKeyword::Inherit),
             );
-            let error = parse_sheet(&source).expect_err("`all` ordinary value must be rejected");
+            let error = CssParser::default()
+                .parse_sheet(&source)
+                .expect_err("`all` ordinary value must be rejected");
             assert_eq!(error.code(), CssErrorCode::InvalidPropertyValue);
-            let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-                panic!(
-                    "`all` returned the wrong structured error: {:?}",
-                    error.kind()
-                );
-            };
-            assert_eq!(detail.property(), CssKnownProperty::All);
+            let detail = &error;
+            assert_eq!(
+                detail.code(),
+                CssErrorCode::InvalidPropertyValue,
+                "`all` returned the wrong structured error: {:?}",
+                error
+            );
+            assert_eq!(detail.known_property().unwrap(), CssKnownProperty::All);
             continue;
         }
 
-        let sheet = parse_sheet(&source).unwrap_or_else(|error| {
-            panic!(
-                "`{name}: {}` should parse through generated dispatch: {error}",
-                dispatch.ordinary
-            )
-        });
+        let sheet = CssParser::default()
+            .parse_sheet(&source)
+            .unwrap_or_else(|error| {
+                panic!(
+                    "`{name}: {}` should parse through generated dispatch: {error}",
+                    dispatch.ordinary
+                )
+            });
         let [CssRule::Style(rule)] = sheet.rules() else {
             panic!("`{name}` should produce one style rule");
         };
@@ -436,7 +463,7 @@ fn explicit_property_dispatch_cases_preserve_ordinary_and_important_behavior() {
 
 #[test]
 fn layered_position_wrappers_keep_current_global_and_substitution_branches_distinct() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "background-position: left 10px top, center; ",
         "mask-position: right bottom; ",
         "background-position: inherit; ",
@@ -451,7 +478,7 @@ fn layered_position_wrappers_keep_current_global_and_substitution_branches_disti
     else {
         panic!("expected background-position value");
     };
-    assert_eq!(value.positions().positions().len(), 2);
+    assert_eq!(value.value().positions().len(), 2);
     assert!(background.global().is_none());
     assert!(background.substitution_dependent().is_none());
 
@@ -461,7 +488,7 @@ fn layered_position_wrappers_keep_current_global_and_substitution_branches_disti
     else {
         panic!("expected mask-position value");
     };
-    assert_eq!(value.positions().positions().len(), 1);
+    assert_eq!(value.value().positions().len(), 1);
     assert!(mask.global().is_none());
     assert!(mask.substitution_dependent().is_none());
 
@@ -480,7 +507,7 @@ fn layered_position_wrappers_keep_current_global_and_substitution_branches_disti
 
 #[test]
 fn object_and_transform_origin_wrappers_keep_ordinary_global_and_substitution_branches_distinct() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "object-position: left 10px bottom 20%; ",
         "transform-origin: left top 5px; ",
         "object-position: inherit; ",
@@ -497,8 +524,8 @@ fn object_and_transform_origin_wrappers_keep_ordinary_global_and_substitution_br
         panic!("expected object-position value");
     };
     assert!(matches!(
-        value.position().horizontal(),
-        surgeist_css::CssHorizontalPosition::LeftOffset(_)
+        value.value().horizontal(),
+        surgeist_css::values::position::CssHorizontalPosition::LeftOffset(_)
     ));
     assert!(object.global().is_none());
     assert!(object.substitution_dependent().is_none());
@@ -512,7 +539,7 @@ fn object_and_transform_origin_wrappers_keep_ordinary_global_and_substitution_br
     else {
         panic!("expected transform-origin value");
     };
-    assert!(value.origin().z().is_some());
+    assert!(value.value().z().is_some());
     assert!(transform.global().is_none());
     assert!(transform.substitution_dependent().is_none());
 
@@ -521,7 +548,7 @@ fn object_and_transform_origin_wrappers_keep_ordinary_global_and_substitution_br
     assert!(global.property_value().is_none());
     assert_eq!(
         global.global(),
-        Some(surgeist_css::CssGlobalKeyword::Inherit)
+        Some(surgeist_css::declaration::CssGlobalKeyword::Inherit)
     );
     assert!(global.substitution_dependent().is_none());
 
@@ -553,8 +580,9 @@ fn object_and_transform_origin_wrappers_keep_ordinary_global_and_substitution_br
 
 #[test]
 fn timing_wrappers_expose_exact_property_specific_accessors() {
-    use surgeist_css::{CssAnimationIterationCount, CssTimeUnit, CssTransitionProperty};
-    let report = parse_style_attribute(concat!(
+    use surgeist_css::numeric::CssTimeUnit;
+    use surgeist_css::values::animation::{CssAnimationIterationCount, CssTransitionProperty};
+    let report = CssParser::default().parse_block_contents(concat!(
         "transition-duration: calc(1s + 2s); transition-delay: -1s; ",
         "animation-duration: calc(3ms * 2); animation-delay: -4ms; ",
         "animation-iteration-count: calc(1 + 2); ",
@@ -567,9 +595,9 @@ fn timing_wrappers_expose_exact_property_specific_accessors() {
             CssKnownPropertyValueRef::TransitionDuration(value) => {
                 assert!(
                     ({
-                        let values = value.durations().values();
+                        let values = value.value().values();
                         if values.len() == 1 {
-                            values[0].time().calculation()
+                            values[0].calculation()
                         } else {
                             None
                         }
@@ -579,16 +607,16 @@ fn timing_wrappers_expose_exact_property_specific_accessors() {
             }
             CssKnownPropertyValueRef::TransitionDelay(value) => {
                 assert!(
-                    matches!({ let values = value.delays().values(); if values.len() == 1 { values[0].literal() } else { None } }, Some(t)
+                    matches!({ let values = value.value().values(); if values.len() == 1 { values[0].literal() } else { None } }, Some(t)
                     if t.numeric().representation() == "-1" && t.unit() == CssTimeUnit::Seconds)
                 );
             }
             CssKnownPropertyValueRef::AnimationDuration(value) => {
                 assert!(
                     ({
-                        let values = value.durations().values();
+                        let values = value.value().values();
                         if values.len() == 1 {
-                            values[0].time().calculation()
+                            values[0].calculation()
                         } else {
                             None
                         }
@@ -598,42 +626,42 @@ fn timing_wrappers_expose_exact_property_specific_accessors() {
             }
             CssKnownPropertyValueRef::AnimationDelay(value) => {
                 assert!(
-                    matches!({ let values = value.delays().values(); if values.len() == 1 { values[0].literal() } else { None } }, Some(t)
+                    matches!({ let values = value.value().values(); if values.len() == 1 { values[0].literal() } else { None } }, Some(t)
                     if t.numeric().representation() == "-4" && t.unit() == CssTimeUnit::Milliseconds)
                 );
             }
             CssKnownPropertyValueRef::AnimationIterationCount(value) => {
                 assert!(matches!(
-                    value.iteration_counts().values(),
+                    value.value().values(),
                     [CssAnimationIterationCount::Number(number)] if number.calculation().is_some()
                 ));
             }
             CssKnownPropertyValueRef::Transition(value) => {
-                let [item] = value.transitions().values() else {
+                let [item] = value.value().values() else {
                     panic!("one transition");
                 };
                 assert!(
                     matches!(item.property(), Some(CssTransitionProperty::Custom(name)) if name.as_str() == "opacity")
                 );
                 assert!(
-                    matches!(item.duration().and_then(|value| value.time().literal()), Some(t) if t.numeric().representation() == "1")
+                    matches!(item.duration().and_then(|value| value.literal()), Some(t) if t.numeric().representation() == "1")
                 );
                 assert!(
                     matches!(item.delay().and_then(|value| value.literal()), Some(t) if t.numeric().representation() == "-2")
                 );
             }
             CssKnownPropertyValueRef::Animation(value) => {
-                let [item] = value.animations().values() else {
+                let [item] = value.value().values() else {
                     panic!("one animation");
                 };
                 assert!(
-                    matches!(item.duration().and_then(|value| value.time().literal()), Some(t) if t.numeric().representation() == "3")
+                    matches!(item.duration().and_then(|value| value.literal()), Some(t) if t.numeric().representation() == "3")
                 );
                 assert!(
                     matches!(item.delay().and_then(|value| value.literal()), Some(t) if t.numeric().representation() == "-4")
                 );
                 assert!(
-                    matches!(item.iteration_count(), Some(CssAnimationIterationCount::Number(n)) if n.serialize_specified().unwrap() == "2")
+                    matches!(item.iteration_count(), Some(CssAnimationIterationCount::Number(n)) if n.serialize_specified(Default::default()).unwrap() == "2")
                 );
             }
             _ => panic!("unexpected property wrapper"),
@@ -713,7 +741,7 @@ fn typed_length_calculations_are_accepted_by_the_exact_current_consumer_set() {
         ("transform", "translate(calc((1px + 2%) * 3))"),
     ] {
         let source = format!("{property}: {value}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(
@@ -724,7 +752,7 @@ fn typed_length_calculations_are_accepted_by_the_exact_current_consumer_set() {
     }
 
     let source = "clip-path: polygon(, calc((1px + 2%) * 3) 0px, 1px 1px)";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(
         !report.is_clean(),
         "later function grammar changed: {source}"
@@ -734,7 +762,7 @@ fn typed_length_calculations_are_accepted_by_the_exact_current_consumer_set() {
 
 #[test]
 fn transform_wrapper_keeps_value_global_and_substitution_branches_distinct() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "transform: translate(calc((1px + 2%) * 3), 4px) rotate(0); ",
         "transform: none; transform: inherit; transform: var(--transform)",
     ));
@@ -786,7 +814,7 @@ fn transform_wrapper_keeps_value_global_and_substitution_branches_distinct() {
 
 #[test]
 fn timing_function_wrappers_keep_typed_global_and_substitution_branches_distinct() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "transition-timing-function: cubic-bezier(0.1, -2, 0.9, 3); ",
         "animation-timing-function: steps(2, jump-none); ",
         "transition-timing-function: inherit; ",
@@ -804,7 +832,7 @@ fn timing_function_wrappers_keep_typed_global_and_substitution_branches_distinct
         panic!("expected transition timing wrapper");
     };
     assert!(matches!(
-        value.timing_functions().values(),
+        value.value().values(),
         [CssEasing::CubicBezier(_)]
     ));
 
@@ -817,10 +845,7 @@ fn timing_function_wrappers_keep_typed_global_and_substitution_branches_distinct
     else {
         panic!("expected animation timing wrapper");
     };
-    assert!(matches!(
-        value.timing_functions().values(),
-        [CssEasing::Steps(_)]
-    ));
+    assert!(matches!(value.value().values(), [CssEasing::Steps(_)]));
 
     let global = report.syntax()[2]
         .known()
@@ -839,7 +864,7 @@ fn timing_function_wrappers_keep_typed_global_and_substitution_branches_distinct
 
 #[test]
 fn shadow_and_filter_wrappers_expose_ordered_typed_values() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "box-shadow: inset 1px 2px red; ",
         "filter: blur(4px) opacity(50%); ",
         "backdrop-filter: brightness()"
@@ -862,12 +887,18 @@ fn shadow_and_filter_wrappers_expose_ordered_typed_values() {
     };
     assert!(shadow.inset());
     assert!(exact_dimension(
-        shadow.offset_x().literal_component(),
+        shadow
+            .offset_x()
+            .literal()
+            .map(|literal| literal.component()),
         "1",
         "px"
     ));
     assert!(exact_dimension(
-        shadow.offset_y().literal_component(),
+        shadow
+            .offset_y()
+            .literal()
+            .map(|literal| literal.component()),
         "2",
         "px"
     ));
@@ -894,14 +925,14 @@ fn shadow_and_filter_wrappers_expose_ordered_typed_values() {
         panic!("expected ordered blur and opacity functions");
     };
     assert!(exact_dimension(
-        blur.length().literal_component(),
+        blur.length().literal().map(|literal| literal.component()),
         "4",
         "px"
     ));
     assert!(matches!(
         amount,
         CssFilterAmount::Percentage(value)
-            if exact_percentage(value.literal_component(), "50")
+            if exact_percentage(value.literal().map(|literal| literal.component()), "50")
     ));
 
     let CssKnownPropertyValueRef::BackdropFilter(backdrop) = report.syntax()[2]
@@ -956,7 +987,7 @@ fn assert_srgb_mix_with_lab_and_blue(color: &CssColor) {
 
 #[test]
 fn every_aggregate_color_consumer_retains_typed_color_mix() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "border: 1px solid color-mix(in srgb, lab(calc(50% + 10%) 20 30), blue); ",
         "border-top: solid color-mix(in srgb, lab(calc(50% + 10%) 20 30), blue); ",
         "border-right: solid color-mix(in srgb, lab(calc(50% + 10%) 20 30), blue); ",
@@ -980,7 +1011,7 @@ fn every_aggregate_color_consumer_retains_typed_color_mix() {
             CssKnownPropertyValueRef::BorderLeft(value) => value.value(),
             _ => panic!("expected border shorthand wrapper"),
         };
-        assert_eq!(border.style(), Some(CssBorderStyle::Solid));
+        assert_eq!(border.style(), Some(CssLineStyle::Solid));
         assert_srgb_mix_with_lab_and_blue(border.color().expect("border color"));
     }
     let border = match report.syntax()[0]
@@ -993,7 +1024,11 @@ fn every_aggregate_color_consumer_retains_typed_color_mix() {
         _ => panic!("expected border shorthand"),
     };
     assert_eq!(
-        border.width().unwrap().serialize_specified().unwrap(),
+        border
+            .width()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "1px"
     );
     for declaration in &report.syntax()[1..5] {
@@ -1059,12 +1094,18 @@ fn every_aggregate_color_consumer_retains_typed_color_mix() {
     assert_srgb_mix_with_lab_and_blue(shadow.color().expect("box-shadow color"));
     assert!(!shadow.inset());
     assert!(exact_dimension(
-        shadow.offset_x().literal_component(),
+        shadow
+            .offset_x()
+            .literal()
+            .map(|literal| literal.component()),
         "1",
         "px"
     ));
     assert!(exact_dimension(
-        shadow.offset_y().literal_component(),
+        shadow
+            .offset_y()
+            .literal()
+            .map(|literal| literal.component()),
         "2",
         "px"
     ));
@@ -1085,12 +1126,18 @@ fn every_aggregate_color_consumer_retains_typed_color_mix() {
         };
         assert_srgb_mix_with_lab_and_blue(shadow.color().expect("drop-shadow color"));
         assert!(exact_dimension(
-            shadow.offset_x().literal_component(),
+            shadow
+                .offset_x()
+                .literal()
+                .map(|literal| literal.component()),
             "1",
             "px"
         ));
         assert!(exact_dimension(
-            shadow.offset_y().literal_component(),
+            shadow
+                .offset_y()
+                .literal()
+                .map(|literal| literal.component()),
             "2",
             "px"
         ));
@@ -1100,7 +1147,7 @@ fn every_aggregate_color_consumer_retains_typed_color_mix() {
 
 #[test]
 fn clip_path_wrapper_separates_authored_global_and_substitution_values() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "clip-path: inset(1px round 2px); ",
         "clip-path: circle(50% at center); ",
         "clip-path: inherit; ",
@@ -1137,7 +1184,7 @@ fn clip_path_wrapper_separates_authored_global_and_substitution_values() {
     };
     assert!(
         matches!(shape.radius(), CssCircleRadius::LengthPercentage(radius)
-        if exact_percentage(radius.literal_component(), "50"))
+        if exact_percentage(radius.literal().map(|literal| literal.component()), "50"))
     );
     assert!(shape.position().is_some());
 
@@ -1160,7 +1207,7 @@ fn deferred_basic_shape_math_drops_only_the_invalid_declaration() {
     ] {
         let invalid = format!("clip-path: {shape};");
         let source = format!("{invalid} color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
 
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(
@@ -1191,13 +1238,22 @@ fn deferred_basic_shape_math_drops_only_the_invalid_declaration() {
             invalid.len(),
             "{source}",
         );
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("{source}: expected property-value detail");
-        };
-        assert_eq!(detail.property(), CssKnownProperty::ClipPath, "{source}");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "{source}: expected property-value detail"
+        );
+        assert_eq!(
+            detail.known_property().unwrap(),
+            CssKnownProperty::ClipPath,
+            "{source}"
+        );
 
         {
-            let failure = surgeist_css::validate_style_attribute(&source)
+            let failure = surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect_err("recovered basic-shape math must fail strict validation");
             assert_eq!(failure.diagnostics(), report.diagnostics(), "{source}");
         }
@@ -1205,15 +1261,15 @@ fn deferred_basic_shape_math_drops_only_the_invalid_declaration() {
 }
 
 fn exact_dimension(
-    component: Option<&surgeist_css::CssComponentValue>,
+    component: Option<&surgeist_css::component::CssComponentValue>,
     representation: &str,
     expected_unit: &str,
 ) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
 }
 fn exact_percentage(
-    component: Option<&surgeist_css::CssComponentValue>,
+    component: Option<&surgeist_css::component::CssComponentValue>,
     representation: &str,
 ) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
 }

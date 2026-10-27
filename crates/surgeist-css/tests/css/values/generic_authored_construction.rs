@@ -1,4 +1,16 @@
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssNumericTokenKind,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::numeric::CssLengthUnit;
+use surgeist_css::query::CssQueryLength;
+use surgeist_css::rule::font_face::{
+    CssFontFaceUrlSource, CssFontFormat, CssFontFormatHint, CssFontFormatString, CssFontTechHint,
+};
+use surgeist_css::rule::{CssImportString, CssImportUrl};
+use surgeist_css::values::common::{CssIdent, CssUrl, CssUrlFunction, CssUrlModifier};
+use surgeist_css::values::layout::{CssGridLineName, CssGridLineNames};
 
 #[test]
 fn decoded_empty_and_whitespace_targets_keep_their_authored_roles_and_url_forms() {
@@ -157,7 +169,7 @@ fn exact_numeric_tokens_preserve_kind_sign_spelling_and_programmatic_origin() {
         ("1e-50%", "1e-50", CssNumericTokenKind::Number, false),
         ("+01.0PX", "+01.0", CssNumericTokenKind::Number, true),
     ] {
-        let parsed = parse_component_values(text).unwrap();
+        let parsed = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let programmatic = CssComponentValue::try_token(text).unwrap();
         assert!(matches!(
             parsed.items()[0].origin(),
@@ -179,7 +191,13 @@ fn exact_numeric_tokens_preserve_kind_sign_spelling_and_programmatic_origin() {
             assert_eq!(number.kind(), kind);
             assert_eq!(number.has_sign(), sign);
         }
-        assert_eq!(parsed.serialize().unwrap().as_css(), text);
+        assert_eq!(
+            parsed
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            text
+        );
         assert_ne!(parsed.items()[0], programmatic);
     }
 }

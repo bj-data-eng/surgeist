@@ -2,11 +2,11 @@
 
 #![forbid(unsafe_code)]
 
-use super::NumericInputContext;
-use crate::{
-    CssComponentValue, CssComponentValueRef, CssComponentValues, CssParsedOrigin,
-    CssSourceSnapshot, CssValueOrigin, CssValueTokenRef, parse_component_values,
+use crate::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
 };
+use crate::numeric::expression::NumericInputContext;
+use crate::source::{CssParsedOrigin, CssSourceSnapshot};
 use stats_alloc::{INSTRUMENTED_SYSTEM, Region, StatsAlloc};
 use std::alloc::System;
 
@@ -31,9 +31,9 @@ fn parsed_origin(component: &CssComponentValue) -> &CssParsedOrigin {
 }
 
 fn component_css(component: &CssComponentValue) -> String {
-    CssComponentValues::try_new(vec![component.clone()])
+    CssComponentValues::try_new(vec![component.clone()], Default::default())
         .unwrap()
-        .serialize()
+        .serialize_tokens(Default::default())
         .unwrap()
         .as_css()
         .to_owned()
@@ -71,13 +71,15 @@ fn check_mapped_collection() {
     // A programmatic root with actual parsed children exercises mixed origins.
     // All fixture construction, validation, serialization and parser setup stay
     // outside the measured call. Ordinary ASCII names need no escape decoding.
-    let children = parse_component_values(CHILDREN).unwrap();
+    let children = crate::component::values::parse_component_values(CHILDREN).unwrap();
     let root = CssComponentValue::try_function("rgb", children).unwrap();
     let expected_leaf_origin = parsed_origin(first_number(&root)).clone();
-    let values =
-        CssComponentValues::try_new(vec![root, CssComponentValue::try_ident("blue").unwrap()])
-            .unwrap();
-    let serialized = values.serialize().unwrap();
+    let values = CssComponentValues::try_new(
+        vec![root, CssComponentValue::try_ident("blue").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
+    let serialized = values.serialize_tokens(Default::default()).unwrap();
     let context = NumericInputContext::Components(&values, &serialized);
     let mut input = cssparser::ParserInput::new(serialized.as_css());
     let mut cursor = cssparser::Parser::new(&mut input);
@@ -144,16 +146,25 @@ fn check_read_only_retention() {
     // Input construction and retention assertions remain outside the measured
     // call. The calculation needs integer-domain validation, not a public result.
     let values = [128, 65_536].map(|length| {
-        parse_component_values(&format!("calc(1 /*{}*/ + 2)", "x".repeat(length))).unwrap()
+        crate::component::values::parse_component_values(&format!(
+            "calc(1 /*{}*/ + 2)",
+            "x".repeat(length)
+        ))
+        .unwrap()
     });
     for contextual in [false, true] {
         let stats = values.each_ref().map(|values| {
             let region = Region::new(GLOBAL);
             let result = if contextual {
-                NumericInputContext::Checked
-                    .check_component(&values.items()[0], super::CalculationRoot::Integer)
+                NumericInputContext::Checked.check_component(
+                    &values.items()[0],
+                    crate::numeric::expression::CalculationRoot::Integer,
+                )
             } else {
-                super::check_component(&values.items()[0], super::CalculationRoot::Integer)
+                crate::numeric::expression::check_component(
+                    &values.items()[0],
+                    crate::numeric::expression::CalculationRoot::Integer,
+                )
             };
             let stats = region.change();
             result.expect("a sum of integer literals is an integer-domain calculation");
@@ -168,12 +179,15 @@ fn check_read_only_retention() {
             "read-only check retained comment payload: contextual={contextual}, growth={growth}, stats={stats:?}"
         );
     }
-    let invalid = parse_component_values("calc(1px + 2px)").unwrap();
-    let error = super::check_component(&invalid.items()[0], super::CalculationRoot::Integer)
-        .expect_err("a length sum cannot enter the integer domain");
+    let invalid = crate::component::values::parse_component_values("calc(1px + 2px)").unwrap();
+    let error = crate::numeric::expression::check_component(
+        &invalid.items()[0],
+        crate::numeric::expression::CalculationRoot::Integer,
+    )
+    .expect_err("a length sum cannot enter the integer domain");
     assert_eq!(
         error.kind(),
-        &crate::CssNumericConstructionErrorKind::RootDomainMismatch
+        &crate::numeric::expression::CssNumericConstructionErrorKind::RootDomainMismatch
     );
 }
 
@@ -185,42 +199,59 @@ fn read_only_component_check_preserves_context_closure_policy() {
     let parsed = NumericInputContext::Parsed(&source);
     let component = parsed.collect(&mut cursor).unwrap();
     parsed
-        .check_component(&component, super::CalculationRoot::Integer)
+        .check_component(
+            &component,
+            crate::numeric::expression::CalculationRoot::Integer,
+        )
         .expect("source mathematics admits its recovered closing boundary");
     NumericInputContext::QuirkyLengths(&parsed)
-        .check_component(&component, super::CalculationRoot::Integer)
+        .check_component(
+            &component,
+            crate::numeric::expression::CalculationRoot::Integer,
+        )
         .expect("length quirks preserve the source closure policy");
     for error in [
-        super::check_component(&component, super::CalculationRoot::Integer).unwrap_err(),
+        crate::numeric::expression::check_component(
+            &component,
+            crate::numeric::expression::CalculationRoot::Integer,
+        )
+        .unwrap_err(),
         NumericInputContext::Checked
-            .check_component(&component, super::CalculationRoot::Integer)
+            .check_component(
+                &component,
+                crate::numeric::expression::CalculationRoot::Integer,
+            )
             .unwrap_err(),
     ] {
         assert_eq!(
             error.kind(),
-            &crate::CssNumericConstructionErrorKind::RecoveredComponent
+            &crate::numeric::expression::CssNumericConstructionErrorKind::RecoveredComponent
         );
     }
-    let values = CssComponentValues::try_new(vec![component.into_owned()]).unwrap();
-    let serialized = values.serialize().unwrap();
+    let values =
+        CssComponentValues::try_new(vec![component.into_owned()], Default::default()).unwrap();
+    let serialized = values.serialize_tokens(Default::default()).unwrap();
     let error = NumericInputContext::Components(&values, &serialized)
-        .check_component(&values.items()[0], super::CalculationRoot::Integer)
+        .check_component(
+            &values.items()[0],
+            crate::numeric::expression::CalculationRoot::Integer,
+        )
         .unwrap_err();
     assert_eq!(
         error.kind(),
-        &crate::CssNumericConstructionErrorKind::RecoveredComponent
+        &crate::numeric::expression::CssNumericConstructionErrorKind::RecoveredComponent
     );
 }
 
 #[test]
 fn numerical_attempt_moves_owned_input_and_returns_it_for_failed_retry() {
     let context = NumericInputContext::Checked;
-    let values = parse_component_values("calc(1fr + 2fr)").unwrap();
+    let values = crate::component::values::parse_component_values("calc(1fr + 2fr)").unwrap();
     let original = values.items().as_ptr();
     let expression = context
         .admit_or_return_input(
-            super::CalculationComponents::Owned(values),
-            super::CalculationRoot::Flex,
+            crate::numeric::expression::CalculationComponents::Owned(values),
+            crate::numeric::expression::CalculationRoot::Flex,
         )
         .unwrap();
     assert_eq!(
@@ -228,42 +259,48 @@ fn numerical_attempt_moves_owned_input_and_returns_it_for_failed_retry() {
         original
     );
     assert_eq!(
-        crate::CssFlexCalculation::from_expression(expression)
-            .serialize()
+        crate::numeric::CssCalculation::<crate::numeric::CssFlex>::from_expression(expression)
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "calc(1fr + 2fr)"
     );
 
-    let values = parse_component_values("calc(1px + 2px)").unwrap();
+    let values = crate::component::values::parse_component_values("calc(1px + 2px)").unwrap();
     let original = values.items().as_ptr();
     let failure = context
         .admit_or_return_input(
-            super::CalculationComponents::Owned(values),
-            super::CalculationRoot::Flex,
+            crate::numeric::expression::CalculationComponents::Owned(values),
+            crate::numeric::expression::CalculationRoot::Flex,
         )
         .unwrap_err();
     assert_eq!(
         failure.error.kind(),
-        &crate::CssNumericConstructionErrorKind::RootDomainMismatch
+        &crate::numeric::expression::CssNumericConstructionErrorKind::RootDomainMismatch
     );
     assert_eq!(failure.error.path(), Some([0].as_slice()));
-    let super::CalculationComponents::Owned(ref returned) = failure.values else {
+    let crate::numeric::expression::CalculationComponents::Owned(ref returned) = failure.values
+    else {
         panic!("the original owner is returned on failure");
     };
     assert_eq!(returned.items().as_ptr(), original);
     let expression = context
-        .admit_or_return_input(failure.values, super::CalculationRoot::LengthPercentage)
+        .admit_or_return_input(
+            failure.values,
+            crate::numeric::expression::CalculationRoot::LengthPercentage,
+        )
         .unwrap();
     assert_eq!(
         expression.components.as_ref().unwrap().items().as_ptr(),
         original
     );
     assert_eq!(
-        crate::CssLengthPercentageCalculation::from_expression(expression)
-            .serialize()
-            .unwrap()
-            .as_css(),
+        crate::numeric::CssCalculation::<crate::numeric::CssLengthPercentage>::from_expression(
+            expression
+        )
+        .serialize_tokens(Default::default())
+        .unwrap()
+        .as_css(),
         "calc(1px + 2px)"
     );
 }
@@ -271,25 +308,26 @@ fn numerical_attempt_moves_owned_input_and_returns_it_for_failed_retry() {
 #[test]
 fn numerical_attempt_keeps_borrowed_failure_identity_and_owns_completed_output() {
     let context = NumericInputContext::Checked;
-    let values = parse_component_values("calc(1px + 2px)").unwrap();
+    let values = crate::component::values::parse_component_values("calc(1px + 2px)").unwrap();
     let failure = context
         .admit_or_return_input(
-            super::CalculationComponents::Borrowed(values.items()),
-            super::CalculationRoot::Flex,
+            crate::numeric::expression::CalculationComponents::Borrowed(values.items()),
+            crate::numeric::expression::CalculationRoot::Flex,
         )
         .unwrap_err();
     assert_eq!(
         failure.error.kind(),
-        &crate::CssNumericConstructionErrorKind::RootDomainMismatch
+        &crate::numeric::expression::CssNumericConstructionErrorKind::RootDomainMismatch
     );
-    let super::CalculationComponents::Borrowed(returned) = failure.values else {
+    let crate::numeric::expression::CalculationComponents::Borrowed(returned) = failure.values
+    else {
         panic!("borrowed failure keeps the same actual components");
     };
     assert!(std::ptr::eq(returned, values.items()));
     let expression = context
         .admit_or_return_input(
-            super::CalculationComponents::Borrowed(returned),
-            super::CalculationRoot::LengthPercentage,
+            crate::numeric::expression::CalculationComponents::Borrowed(returned),
+            crate::numeric::expression::CalculationRoot::LengthPercentage,
         )
         .unwrap();
     let output = expression.components.as_ref().unwrap();
@@ -301,10 +339,12 @@ fn numerical_attempt_keeps_borrowed_failure_identity_and_owns_completed_output()
     );
     drop(values);
     assert_eq!(
-        crate::CssLengthPercentageCalculation::from_expression(expression)
-            .serialize()
-            .unwrap()
-            .as_css(),
+        crate::numeric::CssCalculation::<crate::numeric::CssLengthPercentage>::from_expression(
+            expression
+        )
+        .serialize_tokens(Default::default())
+        .unwrap()
+        .as_css(),
         "calc(1px + 2px)"
     );
 }

@@ -4,22 +4,30 @@
 //! Reusing their number type must not bypass the pure color expression context.
 
 use surgeist_color::PredefinedColorSpace;
-use surgeist_css::{
+use surgeist_css::CssParser;
+use surgeist_css::color::{
     CssColorComponent, CssColorConstructionError, CssColorHue, CssColorNumberLiteral,
-    CssColorProfileName, CssColorSyntax, CssComponentValue, CssContainerCondition,
-    CssContainerConditionKind, CssContainerFeatureQuery, CssContainerRatioRef, CssCustomColor,
-    CssDeviceCmykColor, CssHslColor, CssHwbColor, CssLabColor, CssLchColor, CssMediaRangeRef,
-    CssNumberCalculation, CssNumericConstructionErrorKind, CssPredefinedColor, CssRgbColor,
-    parse_component_values,
+    CssColorProfileName, CssColorSyntax, CssCustomColor, CssDeviceCmykColor, CssHslColor,
+    CssHwbColor, CssLabColor, CssLchColor, CssPredefinedColor, CssRgbColor,
 };
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::numeric::{CssCalculation, CssNumber};
+use surgeist_css::query::container::{
+    CssContainerFeatureQuery, CssContainerLeaf, CssContainerRatioRef,
+};
+use surgeist_css::query::media::CssMediaRangeRef;
+use surgeist_css::query::{CssCondition, CssConditionKind};
 
-fn container_number(expression: &str) -> CssNumberCalculation {
+fn container_number(expression: &str) -> CssCalculation<CssNumber> {
     let source = format!("(aspect-ratio: {expression})");
-    let condition =
-        CssContainerCondition::try_from_components(parse_component_values(&source).unwrap())
-            .expect("tree-counting remains valid in its selected container context");
-    let CssContainerConditionKind::Feature(CssContainerFeatureQuery::AspectRatio(range)) =
-        condition.kind()
+    let condition = CssCondition::<CssContainerLeaf>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), &source).unwrap(),
+        Default::default(),
+    )
+    .expect("tree-counting remains valid in its selected container context");
+    let CssConditionKind::Leaf(CssContainerLeaf::Feature(CssContainerFeatureQuery::AspectRatio(
+        range,
+    ))) = condition.kind()
     else {
         panic!("expected an authored aspect-ratio feature: {source}");
     };
@@ -33,7 +41,7 @@ fn container_number(expression: &str) -> CssNumberCalculation {
 }
 
 fn rgb_with_calculation(
-    calculation: CssNumberCalculation,
+    calculation: CssCalculation<CssNumber>,
 ) -> Result<CssRgbColor, CssColorConstructionError> {
     let zero =
         CssColorNumberLiteral::try_from_component(CssComponentValue::try_number("0").unwrap())
@@ -61,11 +69,13 @@ fn rgb_constructor_rejects_container_tree_counting_calculations() {
         "max(1, sibling-index())",
     ] {
         let calculation = container_number(expression);
-        assert_eq!(
-            CssNumberCalculation::try_from_components(parse_component_values(expression).unwrap())
-                .unwrap_err()
-                .kind(),
-            &CssNumericConstructionErrorKind::UnknownFunction,
+        assert!(
+            CssCalculation::<CssNumber>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), expression).unwrap(),
+                Default::default()
+            )
+            .unwrap_err()
+            .is_unknown_function(),
             "the pure number boundary must retain its context restriction: {expression}"
         );
         if rgb_with_calculation(calculation).is_ok() {
@@ -81,9 +91,11 @@ fn rgb_constructor_rejects_container_tree_counting_calculations() {
 #[test]
 fn rgb_constructor_accepts_pure_number_calculations() {
     for expression in ["calc(1 + 2)", "max(1, 2)"] {
-        let calculation =
-            CssNumberCalculation::try_from_components(parse_component_values(expression).unwrap())
-                .expect("a pure number calculation is valid outside container context");
+        let calculation = CssCalculation::<CssNumber>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), expression).unwrap(),
+            Default::default(),
+        )
+        .expect("a pure number calculation is valid outside container context");
         assert!(
             rgb_with_calculation(calculation).is_ok(),
             "pure calculation must remain valid in RGB: {expression}"

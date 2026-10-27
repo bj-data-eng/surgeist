@@ -2,7 +2,7 @@
 //! runtime-owned; CSSOM identities here record admitted associations, not effects.
 use std::sync::Arc;
 
-use surgeist_css::CssViewTransitionIdent;
+use surgeist_css::values::view_transition::CssViewTransitionIdent;
 use surgeist_cssom::{CssomRevision, CssomRuleId, CssomSheetId};
 
 use crate::batch::BatchIdentity;

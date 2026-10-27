@@ -8,9 +8,9 @@
 
 use std::ops::Range;
 
-use surgeist_css::{
-    CssBlockKind, CssComponentValueErrorKind, CssComponentValueRef, CssValueOrigin,
-    CssValueTokenRef, parse_component_values,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssBlockKind, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
 };
 
 fn assert_origin(origin: &CssValueOrigin, source: &str, expected: Range<usize>) {
@@ -27,7 +27,8 @@ fn consecutive_complete_comments_preserve_the_following_dispatched_token() {
     // §4.3.2 returns to the comment-consumption step after each complete comment.
     // Comment retention is the component model's contract, not a whitespace token.
     let source = "/*first*//*second*/@next";
-    let values = parse_component_values(source).expect("complete comments then at-keyword");
+    let values = CssComponentValues::parse(&CssParser::default(), source)
+        .expect("complete comments then at-keyword");
     let [first, second, following] = values.items() else {
         panic!("two distinct retained comments followed by one dispatched token");
     };
@@ -54,7 +55,8 @@ fn contiguous_mixed_whitespace_is_one_component_with_original_spelling() {
     // consumes the complete whitespace run. Retained spelling stays authored.
     let source = " \t\r\n\u{c}\n\r :";
     let whitespace = " \t\r\n\u{c}\n\r ";
-    let values = parse_component_values(source).expect("one complete whitespace run");
+    let values = CssComponentValues::parse(&CssParser::default(), source)
+        .expect("one complete whitespace run");
     let [run, following] = values.items() else {
         panic!("one whitespace component followed by a colon");
     };
@@ -79,7 +81,8 @@ fn punctuation_dispatch_uses_dedicated_tokens_and_delimiter_fallback() {
         ":", ";", ",", "+", "-", ".", "<", "@", "#", "%", "!", "$", "&", "*", "/", "=", ">", "?",
         "^", "`", "|", "~",
     ] {
-        let values = parse_component_values(source).expect("ordinary punctuation component");
+        let values = CssComponentValues::parse(&CssParser::default(), source)
+            .expect("ordinary punctuation component");
         let [component] = values.items() else {
             panic!("one punctuation token: {source:?}");
         };
@@ -103,7 +106,8 @@ fn bracket_dispatch_matches_all_block_kinds_and_rejects_unmatched_closers() {
     // §4.3.1 dispatches all six bracket characters. §5.5.9 groups each opener
     // with its matching closer; closers are structural, not leaf token variants.
     let source = "()[]{}";
-    let values = parse_component_values(source).expect("three complete empty blocks");
+    let values = CssComponentValues::parse(&CssParser::default(), source)
+        .expect("three complete empty blocks");
     assert_eq!(values.items().len(), 3);
     for (index, (component, expected)) in values
         .items()
@@ -128,12 +132,9 @@ fn bracket_dispatch_matches_all_block_kinds_and_rejects_unmatched_closers() {
     }
 
     for source in [")", "]", "}"] {
-        let error = parse_component_values(source).expect_err("strict unmatched closer");
-        assert_eq!(
-            error.kind(),
-            CssComponentValueErrorKind::UnmatchedClosingDelimiter,
-            "{source:?}"
-        );
+        let error = CssComponentValues::parse(&CssParser::default(), source)
+            .expect_err("strict unmatched closer");
+        assert!(error.is_unmatched_closing_delimiter(), "{source:?}");
         assert_origin(error.origin(), source, 0..1);
     }
 }

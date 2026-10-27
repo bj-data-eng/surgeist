@@ -3,10 +3,11 @@ use crate::css::support::property_expectations;
 use property_expectations::{
     BoundaryOutcome, CASES, CatalogExpectation, KNOWN_SERIALIZATION_DEFECTS,
 };
-use surgeist_css::{
-    CssErrorCode, CssFeatureKind, CssSupportStatus, ErrorKind, feature_metadata,
-    parse_style_attribute, property_support_metadata,
+use surgeist_css::CssParser;
+use surgeist_css::conformance::{
+    CssFeatureKind, CssSupportStatus, feature_metadata, property_support_metadata,
 };
+use surgeist_css::diagnostic::CssErrorCode;
 
 const CSS_WIDE_KEYWORDS: &[&str] = &["inherit", "initial", "unset", "revert", "revert-layer"];
 
@@ -179,7 +180,8 @@ fn authored_property_cases_exercise_public_parser_behavior() {
                 feature_id
             );
         }
-        let report = parse_style_attribute(&format!("{}: {}", case.name, positive));
+        let report =
+            CssParser::default().parse_block_contents(format!("{}: {}", case.name, positive));
         assert!(
             report.is_clean(),
             "{} positive diagnostics: {:?}",
@@ -202,7 +204,7 @@ fn authored_property_cases_exercise_public_parser_behavior() {
         // §6.7.2 serializes the declaration as `name: value;`, with the value
         // in the specified serialization each record states.
         let expected = format!("{}: {};", case.name, serialization.unwrap_or(positive));
-        let actual = declaration.to_specified_css().unwrap();
+        let actual = declaration.serialize_specified(Default::default()).unwrap();
         if let Some((_, current)) = KNOWN_SERIALIZATION_DEFECTS
             .iter()
             .find(|(id, _)| id == feature_id)
@@ -237,7 +239,8 @@ fn authored_property_cases_exercise_public_parser_behavior() {
             "{} negative must not use substitution-dependent parsing",
             feature_id
         );
-        let report = parse_style_attribute(&format!("{}: {}", case.name, negative));
+        let report =
+            CssParser::default().parse_block_contents(format!("{}: {}", case.name, negative));
         if let BoundaryOutcome::Accepted(assertion) = boundary.outcome {
             // Accepted boundary stimuli and their typed assertions are explicit
             // in the independently authored records, including historical cases.
@@ -273,12 +276,16 @@ fn authored_property_cases_exercise_public_parser_behavior() {
             "{} negative diagnostic root",
             feature_id
         );
-        let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-            panic!("{} negative returned {error:?}", feature_id);
-        };
-        assert_eq!(detail.property(), case.property);
-        assert_eq!(detail.property().canonical_name(), case.name);
-        assert_eq!(detail.property().stable_id(), *feature_id);
+        let detail = &error;
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "{} negative returned {error:?}",
+            feature_id
+        );
+        assert_eq!(detail.known_property().unwrap(), case.property);
+        assert_eq!(detail.known_property().unwrap().canonical_name(), case.name);
+        assert_eq!(detail.known_property().unwrap().stable_id(), *feature_id);
     }
     assert!(
         serialization_mismatches.is_empty(),
@@ -299,7 +306,8 @@ fn added_fonts_property_rows_expose_complete_authored_metadata() {
         else {
             continue;
         };
-        let report = parse_style_attribute(&format!("{}: {}", case.name, authored));
+        let report =
+            CssParser::default().parse_block_contents(format!("{}: {}", case.name, authored));
         assert!(
             report.is_clean(),
             "{}: {:?}",

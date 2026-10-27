@@ -2,7 +2,23 @@
 //! Values 5 attribute-substitution WD20241111 §9. The query-container, flat-tree
 //! and ultimate-originating-element evaluation rules remain downstream; these
 //! tests require the symbolic inputs and their authored provenance to survive.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationExpressionRef, CssCalculationTreeCountingRef, CssCalculationType,
+    CssNumber, CssNumericDimension, CssTreeCountingFunction,
+};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::query::container::{
+    CssContainerFeatureQuery, CssContainerLeaf, CssContainerLengthRef, CssContainerPrelude,
+    CssContainerRatioRef, CssContainerValueDomain,
+};
+use surgeist_css::query::media::CssMediaRangeRef;
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::{CssContainerRule, CssRule, CssSheet};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn container(sheet: &CssSheet) -> &CssContainerRule {
     let [CssRule::Container(rule)] = sheet.rules() else {
@@ -11,7 +27,7 @@ fn container(sheet: &CssSheet) -> &CssContainerRule {
     rule
 }
 
-fn query(rule: &CssContainerRule, index: usize) -> &CssContainerCondition {
+fn query(rule: &CssContainerRule, index: usize) -> &CssCondition<CssContainerLeaf> {
     rule.prelude().entries()[index].query().unwrap()
 }
 
@@ -39,9 +55,10 @@ fn tree(expression: CssCalculationExpressionRef<'_>) -> CssCalculationTreeCounti
     value
 }
 
-fn ratio_numerator(condition: &CssContainerCondition) -> &CssNumberCalculation {
-    let CssContainerConditionKind::Feature(CssContainerFeatureQuery::AspectRatio(range)) =
-        condition.kind()
+fn ratio_numerator(condition: &CssCondition<CssContainerLeaf>) -> &CssCalculation<CssNumber> {
+    let CssConditionKind::Leaf(CssContainerLeaf::Feature(CssContainerFeatureQuery::AspectRatio(
+        range,
+    ))) = condition.kind()
     else {
         panic!("recognized aspect-ratio")
     };
@@ -55,7 +72,7 @@ fn ratio_numerator(condition: &CssContainerCondition) -> &CssNumberCalculation {
 }
 
 fn assert_context(sheet: &CssSheet, expected: &CssContainerPrelude) {
-    let normalized = normalize_sheet(sheet).unwrap();
+    let normalized = sheet.normalize(Default::default()).unwrap();
     let containers: Vec<_> = normalized
         .items()
         .iter()
@@ -92,7 +109,7 @@ fn assert_context(sheet: &CssSheet, expected: &CssContainerPrelude) {
         declaration
             .source()
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css()
             .trim(),
@@ -116,12 +133,12 @@ fn assert_context(sheet: &CssSheet, expected: &CssContainerPrelude) {
 fn container_reuse_and_normalization_keep_tree_relative_unit_and_pending_inputs() {
     let source = "/*😀*/@container Card (width: calc(sibling-count() * 2em)), (aspect-ratio: sibling-index()), (height: calc(sibling-index() * var(--Unit, 1cqw))){.child::before{color:red}}";
     let expected = "@container Card (width: calc(sibling-count() * 2em)), (aspect-ratio: sibling-index()), (height: calc(sibling-index() * var(--Unit, 1cqw))) { .child::before { color: red; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
     let rule = container(report.syntax());
     assert_eq!(rule.prelude().entries()[0].name().unwrap().as_str(), "Card");
-    let CssContainerConditionKind::Feature(CssContainerFeatureQuery::Width(range)) =
+    let CssConditionKind::Leaf(CssContainerLeaf::Feature(CssContainerFeatureQuery::Width(range))) =
         query(rule, 0).kind()
     else {
         panic!("typed width operand")
@@ -155,7 +172,7 @@ fn container_reuse_and_normalization_keep_tree_relative_unit_and_pending_inputs(
     let index = tree(ratio_numerator(query(rule, 1)).expression());
     assert_eq!(index.function(), CssTreeCountingFunction::SiblingIndex);
     assert_origin(index.origin(), source, "sibling-index(");
-    let CssContainerConditionKind::Feature(CssContainerFeatureQuery::Height(range)) =
+    let CssConditionKind::Leaf(CssContainerLeaf::Feature(CssContainerFeatureQuery::Height(range))) =
         query(rule, 2).kind()
     else {
         panic!("recognized pending height")
@@ -168,13 +185,15 @@ fn container_reuse_and_normalization_keep_tree_relative_unit_and_pending_inputs(
     };
     assert_eq!(value.domain(), CssContainerValueDomain::Length);
     assert_eq!(
-        value.serialize().unwrap().as_css(),
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
         "calc(sibling-index() * var(--Unit, 1cqw))"
     );
     assert_context(report.syntax(), rule.prelude());
 
     let checked_prelude = CssContainerPrelude::try_from_components(
-        CssComponentValues::try_new(rule.prelude().components().to_vec()).unwrap(),
+        CssComponentValues::try_new(rule.prelude().components().to_vec(), Default::default())
+            .unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(&checked_prelude, rule.prelude());
@@ -188,8 +207,17 @@ fn container_reuse_and_normalization_keep_tree_relative_unit_and_pending_inputs(
     assert_eq!(checked.rules(), rule.rules());
     let reused = CssSheet::try_from_rules(vec![CssRule::Container(checked)]).unwrap();
     assert_context(&reused, rule.prelude());
-    assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
-    assert_eq!(reused.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
+    assert_eq!(
+        reused.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(report, before);
     drop(report);
     assert_origin(
@@ -197,9 +225,15 @@ fn container_reuse_and_normalization_keep_tree_relative_unit_and_pending_inputs(
         source,
         "sibling-index(",
     );
-    let emitted = parse_sheet(expected);
+    let emitted = CssParser::default().parse_sheet(expected);
     assert!(emitted.is_clean(), "{:?}", emitted.diagnostics());
-    assert_eq!(emitted.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        emitted
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     assert_context(emitted.syntax(), container(emitted.syntax()).prelude());
     assert_eq!(
         tree(ratio_numerator(query(container(emitted.syntax()), 1)).expression()).function(),
@@ -213,7 +247,7 @@ fn escaped_tree_function_identity_keeps_authored_trivia_and_original_opening_ori
         r"/*😀*/@container (aspect-ratio: SIBLING-\63 OUNT( /**/ )){.child::before{color:red}}";
     let expected =
         r"@container (aspect-ratio: SIBLING-\63 OUNT( /**/ )) { .child::before { color: red; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let rule = container(report.syntax());
     let numerator = ratio_numerator(query(rule, 0));
@@ -222,21 +256,33 @@ fn escaped_tree_function_identity_keeps_authored_trivia_and_original_opening_ori
     assert_origin(count.origin(), source, r"SIBLING-\63 OUNT(");
     // Numeric projection canonicalizes the name; the container lexical provider
     // preserves the authored spelling and trivia needed for specified replay.
-    let numeric = numerator.serialize().unwrap();
+    let numeric = numerator.serialize_tokens(Default::default()).unwrap();
     assert_eq!(numeric.as_css(), "sibling-count()");
     assert_eq!(
         numeric.origin_at(0),
         Some(&CssSerializedOrigin::Token(count.origin().clone()))
     );
     assert_context(report.syntax(), rule.prelude());
-    assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
-    let emitted = parse_sheet(expected);
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
+    let emitted = CssParser::default().parse_sheet(expected);
     assert!(emitted.is_clean(), "{:?}", emitted.diagnostics());
     assert_eq!(
         tree(ratio_numerator(query(container(emitted.syntax()), 0)).expression()).function(),
         CssTreeCountingFunction::SiblingCount
     );
-    assert_eq!(emitted.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        emitted
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 }
 
 #[test]
@@ -251,28 +297,42 @@ fn unsupported_tree_arguments_and_wrong_domains_keep_opaque_query_and_body_on_re
     ] {
         let source = format!("@container {condition}{{.child::before{{color:red}}}}");
         let expected = format!("@container {condition} {{ .child::before {{ color: red; }} }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{condition}: {:?}", report.diagnostics());
         let rule = container(report.syntax());
         assert!(matches!(
             query(rule, 0).kind(),
-            CssContainerConditionKind::GeneralEnclosed(_)
+            CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
         ));
         let checked = CssContainerPrelude::try_from_components(
-            CssComponentValues::try_new(rule.prelude().components().to_vec()).unwrap(),
+            CssComponentValues::try_new(rule.prelude().components().to_vec(), Default::default())
+                .unwrap(),
+            Default::default(),
         )
         .unwrap();
         assert_eq!(&checked, rule.prelude());
         assert_context(report.syntax(), &checked);
-        assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
-        let emitted = parse_sheet(&expected);
+        assert_eq!(
+            report
+                .syntax()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
+        let emitted = CssParser::default().parse_sheet(&expected);
         assert!(emitted.is_clean(), "{:?}", emitted.diagnostics());
         assert!(matches!(
             query(container(emitted.syntax()), 0).kind(),
-            CssContainerConditionKind::GeneralEnclosed(_)
+            CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
         ));
         assert_context(emitted.syntax(), container(emitted.syntax()).prelude());
-        assert_eq!(emitted.syntax().to_specified_css().unwrap(), expected);
+        assert_eq!(
+            emitted
+                .syntax()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
 }
 
@@ -280,37 +340,34 @@ fn unsupported_tree_arguments_and_wrong_domains_keep_opaque_query_and_body_on_re
 fn tree_query_output_byte_limit_is_cumulative_across_rules_and_atomic_on_failure() {
     let source = "@container (aspect-ratio: sibling-count(/*é*/)){}@container (aspect-ratio: sibling-index()){}";
     let expected = "@container (aspect-ratio: sibling-count(/*é*/)) { }\n@container (aspect-ratio: sibling-index()) { }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
-    let exact = CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
+    let exact = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
-    let short =
-        CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1);
+    let short = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1);
     // Both individual rules fit; the second rule exhausts the shared byte budget.
     for (rule, text) in report.syntax().rules().iter().zip(expected.split('\n')) {
-        assert_eq!(rule.to_specified_css_with_limits(short).unwrap(), text);
+        assert_eq!(rule.serialize_specified(short).unwrap(), text);
     }
-    let error = report
-        .syntax()
-        .to_specified_css_with_limits(short)
-        .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        CssSpecifiedRuleSerializationErrorKind::Resource(
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
-        )
-    );
+    let error = report.syntax().serialize_specified(short).unwrap_err();
+    assert!(error.is_byte_limit(), "{error:?}");
     assert_eq!(error.rule_index(), Some(1));
     assert_eq!(report, before);
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
-    let emitted = parse_sheet(expected);
+    let emitted = CssParser::default().parse_sheet(expected);
     assert!(emitted.is_clean(), "{:?}", emitted.diagnostics());
-    assert_eq!(emitted.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        emitted
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 }

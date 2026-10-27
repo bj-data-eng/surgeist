@@ -6,9 +6,11 @@ own package facts, the public front door and capability/verification guidance.
 
 This crate owns shared fuzz contracts, bounded generation mechanics, safe process execution, immutable
 evidence, same-failure reduction and local campaign control. Semantic cases,
-expectations, codecs, domain reductions and requirement references stay in the
-consuming crate's `fuzz/` package. Generic forests here are fixture topology,
-not a DOM or a layout model. Benchmarking is outside the current boundary.
+expectations, codecs, domain reductions and requirement references stay with
+the consumer: fuzz-campaign cases in its `fuzz/` package, and property cases
+built on the `property` feature in its ordinary tests through a
+dev-dependency. Generic forests here are fixture topology, not a DOM or a
+layout model. Benchmarking is outside the current boundary.
 
 Production crates do not depend on this crate. Its optional property and
 coverage features provide authoring adapters; ordinary builds do not link

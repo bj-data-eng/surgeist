@@ -2,7 +2,19 @@
 //! CSS Values 4 (2024-03-12) §4.2 identifier exclusions and math range timing.
 //! Grid 3 (2026-01-21) §4.1 reuses these properties on its grid axis.
 
-use surgeist_css::*;
+use crate::css::support::property_admission::assert_same_grammar_facts;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{CssNormalizationLimits, CssNormalizationResource};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssKnownPropertyValueRef, CssLonghandContributions, CssPropertyGrammar, CssPropertyKindRef,
+    CssPropertyTarget,
+};
+use surgeist_css::values::layout::CssGridLine;
 
 const LONGHANDS: [&str; 4] = [
     "grid-row-start",
@@ -31,7 +43,7 @@ fn grammar(name: &str) -> CssPropertyGrammar {
 
 fn declaration(name: &str, value: &str) -> CssDeclaration {
     let source = format!("{name}: {value} !important");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
         panic!("one declaration: {source}")
@@ -40,17 +52,19 @@ fn declaration(name: &str, value: &str) -> CssDeclaration {
 }
 
 fn checked(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(name),
-        parse_component_values(value).unwrap(),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(grammar(name)),
+        CssComponentValues::parse(&CssParser::default(), value).unwrap(),
         CssImportance::Important,
     )
     .unwrap_or_else(|error| panic!("checked {name}: {value}: {error:?}"))
 }
 
 fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).expect("grid placement has intrinsic expansion")
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source
+        .expand()
+        .expect("grid placement has intrinsic expansion")
     else {
         panic!("completed grid placement longhands")
     };
@@ -211,7 +225,7 @@ fn placement_rejects_zero_noninteger_and_duplicate_components_without_losing_nei
             "2 main 3",
         ] {
             let source = format!("color: red; {name}: {value}; color: blue");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert_eq!(report.syntax().len(), 2, "{source}");
             assert_eq!(report.diagnostics().len(), 1, "{source}");
             assert_eq!(
@@ -219,20 +233,24 @@ fn placement_rejects_zero_noninteger_and_duplicate_components_without_losing_nei
                 CssRecoveryAction::DropDeclaration
             );
             assert_eq!(
-                validate_style_attribute(&source).unwrap_err().diagnostics(),
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 report.diagnostics(),
                 "{source}"
             );
-            assert_eq!(
-                parse_property_value_for_grammar(
-                    grammar(name),
-                    parse_component_values(value).unwrap(),
-                    CssImportance::Normal
+            assert_same_grammar_facts(
+                &CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(grammar(name)),
+                    CssComponentValues::parse(&CssParser::default(), value).unwrap(),
+                    CssImportance::Normal,
                 )
-                .unwrap_err()
-                .kind(),
-                &CssPropertyValueErrorKind::Grammar(report.diagnostics()[0].error().kind().clone()),
-                "checked accepted {name}: {value}"
+                .unwrap_err(),
+                report.diagnostics()[0].error(),
+                "checked accepted {name}: {value}",
             );
         }
     }
@@ -255,7 +273,7 @@ fn default_and_reserved_keywords_cannot_serve_as_grid_line_names() {
             "unset 2",
         ] {
             let source = format!("{name}: {value}");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             let [diagnostic] = report.diagnostics() else {
                 panic!("one dropped declaration: {source}")
             };
@@ -264,16 +282,16 @@ fn default_and_reserved_keywords_cannot_serve_as_grid_line_names() {
                 CssRecoveryAction::DropDeclaration,
                 "{source}"
             );
-            assert_eq!(
-                parse_property_value_for_grammar(
-                    grammar(name),
-                    parse_component_values(value).unwrap(),
-                    CssImportance::Normal
+            assert_same_grammar_facts(
+                &CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(grammar(name)),
+                    CssComponentValues::parse(&CssParser::default(), value).unwrap(),
+                    CssImportance::Normal,
                 )
-                .unwrap_err()
-                .kind(),
-                &CssPropertyValueErrorKind::Grammar(report.diagnostics()[0].error().kind().clone()),
-                "checked accepted {source}"
+                .unwrap_err(),
+                report.diagnostics()[0].error(),
+                "checked accepted {source}",
             );
         }
         for value in [
@@ -284,7 +302,11 @@ fn default_and_reserved_keywords_cannot_serve_as_grid_line_names() {
             "revert",
             "revert-layer",
         ] {
-            assert!(parse_style_attribute(&format!("{name}: {value}")).is_clean());
+            assert!(
+                CssParser::default()
+                    .parse_block_contents(format!("{name}: {value}"))
+                    .is_clean()
+            );
         }
     }
 }
@@ -347,7 +369,7 @@ fn placement_shorthands_reject_extra_or_empty_slash_members() {
     ] {
         for &value in values {
             let source = format!("{name}: {value}");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             let [diagnostic] = report.diagnostics() else {
                 panic!("one dropped declaration: {source}")
             };
@@ -356,16 +378,16 @@ fn placement_shorthands_reject_extra_or_empty_slash_members() {
                 CssRecoveryAction::DropDeclaration,
                 "{source}"
             );
-            assert_eq!(
-                parse_property_value_for_grammar(
-                    grammar(name),
-                    parse_component_values(value).unwrap(),
-                    CssImportance::Normal
+            assert_same_grammar_facts(
+                &CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(grammar(name)),
+                    CssComponentValues::parse(&CssParser::default(), value).unwrap(),
+                    CssImportance::Normal,
                 )
-                .unwrap_err()
-                .kind(),
-                &CssPropertyValueErrorKind::Grammar(report.diagnostics()[0].error().kind().clone()),
-                "checked accepted {source}"
+                .unwrap_err(),
+                report.diagnostics()[0].error(),
+                "checked accepted {source}",
             );
         }
     }
@@ -394,7 +416,7 @@ fn valid_placement_conflicts_remain_authored_for_later_resolution() {
             assert_eq!(
                 source
                     .value_components()
-                    .serialize()
+                    .serialize_tokens(Default::default())
                     .unwrap()
                     .as_css()
                     .trim(),
@@ -412,7 +434,7 @@ fn grid_line_identifiers_preserve_case_and_decoded_escapes() {
         assert_eq!(
             source
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css()
                 .trim(),
@@ -440,7 +462,13 @@ fn authored_placement_preserves_omission_and_full_line_forms() {
         panic!("grid row")
     };
     assert!(value.value().authored_end().is_none());
-    assert_eq!(value.value().serialize_specified().unwrap(), "hero");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "hero"
+    );
     let explicit = declaration("grid-row", "hero / auto");
     let CssKnownPropertyValueRef::GridRow(value) =
         explicit.known().unwrap().property_value().unwrap()
@@ -468,15 +496,18 @@ fn authored_placement_preserves_omission_and_full_line_forms() {
         let source = declaration(name, authored);
         let value = source.known().unwrap().property_value().unwrap();
         let serialized = match value {
-            CssKnownPropertyValueRef::GridRowStart(value) => {
-                value.value().serialize_specified().unwrap()
-            }
-            CssKnownPropertyValueRef::GridRow(value) => {
-                value.value().serialize_specified().unwrap()
-            }
-            CssKnownPropertyValueRef::GridArea(value) => {
-                value.value().serialize_specified().unwrap()
-            }
+            CssKnownPropertyValueRef::GridRowStart(value) => value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            CssKnownPropertyValueRef::GridRow(value) => value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            CssKnownPropertyValueRef::GridArea(value) => value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
             _ => panic!("selected placement wrapper"),
         };
         assert_eq!(serialized, expected, "{name}: {authored}");
@@ -516,25 +547,24 @@ fn globals_and_pending_reentry_keep_placement_members_and_source() {
         }
 
         let source = declaration(name, "var(--placement)");
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("{name} remains pending")
         };
         assert!(pending.source().same_occurrence(&source));
-        assert!(matches!(
+        assert!(
             pending
-                .reenter(parse_component_values("0").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "0").unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
-        assert_eq!(
-            pending
-                .reenter(parse_component_values("var(--again)").unwrap())
-                .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .replacement_error()
+                .is_some()
         );
-        let replacement = parse_component_values("hero").unwrap();
+        assert!(
+            pending
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
+                .unwrap_err()
+                .is_residual_substitution()
+        );
+        let replacement = CssComponentValues::parse(&CssParser::default(), "hero").unwrap();
         let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
         else {
             panic!("completed placement replacement")
@@ -550,31 +580,24 @@ fn globals_and_pending_reentry_keep_placement_members_and_source() {
 
 #[test]
 fn area_expansion_counts_four_members_before_normalization_allocates() {
-    let report = parse_sheet(".p { grid-area: hero; }");
+    let report = CssParser::default().parse_sheet(".p { grid-area: hero; }");
     assert!(report.is_clean());
     let original = report.syntax().clone();
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 3).unwrap();
-    let error = match normalize_sheet_with_limits(report.syntax(), limits) {
+    let error = match report.syntax().normalize(limits) {
         Ok(_) => panic!("four area contributions exceed a limit of three"),
         Err(error) => error,
     };
-    assert!(matches!(
-        error.kind(),
-        CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 3,
-        }
-    ));
+    assert!(error.exhausted_limit() == Some((CssNormalizationResource::Contributions, 3)));
     assert_eq!(
         report.syntax(),
         &original,
         "failure preserves the parsed source"
     );
     assert!(
-        normalize_sheet_with_limits(
-            report.syntax(),
-            CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 4).unwrap(),
-        )
-        .is_ok()
+        report
+            .syntax()
+            .normalize(CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 4).unwrap())
+            .is_ok()
     );
 }

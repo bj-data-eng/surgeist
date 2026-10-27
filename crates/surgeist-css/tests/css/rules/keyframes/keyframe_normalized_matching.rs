@@ -1,9 +1,15 @@
 //! Animations ordered matching and adopted WebKit specified-tree math phase.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::rule::keyframes::{
+    CssKeyframeSelectorComparisonStage, CssKeyframeSelectorList, CssKeyframeSelectorMatcher,
+    CssParsedKeyframeSelectors,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn selectors(input: &str) -> CssKeyframeSelectorList {
-    let report = parse_keyframe_selector_list(input);
+    let report = CssParsedKeyframeSelectors::parse(&CssParser::default(), input);
     assert!(report.is_clean(), "{input}: {:?}", report.diagnostics());
     report.syntax().as_ref().unwrap().selectors().clone()
 }
@@ -38,12 +44,16 @@ fn specified_products_keep_direct_division_and_numeric_leaf_admission() {
         ("calc(25% * sign(2 / -3%))", "calc(25%)", false),
     ] {
         assert_eq!(
-            selectors(a).matches_normalized(&selectors(b)).unwrap(),
+            selectors(a)
+                .matches_normalized(&selectors(b), Default::default())
+                .unwrap(),
             equal,
             "{a} / {b}"
         );
         assert_eq!(
-            selectors(b).matches_normalized(&selectors(a)).unwrap(),
+            selectors(b)
+                .matches_normalized(&selectors(a), Default::default())
+                .unwrap(),
             equal
         );
     }
@@ -56,18 +66,29 @@ fn retained_operation_types_distinguish_identical_post_reduction_children() {
     // pinned IndirectNode equality compares these stored dimensional types.
     let inverse = selectors("calc(25% * sign((2 / 3%) * 1em))");
     let direct = selectors("calc(25% * sign(6% * 1em))");
-    assert!(!inverse.matches_normalized(&direct).unwrap());
-    assert!(!direct.matches_normalized(&inverse).unwrap());
+    assert!(
+        !inverse
+            .matches_normalized(&direct, Default::default())
+            .unwrap()
+    );
+    assert!(
+        !direct
+            .matches_normalized(&inverse, Default::default())
+            .unwrap()
+    );
     assert!(
         inverse
-            .matches_normalized(&selectors("calc(25% * sign(( 2 / 3% ) * 1em))"))
+            .matches_normalized(
+                &selectors("calc(25% * sign(( 2 / 3% ) * 1em))"),
+                Default::default()
+            )
             .unwrap()
     );
     // A folded numeric leaf has only its actual leaf fields. The discarded
     // parser type is not compared as if it were retained operation metadata.
     assert!(
         selectors("calc(25% * sign(2 / 3%))")
-            .matches_normalized(&selectors("calc(25%)"))
+            .matches_normalized(&selectors("calc(25%)"), Default::default())
             .unwrap()
     );
 }
@@ -85,8 +106,15 @@ fn normalized_sequences_preserve_order_count_duplicates_and_endpoint_meaning() {
     ] {
         let left = selectors(a);
         let right = selectors(b);
-        assert_eq!(left.matches_normalized(&right).unwrap(), equal, "{a} / {b}");
-        assert_eq!(right.matches_normalized(&left).unwrap(), equal);
+        assert_eq!(
+            left.matches_normalized(&right, Default::default()).unwrap(),
+            equal,
+            "{a} / {b}"
+        );
+        assert_eq!(
+            right.matches_normalized(&left, Default::default()).unwrap(),
+            equal
+        );
     }
 }
 
@@ -100,10 +128,10 @@ fn calculations_ignore_authored_origins_and_whitespace_after_input_drop() {
         let input = "\n calc( 10% ) /*trivia*/".to_owned();
         selectors(&input)
     };
-    assert_ne!(left, right);
+    assert_eq!(left, right);
     let original_left = left.clone();
     let original_right = right.clone();
-    assert!(left.matches_normalized(&right).unwrap());
+    assert!(left.matches_normalized(&right, Default::default()).unwrap());
     assert_eq!(left, original_left);
     assert_eq!(right, original_right);
     let value = left.selectors()[0].offset();
@@ -126,7 +154,9 @@ fn native_specified_simplification_compares_foldable_math_without_range_clamping
         ("calc(100%)", "to", false),
     ] {
         assert_eq!(
-            selectors(a).matches_normalized(&selectors(b)).unwrap(),
+            selectors(a)
+                .matches_normalized(&selectors(b), Default::default())
+                .unwrap(),
             equal,
             "{a} / {b}"
         );
@@ -147,7 +177,9 @@ fn comparison_preserves_preoutput_binary64_distinctions_and_source_order() {
         ),
     ] {
         assert_eq!(
-            selectors(a).matches_normalized(&selectors(b)).unwrap(),
+            selectors(a)
+                .matches_normalized(&selectors(b), Default::default())
+                .unwrap(),
             equal,
             "{a} / {b}"
         );
@@ -155,10 +187,10 @@ fn comparison_preserves_preoutput_binary64_distinctions_and_source_order() {
     let a = selectors("calc(.12345641%)");
     let b = selectors("calc(.12345642%)");
     assert_eq!(
-        a.serialize_key_text().unwrap(),
-        b.serialize_key_text().unwrap()
+        a.serialize_key_text(Default::default()).unwrap(),
+        b.serialize_key_text(Default::default()).unwrap()
     );
-    assert!(!a.matches_normalized(&b).unwrap());
+    assert!(!a.matches_normalized(&b, Default::default()).unwrap());
 }
 
 #[test]
@@ -182,7 +214,9 @@ fn symbolic_math_preserves_context_without_guessing_external_unit_values() {
         ),
     ] {
         assert_eq!(
-            selectors(a).matches_normalized(&selectors(b)).unwrap(),
+            selectors(a)
+                .matches_normalized(&selectors(b), Default::default())
+                .unwrap(),
             equal,
             "{a} / {b}"
         );
@@ -200,13 +234,15 @@ fn normalized_double_leaves_preserve_signed_infinity_and_nonreflexive_nan() {
         ("calc(0% / 0)", "calc(NaN * 1%)", false),
     ] {
         assert_eq!(
-            selectors(a).matches_normalized(&selectors(b)).unwrap(),
+            selectors(a)
+                .matches_normalized(&selectors(b), Default::default())
+                .unwrap(),
             equal,
             "{a} / {b}"
         );
     }
     let nan = selectors("calc(NaN * 1%)");
-    assert!(!nan.matches_normalized(&nan).unwrap());
+    assert!(!nan.matches_normalized(&nan, Default::default()).unwrap());
 }
 
 #[test]
@@ -215,16 +251,13 @@ fn exact_literal_aggregate_tariffs_need_no_output_bytes_and_retry_is_atomic() {
     let b = selectors("0%,100%");
     let before = (a.clone(), b.clone());
     assert!(
-        a.matches_normalized_with_limits(&b, CssSpecifiedValueSerializationLimits::new(6, 8, 0))
+        a.matches_normalized(&b, CssSerializationLimits::new(6, 8, 0))
             .unwrap()
     );
     let error = a
-        .matches_normalized_with_limits(&b, CssSpecifiedValueSerializationLimits::new(5, 8, 0))
+        .matches_normalized(&b, CssSerializationLimits::new(5, 8, 0))
         .unwrap_err();
-    assert_eq!(
-        error.cause().kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
-    );
+    assert!(error.cause().is_input_node_limit());
     assert_eq!(
         error.stage(),
         CssKeyframeSelectorComparisonStage::RightNormalization
@@ -233,19 +266,16 @@ fn exact_literal_aggregate_tariffs_need_no_output_bytes_and_retry_is_atomic() {
     assert!(error.left_origin().is_none());
     assert!(error.right_origin().is_none());
     let error = a
-        .matches_normalized_with_limits(&b, CssSpecifiedValueSerializationLimits::new(6, 7, 0))
+        .matches_normalized(&b, CssSerializationLimits::new(6, 7, 0))
         .unwrap_err();
-    assert_eq!(
-        error.cause().kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
-    );
+    assert!(error.cause().is_projection_node_limit());
     assert_eq!(
         error.stage(),
         CssKeyframeSelectorComparisonStage::Comparison
     );
     assert_eq!(error.selector_index(), Some(1));
     assert_eq!((a.clone(), b.clone()), before);
-    assert!(a.matches_normalized(&b).unwrap());
+    assert!(a.matches_normalized(&b, Default::default()).unwrap());
 }
 
 #[test]
@@ -253,12 +283,9 @@ fn later_math_normalization_and_comparison_failures_retain_both_actual_origins()
     let a = selectors("from, calc(10%)");
     let b = selectors("0%, calc( 10% )");
     let error = a
-        .matches_normalized_with_limits(&b, CssSpecifiedValueSerializationLimits::new(9, 11, 0))
+        .matches_normalized(&b, CssSerializationLimits::new(9, 11, 0))
         .unwrap_err();
-    assert_eq!(
-        error.cause().kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
-    );
+    assert!(error.cause().is_input_node_limit());
     assert_eq!(
         error.stage(),
         CssKeyframeSelectorComparisonStage::RightNormalization
@@ -267,12 +294,9 @@ fn later_math_normalization_and_comparison_failures_retain_both_actual_origins()
     assert!(error.left_origin().is_none());
     assert_eq!(source(error.right_origin().unwrap()), "0%, calc( 10% )");
     let error = a
-        .matches_normalized_with_limits(&b, CssSpecifiedValueSerializationLimits::new(10, 10, 0))
+        .matches_normalized(&b, CssSerializationLimits::new(10, 10, 0))
         .unwrap_err();
-    assert_eq!(
-        error.cause().kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
-    );
+    assert!(error.cause().is_projection_node_limit());
     assert_eq!(
         error.stage(),
         CssKeyframeSelectorComparisonStage::Comparison
@@ -281,7 +305,7 @@ fn later_math_normalization_and_comparison_failures_retain_both_actual_origins()
     assert_eq!(source(error.left_origin().unwrap()), "from, calc(10%)");
     assert_eq!(source(error.right_origin().unwrap()), "0%, calc( 10% )");
     assert!(
-        a.matches_normalized_with_limits(&b, CssSpecifiedValueSerializationLimits::new(10, 11, 0))
+        a.matches_normalized(&b, CssSerializationLimits::new(10, 11, 0))
             .unwrap()
     );
 }
@@ -291,28 +315,19 @@ fn a_request_meter_prepares_query_once_and_accumulates_all_candidate_work() {
     let query = selectors("10%");
     let same = selectors("10%");
     let different = selectors("20%");
-    let mut matcher = CssKeyframeSelectorMatcher::try_new_with_limits(
-        &query,
-        CssSpecifiedValueSerializationLimits::new(6, 8, 0),
-    )
-    .unwrap();
+    let mut matcher =
+        CssKeyframeSelectorMatcher::try_new(&query, CssSerializationLimits::new(6, 8, 0)).unwrap();
     assert!(matcher.matches(&same).unwrap());
     assert!(!matcher.matches(&different).unwrap());
     let error = matcher.matches(&same).unwrap_err();
-    assert_eq!(
-        error.cause().kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
-    );
+    assert!(error.cause().is_input_node_limit());
     assert_eq!(
         error.stage(),
         CssKeyframeSelectorComparisonStage::RightNormalization
     );
     assert_eq!(error.selector_index(), None);
-    let mut retry = CssKeyframeSelectorMatcher::try_new_with_limits(
-        &query,
-        CssSpecifiedValueSerializationLimits::new(8, 11, 0),
-    )
-    .unwrap();
+    let mut retry =
+        CssKeyframeSelectorMatcher::try_new(&query, CssSerializationLimits::new(8, 11, 0)).unwrap();
     assert!(retry.matches(&same).unwrap());
     assert!(!retry.matches(&different).unwrap());
     assert!(retry.matches(&same).unwrap());
@@ -323,14 +338,14 @@ fn a_later_resource_failure_remains_an_error_even_after_an_earlier_unequal_membe
     let a = selectors("10%, calc(10%)");
     let b = selectors("20%, calc(10%)");
     let error = a
-        .matches_normalized_with_limits(&b, CssSpecifiedValueSerializationLimits::new(10, 10, 0))
+        .matches_normalized(&b, CssSerializationLimits::new(10, 10, 0))
         .unwrap_err();
     assert_eq!(
         error.stage(),
         CssKeyframeSelectorComparisonStage::Comparison
     );
     assert_eq!(error.selector_index(), Some(1));
-    assert!(!a.matches_normalized(&b).unwrap());
+    assert!(!a.matches_normalized(&b, Default::default()).unwrap());
 }
 
 #[test]
@@ -358,12 +373,16 @@ fn specified_tree_keeps_merged_sum_units_at_first_positions_among_symbolic_terms
         ),
     ] {
         assert_eq!(
-            selectors(a).matches_normalized(&selectors(b)).unwrap(),
+            selectors(a)
+                .matches_normalized(&selectors(b), Default::default())
+                .unwrap(),
             equal,
             "{a} / {b}"
         );
         assert_eq!(
-            selectors(b).matches_normalized(&selectors(a)).unwrap(),
+            selectors(b)
+                .matches_normalized(&selectors(a), Default::default())
+                .unwrap(),
             equal
         );
     }
@@ -379,7 +398,9 @@ fn specified_product_places_combined_number_after_non_numbers() {
     ] {
         let b = "calc(25% * sign(1em - 1px) * 2)";
         assert!(
-            selectors(a).matches_normalized(&selectors(b)).unwrap(),
+            selectors(a)
+                .matches_normalized(&selectors(b), Default::default())
+                .unwrap(),
             "{a}"
         );
     }
@@ -415,7 +436,9 @@ fn specified_min_max_merge_only_matching_numeric_subsets_and_keep_remaining_orde
         ),
     ] {
         assert_eq!(
-            selectors(a).matches_normalized(&selectors(b)).unwrap(),
+            selectors(a)
+                .matches_normalized(&selectors(b), Default::default())
+                .unwrap(),
             equal,
             "{a} / {b}"
         );
@@ -429,26 +452,21 @@ fn failed_query_preparation_exposes_its_actual_origin_and_can_retry_unchanged() 
         selectors(&input)
     };
     let before = query.clone();
-    let error = match CssKeyframeSelectorMatcher::try_new_with_limits(
-        &query,
-        CssSpecifiedValueSerializationLimits::new(2, 100, 0),
-    ) {
-        Ok(_) => panic!("native input normalization must exceed this limit"),
-        Err(error) => error,
-    };
+    let error =
+        match CssKeyframeSelectorMatcher::try_new(&query, CssSerializationLimits::new(2, 100, 0)) {
+            Ok(_) => panic!("native input normalization must exceed this limit"),
+            Err(error) => error,
+        };
     assert_eq!(
         error.stage(),
         CssKeyframeSelectorComparisonStage::LeftNormalization
     );
     assert_eq!(error.selector_index(), Some(0));
-    assert_eq!(
-        error.cause().kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
-    );
+    assert!(error.cause().is_input_node_limit());
     assert_eq!(source(error.left_origin().unwrap()), "calc(10%)");
     assert!(error.right_origin().is_none());
     assert_eq!(query, before);
-    let mut retry = CssKeyframeSelectorMatcher::try_new(&query).unwrap();
+    let mut retry = CssKeyframeSelectorMatcher::try_new(&query, Default::default()).unwrap();
     assert!(retry.matches(&selectors("calc(5% + 5%)")).unwrap());
 }
 
@@ -484,12 +502,16 @@ fn selected_numeric_container_negation_preserves_source_roots_and_unequal_contro
         ),
     ] {
         assert_eq!(
-            selectors(a).matches_normalized(&selectors(b)).unwrap(),
+            selectors(a)
+                .matches_normalized(&selectors(b), Default::default())
+                .unwrap(),
             equal,
             "{a} / {b}"
         );
         assert_eq!(
-            selectors(b).matches_normalized(&selectors(a)).unwrap(),
+            selectors(b)
+                .matches_normalized(&selectors(a), Default::default())
+                .unwrap(),
             equal
         );
     }
@@ -535,7 +557,9 @@ fn selected_one_sided_clamp_requires_numeric_middle_and_preserves_bound_order() 
         ),
     ] {
         assert_eq!(
-            selectors(a).matches_normalized(&selectors(b)).unwrap(),
+            selectors(a)
+                .matches_normalized(&selectors(b), Default::default())
+                .unwrap(),
             equal,
             "{a} / {b}"
         );
@@ -578,7 +602,9 @@ fn selected_leaf_predicates_distinguish_magnitudes_resolution_and_nonfinite_root
         ("calc(25% * sin(.25turn))", "calc(25%)", true),
     ] {
         assert_eq!(
-            selectors(a).matches_normalized(&selectors(b)).unwrap(),
+            selectors(a)
+                .matches_normalized(&selectors(b), Default::default())
+                .unwrap(),
             equal,
             "{a} / {b}"
         );
@@ -595,22 +621,13 @@ fn derived_numeric_negation_is_charged_cumulatively_with_real_origins_and_retry(
     // uses 17 projection nodes, candidate 11; selector/root comparison adds 7.
     assert!(
         query
-            .matches_normalized_with_limits(
-                &candidate,
-                CssSpecifiedValueSerializationLimits::new(21, 35, 0)
-            )
+            .matches_normalized(&candidate, CssSerializationLimits::new(21, 35, 0))
             .unwrap()
     );
     let error = query
-        .matches_normalized_with_limits(
-            &candidate,
-            CssSpecifiedValueSerializationLimits::new(21, 34, 0),
-        )
+        .matches_normalized(&candidate, CssSerializationLimits::new(21, 34, 0))
         .unwrap_err();
-    assert_eq!(
-        error.cause().kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
-    );
+    assert!(error.cause().is_projection_node_limit());
     assert_eq!(
         error.stage(),
         CssKeyframeSelectorComparisonStage::Comparison
@@ -623,21 +640,17 @@ fn derived_numeric_negation_is_charged_cumulatively_with_real_origins_and_retry(
         source(error.right_origin().unwrap()),
         "calc(25% * sign(-1px - 1em))"
     );
-    let mut matcher = CssKeyframeSelectorMatcher::try_new_with_limits(
-        &query,
-        CssSpecifiedValueSerializationLimits::new(30, 52, 0),
-    )
-    .unwrap();
+    let mut matcher =
+        CssKeyframeSelectorMatcher::try_new(&query, CssSerializationLimits::new(30, 52, 0))
+            .unwrap();
     assert!(matcher.matches(&candidate).unwrap());
     assert_eq!(
         matcher.matches(&candidate).unwrap_err().stage(),
         CssKeyframeSelectorComparisonStage::Comparison
     );
-    let mut retry = CssKeyframeSelectorMatcher::try_new_with_limits(
-        &query,
-        CssSpecifiedValueSerializationLimits::new(30, 53, 0),
-    )
-    .unwrap();
+    let mut retry =
+        CssKeyframeSelectorMatcher::try_new(&query, CssSerializationLimits::new(30, 53, 0))
+            .unwrap();
     assert!(retry.matches(&candidate).unwrap());
     assert!(retry.matches(&candidate).unwrap());
     assert_eq!((query, candidate), before);
@@ -671,8 +684,16 @@ fn product_resolution_uses_normalized_leaf_units_and_retains_unfolded_type() {
         let left = selectors(a);
         let right = selectors(b);
         let before = (left.clone(), right.clone());
-        assert_eq!(left.matches_normalized(&right).unwrap(), equal, "{a} / {b}");
-        assert_eq!(right.matches_normalized(&left).unwrap(), equal, "{b} / {a}");
+        assert_eq!(
+            left.matches_normalized(&right, Default::default()).unwrap(),
+            equal,
+            "{a} / {b}"
+        );
+        assert_eq!(
+            right.matches_normalized(&left, Default::default()).unwrap(),
+            equal,
+            "{b} / {a}"
+        );
         assert_eq!((left, right), before);
     }
 }

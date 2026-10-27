@@ -2,12 +2,13 @@
 
 use super::combinators::{Combinator, Tail, commit, parse_group};
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::{Token, match_ignore_ascii_case};
 
 use super::values::parse_nonnegative_length;
-use crate::numeric::NumericInputContext;
-use crate::{CssBoxEdgeKeyword, CssOverflowClipMargin, CssScrollBehavior, CssScrollbarGutter};
+use crate::numeric::expression::NumericInputContext;
+use crate::values::box_model::{CssOverflowClipMargin, CssScrollBehavior, CssScrollbarGutter};
+use crate::values::common::CssBoxEdgeKeyword;
 
 pub(super) fn parse_overflow_clip_margin<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -101,12 +102,12 @@ pub(super) fn parse_scrollbar_gutter<'i, 't>(
 
 pub(super) fn parse_overflow_anchor<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> Result<crate::CssOverflowAnchor, ParseError<'i, Error>> {
+) -> Result<crate::values::box_model::CssOverflowAnchor, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
-        "auto" => Ok(crate::CssOverflowAnchor::Auto),
-        "none" => Ok(crate::CssOverflowAnchor::None),
+        "auto" => Ok(crate::values::box_model::CssOverflowAnchor::Auto),
+        "none" => Ok(crate::values::box_model::CssOverflowAnchor::None),
         _ => Err(unexpected_at(keyword_location)),
     }
 }

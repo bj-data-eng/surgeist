@@ -1,8 +1,23 @@
 //! Specified text-combine counts retain omission and defer computed math semantics.
-use surgeist_css::*;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{CssCalculation, CssInteger};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::text::{CssTextCombineDigitCount, CssTextCombineUpright};
 
 fn parsed(text: &str) -> CssTextCombineUpright {
-    let report = parse_style_attribute(&format!("text-combine-upright:{text}"));
+    let report = CssParser::default().parse_block_contents(format!("text-combine-upright:{text}"));
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::TextCombineUpright(value) = report.syntax()[0]
         .known()
@@ -12,32 +27,35 @@ fn parsed(text: &str) -> CssTextCombineUpright {
     else {
         panic!("text-combine-upright")
     };
-    value.combine().clone()
+    value.value().clone()
 }
 fn output(value: &CssTextCombineUpright, expected: &str) {
     let before = value.clone();
-    assert_eq!(value.serialize_specified().unwrap(), expected);
-    assert_eq!(parsed(expected).serialize_specified().unwrap(), expected);
     assert_eq!(
-        value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                65_536,
-                262_144,
-                expected.len()
-            ))
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
+    assert_eq!(
+        parsed(expected)
+            .serialize_specified(Default::default())
             .unwrap(),
         expected
     );
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+            .serialize_specified(CssSerializationLimits::new(65_536, 262_144, expected.len()))
+            .unwrap(),
+        expected
+    );
+    assert!(
+        value
+            .serialize_specified(CssSerializationLimits::new(
                 65_536,
                 262_144,
                 expected.len() - 1
             ))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, &before);
 }
@@ -78,8 +96,12 @@ fn integer_calculation_counts_remain_unrounded_unclamped_and_owned() {
         ("calc(NaN)", "digits calc(NaN)"),
         ("calc(1px / 1em)", "digits calc(1px / 1em)"),
     ] {
-        let components = parse_component_values(input).unwrap();
-        let calculation = CssIntegerCalculation::try_from_components(components.clone()).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), input).unwrap();
+        let calculation = CssCalculation::<CssInteger>::try_from_components(
+            components.clone(),
+            Default::default(),
+        )
+        .unwrap();
         let count = CssTextCombineDigitCount::from_calculation(calculation.clone());
         assert!(count.literal().is_none());
         assert_eq!(count.calculation().unwrap(), &calculation);
@@ -96,7 +118,8 @@ fn integer_calculation_counts_remain_unrounded_unclamped_and_owned() {
         ));
         output(&value, expected);
     }
-    let count = CssTextCombineDigitCount::from_calculation(CssIntegerCalculation::literal(1));
+    let count =
+        CssTextCombineDigitCount::from_calculation(CssCalculation::<CssInteger>::literal(1));
     assert!(matches!(
         count.calculation().unwrap().origin(),
         CssValueOrigin::Programmatic
@@ -123,7 +146,7 @@ fn keyword_and_literal_budgets_charge_outer_and_child_nodes_atomically() {
         let before = value.clone();
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+                .serialize_specified(CssSerializationLimits::new(
                     input_nodes,
                     projection_nodes,
                     text.len()
@@ -133,43 +156,28 @@ fn keyword_and_literal_budgets_charge_outer_and_child_nodes_atomically() {
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(
-                    input_nodes - 1,
-                    projection_nodes,
-                    text.len(),
-                ),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(input_nodes - 1, projection_nodes, text.len()),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(
-                    input_nodes,
-                    projection_nodes - 1,
-                    text.len(),
-                ),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(input_nodes, projection_nodes - 1, text.len()),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(
-                    input_nodes,
-                    projection_nodes,
-                    text.len() - 1,
-                ),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(input_nodes, projection_nodes, text.len() - 1),
+                SerializationFailure::ByteLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(0, 0, 0),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(0, 0, 0),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, 0),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(1, 0, 0),
+                SerializationFailure::ProjectionNodeLimit,
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind
             );
         }
@@ -178,12 +186,11 @@ fn keyword_and_literal_budgets_charge_outer_and_child_nodes_atomically() {
     let value =
         CssTextCombineUpright::Digits(Some(CssTextCombineDigitCount::try_literal(2).unwrap()));
     // The outer prefix is checked before entering the child's residual budgets.
-    assert_eq!(
+    assert!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 6))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 6))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }
 
@@ -203,9 +210,10 @@ fn metadata_initial_and_reentry_keep_exact_current_payloads() {
         panic!("text combine")
     };
     assert_eq!(value, &CssTextCombineUpright::None);
-    let report = parse_style_attribute("text-combine-upright:var(--count)!important");
+    let report =
+        CssParser::default().parse_block_contents("text-combine-upright:var(--count)!important");
     let source = &report.syntax()[0];
-    let CssExpansion::Pending(pending) = expand_declaration(source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending")
     };
     for (text, expected) in [
@@ -215,7 +223,7 @@ fn metadata_initial_and_reentry_keep_exact_current_payloads() {
             CssTextCombineUpright::Digits(Some(CssTextCombineDigitCount::try_literal(4).unwrap())),
         ),
     ] {
-        let components = parse_component_values(text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let CssContributions::Longhands(values) = pending.reenter(components.clone()).unwrap()
         else {
             panic!("longhands")
@@ -238,43 +246,36 @@ fn metadata_initial_and_reentry_keep_exact_current_payloads() {
 #[test]
 fn calculation_leaf_budgets_include_outer_nodes_and_prefix_bytes() {
     let value = CssTextCombineUpright::Digits(Some(CssTextCombineDigitCount::from_calculation(
-        CssIntegerCalculation::literal(1),
+        CssCalculation::<CssInteger>::literal(1),
     )));
     let before = value.clone();
     let text = "digits calc(1)";
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                2,
-                2,
-                text.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(2, 2, text.len()))
             .unwrap(),
         text
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(1, 2, text.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(1, 2, text.len()),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 1, text.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(2, 1, text.len()),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 2, text.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(2, 2, text.len() - 1),
+            SerializationFailure::ByteLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 1, 6),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(1, 1, 6),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
@@ -284,18 +285,22 @@ fn calculation_leaf_budgets_include_outer_nodes_and_prefix_bytes() {
 #[test]
 fn recovered_counts_normalize_in_order_with_exact_contribution_budget() {
     let text = ".a{text-combine-upright:digits;text-combine-upright:digits 1;text-combine-upright:digits 4!important}";
-    let report = parse_sheet(text);
+    let report = CssParser::default().parse_sheet(text);
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
         report.diagnostics()[0].action(),
         CssRecoveryAction::DropDeclaration
     );
-    assert!(validate_sheet(text).is_err());
-    let sheet = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap(),
-    )
-    .unwrap();
+    assert!(
+        CssParser::default()
+            .parse_sheet(text)
+            .into_validation_result()
+            .is_err()
+    );
+    let sheet = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap())
+        .unwrap();
     let items: Vec<_> = sheet
         .items()
         .iter()
@@ -355,10 +360,12 @@ fn recovered_counts_normalize_in_order_with_exact_contribution_budget() {
         ),
     ] {
         assert_eq!(
-            normalize_sheet_with_limits(report.syntax(), limits)
+            report
+                .syntax()
+                .normalize(limits)
                 .unwrap_err()
-                .kind(),
-            &CssNormalizationErrorKind::LimitExceeded { resource, limit }
+                .exhausted_limit(),
+            Some((resource, limit))
         );
     }
 }

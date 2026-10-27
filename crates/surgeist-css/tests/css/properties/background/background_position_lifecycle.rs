@@ -6,7 +6,21 @@
 //! separately when their functional implementation exists.
 
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssPropertyKindRef,
+};
+use surgeist_css::values::background::CssBackgroundPositionList;
+use surgeist_css::values::position::{CssHorizontalPosition, CssVerticalPosition};
 
 fn positions(source: &CssDeclaration) -> &CssBackgroundPositionList {
     let CssKnownPropertyValueRef::BackgroundPosition(value) =
@@ -14,12 +28,12 @@ fn positions(source: &CssDeclaration) -> &CssBackgroundPositionList {
     else {
         panic!("expected authored background position");
     };
-    value.positions()
+    value.value()
 }
 
 fn completed(source: &CssDeclaration) -> CssLonghandContribution {
     let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(source).expect("background-position must expand")
+        source.expand().expect("background-position must expand")
     else {
         panic!("expected completed longhand contribution");
     };
@@ -84,29 +98,27 @@ fn ordinary_layer_list_expands_to_its_terminal_with_original_importance() {
 #[test]
 fn pending_position_reentry_is_strict_repeatable_and_retains_origins() {
     let source = declaration("background-position:var(--position)!important");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("substitution-dependent background-position must be pending");
     };
     assert!(pending.source().same_occurrence(&source));
     for invalid in ["left right", "left,", "inherit left"] {
         let error = pending
-            .reenter(parse_component_values(invalid).unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
             .unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+        assert!(error.replacement_error().is_some());
     }
     for residual in ["var(--again)", "env(position)", "attr(position)"] {
-        assert_eq!(
+        assert!(
             pending
-                .reenter(parse_component_values(residual).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), residual).unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
     }
-    let replacement = parse_component_values("top 20px left, -10% calc(2px + 3%)").unwrap();
+    let replacement =
+        CssComponentValues::parse(&CssParser::default(), "top 20px left, -10% calc(2px + 3%)")
+            .unwrap();
     for _ in 0..2 {
         let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
         else {
@@ -123,7 +135,7 @@ fn pending_position_reentry_is_strict_repeatable_and_retains_origins() {
         ));
     }
     let CssContributions::Longhands(items) = pending
-        .reenter(parse_component_values("unset").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "unset").unwrap())
         .unwrap()
     else {
         panic!("global replacement");
@@ -143,12 +155,12 @@ fn pending_position_reentry_is_strict_repeatable_and_retains_origins() {
 
 #[test]
 fn normalization_preserves_position_occurrences_and_pending_state() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         ".a{background-position:left!important; background-image:none; ",
         "background-position:var(--position)}"
     ));
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -187,13 +199,10 @@ fn normalization_preserves_position_occurrences_and_pending_state() {
         CssKnownProperty::BackgroundPosition
     );
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+    let error = report.syntax().normalize(limits).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 2,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 2))
     );
     assert_eq!(error.declaration_order(), Some(2));
     assert_eq!(
@@ -210,25 +219,25 @@ fn authored_signed_and_symbolic_offsets_keep_axis_and_edge_meaning() {
     };
     assert!(
         matches!(edges.horizontal(), CssHorizontalPosition::RightOffset(offset)
-        if matches!(offset.literal_component().unwrap().view(),
+        if matches!(offset.literal().map(|literal| literal.component()).unwrap().view(),
             CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
             if number.representation() == "-10" && unit == "px"))
     );
     assert!(
         matches!(edges.vertical(), CssVerticalPosition::BottomOffset(offset)
-        if matches!(offset.literal_component().unwrap().view(),
+        if matches!(offset.literal().map(|literal| literal.component()).unwrap().view(),
             CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
             if number.representation() == "-20"))
     );
     assert!(
         matches!(free.horizontal(), CssHorizontalPosition::Offset(offset)
-        if matches!(offset.literal_component().unwrap().view(),
+        if matches!(offset.literal().map(|literal| literal.component()).unwrap().view(),
             CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
             if number.representation() == "-5"))
     );
     assert!(
         matches!(free.vertical(), CssVerticalPosition::Offset(offset)
-        if offset.calculation().is_some() && offset.literal_component().is_none())
+        if offset.calculation().is_some() && offset.literal().map(|literal| literal.component()).is_none())
     );
     assert!(matches!(
         source.value_components().items()[0].origin(),
@@ -246,7 +255,7 @@ fn invalid_position_forms_drop_the_declaration_and_preserve_valid_sibling() {
         "inherit left",
     ] {
         let css = format!("background-position:{invalid}; background-image:none");
-        let report = parse_style_attribute(&css);
+        let report = CssParser::default().parse_block_contents(&css);
         let [diagnostic] = report.diagnostics() else {
             panic!("one invalid position diagnostic")
         };
@@ -255,10 +264,16 @@ fn invalid_position_forms_drop_the_declaration_and_preserve_valid_sibling() {
             CssErrorCode::InvalidPropertyValue
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("structured invalid-property-value diagnostic");
-        };
-        assert_eq!(detail.property(), CssKnownProperty::BackgroundPosition);
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "structured invalid-property-value diagnostic"
+        );
+        assert_eq!(
+            detail.known_property().unwrap(),
+            CssKnownProperty::BackgroundPosition
+        );
         let [sibling] = report.syntax().as_slice() else {
             panic!("only valid image sibling")
         };
@@ -266,7 +281,10 @@ fn invalid_position_forms_drop_the_declaration_and_preserve_valid_sibling() {
             sibling.known().unwrap().property(),
             CssKnownProperty::BackgroundImage
         );
-        let validation = validate_style_attribute(&css).unwrap_err();
+        let validation = CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .unwrap_err();
         assert_eq!(validation.diagnostics(), report.diagnostics());
     }
 }

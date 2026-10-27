@@ -1,17 +1,23 @@
 //! Checked font-face component provenance and strict reentry contracts.
 
-use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue as Authored, CssComponentValue, CssComponentValueErrorKind,
-    CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
-    CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Ordinary,
-    CssFontFaceValueErrorKind, CssFontFaceWidth, CssFontWidth, CssSerializedOrigin, CssValueOrigin,
-    CssValueTokenRef, parse_component_values, parse_font_face_descriptor_value,
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue;
+use surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue as Authored;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind as Kind;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorValue as Ordinary;
+use surgeist_css::values::font::{CssFontFaceWidth, CssFontWidth};
 
-fn pending(kind: Kind) -> surgeist_css::CssPendingFontFaceDescriptorValue {
+fn pending(kind: Kind) -> surgeist_css::rule::font_face::CssPendingFontFaceDescriptorValue {
     let value = Authored::try_from_components(
         kind,
-        parse_component_values("env(selection, fallback)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "env(selection, fallback)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     let Authored::Pending(value) = value else {
@@ -30,12 +36,12 @@ fn strict_reentry_rejects_nested_residual_functions_and_recovered_src_members() 
         r"c\61 lc(ENV(width))",
     ] {
         let error = width
-            .reparse_after_substitution(parse_component_values(replacement).unwrap())
+            .reparse_after_substitution(
+                CssComponentValues::parse(&CssParser::default(), replacement).unwrap(),
+                Default::default(),
+            )
             .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssFontFaceValueErrorKind::ResidualSubstitution
-        );
+        assert!(error.is_residual_substitution(), "{error:?}");
         assert!(matches!(
             error.origin(),
             CssSerializedOrigin::Token(CssValueOrigin::Parsed(_))
@@ -43,21 +49,26 @@ fn strict_reentry_rejects_nested_residual_functions_and_recovered_src_members() 
     }
 
     let source = pending(Kind::Src);
-    let raw = parse_font_face_descriptor_value("bogus, url(good.woff2)", Kind::Src);
+    let raw = CssAuthoredFontFaceDescriptorValue::parse(
+        &CssParser::default(),
+        "bogus, url(good.woff2)",
+        Kind::Src,
+    );
     assert!(
         raw.syntax().is_some(),
         "ordinary raw parsing retains a valid member"
     );
     assert!(!raw.is_clean(), "ordinary raw parsing reports bad member");
-    let replacement = parse_component_values("bogus, url(good.woff2)").unwrap();
+    let replacement =
+        CssComponentValues::parse(&CssParser::default(), "bogus, url(good.woff2)").unwrap();
     for error in [
-        Authored::try_from_components(Kind::Src, replacement.clone()).unwrap_err(),
-        source.reparse_after_substitution(replacement).unwrap_err(),
+        Authored::try_from_components(Kind::Src, replacement.clone(), Default::default())
+            .unwrap_err(),
+        source
+            .reparse_after_substitution(replacement, Default::default())
+            .unwrap_err(),
     ] {
-        assert!(matches!(
-            error.kind(),
-            CssFontFaceValueErrorKind::Grammar(_)
-        ));
+        assert!(error.diagnostic().is_some());
         assert!(matches!(
             error.origin(),
             CssSerializedOrigin::Token(CssValueOrigin::Parsed(_))
@@ -67,17 +78,17 @@ fn strict_reentry_rejects_nested_residual_functions_and_recovered_src_members() 
 
 #[test]
 fn mixed_width_replacement_keeps_exact_numeric_origin_and_pending_components_keep_mixed_origins() {
-    let mut items = parse_component_values("62.500000000000000000001% ")
+    let mut items = CssComponentValues::parse(&CssParser::default(), "62.500000000000000000001% ")
         .unwrap()
         .items()
         .to_vec();
     items.push(CssComponentValue::try_ident("condensed").unwrap());
-    let replacement = CssComponentValues::try_new(items).unwrap();
+    let replacement = CssComponentValues::try_new(items, Default::default()).unwrap();
     let Ordinary::FontWidth(CssFontFaceWidth::Range {
         start: CssFontWidth::Percentage(start),
         end: Some(CssFontWidth::Keyword(_)),
     }) = pending(Kind::FontWidth)
-        .reparse_after_substitution(replacement)
+        .reparse_after_substitution(replacement, Default::default())
         .unwrap()
     else {
         panic!("one exact percentage and one keyword")
@@ -87,20 +98,26 @@ fn mixed_width_replacement_keeps_exact_numeric_origin_and_pending_components_kee
     };
     assert_eq!(origin.source().as_str(), "62.500000000000000000001% ");
     assert!(matches!(
-        start.literal_component().unwrap().view(),
+        start.literal().map(|literal| literal.component()).unwrap().view(),
         CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
             if number.representation() == "62.500000000000000000001"
     ));
-    assert_eq!(start.serialize_specified().unwrap(), "62.5%");
+    assert_eq!(
+        start.serialize_specified(Default::default()).unwrap(),
+        "62.5%"
+    );
 
-    let mut mixed = parse_component_values("env(selection) ")
+    let mut mixed = CssComponentValues::parse(&CssParser::default(), "env(selection) ")
         .unwrap()
         .items()
         .to_vec();
     mixed.push(CssComponentValue::try_ident("later").unwrap());
-    let value =
-        Authored::try_from_components(Kind::FontWidth, CssComponentValues::try_new(mixed).unwrap())
-            .unwrap();
+    let value = Authored::try_from_components(
+        Kind::FontWidth,
+        CssComponentValues::try_new(mixed, Default::default()).unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     let Authored::Pending(pending_value) = value else {
         panic!("mixed pending value")
     };
@@ -113,34 +130,39 @@ fn mixed_width_replacement_keeps_exact_numeric_origin_and_pending_components_kee
         CssValueOrigin::Programmatic
     ));
 
-    let programmatic = CssComponentValues::try_new(vec![
-        CssComponentValue::try_token("62.500000000000000000001%").unwrap(),
-    ])
+    let programmatic = CssComponentValues::try_new(
+        vec![CssComponentValue::try_token("62.500000000000000000001%").unwrap()],
+        Default::default(),
+    )
     .unwrap();
     let Ordinary::FontWidth(CssFontFaceWidth::Range {
         start: CssFontWidth::Percentage(start),
         end: None,
     }) = pending(Kind::FontWidth)
-        .reparse_after_substitution(programmatic)
+        .reparse_after_substitution(programmatic, Default::default())
         .unwrap()
     else {
         panic!("programmatic percentage")
     };
     assert_eq!(start.origin(), &CssValueOrigin::Programmatic);
     assert!(matches!(
-        start.literal_component().unwrap().view(),
+        start.literal().map(|literal| literal.component()).unwrap().view(),
         CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
             if number.representation() == "62.500000000000000000001"
     ));
-    assert_eq!(start.serialize_specified().unwrap(), "62.5%");
+    assert_eq!(
+        start.serialize_specified(Default::default()).unwrap(),
+        "62.5%"
+    );
 
-    let invalid =
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("bad").unwrap()]).unwrap();
-    let error = Authored::try_from_components(Kind::FontWidth, invalid).unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssFontFaceValueErrorKind::Grammar(_)
-    ));
+    let invalid = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("bad").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
+    let error =
+        Authored::try_from_components(Kind::FontWidth, invalid, Default::default()).unwrap_err();
+    assert!(error.diagnostic().is_some());
     assert_eq!(
         error.origin(),
         &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
@@ -149,54 +171,56 @@ fn mixed_width_replacement_keeps_exact_numeric_origin_and_pending_components_kee
 
 #[test]
 fn adjacent_number_and_percent_delimiter_do_not_become_a_percentage_token() {
-    let values = CssComponentValues::try_new(vec![
-        CssComponentValue::try_token("75").unwrap(),
-        CssComponentValue::try_token("%").unwrap(),
-    ])
+    let values = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_token("75").unwrap(),
+            CssComponentValue::try_token("%").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
-    let error = Authored::try_from_components(Kind::FontWidth, values).unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssFontFaceValueErrorKind::Grammar(_)
-    ));
+    let error =
+        Authored::try_from_components(Kind::FontWidth, values, Default::default()).unwrap_err();
+    assert!(error.diagnostic().is_some());
 }
 
 #[test]
 fn component_depth_count_and_byte_limits_fail_atomically() {
-    let values = parse_component_values("env(width)").unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), "env(width)").unwrap();
     for (limits, expected) in [
         (
             CssComponentValueLimits::try_new(0, usize::MAX, usize::MAX).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, 0, usize::MAX).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, usize::MAX, 1).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
     ] {
         let error =
-            Authored::try_from_components_with_limits(Kind::FontWidth, values.clone(), limits)
-                .unwrap_err();
+            Authored::try_from_components(Kind::FontWidth, values.clone(), limits).unwrap_err();
         assert_eq!(
-            error.kind(),
-            &CssFontFaceValueErrorKind::Component(expected)
+            error.component_error().map(component_failure),
+            Some(expected)
         );
     }
     let width = pending(Kind::FontWidth);
-    let replacement = parse_component_values("75%").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "75%").unwrap();
     let error = width
-        .reparse_after_substitution_with_limits(
+        .reparse_after_substitution(
             replacement,
             CssComponentValueLimits::try_new(256, usize::MAX, 1).unwrap(),
         )
         .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssFontFaceValueErrorKind::Component(CssComponentValueErrorKind::ByteLimit)
+    assert!(
+        error
+            .component_error()
+            .is_some_and(|error| error.is_byte_limit()),
+        "{error:?}"
     );
 }
 
@@ -208,13 +232,10 @@ fn checked_construction_rejects_implicit_eof_closures_before_serialization() {
         "env(width, \"fallback",
         "env(width)/*",
     ] {
-        let values = parse_component_values(text).unwrap();
-        let error = Authored::try_from_components(Kind::FontWidth, values).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssFontFaceValueErrorKind::RecoveredComponent,
-            "{text}"
-        );
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
+        let error =
+            Authored::try_from_components(Kind::FontWidth, values, Default::default()).unwrap_err();
+        assert!(error.is_recovered_component(), "{text}");
         assert!(
             matches!(
                 error.origin(),
@@ -230,13 +251,12 @@ fn checked_construction_rejects_implicit_eof_closures_before_serialization() {
         (Kind::FontWidth, "75%/*"),
     ] {
         let error = pending(kind)
-            .reparse_after_substitution(parse_component_values(text).unwrap())
+            .reparse_after_substitution(
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+                Default::default(),
+            )
             .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssFontFaceValueErrorKind::RecoveredComponent,
-            "{text}"
-        );
+        assert!(error.is_recovered_component(), "{text}");
         assert!(matches!(
             error.origin(),
             CssSerializedOrigin::Token(CssValueOrigin::ImplicitClosure { .. })

@@ -2,7 +2,7 @@
 //! owning captures read one immutable snapshot, including every chained object.
 
 use crate::{model::State, *};
-use surgeist_css::{CssRule as AuthoredRule, CssScopedRule as AuthoredScopedRule};
+use surgeist_css::rule::CssRule as AuthoredRule;
 
 /// A read-only typed object and its owning immutable snapshot.
 ///
@@ -110,7 +110,7 @@ fn rule_matches(data: &CssomRuleData, class: RuleClass) -> bool {
         C::Namespace => matches!(
             data,
             D::Leaf {
-                current: CssomAuthoredRule::Ordinary(AuthoredRule::Namespace(_))
+                current: CssomAuthoredRule::Rule(AuthoredRule::Namespace(_))
             }
         ),
         C::Scope => matches!(
@@ -130,8 +130,7 @@ fn rule_matches(data: &CssomRuleData, class: RuleClass) -> bool {
         C::LayerStatement => matches!(
             data,
             D::Leaf {
-                current: CssomAuthoredRule::Ordinary(AuthoredRule::LayerStatement(_))
-                    | CssomAuthoredRule::Scoped(AuthoredScopedRule::LayerStatement(_))
+                current: CssomAuthoredRule::Rule(AuthoredRule::LayerStatement(_))
             }
         ),
         C::SupportsCondition => matches!(data, D::NamedSupports { .. }),
@@ -144,15 +143,13 @@ fn rule_matches(data: &CssomRuleData, class: RuleClass) -> bool {
         C::FontPaletteValues => matches!(
             data,
             D::Leaf {
-                current: CssomAuthoredRule::Ordinary(AuthoredRule::FontPaletteValues(_))
-                    | CssomAuthoredRule::Scoped(AuthoredScopedRule::FontPaletteValues(_))
+                current: CssomAuthoredRule::Rule(AuthoredRule::FontPaletteValues(_))
             }
         ),
         C::ColorProfile => matches!(
             data,
             D::Leaf {
-                current: CssomAuthoredRule::Ordinary(AuthoredRule::ColorProfile(_))
-                    | CssomAuthoredRule::Scoped(AuthoredScopedRule::ColorProfile(_))
+                current: CssomAuthoredRule::Rule(AuthoredRule::ColorProfile(_))
             }
         ),
     }

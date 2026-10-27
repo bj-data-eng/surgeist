@@ -12,7 +12,16 @@ use crate::css::support::{
     important_speech_components as checked, important_speech_declaration as declaration,
     known_property as property,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueTokenRef};
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssPropertyKindRef,
+    CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
 
 const LONGHANDS: [&str; 2] = ["cue-before", "cue-after"];
 const ALL: [&str; 3] = ["cue-before", "cue-after", "cue"];
@@ -22,14 +31,24 @@ fn assert_admitted(name: &str, text: &str) {
     assert!(source.known().unwrap().property_value().is_some());
     assert!(source.known().unwrap().global().is_none());
     assert!(source.known().unwrap().substitution_dependent().is_none());
-    let components = parse_component_values(text).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let constructed = checked(name, components.clone());
     assert!(constructed.known().unwrap().property_value().is_some());
     assert_eq!(constructed.value_components(), &components);
     assert_eq!(constructed.importance(), CssImportance::Important);
     assert!(constructed.position().is_none());
-    assert!(validate_style_attribute(&format!("{name}:{text}")).is_ok());
-    assert!(validate_sheet(&format!(".speech{{{name}:{text}}}")).is_ok());
+    assert!(
+        CssParser::default()
+            .parse_block_contents(format!("{name}:{text}"))
+            .into_validation_result()
+            .is_ok()
+    );
+    assert!(
+        CssParser::default()
+            .parse_sheet(format!(".speech{{{name}:{text}}}"))
+            .into_validation_result()
+            .is_ok()
+    );
 }
 
 #[test]
@@ -97,10 +116,11 @@ fn cue_expansion_groups_url_and_optional_decibel_before_then_after() {
             &parts[before_count..]
         };
         for (item, name, group) in [(before, "cue-before", left), (after, "cue-after", right)] {
-            // Reuse the original roots; payload equality includes URL/number origins.
+            // Rebuild the terminal from the exact source groups. Numeric value
+            // equality ignores origins, so the checked value equals the expanded one.
             let expected = expanded(&checked(
                 name,
-                CssComponentValues::try_new(group.to_vec()).unwrap(),
+                CssComponentValues::try_new(group.to_vec(), Default::default()).unwrap(),
             ));
             assert_eq!(item.property(), property(name));
             assert_eq!(item.ordinary_value(), expected.items()[0].ordinary_value());
@@ -184,7 +204,7 @@ fn cue_invalid_grammar_drops_only_its_declaration_and_checked_construction_rejec
         }
         for text in invalid {
             let source = format!("color:red;{name}:{text};height:1px");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert_eq!(report.syntax().len(), 2, "{source}");
             assert_eq!(
                 report.syntax()[0].known().unwrap().property(),
@@ -201,13 +221,18 @@ fn cue_invalid_grammar_drops_only_its_declaration_and_checked_construction_rejec
             assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
             assert_ne!(diagnostic.error().code(), CssErrorCode::UnsupportedProperty);
             assert_eq!(
-                validate_style_attribute(&source).unwrap_err().diagnostics(),
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 report.diagnostics()
             );
             assert!(
-                parse_property_value(
-                    CssPropertyNameRef::Known(property(name)),
-                    parse_component_values(text).unwrap(),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(property(name))),
+                    CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                     CssImportance::Normal
                 )
                 .is_err(),
@@ -221,7 +246,7 @@ fn cue_invalid_grammar_drops_only_its_declaration_and_checked_construction_rejec
 fn cue_reentry_is_atomic_and_keeps_source_and_replacement_occurrences() {
     for name in ALL {
         let source = declaration(name, "var(--cue)");
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending cue")
         };
         let valid = if name == "cue" {
@@ -230,7 +255,7 @@ fn cue_reentry_is_atomic_and_keeps_source_and_replacement_occurrences() {
             "url(a) -3dB"
         };
         for text in [valid, "inherit"] {
-            let replacement = parse_component_values(text).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
                 panic!("completed cue")
@@ -253,23 +278,22 @@ fn cue_reentry_is_atomic_and_keeps_source_and_replacement_occurrences() {
             "url(a);color:red",
         ] {
             let error = handle
-                .reenter(parse_component_values(text).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), text).unwrap())
                 .unwrap_err();
             assert!(
-                matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(_)),
+                error.replacement_error().is_some(),
                 "{name}:{text}: {error:?}"
             );
         }
-        assert_eq!(
+        assert!(
             handle
-                .reenter(parse_component_values("var(--again)").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         assert!(
             handle
-                .reenter(parse_component_values(valid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), valid).unwrap())
                 .is_ok()
         );
     }
@@ -287,7 +311,7 @@ fn cue_authored_spelling_and_exact_coefficients_survive_bounded_component_serial
         ("cue", "cue", "url(a)/**/+3DB/**/NONE"),
         ("cue-before", "cue-before", "url(a) -1e-400dB"),
     ] {
-        let report = parse_style_attribute(&format!("{name}:{text}!important"));
+        let report = CssParser::default().parse_block_contents(format!("{name}:{text}!important"));
         assert!(
             report.is_clean(),
             "{name}:{text}: {:?}",
@@ -300,19 +324,24 @@ fn cue_authored_spelling_and_exact_coefficients_survive_bounded_component_serial
         let components = source.value_components();
         assert_eq!(
             components
-                .serialize_with_limit(text.len())
+                .serialize_tokens(crate::css::support::byte_limits(text.len()))
                 .unwrap()
                 .as_css(),
             text
         );
+        assert!(
+            components
+                .serialize_tokens(crate::css::support::byte_limits(text.len() - 1))
+                .unwrap_err()
+                .is_byte_limit()
+        );
         assert_eq!(
             components
-                .serialize_with_limit(text.len() - 1)
-                .unwrap_err()
-                .kind(),
-            CssComponentValueErrorKind::ByteLimit
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            text
         );
-        assert_eq!(components.serialize().unwrap().as_css(), text);
     }
 }
 
@@ -320,7 +349,7 @@ fn cue_authored_spelling_and_exact_coefficients_survive_bounded_component_serial
 fn cue_url_eof_recovery_retains_shared_closure_diagnostics_but_is_not_checked_clean() {
     for name in ALL {
         let source = format!("{name}:url(a");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         let [declaration] = report.syntax().as_slice() else {
             panic!("recovered cue URL")
         };
@@ -342,12 +371,17 @@ fn cue_url_eof_recovery_retains_shared_closure_diagnostics_but_is_not_checked_cl
             assert_eq!(position.byte_offset().value(), source.len());
         }
         assert_eq!(
-            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
         assert!(
-            parse_property_value(
-                CssPropertyNameRef::Known(property(name)),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property(name))),
                 declaration.value_components().clone(),
                 CssImportance::Normal
             )
@@ -362,7 +396,7 @@ fn cue_invalid_decibel_diagnostics_keep_token_position_and_balanced_declaration_
         let prefix = "color:red;/*😀*/";
         let unit = format!("{name}:url(a) 1px;");
         let source = format!("{prefix}{unit}height:1px");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 2);
         let [diagnostic] = report.diagnostics() else {
             panic!("one invalid dB diagnostic")
@@ -382,13 +416,17 @@ fn cue_invalid_decibel_diagnostics_keep_token_position_and_balanced_declaration_
             prefix.len() + unit.len()
         );
         let sheet_source = format!(".a{{{source}}}");
-        let sheet = parse_sheet(&sheet_source);
+        let sheet = CssParser::default().parse_sheet(&sheet_source);
         let [CssRule::Style(rule)] = sheet.syntax().rules() else {
             panic!("retained style rule")
         };
         assert_eq!(rule.declarations().len(), 2);
         assert_eq!(
-            validate_sheet(&sheet_source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&sheet_source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             sheet.diagnostics()
         );
     }

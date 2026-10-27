@@ -1,18 +1,16 @@
 use super::property_input::Parser;
-use crate::error::property::{ParseError, ParseErrorKind};
+use crate::diagnostic::error::property::{ParseError, ParseErrorKind};
 use cssparser::{Token, match_ignore_ascii_case};
 
 use super::color::{
     next_is_mix_weight, parse_authored_mix_weight, parse_color_interpolation_method,
 };
-use crate::error::property::{Error, basic};
-use crate::numeric::NumericInputContext;
-use crate::{
-    CssFontPalette, CssFontPaletteMix, CssFontPaletteMixComponent,
-    CssFontPaletteMixConstructionError, CssFontPaletteName,
-};
+use crate::diagnostic::error::property::{Error, basic};
+use crate::numeric::expression::NumericInputContext;
+use crate::rule::font_palette_values::CssFontPaletteName;
+use crate::values::font::{CssFontPalette, CssFontPaletteMix, CssFontPaletteMixComponent};
 
-pub(super) fn parse_font_palette<'i, 't>(
+pub(crate) fn parse_font_palette<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssFontPalette, ParseError<'i, Error>> {
@@ -55,20 +53,18 @@ fn parse_mix<'i, 't>(
         components.push(parse_component(input, numeric)?);
     }
     CssFontPaletteMix::try_new(interpolation, components).map_err(|error| {
-        let kind = match error {
-            CssFontPaletteMixConstructionError::NestingLimit => {
-                crate::CssComponentValueErrorKind::NestingLimit
-            }
-            CssFontPaletteMixConstructionError::CapacityOverflow => {
-                crate::CssComponentValueErrorKind::CapacityOverflow
-            }
-            CssFontPaletteMixConstructionError::EmptyComponents => {
-                unreachable!("parser admits one component before construction")
-            }
+        assert!(
+            !error.is_empty_components(),
+            "parser admits one component before construction"
+        );
+        let kind = if error.is_nesting_limit() {
+            crate::component::values::CssComponentValueErrorKind::NestingLimit
+        } else {
+            crate::component::values::CssComponentValueErrorKind::CapacityOverflow
         };
-        crate::error::property::invalid_component_value(
+        crate::diagnostic::error::property::invalid_component_value(
             location,
-            crate::CssComponentValueError::new(
+            crate::component::CssComponentValueError::new(
                 kind,
                 start.value_origin().expect("palette argument token origin"),
             ),
@@ -98,9 +94,9 @@ fn parse_component<'i, 't>(
 // Keep their source location while allowing the owning property context to apply.
 fn palette_mix_error<'i>(error: ParseError<'i, Error>) -> ParseError<'i, Error> {
     if matches!(&error.kind, ParseErrorKind::Custom(detail)
-        if matches!(&detail.kind, crate::ErrorKind::InvalidColorSyntax(_)))
+        if matches!(&detail.kind, crate::diagnostic::error::ErrorKind::InvalidColorSyntax(_)))
     {
-        crate::error::property::unexpected_at(error.location)
+        crate::diagnostic::error::property::unexpected_at(error.location)
     } else {
         error
     }

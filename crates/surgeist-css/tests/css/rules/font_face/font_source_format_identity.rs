@@ -2,9 +2,11 @@
 //! This is Surgeist's authored-model contract, separate from resource recognition.
 //! Selected grammar: https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-format-values
 
-use surgeist_css::{
+use surgeist_css::CssParser;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::{
     CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
-    CssFontFaceSource, CssFontFaceUrlSource, CssRule, parse_sheet,
+    CssFontFaceSource, CssFontFaceUrlSource,
 };
 
 fn sources(hints: &[&str]) -> Vec<CssFontFaceUrlSource> {
@@ -14,7 +16,7 @@ fn sources(hints: &[&str]) -> Vec<CssFontFaceUrlSource> {
         .collect::<Vec<_>>()
         .join(", ");
     let text = format!("@font-face {{ src: {values}; }}");
-    let report = parse_sheet(&text);
+    let report = CssParser::default().parse_sheet(&text);
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let [CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("one font-face rule");

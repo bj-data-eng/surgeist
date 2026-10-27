@@ -1,24 +1,29 @@
 //! Independent literal CSSOM composition expectations; compact output stays separate.
+use crate::css::support::failure_classes::SerializationFailure as Resource;
+use crate::css::support::serialization_limits::LimitFailure;
 use crate::css::support::serialization_limits::LimitLadder;
 use crate::css::support::value_assertions::clean_rule as rule;
 use std::error::Error;
-use surgeist_css::{
-    CssDeclarationBlockError, CssDeclarationBlockErrorKind, CssImportance, CssKnownProperty,
-    CssNamespaceContext, CssParserContext, CssParserMode, CssRecoveryAction, CssRule,
-    CssRuleCssomFormat, CssRuleCssomSerializationError,
-    CssRuleCssomSerializationErrorKind as RuleError,
-    CssSpecifiedValueSerializationErrorKind as Resource,
-    CssSpecifiedValueSerializationLimits as Limits, parse_rule, parse_selector, parse_sheet,
-};
+use surgeist_css::declaration::{CssDeclarationBlockError, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{CssNamespaceContext, CssSelector};
+use surgeist_css::serialization::CssSerializationLimits as Limits;
+use surgeist_css::serialization::{CssRuleCssomFormat, CssRuleSerializationError};
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 fn exact(source: &str, expected: &str) {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {report:?}");
     let before = report.clone();
-    assert_eq!(report.syntax().serialize_cssom().unwrap(), expected);
+    assert_eq!(
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(report, before);
     assert_eq!(
-        report.syntax().serialize_cssom().unwrap(),
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
         expected,
         "unchanged retry"
     );
@@ -30,8 +35,8 @@ fn limits(source: &str, expected: &str, inputs: usize, projections: usize) {
         .zero_limits()
         .assert_unchanged_with(
             &value,
-            CssRule::serialize_cssom_with_limits,
-            |_, _, failure: &CssRuleCssomSerializationError| {
+            CssRule::serialize_cssom,
+            |_, _, failure: &CssRuleSerializationError| {
                 assert_eq!(failure.rule_path(), &[] as &[usize]);
             },
         );
@@ -40,16 +45,28 @@ fn limits(source: &str, expected: &str, inputs: usize, projections: usize) {
 #[test]
 fn one_rule_boundary_rejects_extra_input_and_whole_invalid_selectors() {
     for source in ["", "a{} b{}", "a{} ;", "a{} }", "@unknown x;", ".a, > b{}"] {
-        let report = parse_rule(source, &CssNamespaceContext::default());
+        let report = CssRule::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.syntax().is_none(), "{source}: {report:?}");
         assert!(!report.is_clean());
     }
     assert!(
-        parse_selector(".a, > b", &CssNamespaceContext::default())
-            .syntax()
-            .is_none()
+        CssSelector::parse(
+            &CssParser::default(),
+            ".a, > b",
+            &CssNamespaceContext::default()
+        )
+        .syntax()
+        .is_none()
     );
-    let report = parse_rule("a{} b{}", &CssNamespaceContext::default());
+    let report = CssRule::parse(
+        &CssParser::default(),
+        "a{} b{}",
+        &CssNamespaceContext::default(),
+    );
     let [diagnostic] = report.diagnostics() else {
         panic!("one outer rejection")
     };
@@ -60,7 +77,11 @@ fn one_rule_boundary_rejects_extra_input_and_whole_invalid_selectors() {
 
 #[test]
 fn local_declaration_recovery_preserves_rule_diagnostics_and_real_eof() {
-    let report = parse_rule(".a{width:red;opacity:0}", &CssNamespaceContext::default());
+    let report = CssRule::parse(
+        &CssParser::default(),
+        ".a{width:red;opacity:0}",
+        &CssNamespaceContext::default(),
+    );
     assert!(!report.is_clean());
     let [diagnostic] = report.diagnostics() else {
         panic!("local declaration rejection")
@@ -68,10 +89,17 @@ fn local_declaration_recovery_preserves_rule_diagnostics_and_real_eof() {
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
     let value = report.syntax().as_ref().unwrap();
     let before = report.clone();
-    assert_eq!(value.serialize_cssom().unwrap(), ".a { opacity: 0; }");
+    assert_eq!(
+        value.serialize_cssom(Default::default()).unwrap(),
+        ".a { opacity: 0; }"
+    );
     assert_eq!(report, before);
     let source = ".a{opacity:0";
-    let eof = parse_rule(source, &CssNamespaceContext::default());
+    let eof = CssRule::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(!eof.is_clean());
     assert!(
         eof.diagnostics()
@@ -84,7 +112,11 @@ fn local_declaration_recovery_preserves_rule_diagnostics_and_real_eof() {
             .any(|d| d.error().position().byte_offset().value() == source.len())
     );
     assert_eq!(
-        eof.syntax().as_ref().unwrap().serialize_cssom().unwrap(),
+        eof.syntax()
+            .as_ref()
+            .unwrap()
+            .serialize_cssom(Default::default())
+            .unwrap(),
         ".a { opacity: 0; }"
     );
 }
@@ -92,7 +124,11 @@ fn local_declaration_recovery_preserves_rule_diagnostics_and_real_eof() {
 #[test]
 fn parser_context_and_original_unicode_coordinates_survive_literal_output() {
     let source = "/*😀*/\n.a{opacity:0}";
-    let report = parse_rule(source, &CssNamespaceContext::default());
+    let report = CssRule::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean());
     let CssRule::Style(style) = report.syntax().as_ref().unwrap() else {
         panic!("style")
@@ -124,22 +160,40 @@ fn parser_context_and_original_unicode_coordinates_survive_literal_output() {
     assert_eq!(name.source().as_str(), source);
     let saved = original.clone();
     assert_eq!(
-        report.syntax().as_ref().unwrap().serialize_cssom().unwrap(),
+        report
+            .syntax()
+            .as_ref()
+            .unwrap()
+            .serialize_cssom(Default::default())
+            .unwrap(),
         ".a { opacity: 0; }"
     );
     assert!(original.same_occurrence(&saved));
     let quirks = CssParserContext::new(CssParserMode::Quirks);
-    let report = quirks.parse_rule(".a{width:1}", &CssNamespaceContext::default());
+    let report = CssRule::parse(
+        &CssParser::new(quirks, Default::default()),
+        ".a{width:1}",
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean(), "{report:?}");
     let CssRule::Style(style) = report.syntax().as_ref().unwrap() else {
         panic!("style")
     };
     assert_eq!(style.declarations()[0].parser_context(), quirks);
     assert_eq!(
-        report.syntax().as_ref().unwrap().serialize_cssom().unwrap(),
+        report
+            .syntax()
+            .as_ref()
+            .unwrap()
+            .serialize_cssom(Default::default())
+            .unwrap(),
         ".a { width: 1px; }"
     );
-    let standards = parse_rule(".a{width:1}", &CssNamespaceContext::default());
+    let standards = CssRule::parse(
+        &CssParser::default(),
+        ".a{width:1}",
+        &CssNamespaceContext::default(),
+    );
     crate::css::support::value_assertions::assert_first_property_diagnostic(
         standards.diagnostics(),
         ".a{width:1}",
@@ -151,7 +205,7 @@ fn parser_context_and_original_unicode_coordinates_survive_literal_output() {
             .syntax()
             .as_ref()
             .unwrap()
-            .serialize_cssom()
+            .serialize_cssom(Default::default())
             .unwrap(),
         ".a { }"
     );
@@ -212,8 +266,11 @@ fn style_block_winners_shorthand_priority_and_custom_case_have_exact_literals() 
     ] {
         let value = rule(source);
         let before = value.clone();
-        assert_eq!(value.serialize_cssom().unwrap(), expected);
-        assert_eq!(value.to_specified_css().unwrap(), compact);
+        assert_eq!(value.serialize_cssom(Default::default()).unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            compact
+        );
         assert_eq!(value, before);
     }
 }
@@ -223,7 +280,7 @@ fn nested_style_declaration_runs_normalize_only_at_their_actual_child_positions(
     let value = rule(".a{color:red;& .b{margin:1px}color:blue;color:green;& .c{}color:yellow}");
     let before = value.clone();
     let expected = ".a {\n  color: red;\n  & .b { margin: 1px; }\n  color: green;\n  & .c { }\n  color: yellow;\n}";
-    assert_eq!(value.serialize_cssom().unwrap(), expected);
+    assert_eq!(value.serialize_cssom(Default::default()).unwrap(), expected);
     let CssRule::Style(style) = &value else {
         panic!("style")
     };
@@ -236,13 +293,16 @@ fn nested_style_declaration_runs_normalize_only_at_their_actual_child_positions(
     else {
         panic!("separate runs")
     };
-    assert_eq!(run.serialize_cssom().unwrap(), "color: green;");
     assert_eq!(
-        run.to_specified_css().unwrap(),
+        run.serialize_cssom(Default::default()).unwrap(),
+        "color: green;"
+    );
+    assert_eq!(
+        run.serialize_specified(Default::default()).unwrap(),
         "color: blue; color: green;"
     );
     assert_eq!(
-        value.to_specified_css().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         ".a { color: red; & .b { margin: 1px; } color: blue; color: green; & .c { } color: yellow; }"
     );
     assert_eq!(value, before);
@@ -274,8 +334,11 @@ fn media_uses_literal_lfs_empty_two_lfs_and_prefix_only_multilevel_indentation()
         ),
     ] {
         let value = rule(source);
-        assert_eq!(value.serialize_cssom().unwrap(), expected);
-        assert_eq!(value.to_specified_css().unwrap(), compact);
+        assert_eq!(value.serialize_cssom(Default::default()).unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            compact
+        );
     }
 }
 
@@ -310,8 +373,11 @@ fn import_retains_selected_url_layer_supports_media_and_namespace_escape() {
     ] {
         let value = rule(source);
         let before = value.clone();
-        assert_eq!(value.serialize_cssom().unwrap(), expected);
-        assert_eq!(value.to_specified_css().unwrap(), compact);
+        assert_eq!(value.serialize_cssom(Default::default()).unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            compact
+        );
         assert_eq!(value, before);
     }
 }
@@ -335,14 +401,20 @@ fn font_face_uses_effective_modern_order_alias_ranges_and_present_only_values() 
         r#"@font-face{line-gap-override:normal;descent-override:normal;ascent-override:normal;font-language-override:normal;font-named-instance:auto;font-variation-settings:normal;font-display:auto;font-style:italic;font-weight:400;font-stretch:100%;font-feature-settings:normal;unicode-range:U+0-7F;src:local('Demo');font-family:Demo}"#,
         r#"@font-face { font-family: Demo; src: local("Demo"); unicode-range: U+0-7F; font-feature-settings: normal; font-width: 100%; font-weight: 400; font-style: italic; font-display: auto; font-variation-settings: normal; font-named-instance: auto; font-language-override: normal; ascent-override: normal; descent-override: normal; line-gap-override: normal; }"#,
     );
-    let report = parse_rule(
+    let report = CssRule::parse(
+        &CssParser::default(),
         "@font-face{font-family:Demo;font-variant:small-caps;font-weight:500!important}",
         &CssNamespaceContext::default(),
     );
     assert!(!report.is_clean());
     assert_eq!(report.diagnostics().len(), 2);
     assert_eq!(
-        report.syntax().as_ref().unwrap().serialize_cssom().unwrap(),
+        report
+            .syntax()
+            .as_ref()
+            .unwrap()
+            .serialize_cssom(Default::default())
+            .unwrap(),
         "@font-face { font-family: Demo; }"
     );
 }
@@ -369,11 +441,15 @@ fn selected_keyframes_wrapper_keytext_and_normal_blocks_use_shared_inverse() {
     ] {
         let value = rule(source);
         let before = value.clone();
-        assert_eq!(value.serialize_cssom().unwrap(), expected);
-        assert_eq!(value.to_specified_css().unwrap(), compact);
+        assert_eq!(value.serialize_cssom(Default::default()).unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            compact
+        );
         assert_eq!(value, before);
     }
-    let report = parse_rule(
+    let report = CssRule::parse(
+        &CssParser::default(),
         "@keyframes k{from{opacity:0!important;--X:ready!important;animation-duration:1s;animation-timing-function:linear;opacity:1}}",
         &CssNamespaceContext::default(),
     );
@@ -389,28 +465,33 @@ fn selected_keyframes_wrapper_keytext_and_normal_blocks_use_shared_inverse() {
             .all(|d| d.source().importance() == CssImportance::Normal)
     );
     assert_eq!(
-        report.syntax().as_ref().unwrap().serialize_cssom().unwrap(),
+        report
+            .syntax()
+            .as_ref()
+            .unwrap()
+            .serialize_cssom(Default::default())
+            .unwrap(),
         "@keyframes k {   0% { animation-timing-function: linear; opacity: 1; }\n}"
     );
 }
 
 fn pending(
-    error: &CssRuleCssomSerializationError,
-    original: &surgeist_css::CssDeclaration,
+    error: &CssRuleSerializationError,
+    original: &surgeist_css::declaration::CssDeclaration,
     ordinal: usize,
 ) {
-    assert_eq!(error.kind(), RuleError::DeclarationBlock);
+    assert!(
+        error
+            .declaration_block_error()
+            .is_some_and(|error| error.serialization().is_none()),
+        "{error:?}"
+    );
     let cause = error
         .source()
         .unwrap()
         .downcast_ref::<CssDeclarationBlockError>()
         .unwrap();
-    assert!(matches!(
-        cause.kind(),
-        CssDeclarationBlockErrorKind::PendingFootprintUndetermined {
-            property: CssKnownProperty::Margin
-        }
-    ));
+    assert!(cause.pending_footprint_property() == Some(CssKnownProperty::Margin));
     assert!(cause.declaration().unwrap().same_occurrence(original));
     assert_eq!(cause.authored_ordinal(), Some(ordinal));
     assert_eq!(cause.member_ordinal(), None);
@@ -418,7 +499,7 @@ fn pending(
 
 #[test]
 fn pending_nested_run_and_keyframe_errors_retain_original_source_and_actual_paths() {
-    let report = parse_sheet(".ok{}.a{.b{}opacity:0;margin:var(--M)}");
+    let report = CssParser::default().parse_sheet(".ok{}.a{.b{}opacity:0;margin:var(--M)}");
     assert!(report.is_clean());
     let before = report.clone();
     let CssRule::Style(style) = &report.syntax().rules()[1] else {
@@ -428,21 +509,32 @@ fn pending_nested_run_and_keyframe_errors_retain_original_source_and_actual_path
         panic!("nested run")
     };
     let original = &run.declarations()[1];
-    let error = report.syntax().serialize_cssom().unwrap_err();
+    let error = report
+        .syntax()
+        .serialize_cssom(Default::default())
+        .unwrap_err();
     assert_eq!(error.rule_path(), &[1, 1]);
     assert_eq!(error.keyframe_block_index(), None);
     pending(&error, original, 1);
-    let error = report.syntax().rules()[1].serialize_cssom().unwrap_err();
+    let error = report.syntax().rules()[1]
+        .serialize_cssom(Default::default())
+        .unwrap_err();
     assert_eq!(error.rule_path(), &[1]);
     pending(&error, original, 1);
-    assert_eq!(original.to_specified_css().unwrap(), "margin: var(--M);");
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        original.serialize_specified(Default::default()).unwrap(),
+        "margin: var(--M);"
+    );
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         ".ok { }\n.a { .b { } opacity: 0; margin: var(--M); }"
     );
     assert_eq!(report, before);
 
-    let report = parse_sheet(
+    let report = CssParser::default().parse_sheet(
         ".ok{}@media screen{@keyframes k{from{opacity:0}to{opacity:1;margin:var(--M)}}}",
     );
     assert!(report.is_clean());
@@ -454,18 +546,34 @@ fn pending_nested_run_and_keyframe_errors_retain_original_source_and_actual_path
         panic!("frames")
     };
     let original = frames.blocks()[1].declarations()[1].source();
-    let error = report.syntax().serialize_cssom().unwrap_err();
+    let error = report
+        .syntax()
+        .serialize_cssom(Default::default())
+        .unwrap_err();
     assert_eq!(error.rule_path(), &[1, 0]);
     assert_eq!(error.keyframe_block_index(), Some(1));
     pending(&error, original, 1);
     assert_eq!(original.parser_context(), CssParserContext::default());
-    assert_eq!(original.to_specified_css().unwrap(), "margin: var(--M);");
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        original.serialize_specified(Default::default()).unwrap(),
+        "margin: var(--M);"
+    );
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         ".ok { }\n@media screen { @keyframes k { 0% { opacity: 0; } 100% { opacity: 1; margin: var(--M); } } }"
     );
     assert_eq!(report, before);
-    pending(&report.syntax().serialize_cssom().unwrap_err(), original, 1);
+    pending(
+        &report
+            .syntax()
+            .serialize_cssom(Default::default())
+            .unwrap_err(),
+        original,
+        1,
+    );
 }
 
 #[test]
@@ -482,13 +590,13 @@ fn page_cssom_is_available_at_ordinary_nested_and_sheet_paths() {
     ] {
         let value = rule(source);
         let before = value.clone();
-        assert_eq!(value.serialize_cssom().unwrap(), expected);
+        assert_eq!(value.serialize_cssom(Default::default()).unwrap(), expected);
         assert_eq!(value, before);
     }
-    let report = parse_sheet(".a{}@page{} .b{}");
+    let report = CssParser::default().parse_sheet(".a{}@page{} .b{}");
     assert!(report.is_clean());
     assert_eq!(
-        report.syntax().serialize_cssom().unwrap(),
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
         ".a { }\n@page { }\n.b { }"
     );
 }
@@ -545,16 +653,23 @@ fn modern_unselected_whole_formats_keep_typed_limits_and_meaningful_compact_prov
     ] {
         let value = rule(source);
         let before = value.clone();
-        let error = value.serialize_cssom().unwrap_err();
-        assert_eq!(error.kind(), RuleError::FormatUnavailable(format));
+        let error = value.serialize_cssom(Default::default()).unwrap_err();
+        assert_eq!(error.unavailable_format(), Some(format));
         assert_eq!(error.rule_path(), &[] as &[usize]);
         assert!(error.source().is_none());
-        assert_eq!(value.to_specified_css().unwrap(), compact);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            compact
+        );
         assert_eq!(value, before);
-        let report = parse_sheet(&format!(".ok{{}}{source}"));
+        let report = CssParser::default().parse_sheet(format!(".ok{{}}{source}"));
         assert!(report.is_clean(), "{report:?}");
         assert_eq!(
-            report.syntax().serialize_cssom().unwrap_err().rule_path(),
+            report
+                .syntax()
+                .serialize_cssom(Default::default())
+                .unwrap_err()
+                .rule_path(),
             &[1]
         );
     }
@@ -595,15 +710,12 @@ fn exact_rule_tariffs_include_shared_projection_and_retained_losing_occurrences(
 
 #[test]
 fn sheet_budget_is_cumulative_at_later_sibling_and_retry_preserves_the_tree() {
-    let report = parse_sheet(".a{}.b{}");
+    let report = CssParser::default().parse_sheet(".a{}.b{}");
     assert!(report.is_clean());
     let before = report.clone();
     let expected = ".a { }\n.b { }";
     let exact = Limits::new(11, 11, expected.len()); // sheet1 + two Style5.
-    assert_eq!(
-        report.syntax().serialize_cssom_with_limits(exact).unwrap(),
-        expected
-    );
+    assert_eq!(report.syntax().serialize_cssom(exact).unwrap(), expected);
     for (bound, kind) in [
         (Limits::new(6, 11, expected.len()), Resource::InputNodeLimit),
         (
@@ -621,23 +733,17 @@ fn sheet_budget_is_cumulative_at_later_sibling_and_retry_preserves_the_tree() {
         ),
         (Limits::new(11, 11, expected.len() - 1), Resource::ByteLimit),
     ] {
-        let failure = report
-            .syntax()
-            .serialize_cssom_with_limits(bound)
-            .unwrap_err();
-        assert_eq!(failure.kind(), RuleError::Resource(kind));
+        let failure = report.syntax().serialize_cssom(bound).unwrap_err();
+        assert_eq!(failure.limit_kind(), Some(kind));
         assert_eq!(failure.rule_path(), &[1]);
         assert_eq!(report, before);
-        assert_eq!(
-            report.syntax().serialize_cssom_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(report.syntax().serialize_cssom(exact).unwrap(), expected);
     }
-    let empty = parse_sheet("");
+    let empty = CssParser::default().parse_sheet("");
     assert_eq!(
         empty
             .syntax()
-            .serialize_cssom_with_limits(Limits::new(1, 1, 0))
+            .serialize_cssom(Limits::new(1, 1, 0))
             .unwrap(),
         ""
     );
@@ -645,11 +751,8 @@ fn sheet_budget_is_cumulative_at_later_sibling_and_retry_preserves_the_tree() {
         (Limits::new(0, 1, 0), Resource::InputNodeLimit),
         (Limits::new(1, 0, 0), Resource::ProjectionNodeLimit),
     ] {
-        let failure = empty
-            .syntax()
-            .serialize_cssom_with_limits(bound)
-            .unwrap_err();
-        assert_eq!(failure.kind(), RuleError::Resource(kind));
+        let failure = empty.syntax().serialize_cssom(bound).unwrap_err();
+        assert_eq!(failure.limit_kind(), Some(kind));
         assert_eq!(failure.rule_path(), &[] as &[usize]);
     }
 }
@@ -664,12 +767,13 @@ fn block_resource_failure_keeps_the_actual_generated_member_and_source_occurrenc
         panic!("style")
     };
     let original = &style.declarations()[1];
-    let failure = value
-        .serialize_cssom_with_limits(Limits::new(16, 7, 18))
-        .unwrap_err();
-    assert_eq!(
-        failure.kind(),
-        RuleError::Resource(Resource::ProjectionNodeLimit)
+    let failure = value.serialize_cssom(Limits::new(16, 7, 18)).unwrap_err();
+    assert!(
+        failure.is_resource_limit()
+            && failure
+                .serialization_error()
+                .is_some_and(|error| error.is_projection_node_limit()),
+        "{failure:?}"
     );
     assert_eq!(failure.rule_path(), &[] as &[usize]);
     assert_eq!(failure.keyframe_block_index(), None);
@@ -679,17 +783,16 @@ fn block_resource_failure_keeps_the_actual_generated_member_and_source_occurrenc
         .downcast_ref::<CssDeclarationBlockError>()
         .unwrap();
     assert!(
-        matches!(cause.kind(), CssDeclarationBlockErrorKind::Serialization(error)
-        if error.kind() == Resource::ProjectionNodeLimit)
+        cause
+            .serialization()
+            .is_some_and(|error| error.is_projection_node_limit())
     );
     assert!(cause.declaration().unwrap().same_occurrence(original));
     assert_eq!(cause.authored_ordinal(), Some(1));
     assert_eq!(cause.member_ordinal(), Some(0));
     assert_eq!(value, before);
     assert_eq!(
-        value
-            .serialize_cssom_with_limits(Limits::new(16, 383, 18))
-            .unwrap(),
+        value.serialize_cssom(Limits::new(16, 383, 18)).unwrap(),
         ".a { opacity: 1; }"
     );
 
@@ -704,11 +807,14 @@ fn block_resource_failure_keeps_the_actual_generated_member_and_source_occurrenc
     let original = frames.blocks()[0].declarations()[1].source();
     let expected = "@keyframes k {   0% { opacity: 1; }\n}";
     let failure = value
-        .serialize_cssom_with_limits(Limits::new(18, 13, expected.len()))
+        .serialize_cssom(Limits::new(18, 13, expected.len()))
         .unwrap_err();
-    assert_eq!(
-        failure.kind(),
-        RuleError::Resource(Resource::ProjectionNodeLimit)
+    assert!(
+        failure.is_resource_limit()
+            && failure
+                .serialization_error()
+                .is_some_and(|error| error.is_projection_node_limit()),
+        "{failure:?}"
     );
     assert_eq!(failure.rule_path(), &[] as &[usize]);
     assert_eq!(failure.keyframe_block_index(), Some(0));
@@ -724,7 +830,7 @@ fn block_resource_failure_keeps_the_actual_generated_member_and_source_occurrenc
     assert_eq!(value, before);
     assert_eq!(
         value
-            .serialize_cssom_with_limits(Limits::new(18, 382, expected.len()))
+            .serialize_cssom(Limits::new(18, 382, expected.len()))
             .unwrap(),
         expected
     );
@@ -737,10 +843,7 @@ fn nested_media_sibling_resource_failure_keeps_child_path_and_atomic_retry() {
     // Media rule + empty query-list2; each empty Style5. Prefix bytes through
     // the first child and the second child's two spaces are9+1+2+6+1+2=21.
     let adequate = Limits::new(12, 12, expected.len());
-    assert_eq!(
-        value.serialize_cssom_with_limits(adequate).unwrap(),
-        expected
-    );
+    assert_eq!(value.serialize_cssom(adequate).unwrap(), expected);
     for (bound, kind) in [
         (Limits::new(7, 12, expected.len()), Resource::InputNodeLimit),
         (
@@ -749,15 +852,12 @@ fn nested_media_sibling_resource_failure_keeps_child_path_and_atomic_retry() {
         ),
         (Limits::new(12, 12, 21), Resource::ByteLimit),
     ] {
-        let failure = value.serialize_cssom_with_limits(bound).unwrap_err();
-        assert_eq!(failure.kind(), RuleError::Resource(kind));
+        let failure = value.serialize_cssom(bound).unwrap_err();
+        assert_eq!(failure.limit_kind(), Some(kind));
         assert_eq!(failure.rule_path(), &[1]);
         assert_eq!(failure.keyframe_block_index(), None);
         assert_eq!(value, before);
-        assert_eq!(
-            value.serialize_cssom_with_limits(adequate).unwrap(),
-            expected
-        );
+        assert_eq!(value.serialize_cssom(adequate).unwrap(), expected);
     }
 }
 
@@ -770,20 +870,20 @@ fn universal_case(
     namespaces: &CssNamespaceContext,
 ) {
     let source = format!("{authored}{{}}");
-    let report = parse_rule(&source, namespaces);
+    let report = CssRule::parse(&CssParser::default(), &source, namespaces);
     assert!(report.is_clean(), "{source}: {report:?}");
     let before = report.clone();
     let value = report.syntax().as_ref().unwrap();
     assert_eq!(
-        value.serialize_cssom().unwrap(),
+        value.serialize_cssom(Default::default()).unwrap(),
         format!("{literal_selector} {{ }}")
     );
     assert_eq!(
-        value.to_specified_css().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         format!("{compact_selector} {{ }}")
     );
     assert_eq!(report, before);
-    let selector_report = parse_selector(authored, namespaces);
+    let selector_report = CssSelector::parse(&CssParser::default(), authored, namespaces);
     assert!(
         selector_report.is_clean(),
         "{authored}: {selector_report:?}"
@@ -794,27 +894,30 @@ fn universal_case(
             .syntax()
             .as_ref()
             .unwrap()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         compact_selector
     );
     assert_eq!(selector_report, selector_before);
     assert_eq!(
-        value.serialize_cssom().unwrap(),
+        value.serialize_cssom(Default::default()).unwrap(),
         format!("{literal_selector} {{ }}")
     );
 }
 
 fn universal_default_namespaces() -> CssNamespaceContext {
     CssNamespaceContext::from_bindings([
-        (None, surgeist_css::CssNamespaceName::new("urn:default")),
         (
-            Some(surgeist_css::CssNamespacePrefix::try_new("n").unwrap()),
-            surgeist_css::CssNamespaceName::new("urn:default"),
+            None,
+            surgeist_css::rule::CssNamespaceName::new("urn:default"),
         ),
         (
-            Some(surgeist_css::CssNamespacePrefix::try_new("svg").unwrap()),
-            surgeist_css::CssNamespaceName::new("urn:svg"),
+            Some(surgeist_css::rule::CssNamespacePrefix::try_new("n").unwrap()),
+            surgeist_css::rule::CssNamespaceName::new("urn:default"),
+        ),
+        (
+            Some(surgeist_css::rule::CssNamespacePrefix::try_new("svg").unwrap()),
+            surgeist_css::rule::CssNamespaceName::new("urn:svg"),
         ),
     ])
 }
@@ -850,15 +953,24 @@ fn literal_universal_omission_keeps_real_class_id_attribute_members_and_pe_tail(
     let CssRule::Style(style) = &value else {
         panic!("style")
     };
-    let [surgeist_css::CssStyleSelector::Selector(surgeist_css::CssSelector::Compound(compound))] =
-        style.selectors().selectors()
+    let [
+        surgeist_css::selector::CssStyleSelector::Selector(
+            surgeist_css::selector::CssSelector::Compound(compound),
+        ),
+    ] = style.selectors().selectors()
     else {
         panic!("retained explicit universal")
     };
     let name = compound.type_selector().unwrap().clone();
     assert_eq!(name.local_name(), None);
-    assert_eq!(name.namespace(), &surgeist_css::CssNamespaceConstraint::Any);
-    assert_eq!(value.serialize_cssom().unwrap(), ".card { }");
+    assert_eq!(
+        name.namespace(),
+        &surgeist_css::selector::CssNamespaceConstraint::Any
+    );
+    assert_eq!(
+        value.serialize_cssom(Default::default()).unwrap(),
+        ".card { }"
+    );
     assert_eq!(compound.type_selector(), Some(&name));
     exact(
         "@namespace 'urn:default';*.card{}*#id{}*[data-x]{}",
@@ -1046,13 +1158,13 @@ fn literal_universal_omission_protects_actual_nesting_and_scoped_anchor_payloads
     let CssRule::Scope(scope) = &value else {
         panic!("scope")
     };
-    let [surgeist_css::CssScopedRule::Style(style)] = scope.rules().rules() else {
+    let [surgeist_css::rule::CssRule::Style(style)] = scope.rules().rules() else {
         panic!("scoped style")
     };
     let [
-        surgeist_css::CssScopedStyleSelector::Selector(surgeist_css::CssSelector::Compound(
-            compound,
-        )),
+        surgeist_css::selector::CssStyleSelector::Selector(
+            surgeist_css::selector::CssSelector::Compound(compound),
+        ),
     ] = style.selectors().selectors()
     else {
         panic!("scope anchor compound")
@@ -1060,17 +1172,20 @@ fn literal_universal_omission_protects_actual_nesting_and_scoped_anchor_payloads
     assert_eq!(compound.nesting_selectors(), 0);
     assert_eq!(compound.scope_anchors(), 1);
     assert_eq!(compound.type_selector().unwrap().local_name(), None);
-    assert_eq!(value.to_specified_css().unwrap(), "@scope { *&.card { } }");
-    let selector = surgeist_css::CssSelector::Compound(compound.clone());
-    assert_eq!(selector.to_specified_css().unwrap(), "*&.card");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "@scope { *&.card { } }"
+    );
+    let selector = surgeist_css::selector::CssSelector::Compound(compound.clone());
+    assert_eq!(
+        selector.serialize_specified(Default::default()).unwrap(),
+        "*&.card"
+    );
     // Whole Scope literal format is unselected, so no public literal path
     // reaches its scoped Style payload. This is genuine parsed retention,
     // rather than an artificial conversion into an ordinary rule.
-    let error = value.serialize_cssom().unwrap_err();
-    assert_eq!(
-        error.kind(),
-        RuleError::FormatUnavailable(CssRuleCssomFormat::Scope)
-    );
+    let error = value.serialize_cssom(Default::default()).unwrap_err();
+    assert_eq!(error.unavailable_format(), Some(CssRuleCssomFormat::Scope));
     assert_eq!(error.rule_path(), &[] as &[usize]);
     assert_eq!(value, before);
 }
@@ -1102,61 +1217,47 @@ fn literal_universal_omission_retains_input_projection_visits_and_saves_only_sta
     let value = rule("*.a{}");
     let before = value.clone();
     assert_eq!(
-        value
-            .serialize_cssom_with_limits(Limits::new(7, 7, 6))
-            .unwrap(),
+        value.serialize_cssom(Limits::new(7, 7, 6)).unwrap(),
         ".a { }"
     );
     assert_eq!(
-        value
-            .to_specified_css_with_limits(Limits::new(7, 7, 7))
-            .unwrap(),
+        value.serialize_specified(Limits::new(7, 7, 7)).unwrap(),
         "*.a { }"
     );
-    let compact_failure = value
-        .to_specified_css_with_limits(Limits::new(7, 7, 6))
-        .unwrap_err();
-    assert_eq!(
-        compact_failure.kind(),
-        surgeist_css::CssSpecifiedRuleSerializationErrorKind::Resource(Resource::ByteLimit)
+    let compact_failure = value.serialize_specified(Limits::new(7, 7, 6)).unwrap_err();
+    assert!(compact_failure.is_byte_limit(), "{compact_failure:?}");
+    let selector_report = CssSelector::parse(
+        &CssParser::default(),
+        "*.a",
+        &CssNamespaceContext::default(),
     );
-    let selector_report = parse_selector("*.a", &CssNamespaceContext::default());
     let selector = selector_report.syntax().as_ref().unwrap();
     assert_eq!(
-        selector
-            .to_specified_css_with_limits(Limits::new(3, 3, 3))
-            .unwrap(),
+        selector.serialize_specified(Limits::new(3, 3, 3)).unwrap(),
         "*.a"
     );
-    assert_eq!(
+    assert!(
         selector
-            .to_specified_css_with_limits(Limits::new(3, 3, 2))
+            .serialize_specified(Limits::new(3, 3, 2))
             .unwrap_err()
-            .kind(),
-        Resource::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
 }
 
 #[test]
 fn literal_universal_omission_sheet_budget_remains_cumulative_at_late_sibling() {
-    let report = parse_sheet("*.a{}*.b{}");
+    let report = CssParser::default().parse_sheet("*.a{}*.b{}");
     assert!(report.is_clean());
     let before = report.clone();
     let expected = ".a { }\n.b { }";
     let adequate = Limits::new(15, 15, 13); // sheet1 + each retained Style7.
     assert_eq!(expected.len(), 13);
+    assert_eq!(report.syntax().serialize_cssom(adequate).unwrap(), expected);
     assert_eq!(
         report
             .syntax()
-            .serialize_cssom_with_limits(adequate)
-            .unwrap(),
-        expected
-    );
-    assert_eq!(
-        report
-            .syntax()
-            .to_specified_css_with_limits(Limits::new(15, 15, 15))
+            .serialize_specified(Limits::new(15, 15, 15))
             .unwrap(),
         "*.a { }\n*.b { }"
     );
@@ -1168,19 +1269,10 @@ fn literal_universal_omission_sheet_budget_remains_cumulative_at_late_sibling() 
         (Limits::new(15, 8, 13), Resource::ProjectionNodeLimit),
         (Limits::new(15, 15, 7), Resource::ByteLimit),
     ] {
-        let error = report
-            .syntax()
-            .serialize_cssom_with_limits(bound)
-            .unwrap_err();
-        assert_eq!(error.kind(), RuleError::Resource(kind));
+        let error = report.syntax().serialize_cssom(bound).unwrap_err();
+        assert_eq!(error.limit_kind(), Some(kind));
         assert_eq!(error.rule_path(), &[1]);
         assert_eq!(report, before);
-        assert_eq!(
-            report
-                .syntax()
-                .serialize_cssom_with_limits(adequate)
-                .unwrap(),
-            expected
-        );
+        assert_eq!(report.syntax().serialize_cssom(adequate).unwrap(), expected);
     }
 }

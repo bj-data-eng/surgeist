@@ -43,7 +43,7 @@ fn session() -> DomSession {
                 reports: 8,
                 storage_bytes: 16_000_000,
                 work: 1_000_000,
-                css_input: surgeist_css::CssUtf16InputLimits::default(),
+                css_input: surgeist_css::source::CssUtf16InputLimits::default(),
             },
             element_tasks: DomElementTaskRuntimeLimits {
                 tasks: 8,

@@ -484,7 +484,9 @@ pub(in crate::store) fn commands(
                 edit: crate::view_transition::Edit::Append { name, .. },
                 ..
             } => {
-                payload.add_bytes(size_of::<surgeist_css::CssViewTransitionIdent>())?;
+                payload.add_bytes(size_of::<
+                    surgeist_css::values::view_transition::CssViewTransitionIdent,
+                >())?;
                 payload.add_bytes(name.retained_buffer_bytes())?;
             }
             _ => {}

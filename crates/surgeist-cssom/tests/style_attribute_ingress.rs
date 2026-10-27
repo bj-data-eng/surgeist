@@ -1,7 +1,10 @@
 //! Native owner input, source custody, finite admission and exact feedback echoes.
 #![forbid(unsafe_code)]
 use std::{cell::Cell, sync::Arc};
-use surgeist_css::*;
+use surgeist_css::component::CssComponentValueError;
+use surgeist_css::property::CssPropertyGrammar;
+use surgeist_css::source::{CssUtf16InputLimits, CssUtf16Resource};
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 use surgeist_cssom::*;
 
 fn version(role: CssomInputRole, name: &str) -> CssomInputVersion {
@@ -181,13 +184,8 @@ fn empty_and_invalid_inputs_charge_exact_root_storage_before_publication() {
     let packet = packet("element", CssParserMode::Standards);
     for text in ["", "/* nothing */", "mystery:bad"] {
         let original: Arc<Vec<u16>> = Arc::new(text.encode_utf16().collect());
-        let parsed = CssParserContext::default()
-            .parse_declaration_block_contents_utf16_with_limits(
-                original.clone(),
-                Default::default(),
-                Default::default(),
-                || Ok::<_, ()>(()),
-            )
+        let parsed = CssParser::new(CssParserContext::default(), Default::default())
+            .parse_block_contents_utf16(original.clone(), Default::default(), || Ok::<_, ()>(()))
             .unwrap();
         let bytes = parsed.source().source().storage_usage().retained_bytes();
         assert!(bytes > 0);
@@ -340,9 +338,7 @@ fn foreign_creation_tickets_and_late_refusal_abort_the_entire_batch() {
     );
     assert!(matches!(
         result,
-        Err(CssomStyleAttributeError::Input(CssUtf16InputError::Limit(
-            "input units"
-        )))
+        Err(CssomStyleAttributeError::Input(error)) if error.exhausted_limit() == Some(CssUtf16Resource::InputUnits)
     ));
     assert!(matches!(store.commit(first), Err(CssomError::BatchAborted)));
     assert_eq!(store.snapshot().revision(), before.revision());
@@ -390,7 +386,7 @@ fn interruption_and_component_refusal_preserve_the_cause_and_poison_the_batch() 
                 },
             );
             assert!(
-                matches!(result, Err(CssomStyleAttributeError::Input(CssUtf16InputError::Interrupted(value))) if value == stop)
+                matches!(result, Err(CssomStyleAttributeError::Input(ref error)) if error.interruption() == Some(&stop))
             );
             assert_eq!(calls, stop);
             assert!(matches!(store.commit(edit), Err(CssomError::BatchAborted)));
@@ -412,8 +408,10 @@ fn interruption_and_component_refusal_preserve_the_cause_and_poison_the_batch() 
         panic!("component allowance must be a resource refusal")
     };
     assert!(
-        matches!(diagnostic.error().kind(), ErrorKind::InvalidComponentValue(error)
-        if error.kind() == CssComponentValueErrorKind::ComponentLimit)
+        diagnostic
+            .error()
+            .component_error()
+            .is_some_and(CssComponentValueError::is_component_limit)
     );
     assert!(matches!(store.commit(edit), Err(CssomError::BatchAborted)));
 }
@@ -639,9 +637,7 @@ fn preparation_request_and_state_limits_keep_their_own_atomic_refusals() {
     );
     assert!(matches!(
         result,
-        Err(CssomStyleAttributeError::Input(CssUtf16InputError::Limit(
-            "preparation work"
-        )))
+        Err(CssomStyleAttributeError::Input(error)) if error.exhausted_limit() == Some(CssUtf16Resource::Work)
     ));
     assert!(matches!(store.commit(edit), Err(CssomError::BatchAborted)));
     for (limits, resource) in [

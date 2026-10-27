@@ -7,14 +7,26 @@
 use crate::css::support::color_and_selector_fixtures::{
     assert_color_limit_error, assert_color_limits,
 };
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::{
     checked_color as color, checked_color_declaration as declaration,
     component_values as components, declaration_color,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssNamedColor, CssRelativeColor, CssRelativeColorChannel,
+    CssRelativeColorEnvironment, CssRelativeColorExpression, CssRelativeColorExpressionValue,
+    CssRelativeColorFunction, CssRelativeColorResultDomain,
+};
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::numeric::CssCalculationType;
+use surgeist_css::property::{CssExpansion, CssKnownProperty};
+use surgeist_css::serialization::CssSerializationLimits;
 
-type Limits = CssSpecifiedValueSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Limits = CssSerializationLimits;
+type Kind = SerializationFailure;
 
 fn assert_text(source: &str, expected: &str) {
     let declaration = declaration(source);
@@ -22,8 +34,8 @@ fn assert_text(source: &str, expected: &str) {
     assert_eq!(declaration.value_components(), &components(source));
     let value = declaration_color(&declaration);
     // Repeated successful or failed serialization must never rewrite the graph.
-    let first = value.to_specified_css();
-    let second = value.to_specified_css();
+    let first = value.serialize_specified(Default::default());
+    let second = value.serialize_specified(Default::default());
     assert_eq!(declaration, before);
     assert_eq!(first, second);
     assert_eq!(first.unwrap(), expected, "{source}");
@@ -291,9 +303,13 @@ fn checked_rust_relative_graph_preserves_domains_references_and_origins() {
     use CssRelativeColorEnvironment as E;
     use CssRelativeColorResultDomain as D;
     let raw = components("calc(r + 1 / 128)");
-    let expression =
-        CssRelativeColorExpression::try_from_components(raw.clone(), E::Rgb, D::NumberPercentage)
-            .unwrap();
+    let expression = CssRelativeColorExpression::try_from_components(
+        raw.clone(),
+        E::Rgb,
+        D::NumberPercentage,
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(expression.environment(), E::Rgb);
     assert_eq!(expression.result_domain(), D::NumberPercentage);
     assert_eq!(expression.origin(), raw.items()[0].origin());
@@ -309,9 +325,14 @@ fn checked_rust_relative_graph_preserves_domains_references_and_origins() {
     assert_eq!(calculation.authored().as_css(), "calc(r + 1 / 128)");
     let channel = |name| {
         CssRelativeColorExpression::try_from_components(
-            CssComponentValues::try_new(vec![CssComponentValue::try_ident(name).unwrap()]).unwrap(),
+            CssComponentValues::try_new(
+                vec![CssComponentValue::try_ident(name).unwrap()],
+                Default::default(),
+            )
+            .unwrap(),
             E::Rgb,
             D::NumberPercentage,
+            Default::default(),
         )
         .unwrap()
     };
@@ -340,8 +361,8 @@ fn checked_rust_relative_graph_preserves_domains_references_and_origins() {
     ] {
         assert_color_limit_error(&value, limits, kind);
     }
-    let first = value.to_specified_css();
-    assert_eq!(first, value.to_specified_css());
+    let first = value.serialize_specified(Default::default());
+    assert_eq!(first, value.serialize_specified(Default::default()));
     assert_eq!(value, before);
     assert_eq!(raw, components("calc(r + 1 / 128)"));
     assert_eq!(first.unwrap(), "rgb(from red calc(0.007813 + r) g b)");
@@ -409,16 +430,15 @@ fn discarded_ordinary_rgb_capture_preserves_larger_scratch_requirement() {
     // scratch bytes although the clamped final rgb(255, 0, 0) needs fourteen.
     assert_eq!(
         value
-            .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, 17))
+            .serialize_specified(Limits::new(usize::MAX, usize::MAX, 17))
             .unwrap(),
         "rgb(255, 0, 0)"
     );
-    assert_eq!(
+    assert!(
         value
-            .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, 16))
+            .serialize_specified(Limits::new(usize::MAX, usize::MAX, 16))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
 }
@@ -438,10 +458,11 @@ fn rounded_nested_origin_capture_controls_scratch_and_source_visit_precedence() 
         (9, 23, Kind::InputNodeLimit),
     ] {
         assert_eq!(
-            value
-                .to_specified_css_with_limits(Limits::new(inputs, usize::MAX, bytes))
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &value
+                    .serialize_specified(Limits::new(inputs, usize::MAX, bytes))
+                    .unwrap_err()
+            ),
             expected
         );
     }
@@ -451,17 +472,21 @@ fn rounded_nested_origin_capture_controls_scratch_and_source_visit_precedence() 
 #[test]
 fn declarations_retain_raw_components_importance_and_recovery_siblings() {
     let source = "color: rgb(from red calc(r / 3) g b) !important; opacity: .5";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2);
     let declaration = &report.syntax()[0];
     assert_eq!(declaration.importance(), CssImportance::Important);
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         " rgb(from red calc(r / 3) g b) "
     );
     let before = report.syntax().clone();
-    let text = declaration_color(declaration).to_specified_css();
+    let text = declaration_color(declaration).serialize_specified(Default::default());
     assert_eq!(report.syntax(), &before);
     assert_eq!(text.unwrap(), "rgb(from red calc(0.333333 * r) g b)");
 }
@@ -473,7 +498,8 @@ fn invalid_grammars_recover_and_substitutions_remain_pending() {
         "color(from red --P calc(Cyan + 1px))",
         "alpha(from red / calc(alpha + 1px))",
     ] {
-        let report = parse_style_attribute(&format!("color: {invalid}; opacity: .5"));
+        let report =
+            CssParser::default().parse_block_contents(format!("color: {invalid}; opacity: .5"));
         assert_eq!(report.diagnostics().len(), 1);
         assert_eq!(report.syntax().len(), 1);
         assert_eq!(
@@ -491,7 +517,7 @@ fn invalid_grammars_recover_and_substitutions_remain_pending() {
         assert!(known.property_value().is_none());
         assert_eq!(known.substitution_dependent().unwrap().as_css(), pending);
         assert!(matches!(
-            expand_declaration(&declaration).unwrap(),
+            declaration.expand().unwrap(),
             CssExpansion::Pending(_)
         ));
     }
@@ -501,12 +527,10 @@ fn invalid_grammars_recover_and_substitutions_remain_pending() {
         original,
         CssRelativeColorEnvironment::Rgb,
         CssRelativeColorResultDomain::NumberPercentage,
+        Default::default(),
     )
     .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::SubstitutionRequired
-    );
+    assert!(error.is_substitution_required(), "{error:?}");
     assert!(error.origin().is_some());
     assert_eq!(before, components("calc(r + var(--n))"));
 }

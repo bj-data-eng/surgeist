@@ -1,30 +1,41 @@
 //! Functional coverage for new checked payloads and emission methods. The oracle
 //! is Fonts 4 WD 2026-09-07 §§2.8.1–2.8.5, including canonical grammar order and
 //! the four-column expansion table. These APIs had no preimplementation RED.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{CssContributions, CssExpansion, CssKnownPropertyValueRef};
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
+use surgeist_css::values::font::{
+    CssFontSynthesis, CssFontSynthesisPosition, CssFontSynthesisSmallCaps, CssFontSynthesisStyle,
+    CssFontSynthesisValues, CssFontSynthesisWeight,
+};
 
 const CAPABILITIES: [&str; 4] = ["weight", "style", "small-caps", "position"];
 
 fn specified(
     declaration: &CssDeclaration,
-    limits: CssSpecifiedValueSerializationLimits,
-) -> Result<String, CssSpecifiedValueSerializationError> {
+    limits: CssSerializationLimits,
+) -> Result<String, CssSerializationError> {
     match declaration.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::FontSynthesis(value) => {
-            value.synthesis().serialize_specified_with_limits(limits)
-        }
+        CssKnownPropertyValueRef::FontSynthesis(value) => value.value().serialize_specified(limits),
         CssKnownPropertyValueRef::FontSynthesisWeight(value) => {
-            value.weight().serialize_specified_with_limits(limits)
+            value.value().serialize_specified(limits)
         }
         CssKnownPropertyValueRef::FontSynthesisStyle(value) => {
-            value.style().serialize_specified_with_limits(limits)
+            value.value().serialize_specified(limits)
         }
         CssKnownPropertyValueRef::FontSynthesisSmallCaps(value) => {
-            value.small_caps().serialize_specified_with_limits(limits)
+            value.value().serialize_specified(limits)
         }
         CssKnownPropertyValueRef::FontSynthesisPosition(value) => {
-            value.position().serialize_specified_with_limits(limits)
+            value.value().serialize_specified(limits)
         }
         _ => panic!("synthesis family"),
     }
@@ -34,7 +45,9 @@ fn specified(
 fn checked_four_member_sets_reject_empty_and_emit_every_semantic_combination() {
     assert!(CssFontSynthesisValues::try_new(false, false, false, false).is_none());
     assert_eq!(
-        CssFontSynthesis::None.serialize_specified().unwrap(),
+        CssFontSynthesis::None
+            .serialize_specified(Default::default())
+            .unwrap(),
         "none"
     );
     for mask in 1u8..16 {
@@ -57,7 +70,10 @@ fn checked_four_member_sets_reject_empty_and_emit_every_semantic_combination() {
             .collect::<Vec<_>>()
             .join(" ");
         let value = CssFontSynthesis::Values(values);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         // A reversed authored order must normalize to the independent grammar order.
         let reversed = expected
             .split_whitespace()
@@ -70,63 +86,77 @@ fn checked_four_member_sets_reject_empty_and_emit_every_semantic_combination() {
         else {
             panic!("synthesis")
         };
-        assert_eq!(parsed.synthesis(), &value);
-        assert_eq!(parsed.synthesis().serialize_specified().unwrap(), expected);
+        assert_eq!(parsed.value(), &value);
+        assert_eq!(
+            parsed
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
         let reparsed = declaration("font-synthesis", &expected);
         let CssKnownPropertyValueRef::FontSynthesis(roundtrip) =
             reparsed.known().unwrap().property_value().unwrap()
         else {
             panic!("synthesis")
         };
-        assert_eq!(roundtrip.synthesis(), &value);
+        assert_eq!(roundtrip.value(), &value);
     }
 }
 
 #[test]
 fn longhand_payloads_preserve_distinct_choices_and_emit_canonical_keywords() {
     assert_eq!(
-        CssFontSynthesisWeight::Auto.serialize_specified().unwrap(),
+        CssFontSynthesisWeight::Auto
+            .serialize_specified(Default::default())
+            .unwrap(),
         "auto"
     );
     assert_eq!(
-        CssFontSynthesisWeight::None.serialize_specified().unwrap(),
+        CssFontSynthesisWeight::None
+            .serialize_specified(Default::default())
+            .unwrap(),
         "none"
     );
     assert_eq!(
-        CssFontSynthesisStyle::Auto.serialize_specified().unwrap(),
+        CssFontSynthesisStyle::Auto
+            .serialize_specified(Default::default())
+            .unwrap(),
         "auto"
     );
     assert_eq!(
-        CssFontSynthesisStyle::None.serialize_specified().unwrap(),
+        CssFontSynthesisStyle::None
+            .serialize_specified(Default::default())
+            .unwrap(),
         "none"
     );
     assert_eq!(
         CssFontSynthesisStyle::ObliqueOnly
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "oblique-only"
     );
     assert_eq!(
         CssFontSynthesisSmallCaps::Auto
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "auto"
     );
     assert_eq!(
         CssFontSynthesisSmallCaps::None
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "none"
     );
     assert_eq!(
         CssFontSynthesisPosition::Auto
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "auto"
     );
     assert_eq!(
         CssFontSynthesisPosition::None
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "none"
     );
@@ -143,16 +173,16 @@ fn longhand_payloads_preserve_distinct_choices_and_emit_canonical_keywords() {
         ("font-synthesis-position", "NoNe", "none"),
     ] {
         let source = declaration(name, text);
-        let output = specified(&source, CssSpecifiedValueSerializationLimits::default()).unwrap();
+        let output = specified(&source, CssSerializationLimits::default()).unwrap();
         assert_eq!(output, expected);
         let reparsed = declaration(name, &output);
         let CssExpansion::Contributions(CssContributions::Longhands(before)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("longhand")
         };
         let CssExpansion::Contributions(CssContributions::Longhands(after)) =
-            expand_declaration(&reparsed).unwrap()
+            reparsed.expand().unwrap()
         else {
             panic!("longhand")
         };
@@ -184,7 +214,7 @@ fn escaped_keywords_decode_without_replacing_authored_origins() {
             name.len() + 1 + text.len()
         );
         assert_eq!(
-            specified(&source, CssSpecifiedValueSerializationLimits::default()).unwrap(),
+            specified(&source, CssSerializationLimits::default()).unwrap(),
             expected
         );
     }
@@ -213,36 +243,36 @@ fn exact_input_projection_and_byte_budgets_are_cumulative_and_failure_is_atomic(
     ] {
         let source = declaration(name, text);
         let before = source.clone();
-        let exact = CssSpecifiedValueSerializationLimits::new(nodes, nodes, expected.len());
+        let exact = CssSerializationLimits::new(nodes, nodes, expected.len());
         assert_eq!(specified(&source, exact).unwrap(), expected);
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(nodes - 1, nodes, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(nodes - 1, nodes, expected.len()),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(nodes, nodes - 1, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(nodes, nodes - 1, expected.len()),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(nodes, nodes, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(nodes, nodes, expected.len() - 1),
+                SerializationFailure::ByteLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(0, nodes, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(0, nodes, expected.len()),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(nodes, 0, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(nodes, 0, expected.len()),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(nodes, nodes, 0),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(nodes, nodes, 0),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                specified(&source, limits).unwrap_err().kind(),
+                serialization_failure(&specified(&source, limits).unwrap_err()),
                 kind,
                 "{name}"
             );
@@ -259,10 +289,10 @@ fn normalization_counts_all_four_members_and_returns_the_exact_late_failure() {
         ".a{font-synthesis:weight!important;font-synthesis:none;",
         "font-synthesis-style:oblique-only;font-synthesis-weight:var(--synthesis);color:red}"
     );
-    let report = parse_sheet(text);
+    let report = CssParser::default().parse_sheet(text);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let exact = CssNormalizationLimits::try_new(0, 1, 5, 11).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -305,15 +335,12 @@ fn normalization_counts_all_four_members_and_returns_the_exact_late_failure() {
             4,
         ),
     ] {
-        let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded { resource, limit }
-        );
+        let error = report.syntax().normalize(limits).unwrap_err();
+        assert_eq!(error.exhausted_limit(), Some((resource, limit)));
         assert_eq!(error.declaration_order(), Some(4));
         assert!(error.declaration().unwrap().same_occurrence(&color));
         assert_eq!(error.position(), color.position());
-        let after = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+        let after = report.syntax().normalize(exact).unwrap();
         let after_color = after
             .items()
             .iter()

@@ -1,7 +1,23 @@
 //! Color 5 custom-profile contracts, checked without serialization as an oracle.
 use crate::css::support::component_values as components;
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use crate::css::support::{checked_color as color, declaration_color};
-use surgeist_css::*;
+use surgeist_css::color::{
+    CssAbsoluteColorEligibility, CssColor, CssColorComponent, CssColorNumberLiteral,
+    CssColorPercentageLiteral, CssColorProfileComponentName, CssColorProfileName, CssCustomColor,
+    CssProfileColorExpression, CssProfileColorExpressionRef, CssRelativeCustomColor,
+};
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationExpressionRef, CssCalculationType, CssNumber, CssNumericConstant,
+    CssPercentage,
+};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
+use surgeist_css::{CssParser, CssParserContext};
 
 fn expression(text: &str) -> CssProfileColorExpression {
     CssProfileColorExpression::try_from_components(components(text)).unwrap()
@@ -116,20 +132,35 @@ fn profile_math_is_scoped_and_has_no_percentage_hint() {
     for valid in ["calc(cyan * 2)", "min(cyan, magenta)", "calc(20% / 2)"] {
         expression(valid);
     }
-    assert!(CssNumberCalculation::try_from_components(components("calc(cyan)")).is_err());
-    assert!(CssPercentageCalculation::try_from_components(components("calc(cyan)")).is_err());
+    assert!(
+        CssCalculation::<CssNumber>::try_from_components(
+            components("calc(cyan)"),
+            Default::default()
+        )
+        .is_err()
+    );
+    assert!(
+        CssCalculation::<CssPercentage>::try_from_components(
+            components("calc(cyan)"),
+            Default::default()
+        )
+        .is_err()
+    );
 }
 
 #[test]
 fn programmatic_math_retains_parsed_profile_leaf_origin() {
     let leaf = components("Cyan").items()[0].clone();
-    let graph = CssComponentValues::try_new(vec![
-        CssComponentValue::try_function(
-            "calc",
-            CssComponentValues::try_new(vec![leaf.clone()]).unwrap(),
-        )
-        .unwrap(),
-    ])
+    let graph = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_function(
+                "calc",
+                CssComponentValues::try_new(vec![leaf.clone()], Default::default()).unwrap(),
+            )
+            .unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let value = CssProfileColorExpression::try_from_components(graph.clone()).unwrap();
     assert_eq!(value.components(), &graph);
@@ -170,9 +201,10 @@ fn checked_custom_lists_retain_exact_values_order_and_omission() {
         current.absolute_eligibility(),
         CssAbsoluteColorEligibility::ProfileDependent
     );
-    assert_eq!(
-        CssCustomColor::try_new(profile(), vec![], None).unwrap_err(),
-        CssColorConstructionError::EmptyComponents
+    assert!(
+        CssCustomColor::try_new(profile(), vec![], None)
+            .unwrap_err()
+            .is_empty_components()
     );
     let explicit_none =
         CssCustomColor::try_new(profile(), channels, Some(CssColorComponent::None)).unwrap();
@@ -204,9 +236,10 @@ fn relative_profile_alpha_is_an_unbound_name_and_not_transparency() {
     let current = CssColor::from_relative_custom(custom.clone());
     assert_eq!(current.relative_custom_value(), Some(&custom));
     assert!(current.relative_value().is_none());
-    assert_eq!(
-        CssRelativeCustomColor::try_new(color("red"), profile(), vec![], None).unwrap_err(),
-        CssColorConstructionError::EmptyComponents
+    assert!(
+        CssRelativeCustomColor::try_new(color("red"), profile(), vec![], None)
+            .unwrap_err()
+            .is_empty_components()
     );
 }
 
@@ -214,7 +247,9 @@ fn relative_profile_alpha_is_an_unbound_name_and_not_transparency() {
 fn custom_and_relative_math_share_the_composed_depth_limit() {
     for depth in [254, 255, 256] {
         let text = format!("{}1{}", "calc(".repeat(depth), ")".repeat(depth));
-        let calculation = CssNumberCalculation::try_from_components(components(&text)).unwrap();
+        let calculation =
+            CssCalculation::<CssNumber>::try_from_components(components(&text), Default::default())
+                .unwrap();
         let custom = CssCustomColor::try_new(
             profile(),
             vec![CssColorComponent::NumberCalculation(calculation)],
@@ -226,11 +261,8 @@ fn custom_and_relative_math_share_the_composed_depth_limit() {
             assert!(custom.is_ok());
             assert!(relative.is_ok());
         } else {
-            assert_eq!(custom.unwrap_err(), CssColorConstructionError::NestingLimit);
-            assert_eq!(
-                relative.unwrap_err(),
-                CssColorConstructionError::NestingLimit
-            );
+            assert!(custom.unwrap_err().is_nesting_limit());
+            assert!(relative.unwrap_err().is_nesting_limit());
         }
     }
 }
@@ -242,9 +274,14 @@ fn wide_custom_lists_keep_cumulative_token_and_byte_budgets() {
     // Function + profile identifier + one whitespace and number per channel.
     let count = 2 + 2 * width;
     let limits = CssComponentValueLimits::try_new(256, count, source.len()).unwrap();
-    let graph = parse_component_values_with_limits(&source, limits).unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
+    let graph = CssComponentValues::parse(
+        &CssParser::new(CssParserContext::default(), limits),
+        &source,
+    )
+    .unwrap();
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
         graph.clone(),
         CssImportance::Normal,
     )
@@ -258,28 +295,24 @@ fn wide_custom_lists_keep_cumulative_token_and_byte_budgets() {
         width
     );
     for (tokens, bytes, expected) in [
-        (
-            count - 1,
-            source.len(),
-            CssComponentValueErrorKind::ComponentLimit,
-        ),
-        (
-            count,
-            source.len() - 1,
-            CssComponentValueErrorKind::ByteLimit,
-        ),
+        (count - 1, source.len(), ComponentFailure::ComponentLimit),
+        (count, source.len() - 1, ComponentFailure::ByteLimit),
     ] {
         let limits = CssComponentValueLimits::try_new(256, tokens, bytes).unwrap();
         assert_eq!(
-            parse_component_values_with_limits(&source, limits)
+            component_failure(
+                &CssComponentValues::parse(
+                    &CssParser::new(CssParserContext::default(), limits),
+                    &source
+                )
                 .unwrap_err()
-                .kind(),
+            ),
             expected
         );
         assert_eq!(
-            CssComponentValues::try_new_with_limits(graph.items().to_vec(), limits)
-                .unwrap_err()
-                .kind(),
+            component_failure(
+                &CssComponentValues::try_new(graph.items().to_vec(), limits).unwrap_err()
+            ),
             expected
         );
     }

@@ -2,7 +2,17 @@
 //! expected serializations, expansion payloads, and resource costs stay with
 //! their owning suites and are never inferred from production metadata.
 
-use surgeist_css::*;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssLonghandContribution, CssPropertyNameRef,
+    CssPropertyTarget, CssPropertyTextTarget, CssPropertyValueError,
+};
+use surgeist_css::{CssParseReport, CssParser};
 
 #[derive(Clone, Copy, Debug)]
 pub enum ParserFront {
@@ -48,7 +58,7 @@ impl ParserFront {
     pub fn valid(self, property: CssKnownProperty, input: &str, expected: &str) -> CssDeclaration {
         let source = self.parse(property, input);
         let before = source.clone();
-        let actual = source.to_specified_css().unwrap_or_else(|error| {
+        let actual = source.serialize_specified(Default::default()).unwrap_or_else(|error| {
             panic!(
                 "{property:?}: {input:?} via {self:?}: specified serialization failed: {error:?}"
             )
@@ -81,14 +91,17 @@ pub fn parsed(property: CssKnownProperty, value: &str) -> CssDeclaration {
 #[track_caller]
 fn parsed_name(property: CssKnownProperty, name: &str, value: &str) -> CssDeclaration {
     let css = format!("/*😀*/{name}:{value}!important");
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert!(
         report.is_clean(),
         "{property:?}: {value:?} via StyleAttribute: {:?}",
         report.diagnostics()
     );
     assert!(
-        validate_style_attribute(&css).is_ok(),
+        CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .is_ok(),
         "{css}: clean-report validation"
     );
     let [source] = report.syntax().as_slice() else {
@@ -110,9 +123,10 @@ pub fn checked(property: CssKnownProperty, value: &str, grammar: bool) -> CssDec
     } else {
         ParserFront::CheckedName
     };
-    let components = parse_component_values(value).unwrap_or_else(|error| {
-        panic!("{property:?}: {value:?} via {front:?}: component parsing failed: {error:?}")
-    });
+    let components =
+        CssComponentValues::parse(&CssParser::default(), value).unwrap_or_else(|error| {
+            panic!("{property:?}: {value:?} via {front:?}: component parsing failed: {error:?}")
+        });
     let before = components.clone();
     let source = checked_components(
         property,
@@ -137,11 +151,21 @@ pub fn checked_components(
     components: CssComponentValues,
     grammar: bool,
     importance: CssImportance,
-) -> Result<CssDeclaration, CssPropertyValueParseError> {
+) -> Result<CssDeclaration, CssPropertyValueError> {
     if grammar {
-        parse_property_value_for_grammar(property.grammar(), components, importance)
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(property.grammar()),
+            components,
+            importance,
+        )
     } else {
-        parse_property_value(CssPropertyNameRef::Known(property), components, importance)
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
+            components,
+            importance,
+        )
     }
 }
 
@@ -152,16 +176,24 @@ fn text_report(
     importance: CssImportance,
 ) -> CssParseReport<Option<CssDeclaration>> {
     if grammar {
-        parse_property_value_text_for_grammar(value, property.grammar(), importance)
+        CssParser::default().parse_property_value(
+            value,
+            CssPropertyTextTarget::Grammar(property.grammar()),
+            importance,
+        )
     } else {
-        parse_property_value_text(value, CssPropertyNameRef::Known(property), importance)
+        CssParser::default().parse_property_value(
+            value,
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(property)),
+            importance,
+        )
     }
 }
 
 #[track_caller]
 pub fn invalid(property: CssKnownProperty, value: &str) {
     let css = format!("color:red;{}:{value};color:blue", property.canonical_name());
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert_eq!(report.syntax().len(), 2, "{css}: retained siblings");
     assert!(
         report
@@ -174,16 +206,23 @@ pub fn invalid(property: CssKnownProperty, value: &str) {
         panic!("{css}: expected one atomic grammar failure")
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("{css}: expected property grammar diagnostic")
-    };
-    assert_eq!(detail.property(), property);
+    let detail = diagnostic.error();
     assert_eq!(
-        validate_style_attribute(&css).unwrap_err().diagnostics(),
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "{css}: expected property grammar diagnostic"
+    );
+    assert_eq!(detail.known_property().unwrap(), property);
+    assert_eq!(
+        CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
 
-    let components = parse_component_values(value).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
     let before = components.clone();
     // The original suites exercise different importance paths. Keep both,
     // rather than letting extraction silently replace Normal with Important.
@@ -195,7 +234,7 @@ pub fn invalid(property: CssKnownProperty, value: &str) {
             let error =
                 checked_components(property, components.clone(), grammar, importance).unwrap_err();
             assert!(
-                matches!(error.kind(), CssPropertyValueErrorKind::Grammar(_)),
+                error.code().is_some(),
                 "{property:?}: {value:?} via {front:?}, {importance:?}: expected grammar error, got {error:?}"
             );
         }
@@ -254,30 +293,29 @@ pub fn pending_longhand_reentry(
 ) {
     let source = declaration(name, "var(--value)");
     assert!(source.known().unwrap().substitution_dependent().is_some());
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("whole-value substitution remains pending")
     };
     assert!(handle.source().same_occurrence(&source));
     for &text in invalid {
-        assert!(matches!(
+        assert!(
             handle
-                .reenter(parse_component_values(text).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), text).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
     }
     for text in ["var(--again)", "env(value)", "attr(data-value)"] {
-        assert_eq!(
+        assert!(
             handle
-                .reenter(parse_component_values(text).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), text).unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
     }
     for text in [valid[0], "inherit"] {
-        let replacement = parse_component_values(text).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
@@ -300,9 +338,9 @@ pub fn normalized_longhand_order_and_limit(name: &str, valid: &[&str]) {
         ".a{{{name}:{}!important;color:red;{name}:{}}}",
         valid[0], valid[1]
     );
-    let report = parse_sheet(&text);
+    let report = CssParser::default().parse_sheet(&text);
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -332,13 +370,10 @@ pub fn normalized_longhand_order_and_limit(name: &str, valid: &[&str]) {
     );
     assert_eq!(declarations[2].source().importance(), CssImportance::Normal);
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+    let error = report.syntax().normalize(limits).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 2,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 2))
     );
     assert_eq!(error.declaration_order(), Some(2));
     assert_eq!(
@@ -352,7 +387,12 @@ pub fn normalized_longhand_order_and_limit(name: &str, valid: &[&str]) {
         name
     );
     assert_eq!(
-        normalize_sheet(report.syntax()).unwrap().items().len(),
+        report
+            .syntax()
+            .normalize(Default::default())
+            .unwrap()
+            .items()
+            .len(),
         normalized.items().len()
     );
 }

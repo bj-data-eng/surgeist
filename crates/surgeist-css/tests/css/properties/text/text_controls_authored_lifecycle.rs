@@ -3,12 +3,34 @@
 //! exercise checked constructors, preserved origins, omission views, exact typed
 //! terminals and providers that did not exist at that checkpoint.
 
-use CssSpecifiedValueSerializationErrorKind as Kind;
-use CssSpecifiedValueSerializationLimits as Limits;
-use surgeist_css::*;
+use crate::css::support::failure_classes::SerializationFailure as Kind;
+use CssSerializationLimits as Limits;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::numeric::{
+    CssCalculation, CssInteger, CssLength, CssLengthPercentage, CssNonNegative, CssNumeric,
+    CssNumericLiteral,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyKindRef,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::text::{
+    CssAutospace, CssAutospaceMode, CssAutospaceValues, CssHangingPunctuation,
+    CssHangingPunctuationEnd, CssHangingPunctuationValues, CssHyphenateCharacter,
+    CssHyphenateLimitChars, CssHyphenateLimitCharsComponent, CssHyphenateLimitLast,
+    CssHyphenateLimitLines, CssHyphenateString, CssHyphens, CssSpacingTrim, CssTextAutospace,
+    CssTextGroupAlign, CssTextJustify, CssTextJustifyBase, CssTextSpacing, CssTextSpacingTrim,
+    CssTextSpacingValues,
+};
 
 use crate::css::support::authored_parsed_declaration as declaration;
 use crate::css::support::authored_property;
+use crate::css::support::failure_classes::serialization_failure;
 use authored_property::ParserFront;
 
 const FRONTS: [ParserFront; 5] = [
@@ -44,14 +66,15 @@ fn permutations(words: &[&str]) -> Vec<String> {
 }
 
 fn components(input: &str) -> CssComponentValues {
-    parse_component_values(input).unwrap()
+    CssComponentValues::parse(&CssParser::default(), input).unwrap()
 }
 fn count(input: &str) -> CssHyphenateLimitCharsComponent {
-    let value =
-        CssIntegerLiteral::try_from_component(CssComponentValue::try_number(input).unwrap())
-            .unwrap();
+    let value = CssNumericLiteral::<CssInteger>::try_from_component(
+        CssComponentValue::try_number(input).unwrap(),
+    )
+    .unwrap();
     CssHyphenateLimitCharsComponent::Integer(
-        CssHyphenateLimitInteger::try_new(CssIntegerValue::Literal(value)).unwrap(),
+        CssNumeric::<CssInteger, CssNonNegative>::try_from_literal(value).unwrap(),
     )
 }
 macro_rules! limits {
@@ -65,10 +88,7 @@ macro_rules! limits {
         let input_nodes = $input_nodes;
         let projection_nodes = $projection_nodes;
         let exact = Limits::new(input_nodes, projection_nodes, expected.len());
-        assert_eq!(
-            value.serialize_specified_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(value.serialize_specified(exact).unwrap(), expected);
         for (limits, kind) in [
             (
                 Limits::new(input_nodes - 1, projection_nodes, expected.len()),
@@ -85,19 +105,13 @@ macro_rules! limits {
         ] {
             for _ in 0..2 {
                 assert_eq!(
-                    value
-                        .serialize_specified_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
+                    serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                     kind
                 );
                 assert_eq!(value, before);
             }
         }
-        assert_eq!(
-            value.serialize_specified_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(value.serialize_specified(exact).unwrap(), expected);
     }};
 }
 #[test]
@@ -142,7 +156,12 @@ fn checked_hyphenation_strings_keep_decoded_content_component_and_original_origi
         limits!(value.clone(), expected, 1);
         let programmatic = CssHyphenateString::try_new(decoded).unwrap();
         assert_eq!(programmatic.origin(), &CssValueOrigin::Programmatic);
-        assert_eq!(programmatic.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            programmatic
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
     assert!(CssHyphenateString::try_new("a\0b").is_err());
     assert!(
@@ -163,55 +182,68 @@ fn nonnegative_integer_constructor_rechecks_bare_roots_without_clamping_function
             "9999999999999999999999999999999999999999",
         ),
     ] {
-        let literal =
-            CssIntegerLiteral::try_from_component(CssComponentValue::try_number(input).unwrap())
-                .unwrap();
+        let literal = CssNumericLiteral::<CssInteger>::try_from_component(
+            CssComponentValue::try_number(input).unwrap(),
+        )
+        .unwrap();
         let origin = literal.origin().clone();
-        let integer = CssHyphenateLimitInteger::try_new(CssIntegerValue::Literal(literal)).unwrap();
+        let integer = CssNumeric::<CssInteger, CssNonNegative>::try_from_literal(literal).unwrap();
         assert_eq!(integer.origin(), &origin);
-        assert!(matches!(integer.value(), CssIntegerValue::Literal(_)));
+        assert!(integer.literal().is_some());
         limits!(integer, expected, 1);
-        let bare = CssIntegerCalculation::try_from_components(components(input)).unwrap();
+        let bare = CssCalculation::<CssInteger>::try_from_components(
+            components(input),
+            Default::default(),
+        )
+        .unwrap();
         let bare_origin = bare.origin().clone();
-        let checked =
-            CssHyphenateLimitInteger::try_new(CssIntegerValue::Calculation(bare)).unwrap();
-        assert!(matches!(checked.value(), CssIntegerValue::Literal(_)));
+        let checked = CssNumeric::<CssInteger, CssNonNegative>::try_from_calculation(bare).unwrap();
+        assert!(checked.literal().is_some());
         assert_eq!(checked.origin(), &bare_origin);
-        let CssIntegerValue::Literal(literal) = checked.value() else {
+        let Some(literal) = checked.literal() else {
             panic!("bare root crosses literal admission")
         };
         assert_eq!(literal.numeric().representation(), input);
-        assert_eq!(checked.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            checked.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     for input in ["-1", "-9999999999999999999999999999999999999999"] {
-        let literal =
-            CssIntegerLiteral::try_from_component(CssComponentValue::try_number(input).unwrap())
-                .unwrap();
-        assert!(CssHyphenateLimitInteger::try_new(CssIntegerValue::Literal(literal)).is_none());
+        let literal = CssNumericLiteral::<CssInteger>::try_from_component(
+            CssComponentValue::try_number(input).unwrap(),
+        )
+        .unwrap();
+        assert!(CssNumeric::<CssInteger, CssNonNegative>::try_from_literal(literal).is_err());
         // The shared Integer-root owner is signed. Hyphenation must re-admit
         // this exact ordinary token through its own nonnegative range boundary.
         let raw = components(input);
         let component = &raw.items()[0];
-        let bare = CssIntegerCalculation::try_from_components(raw.clone()).unwrap();
+        let bare =
+            CssCalculation::<CssInteger>::try_from_components(raw.clone(), Default::default())
+                .unwrap();
         assert_eq!(bare.components(), &raw);
         assert_eq!(bare.origin(), component.origin());
         assert!(
             matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.representation()==input)
         );
-        assert!(CssHyphenateLimitInteger::try_new(CssIntegerValue::Calculation(bare)).is_none());
+        assert!(CssNumeric::<CssInteger, CssNonNegative>::try_from_calculation(bare).is_err());
     }
     for input in ["1.5", "1e0"] {
         assert!(
-            CssIntegerLiteral::try_from_component(CssComponentValue::try_number(input).unwrap())
-                .is_err()
+            CssNumericLiteral::<CssInteger>::try_from_component(
+                CssComponentValue::try_number(input).unwrap()
+            )
+            .is_err()
         );
         // Noninteger bare tokens are rejected before a checked Integer root
         // exists; deferred fractional function math remains a separate branch.
-        let error = CssIntegerCalculation::try_from_components(components(input)).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch
-        );
+        let error = CssCalculation::<CssInteger>::try_from_components(
+            components(input),
+            Default::default(),
+        )
+        .unwrap_err();
+        assert!(error.is_root_domain_mismatch(), "{error:?}");
     }
     for (input, expected) in [
         ("calc(-1)", "calc(-1)"),
@@ -219,13 +251,20 @@ fn nonnegative_integer_constructor_rechecks_bare_roots_without_clamping_function
         ("calc(infinity)", "calc(infinity)"),
         ("calc(NaN)", "calc(NaN)"),
     ] {
-        let calculation = CssIntegerCalculation::try_from_components(components(input)).unwrap();
+        let calculation = CssCalculation::<CssInteger>::try_from_components(
+            components(input),
+            Default::default(),
+        )
+        .unwrap();
         let origin = calculation.origin().clone();
         let checked =
-            CssHyphenateLimitInteger::try_new(CssIntegerValue::Calculation(calculation)).unwrap();
-        assert!(matches!(checked.value(), CssIntegerValue::Calculation(_)));
+            CssNumeric::<CssInteger, CssNonNegative>::try_from_calculation(calculation).unwrap();
+        assert!(checked.calculation().is_some());
         assert_eq!(checked.origin(), &origin);
-        assert_eq!(checked.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            checked.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 #[test]
@@ -247,7 +286,10 @@ fn chars_constructor_preserves_authored_arity_and_effective_defaults_without_new
         assert_eq!(value.before().is_some(), arity > 1);
         assert_eq!(value.after().is_some(), arity > 2);
         for (slot, expected) in value.effective_components().iter().zip(effective) {
-            assert_eq!(slot.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                slot.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
         }
         limits!(value, expected, arity);
     }
@@ -526,7 +568,7 @@ fn generated_longhand_borrowed_variants_expose_all_twelve_typed_initials() {
         HyphenateCharacter,
         CssHyphenateCharacter::Auto
     );
-    initial!(HyphenateLimitZone,HyphenateLimitZone,value if value.literal_component().is_some_and(|component| component.origin()==&CssValueOrigin::Programmatic && matches!(component.view(),CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.representation()=="0")));
+    initial!(HyphenateLimitZone,HyphenateLimitZone,value if value.literal().map(|literal| literal.component()).is_some_and(|component| component.origin()==&CssValueOrigin::Programmatic && matches!(component.view(),CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.representation()=="0")));
     initial!(HyphenateLimitChars,HyphenateLimitChars,value if value.authored_len()==1 && matches!(value.total(),CssHyphenateLimitCharsComponent::Auto));
     initial!(
         HyphenateLimitLines,
@@ -540,7 +582,7 @@ fn generated_longhand_borrowed_variants_expose_all_twelve_typed_initials() {
     );
     initial!(TextJustify,TextJustify,value if value.base()==Some(CssTextJustifyBase::Auto) && !value.no_compress());
     initial!(TextGroupAlign, TextGroupAlign, CssTextGroupAlign::None);
-    initial!(LinePadding,LinePadding,value if value.literal_component().is_some_and(|component| component.origin()==&CssValueOrigin::Programmatic && matches!(component.view(),CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.representation()=="0")));
+    initial!(LinePadding,LinePadding,value if value.literal().map(|literal| literal.component()).is_some_and(|component| component.origin()==&CssValueOrigin::Programmatic && matches!(component.view(),CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.representation()=="0")));
     initial!(TextAutospace, TextAutospace, CssTextAutospace::Normal);
     initial!(
         TextSpacingTrim,
@@ -603,9 +645,9 @@ fn finite_hyphenation_and_group_alignment_domains_keep_typed_choices_and_leaf_co
     limits!(CssHyphenateLimitLines::NoLimit, "no-limit", 1);
     limits!(
         CssHyphenateLimitLines::Integer(
-            CssHyphenateLimitInteger::try_new(CssIntegerValue::Literal(
-                CssIntegerLiteral::from_i32(2)
-            ))
+            CssNumeric::<CssInteger, CssNonNegative>::try_from_literal(CssNumericLiteral::<
+                CssInteger,
+            >::from_i32(2))
             .unwrap()
         ),
         "2",
@@ -616,7 +658,7 @@ fn finite_hyphenation_and_group_alignment_domains_keep_typed_choices_and_leaf_co
 #[test]
 fn recovered_hyphenation_string_constructor_keeps_the_original_component_and_snapshot() {
     let css = ".a{hyphenate-character:\"😀";
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(!report.is_clean());
     let before = report.clone();
     let [CssRule::Style(rule)] = report.syntax().rules() else {
@@ -915,7 +957,7 @@ fn spacing_constituent_boundaries_reject_interleaving_and_project_only_the_two_t
         let source = declaration("text-spacing", input);
         let before = source.clone();
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("ordinary projection")
         };
@@ -959,7 +1001,10 @@ fn numeric_children_keep_signed_domains_exact_origins_and_math_work_prices() {
                 )
             })
             .unwrap();
-        assert_eq!(value.literal_component(), Some(component));
+        assert_eq!(
+            value.literal().map(|literal| literal.component()),
+            Some(component)
+        );
         limits!(value.clone(), expected, 1);
     }
     let source = declaration("line-padding", "-2px");
@@ -971,19 +1016,31 @@ fn numeric_children_keep_signed_domains_exact_origins_and_math_work_prices() {
     limits!(wrapper.value().clone(), "-2px", 1);
     // Numeric's existing contract charges four input and three projection
     // nodes for a calc group containing a sum of two ordinary scalar leaves.
-    let zone = CssSpecifiedLengthPercentage::try_from_calculation(
-        CssLengthPercentageCalculation::try_from_components(components("calc(1px + 2px)")).unwrap(),
+    let zone = CssNumeric::<CssLengthPercentage>::try_from_calculation(
+        CssCalculation::<CssLengthPercentage>::try_from_components(
+            components("calc(1px + 2px)"),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap();
-    let padding = CssSpecifiedLength::try_from_calculation(
-        CssLengthCalculation::try_from_components(components("calc(-2px + -3px)")).unwrap(),
+    let padding = CssNumeric::<CssLength>::try_from_calculation(
+        CssCalculation::<CssLength>::try_from_components(
+            components("calc(-2px + -3px)"),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap();
     limits!(zone, "calc(3px)", 4, 3);
     limits!(padding, "calc(-5px)", 4, 3);
-    let integer = CssHyphenateLimitInteger::try_new(CssIntegerValue::Calculation(
-        CssIntegerCalculation::try_from_components(components("calc(-3 / 2)")).unwrap(),
-    ))
+    let integer = CssNumeric::<CssInteger, CssNonNegative>::try_from_calculation(
+        CssCalculation::<CssInteger>::try_from_components(
+            components("calc(-3 / 2)"),
+            Default::default(),
+        )
+        .unwrap(),
+    )
     .unwrap();
     // Division also creates an inverse projection node under that contract.
     limits!(integer.clone(), "calc(-1.5)", 4, 4);

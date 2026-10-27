@@ -1,26 +1,31 @@
-use surgeist_css::{
-    CssCalculationExpressionRef, CssCalculationType, CssCalculationValueRef, CssComponentValue,
-    CssComponentValueRef, CssFlexCalculation, CssGridAutoRepeat, CssGridAutoRepeatKind,
-    CssGridAutoTrackComponent, CssGridAutoTrackList, CssGridFixedRepeatComponent,
-    CssGridFixedRepeatContent, CssGridFixedSize, CssGridGeneralTrackComponent,
-    CssGridGeneralTrackList, CssGridIntegerTrackRepeat, CssGridLineNames, CssGridTrackBreadth,
-    CssGridTrackList, CssGridTrackRepeatComponent, CssGridTrackRepeatContent, CssGridTrackSize,
-    CssGridTrackSizeList, CssKnownPropertyValueRef, CssLengthPercentageCalculation,
-    CssNumericConstructionErrorKind, CssNumericDimension, CssPositiveIntegerLiteral,
-    CssSpecifiedNonNegativeFlex, CssSpecifiedNonNegativeLengthPercentage,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits, CssValueOrigin,
-    CssValueTokenRef, parse_component_values, parse_style_attribute,
+use crate::css::support::value_assertions::positive_literal;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationExpressionRef, CssCalculationType, CssCalculationValueRef,
+    CssFlex, CssLengthPercentage, CssNonNegative, CssNumeric, CssNumericDimension,
+};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::layout::{
+    CssGridAutoRepeat, CssGridAutoRepeatKind, CssGridAutoTrackComponent, CssGridAutoTrackList,
+    CssGridFixedRepeatComponent, CssGridFixedRepeatContent, CssGridFixedSize,
+    CssGridGeneralTrackComponent, CssGridGeneralTrackList, CssGridIntegerTrackRepeat,
+    CssGridLineNames, CssGridTrackBreadth, CssGridTrackList, CssGridTrackRepeatComponent,
+    CssGridTrackRepeatContent, CssGridTrackSize, CssGridTrackSizeList,
 };
 
-fn flex(text: &str) -> CssSpecifiedNonNegativeFlex {
-    CssSpecifiedNonNegativeFlex::try_from_component(
+fn flex(text: &str) -> CssNumeric<CssFlex, CssNonNegative> {
+    CssNumeric::<CssFlex, CssNonNegative>::try_from_component(
         CssComponentValue::try_dimension(text, "fr").unwrap(),
     )
     .unwrap()
 }
 
-fn length(text: &str) -> CssSpecifiedNonNegativeLengthPercentage {
-    CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+fn length(text: &str) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
+    CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
         CssComponentValue::try_dimension(text, "px").unwrap(),
     )
     .unwrap()
@@ -36,7 +41,7 @@ fn exact_flex_scalar_has_checked_programmatic_origin() {
         let scalar = flex(text);
         assert!(matches!(scalar.origin(), CssValueOrigin::Programmatic));
         assert!(matches!(
-            scalar.literal_component().unwrap().view(),
+            scalar.literal().map(|literal| literal.component()).unwrap().view(),
             CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
                 if number.representation() == text && unit == "fr"
         ));
@@ -45,60 +50,73 @@ fn exact_flex_scalar_has_checked_programmatic_origin() {
         } else {
             "0fr".to_owned()
         };
-        assert_eq!(scalar.serialize_specified().unwrap(), canonical);
+        assert_eq!(
+            scalar.serialize_specified(Default::default()).unwrap(),
+            canonical
+        );
         let breadth = CssGridTrackBreadth::from_flex(scalar);
-        assert_eq!(breadth.serialize_specified().unwrap(), canonical);
+        assert_eq!(
+            breadth.serialize_specified(Default::default()).unwrap(),
+            canonical
+        );
         assert!(breadth.flex().is_some());
     }
-    let error = CssSpecifiedNonNegativeFlex::try_from_component(
+    let error = CssNumeric::<CssFlex, CssNonNegative>::try_from_component(
         CssComponentValue::try_dimension("-1e-50", "fr").unwrap(),
     )
     .unwrap_err();
-    assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
+    assert!(error.is_out_of_range(), "{error:?}");
     assert!(matches!(error.origin(), Some(CssValueOrigin::Programmatic)));
 
-    let bare_negative =
-        CssFlexCalculation::try_from_components(parse_component_values("-1fr").unwrap()).unwrap();
-    assert_eq!(
-        CssSpecifiedNonNegativeFlex::try_from_calculation(bare_negative)
+    let bare_negative = CssCalculation::<CssFlex>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "-1fr").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
+    assert!(
+        CssNumeric::<CssFlex, CssNonNegative>::try_from_calculation(bare_negative)
             .unwrap_err()
-            .kind(),
-        &CssNumericConstructionErrorKind::OutOfRange,
+            .is_out_of_range()
     );
-    let deferred_negative = CssSpecifiedNonNegativeFlex::try_from_calculation(
-        CssFlexCalculation::try_from_components(parse_component_values("calc(-1fr)").unwrap())
-            .unwrap(),
+    let deferred_negative = CssNumeric::<CssFlex, CssNonNegative>::try_from_calculation(
+        CssCalculation::<CssFlex>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), "calc(-1fr)").unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap();
     assert!(deferred_negative.calculation().is_some());
     assert_eq!(
-        deferred_negative.serialize_specified().unwrap(),
+        deferred_negative
+            .serialize_specified(Default::default())
+            .unwrap(),
         "calc(-1fr)"
     );
 
     let zero = CssGridTrackBreadth::from_flex(flex("-0"));
-    assert_eq!(zero.serialize_specified().unwrap(), "0fr");
+    assert_eq!(zero.serialize_specified(Default::default()).unwrap(), "0fr");
 
     let scalar = flex("2");
     assert_eq!(
         scalar
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 3))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 3))
             .unwrap(),
         "2fr",
     );
-    assert_eq!(
+    assert!(
         scalar
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 0, 3))
+            .serialize_specified(CssSerializationLimits::new(1, 0, 3))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            .is_projection_node_limit()
     );
 }
 
 #[test]
 fn flex_calculation_keeps_its_unhinted_type_and_function_tree() {
-    let calculation = CssFlexCalculation::try_from_components(
-        parse_component_values("calc(1fr * (1% / 1%))").unwrap(),
+    let calculation = CssCalculation::<CssFlex>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "calc(1fr * (1% / 1%))").unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(calculation.result_type(), CssCalculationType::Flex);
@@ -110,23 +128,31 @@ fn flex_calculation_keeps_its_unhinted_type_and_function_tree() {
     );
     assert_eq!(calculation.numeric_type().percent_hint(), None);
     assert!(matches!(calculation.origin(), CssValueOrigin::Parsed(_)));
-    let scalar = CssSpecifiedNonNegativeFlex::try_from_calculation(calculation).unwrap();
-    assert!(scalar.literal_component().is_none());
+    let scalar = CssNumeric::<CssFlex, CssNonNegative>::try_from_calculation(calculation).unwrap();
+    assert!(
+        scalar
+            .literal()
+            .map(|literal| literal.component())
+            .is_none()
+    );
     assert!(scalar.calculation().is_some());
     let breadth = CssGridTrackBreadth::from_flex(scalar);
-    let canonical = breadth.serialize_specified().unwrap();
+    let canonical = breadth.serialize_specified(Default::default()).unwrap();
     assert_eq!(canonical, "calc(1fr)");
-    let reparsed =
-        CssFlexCalculation::try_from_components(parse_component_values(&canonical).unwrap())
-            .unwrap();
+    let reparsed = CssCalculation::<CssFlex>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), &canonical).unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(reparsed.result_type(), CssCalculationType::Flex);
     assert_eq!(reparsed.numeric_type().percent_hint(), None);
 }
 
 #[test]
 fn length_percentage_math_retains_its_percentage_child_and_hint() {
-    let calculation = CssLengthPercentageCalculation::try_from_components(
-        parse_component_values("calc(10px + 5%)").unwrap(),
+    let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "calc(10px + 5%)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(
@@ -165,18 +191,26 @@ fn checked_track_sizes_reject_flexible_minima_and_preserve_exact_lengths() {
     let flex = CssGridTrackBreadth::from_flex(flex("1"));
     let short_length = CssGridTrackBreadth::from_length_percentage(length("1e-50"));
     assert!(matches!(
-        short_length.length_percentage().unwrap().literal_component().unwrap().view(),
+        short_length.length_percentage().unwrap().literal().map(|literal| literal.component()).unwrap().view(),
         CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
             if number.representation() == "1e-50" && unit == "px"
     ));
-    assert_eq!(short_length.serialize_specified().unwrap(), "0px");
+    assert_eq!(
+        short_length
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "0px"
+    );
     assert!(CssGridTrackSize::try_minmax(flex.clone(), short_length.clone()).is_none());
     let size = CssGridTrackSize::try_minmax(short_length, flex).unwrap();
-    assert_eq!(size.serialize_specified().unwrap(), "minmax(0px, 1fr)");
+    assert_eq!(
+        size.serialize_specified(Default::default()).unwrap(),
+        "minmax(0px, 1fr)"
+    );
     assert!(CssGridFixedSize::try_new(size).is_some());
     let fit = CssGridTrackSize::from_fit_content(length("1e50"));
     assert_eq!(
-        fit.serialize_specified().unwrap(),
+        fit.serialize_specified(Default::default()).unwrap(),
         format!("fit-content({})", canonical_large("px"))
     );
     assert!(CssGridFixedSize::try_new(fit).is_none());
@@ -203,19 +237,27 @@ fn checked_lists_reject_empty_tracks_and_repeat_cross_products() {
         size.clone(),
     )])
     .unwrap();
-    let repeat = CssGridIntegerTrackRepeat::try_new(
-        surgeist_css::CssPositiveIntegerValue::Literal(
-            CssPositiveIntegerLiteral::try_new(surgeist_css::CssIntegerLiteral::from_i32(2))
-                .unwrap(),
-        ),
+    let repeat = CssGridIntegerTrackRepeat::new(
+        surgeist_css::numeric::CssNumeric::<
+            surgeist_css::numeric::CssInteger,
+            surgeist_css::numeric::CssPositive,
+        >::try_from_literal(
+            positive_literal(surgeist_css::numeric::CssNumericLiteral::<
+                surgeist_css::numeric::CssInteger,
+            >::from_i32(2))
+            .unwrap(),
+        )
+        .unwrap(),
         content.clone(),
-    )
-    .unwrap();
+    );
     let general = CssGridTrackList::general(
         CssGridGeneralTrackList::try_new(vec![CssGridGeneralTrackComponent::Repeat(repeat)])
             .unwrap(),
     );
-    assert_eq!(general.serialize_specified().unwrap(), "repeat(2, 2fr)");
+    assert_eq!(
+        general.serialize_specified(Default::default()).unwrap(),
+        "repeat(2, 2fr)"
+    );
     let auto = CssGridAutoRepeat::new(CssGridAutoRepeatKind::AutoFit, content);
     assert!(
         CssGridAutoTrackList::try_new(vec![
@@ -228,7 +270,7 @@ fn checked_lists_reject_empty_tracks_and_repeat_cross_products() {
         CssGridAutoTrackList::try_new(vec![CssGridAutoTrackComponent::AutoRepeat(auto)]).unwrap(),
     );
     assert_eq!(
-        automatic.serialize_specified().unwrap(),
+        automatic.serialize_specified(Default::default()).unwrap(),
         "repeat(auto-fit, 2fr)"
     );
     assert!(CssGridFixedSize::try_new(size).is_none());
@@ -282,7 +324,8 @@ fn checked_track_graph_rejects_adjacent_line_name_blocks() {
 
 #[test]
 fn parsed_track_graph_serializes_with_one_cumulative_budget() {
-    let report = parse_style_attribute("grid-auto-rows: 1e50fr fit-content(1e-50px)");
+    let report =
+        CssParser::default().parse_block_contents("grid-auto-rows: 1e50fr fit-content(1e-50px)");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::GridAutoRows(wrapper) = report.syntax()[0]
         .known()
@@ -294,28 +337,22 @@ fn parsed_track_graph_serializes_with_one_cumulative_budget() {
     };
     let list = wrapper.value();
     assert!(matches!(
-        list.sizes()[1].fit_content().unwrap().literal_component().unwrap().view(),
+        list.sizes()[1].fit_content().unwrap().literal().map(|literal| literal.component()).unwrap().view(),
         CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
             if number.representation() == "1e-50" && unit == "px"
     ));
     assert_eq!(
-        list.serialize_specified().unwrap(),
+        list.serialize_specified(Default::default()).unwrap(),
         format!("{} fit-content(0px)", canonical_large("fr"))
     );
-    assert_eq!(
-        list.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            1, 100, 100
-        ))
-        .unwrap_err()
-        .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+    assert!(
+        list.serialize_specified(CssSerializationLimits::new(1, 100, 100))
+            .unwrap_err()
+            .is_input_node_limit()
     );
-    assert_eq!(
-        list.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            100, 100, 6
-        ))
-        .unwrap_err()
-        .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit,
+    assert!(
+        list.serialize_specified(CssSerializationLimits::new(100, 100, 6))
+            .unwrap_err()
+            .is_byte_limit()
     );
 }

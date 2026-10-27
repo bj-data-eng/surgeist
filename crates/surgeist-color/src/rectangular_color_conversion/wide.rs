@@ -16,6 +16,8 @@
 //! integer product is below 20000*563, far inside i32. No external input needs
 //! an exponent assertion, saturation, or an intermediate-range error.
 
+use crate::finite::{Finite, closest_finite};
+
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Wide {
     significand: f64,
@@ -160,11 +162,13 @@ impl Wide {
             .then_with(|| self.significand.abs().total_cmp(&other.significand.abs()))
     }
 
-    pub(super) fn to_f64(self) -> Option<f64> {
-        let value = if self.significand == 0.0 {
+    /// The final binary64 channel. A value beyond binary64 is the signed
+    /// closest finite value, `f64::MAX`; underflow rounds toward zero.
+    pub(super) fn to_finite(self) -> Finite {
+        closest_finite(if self.significand == 0.0 {
             self.significand
         } else if self.exponent > 1023 {
-            return None;
+            f64::INFINITY.copysign(self.significand)
         } else if self.exponent < -1075 {
             0.0_f64.copysign(self.significand)
         } else if self.exponent < -1022 {
@@ -173,8 +177,7 @@ impl Wide {
             (self.significand * power_of_two(self.exponent + 1074)) * f64::from_bits(1)
         } else {
             self.significand * power_of_two(self.exponent)
-        };
-        value.is_finite().then_some(value)
+        })
     }
 }
 
@@ -209,7 +212,7 @@ mod tests {
             -3.5,
         ] {
             assert_eq!(
-                Wide::from_f64(value).to_f64().unwrap().to_bits(),
+                Wide::from_f64(value).to_finite().get().to_bits(),
                 value.to_bits()
             );
         }
@@ -219,15 +222,22 @@ mod tests {
     fn rational_powers_survive_exponents_outside_binary64() {
         // Powers of two give independent exact exponent expectations.
         let huge = Wide::normalized(1.0, 1080);
-        assert_eq!(huge.signed_power(1, 3).to_f64(), Some(2.0_f64.powi(360)));
+        assert_eq!(huge.signed_power(1, 3).to_finite().get(), 2.0_f64.powi(360));
         assert_eq!(
-            Wide::normalized(-1.0, -1080).signed_power(1, 3).to_f64(),
-            Some(-2.0_f64.powi(-360))
+            Wide::normalized(-1.0, -1080)
+                .signed_power(1, 3)
+                .to_finite()
+                .get(),
+            -2.0_f64.powi(-360)
         );
         let encoded = Wide::normalized(1.0, 1000);
         assert_eq!(
-            encoded.signed_power(12, 5).signed_power(5, 12).to_f64(),
-            Some(2.0_f64.powi(1000))
+            encoded
+                .signed_power(12, 5)
+                .signed_power(5, 12)
+                .to_finite()
+                .get(),
+            2.0_f64.powi(1000)
         );
         let tiny = Wide::normalized(1.0, -2000);
         assert_eq!(tiny.signed_power(1, 3).exponent, -667);
@@ -236,20 +246,20 @@ mod tests {
 
     #[test]
     fn final_subnormal_rounding_uses_even_ties_and_retains_sign() {
-        assert_eq!(Wide::normalized(1.0, -1075).to_f64().unwrap().to_bits(), 0);
+        assert_eq!(Wide::normalized(1.0, -1075).to_finite().get().to_bits(), 0);
         assert_eq!(
-            Wide::normalized(-1.0, -1075).to_f64().unwrap().to_bits(),
+            Wide::normalized(-1.0, -1075).to_finite().get().to_bits(),
             (-0.0_f64).to_bits()
         );
-        assert_eq!(Wide::normalized(1.5, -1074).to_f64().unwrap().to_bits(), 2);
+        assert_eq!(Wide::normalized(1.5, -1074).to_finite().get().to_bits(), 2);
         assert_eq!(
             Wide::normalized(1.0 + f64::EPSILON, -1075)
-                .to_f64()
-                .unwrap()
+                .to_finite()
+                .get()
                 .to_bits(),
             1
         );
-        assert_eq!(Wide::normalized(1.0, -1100).to_f64(), Some(0.0));
+        assert_eq!(Wide::normalized(1.0, -1100).to_finite().get(), 0.0);
     }
 
     #[test]
@@ -257,23 +267,26 @@ mod tests {
         let huge = Wide::normalized(1.5, 3000);
         let tiny = Wide::from_f64(f64::from_bits(1));
         assert_eq!(
-            huge.add(huge.negated()).add(tiny).to_f64(),
-            Some(f64::from_bits(1))
+            huge.add(huge.negated()).add(tiny).to_finite().get(),
+            f64::from_bits(1)
         );
-        assert_eq!(Wide::from_f64(f64::MAX).to_f64(), Some(f64::MAX));
-        assert_eq!(Wide::normalized(1.0, 1024).to_f64(), None);
-        assert_eq!(Wide::normalized(-1.0, 1024).to_f64(), None);
+        assert_eq!(Wide::from_f64(f64::MAX).to_finite().get(), f64::MAX);
+        // Overflow is the signed closest finite value.
+        assert_eq!(Wide::normalized(1.0, 1024).to_finite().get(), f64::MAX);
+        assert_eq!(Wide::normalized(-1.0, 1024).to_finite().get(), -f64::MAX);
         let last_significand = 2.0 - f64::EPSILON;
         assert_eq!(
-            Wide::normalized(last_significand, 1023).to_f64(),
-            Some(f64::MAX)
+            Wide::normalized(last_significand, 1023).to_finite().get(),
+            f64::MAX
         );
-        assert_eq!(Wide::normalized(2.0, 1023).to_f64(), None);
+        assert_eq!(Wide::normalized(2.0, 1023).to_finite().get(), f64::MAX);
         assert_eq!(
             Wide::from_f64(f64::MAX)
+                .negated()
                 .multiply_fixed(1.0 + f64::EPSILON)
-                .to_f64(),
-            None
+                .to_finite()
+                .get(),
+            -f64::MAX
         );
     }
 
@@ -281,7 +294,7 @@ mod tests {
     fn skewed_channels_keep_separate_exponents_and_tiny_threshold_signs() {
         let channels = [f64::MAX, f64::from_bits(1), -f64::from_bits(1)].map(Wide::from_f64);
         assert_eq!(
-            channels.map(|v| v.to_f64().unwrap().to_bits()),
+            channels.map(|v| v.to_finite().get().to_bits()),
             [f64::MAX, f64::from_bits(1), -f64::from_bits(1)].map(f64::to_bits)
         );
         assert!(channels[1].greater_than(0.0));

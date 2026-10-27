@@ -3,33 +3,57 @@ use super::boolean_condition::{
 };
 use super::recovery::{RecoveryState, StyleContextCaptures};
 use super::selectors::{SelectorRecovery, parse_rule_selector};
-use crate::error::{Error, invalid_syntax, is_nesting_limit_error, with_at_rule_prelude_context};
-use crate::supports::{SupportsLexical, trivia};
-use crate::*;
+use crate::component::values::CssComponentValueErrorKind;
+use crate::component::{
+    CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueLimits,
+    CssComponentValueRef, CssComponentValues, CssFunctionValue, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use crate::declaration::{CssDeclarationBody, CssImportance};
+use crate::diagnostic::CssError;
+use crate::diagnostic::CssRecoveryDiagnostic;
+use crate::diagnostic::error::ErrorKind;
+use crate::diagnostic::error::{
+    invalid_syntax, is_nesting_limit_error, with_at_rule_prelude_context,
+};
+use crate::property::CssPropertyGrammar;
+use crate::query::supports::construction::{SupportsLexical, trivia};
+use crate::query::supports::{
+    CssSupportsAtRule, CssSupportsConditionName, CssSupportsConstructionError,
+    CssSupportsDeclaration, CssSupportsLeaf,
+};
+use crate::query::{CssCondition, CssConditionKind, CssConditionList, CssGeneralEnclosed};
+use crate::rule::font_face::{
+    CssFontFormat, CssFontFormatHint, CssFontFormatString, CssFontTechHint,
+};
+use crate::selector::CssNamespaceContext;
+use crate::source::CssSourceSnapshot;
 use cssparser::{ParseError, Parser};
 
-pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::CssFeatureId] = &[
-    crate::CssFeatureId::new("ext.supports.general-enclosed"),
-    crate::CssFeatureId::new("ext.supports.named"),
-    crate::CssFeatureId::new("ext.supports.font-tech"),
-    crate::CssFeatureId::new("ext.supports.font-format"),
-    crate::CssFeatureId::new("ext.supports.at-rule"),
+pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::diagnostic::CssFeatureId] = &[
+    crate::diagnostic::CssFeatureId::new("ext.supports.general-enclosed"),
+    crate::diagnostic::CssFeatureId::new("ext.supports.named"),
+    crate::diagnostic::CssFeatureId::new("ext.supports.font-tech"),
+    crate::diagnostic::CssFeatureId::new("ext.supports.font-format"),
+    crate::diagnostic::CssFeatureId::new("ext.supports.at-rule"),
 ];
 
-pub(super) static IMPLEMENTED_SELECTORS: &[crate::CssFeatureId] =
-    &[crate::CssFeatureId::new("ext.supports.selector")];
+pub(super) static IMPLEMENTED_SELECTORS: &[crate::diagnostic::CssFeatureId] =
+    &[crate::diagnostic::CssFeatureId::new(
+        "ext.supports.selector",
+    )];
 
-fn terminal_error(error: &ParseError<'_, Error>) -> bool {
+fn terminal_error(error: &ParseError<'_, CssError>) -> bool {
     is_nesting_limit_error(error)
         || matches!(&error.kind, cssparser::ParseErrorKind::Custom(error)
-            if matches!(error.kind(), crate::ErrorKind::InvalidComponentValue(_)))
+            if matches!(error.kind(), crate::diagnostic::error::ErrorKind::InvalidComponentValue(_)))
 }
 
 /// Only a grammar mismatch permits another supports interpretation. A lexical
 /// or resource failure cannot become valid by selecting an opaque fallback.
 pub(super) fn grammar_probe<'i, T>(
-    result: Result<T, ParseError<'i, Error>>,
-) -> Result<Option<T>, ParseError<'i, Error>> {
+    result: Result<T, ParseError<'i, CssError>>,
+) -> Result<Option<T>, ParseError<'i, CssError>> {
     match result {
         Ok(value) => Ok(Some(value)),
         Err(error) if terminal_error(&error) => Err(error),
@@ -37,9 +61,9 @@ pub(super) fn grammar_probe<'i, T>(
     }
 }
 
-pub(super) fn with_supports_prelude_context<'i>(
-    error: ParseError<'i, Error>,
-) -> ParseError<'i, Error> {
+pub(crate) fn with_supports_prelude_context<'i>(
+    error: ParseError<'i, CssError>,
+) -> ParseError<'i, CssError> {
     if terminal_error(&error) {
         error
     } else {
@@ -52,17 +76,17 @@ pub(super) fn with_supports_prelude_context<'i>(
     }
 }
 
-pub(super) fn parse_supports_condition<'i, 't>(
+pub(crate) fn parse_supports_condition<'i, 't>(
     source: &'i str,
     input: &mut Parser<'i, 't>,
     _diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
-) -> Result<CssSupportsCondition, ParseError<'i, Error>> {
+) -> Result<CssCondition<CssSupportsLeaf>, ParseError<'i, CssError>> {
     let implicit =
         recovery.check_specialized_components(source, input, "baseline.rule.supports")?;
     let start = input.current_source_location();
     let values = CssComponentValues::collect_from_parser(input, recovery.source_snapshot())
-        .map_err(|e| crate::error::invalid_component_value(start, e))?;
+        .map_err(|e| crate::diagnostic::error::invalid_component_value(start, e))?;
     let result = condition(
         SupportsLexical::root(values),
         recovery,
@@ -77,10 +101,10 @@ pub(super) fn parse_supports_declaration<'i, 't>(
     input: &mut Parser<'i, 't>,
     source: &CssSourceSnapshot,
     parser_context: crate::CssParserContext,
-) -> Result<CssSupportsDeclaration, ParseError<'i, Error>> {
+) -> Result<CssSupportsDeclaration, ParseError<'i, CssError>> {
     let start = input.current_source_location();
     let values = CssComponentValues::collect_from_parser(input, source)
-        .map_err(|e| crate::error::invalid_component_value(start, e))?;
+        .map_err(|e| crate::diagnostic::error::invalid_component_value(start, e))?;
     declaration(
         SupportsLexical::root(values),
         true,
@@ -92,16 +116,17 @@ pub(super) fn parse_supports_declaration<'i, 't>(
 fn parser_error<'i>(
     error: CssSupportsConstructionError,
     fallback: cssparser::SourceLocation,
-) -> ParseError<'i, Error> {
-    let location = crate::media::parsed_position(error.origin()).map_or(fallback, |p| {
-        cssparser::SourceLocation {
-            line: p.line().value(),
-            column: p.column().value() + 1,
-        }
-    });
-    match error {
-        CssSupportsConstructionError::Component(e) => {
-            crate::error::invalid_component_value(location, e)
+) -> ParseError<'i, CssError> {
+    let location =
+        crate::query::media::construction::parsed_position(error.origin()).map_or(fallback, |p| {
+            cssparser::SourceLocation {
+                line: p.line().value(),
+                column: p.column().value() + 1,
+            }
+        });
+    match error.into_kind() {
+        crate::query::supports::construction::SupportsConstructionKind::Component(e) => {
+            crate::diagnostic::error::invalid_component_value(location, e)
         }
         _ => invalid_syntax(location),
     }
@@ -112,9 +137,11 @@ fn validate(
 ) -> Result<(), CssSupportsConstructionError> {
     values.validate_with_limits(limits)?;
     if let Some(origin) = values.first_implicit_origin() {
-        return Err(CssSupportsConstructionError::RecoveredInput {
-            origin: origin.clone(),
-        });
+        return Err(CssSupportsConstructionError::from(
+            crate::query::supports::construction::SupportsConstructionKind::RecoveredInput {
+                origin: origin.clone(),
+            },
+        ));
     }
     Ok(())
 }
@@ -122,7 +149,7 @@ pub(crate) fn construct_supports_condition(
     values: CssComponentValues,
     namespaces: &CssNamespaceContext,
     limits: CssComponentValueLimits,
-) -> Result<CssSupportsCondition, CssSupportsConstructionError> {
+) -> Result<CssCondition<CssSupportsLeaf>, CssSupportsConstructionError> {
     construct_supports_condition_with_context(
         values,
         namespaces,
@@ -136,7 +163,7 @@ pub(crate) fn construct_supports_condition_with_context(
     namespaces: &CssNamespaceContext,
     limits: CssComponentValueLimits,
     parser_context: crate::CssParserContext,
-) -> Result<CssSupportsCondition, CssSupportsConstructionError> {
+) -> Result<CssCondition<CssSupportsLeaf>, CssSupportsConstructionError> {
     validate(&values, limits)?;
     let recovery = RecoveryState::at_depth("", 0, StyleContextCaptures::default())
         .with_parser_context(parser_context);
@@ -147,7 +174,7 @@ pub(crate) fn construct_supports_condition_with_context(
         recovery.activate_namespace(Some(prefix.clone()), name.clone());
     }
     let value = condition(SupportsLexical::root(values), &recovery, false, limits)?;
-    value.serialize_with_limit(limits.max_css_bytes())?;
+    value.serialize_tokens(limits)?;
     Ok(value)
 }
 pub(crate) fn construct_supports_declaration(
@@ -163,23 +190,26 @@ pub(crate) fn construct_supports_declaration_with_context(
 ) -> Result<CssSupportsDeclaration, CssSupportsConstructionError> {
     validate(&values, limits)?;
     let value = declaration(SupportsLexical::root(values), false, limits, context)?;
-    value.serialize_with_limit(limits.max_css_bytes())?;
+    value.serialize_tokens(limits)?;
     Ok(value)
 }
 fn invalid_condition(origin: &CssValueOrigin) -> CssSupportsConstructionError {
-    CssSupportsConstructionError::InvalidConditionGrammar {
-        origin: origin.clone(),
-    }
+    CssSupportsConstructionError::from(
+        crate::query::supports::construction::SupportsConstructionKind::InvalidConditionGrammar {
+            origin: origin.clone(),
+        },
+    )
 }
 fn grammar<T>(
     result: Result<T, CssSupportsConstructionError>,
 ) -> Result<Option<T>, CssSupportsConstructionError> {
     match result {
         Ok(value) => Ok(Some(value)),
-        Err(
-            CssSupportsConstructionError::InvalidConditionGrammar { .. }
-            | CssSupportsConstructionError::InvalidDeclarationGrammar { .. },
-        ) => Ok(None),
+        Err(error)
+            if error.is_invalid_condition_grammar() || error.is_invalid_declaration_grammar() =>
+        {
+            Ok(None)
+        }
         Err(error) => Err(error),
     }
 }
@@ -197,7 +227,7 @@ fn condition(
     recovery: &RecoveryState,
     authored: bool,
     limits: CssComponentValueLimits,
-) -> Result<CssSupportsCondition, CssSupportsConstructionError> {
+) -> Result<CssCondition<CssSupportsLeaf>, CssSupportsConstructionError> {
     let significant: Vec<_> = lexical
         .items()
         .iter()
@@ -249,7 +279,7 @@ struct SupportsGrammar<'a> {
 }
 impl BooleanConditionGrammar for SupportsGrammar<'_> {
     type Operator = ();
-    type Node = CssSupportsCondition;
+    type Node = CssCondition<CssSupportsLeaf>;
     type Error = ConditionFailure<CssSupportsConstructionError>;
 
     fn keyword(&mut self, keyword: &'static str) -> Result<Option<()>, Self::Error> {
@@ -261,7 +291,7 @@ impl BooleanConditionGrammar for SupportsGrammar<'_> {
         }
         Ok(matched.then_some(()))
     }
-    fn operand(&mut self) -> Result<CssSupportsCondition, Self::Error> {
+    fn operand(&mut self) -> Result<CssCondition<CssSupportsLeaf>, Self::Error> {
         let index = self.significant[self.slot];
         self.slot += 1;
         Ok(operand(
@@ -277,35 +307,33 @@ impl BooleanConditionGrammar for SupportsGrammar<'_> {
             Some(&index) => Err(ConditionFailure::Mismatch(index)),
         }
     }
-    fn negation(&mut self, (): (), operand: CssSupportsCondition) -> CssSupportsCondition {
-        CssSupportsCondition::new(
-            CssSupportsConditionKind::Not(Box::new(operand)),
+    fn negation(
+        &mut self,
+        (): (),
+        operand: CssCondition<CssSupportsLeaf>,
+    ) -> CssCondition<CssSupportsLeaf> {
+        CssCondition::lexical(
+            CssConditionKind::Not(Box::new(operand)),
             self.lexical.clone(),
-            SupportsAuthoredForm::Condition,
         )
     }
-    fn single(&mut self, operand: CssSupportsCondition) -> CssSupportsCondition {
-        CssSupportsCondition::new(
-            operand.into_kind(),
-            self.lexical.clone(),
-            SupportsAuthoredForm::Condition,
-        )
+    fn single(&mut self, operand: CssCondition<CssSupportsLeaf>) -> CssCondition<CssSupportsLeaf> {
+        CssCondition::lexical(operand.into_kind(), self.lexical.clone())
     }
     fn junction(
         &mut self,
         conjunction: bool,
         _: Vec<()>,
-        operands: Vec<CssSupportsCondition>,
-    ) -> CssSupportsCondition {
-        let list = CssSupportsConditionList::new(operands);
-        CssSupportsCondition::new(
+        operands: Vec<CssCondition<CssSupportsLeaf>>,
+    ) -> CssCondition<CssSupportsLeaf> {
+        let list = CssConditionList::new(operands);
+        CssCondition::lexical(
             if conjunction {
-                CssSupportsConditionKind::And(list)
+                CssConditionKind::And(list)
             } else {
-                CssSupportsConditionKind::Or(list)
+                CssConditionKind::Or(list)
             },
             self.lexical.clone(),
-            SupportsAuthoredForm::Condition,
         )
     }
 }
@@ -314,7 +342,7 @@ fn operand(
     recovery: &RecoveryState,
     authored: bool,
     limits: CssComponentValueLimits,
-) -> Result<CssSupportsCondition, CssSupportsConstructionError> {
+) -> Result<CssCondition<CssSupportsLeaf>, CssSupportsConstructionError> {
     let value = &lexical.items()[0];
     let kind = match value.view() {
         CssComponentValueRef::Block(block) if block.kind() == CssBlockKind::Parenthesis => {
@@ -327,24 +355,25 @@ fn operand(
             if let [component] = named.as_slice()
                 && let Ok(name) = CssSupportsConditionName::try_from_component((*component).clone())
             {
-                CssSupportsConditionKind::Named(name)
+                CssConditionKind::Leaf(CssSupportsLeaf::Named(name))
             } else if let Some(declaration) = grammar(declaration(
                 children.clone(),
                 authored,
                 limits,
                 recovery.parser_context(),
             ))? {
-                CssSupportsConditionKind::Declaration(Box::new(declaration))
+                CssConditionKind::Leaf(CssSupportsLeaf::Declaration(Box::new(declaration)))
             } else if let Some(group) = grammar(condition(children, recovery, authored, limits))? {
-                group.into_kind()
+                CssConditionKind::Parenthesized(Box::new(group))
             } else {
                 enclosed(value)?
             }
         }
         CssComponentValueRef::Function(function) => {
             if function.name().eq_ignore_ascii_case("selector") {
-                let mut out =
-                    crate::component_values::CssCanonicalBuilder::new(limits.max_css_bytes());
+                let mut out = crate::component::values::serialize::CssCanonicalBuilder::new(
+                    limits.max_css_bytes(),
+                );
                 out.push_components(function.values().items())?;
                 let serialized = out.finish()?;
                 let source = serialized.as_css();
@@ -360,45 +389,44 @@ fn operand(
                 let parsed = parse_rule_selector(&mut input, &mut selector_recovery);
                 match parsed {
                     Ok(selector) if input.is_exhausted() && diagnostics.is_empty() => {
-                        CssSupportsConditionKind::Selector(selector)
+                        CssConditionKind::Leaf(CssSupportsLeaf::Selector(selector))
                     }
                     Err(error) if terminal_error(&error) => {
                         let kind = match &error.kind {
                             cssparser::ParseErrorKind::Custom(error) => match error.kind() {
-                                ErrorKind::InvalidComponentValue(component) => component.kind(),
+                                ErrorKind::InvalidComponentValue(component) => component.kind,
                                 _ => CssComponentValueErrorKind::NestingLimit,
                             },
                             _ => CssComponentValueErrorKind::NestingLimit,
                         };
-                        let position = crate::error::from_parse_error(source, error).position();
+                        let position =
+                            crate::diagnostic::error::from_parse_error(source, error).position();
                         let origin = serialized
                             .value_origin_at(position.byte_offset().value())
                             .unwrap_or(value.origin())
                             .clone();
-                        return Err(CssSupportsConstructionError::Component(
-                            CssComponentValueError::new(kind, origin),
+                        return Err(CssSupportsConstructionError::from(
+                            crate::query::supports::construction::SupportsConstructionKind::Component(
+                                CssComponentValueError::new(kind, origin),
+                            ),
                         ));
                     }
                     _ => enclosed(value)?,
                 }
             } else if let Some(predicate) = function_predicate(function) {
-                predicate
+                CssConditionKind::Leaf(predicate)
             } else {
                 enclosed(value)?
             }
         }
         _ => return Err(invalid_condition(value.origin())),
     };
-    Ok(CssSupportsCondition::new(
-        kind,
-        lexical,
-        SupportsAuthoredForm::Condition,
-    ))
+    Ok(CssCondition::lexical(kind, lexical))
 }
 // Keep leaf assembly outside the recursive operand frame. The lexical condition
 // already owns validation, delimiters and output; these are transparent views.
 #[inline(never)]
-fn function_predicate(function: &CssFunctionValue) -> Option<CssSupportsConditionKind> {
+fn function_predicate(function: &CssFunctionValue) -> Option<CssSupportsLeaf> {
     let mut arguments = function
         .values()
         .items()
@@ -410,7 +438,7 @@ fn function_predicate(function: &CssFunctionValue) -> Option<CssSupportsConditio
     }
     if function.name().eq_ignore_ascii_case("font-tech") {
         return CssFontTechHint::from_ascii_name(ident(argument)?.as_bytes())
-            .map(CssSupportsConditionKind::FontTech);
+            .map(CssSupportsLeaf::FontTech);
     }
     if function.name().eq_ignore_ascii_case("font-format") {
         let format = match argument.view() {
@@ -422,20 +450,19 @@ fn function_predicate(function: &CssFunctionValue) -> Option<CssSupportsConditio
             }
             _ => return None,
         };
-        return Some(CssSupportsConditionKind::FontFormat(format));
+        return Some(CssSupportsLeaf::FontFormat(format));
     }
     if function.name().eq_ignore_ascii_case("at-rule") {
-        return CssSupportsAtRule::from_component(argument.clone())
-            .map(CssSupportsConditionKind::AtRule);
+        return CssSupportsAtRule::from_component(argument.clone()).map(CssSupportsLeaf::AtRule);
     }
     None
 }
 fn enclosed(
     value: &CssComponentValue,
-) -> Result<CssSupportsConditionKind, CssSupportsConstructionError> {
-    Ok(CssSupportsConditionKind::GeneralEnclosed(
+) -> Result<CssConditionKind<CssSupportsLeaf>, CssSupportsConstructionError> {
+    Ok(CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(
         CssGeneralEnclosed::try_from_component(value.clone()).expect("function or parenthesis"),
-    ))
+    )))
 }
 pub(super) fn declaration(
     lexical: SupportsLexical,
@@ -443,8 +470,12 @@ pub(super) fn declaration(
     limits: CssComponentValueLimits,
     parser_context: crate::CssParserContext,
 ) -> Result<CssSupportsDeclaration, CssSupportsConstructionError> {
-    let invalid = || CssSupportsConstructionError::InvalidDeclarationGrammar {
-        origin: lexical.first_origin().clone(),
+    let invalid = || {
+        CssSupportsConstructionError::from(
+            crate::query::supports::construction::SupportsConstructionKind::InvalidDeclarationGrammar {
+                origin: lexical.first_origin().clone(),
+            },
+        )
     };
     let items = lexical.items();
     let significant: Vec<_> = items
@@ -466,23 +497,34 @@ pub(super) fn declaration(
     ) {
         return Err(invalid());
     }
-    let mut importance = CssImportance::Normal;
-    let mut value_end = items.len();
-    for (slot, &index) in significant.iter().enumerate().skip(2) {
-        match items[index].view() {
-            CssComponentValueRef::Token(CssValueTokenRef::Semicolon) => return Err(invalid()),
-            CssComponentValueRef::Token(CssValueTokenRef::Delim('!')) => {
-                if slot + 2 != significant.len()
-                    || !ident(&items[significant[slot + 1]])
-                        .is_some_and(|name| name.eq_ignore_ascii_case("important"))
-                {
-                    return Err(invalid());
-                }
-                importance = CssImportance::Important;
-                value_end = index;
-                break;
-            }
-            _ => {}
+    let value_slots = &significant[2..];
+    // The one detection of the trailing annotation (Syntax 3 (2026 CRD) §5.5.6
+    // step 6); any other `!` or `;` in the value is rejected below.
+    let tail = super::trailing_importance(
+        value_slots,
+        |_| false,
+        |&index| {
+            matches!(
+                items[index].view(),
+                CssComponentValueRef::Token(CssValueTokenRef::Delim('!'))
+            )
+        },
+        |&index| ident(&items[index]).is_some_and(|name| name.eq_ignore_ascii_case("important")),
+    );
+    let (importance, value_end, checked) = match tail {
+        Some((bang, _)) => (
+            CssImportance::Important,
+            value_slots[bang],
+            &value_slots[..bang],
+        ),
+        None => (CssImportance::Normal, items.len(), value_slots),
+    };
+    for &index in checked {
+        if matches!(
+            items[index].view(),
+            CssComponentValueRef::Token(CssValueTokenRef::Semicolon | CssValueTokenRef::Delim('!'))
+        ) {
+            return Err(invalid());
         }
     }
     let admitted = if authored {
@@ -498,9 +540,9 @@ pub(super) fn declaration(
             .max()
             .unwrap_or(0);
         let grammar = if parser_context.selects_svg_glyph(name) {
-            super::PropertyValueGrammar::SvgGlyph(crate::svg_glyph::SvgGlyphAdmission::css(
-                parser_context,
-            ))
+            super::PropertyValueGrammar::SvgGlyph(
+                crate::property::svg_glyph::SvgGlyphAdmission::css(parser_context),
+            )
         } else {
             super::PropertyValueGrammar::Known(
                 CssPropertyGrammar::from_name(name).expect("recognized grammar"),
@@ -514,25 +556,24 @@ pub(super) fn declaration(
                 | CssDeclarationBody::SvgGlyphOrientationVertical(_)),
             ) => Some(body),
             Err(error) => {
-                let component_kind = match error.kind() {
-                    CssPropertyValueErrorKind::Component(kind) => Some(*kind),
-                    CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidComponentValue(
-                        component,
-                    )) => Some(component.kind()),
-                    CssPropertyValueErrorKind::Grammar(ErrorKind::NestingLimit(_)) => {
+                let component_kind = match error.component_error() {
+                    Some(component) => Some(component.kind),
+                    None if error.code() == Some(crate::diagnostic::CssErrorCode::NestingLimit) => {
                         Some(CssComponentValueErrorKind::NestingLimit)
                     }
-                    _ => None,
+                    None => None,
                 };
                 if let Some(kind) = component_kind {
                     let origin = match error.origin() {
                         CssSerializedOrigin::Token(origin)
-                        | CssSerializedOrigin::End(Some(origin)) => origin.clone(),
-                        CssSerializedOrigin::Separator { after, .. } => after.clone(),
+                        | CssSerializedOrigin::End(Some(origin)) => origin,
+                        CssSerializedOrigin::Separator { after, .. } => after,
                         CssSerializedOrigin::End(None) => CssValueOrigin::Programmatic,
                     };
-                    return Err(CssSupportsConstructionError::Component(
-                        CssComponentValueError::new(kind, origin),
+                    return Err(CssSupportsConstructionError::from(
+                        crate::query::supports::construction::SupportsConstructionKind::Component(
+                            CssComponentValueError::new(kind, origin),
+                        ),
                     ));
                 }
                 None
@@ -542,7 +583,8 @@ pub(super) fn declaration(
     } else {
         None
     };
-    let mut spelling = crate::component_values::CssCanonicalBuilder::new(limits.max_css_bytes());
+    let mut spelling =
+        crate::component::values::serialize::CssCanonicalBuilder::new(limits.max_css_bytes());
     spelling.push_component(&items[property_index])?;
     let property = spelling.finish()?.as_css().to_owned();
     let authored = if authored {
@@ -577,7 +619,7 @@ fn parsed_admitted(
     values: &[CssComponentValue],
     parser_context: crate::CssParserContext,
 ) -> Result<Option<CssDeclarationBody>, CssSupportsConstructionError> {
-    let resolved = crate::properties::resolve_property_name(name);
+    let resolved = crate::property::properties::resolve_property_name(name);
     if resolved.is_none() && !parser_context.selects_svg_glyph(name) {
         return Ok(None);
     }
@@ -600,12 +642,12 @@ fn parsed_admitted(
         0,
     )?;
     let mut input = super::property_input::Parser::new(&document);
-    let numeric = crate::numeric::NumericInputContext::parsed(first.source());
+    let numeric = crate::numeric::expression::NumericInputContext::parsed(first.source());
     let parsed = if parser_context.selects_svg_glyph(name) {
         super::parse_svg_glyph_declaration_body_from_property_input(
             &mut input,
             &numeric,
-            crate::svg_glyph::SvgGlyphAdmission::css(parser_context),
+            crate::property::svg_glyph::SvgGlyphAdmission::css(parser_context),
         )
     } else {
         super::parse_known_declaration_body_from_property_input(
@@ -620,10 +662,14 @@ fn parsed_admitted(
             body @ (CssDeclarationBody::Known(_)
             | CssDeclarationBody::SvgGlyphOrientationVertical(_)),
         ) if input.is_exhausted() => Ok(Some(body)),
-        Err(error) if crate::error::property::is_resource_parse_error(&error) => {
+        Err(error) if crate::diagnostic::error::property::is_resource_parse_error(&error) => {
             let (kind, origin) = error.into_parts();
             if let ErrorKind::InvalidComponentValue(component) = kind {
-                return Err(CssSupportsConstructionError::Component(*component));
+                return Err(CssSupportsConstructionError::from(
+                    crate::query::supports::construction::SupportsConstructionKind::Component(
+                        *component,
+                    ),
+                ));
             }
             let origin = match origin {
                 CssSerializedOrigin::Token(origin) | CssSerializedOrigin::End(Some(origin)) => {
@@ -632,8 +678,10 @@ fn parsed_admitted(
                 CssSerializedOrigin::Separator { after, .. } => after,
                 CssSerializedOrigin::End(None) => values[0].origin().clone(),
             };
-            Err(CssSupportsConstructionError::Component(
-                CssComponentValueError::new(CssComponentValueErrorKind::NestingLimit, origin),
+            Err(CssSupportsConstructionError::from(
+                crate::query::supports::construction::SupportsConstructionKind::Component(
+                    CssComponentValueError::new(CssComponentValueErrorKind::NestingLimit, origin),
+                ),
             ))
         }
         _ => Ok(None),
@@ -647,7 +695,7 @@ mod generated_selector_tests {
     #[test]
     fn live_depth_limit_maps_generated_function_error_to_original_unicode_source() {
         let source = "/*😀*/\r\nselector(:is(:where(.A)))";
-        let values = crate::parse_component_values(source).unwrap();
+        let values = crate::component::values::parse_component_values(source).unwrap();
         let function = values
             .items()
             .iter()
@@ -670,7 +718,7 @@ mod generated_selector_tests {
         .unwrap();
         assert!(matches!(
             value.kind(),
-            CssSupportsConditionKind::Selector(_)
+            CssConditionKind::Leaf(CssSupportsLeaf::Selector(_))
         ));
         assert_eq!(state.structural_depth(), 254);
         let state = RecoveryState::at_depth(source, 255, StyleContextCaptures::default());
@@ -681,12 +729,12 @@ mod generated_selector_tests {
             CssComponentValueLimits::default(),
         )
         .unwrap_err();
-        let CssSupportsConstructionError::Component(error) = error else {
+        let Some(error) = error.component_error() else {
             panic!("terminal resource failure")
         };
-        assert_eq!(error.kind(), CssComponentValueErrorKind::NestingLimit);
+        assert_eq!(error.kind, CssComponentValueErrorKind::NestingLimit);
         assert_eq!(error.origin(), &expected);
-        let crate::CssValueOrigin::Parsed(origin) = error.origin() else {
+        let crate::component::CssValueOrigin::Parsed(origin) = error.origin() else {
             panic!("original origin")
         };
         assert_eq!(origin.source().as_str(), source);

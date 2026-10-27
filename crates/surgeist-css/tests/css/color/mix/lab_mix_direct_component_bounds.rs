@@ -4,15 +4,25 @@
 //! distinct roles. Expectations are exact domain/scale and resource oracles,
 //! not browser output or values copied from the implementation under test.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::lab_direct_component_cases::{
     assert_specified_text as assert_text, lab_direct_component_cases,
 };
 use crate::css::support::{checked_color as color, component_values as components};
 use surgeist_color::{ColorSpace, HueInterpolation};
-use surgeist_css::*;
+use surgeist_css::color::{
+    CssColor, CssColorComponent, CssColorHue, CssColorInterpolation, CssColorInterpolationMethod,
+    CssColorMix, CssColorMixComponent, CssColorMixPercentage, CssColorMixWeight,
+    CssColorNumberLiteral, CssColorPercentageLiteral, CssLabColor, CssLchColor, CssNamedColor,
+};
+use surgeist_css::component::{CssComponentValue, CssValueOrigin};
+use surgeist_css::numeric::{CssCalculation, CssPercentage};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::CssSidePair;
 
-type Limits = CssSpecifiedValueSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Limits = CssSerializationLimits;
+type Kind = SerializationFailure;
 
 macro_rules! text_case {
     ($name:ident, $source:literal, $expected:literal) => {
@@ -178,23 +188,23 @@ text_case!(
 
 fn assert_color_result(value: &CssColor, limits: Limits, expected: Result<&str, Kind>) {
     let before = value.clone();
-    let result = value.to_specified_css_with_limits(limits);
-    assert_eq!(result, value.to_specified_css_with_limits(limits));
+    let result = value.serialize_specified(limits);
+    assert_eq!(result, value.serialize_specified(limits));
     assert_eq!(value, &before);
     match expected {
         Ok(text) => assert_eq!(result.unwrap(), text),
-        Err(kind) => assert_eq!(result.unwrap_err().kind(), kind),
+        Err(kind) => assert_eq!(serialization_failure(&result.unwrap_err()), kind),
     }
 }
 
-fn assert_pair_result(value: &CssBorderColorPair, limits: Limits, expected: Result<&str, Kind>) {
+fn assert_pair_result(value: &CssSidePair<CssColor>, limits: Limits, expected: Result<&str, Kind>) {
     let before = value.clone();
-    let result = value.serialize_specified_with_limits(limits);
-    assert_eq!(result, value.serialize_specified_with_limits(limits));
+    let result = value.serialize_specified(limits);
+    assert_eq!(result, value.serialize_specified(limits));
     assert_eq!(value, &before);
     match expected {
         Ok(text) => assert_eq!(result.unwrap(), text),
-        Err(kind) => assert_eq!(result.unwrap_err().kind(), kind),
+        Err(kind) => assert_eq!(serialization_failure(&result.unwrap_err()), kind),
     }
 }
 
@@ -338,9 +348,12 @@ resources!(
     "alpha(from color-mix(lab(100 0 0), blue))"
 );
 
-fn endpoint_pair() -> CssBorderColorPair {
-    let endpoint = color("color-mix(lab(1e400 0 0), blue)");
-    CssBorderColorPair::new(endpoint.clone(), Some(endpoint))
+fn endpoint_pair() -> CssSidePair<CssColor> {
+    // Two different authored values with the same output: an equal second value is not written.
+    CssSidePair::new(
+        color("color-mix(lab(1e400 0 0), blue)"),
+        Some(color("color-mix(lab(1e401 0 0), blue)")),
+    )
 }
 // Pair root1 + two complete Mix operations: I13/P49;29 +1 +29 bytes.
 resources!(
@@ -356,8 +369,8 @@ resources!(
     "color-mix(lab(100 0 0), blue) color-mix(lab(100 0 0), blue)"
 );
 
-fn prefixed_pair(second: &str) -> CssBorderColorPair {
-    CssBorderColorPair::new(color("color(--é 0)"), Some(color(second)))
+fn prefixed_pair(second: &str) -> CssSidePair<CssColor> {
+    CssSidePair::new(color("color(--é 0)"), Some(color(second)))
 }
 // Actual prefix is13 UTF8 bytes, separator1. Identifier adds no nodes; zero
 // has no rational limbs. Pair1 + prefixI2/P1 + MixI6/P24 yieldsI9/P26.
@@ -525,7 +538,7 @@ fn prefixed_contextual_mix_cannot_skip_required_scratch() {
 }
 #[test]
 fn failing_unbounded_second_mix_keeps_entire_pair_unchanged() {
-    let pair = CssBorderColorPair::new(
+    let pair = CssSidePair::new(
         color("color-mix(lab(1e400 0 0), blue)"),
         Some(color("color-mix(lab(50 1e2000000 0), blue)")),
     );
@@ -644,7 +657,11 @@ fn checked_family_mix(
         CssColorMixPercentage::try_from_component(components("30%").items()[0].clone()).unwrap(),
     );
     let second_weight = CssColorMixWeight::try_calculation(
-        CssPercentageCalculation::try_from_components(components("calc(70%)")).unwrap(),
+        CssCalculation::<CssPercentage>::try_from_components(
+            components("calc(70%)"),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap();
     let interpolation = CssColorInterpolation::from_predefined(
@@ -662,8 +679,8 @@ fn checked_family_mix(
     .unwrap();
     let value = CssColor::from_color_mix(mix);
     let before = value.clone();
-    let result = value.to_specified_css();
-    assert_eq!(result, value.to_specified_css());
+    let result = value.serialize_specified(Default::default());
+    assert_eq!(result, value.serialize_specified(Default::default()));
     assert_eq!(value, before);
     let retained_mix = value.color_mix_value().unwrap();
     assert_eq!(retained_mix.interpolation(), Some(&interpolation));
@@ -705,7 +722,12 @@ fn checked_family_mix(
     }
     let expected = format!("color-mix(in lch longer hue, {expected_child} 30%, blue calc(70%))");
     assert_eq!(result.unwrap(), expected);
-    assert_eq!(color(&expected).to_specified_css().unwrap(), expected);
+    assert_eq!(
+        color(&expected)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 }
 
 macro_rules! checked_cases {
@@ -784,9 +806,9 @@ fn checked_nested_mix_preserves_the_shared_depth_ceiling() {
         ],
     )
     .unwrap_err();
-    assert_eq!(error, CssColorMixConstructionError::NestingLimit);
-    let result = value.to_specified_css();
-    assert_eq!(result, value.to_specified_css());
+    assert!(error.is_nesting_limit());
+    let result = value.serialize_specified(Default::default());
+    assert_eq!(result, value.serialize_specified(Default::default()));
     assert_eq!(value, before);
     assert_eq!(result.unwrap(), expected);
 }

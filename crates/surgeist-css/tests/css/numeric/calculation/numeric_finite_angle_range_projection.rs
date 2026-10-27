@@ -12,11 +12,22 @@
 //! coefficient range. Neither is an authored infinity or division by zero.
 //! Target-context computed/used clamping is a different rule under §10.12.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::calculated_number as number;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssCalculation, CssNumber, CssNumeric};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
-type Limits = CssSpecifiedValueSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Limits = CssSerializationLimits;
+type Kind = SerializationFailure;
 
 fn assert_number(source: &str, expected: &str) {
     let value = number(source);
@@ -24,9 +35,15 @@ fn assert_number(source: &str, expected: &str) {
     let calculation = value.calculation().unwrap();
     let components = calculation.components().clone();
     let ty = calculation.numeric_type();
-    assert_eq!(components.serialize().unwrap().as_css(), source);
+    assert_eq!(
+        components
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
     assert!(matches!(value.origin(), CssValueOrigin::Parsed(_)));
-    let result = value.serialize_specified();
+    let result = value.serialize_specified(Default::default());
     assert_eq!(value, before);
     assert_eq!(value.origin(), before.origin());
     assert_eq!(value.calculation().unwrap().components(), &components);
@@ -93,16 +110,17 @@ fn programmatic_finite_angle_projection_preserves_exact_lexeme_and_origin() {
     };
     assert_eq!(number.representation(), "+01e308");
     assert_eq!(unit, "TURN");
-    let arguments = CssComponentValues::try_new(vec![leaf]).unwrap();
+    let arguments = CssComponentValues::try_new(vec![leaf], Default::default()).unwrap();
     let component = CssComponentValue::try_function("COS", arguments).unwrap();
-    let components = CssComponentValues::try_new(vec![component]).unwrap();
-    let value = CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(components.clone()).unwrap(),
+    let components = CssComponentValues::try_new(vec![component], Default::default()).unwrap();
+    let value = CssNumeric::<CssNumber>::try_from_calculation(
+        CssCalculation::<CssNumber>::try_from_components(components.clone(), Default::default())
+            .unwrap(),
     )
     .unwrap();
     let before = value.clone();
     assert!(matches!(value.origin(), CssValueOrigin::Programmatic));
-    let result = value.serialize_specified();
+    let result = value.serialize_specified(Default::default());
     assert_eq!(value, before);
     assert_eq!(value.origin(), before.origin());
     assert_eq!(value.calculation().unwrap().components(), &components);
@@ -131,9 +149,10 @@ fn ordinary_rgb_censors_genuine_infinite_angle_cosine_to_zero() {
 }
 
 fn assert_color(source: &str, expected: &str) {
-    let components = parse_component_values(source).unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
         components.clone(),
         CssImportance::Normal,
     )
@@ -144,7 +163,7 @@ fn assert_color(source: &str, expected: &str) {
     else {
         panic!("checked color property");
     };
-    let result = value.value().to_specified_css();
+    let result = value.value().serialize_specified(Default::default());
     assert_eq!(declaration, before);
     assert_eq!(declaration.value_components(), &components);
     assert_eq!(result.unwrap(), expected, "{source}");
@@ -159,8 +178,8 @@ fn finite_angle_conversion_obeys_typed_limits_without_mutating_authored_values()
         (Limits::new(100, 0, 100), Kind::ProjectionNodeLimit),
         (Limits::new(100, 100, 0), Kind::ByteLimit),
     ] {
-        let error = value.serialize_specified_with_limits(limits).unwrap_err();
-        assert_eq!(error.kind(), expected);
+        let error = value.serialize_specified(limits).unwrap_err();
+        assert_eq!(serialization_failure(&error), expected);
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
         assert_eq!(
@@ -168,7 +187,7 @@ fn finite_angle_conversion_obeys_typed_limits_without_mutating_authored_values()
             before.calculation().unwrap().components()
         );
     }
-    let result = value.serialize_specified_with_limits(Limits::new(100, 100, 100));
+    let result = value.serialize_specified(Limits::new(100, 100, 100));
     assert_eq!(value, before);
     assert_eq!(result.unwrap(), "calc(1)");
 }
@@ -181,12 +200,12 @@ fn multiple_finite_angle_conversions_share_cumulative_traversal_limits() {
         (Limits::new(2, 100, 100), Kind::InputNodeLimit),
         (Limits::new(100, 2, 100), Kind::ProjectionNodeLimit),
     ] {
-        let error = value.serialize_specified_with_limits(limits).unwrap_err();
-        assert_eq!(error.kind(), expected);
+        let error = value.serialize_specified(limits).unwrap_err();
+        assert_eq!(serialization_failure(&error), expected);
         assert_eq!(value, before);
         assert_eq!(value.origin(), before.origin());
     }
-    let result = value.serialize_specified_with_limits(Limits::new(100, 100, 100));
+    let result = value.serialize_specified(Limits::new(100, 100, 100));
     assert_eq!(value, before);
     assert_eq!(result.unwrap(), "calc(2)");
 }

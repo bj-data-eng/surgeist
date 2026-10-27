@@ -2,7 +2,8 @@
 //! diagnostic contracts. Expected values never come from the runtime or registry.
 
 use serde_json::{Value, json};
-use surgeist_css::{CssPseudoClass, CssPseudoSelectorListItem, CssSelector, parse_selector};
+use surgeist_css::CssParser;
+use surgeist_css::selector::{CssPseudoClass, CssPseudoSelectorListItem, CssSelector};
 
 use crate::css::support::csstree::adapters::{EntryPoint, Extractor};
 use crate::css::support::csstree::reconciliation::{
@@ -43,7 +44,7 @@ fn pseudo_meaning(pseudo: &CssPseudoClass) -> Value {
     }
 }
 
-fn compound_meaning(compound: &surgeist_css::CssCompoundSelector) -> Value {
+fn compound_meaning(compound: &surgeist_css::selector::CssCompoundSelector) -> Value {
     assert!(compound.pseudo_elements().is_none());
     assert!(!compound.has_scope_anchor());
     assert_eq!(compound.nesting_selectors(), 0);
@@ -63,8 +64,10 @@ fn compound_meaning(compound: &surgeist_css::CssCompoundSelector) -> Value {
     );
     items.extend(compound.attributes().iter().map(|attribute| {
         let (matcher, value) = match attribute.matcher() {
-            surgeist_css::CssAttributeMatcher::Exists => ("Exists", None),
-            surgeist_css::CssAttributeMatcher::Equals(value) => ("Equals", Some(value.as_str())),
+            surgeist_css::selector::CssAttributeMatcher::Exists => ("Exists", None),
+            surgeist_css::selector::CssAttributeMatcher::Equals(value) => {
+                ("Equals", Some(value.as_str()))
+            }
             other => panic!("unexpected original attribute matcher: {other:?}"),
         };
         json!({"attribute": {"local_name": attribute.name().as_str(),
@@ -99,7 +102,11 @@ fn typed_meaning(selector: &CssSelector) -> Value {
 
 /// Public selector presence, strict validation and typed meaning for one row.
 fn typed_selector_reconciles(row: &Value) -> Result<(), String> {
-    let report = parse_selector(text(row, "input"), &namespace_context());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        text(row, "input"),
+        &namespace_context(),
+    );
     let expected = &row["expected"];
     let actual = json!({"present": report.syntax().is_some(),
         "validation_accepts": report.clone().into_validation_result().is_ok(),

@@ -889,9 +889,11 @@ fn retained_source_and_capture_aliases_do_not_alias_terminal_parser_backing() {
     assert!(matches!(
         failure.reason(),
         HtmlParseFailureReason::Stop(HtmlParseStop::ColorProcessing(
-            HtmlColorProcessingError::Unavailable(surgeist_css::CssColorUnavailable::Palette(
-                surgeist_css::CssSystemColor::CanvasText,
-            )),
+            HtmlColorProcessingError::Unavailable(
+                surgeist_css::color::CssColorUnavailable::Palette(
+                    surgeist_css::color::CssSystemColor::CanvasText,
+                )
+            ),
         ))
     ));
     assert_eq!(failure.cleanup_error(), None);

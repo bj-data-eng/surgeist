@@ -1,7 +1,10 @@
 //! CSS owns source payload traversal and accounting; this adapter supplies the
 //! actual retained canonical tables, including detached objects and edited data.
 use crate::{model::State, *};
-use surgeist_css::*;
+use surgeist_css::rule::CssImportTarget;
+use surgeist_css::source::{
+    CssRetainedSources, CssSourceRetention, CssSourceRetentionError, CssSourceRetentionResource,
+};
 
 impl CssRetainedSources for CssomAuthoredRule {
     fn visit_retained_sources(
@@ -9,23 +12,11 @@ impl CssRetainedSources for CssomAuthoredRule {
         sources: &mut CssSourceRetention,
     ) -> Result<(), CssSourceRetentionError> {
         match self {
-            Self::Ordinary(value) => sources.visit(value),
-            Self::Scoped(value) => sources.visit(value),
+            Self::Rule(value) => sources.visit(value),
             Self::Keyframe(value) => sources.visit(value),
             Self::Margin(value) => sources.visit(value),
             Self::RawNestedDeclarations(value) => sources.visit(value),
             Self::SupportsTestChild(value) => sources.visit(value),
-        }
-    }
-}
-impl CssRetainedSources for CssomSelectors {
-    fn visit_retained_sources(
-        &self,
-        sources: &mut CssSourceRetention,
-    ) -> Result<(), CssSourceRetentionError> {
-        match self {
-            Self::Ordinary(value) => sources.visit(value),
-            Self::Scoped(value) => sources.visit(value),
         }
     }
 }
@@ -245,40 +236,47 @@ impl State {
             }
             Ok(sources.steps())
         })();
-        result.map_err(|error| match error {
-            CssSourceRetentionError::CallerAdmission => {
-                unreachable!("standalone Source collector has no caller admission predicate")
+        result.map_err(|error: CssSourceRetentionError| {
+            assert!(
+                !error.is_caller_admission(),
+                "standalone Source collector has no caller admission predicate"
+            );
+            match error.exhausted_limit() {
+                Some(CssSourceRetentionResource::RetainedBytes) => CssomError::Limit {
+                    resource: "retained parse source bytes",
+                    maximum: limits.max_retained_source_bytes,
+                },
+                Some(CssSourceRetentionResource::Depth) => CssomError::Limit {
+                    resource: "retained source traversal depth",
+                    maximum: limits.max_source_traversal_depth,
+                },
+                // An allocation refusal or exhausted collector storage.
+                Some(CssSourceRetentionResource::Storage) | None => CssomError::Limit {
+                    resource: "retained source traversal storage",
+                    maximum: limits.max_source_traversal_steps,
+                },
+                Some(_) => CssomError::Limit {
+                    resource: "retained source traversal steps",
+                    maximum: limits.max_source_traversal_steps,
+                },
             }
-            CssSourceRetentionError::Limit("retained source bytes") => CssomError::Limit {
-                resource: "retained parse source bytes",
-                maximum: limits.max_retained_source_bytes,
-            },
-            CssSourceRetentionError::Limit("source depth") => CssomError::Limit {
-                resource: "retained source traversal depth",
-                maximum: limits.max_source_traversal_depth,
-            },
-            CssSourceRetentionError::Allocation
-            | CssSourceRetentionError::Limit("source storage") => CssomError::Limit {
-                resource: "retained source traversal storage",
-                maximum: limits.max_source_traversal_steps,
-            },
-            CssSourceRetentionError::Limit(_) => CssomError::Limit {
-                resource: "retained source traversal steps",
-                maximum: limits.max_source_traversal_steps,
-            },
         })
     }
 }
 
 fn reserve<T>(values: &mut Vec<T>, maximum: usize) -> Result<(), CssSourceRetentionError> {
     if values.len() >= maximum {
-        return Err(CssSourceRetentionError::Limit("source storage"));
+        return Err(CssSourceRetentionError::limit(
+            CssSourceRetentionResource::Storage,
+        ));
     }
     if values.len() == values.capacity() {
         let required = values
             .len()
             .checked_add(1)
-            .ok_or(CssSourceRetentionError::Limit("source storage"))?;
+            .ok_or(CssSourceRetentionError::limit(
+                CssSourceRetentionResource::Storage,
+            ))?;
         let capacity = values
             .capacity()
             .saturating_mul(2)
@@ -286,10 +284,12 @@ fn reserve<T>(values: &mut Vec<T>, maximum: usize) -> Result<(), CssSourceRetent
             .min(maximum);
         values
             .try_reserve_exact(capacity - values.len())
-            .map_err(|_| CssSourceRetentionError::Allocation)?;
+            .map_err(|_| CssSourceRetentionError::allocation())?;
     }
     if values.capacity() > maximum {
-        return Err(CssSourceRetentionError::Limit("source storage"));
+        return Err(CssSourceRetentionError::limit(
+            CssSourceRetentionResource::Storage,
+        ));
     }
     Ok(())
 }
@@ -307,9 +307,9 @@ fn enqueue<'a>(
         reserve(pending, maximum)?;
         pending.push((
             linked.snapshot.state.as_ref(),
-            depth
-                .checked_add(1)
-                .ok_or(CssSourceRetentionError::Limit("source depth"))?,
+            depth.checked_add(1).ok_or(CssSourceRetentionError::limit(
+                CssSourceRetentionResource::Depth,
+            ))?,
         ));
     }
     Ok(())

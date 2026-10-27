@@ -1,18 +1,61 @@
 //! Backgrounds 3, transforms, filters, masking, transitions and animations keep
 //! authored syntax and reject invalid arguments and cross-family values.
 
-use surgeist_css::*;
+use crate::css::support::value_assertions::checked_range;
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssNamedColor};
+use surgeist_css::component::CssComponentValue;
+use surgeist_css::numeric::{
+    CssAngleOrZero, CssNonNegative, CssNumber, CssNumeric, CssNumericLiteral, CssTime, CssTimeUnit,
+};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::rule::keyframes::CssKeyframesIdent;
+use surgeist_css::values::animation::{
+    CssAnimation, CssAnimationComponents, CssAnimationDirection, CssAnimationFillMode,
+    CssAnimationIterationCount, CssAnimationIterationCountList, CssAnimationList, CssAnimationName,
+    CssAnimationNameList, CssAnimationPlayState, CssAnimationPlayStateList, CssDurationList,
+    CssEasing, CssEasingKeyword, CssTransition, CssTransitionList, CssTransitionProperty,
+    CssTransitionPropertyList, CssTransitionPropertyName,
+};
+use surgeist_css::values::background::{
+    CssBackgroundAttachment, CssBackgroundAttachmentList, CssBackgroundBox, CssBackgroundBoxList,
+    CssBackgroundPosition, CssBackgroundPositionList, CssBackgroundRepeat, CssBackgroundRepeatList,
+    CssBackgroundRepeatStyle, CssBackgroundSize, CssBackgroundSizeList,
+};
+use surgeist_css::values::border::{CssLineWidth, CssOutline, CssOutlineColor, CssOutlineStyle};
+use surgeist_css::values::common::{CssAutoOr, CssCustomIdent, CssUrl};
+use surgeist_css::values::effects::{
+    CssClipPath, CssFilter, CssFilterAmount, CssFilterFunction, CssMaskList,
+};
+use surgeist_css::values::image::{CssImageValue, CssImageValueList};
+use surgeist_css::values::position::{
+    CssHorizontalPosition, CssPhysicalPosition, CssVerticalPosition,
+};
+use surgeist_css::values::shape::{CssBasicShape, CssCircleRadius};
+use surgeist_css::values::transform::{
+    CssScaleValues, CssTransform, CssTransformFunction, CssTransformFunctionKind,
+    CssTransformOrigin, CssTransformScaleComponent, CssTranslateValues,
+};
+use surgeist_css::values::ui::{
+    CssCursor, CssCursorImageSource, CssCursorImages, CssCursorKeyword, CssPointerEvents,
+    CssUserSelect,
+};
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;
 
-fn exact_number(component: Option<&surgeist_css::CssComponentValue>, representation: &str) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Number(number))) if number.representation() == representation)
+fn exact_number(
+    component: Option<&surgeist_css::component::CssComponentValue>,
+    representation: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Number(number))) if number.representation() == representation)
 }
 
-fn checked_number(representation: &str) -> surgeist_css::CssSpecifiedNumber {
-    surgeist_css::CssSpecifiedNumber::try_from_component(
-        surgeist_css::CssComponentValue::try_number(representation).unwrap(),
+fn checked_number(
+    representation: &str,
+) -> surgeist_css::numeric::CssNumeric<surgeist_css::numeric::CssNumber> {
+    surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssNumber>::try_from_component(
+        surgeist_css::component::CssComponentValue::try_number(representation).unwrap(),
     )
     .unwrap()
 }
@@ -26,7 +69,7 @@ fn parses_background_properties_as_authored_syntax() {
                 CssKnownProperty::BackgroundImage
             ),
             BackgroundImage,
-            images
+            value
         ),
         CssImageValueList::try_new(vec![
             CssImageValue::Url(CssUrl::new("hero.png")),
@@ -41,7 +84,7 @@ fn parses_background_properties_as_authored_syntax() {
                 CssKnownProperty::BackgroundPosition
             ),
             BackgroundPosition,
-            positions
+            value
         ),
         CssBackgroundPositionList::try_new(vec![
             CssBackgroundPosition::try_new(
@@ -59,13 +102,13 @@ fn parses_background_properties_as_authored_syntax() {
                 CssKnownProperty::BackgroundSize
             ),
             BackgroundSize,
-            sizes
+            value
         ),
         CssBackgroundSizeList::try_new(vec![
             CssBackgroundSize::Cover,
             CssBackgroundSize::Explicit {
-                width: CssBackgroundSizeComponent::Length(nonnegative_length_percentage("10px")),
-                height: Some(CssBackgroundSizeComponent::Auto),
+                width: CssAutoOr::Value(nonnegative_length_percentage("10px")),
+                height: Some(CssAutoOr::Auto),
             },
         ])
         .unwrap()
@@ -77,7 +120,7 @@ fn parses_background_properties_as_authored_syntax() {
                 CssKnownProperty::BackgroundRepeat
             ),
             BackgroundRepeat,
-            repeats
+            value
         ),
         CssBackgroundRepeatList::try_new(vec![
             CssBackgroundRepeat::RepeatX,
@@ -95,7 +138,7 @@ fn parses_background_properties_as_authored_syntax() {
                 CssKnownProperty::BackgroundOrigin
             ),
             BackgroundOrigin,
-            boxes
+            value
         ),
         CssBackgroundBoxList::try_new(vec![CssBackgroundBox::ContentBox]).unwrap()
     );
@@ -106,7 +149,7 @@ fn parses_background_properties_as_authored_syntax() {
                 CssKnownProperty::BackgroundClip
             ),
             BackgroundClip,
-            boxes
+            value
         ),
         CssBackgroundBoxList::try_new(vec![CssBackgroundBox::PaddingBox]).unwrap()
     );
@@ -117,7 +160,7 @@ fn parses_background_properties_as_authored_syntax() {
                 CssKnownProperty::BackgroundAttachment
             ),
             BackgroundAttachment,
-            attachments
+            value
         ),
         CssBackgroundAttachmentList::try_new(vec![
             CssBackgroundAttachment::Fixed,
@@ -169,7 +212,7 @@ fn parses_interaction_and_outline_properties_as_authored_syntax() {
             value
         ),
         CssOutline::try_new(
-            Some(CssOutlineWidth::Thick),
+            Some(CssLineWidth::Thick),
             Some(CssOutlineStyle::Dotted),
             Some(CssOutlineColor::Color(Box::new(CssColor::from_named(
                 CssNamedColor::try_new("white").unwrap()
@@ -186,7 +229,7 @@ fn parses_interaction_and_outline_properties_as_authored_syntax() {
             OutlineWidth,
             value
         ),
-        CssOutlineWidth::Length(nonnegative_length("2px"))
+        CssLineWidth::Length(nonnegative_length("2px"))
     );
 }
 
@@ -216,7 +259,7 @@ fn parses_transform_effect_and_mask_properties_as_authored_syntax() {
                 CssKnownProperty::TransformOrigin
             ),
             TransformOrigin,
-            origin
+            value
         ),
         CssTransformOrigin::try_new(
             CssPhysicalPosition::try_new(CssHorizontalPosition::Center, CssVerticalPosition::Top)
@@ -240,7 +283,7 @@ fn parses_transform_effect_and_mask_properties_as_authored_syntax() {
         panic!("blur");
     };
     assert!(exact_dimension(
-        blur.length().literal_component(),
+        blur.length().literal().map(|literal| literal.component()),
         "4",
         "px"
     ));
@@ -274,7 +317,7 @@ fn parses_transform_effect_and_mask_properties_as_authored_syntax() {
     };
     assert!(
         matches!(circle.radius(), CssCircleRadius::LengthPercentage(radius)
-        if exact_percentage(radius.literal_component(), "50"))
+        if exact_percentage(radius.literal().map(|literal| literal.component()), "50"))
     );
     assert!(circle.position().is_some());
     assert_eq!(
@@ -284,7 +327,7 @@ fn parses_transform_effect_and_mask_properties_as_authored_syntax() {
                 CssKnownProperty::MaskImage
             ),
             MaskImage,
-            images
+            value
         ),
         CssImageValueList::try_new(vec![
             CssImageValue::Url(CssUrl::new("mask.png")),
@@ -319,12 +362,16 @@ fn authored_transform_filter_and_basic_shape_values_preserve_family_context() {
         panic!("typed translate function");
     };
     assert!(exact_dimension(
-        translation.x().literal_component(),
+        translation.x().literal().map(|literal| literal.component()),
         "10",
         "px"
     ));
     assert!(exact_dimension(
-        translation.y().unwrap().literal_component(),
+        translation
+            .y()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component()),
         "20",
         "px"
     ));
@@ -363,7 +410,7 @@ fn authored_transform_filter_and_basic_shape_values_preserve_family_context() {
     };
     assert!(
         matches!(circle.radius(), CssCircleRadius::LengthPercentage(radius)
-        if exact_percentage(radius.literal_component(), "50"))
+        if exact_percentage(radius.literal().map(|literal| literal.component()), "50"))
     );
     assert!(circle.position().is_some());
 
@@ -373,16 +420,21 @@ fn authored_transform_filter_and_basic_shape_values_preserve_family_context() {
             CssKnownProperty::TransitionTimingFunction
         ),
         TransitionTimingFunction,
-        timing_functions
+        value
     );
     let CssEasing::CubicBezier(bezier) = &easings.values()[0] else {
         panic!("expected cubic-bezier easing");
     };
     assert!(exact_number(
-        (bezier.x1().value()).literal_component(),
+        (bezier.x1().value())
+            .literal()
+            .map(|literal| literal.component()),
         "0.1"
     ));
-    assert!(exact_number((bezier.y2()).literal_component(), "1"));
+    assert!(exact_number(
+        (bezier.y2()).literal().map(|literal| literal.component()),
+        "1"
+    ));
 }
 
 #[test]
@@ -394,7 +446,7 @@ fn parses_transition_properties_and_preserves_comma_lists() {
                 CssKnownProperty::TransitionProperty
             ),
             TransitionProperty,
-            properties
+            value
         ),
         CssTransitionPropertyList::try_new(vec![
             CssTransitionProperty::Custom(
@@ -415,16 +467,16 @@ fn parses_transition_properties_and_preserves_comma_lists() {
                 CssKnownProperty::TransitionDuration
             ),
             TransitionDuration,
-            durations
+            value
         ),
         CssDurationList::try_new(vec![
-            CssDuration::try_new(CssTimeValue::from_literal(
-                CssTimeLiteral::try_new("150", CssTimeUnit::Milliseconds).unwrap()
-            ))
+            CssNumeric::<CssTime, CssNonNegative>::try_from_literal(
+                CssNumericLiteral::<CssTime>::try_new("150", CssTimeUnit::Milliseconds).unwrap()
+            )
             .unwrap(),
-            CssDuration::try_new(CssTimeValue::from_literal(
-                CssTimeLiteral::try_new("2", CssTimeUnit::Seconds).unwrap()
-            ))
+            CssNumeric::<CssTime, CssNonNegative>::try_from_literal(
+                CssNumericLiteral::<CssTime>::try_new("2", CssTimeUnit::Seconds).unwrap()
+            )
             .unwrap(),
         ])
         .unwrap()
@@ -435,7 +487,7 @@ fn parses_transition_properties_and_preserves_comma_lists() {
             CssKnownProperty::TransitionTimingFunction
         ),
         TransitionTimingFunction,
-        timing_functions
+        value
     );
     assert!(matches!(
         easings.values(),
@@ -451,7 +503,7 @@ fn parses_transition_properties_and_preserves_comma_lists() {
             CssKnownProperty::Transition
         ),
         Transition,
-        transitions
+        value
     );
     assert_eq!(transitions.values().len(), 2);
 }
@@ -465,7 +517,7 @@ fn parses_animation_properties_and_preserves_comma_lists() {
                 CssKnownProperty::AnimationName
             ),
             AnimationName,
-            names
+            value
         ),
         CssAnimationNameList::try_new(vec![
             CssAnimationName::Custom(
@@ -482,7 +534,7 @@ fn parses_animation_properties_and_preserves_comma_lists() {
                 CssKnownProperty::AnimationIterationCount
             ),
             AnimationIterationCount,
-            iteration_counts
+            value
         ),
         CssAnimationIterationCountList::try_new(vec![
             CssAnimationIterationCount::Number(nonnegative_number("2")),
@@ -497,7 +549,7 @@ fn parses_animation_properties_and_preserves_comma_lists() {
                 CssKnownProperty::AnimationPlayState
             ),
             AnimationPlayState,
-            play_states
+            value
         ),
         CssAnimationPlayStateList::try_new(vec![
             CssAnimationPlayState::Running,
@@ -514,7 +566,7 @@ fn parses_animation_properties_and_preserves_comma_lists() {
             CssKnownProperty::Animation
         ),
         Animation,
-        animations
+        value
     );
     let [first, second] = animations.values() else {
         panic!("two authored animations");
@@ -525,9 +577,9 @@ fn parses_animation_properties_and_preserves_comma_lists() {
         )
     };
     let duration = |number: &str, unit| {
-        CssDuration::try_new(CssTimeValue::from_literal(
-            CssTimeLiteral::try_new(number, unit).unwrap(),
-        ))
+        CssNumeric::<CssTime, CssNonNegative>::try_from_literal(
+            CssNumericLiteral::<CssTime>::try_new(number, unit).unwrap(),
+        )
         .unwrap()
     };
     assert_eq!(first.name(), Some(&name("fade")));
@@ -536,11 +588,11 @@ fn parses_animation_properties_and_preserves_comma_lists() {
         first.timing_function(),
         Some(CssEasing::Keyword(CssEasingKeyword::EaseIn))
     ));
-    // Compared structurally, without the parsed origin.
+    // Compared by value, without the parsed origin.
     assert_eq!(
         first
             .delay()
-            .map(|delay| CssDuration::try_new(delay.clone()).unwrap()),
+            .map(|delay| checked_range::<CssTime, CssNonNegative>(delay).unwrap()),
         Some(duration("200", CssTimeUnit::Milliseconds))
     );
     assert_eq!(
@@ -626,7 +678,11 @@ fn background_effect_and_animation_constructors_reject_invalid_states() {
         .is_none()
     );
     for css in ["translate()", "translate3d(1px, 2px, 3px, 4px)"] {
-        assert!(!parse_style_attribute(&format!("transform: {css}")).is_clean());
+        assert!(
+            !CssParser::default()
+                .parse_block_contents(format!("transform: {css}"))
+                .is_clean()
+        );
     }
     assert_eq!(CssScaleValues::try_new(Vec::new()), None);
     assert_eq!(
@@ -647,13 +703,13 @@ fn background_effect_and_animation_constructors_reject_invalid_states() {
         None
     );
     assert!(
-        CssDuration::try_new(CssTimeValue::from_literal(
-            CssTimeLiteral::try_new("-1", CssTimeUnit::Seconds).unwrap()
-        ))
+        CssNumeric::<CssTime, CssNonNegative>::try_from_literal(
+            CssNumericLiteral::<CssTime>::try_new("-1", CssTimeUnit::Seconds).unwrap()
+        )
         .is_err()
     );
     assert!(
-        CssSpecifiedNonNegativeNumber::try_from_component(
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
             CssComponentValue::try_number("-1").unwrap()
         )
         .is_err()
@@ -663,8 +719,9 @@ fn background_effect_and_animation_constructors_reject_invalid_states() {
 
 #[test]
 fn background_effect_and_animation_property_families_accept_supported_values() {
-    let sheet = parse_sheet(
-        ".panel {
+    let sheet = CssParser::default()
+        .parse_sheet(
+            ".panel {
             background-image: none;
             background-position: center;
             background-size: contain;
@@ -707,8 +764,8 @@ fn background_effect_and_animation_property_families_accept_supported_values() {
             animation-play-state: paused;
             animation: fade 1s ease-in-out infinite alternate both running;
         }",
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
     let declarations = style_rule(&sheet.rules()[0]).declarations();
 
     for property in [
@@ -822,7 +879,9 @@ fn preserves_valid_position_keyword_forms_after_duplicate_axis_rejection() {
         ".panel { transform-origin: right bottom; }",
         ".panel { mask: url(mask.png) left top / contain no-repeat; }",
     ] {
-        parse_sheet(input).unwrap_or_else(|error| panic!("{input} should parse: {error}"));
+        CssParser::default()
+            .parse_sheet(input)
+            .unwrap_or_else(|error| panic!("{input} should parse: {error}"));
     }
 }
 

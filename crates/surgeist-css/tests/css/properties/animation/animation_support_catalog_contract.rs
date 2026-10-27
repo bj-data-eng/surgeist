@@ -3,13 +3,23 @@
 //! Catalog completeness concerns authored grammar, without contextual animation
 //! execution.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::conformance::{CssFeatureKind, CssSupportStatus, feature_metadata};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::values::animation::{CssAnimationFillMode, CssAnimationName};
 
 fn complete(property: CssKnownProperty, value: &str, expected_entries: usize) {
     let css = format!("{}:{value}!important", property.canonical_name());
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    assert!(validate_style_attribute(&css).is_ok(), "{css}");
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .is_ok(),
+        "{css}"
+    );
     let [declaration] = report.syntax().as_slice() else {
         panic!("one retained ordinary declaration")
     };
@@ -18,22 +28,16 @@ fn complete(property: CssKnownProperty, value: &str, expected_entries: usize) {
     assert_eq!(known.property(), property);
     assert_eq!(known.grammar(), property.grammar());
     let entries = match known.property_value().unwrap() {
-        CssKnownPropertyValueRef::AnimationName(value) => value.names().names().len(),
-        CssKnownPropertyValueRef::AnimationDuration(value) => value.durations().values().len(),
-        CssKnownPropertyValueRef::AnimationDelay(value) => value.delays().values().len(),
-        CssKnownPropertyValueRef::AnimationTimingFunction(value) => {
-            value.timing_functions().values().len()
-        }
-        CssKnownPropertyValueRef::AnimationIterationCount(value) => {
-            value.iteration_counts().values().len()
-        }
-        CssKnownPropertyValueRef::AnimationDirection(value) => {
-            value.directions().directions().len()
-        }
-        CssKnownPropertyValueRef::AnimationFillMode(value) => value.fill_modes().modes().len(),
-        CssKnownPropertyValueRef::AnimationPlayState(value) => value.play_states().states().len(),
+        CssKnownPropertyValueRef::AnimationName(value) => value.value().names().len(),
+        CssKnownPropertyValueRef::AnimationDuration(value) => value.value().values().len(),
+        CssKnownPropertyValueRef::AnimationDelay(value) => value.value().values().len(),
+        CssKnownPropertyValueRef::AnimationTimingFunction(value) => value.value().values().len(),
+        CssKnownPropertyValueRef::AnimationIterationCount(value) => value.value().values().len(),
+        CssKnownPropertyValueRef::AnimationDirection(value) => value.value().directions().len(),
+        CssKnownPropertyValueRef::AnimationFillMode(value) => value.value().modes().len(),
+        CssKnownPropertyValueRef::AnimationPlayState(value) => value.value().states().len(),
         CssKnownPropertyValueRef::Animation(value) => {
-            let animations = value.animations().values();
+            let animations = value.value().values();
             assert_eq!(animations[1].fill_mode(), Some(CssAnimationFillMode::None));
             let Some(CssAnimationName::Custom(name)) = animations[1].name() else {
                 panic!("keyword priority leaves backwards as the second item's name")

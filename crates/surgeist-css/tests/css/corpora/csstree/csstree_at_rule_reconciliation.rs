@@ -4,7 +4,8 @@
 //! they are not coordinate requirements imposed by CSS publications.
 
 use serde_json::{Value, json};
-use surgeist_css::parse_rule;
+use surgeist_css::CssParser;
+use surgeist_css::rule::CssRule;
 
 use crate::css::support::csstree::adapters::EntryPoint;
 use crate::css::support::csstree::reconciliation::{
@@ -43,7 +44,11 @@ fn predicted_diagnostic(recorded: &Value) -> Value {
 
 /// Public single-rule presence for one row.
 fn rule_presence_reconciles(row: &Value) -> Result<(), String> {
-    let report = parse_rule(text(row, "input"), &namespace_context());
+    let report = CssRule::parse(
+        &CssParser::default(),
+        text(row, "input"),
+        &namespace_context(),
+    );
     if report.syntax().is_some() == row["present"].as_bool().unwrap() {
         Ok(())
     } else {
@@ -119,11 +124,15 @@ fn unresolved_character_variant_original_retains_font_feature_values_outer_rule(
     let reconciliation = reconciliation();
     let row = &reconciliation.data()["unresolved"];
     assert_eq!(row["present"], true);
-    let report = parse_rule(text(row, "input"), &namespace_context());
+    let report = CssRule::parse(
+        &CssParser::default(),
+        text(row, "input"),
+        &namespace_context(),
+    );
     assert!(
         matches!(
             report.syntax(),
-            Some(surgeist_css::CssRule::FontFeatureValues(_))
+            Some(surgeist_css::rule::CssRule::FontFeatureValues(_))
         ),
         "{} must retain its independently valid outer family",
         text(row, "id"),

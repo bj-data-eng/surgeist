@@ -4,8 +4,42 @@
 //! Effects 1 and Shapes property contracts in `specs/catalog.json`.
 //! Symbolic math is admitted by its root domain, before contextual range checks.
 
+use crate::css::support::position_view::CartesianPosition as _;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::numeric::{CssLength, CssLengthPercentage, CssNonNegative, CssNumeric};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::background::CssBackgroundSize;
+use surgeist_css::values::border::{
+    CssBorderImageOutset, CssBorderImageOutsetComponent, CssBorderImageWidth,
+    CssBorderImageWidthComponent,
+};
+use surgeist_css::values::box_model::{CssFlowTolerance, CssFlowToleranceRef};
+use surgeist_css::values::common::{CssAutoOr, CssSidePair};
+use surgeist_css::values::effects::{
+    CssBoxShadow, CssClip, CssClipPath, CssClipPathShape, CssClipRect, CssDropShadow, CssFilter,
+    CssFilterBlur, CssFilterFunction, CssShadow,
+};
+use surgeist_css::values::image::{
+    CssColorStopListItem, CssGradient, CssGradientColorStop, CssImageValue, CssRadialEllipseSize,
+    CssRadialSize,
+};
+use surgeist_css::values::position::{
+    CssHorizontalPosition, CssPhysicalPosition, CssPosition, CssVerticalPosition,
+};
+use surgeist_css::values::shape::{
+    CssBasicShape, CssCircleRadius, CssCircleShape, CssInsetShapeOffsets, CssPolygonPoint,
+};
+use surgeist_css::values::text::{CssTextDecorationThickness, CssTextIndent, CssVerticalAlign};
+use surgeist_css::values::transform::{
+    CssTransform, CssTransformFunction, CssTransformOrigin, CssTransformPerspective, CssTranslate,
+    CssTranslateValues,
+};
 
 macro_rules! value {
     ($source:expr, $variant:ident, $accessor:ident) => {{
@@ -50,22 +84,27 @@ fn parsed_origin(origin: &CssValueOrigin, source: &str, token: &str) {
     );
 }
 
-fn length(token: &str) -> CssSpecifiedLength {
-    CssSpecifiedLength::try_from_component(CssComponentValue::try_token(token).unwrap()).unwrap()
-}
-
-fn nonnegative_length(token: &str) -> CssSpecifiedNonNegativeLength {
-    CssSpecifiedNonNegativeLength::try_from_component(CssComponentValue::try_token(token).unwrap())
+fn length(token: &str) -> CssNumeric<CssLength> {
+    CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_token(token).unwrap())
         .unwrap()
 }
 
-fn length_percentage(token: &str) -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_component(CssComponentValue::try_token(token).unwrap())
-        .unwrap()
+fn nonnegative_length(token: &str) -> CssNumeric<CssLength, CssNonNegative> {
+    CssNumeric::<CssLength, CssNonNegative>::try_from_component(
+        CssComponentValue::try_token(token).unwrap(),
+    )
+    .unwrap()
 }
 
-fn nonnegative_length_percentage(token: &str) -> CssSpecifiedNonNegativeLengthPercentage {
-    CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+fn length_percentage(token: &str) -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_component(
+        CssComponentValue::try_token(token).unwrap(),
+    )
+    .unwrap()
+}
+
+fn nonnegative_length_percentage(token: &str) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
+    CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
         CssComponentValue::try_token(token).unwrap(),
     )
     .unwrap()
@@ -74,28 +113,44 @@ fn nonnegative_length_percentage(token: &str) -> CssSpecifiedNonNegativeLengthPe
 #[test]
 fn signed_pure_length_properties_retain_extreme_literals_and_original_spans() {
     let source = "outline-offset:-1e999px";
-    let offset: CssSpecifiedLength = value!(source, OutlineOffset, offset);
-    literal(offset.literal_component().unwrap(), "-1e999", Some("px"));
+    let offset: CssNumeric<CssLength> = value!(source, OutlineOffset, value);
+    literal(
+        offset.literal().map(|literal| literal.component()).unwrap(),
+        "-1e999",
+        Some("px"),
+    );
     parsed_origin(offset.origin(), source, "-1e999px");
 
     let source = "clip:rect(-1e-999px, auto, 1e999em, -0.000e999px)";
-    let CssClip::Rect(rect) = value!(source, Clip, clip) else {
+    let CssClip::Rect(rect) = value!(source, Clip, value) else {
         panic!("expected checked rectangle");
     };
-    let CssClipEdge::Length(top) = rect.top() else {
+    let CssAutoOr::Value(top) = rect.top() else {
         panic!("signed top")
     };
-    literal(top.literal_component().unwrap(), "-1e-999", Some("px"));
+    literal(
+        top.literal().map(|literal| literal.component()).unwrap(),
+        "-1e-999",
+        Some("px"),
+    );
     parsed_origin(top.origin(), source, "-1e-999px");
-    assert_eq!(rect.right(), &CssClipEdge::Auto);
-    let CssClipEdge::Length(bottom) = rect.bottom() else {
+    assert_eq!(rect.right(), &CssAutoOr::Auto);
+    let CssAutoOr::Value(bottom) = rect.bottom() else {
         panic!("signed bottom")
     };
-    literal(bottom.literal_component().unwrap(), "1e999", Some("em"));
-    let CssClipEdge::Length(left) = rect.left() else {
+    literal(
+        bottom.literal().map(|literal| literal.component()).unwrap(),
+        "1e999",
+        Some("em"),
+    );
+    let CssAutoOr::Value(left) = rect.left() else {
         panic!("signed left")
     };
-    literal(left.literal_component().unwrap(), "-0.000e999", Some("px"));
+    literal(
+        left.literal().map(|literal| literal.component()).unwrap(),
+        "-0.000e999",
+        Some("px"),
+    );
 }
 
 #[test]
@@ -109,22 +164,40 @@ fn shadow_offsets_spread_and_blur_keep_distinct_checked_domains() {
     };
     assert!(shadow.inset());
     literal(
-        shadow.offset_x().literal_component().unwrap(),
+        shadow
+            .offset_x()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "-1e-999",
         Some("px"),
     );
     literal(
-        shadow.offset_y().literal_component().unwrap(),
+        shadow
+            .offset_y()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "1e999",
         Some("em"),
     );
     literal(
-        shadow.blur_radius().unwrap().literal_component().unwrap(),
+        shadow
+            .blur_radius()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "0",
         Some("px"),
     );
     literal(
-        shadow.spread_radius().unwrap().literal_component().unwrap(),
+        shadow
+            .spread_radius()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "-2",
         Some("px"),
     );
@@ -167,7 +240,11 @@ fn filter_blur_retains_authored_omission_and_effective_zero_pixels() {
     };
     assert!(default.authored_length().is_none());
     literal(
-        default.length().literal_component().unwrap(),
+        default
+            .length()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "0",
         Some("px"),
     );
@@ -176,7 +253,8 @@ fn filter_blur_retains_authored_omission_and_effective_zero_pixels() {
         explicit
             .authored_length()
             .unwrap()
-            .literal_component()
+            .literal()
+            .map(|literal| literal.component())
             .unwrap(),
         "-0",
         Some("px"),
@@ -186,7 +264,11 @@ fn filter_blur_retains_authored_omission_and_effective_zero_pixels() {
         CssValueOrigin::Parsed(_)
     ));
     literal(
-        shadow.offset_x().literal_component().unwrap(),
+        shadow
+            .offset_x()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "-1e-999",
         Some("px"),
     );
@@ -197,28 +279,40 @@ fn filter_blur_retains_authored_omission_and_effective_zero_pixels() {
 #[test]
 fn positions_and_background_sizes_use_their_signed_and_nonnegative_domains() {
     let source = "object-position:right -1e999px bottom -1e-999%";
-    let position = value!(source, ObjectPosition, position);
+    let position = value!(source, ObjectPosition, value);
     let CssHorizontalPosition::RightOffset(x) = position.horizontal() else {
         panic!("right offset")
     };
     let CssVerticalPosition::BottomOffset(y) = position.vertical() else {
         panic!("bottom offset")
     };
-    literal(x.literal_component().unwrap(), "-1e999", Some("px"));
-    literal(y.literal_component().unwrap(), "-1e-999", Some("%"));
+    literal(
+        x.literal().map(|literal| literal.component()).unwrap(),
+        "-1e999",
+        Some("px"),
+    );
+    literal(
+        y.literal().map(|literal| literal.component()).unwrap(),
+        "-1e-999",
+        Some("%"),
+    );
     parsed_origin(y.origin(), source, "-1e-999%");
 
-    let sizes = value!("background-size:1e999px auto", BackgroundSize, sizes);
+    let sizes = value!("background-size:1e999px auto", BackgroundSize, value);
     let [
         CssBackgroundSize::Explicit {
-            width: CssBackgroundSizeComponent::Length(width),
-            height: Some(CssBackgroundSizeComponent::Auto),
+            width: CssAutoOr::Value(width),
+            height: Some(CssAutoOr::Auto),
         },
     ] = sizes.sizes()
     else {
         panic!("ordered size pair")
     };
-    literal(width.literal_component().unwrap(), "1e999", Some("px"));
+    literal(
+        width.literal().map(|literal| literal.component()).unwrap(),
+        "1e999",
+        Some("px"),
+    );
 }
 
 #[test]
@@ -226,7 +320,7 @@ fn gradient_stops_and_radial_sizes_retain_exact_kind_and_order() {
     let images = value!(
         "background-image:linear-gradient(red -1e-999px, blue 1e999%), radial-gradient(ellipse 1e999px 25% at center, red, blue)",
         BackgroundImage,
-        images
+        value
     );
     let [
         CssImageValue::Gradient(CssGradient::Linear(linear)),
@@ -245,12 +339,20 @@ fn gradient_stops_and_radial_sizes_retain_exact_kind_and_order() {
     assert_eq!(red.color().named().unwrap().name(), "red");
     assert_eq!(blue.color().named().unwrap().name(), "blue");
     literal(
-        red.position().unwrap().literal_component().unwrap(),
+        red.position()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "-1e-999",
         Some("px"),
     );
     literal(
-        blue.position().unwrap().literal_component().unwrap(),
+        blue.position()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "1e999",
         Some("%"),
     );
@@ -258,12 +360,18 @@ fn gradient_stops_and_radial_sizes_retain_exact_kind_and_order() {
         panic!("ellipse radii")
     };
     literal(
-        size.horizontal().literal_component().unwrap(),
+        size.horizontal()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "1e999",
         Some("px"),
     );
     literal(
-        size.vertical().literal_component().unwrap(),
+        size.vertical()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "25",
         Some("%"),
     );
@@ -272,9 +380,14 @@ fn gradient_stops_and_radial_sizes_retain_exact_kind_and_order() {
 #[test]
 fn transform_z_is_pure_length_and_translate_arity_is_retained() {
     let source = "transform-origin:25% top -1e999px";
-    let origin = value!(source, TransformOrigin, origin);
+    let origin = value!(source, TransformOrigin, value);
     literal(
-        origin.z().unwrap().literal_component().unwrap(),
+        origin
+            .z()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "-1e999",
         Some("px"),
     );
@@ -283,19 +396,36 @@ fn transform_z_is_pure_length_and_translate_arity_is_retained() {
     let CssTranslate::Values(one) = value!("translate:25%", Translate, value) else {
         panic!("translate value")
     };
-    literal(one.x().literal_component().unwrap(), "25", Some("%"));
+    literal(
+        one.x()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
+        "25",
+        Some("%"),
+    );
     assert!(one.y().is_none());
     assert!(one.z().is_none());
     let CssTranslate::Values(three) = value!("translate:25% -1px 1e999px", Translate, value) else {
         panic!("translate triple")
     };
     literal(
-        three.y().unwrap().literal_component().unwrap(),
+        three
+            .y()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "-1",
         Some("px"),
     );
     literal(
-        three.z().unwrap().literal_component().unwrap(),
+        three
+            .z()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "1e999",
         Some("px"),
     );
@@ -315,7 +445,10 @@ fn basic_shape_round_retains_radii_arity_vertical_omission_and_assignment() {
     };
     assert_eq!(inset.offsets().values().len(), 3);
     literal(
-        inset.offsets().values()[0].literal_component().unwrap(),
+        inset.offsets().values()[0]
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "-1e-999",
         Some("px"),
     );
@@ -329,24 +462,35 @@ fn basic_shape_round_retains_radii_arity_vertical_omission_and_assignment() {
         round.bottom_right(),
         round.bottom_left(),
     ] {
-        assert!(corner.authored_vertical().is_none());
-        assert_eq!(corner.horizontal().origin(), corner.vertical().origin());
+        assert!(corner.authored_second().is_none());
+        assert_eq!(corner.first().origin(), corner.second().origin());
     }
     literal(
-        round.top_left().horizontal().literal_component().unwrap(),
+        round
+            .top_left()
+            .first()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "1",
         Some("px"),
     );
     literal(
-        round.top_right().horizontal().literal_component().unwrap(),
+        round
+            .top_right()
+            .first()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "2",
         Some("%"),
     );
     literal(
         round
             .bottom_right()
-            .horizontal()
-            .literal_component()
+            .first()
+            .literal()
+            .map(|literal| literal.component())
             .unwrap(),
         "3",
         Some("px"),
@@ -354,8 +498,9 @@ fn basic_shape_round_retains_radii_arity_vertical_omission_and_assignment() {
     literal(
         round
             .bottom_left()
-            .horizontal()
-            .literal_component()
+            .first()
+            .literal()
+            .map(|literal| literal.component())
             .unwrap(),
         "2",
         Some("%"),
@@ -377,9 +522,10 @@ fn basic_shape_round_retains_radii_arity_vertical_omission_and_assignment() {
     literal(
         round
             .bottom_left()
-            .authored_vertical()
+            .authored_second()
             .unwrap()
-            .literal_component()
+            .literal()
+            .map(|literal| literal.component())
             .unwrap(),
         "4",
         Some("%"),
@@ -406,7 +552,7 @@ fn nonnegative_consumers_reject_tiny_negative_literals_and_pure_context_percenta
         "clip:rect(0, 1%, 0, 0)",
         "filter:blur(1e-999)",
     ] {
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert!(!report.is_clean(), "invalid domain accepted: {source}");
         assert!(
             report.syntax().is_empty(),
@@ -423,28 +569,39 @@ fn nonnegative_consumers_reject_tiny_negative_literals_and_pure_context_percenta
 
 #[test]
 fn checked_programmatic_owners_preserve_origins_and_composite_resource_limits() {
-    let spacing = CssBorderSpacing::new(nonnegative_length("1e999px"), nonnegative_length("2px"));
+    let spacing = CssSidePair::new(
+        nonnegative_length("1e999px"),
+        Some(nonnegative_length("2px")),
+    );
     literal(
-        spacing.horizontal().literal_component().unwrap(),
+        spacing
+            .first()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "1e999",
         Some("px"),
     );
-    assert_eq!(spacing.horizontal().origin(), &CssValueOrigin::Programmatic);
+    assert_eq!(spacing.first().origin(), &CssValueOrigin::Programmatic);
     assert_eq!(
         spacing
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 3, 1008))
+            .serialize_specified(CssSerializationLimits::new(3, 3, 1008))
             .unwrap(),
         format!("1{}px 2px", "0".repeat(999))
     );
     for limits in [
-        CssSpecifiedValueSerializationLimits::new(2, 3, 1008),
-        CssSpecifiedValueSerializationLimits::new(3, 2, 1008),
-        CssSpecifiedValueSerializationLimits::new(3, 3, 1005),
+        CssSerializationLimits::new(2, 3, 1008),
+        CssSerializationLimits::new(3, 2, 1008),
+        CssSerializationLimits::new(3, 3, 1005),
     ] {
-        assert!(spacing.serialize_specified_with_limits(limits).is_err());
+        assert!(spacing.serialize_specified(limits).is_err());
     }
     literal(
-        spacing.horizontal().literal_component().unwrap(),
+        spacing
+            .first()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "1e999",
         Some("px"),
     );
@@ -454,12 +611,12 @@ fn checked_programmatic_owners_preserve_origins_and_composite_resource_limits() 
     )
     .unwrap();
     let projected = position
-        .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(5, 5, 1020))
+        .serialize_specified(CssSerializationLimits::new(5, 5, 1020))
         .unwrap();
     assert!(projected.ends_with("px 25%"));
     assert!(
         position
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(4, 5, 1020))
+            .serialize_specified(CssSerializationLimits::new(4, 5, 1020))
             .is_err()
     );
 }
@@ -471,7 +628,11 @@ fn typography_and_flow_keep_signed_percentages_and_keyword_branches() {
     assert!(indent.hanging());
     assert!(indent.each_line());
     literal(
-        indent.length().literal_component().unwrap(),
+        indent
+            .length()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "-1e-999",
         Some("%"),
     );
@@ -485,7 +646,11 @@ fn typography_and_flow_keep_signed_percentages_and_keyword_branches() {
     else {
         panic!("signed percentage alignment")
     };
-    literal(align.literal_component().unwrap(), "-1e999", Some("%"));
+    literal(
+        align.literal().map(|literal| literal.component()).unwrap(),
+        "-1e999",
+        Some("%"),
+    );
     assert_eq!(
         value!("vertical-align:baseline", VerticalAlign, value),
         CssVerticalAlign::Baseline
@@ -498,7 +663,10 @@ fn typography_and_flow_keep_signed_percentages_and_keyword_branches() {
         panic!("nonnegative lexical zero thickness")
     };
     literal(
-        thickness.literal_component().unwrap(),
+        thickness
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "-0.000e999",
         Some("%"),
     );
@@ -516,7 +684,14 @@ fn typography_and_flow_keep_signed_percentages_and_keyword_branches() {
     let CssFlowToleranceRef::LengthPercentage(tolerance) = flow.as_ref() else {
         panic!("signed flow length")
     };
-    literal(tolerance.literal_component().unwrap(), "-1e999", Some("px"));
+    literal(
+        tolerance
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
+        "-1e999",
+        Some("px"),
+    );
     parsed_origin(tolerance.origin(), source, "-1e999px");
     assert_eq!(
         value!("flow-tolerance:infinite", FlowTolerance, value).as_ref(),
@@ -527,7 +702,7 @@ fn typography_and_flow_keep_signed_percentages_and_keyword_branches() {
 #[test]
 fn border_image_width_and_outset_keep_distinct_domains_and_edge_assignment() {
     let source = "border-image-width:1e999px 25% auto";
-    let widths = value!(source, BorderImageWidth, widths);
+    let widths = value!(source, BorderImageWidth, value);
     let [
         CssBorderImageWidthComponent::LengthPercentage(top),
         CssBorderImageWidthComponent::LengthPercentage(right),
@@ -537,16 +712,28 @@ fn border_image_width_and_outset_keep_distinct_domains_and_edge_assignment() {
     else {
         panic!("three-value edge assignment")
     };
-    literal(top.literal_component().unwrap(), "1e999", Some("px"));
-    literal(right.literal_component().unwrap(), "25", Some("%"));
-    literal(left.literal_component().unwrap(), "25", Some("%"));
+    literal(
+        top.literal().map(|literal| literal.component()).unwrap(),
+        "1e999",
+        Some("px"),
+    );
+    literal(
+        right.literal().map(|literal| literal.component()).unwrap(),
+        "25",
+        Some("%"),
+    );
+    literal(
+        left.literal().map(|literal| literal.component()).unwrap(),
+        "25",
+        Some("%"),
+    );
     assert_eq!(right.origin(), left.origin());
     parsed_origin(top.origin(), source, "1e999px");
 
     let outsets = value!(
         "border-image-outset:-0.000e999px 2px",
         BorderImageOutset,
-        outsets
+        value
     );
     let [
         CssBorderImageOutsetComponent::Length(top),
@@ -557,33 +744,45 @@ fn border_image_width_and_outset_keep_distinct_domains_and_edge_assignment() {
     else {
         panic!("two-value edge assignment")
     };
-    literal(top.literal_component().unwrap(), "-0.000e999", Some("px"));
     literal(
-        bottom.literal_component().unwrap(),
+        top.literal().map(|literal| literal.component()).unwrap(),
         "-0.000e999",
         Some("px"),
     );
-    literal(right.literal_component().unwrap(), "2", Some("px"));
-    literal(left.literal_component().unwrap(), "2", Some("px"));
+    literal(
+        bottom.literal().map(|literal| literal.component()).unwrap(),
+        "-0.000e999",
+        Some("px"),
+    );
+    literal(
+        right.literal().map(|literal| literal.component()).unwrap(),
+        "2",
+        Some("px"),
+    );
+    literal(
+        left.literal().map(|literal| literal.component()).unwrap(),
+        "2",
+        Some("px"),
+    );
     assert_eq!(top.origin(), bottom.origin());
     assert_eq!(right.origin(), left.origin());
 }
 
 #[test]
-fn aggregate_equality_ignores_only_origins_and_retains_exact_structure() {
-    let parsed_spacing = value!("border-spacing:0", BorderSpacing, spacing);
-    let programmatic_spacing = CssBorderSpacing::new(
-        CssSpecifiedNonNegativeLength::zero(),
-        CssSpecifiedNonNegativeLength::zero(),
+fn aggregate_equality_ignores_origins_and_spelling_and_retains_structure() {
+    let parsed_spacing = value!("border-spacing:0", BorderSpacing, value);
+    let programmatic_spacing = CssSidePair::new(
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component(
+            CssComponentValue::try_number("0").unwrap(),
+        )
+        .unwrap(),
+        None,
     );
     assert_eq!(parsed_spacing, programmatic_spacing);
-    assert_ne!(
-        parsed_spacing.horizontal(),
-        programmatic_spacing.horizontal()
-    );
-    assert_ne!(
+    assert_eq!(parsed_spacing.first(), programmatic_spacing.first());
+    assert_eq!(
         parsed_spacing,
-        CssBorderSpacing::new(nonnegative_length("0px"), nonnegative_length("0px"))
+        CssSidePair::new(nonnegative_length("0px"), None)
     );
     let parsed = value!("flow-tolerance:25%", FlowTolerance, value);
     let programmatic = CssFlowTolerance::length_percentage(length_percentage("25%"));
@@ -594,10 +793,10 @@ fn aggregate_equality_ignores_only_origins_and_retains_exact_structure() {
     let CssFlowToleranceRef::LengthPercentage(programmatic_scalar) = programmatic.as_ref() else {
         panic!("percentage")
     };
-    assert_ne!(parsed_scalar, programmatic_scalar);
+    assert_eq!(parsed_scalar, programmatic_scalar);
     assert!(matches!(parsed_scalar.origin(), CssValueOrigin::Parsed(_)));
     assert_eq!(programmatic_scalar.origin(), &CssValueOrigin::Programmatic);
-    assert_ne!(
+    assert_eq!(
         parsed,
         CssFlowTolerance::length_percentage(length_percentage("25.0%"))
     );
@@ -614,20 +813,24 @@ fn aggregate_equality_ignores_only_origins_and_retains_exact_structure() {
         value!("flow-tolerance:calc(2% + 1px)", FlowTolerance, value)
     );
 
-    let position = value!("object-position:1px top", ObjectPosition, position);
-    let constructed = CssPhysicalPosition::try_new(
-        CssHorizontalPosition::Offset(length_percentage("1px")),
-        CssVerticalPosition::Top,
-    )
-    .unwrap();
-    assert_eq!(position, constructed);
-    assert_ne!(
-        position,
+    let position = value!("object-position:1px top", ObjectPosition, value);
+    let constructed = CssPosition::from(
         CssPhysicalPosition::try_new(
-            CssHorizontalPosition::Offset(length_percentage("1.0px")),
-            CssVerticalPosition::Top
+            CssHorizontalPosition::Offset(length_percentage("1px")),
+            CssVerticalPosition::Top,
         )
-        .unwrap()
+        .unwrap(),
+    );
+    assert_eq!(position, constructed);
+    assert_eq!(
+        position,
+        CssPosition::from(
+            CssPhysicalPosition::try_new(
+                CssHorizontalPosition::Offset(length_percentage("1.0px")),
+                CssVerticalPosition::Top
+            )
+            .unwrap()
+        )
     );
 
     let CssBoxShadow::Shadows(shadows) = value!("box-shadow:1px 2px", BoxShadow, value) else {
@@ -656,22 +859,22 @@ fn aggregate_equality_ignores_only_origins_and_retains_exact_structure() {
 
 #[test]
 fn clip_and_transform_aggregate_equality_keeps_axes_and_omission() {
-    let clip = value!("clip:rect(1px, auto, 2px, 0)", Clip, clip);
+    let clip = value!("clip:rect(1px, auto, 2px, 0)", Clip, value);
     let expected = CssClip::Rect(CssClipRect::new(
-        CssClipEdge::Length(length("1px")),
-        CssClipEdge::Auto,
-        CssClipEdge::Length(length("2px")),
-        CssClipEdge::Length(length("0")),
+        CssAutoOr::Value(length("1px")),
+        CssAutoOr::Auto,
+        CssAutoOr::Value(length("2px")),
+        CssAutoOr::Value(length("0")),
     ));
     assert_eq!(clip, expected);
     let CssClip::Rect(rect) = &clip else {
         panic!("rectangle")
     };
-    let CssClipEdge::Length(top) = rect.top() else {
+    let CssAutoOr::Value(top) = rect.top() else {
         panic!("top")
     };
     assert!(matches!(top.origin(), CssValueOrigin::Parsed(_)));
-    assert_ne!(rect.top(), &CssClipEdge::Length(length("1.0px")));
+    assert_eq!(rect.top(), &CssAutoOr::Value(length("1.0px")));
 
     let planar = || {
         CssPhysicalPosition::try_new(
@@ -680,7 +883,7 @@ fn clip_and_transform_aggregate_equality_keeps_axes_and_omission() {
         )
         .unwrap()
     };
-    let origin = value!("transform-origin:25% top 1px", TransformOrigin, origin);
+    let origin = value!("transform-origin:25% top 1px", TransformOrigin, value);
     assert_eq!(
         origin,
         CssTransformOrigin::try_new(planar(), Some(length("1px"))).unwrap()
@@ -826,7 +1029,7 @@ fn image_and_border_image_aggregate_equality_retains_exact_branches() {
     let images = value!(
         "background-image:linear-gradient(red 1px, blue 90%), radial-gradient(circle 4px, red, blue)",
         BackgroundImage,
-        images
+        value
     );
     let [
         CssImageValue::Gradient(CssGradient::Linear(linear)),
@@ -862,7 +1065,7 @@ fn image_and_border_image_aggregate_equality_retains_exact_branches() {
         CssValueOrigin::Parsed(_)
     ));
 
-    let widths = value!("border-image-width:3% auto", BorderImageWidth, widths);
+    let widths = value!("border-image-width:3% auto", BorderImageWidth, value);
     assert_eq!(
         widths,
         CssBorderImageWidth::try_new(vec![
@@ -871,7 +1074,7 @@ fn image_and_border_image_aggregate_equality_retains_exact_branches() {
         ])
         .unwrap()
     );
-    assert_ne!(
+    assert_eq!(
         widths,
         CssBorderImageWidth::try_new(vec![
             CssBorderImageWidthComponent::LengthPercentage(nonnegative_length_percentage("3.0%")),
@@ -879,7 +1082,7 @@ fn image_and_border_image_aggregate_equality_retains_exact_branches() {
         ])
         .unwrap()
     );
-    let outsets = value!("border-image-outset:4px", BorderImageOutset, outsets);
+    let outsets = value!("border-image-outset:4px", BorderImageOutset, value);
     assert_eq!(
         outsets,
         CssBorderImageOutset::try_new(vec![CssBorderImageOutsetComponent::Length(
@@ -894,14 +1097,18 @@ fn gradient_serialization_omits_only_exact_zero_hundred_and_center_values() {
     let images = value!(
         "background-image:linear-gradient(red 1e-999px, blue 100.000001%), radial-gradient(at 50.000001% 50%, red, blue)",
         BackgroundImage,
-        images
+        value
     );
     assert_eq!(
-        images.images()[0].serialize_specified().unwrap(),
+        images.images()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "linear-gradient(red 0px, blue 100.000001%)"
     );
     assert_eq!(
-        images.images()[1].serialize_specified().unwrap(),
+        images.images()[1]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "radial-gradient(at 50.000001% 50%, red, blue)"
     );
     let CssImageValue::Gradient(CssGradient::Linear(linear)) = &images.images()[0] else {
@@ -911,21 +1118,29 @@ fn gradient_serialization_omits_only_exact_zero_hundred_and_center_values() {
         panic!("first stop")
     };
     literal(
-        red.position().unwrap().literal_component().unwrap(),
+        red.position()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "1e-999",
         Some("px"),
     );
     let defaults = value!(
         "background-image:linear-gradient(red -0px, blue 100%), radial-gradient(at 50% 50%, red, blue)",
         BackgroundImage,
-        images
+        value
     );
     assert_eq!(
-        defaults.images()[0].serialize_specified().unwrap(),
+        defaults.images()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "linear-gradient(red, blue)"
     );
     assert_eq!(
-        defaults.images()[1].serialize_specified().unwrap(),
+        defaults.images()[1]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "radial-gradient(red, blue)"
     );
 }

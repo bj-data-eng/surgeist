@@ -10,11 +10,11 @@
 use stats_alloc::{INSTRUMENTED_SYSTEM, Region, Stats, StatsAlloc};
 use std::alloc::System;
 use std::hint::black_box;
-use surgeist_css::{
-    CssComponentValues, CssGlobalKeyword, CssImportance, CssKnownProperty, CssPropertyNameRef,
-    CssPropertyValueErrorKind, CssSerializedOrigin, CssTokenKind, CssValueOrigin, ErrorKind,
-    parse_component_values, parse_property_value,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssTokenKind};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
 
 #[global_allocator]
 static GLOBAL: &StatsAlloc<System> = &INSTRUMENTED_SYSTEM;
@@ -49,7 +49,8 @@ impl Outcome {
 
 fn fixture(comment_bytes: usize, outcome: Outcome) -> CssComponentValues {
     let source = format!("/*{}*/{}", "x".repeat(comment_bytes), outcome.tail());
-    let values = parse_component_values(&source).expect("complete comment and root token");
+    let values = CssComponentValues::parse(&CssParser::default(), &source)
+        .expect("complete comment and root token");
     assert_eq!(values.items().len(), 2);
     values
 }
@@ -59,8 +60,9 @@ fn measure(values: &CssComponentValues, outcome: Outcome) -> Stats {
     let input = values.clone();
     let expected_token_origin = input.items()[1].origin().clone();
     let region = Region::new(GLOBAL);
-    let result = black_box(parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Width),
+    let result = black_box(CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
         black_box(input),
         CssImportance::Normal,
     ));
@@ -87,14 +89,15 @@ fn measure(values: &CssComponentValues, outcome: Outcome) -> Stats {
         }
         Outcome::RootSemicolon => {
             let error = result.expect_err("a root semicolon is not declaration-value data");
-            let CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedToken(detail)) =
-                error.kind()
-            else {
-                panic!("expected a root-token grammar rejection: {error:?}");
-            };
-            assert_eq!(detail.encountered().kind(), CssTokenKind::Semicolon);
-            assert_eq!(detail.encountered().authored(), ";");
-            let CssSerializedOrigin::Token(actual_origin) = error.origin() else {
+            assert_eq!(
+                error.code(),
+                Some(CssErrorCode::UnexpectedToken),
+                "expected a root-token grammar rejection: {error:?}"
+            );
+            assert_eq!(error.encountered().unwrap().kind(), CssTokenKind::Semicolon);
+            assert_eq!(error.encountered().unwrap().authored(), ";");
+            let origin = error.origin();
+            let CssSerializedOrigin::Token(actual_origin) = &origin else {
                 panic!("expected the original semicolon token: {error:?}");
             };
             assert_eq!(actual_origin, &expected_token_origin);
@@ -133,42 +136,45 @@ fn requested_bytes(stats: Stats) -> usize {
 // retains a small closing-boundary error, never an authored output string.
 fn missing_var_fixture(comment_bytes: usize) -> CssComponentValues {
     let source = format!("var(/*{}*/)", "x".repeat(comment_bytes));
-    let values = parse_component_values(&source).expect("complete var function and comment");
+    let values = CssComponentValues::parse(&CssParser::default(), &source)
+        .expect("complete var function and comment");
     assert_eq!(values.items().len(), 1);
-    let surgeist_css::CssComponentValueRef::Function(function) = values.items()[0].view() else {
+    let surgeist_css::component::CssComponentValueRef::Function(function) =
+        values.items()[0].view()
+    else {
         panic!("original var function");
     };
     assert_eq!(function.values().items().len(), 1);
     assert!(matches!(
         function.values().items()[0].view(),
-        surgeist_css::CssComponentValueRef::Comment(_)
+        surgeist_css::component::CssComponentValueRef::Comment(_)
     ));
     values
 }
 
 fn measure_missing_var(
     values: &CssComponentValues,
-    name: &surgeist_css::CssCustomPropertyName,
+    name: &surgeist_css::declaration::CssCustomPropertyName,
 ) -> Stats {
     let input = values.clone();
-    let surgeist_css::CssComponentValueRef::Function(function) = input.items()[0].view() else {
+    let surgeist_css::component::CssComponentValueRef::Function(function) = input.items()[0].view()
+    else {
         panic!("original var function");
     };
     let expected_closing = function.closing_origin().clone();
     let region = Region::new(GLOBAL);
-    let result = black_box(parse_property_value(
-        CssPropertyNameRef::Custom(name),
+    let result = black_box(CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Custom(name)),
         black_box(input),
         CssImportance::Normal,
     ));
     let stats = region.change();
 
     let error = result.expect_err("a comment cannot supply var()'s required name");
-    assert!(matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-    ));
-    let CssSerializedOrigin::Token(actual_closing) = error.origin() else {
+    assert_eq!(error.code(), Some(CssErrorCode::UnexpectedEnd), "{error:?}");
+    let origin = error.origin();
+    let CssSerializedOrigin::Token(actual_closing) = &origin else {
         panic!("explicit closing delimiter retains its original token origin: {error:?}");
     };
     assert_eq!(actual_closing, &expected_closing);
@@ -185,7 +191,7 @@ fn measure_missing_var(
 }
 
 fn check_missing_var(failures: &mut Vec<String>) {
-    let name = surgeist_css::CssCustomPropertyName::try_new("--x").unwrap();
+    let name = surgeist_css::declaration::CssCustomPropertyName::try_new("--x").unwrap();
     let small = missing_var_fixture(SMALL_COMMENT_BYTES);
     let large = missing_var_fixture(LARGE_COMMENT_BYTES);
     let _ = measure_missing_var(&small, &name);
@@ -206,7 +212,8 @@ fn check_missing_var(failures: &mut Vec<String>) {
 
 fn measure_source_stripe(source: &str, flex: bool) -> Stats {
     let region = Region::new(GLOBAL);
-    let report = black_box(surgeist_css::parse_style_attribute(black_box(source)));
+    let report =
+        black_box(surgeist_css::CssParser::default().parse_block_contents(black_box(source)));
     let stats = region.change();
 
     assert!(
@@ -216,7 +223,7 @@ fn measure_source_stripe(source: &str, flex: bool) -> Stats {
     assert_eq!(report.syntax().len(), 1);
     let known = report.syntax()[0].known().unwrap();
     assert_eq!(known.property(), CssKnownProperty::OutlineColor);
-    let surgeist_css::CssKnownPropertyValueRef::OutlineColor(value) =
+    let surgeist_css::property::CssKnownPropertyValueRef::OutlineColor(value) =
         known.property_value().unwrap()
     else {
         panic!("outline-color retains its typed image");
@@ -225,10 +232,10 @@ fn measure_source_stripe(source: &str, flex: bool) -> Stats {
     assert_eq!(image.stripes().stripes().len(), 1);
     let thickness = image.stripes().stripes()[0].thickness().unwrap();
     let components = match thickness {
-        surgeist_css::CssStripeThickness::Flex(value) if flex => {
+        surgeist_css::values::image::CssStripeThickness::Flex(value) if flex => {
             value.calculation().unwrap().components()
         }
-        surgeist_css::CssStripeThickness::LengthPercentage(value) if !flex => {
+        surgeist_css::values::image::CssStripeThickness::LengthPercentage(value) if !flex => {
             value.value().calculation().unwrap().components()
         }
         _ => panic!("the literal fr/px unit selects its independent typed domain"),
@@ -238,10 +245,16 @@ fn measure_source_stripe(source: &str, flex: bool) -> Stats {
     } else {
         "stripes(red calc(1px))"
     };
-    assert_eq!(image.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        image.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     let start = source.find("calc(").unwrap();
     assert_eq!(
-        components.serialize().unwrap().as_css(),
+        components
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         &source[start..source.len() - 1]
     );
     let CssValueOrigin::Parsed(origin) = components.items()[0].origin() else {
@@ -249,7 +262,8 @@ fn measure_source_stripe(source: &str, flex: bool) -> Stats {
     };
     assert_eq!(origin.source().as_str(), source);
     assert_eq!(origin.span().start().byte_offset().value(), start);
-    let surgeist_css::CssComponentValueRef::Function(function) = components.items()[0].view()
+    let surgeist_css::component::CssComponentValueRef::Function(function) =
+        components.items()[0].view()
     else {
         panic!("retained calculation root");
     };
@@ -295,23 +309,23 @@ fn check_source_stripe_selection(failures: &mut Vec<String>) {
 }
 
 fn assert_retained_url_modifier(
-    declaration: &surgeist_css::CssDeclaration,
+    declaration: &surgeist_css::declaration::CssDeclaration,
     source: &str,
     inside: bool,
     comment_bytes: usize,
 ) {
     let known = declaration.known().unwrap();
     assert_eq!(known.property(), CssKnownProperty::BackgroundImage);
-    let surgeist_css::CssKnownPropertyValueRef::BackgroundImage(value) =
+    let surgeist_css::property::CssKnownPropertyValueRef::BackgroundImage(value) =
         known.property_value().unwrap()
     else {
         panic!("typed background image");
     };
-    let [surgeist_css::CssImageValue::Url(url)] = value.images().images() else {
+    let [surgeist_css::values::image::CssImageValue::Url(url)] = value.value().images() else {
         panic!("one retained URL image");
     };
     assert_eq!(url.as_str(), "asset");
-    let [surgeist_css::CssUrlModifier::Function(modifier)] = url.modifiers() else {
+    let [surgeist_css::values::common::CssUrlModifier::Function(modifier)] = url.modifiers() else {
         panic!("one functional extension modifier");
     };
     assert_eq!(modifier.name(), "future");
@@ -329,11 +343,15 @@ fn assert_retained_url_modifier(
         let expected = format!("\"{decoded}\"");
         assert_eq!(modifier.arguments().as_css(), expected);
         assert_eq!(
-            modifier.argument_components().serialize().unwrap().as_css(),
+            modifier
+                .argument_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             expected
         );
         assert!(
-            matches!(token.view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::String(content)) if content == decoded)
+            matches!(token.view(), surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::String(content)) if content == decoded)
         );
         assert_same_snapshot(token.origin(), original);
         let CssValueOrigin::Parsed(child) = token.origin() else {
@@ -349,12 +367,18 @@ fn assert_retained_url_modifier(
         assert_eq!(modifier.arguments().as_css(), "\"\"");
         assert!(matches!(
             token.view(),
-            surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::String(""))
+            surgeist_css::component::CssComponentValueRef::Token(
+                surgeist_css::component::CssValueTokenRef::String("")
+            )
         ));
     }
     let value_source = source.strip_prefix("background-image:").unwrap_or(source);
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         value_source
     );
 }
@@ -367,8 +391,9 @@ fn measure_checked_url_modifier(
 ) -> Stats {
     let input = values.clone();
     let region = Region::new(GLOBAL);
-    let result = black_box(parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage),
+    let result = black_box(CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage)),
         black_box(input),
         CssImportance::Normal,
     ));
@@ -382,7 +407,8 @@ fn measure_checked_url_modifier(
 
 fn measure_source_url_modifier(source: &str, inside: bool, comment_bytes: usize) -> Stats {
     let region = Region::new(GLOBAL);
-    let report = black_box(surgeist_css::parse_style_attribute(black_box(source)));
+    let report =
+        black_box(surgeist_css::CssParser::default().parse_block_contents(black_box(source)));
     let stats = region.change();
     assert!(report.is_clean(), "complete functional URL modifier source");
     assert_eq!(report.syntax().len(), 1);
@@ -403,7 +429,7 @@ fn check_url_modifier_ownership(failures: &mut Vec<String>) {
                     format!("url(\"asset\" {comment}future(\"\"))")
                 };
                 let source = if checked { value } else { format!("background-image:{value}") };
-                let values = if checked { Some(parse_component_values(&source).unwrap()) } else { None };
+                let values = if checked { Some(CssComponentValues::parse(&CssParser::default(), &source).unwrap()) } else { None };
                 (source, values, length)
             });
             let measure = |(source, values, length): &(String, Option<CssComponentValues>, usize)| {

@@ -4,11 +4,29 @@
 //! and Filter Effects 1 WD 2018-12-18 §6.1; canonical ordering and cumulative
 //! resource charges are Surgeist's specified-value contract, not computed CSS.
 
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::assert_component_rejected;
 use crate::css::support::serialization_limits::LimitLadder;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::{
-    CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
+use surgeist_css::CssParser;
+use surgeist_css::color::CssColor;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{CssCalculation, CssLength, CssNonNegative, CssNumeric};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValueRef, CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationError;
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::effects::{
+    CssBoxShadow, CssBoxShadowList, CssDropShadow, CssFilter, CssFilterFunction, CssShadow,
 };
 
 #[test]
@@ -19,7 +37,7 @@ fn resumed_lengths_report_the_responsible_token_and_utf16_column() {
         "backdrop-filter:drop-shadow(1px 2px red 3px)",
     ] {
         let css = format!("/* 🦀 */ {declaration}; color:blue");
-        let report = parse_style_attribute(&css);
+        let report = CssParser::default().parse_block_contents(&css);
         let [diagnostic] = report.diagnostics() else {
             panic!("one diagnostic")
         };
@@ -37,7 +55,11 @@ fn resumed_lengths_report_the_responsible_token_and_utf16_column() {
         };
         assert_eq!(sibling.known().unwrap().property(), CssKnownProperty::Color);
         assert_eq!(
-            validate_style_attribute(&css).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&css)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -78,20 +100,22 @@ fn drop_value(css: &str) -> CssDropShadow {
     value.clone()
 }
 
-fn length(css: &str) -> CssSpecifiedLength {
-    CssSpecifiedLength::try_from_component(CssComponentValue::try_token(css).unwrap()).unwrap()
+fn length(css: &str) -> CssNumeric<CssLength> {
+    CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_token(css).unwrap()).unwrap()
 }
 
-fn nonnegative(css: &str) -> CssSpecifiedNonNegativeLength {
-    CssSpecifiedNonNegativeLength::try_from_component(CssComponentValue::try_token(css).unwrap())
-        .unwrap()
+fn nonnegative(css: &str) -> CssNumeric<CssLength, CssNonNegative> {
+    CssNumeric::<CssLength, CssNonNegative>::try_from_component(
+        CssComponentValue::try_token(css).unwrap(),
+    )
+    .unwrap()
 }
 
 fn assert_budget(
     expected: &str,
     input: usize,
     projection: usize,
-    serialize: impl Fn(L) -> Result<String, CssSpecifiedValueSerializationError>,
+    serialize: impl Fn(L) -> Result<String, CssSerializationError>,
 ) {
     assert_eq!(
         serialize(L::new(usize::MAX, usize::MAX, usize::MAX)).unwrap(),
@@ -110,7 +134,10 @@ fn construction_preserves_omissions_and_rejects_spread_without_blur_and_empty_li
     assert!(value.spread_radius().is_none());
     assert!(value.color().is_none());
     assert_eq!(value.offset_x().origin(), &CssValueOrigin::Programmatic);
-    assert_eq!(value.serialize_specified().unwrap(), "1px -2px");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "1px -2px"
+    );
     assert!(
         CssShadow::try_new(
             false,
@@ -124,31 +151,34 @@ fn construction_preserves_omissions_and_rejects_spread_without_blur_and_empty_li
     );
     assert!(CssBoxShadowList::try_new(vec![]).is_none());
     for (invalid, kind) in [
-        ("-1px", CssNumericConstructionErrorKind::OutOfRange),
-        ("-1e-999px", CssNumericConstructionErrorKind::OutOfRange),
-        ("1%", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("auto", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("-1px", NumericFailure::OutOfRange),
+        ("-1e-999px", NumericFailure::OutOfRange),
+        ("1%", NumericFailure::RootDomainMismatch),
+        ("auto", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
-            CssSpecifiedNonNegativeLength::try_from_component,
+            CssNumeric::<CssLength, CssNonNegative>::try_from_component,
             CssComponentValue::try_token(invalid).unwrap(),
             kind,
         );
     }
     for (invalid, kind) in [
-        ("1%", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("auto", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("1", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("1%", NumericFailure::RootDomainMismatch),
+        ("auto", NumericFailure::RootDomainMismatch),
+        ("1", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
-            CssSpecifiedLength::try_from_component,
+            CssNumeric::<CssLength>::try_from_component,
             CssComponentValue::try_token(invalid).unwrap(),
             kind,
         );
     }
     let drop = CssDropShadow::new(length("1px"), length("-2px"), None, None);
     assert!(drop.standard_deviation().is_none());
-    assert_eq!(drop.serialize_specified().unwrap(), "drop-shadow(1px -2px)");
+    assert_eq!(
+        drop.serialize_specified(Default::default()).unwrap(),
+        "drop-shadow(1px -2px)"
+    );
 }
 
 #[test]
@@ -163,15 +193,19 @@ fn explicit_zero_currentcolor_and_programmatic_components_remain_explicit() {
     )
     .unwrap();
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "currentcolor 0px 0px 0px 0px inset"
     );
     assert_eq!(
         value.blur_radius().unwrap().origin(),
         &CssValueOrigin::Programmatic
     );
-    let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, .. }) =
-        value.offset_y().literal_component().unwrap().view()
+    let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, .. }) = value
+        .offset_y()
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("literal")
     };
@@ -184,7 +218,7 @@ fn explicit_zero_currentcolor_and_programmatic_components_remain_explicit() {
     );
     assert!(drop.standard_deviation().is_some());
     assert_eq!(
-        drop.serialize_specified().unwrap(),
+        drop.serialize_specified(Default::default()).unwrap(),
         "drop-shadow(currentcolor 0px 0px 0px)"
     );
     assert_ne!(
@@ -211,9 +245,15 @@ fn box_serialization_has_independent_canonical_text_and_stable_reparsing() {
         ("calc(1px + 2em) -2px", "calc(2em + 1px) -2px"),
     ] {
         let value = box_value(authored);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         let reparsed = box_value(expected);
-        assert_eq!(reparsed.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            reparsed.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 
@@ -228,14 +268,20 @@ fn drop_serialization_emits_full_function_and_preserves_optional_deviation() {
         ),
     ] {
         let value = drop_value(authored);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         let inner = expected
             .strip_prefix("drop-shadow(")
             .unwrap()
             .strip_suffix(')')
             .unwrap();
         let reparsed = drop_value(inner);
-        assert_eq!(reparsed.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            reparsed.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 
@@ -250,11 +296,16 @@ fn symbolic_colors_and_math_use_existing_child_providers_without_resolution() {
         ("1px 2px calc(1px + 2em)", "1px 2px calc(2em + 1px)"),
         ("1px 2px 0 calc(1px + 2em)", "1px 2px 0 calc(2em + 1px)"),
     ] {
-        assert_eq!(shadow(authored).serialize_specified().unwrap(), expected);
+        assert_eq!(
+            shadow(authored)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
     let value = drop_value("rgb(from red r g b) 1px 2px calc(1px + 2em)");
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "drop-shadow(rgb(from red r g b) 1px 2px calc(2em + 1px))"
     );
 }
@@ -283,29 +334,27 @@ fn serialization_failure_and_success_leave_exact_parsed_origins_unchanged() {
             ..parsed.span().end().byte_offset().value()],
         "1e999px"
     );
-    assert_eq!(
+    assert!(
         value
-            .serialize_specified_with_limits(L::new(100, 100, 1))
+            .serialize_specified(L::new(100, 100, 1))
             .unwrap_err()
-            .kind(),
-        K::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, &before);
     assert_eq!(value.offset_x().origin(), &origin);
     let huge = format!("1{}px", "0".repeat(999));
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         format!("red {huge} 0px 0 -2px inset")
     );
     assert_eq!(value.offset_x().origin(), &origin);
     let drop = drop_value("1e999px -1e-999px 0 red");
     let before = drop.clone();
     let origin = drop.standard_deviation().unwrap().origin().clone();
-    assert_eq!(
-        drop.serialize_specified_with_limits(L::new(0, 100, 100))
+    assert!(
+        drop.serialize_specified(L::new(0, 100, 100))
             .unwrap_err()
-            .kind(),
-        K::InputNodeLimit
+            .is_input_node_limit()
     );
     assert_eq!(drop, before);
     assert_eq!(drop.standard_deviation().unwrap().origin(), &origin);
@@ -328,12 +377,12 @@ fn literal_resource_limits_count_aggregate_present_children_and_inset() {
         let value = shadow(css);
         let before = value.clone();
         assert_budget(expected, nodes, nodes, |limits| {
-            value.serialize_specified_with_limits(limits)
+            value.serialize_specified(limits)
         });
         assert_eq!(value, before);
     }
     assert_budget("none", 1, 1, |limits| {
-        CssBoxShadow::None.serialize_specified_with_limits(limits)
+        CssBoxShadow::None.serialize_specified(limits)
     });
     for (css, expected, nodes) in [
         ("1px 2px", "drop-shadow(1px 2px)", 3),
@@ -341,7 +390,7 @@ fn literal_resource_limits_count_aggregate_present_children_and_inset() {
     ] {
         let value = drop_value(css);
         assert_budget(expected, nodes, nodes, |limits| {
-            value.serialize_specified_with_limits(limits)
+            value.serialize_specified(limits)
         });
     }
 }
@@ -351,12 +400,15 @@ fn list_and_box_enum_share_one_budget_and_retain_list_order() {
     let list = CssBoxShadowList::try_new(vec![shadow("1px 2px"), shadow("3px 4px")]).unwrap();
     // One list plus two aggregates plus four literal children: seven nodes.
     assert_budget("1px 2px, 3px 4px", 7, 7, |limits| {
-        list.serialize_specified_with_limits(limits)
+        list.serialize_specified(limits)
     });
-    assert_eq!(list.serialize_specified().unwrap(), "1px 2px, 3px 4px");
+    assert_eq!(
+        list.serialize_specified(Default::default()).unwrap(),
+        "1px 2px, 3px 4px"
+    );
     let value = CssBoxShadow::Shadows(list.clone());
     assert_budget("1px 2px, 3px 4px", 7, 7, |limits| {
-        value.serialize_specified_with_limits(limits)
+        value.serialize_specified(limits)
     });
     assert_eq!(value, CssBoxShadow::Shadows(list));
 }
@@ -367,25 +419,25 @@ fn sibling_math_arenas_never_refund_cumulative_projection_work() {
     // five projected nodes (two literals, two terms, canonical sum).
     let one = shadow("calc(1px + 2em) 2px");
     assert_budget("calc(2em + 1px) 2px", 6, 7, |limits| {
-        one.serialize_specified_with_limits(limits)
+        one.serialize_specified(limits)
     });
     let two = shadow("calc(1px + 2em) calc(1px + 2em)");
     assert_budget("calc(2em + 1px) calc(2em + 1px)", 9, 11, |limits| {
-        two.serialize_specified_with_limits(limits)
+        two.serialize_specified(limits)
     });
     let list = CssBoxShadowList::try_new(vec![one.clone(), one]).unwrap();
     assert_budget(
         "calc(2em + 1px) 2px, calc(2em + 1px) 2px",
         13,
         15,
-        |limits| list.serialize_specified_with_limits(limits),
+        |limits| list.serialize_specified(limits),
     );
     let drop = drop_value("calc(1px + 2em) calc(1px + 2em)");
     assert_budget(
         "drop-shadow(calc(2em + 1px) calc(2em + 1px))",
         9,
         11,
-        |limits| drop.serialize_specified_with_limits(limits),
+        |limits| drop.serialize_specified(limits),
     );
 }
 
@@ -396,17 +448,20 @@ fn checked_programmatic_math_and_extreme_decimals_keep_exact_meaning() {
             .into_iter()
             .map(|token| CssComponentValue::try_token(token).unwrap())
             .collect(),
+        Default::default(),
     )
     .unwrap();
-    let calc = CssLengthCalculation::try_from_components(
-        CssComponentValues::try_new(vec![
-            CssComponentValue::try_function("calc", children).unwrap(),
-        ])
+    let calc = CssCalculation::<CssLength>::try_from_components(
+        CssComponentValues::try_new(
+            vec![CssComponentValue::try_function("calc", children).unwrap()],
+            Default::default(),
+        )
         .unwrap(),
+        Default::default(),
     )
     .unwrap();
-    let offset = CssSpecifiedLength::try_from_calculation(calc.clone()).unwrap();
-    let blur = CssSpecifiedNonNegativeLength::try_from_calculation(calc).unwrap();
+    let offset = CssNumeric::<CssLength>::try_from_calculation(calc.clone()).unwrap();
+    let blur = CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(calc).unwrap();
     let shadow = CssShadow::try_new(
         false,
         offset.clone(),
@@ -418,12 +473,12 @@ fn checked_programmatic_math_and_extreme_decimals_keep_exact_meaning() {
     .unwrap();
     assert_eq!(shadow.offset_x().origin(), &CssValueOrigin::Programmatic);
     assert_eq!(
-        shadow.serialize_specified().unwrap(),
+        shadow.serialize_specified(Default::default()).unwrap(),
         "calc(2em + 1px) 2px calc(2em + 1px)"
     );
     let drop = CssDropShadow::new(offset, length("2px"), Some(blur), None);
     assert_eq!(
-        drop.serialize_specified().unwrap(),
+        drop.serialize_specified(Default::default()).unwrap(),
         "drop-shadow(calc(2em + 1px) 2px calc(2em + 1px))"
     );
     // Huge integer expansion is exact; six-place text rounds tiny offsets to zero.
@@ -438,15 +493,15 @@ fn checked_programmatic_math_and_extreme_decimals_keep_exact_meaning() {
         None,
     )
     .unwrap();
-    assert_budget(&expected, 3, 3, |limits| {
-        value.serialize_specified_with_limits(limits)
-    });
+    assert_budget(&expected, 3, 3, |limits| value.serialize_specified(limits));
     let drop = CssDropShadow::new(length("1e400px"), length("-1e-400px"), None, None);
     assert_budget(&format!("drop-shadow({expected})"), 3, 3, |limits| {
-        drop.serialize_specified_with_limits(limits)
+        drop.serialize_specified(limits)
     });
     assert_eq!(
-        box_value(&expected).serialize_specified().unwrap(),
+        box_value(&expected)
+            .serialize_specified(Default::default())
+            .unwrap(),
         expected
     );
 }
@@ -474,7 +529,7 @@ fn typed_initial_and_ordinary_borrowed_variant_have_box_shadow_values() {
             panic!("box")
         };
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("ordinary")
         };
@@ -492,9 +547,9 @@ fn typed_initial_and_ordinary_borrowed_variant_have_box_shadow_values() {
 #[test]
 fn mixed_normalization_preserves_order_provenance_and_one_unit_per_shadow() {
     let css = ".a{box-shadow:red 1px 2px!important;color:blue;box-shadow:inherit}.b{box-shadow:var(--shadow)}";
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let values: Vec<_> = normalized
         .items()
         .iter()
@@ -532,7 +587,10 @@ fn mixed_normalization_preserves_order_provenance_and_one_unit_per_shadow() {
                     else {
                         panic!("box")
                     };
-                    assert_eq!(shadow.serialize_specified().unwrap(), "red 1px 2px");
+                    assert_eq!(
+                        shadow.serialize_specified(Default::default()).unwrap(),
+                        "red 1px 2px"
+                    );
                     assert_eq!(item.source().importance(), CssImportance::Important);
                 }
             }
@@ -545,13 +603,10 @@ fn mixed_normalization_preserves_order_provenance_and_one_unit_per_shadow() {
     }
     for (limit, order) in [(2, 2), (3, 3)] {
         let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, limit).unwrap();
-        let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+        let error = report.syntax().normalize(limits).unwrap_err();
         assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded {
-                resource: CssNormalizationResource::Contributions,
-                limit
-            }
+            error.exhausted_limit(),
+            Some((CssNormalizationResource::Contributions, limit))
         );
         assert_eq!(error.declaration_order(), Some(order));
         assert!(

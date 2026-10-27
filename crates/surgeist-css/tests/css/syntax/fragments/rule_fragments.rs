@@ -1,11 +1,15 @@
 //! Syntax 3 exact-one admission, with CSS-owned typed grammar and inner recovery.
-use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssRecoveryAction,
-    CssRule, CssSelector, CssStyleSelector, parse_rule,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix, CssRule};
+use surgeist_css::selector::{CssNamespaceContext, CssSelector, CssStyleSelector};
 
 fn parse(source: &str) -> surgeist_css::CssParseReport<Option<CssRule>> {
-    parse_rule(source, &CssNamespaceContext::default())
+    CssRule::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    )
 }
 
 fn reject(source: &str) {
@@ -151,7 +155,7 @@ fn namespaces_and_unicode_positions_come_from_the_supplied_context_and_source() 
         CssNamespaceName::new("urn:svg"),
     )]);
     let source = "/*😀*/\r\nsvg|leaf&{color:red}";
-    let report = parse_rule(source, &context);
+    let report = CssRule::parse(&CssParser::default(), source, &context);
     assert!(report.is_clean(), "{report:?}");
     let Some(CssRule::Style(rule)) = report.syntax() else {
         panic!("style")
@@ -167,7 +171,7 @@ fn namespaces_and_unicode_positions_come_from_the_supplied_context_and_source() 
     assert_eq!(compound.nesting_selectors(), 1);
     assert_eq!(
         compound.type_selector().unwrap().namespace(),
-        &surgeist_css::CssNamespaceConstraint::Named(prefix.clone())
+        &surgeist_css::selector::CssNamespaceConstraint::Named(prefix.clone())
     );
     assert_eq!(
         rule.declarations()[0]
@@ -189,7 +193,11 @@ fn namespaces_and_unicode_positions_come_from_the_supplied_context_and_source() 
         diagnostic.error().position().byte_offset().value(),
         source.find("svg|leaf").unwrap()
     );
-    let namespace = parse_rule("@namespace svg 'urn:replacement';", &context);
+    let namespace = CssRule::parse(
+        &CssParser::default(),
+        "@namespace svg 'urn:replacement';",
+        &context,
+    );
     assert!(namespace.is_clean());
     assert_eq!(
         context.named_namespace(&prefix).unwrap().as_str(),
@@ -317,12 +325,12 @@ fn style_and_scope_depths_preserve_supported_content_and_typed_limits() {
         };
         let mut scope = mut_scope;
         for _ in 1..depth {
-            let [surgeist_css::CssScopedRule::Scope(child)] = scope.rules().rules() else {
+            let [surgeist_css::rule::CssRule::Scope(child)] = scope.rules().rules() else {
                 panic!("scope chain")
             };
             scope = child;
         }
-        let [surgeist_css::CssScopedRule::Style(leaf)] = scope.rules().rules() else {
+        let [surgeist_css::rule::CssRule::Style(leaf)] = scope.rules().rules() else {
             panic!("scope leaf")
         };
         assert_eq!(leaf.declarations().len(), 1);

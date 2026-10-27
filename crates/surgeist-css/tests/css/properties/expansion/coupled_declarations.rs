@@ -1,13 +1,17 @@
 use crate::css::support::parse_report as common;
 
 use common::CssParseReportTestExt;
-use surgeist_css::{
-    CssDeclarationBody, CssGlobalKeyword, CssKnownDeclaredValueRef, CssKnownProperty,
-    CssKnownPropertyValueRef, CssPropertyNameRef, CssRule, parse_sheet,
+use surgeist_css::CssParser;
+use surgeist_css::declaration::{CssDeclarationBody, CssGlobalKeyword};
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
 };
+use surgeist_css::rule::CssRule;
 
-fn declarations(source: &str) -> Vec<surgeist_css::CssDeclaration> {
-    let sheet = parse_sheet(source).expect("valid stylesheet");
+fn declarations(source: &str) -> Vec<surgeist_css::declaration::CssDeclaration> {
+    let sheet = CssParser::default()
+        .parse_sheet(source)
+        .expect("valid stylesheet");
     let [CssRule::Style(rule)] = sheet.rules() else {
         panic!("expected one style rule");
     };
@@ -26,27 +30,40 @@ fn coupled_adjacent_properties_expose_distinct_typed_values() {
     else {
         panic!("expected typed width declaration");
     };
-    let surgeist_css::CssSizeValue::BoxSize(surgeist_css::CssBoxSize::LengthPercentage(length)) =
-        value.value()
+    let surgeist_css::values::box_model::CssSizeValue::BoxSize(
+        surgeist_css::values::box_model::CssBoxSize::LengthPercentage(length),
+    ) = value.value()
     else {
         panic!("checked literal width")
     };
-    let Some(component) = length.literal_component() else {
+    let Some(component) = length.literal().map(|literal| literal.component()) else {
         panic!("ordinary literal")
     };
     assert!(
-        matches!(component.view(), surgeist_css::CssComponentValueRef::Token(
-        surgeist_css::CssValueTokenRef::Dimension { number, unit }
+        matches!(component.view(), surgeist_css::component::CssComponentValueRef::Token(
+        surgeist_css::component::CssValueTokenRef::Dimension { number, unit }
     ) if number.representation() == "12" && unit.eq_ignore_ascii_case("px"))
     );
-    assert_eq!(value.value().serialize_specified().unwrap(), "12px");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "12px"
+    );
 
     let Some(CssKnownPropertyValueRef::Opacity(value)) =
         opacity.known().and_then(|known| known.property_value())
     else {
         panic!("expected typed opacity declaration");
     };
-    assert_eq!(value.value().serialize_specified().unwrap(), "0.5");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "0.5"
+    );
 }
 
 #[test]
@@ -177,6 +194,6 @@ fn coupled_origin_properties_expose_only_their_matching_typed_values() {
     );
     assert!(matches!(
         transform.known().and_then(|known| known.property_value()),
-        Some(CssKnownPropertyValueRef::TransformOrigin(value)) if value.origin().z().is_some()
+        Some(CssKnownPropertyValueRef::TransformOrigin(value)) if value.value().z().is_some()
     ));
 }

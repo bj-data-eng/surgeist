@@ -7,7 +7,22 @@ use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssColorComponent, CssColorHue};
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem, CssRuleContext,
+    CssRuleContextKindRef,
+};
+use surgeist_css::numeric::CssAngleUnit;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownPropertyValueRef,
+    CssLonghandValue, CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::values::border::{CssBorder, CssLineStyle, CssLineWidth};
 
 const SIDES: [&str; 4] = [
     "border-block-start",
@@ -32,7 +47,11 @@ fn accepted(name: &str, value: &str) {
         );
         assert_eq!(source.importance(), CssImportance::Important);
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
     }
@@ -40,8 +59,7 @@ fn accepted(name: &str, value: &str) {
 
 fn one_value(name: &str, value: &str) -> CssLonghandValue {
     let source = declaration(name, value);
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("{name} has a terminal longhand contribution");
     };
@@ -77,8 +95,7 @@ fn members(name: &str) -> Vec<String> {
 
 fn expanded(name: &str, value: &str) -> CssDeclaration {
     let source = declaration(name, value);
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("{name}:{value} has terminal contributions");
     };
@@ -180,7 +197,7 @@ fn omitted_facets_use_logical_longhand_initials_in_facet_major_order() {
     for name in NAMES {
         let source = expanded(name, "solid");
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("{name} expands");
         };
@@ -200,19 +217,22 @@ fn omitted_facets_use_logical_longhand_initials_in_facet_major_order() {
     }
     // Existing checked aggregate independently models exactly the same omissions
     // and canonical specified order without a new logical-only domain type.
-    let partial = CssBorder::try_new(None, Some(CssBorderStyle::Solid), None).unwrap();
+    let partial = CssBorder::try_new(None, Some(CssLineStyle::Solid), None).unwrap();
     assert_eq!(partial.width(), None);
-    assert_eq!(partial.style(), Some(CssBorderStyle::Solid));
+    assert_eq!(partial.style(), Some(CssLineStyle::Solid));
     assert_eq!(partial.color(), None);
-    assert_eq!(partial.serialize_specified().unwrap(), "solid");
+    assert_eq!(
+        partial.serialize_specified(Default::default()).unwrap(),
+        "solid"
+    );
     let full = CssBorder::try_new(
-        Some(CssBorderWidth::Thin),
-        Some(CssBorderStyle::Solid),
+        Some(CssLineWidth::Thin),
+        Some(CssLineStyle::Solid),
         Some(authored_color("currentcolor")),
     )
     .unwrap();
     assert_eq!(
-        full.serialize_specified().unwrap(),
+        full.serialize_specified(Default::default()).unwrap(),
         "thin solid currentcolor"
     );
     let physical = declaration("border-top", "thin solid currentcolor");
@@ -230,7 +250,7 @@ fn explicit_width_style_and_color_reach_each_logical_target_without_mapping() {
     for name in NAMES {
         let source = expanded(name, "oklch(50% 0.2 30deg) solid 1e100px");
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("{name} expands");
         };
@@ -263,7 +283,7 @@ fn explicit_width_style_and_color_reach_each_logical_target_without_mapping() {
                 assert_eq!(oklch.alpha(), None);
                 let color_only = CssBorder::try_new(None, None, Some(color.clone())).unwrap();
                 assert_eq!(
-                    color_only.serialize_specified().unwrap(),
+                    color_only.serialize_specified(Default::default()).unwrap(),
                     "oklch(0.5 0.2 30)"
                 );
             } else {
@@ -277,7 +297,7 @@ fn explicit_width_style_and_color_reach_each_logical_target_without_mapping() {
 fn globals_and_all_cover_every_logical_member_without_image_resets() {
     let all = declaration("all", "initial");
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&all).unwrap()
+        all.expand().unwrap()
     else {
         panic!("all remains a symbolic universal reset");
     };
@@ -294,7 +314,7 @@ fn globals_and_all_cover_every_logical_member_without_image_resets() {
             let source = declaration(name, text);
             checked(name, text);
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("{name}:{text} expands the CSS-wide keyword");
             };
@@ -314,23 +334,32 @@ fn pending_var_and_env_reenter_the_same_logical_grammar_and_occurrence() {
     for name in NAMES {
         for token in ["var(--border)", "env(--border)"] {
             let source = declaration(name, token);
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("{name}:{token} remains pending");
             };
             assert!(handle.source().same_occurrence(&source));
-            assert!(matches!(
-                rejection(handle.reenter(parse_component_values("1%").unwrap())).kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
-            assert!(matches!(
-                rejection(handle.reenter(parse_component_values("solid solid").unwrap())).kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
-            assert_eq!(
-                rejection(handle.reenter(parse_component_values("var(--again)").unwrap())).kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+            assert!(
+                rejection(
+                    handle.reenter(CssComponentValues::parse(&CssParser::default(), "1%").unwrap())
+                )
+                .replacement_error()
+                .is_some()
             );
-            let replacement = parse_component_values("solid 1e100px red").unwrap();
+            assert!(
+                rejection(handle.reenter(
+                    CssComponentValues::parse(&CssParser::default(), "solid solid").unwrap()
+                ))
+                .replacement_error()
+                .is_some()
+            );
+            assert!(
+                rejection(handle.reenter(
+                    CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap()
+                ))
+                .is_residual_substitution()
+            );
+            let replacement =
+                CssComponentValues::parse(&CssParser::default(), "solid 1e100px red").unwrap();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
                 panic!("{name} reenters to logical longhands");
@@ -349,11 +378,9 @@ fn pending_var_and_env_reenter_the_same_logical_grammar_and_occurrence() {
 
 #[test]
 fn normalization_keeps_logical_order_context_and_atomic_six_member_budget() {
-    let report = parse_sheet(
-        ".p{border-block-start:solid;@media all{border-inline:thin dashed red}border-block-end:blue}",
-    );
+    let report = CssParser::default().parse_sheet(".p{border-block-start:solid;@media all{border-inline:thin dashed red}border-block-end:blue}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let occurrences: Vec<_> = normalized
         .items()
         .iter()
@@ -406,7 +433,7 @@ fn normalization_keeps_logical_order_context_and_atomic_six_member_budget() {
             .is_some_and(|parent| matches!(parent.kind(), CssRuleContextKindRef::Media(_)))
     );
 
-    let report = parse_sheet(".p{color:red;border-inline:solid;color:blue}");
+    let report = CssParser::default().parse_sheet(".p{color:red;border-inline:solid;color:blue}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Style(style)] = report.syntax().rules() else {
         panic!("one style rule");
@@ -414,14 +441,8 @@ fn normalization_keeps_logical_order_context_and_atomic_six_member_budget() {
     let source = &style.declarations()[1];
     let original = report.syntax().clone();
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 6).unwrap();
-    let error = rejection(normalize_sheet_with_limits(report.syntax(), limits));
-    assert!(matches!(
-        error.kind(),
-        CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 6
-        }
-    ));
+    let error = rejection(report.syntax().normalize(limits));
+    assert!(error.exhausted_limit() == Some((CssNormalizationResource::Contributions, 6)));
     assert_eq!(error.declaration_order(), Some(1));
     assert_eq!(error.position(), source.position());
     assert_eq!(error.declaration(), Some(source));
@@ -444,7 +465,7 @@ fn physical_border_controls_keep_existing_side_and_image_footprints() {
         };
         assert_eq!(metadata.reset_only_members().len(), reset_count);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("{name} expands");
         };

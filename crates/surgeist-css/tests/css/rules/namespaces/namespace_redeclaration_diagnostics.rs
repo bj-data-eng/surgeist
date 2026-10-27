@@ -3,12 +3,11 @@
 //! https://www.w3.org/TR/2014/REC-css-namespaces-3-20140320/#prefixes
 
 use crate::css::support::rules::ExpectedRejection;
-use surgeist_css::{
-    CssErrorCode, CssNamespaceConstraint, CssNamespaceContext, CssNamespacePrefix,
-    CssNormalizedItem, CssParseReport, CssRecoveryAction, CssRule, CssRuleContextKindRef,
-    CssSelector, CssSheet, ErrorKind, normalize_report, parse_rule, parse_selector, parse_sheet,
-    validate_sheet,
-};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::{CssNamespacePrefix, CssRule, CssSheet};
+use surgeist_css::selector::{CssNamespaceConstraint, CssNamespaceContext, CssSelector};
+use surgeist_css::{CssParseReport, CssParser};
 
 fn prefix(value: &str) -> CssNamespacePrefix {
     CssNamespacePrefix::try_new(value).expect("decoded namespace prefix")
@@ -33,7 +32,7 @@ fn assert_selector_namespace(
     context: &CssNamespaceContext,
     expected: CssNamespaceConstraint,
 ) {
-    let report = parse_selector(source, context);
+    let report = CssSelector::parse(&CssParser::default(), source, context);
     assert!(report.is_clean(), "{source}: {report:?}");
     let Some(CssSelector::Compound(compound)) = report.syntax() else {
         panic!("qualified compound retained: {report:?}");
@@ -72,12 +71,12 @@ fn assert_duplicate_diagnostics(
             diagnostic.action(),
             CssRecoveryAction::RetainNonconformingRule
         );
-        assert!(matches!(
-            diagnostic.error().kind(),
-            ErrorKind::NamespaceRedeclaration(_)
-        ));
+        assert!(diagnostic.error().code() == CssErrorCode::NamespaceRedeclaration);
     }
-    let failure = validate_sheet(source).expect_err("nonconforming sheet fails validation");
+    let failure = CssParser::default()
+        .parse_sheet(source)
+        .into_validation_result()
+        .expect_err("nonconforming sheet fails validation");
     assert_eq!(failure.diagnostics(), report.diagnostics());
     assert_eq!(
         report
@@ -96,7 +95,7 @@ fn decoded_named_redeclarations_retain_order_and_last_binding_with_local_diagnos
     let second = "@namespace s\\76 g 'urn:second';\n";
     let third = "@namespace svg '';\n";
     let source = format!("{first}{different_case}{second}{third}svg|leaf{{}}.kept{{color:red}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert_eq!(
         declarations(report.syntax()),
         [
@@ -166,7 +165,7 @@ fn default_redeclarations_keep_null_and_literal_last_names_while_rejecting_valid
         let first = format!("@namespace '{first_name}';");
         let second = format!("@namespace '{last_name}';");
         let source = format!("{first}{second}leaf.mark{{}}.kept{{color:red}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_eq!(
             declarations(report.syntax()),
             [(None, first_name), (None, last_name)]
@@ -196,7 +195,7 @@ fn identical_named_binding_is_a_nonconforming_redeclaration() {
     for name in ["urn:same", "", "not a URI"] {
         let declaration = format!("@namespace svg '{name}';");
         let source = format!("{declaration}{declaration}svg|leaf{{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_eq!(
             declarations(report.syntax()),
             [(Some("svg"), name), (Some("svg"), name)]
@@ -217,7 +216,7 @@ fn identical_named_binding_is_a_nonconforming_redeclaration() {
 #[test]
 fn different_case_named_prefixes_are_distinct_clean_bindings() {
     let source = "@namespace svg 'urn:lower';@namespace SVG '';svg|leaf{}SVG|leaf{}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let context = CssNamespaceContext::from_sheet(report.syntax());
     assert_eq!(
@@ -228,7 +227,13 @@ fn different_case_named_prefixes_are_distinct_clean_bindings() {
         context.named_namespace(&prefix("SVG")).unwrap().as_str(),
         ""
     );
-    assert_eq!(validate_sheet(source).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
 }
 
 #[test]
@@ -236,7 +241,7 @@ fn copied_redeclared_context_is_immutable_and_never_inherited_by_other_sheets() 
     let first = "@namespace svg 'urn:old';";
     let second = "@namespace svg '';";
     let source = format!("@import 'child.css';{first}{second}svg|leaf{{}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let context = CssNamespaceContext::from_sheet(report.syntax());
     let original = context.clone();
     assert_selector_namespace(
@@ -251,7 +256,7 @@ fn copied_redeclared_context_is_immutable_and_never_inherited_by_other_sheets() 
         "@import 'parent.css';svg|leaf{}.kept{}",
         "@import 'sibling.css';svg|leaf{}.kept{}",
     ] {
-        let isolated = parse_sheet(other);
+        let isolated = CssParser::default().parse_sheet(other);
         assert!(
             matches!(isolated.syntax().rules().last(), Some(CssRule::Style(style)) if style.selectors().selectors()[0].selector() == &CssSelector::Class("kept".into()))
         );
@@ -267,7 +272,7 @@ fn copied_redeclared_context_is_immutable_and_never_inherited_by_other_sheets() 
         let isolated_context = CssNamespaceContext::from_sheet(isolated.syntax());
         assert!(isolated_context.named_namespace(&prefix("svg")).is_none());
         assert!(isolated_context.default_namespace().is_none());
-        let selector = parse_selector("svg|leaf", &isolated_context);
+        let selector = CssSelector::parse(&CssParser::default(), "svg|leaf", &isolated_context);
         assert!(selector.syntax().is_none());
         undeclared.assert_first(&selector);
     }
@@ -287,7 +292,7 @@ fn ignored_late_and_nested_redeclarations_never_replace_the_retained_binding() {
         "@media screen{@namespace svg 'urn:ignored';.nested{}}.kept{}",
     ] {
         let source = format!("@namespace svg 'urn:active';svg|leaf{{}}{suffix}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_eq!(declarations(report.syntax()), [(Some("svg"), "urn:active")]);
         let context = CssNamespaceContext::from_sheet(report.syntax());
         assert_eq!(
@@ -304,7 +309,11 @@ fn ignored_late_and_nested_redeclarations_never_replace_the_retained_binding() {
             CssRecoveryAction::DropAtRule
         );
         assert_eq!(
-            validate_sheet(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -314,7 +323,7 @@ fn ignored_late_and_nested_redeclarations_never_replace_the_retained_binding() {
 fn malformed_and_block_declarations_are_ignored_without_redeclaring_the_active_prefix() {
     for ignored in ["@namespace svg ident;", "@namespace svg 'urn:ignored'{}"] {
         let source = format!("@namespace svg 'urn:active';{ignored}svg|leaf{{}}.kept{{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_eq!(declarations(report.syntax()), [(Some("svg"), "urn:active")]);
         assert!(matches!(
             report.syntax().rules(),
@@ -340,7 +349,11 @@ fn malformed_and_block_declarations_are_ignored_without_redeclaring_the_active_p
             CssRecoveryAction::DropAtRule
         );
         assert_eq!(
-            validate_sheet(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -373,7 +386,7 @@ fn escaped_namespace_prefixes_parse_as_clean_decoded_identifiers_without_unwindi
             r"a\ b|leaf.mark",
         ),
     ] {
-        let report = std::panic::catch_unwind(|| parse_sheet(source))
+        let report = std::panic::catch_unwind(|| CssParser::default().parse_sheet(source))
             .expect("valid escaped namespace identifiers must not unwind");
         assert!(report.is_clean(), "{source}: {report:?}");
         let [CssRule::Namespace(namespace), CssRule::Style(_)] = report.syntax().rules() else {
@@ -391,7 +404,13 @@ fn escaped_namespace_prefixes_parse_as_clean_decoded_identifiers_without_unwindi
             &context,
             CssNamespaceConstraint::Named(parsed_prefix.clone()),
         );
-        assert_eq!(validate_sheet(source).unwrap(), *report.syntax());
+        assert_eq!(
+            CssParser::default()
+                .parse_sheet(source)
+                .into_validation_result()
+                .unwrap(),
+            *report.syntax()
+        );
     }
 }
 
@@ -404,7 +423,7 @@ fn named_and_default_redeclarations_preserve_typed_prior_origins_through_normali
     let source = format!(
         "/*😀*/\r\n{first_named}\r\n{second_named}\r\n{first_default}\r\n{second_default}\r\nsvg|leaf{{}}"
     );
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert_eq!(report.diagnostics().len(), 2);
     for (diagnostic, name, current, previous, line) in [
         (
@@ -430,16 +449,22 @@ fn named_and_default_redeclarations_preserve_typed_prior_origins_through_normali
             diagnostic.error().code(),
             CssErrorCode::NamespaceRedeclaration
         );
-        let ErrorKind::NamespaceRedeclaration(detail) = diagnostic.error().kind() else {
-            panic!("typed namespace redeclaration detail: {diagnostic:?}");
-        };
-        assert_eq!(detail.prefix().map(CssNamespacePrefix::as_str), name);
+        let detail = diagnostic.error();
         assert_eq!(
-            detail.previous_position().byte_offset().value(),
+            detail.code(),
+            CssErrorCode::NamespaceRedeclaration,
+            "typed namespace redeclaration detail: {diagnostic:?}"
+        );
+        assert_eq!(
+            detail.namespace_prefix().map(CssNamespacePrefix::as_str),
+            name
+        );
+        assert_eq!(
+            detail.previous_position().unwrap().byte_offset().value(),
             source.find(previous).unwrap()
         );
-        assert_eq!(detail.previous_position().line().value(), line - 1);
-        assert_eq!(detail.previous_position().column().value(), 0);
+        assert_eq!(detail.previous_position().unwrap().line().value(), line - 1);
+        assert_eq!(detail.previous_position().unwrap().column().value(), 0);
         let position = diagnostic.error().position();
         assert_eq!(
             position.byte_offset().value(),
@@ -453,8 +478,9 @@ fn named_and_default_redeclarations_preserve_typed_prior_origins_through_normali
             current
         );
     }
-    let normalized =
-        normalize_report(&report).expect("namespace syntax normalizes with diagnostics");
+    let normalized = report
+        .normalize(Default::default())
+        .expect("namespace syntax normalizes with diagnostics");
     assert!(!normalized.is_clean());
     assert_eq!(normalized.diagnostics(), report.diagnostics());
     let names = normalized
@@ -486,10 +512,13 @@ fn named_and_default_redeclarations_preserve_typed_prior_origins_through_normali
 #[test]
 fn fragment_context_bindings_do_not_manufacture_authored_namespace_redeclarations() {
     let context = CssNamespaceContext::from_bindings([
-        (None, surgeist_css::CssNamespaceName::new("urn:default")),
+        (
+            None,
+            surgeist_css::rule::CssNamespaceName::new("urn:default"),
+        ),
         (
             Some(prefix("svg")),
-            surgeist_css::CssNamespaceName::new("urn:original"),
+            surgeist_css::rule::CssNamespaceName::new("urn:original"),
         ),
     ]);
     let original = context.clone();
@@ -501,7 +530,7 @@ fn fragment_context_bindings_do_not_manufacture_authored_namespace_redeclaration
         ),
         ("@namespace '';", None, ""),
     ] {
-        let report = parse_rule(source, &context);
+        let report = CssRule::parse(&CssParser::default(), source, &context);
         assert!(
             report.is_clean(),
             "supplied context is not another authored declaration: {report:?}"
@@ -527,7 +556,7 @@ fn fragment_context_bindings_do_not_manufacture_authored_namespace_redeclaration
 fn ignored_declarations_do_not_make_the_first_retained_binding_a_redeclaration() {
     for ignored in ["@namespace svg ident;", "@namespace svg 'urn:ignored'{}"] {
         let source = format!("{ignored}@namespace svg 'urn:retained';svg|leaf{{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_eq!(
             declarations(report.syntax()),
             [(Some("svg"), "urn:retained")]
@@ -552,14 +581,14 @@ fn ignored_declarations_do_not_make_the_first_retained_binding_a_redeclaration()
 
 #[test]
 fn copied_null_default_remains_local_to_its_sheet_and_explicit_fragment_context() {
-    let report = parse_sheet("@import 'child.css';@namespace '';leaf{}");
+    let report = CssParser::default().parse_sheet("@import 'child.css';@namespace '';leaf{}");
     assert!(report.is_clean());
     let context = CssNamespaceContext::from_sheet(report.syntax());
     let original = context.clone();
     assert_eq!(context.default_namespace().unwrap().as_str(), "");
     assert_selector_namespace("leaf.mark", &context, CssNamespaceConstraint::Default);
     for source in ["leaf.mark{}", "@import 'parent.css';leaf.mark{}"] {
-        let isolated = parse_sheet(source);
+        let isolated = CssParser::default().parse_sheet(source);
         assert!(isolated.is_clean());
         let isolated_context = CssNamespaceContext::from_sheet(isolated.syntax());
         assert!(isolated_context.default_namespace().is_none());

@@ -1,21 +1,32 @@
 #![forbid(unsafe_code)]
 //! Visit authored style features without reparsing text or evaluating the query.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::query::container::{
+    CssContainerLeaf, CssContainerStyleFeature, CssContainerStyleRangeOperand,
+    CssContainerStyleRangeOperandRef, CssContainerStyleRangeRef, CssStyleQueryLeaf,
+};
+use surgeist_css::query::{CssCondition, CssConditionKind};
 
 fn main() {
-    let condition = CssContainerCondition::try_from_components(
-        parse_component_values("style((color: var(--theme)) and (1px < --size <= 10px))").unwrap(),
+    let condition = CssCondition::<CssContainerLeaf>::try_from_components(
+        CssComponentValues::parse(
+            &CssParser::default(),
+            "style((color: var(--theme)) and (1px < --size <= 10px))",
+        )
+        .unwrap(),
+        Default::default(),
     )
     .unwrap();
-    let CssContainerConditionKind::Style(query) = condition.kind() else {
+    let CssConditionKind::Leaf(CssContainerLeaf::Style(query)) = condition.kind() else {
         panic!("style query")
     };
     visit(query);
 }
 
-fn visit(query: &CssContainerStyleQuery) {
+fn visit(query: &CssCondition<CssStyleQueryLeaf>) {
     match query.kind() {
-        CssContainerStyleQueryKind::Feature(feature) => match feature {
+        CssConditionKind::Leaf(CssStyleQueryLeaf::Feature(feature)) => match feature {
             CssContainerStyleFeature::Boolean(name) => println!("boolean {name:?}"),
             CssContainerStyleFeature::Plain { name, value } => {
                 println!("plain {name:?}: {} components", value.components().len());
@@ -50,14 +61,13 @@ fn visit(query: &CssContainerStyleQuery) {
             },
             _ => {}
         },
-        CssContainerStyleQueryKind::Parenthesized(child)
-        | CssContainerStyleQueryKind::Not(child) => visit(child),
-        CssContainerStyleQueryKind::And(list) | CssContainerStyleQueryKind::Or(list) => {
-            for query in list.queries() {
+        CssConditionKind::Parenthesized(child) | CssConditionKind::Not(child) => visit(child),
+        CssConditionKind::And(list) | CssConditionKind::Or(list) => {
+            for query in list.conditions() {
                 visit(query);
             }
         }
-        CssContainerStyleQueryKind::GeneralEnclosed(opaque) => {
+        CssConditionKind::Leaf(CssStyleQueryLeaf::GeneralEnclosed(opaque)) => {
             println!("unknown syntax at {:?}", opaque.position());
         }
         _ => {}

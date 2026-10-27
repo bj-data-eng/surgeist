@@ -1,6 +1,5 @@
 use surgeist_color::{
-    PredefinedColorSpace as P, RectangularConversionError as Error,
-    RectangularCoordinates as Coordinates, RectangularSpace as S,
+    Finite, PredefinedColorSpace as P, RectangularCoordinates as Coordinates, RectangularSpace as S,
 };
 
 const SPACES: [S; 11] = [
@@ -19,14 +18,26 @@ const SPACES: [S; 11] = [
 const D50: [f64; 3] = [3457.0 / 3585.0, 1.0, 986.0 / 1195.0];
 const D65: [f64; 3] = [3127.0 / 3290.0, 1.0, 3583.0 / 3290.0];
 
+fn finite(value: f64) -> Finite {
+    Finite::new(value).expect("finite test coordinate")
+}
+
+fn coordinates(space: S, channels: [Option<f64>; 3]) -> Coordinates {
+    Coordinates::new(space, channels.map(|channel| channel.map(finite)))
+}
+
 fn color(space: S, values: [f64; 3]) -> Coordinates {
-    Coordinates::try_new(space, values.map(Some)).unwrap()
+    coordinates(space, values.map(Some))
+}
+
+fn plain(value: Coordinates) -> [Option<f64>; 3] {
+    value.channels().map(|channel| channel.map(Finite::get))
 }
 
 fn converted(source: S, destination: S, values: [f64; 3]) -> [f64; 3] {
-    let result = color(source, values).convert_to(destination).unwrap();
+    let result = color(source, values).convert_to(destination);
     assert_eq!(result.space(), destination);
-    result.channels().map(Option::unwrap)
+    plain(result).map(Option::unwrap)
 }
 
 fn close(actual: [f64; 3], expected: [f64; 3], tolerance: f64) {
@@ -523,11 +534,11 @@ fn identity_preserves_every_missing_mask_and_all_finite_input_bits() {
                         None
                     }
                 });
-                let original = Coordinates::try_new(space, channels).unwrap();
-                let identity = original.convert_to(space).unwrap();
+                let original = coordinates(space, channels);
+                let identity = original.convert_to(space);
                 assert_eq!(identity.space(), space);
                 assert_eq!(
-                    identity.channels().map(|v| v.map(f64::to_bits)),
+                    plain(identity).map(|v| v.map(f64::to_bits)),
                     channels.map(|v| v.map(f64::to_bits))
                 );
             }
@@ -551,22 +562,21 @@ fn different_space_conversion_substitutes_each_missing_channel_locally_and_leave
                     None
                 }
             });
-            let original = Coordinates::try_new(source, channels).unwrap();
+            let original = coordinates(source, channels);
             for destination in SPACES.into_iter().filter(|&space| space != source) {
-                let actual = original.convert_to(destination).unwrap();
+                let actual = original.convert_to(destination);
                 assert!(actual.channels().iter().all(Option::is_some));
                 // The independent missing-component rule requires exactly the
                 // same numerical input as an explicitly present zero. Compare
                 // bits, including rounded zeros, rather than imposing a global
                 // precision tolerance on a nonlinear near-zero destination.
-                let explicit = color(source, channels.map(|v| v.unwrap_or(0.0)))
-                    .convert_to(destination)
-                    .unwrap();
+                let explicit =
+                    color(source, channels.map(|v| v.unwrap_or(0.0))).convert_to(destination);
                 assert_eq!(
-                    actual.channels().map(|v| v.map(f64::to_bits)),
-                    explicit.channels().map(|v| v.map(f64::to_bits))
+                    plain(actual).map(|v| v.map(f64::to_bits)),
+                    plain(explicit).map(|v| v.map(f64::to_bits))
                 );
-                assert_eq!(original.channels(), &channels);
+                assert_eq!(plain(original), channels);
             }
         }
     }
@@ -607,28 +617,6 @@ fn algebraically_zero_a98_green_obeys_a_propagated_rounding_bound_without_a_gamm
 }
 
 #[test]
-fn construction_rejects_the_first_present_nonfinite_input_in_channel_order() {
-    for space in SPACES {
-        for index in 0..3 {
-            for invalid in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-                let mut channels = [None; 3];
-                channels[index] = Some(invalid);
-                for value in channels.iter_mut().skip(index + 1) {
-                    *value = Some(f64::NAN);
-                }
-                assert_eq!(
-                    Coordinates::try_new(space, channels),
-                    Err(Error::NonFiniteInput { component: index })
-                );
-            }
-        }
-    }
-    let error = Error::NonFiniteInput { component: 2 };
-    assert!(error.to_string().contains("component 2"));
-    assert!(std::error::Error::source(&error).is_none());
-}
-
-#[test]
 fn large_encoded_values_survive_linear_overflow_when_the_destination_is_encoded() {
     // Neutral RGB is white-scaled in either primary basis. Both curves have
     // asymptotic gamma 2.4, so Rec2020(c)/c -> 1/1.055. Half-MAX gives explicit
@@ -636,15 +624,17 @@ fn large_encoded_values_survive_linear_overflow_when_the_destination_is_encoded(
     let c = f64::MAX / 2.0;
     for sign in [1.0, -1.0] {
         let source = color(S::Predefined(P::Srgb), [sign * c; 3]);
-        let encoded = source.convert_to(S::Predefined(P::Rec2020)).unwrap();
-        for channel in encoded.channels() {
+        let encoded = source.convert_to(S::Predefined(P::Rec2020));
+        for channel in plain(encoded) {
             relative(channel.unwrap(), sign * c / 1.055, 3e-14);
         }
+        // Linear light is the 2.4th power, beyond binary64: each channel is
+        // the signed closest finite value.
         assert_eq!(
-            source.convert_to(S::Predefined(P::SrgbLinear)),
-            Err(Error::UnrepresentableResult { component: 0 })
+            plain(source.convert_to(S::Predefined(P::SrgbLinear))),
+            [Some(sign * f64::MAX); 3]
         );
-        assert_eq!(source.channels(), &[Some(sign * c); 3]);
+        assert_eq!(plain(source), [Some(sign * c); 3]);
     }
 }
 
@@ -687,23 +677,25 @@ fn subnormal_neutral_rgb_survives_intermediate_underflow_and_final_underflow_is_
 }
 
 #[test]
-fn result_overflow_reports_the_first_final_channel_and_preserves_the_source() {
+fn result_overflow_is_the_closest_finite_value_per_channel_and_preserves_the_source() {
+    // CSS Values 4 closest supported value: only the channels whose exact
+    // result leaves binary64 saturate; the others keep their exact result.
     for index in 0..3 {
         let values = std::array::from_fn(|i| if i < index { 0.0 } else { f64::MAX });
         let source = color(S::Predefined(P::Srgb), values);
         assert_eq!(
-            source.convert_to(S::Predefined(P::SrgbLinear)),
-            Err(Error::UnrepresentableResult { component: index })
+            plain(source.convert_to(S::Predefined(P::SrgbLinear))),
+            values.map(Some)
         );
-        assert_eq!(source.channels(), &values.map(Some));
+        assert_eq!(plain(source), values.map(Some));
     }
+    // Oklab L = MAX cubes every LMS response; XYZ rows sum to the positive
+    // D65 white, so every channel is f64::MAX.
     let source = color(S::Oklab, [f64::MAX, 0.0, 0.0]);
     assert_eq!(
-        source.convert_to(S::Predefined(P::XyzD65)),
-        Err(Error::UnrepresentableResult { component: 0 })
+        plain(source.convert_to(S::Predefined(P::XyzD65))),
+        [Some(f64::MAX); 3]
     );
-    let error = Error::UnrepresentableResult { component: 1 };
-    assert!(error.to_string().contains("component 1"));
 }
 
 #[test]

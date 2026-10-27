@@ -1,6 +1,8 @@
 //! Genuine reports and joined first-sheet publication, not final-text replay.
 use super::*;
-use surgeist_css::{CssParserContext, CssUtf16InputLimits};
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::source::CssUtf16InputLimits;
+use surgeist_css::{CssParser, CssParserContext};
 use surgeist_cssom::*;
 
 pub(super) fn ready(source: &str) -> (Dom, DocumentId, DomParsedHtmlAssociationId) {
@@ -28,22 +30,22 @@ pub(super) fn root(document: DocumentId) -> DomStyleCssomRoot {
 }
 pub(super) fn stage(prep: &mut DomParsedHtmlStyleSheetPreparation<'_, '_, '_>) {
     let parser = CssParserContext::default();
-    let sheet = parser
-        .parse_sheet_utf16_with_limits(
+    let sheet = CssParser::new(parser, Default::default())
+        .parse_sheet_utf16(
             prep.request().text().shared_code_units().clone(),
             CssUtf16InputLimits::default(),
             || prep.step(&flag()),
         )
         .unwrap();
-    let media = parser
-        .parse_media_query_list_utf16_with_limits(
-            prep.request()
-                .media()
-                .map_or_else(Arc::default, |s| s.shared_code_units().clone()),
-            CssUtf16InputLimits::default(),
-            || prep.step(&flag()),
-        )
-        .unwrap();
+    let media = CssMediaQueryList::parse_utf16(
+        &CssParser::new(parser, Default::default()),
+        prep.request()
+            .media()
+            .map_or_else(Arc::default, |s| s.shared_code_units().clone()),
+        CssUtf16InputLimits::default(),
+        || prep.step(&flag()),
+    )
+    .unwrap();
     // Concrete caller-owned labels/holders are declared before formation.
     prep.admit_runtime(
         DomParsedHtmlAssociationRuntimeUsage::new(1024, 0, 0).unwrap(),
@@ -227,18 +229,18 @@ fn foreign_capability_and_mismatched_original_input_are_refused_before_consumpti
     );
     let mut prep = hold.prepare_create_sheet(&cap, &flag()).unwrap();
     let parser = CssParserContext::default();
-    let report = parser
-        .parse_sheet_utf16_with_limits(Arc::new(vec![b'x' as u16]), Default::default(), || {
+    let report = CssParser::new(parser, Default::default())
+        .parse_sheet_utf16(Arc::new(vec![b'x' as u16]), Default::default(), || {
             prep.step(&flag())
         })
         .unwrap();
-    let media = parser
-        .parse_media_query_list_utf16_with_limits(
-            Arc::new("screen".encode_utf16().collect()),
-            Default::default(),
-            || prep.step(&flag()),
-        )
-        .unwrap();
+    let media = CssMediaQueryList::parse_utf16(
+        &CssParser::new(parser, Default::default()),
+        Arc::new("screen".encode_utf16().collect()),
+        Default::default(),
+        || prep.step(&flag()),
+    )
+    .unwrap();
     let mut input = Some(DomParsedHtmlStyleSheetInput::new(
         report,
         media,

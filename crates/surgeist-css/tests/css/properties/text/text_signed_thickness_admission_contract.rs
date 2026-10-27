@@ -15,7 +15,19 @@
 
 use crate::css::support::check_named_components;
 use crate::css::support::important_checked_components as checked_property;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyGrammar, CssPropertyNameRef,
+    CssPropertyTarget,
+};
+use surgeist_css::values::text::{
+    CssTextDecorationLineComponent, CssTextDecorationStyle, CssTextDecorationThickness,
+};
 
 fn ordinary(component: &CssComponentValue, coefficient: &str, suffix: Option<&str>) {
     match (component.view(), suffix) {
@@ -66,7 +78,11 @@ fn literal_thickness(declaration: &CssDeclaration, coefficient: &str, suffix: Op
     let CssTextDecorationThickness::Length(value) = thickness(declaration) else {
         panic!("expected authored numeric thickness")
     };
-    ordinary(value.literal_component().unwrap(), coefficient, suffix);
+    ordinary(
+        value.literal().map(|literal| literal.component()).unwrap(),
+        coefficient,
+        suffix,
+    );
 }
 
 fn programmatic(tokens: &[&str]) -> CssComponentValues {
@@ -75,6 +91,7 @@ fn programmatic(tokens: &[&str]) -> CssComponentValues {
             .iter()
             .map(|token| CssComponentValue::try_token(token).unwrap())
             .collect(),
+        Default::default(),
     )
     .unwrap()
 }
@@ -100,7 +117,7 @@ fn parsed_literal(token: &str, coefficient: &str, suffix: Option<&str>) {
     let source = format!(
         "/* 🦀 */ text-decoration-thickness:{token} !important; color:blue; text-decoration-thickness:2px"
     );
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [negative, sibling, positive] = report.syntax().as_slice() else {
         panic!("all three source-order declarations must survive")
@@ -124,7 +141,10 @@ fn parsed_literal(token: &str, coefficient: &str, suffix: Option<&str>) {
 fn validated_literal(token: &str) {
     let source = format!("text-decoration-thickness:{token} !important; color:blue");
     assert!(
-        validate_style_attribute(&source).is_ok(),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .is_ok(),
         "a valid signed scalar must validate: {source}"
     );
 }
@@ -150,7 +170,11 @@ fn constructed_literal(token: &str, coefficient: &str, suffix: Option<&str>, gra
     };
     assert_eq!(value.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(
-        value.literal_component().unwrap().origin(),
+        value
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap()
+            .origin(),
         &CssValueOrigin::Programmatic
     );
 }
@@ -226,7 +250,7 @@ fn assert_shorthand(declaration: &CssDeclaration) {
 #[test]
 fn shorthand_negative_thickness_retains_other_fields_importance_and_sibling() {
     let source = "/* 🦀 */ text-decoration:underline -10px wavy red !important; color:blue";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [decoration, sibling] = report.syntax().as_slice() else {
         panic!("both declarations")
@@ -244,7 +268,9 @@ fn shorthand_negative_thickness_retains_other_fields_importance_and_sibling() {
 #[test]
 fn shorthand_negative_thickness_validates() {
     assert!(
-        validate_style_attribute("text-decoration:underline -10px wavy red !important; color:blue")
+        CssParser::default()
+            .parse_block_contents("text-decoration:underline -10px wavy red !important; color:blue")
+            .into_validation_result()
             .is_ok()
     );
 }
@@ -277,7 +303,7 @@ fn checked_grammar_admits_shorthand_negative_thickness() {
 #[test]
 fn checked_reentry_preserves_supplied_negative_token_origins() {
     let source = "/* 🦀 */ -10px";
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     for declaration in [
         checked_property(
             CssKnownProperty::TextDecorationThickness,
@@ -294,7 +320,14 @@ fn checked_reentry_preserves_supplied_negative_token_origins() {
             unreachable!()
         };
         parsed_origin(value.origin(), source, "-10px");
-        assert_eq!(value.literal_component().unwrap().origin(), value.origin());
+        assert_eq!(
+            value
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap()
+                .origin(),
+            value.origin()
+        );
     }
 }
 
@@ -318,10 +351,15 @@ fn zero_positive_and_intrinsic_keywords_stay_admitted() {
         ("from-font", CssTextDecorationThickness::FromFont),
     ] {
         let source = format!("text-decoration-thickness:{token}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         assert_eq!(thickness(&report.syntax()[0]), &expected);
-        assert!(validate_style_attribute(&source).is_ok());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_ok()
+        );
         let components = programmatic(&[token]);
         for declaration in [
             checked_property(
@@ -342,7 +380,7 @@ fn zero_positive_and_intrinsic_keywords_stay_admitted() {
 
 fn admitted_calculation(text: &str) {
     let source = format!("text-decoration-thickness:{text} !important; color:blue");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [declaration, sibling] = report.syntax().as_slice() else {
         panic!("both declarations")
@@ -352,11 +390,16 @@ fn admitted_calculation(text: &str) {
     let CssTextDecorationThickness::Length(value) = thickness(declaration) else {
         panic!("numeric thickness")
     };
-    assert!(value.literal_component().is_none());
+    assert!(value.literal().map(|literal| literal.component()).is_none());
     let calculation = value.calculation().unwrap();
     parsed_origin(calculation.origin(), &source, "calc(");
-    assert!(validate_style_attribute(&source).is_ok());
-    let components = parse_component_values(text).unwrap();
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .is_ok()
+    );
+    let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     for checked in [
         checked_property(
             CssKnownProperty::TextDecorationThickness,
@@ -372,7 +415,7 @@ fn admitted_calculation(text: &str) {
         let CssTextDecorationThickness::Length(value) = thickness(&checked) else {
             panic!("numeric thickness")
         };
-        assert!(value.literal_component().is_none());
+        assert!(value.literal().map(|literal| literal.component()).is_none());
         parsed_origin(value.calculation().unwrap().origin(), text, "calc(");
     }
 }
@@ -393,7 +436,7 @@ fn dimensional_percentage_hints_admit_mixed_thickness_calculations() {
 fn nonzero_unitless_thickness_rejects_the_declaration_and_preserves_sibling() {
     for property in ["text-decoration-thickness", "text-decoration"] {
         let source = format!("{property}:-10 !important; color:blue");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         let [sibling] = report.syntax().as_slice() else {
             panic!("only valid sibling")
         };
@@ -405,20 +448,31 @@ fn nonzero_unitless_thickness_rejects_the_declaration_and_preserves_sibling() {
                 .iter()
                 .any(|diagnostic| diagnostic.action() == CssRecoveryAction::DropDeclaration)
         );
-        assert!(validate_style_attribute(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_err()
+        );
         let components = programmatic(&["-10"]);
         let grammar = CssPropertyGrammar::from_name(property).unwrap();
         assert!(
-            parse_property_value(
-                CssPropertyNameRef::Known(grammar.target_property()),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(grammar.target_property())),
                 components.clone(),
                 CssImportance::Important
             )
             .is_err()
         );
         assert!(
-            parse_property_value_for_grammar(grammar, components, CssImportance::Important)
-                .is_err()
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(grammar),
+                components,
+                CssImportance::Important
+            )
+            .is_err()
         );
     }
 }
@@ -433,7 +487,11 @@ fn assert_indent(declaration: &CssDeclaration) {
     assert!(value.hanging());
     assert!(value.each_line());
     ordinary(
-        value.length().literal_component().unwrap(),
+        value
+            .length()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "-1e-999",
         Some("%"),
     );
@@ -442,7 +500,7 @@ fn assert_indent(declaration: &CssDeclaration) {
 #[test]
 fn indent_prefix_flag_accepts_exact_signed_percentage_and_preserves_sibling() {
     let source = "/* 🦀 */ text-indent:each-line -1e-999% hanging !important; color:blue";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [indent, sibling] = report.syntax().as_slice() else {
         panic!("both declarations")
@@ -461,7 +519,9 @@ fn indent_prefix_flag_accepts_exact_signed_percentage_and_preserves_sibling() {
 #[test]
 fn indent_prefix_flag_validates_under_unordered_grammar() {
     assert!(
-        validate_style_attribute("text-indent:each-line -1e-999% hanging !important; color:blue")
+        CssParser::default()
+            .parse_block_contents("text-indent:each-line -1e-999% hanging !important; color:blue")
+            .into_validation_result()
             .is_ok()
     );
 }

@@ -1,7 +1,21 @@
 //! Containment2 authored checked/reentry fronts must retain original EOF failures.
 //! Browser recovery remains available and does not turn a recovered report clean.
 use crate::css::support::property_admission::assert_implicit_closure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssLonghandValueRef, CssPropertyNameRef,
+    CssPropertyTarget, CssPropertyValueError,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::values::box_model::CssContentVisibility;
 const PROPERTY: CssKnownProperty = CssKnownProperty::ContentVisibility;
 const GLOBALS: [&str; 5] = ["initial", "inherit", "unset", "revert", "revert-layer"];
 const PENDING: [&str; 3] = ["var(--visible)", "env(visible)", "attr(data-visible)"];
@@ -16,7 +30,7 @@ fn implicit(components: &CssComponentValues) -> CssValueOrigin {
             return value.clone();
         }
     }
-    let text = components.serialize().unwrap();
+    let text = components.serialize_tokens(Default::default()).unwrap();
     (0..text.as_css().len())
         .find_map(|offset| match text.origin_at(offset) {
             Some(CssSerializedOrigin::Token(value @ CssValueOrigin::ImplicitClosure { .. })) => {
@@ -61,32 +75,32 @@ fn original_points(origin: &CssValueOrigin, text: &str) {
         text.encode_utf16().count()
     );
 }
-fn expected(error: &CssPropertyValueParseError, origin: &CssValueOrigin) -> bool {
-    matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-    ) && error.origin() == &CssSerializedOrigin::End(Some(origin.clone()))
+fn expected(error: &CssPropertyValueError, origin: &CssValueOrigin) -> bool {
+    error.code() == Some(CssErrorCode::UnexpectedEnd)
+        && error.origin() == CssSerializedOrigin::End(Some(origin.clone()))
 }
 fn reject_original(inputs: Vec<String>) {
     let mut failures = Vec::new();
     for text in inputs {
-        let components = parse_component_values(&text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
         let before = components.clone();
         let origin = implicit(&components);
         original_points(&origin, &text);
         for (front, result) in [
             (
                 "property",
-                parse_property_value(
-                    CssPropertyNameRef::Known(PROPERTY),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(PROPERTY)),
                     components.clone(),
                     CssImportance::Important,
                 ),
             ),
             (
                 "grammar",
-                parse_property_value_for_grammar(
-                    PROPERTY.grammar(),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(PROPERTY.grammar()),
                     components.clone(),
                     CssImportance::Important,
                 ),
@@ -134,14 +148,15 @@ fn pending_functions_reject_original_unclosed_delimiters_at_both_checked_fronts(
 fn pending_reentry_rejects_original_closure_but_remains_residual_first_and_retryable() {
     let mut failures = Vec::new();
     for text in PENDING {
-        let source = parse_property_value(
-            CssPropertyNameRef::Known(PROPERTY),
-            parse_component_values(text).unwrap(),
+        let source = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(PROPERTY)),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             CssImportance::Important,
         )
         .unwrap();
         let source_before = source.clone();
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending")
         };
         for replacement_text in ["auto", "hidden", "visible"]
@@ -150,13 +165,14 @@ fn pending_reentry_rejects_original_closure_but_remains_residual_first_and_retry
             .map(|text| format!("/*😀*/{text}/*unfinished"))
             .chain(["/*😀*/future(value".to_owned()])
         {
-            let components = parse_component_values(&replacement_text).unwrap();
+            let components =
+                CssComponentValues::parse(&CssParser::default(), &replacement_text).unwrap();
             let before = components.clone();
             let origin = implicit(&components);
             original_points(&origin, &replacement_text);
             for _ in 0..2 {
                 if !matches!(handle.reenter(components.clone()), Err(ref error)
-                    if matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(value) if expected(value, &origin)))
+                    if error.replacement_error().is_some_and(|value| expected(value, &origin)))
                 {
                     failures.push(format!(
                         "{text}/{replacement_text}: strict original replacement EOF lost"
@@ -173,15 +189,19 @@ fn pending_reentry_rejects_original_closure_but_remains_residual_first_and_retry
             "attr(data-again",
             "[future(var(--again",
         ] {
-            let components = parse_component_values(replacement_text).unwrap();
+            let components =
+                CssComponentValues::parse(&CssParser::default(), replacement_text).unwrap();
             let before = components.clone();
-            assert_eq!(
-                handle.reenter(components.clone()).unwrap_err().kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+            assert!(
+                handle
+                    .reenter(components.clone())
+                    .unwrap_err()
+                    .is_residual_substitution()
             );
             assert_eq!(components, before);
         }
-        let components = parse_component_values("/*😀*/auto/**/").unwrap();
+        let components =
+            CssComponentValues::parse(&CssParser::default(), "/*😀*/auto/**/").unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(values) = handle.reenter(components.clone()).unwrap()
             else {
@@ -209,16 +229,18 @@ fn closed_original_components_remain_callable_for_ordinary_global_and_pending_va
         .chain(GLOBALS)
         .chain(PENDING)
     {
-        let components = parse_component_values(&format!("/*😀*/{text}/**/")).unwrap();
-        let source = parse_property_value_for_grammar(
-            PROPERTY.grammar(),
+        let components =
+            CssComponentValues::parse(&CssParser::default(), format!("/*😀*/{text}/**/")).unwrap();
+        let source = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(PROPERTY.grammar()),
             components.clone(),
             CssImportance::Important,
         )
         .unwrap();
         assert_eq!(source.value_components(), &components);
         assert_eq!(source.importance(), CssImportance::Important);
-        assert!(expand_declaration(&source).is_ok());
+        assert!(source.expand().is_ok());
     }
 }
 #[test]
@@ -231,18 +253,20 @@ fn browser_recovery_retains_diagnostics_and_occurrences_through_normalization() 
         "attr(data-visible",
     ] {
         let css = format!("/*😀*/.a{{color:red;content-visibility:{text}");
-        let report = parse_sheet(&css);
+        let report = CssParser::default().parse_sheet(&css);
         let before = report.clone();
         assert_implicit_closure(&css, &report);
         assert_eq!(
-            validate_sheet(&css).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&css)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
-        let normalized = normalize_report_with_limits(
-            &report,
-            CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap(),
-        )
-        .unwrap();
+        let normalized = report
+            .normalize(CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap())
+            .unwrap();
         assert!(!normalized.is_clean());
         assert_eq!(normalized.diagnostics(), report.diagnostics());
         let CssRule::Style(rule) = &report.syntax().rules()[0] else {
@@ -263,17 +287,12 @@ fn browser_recovery_retains_diagnostics_and_occurrences_through_normalization() 
             assert!(item.source().same_occurrence(&rule.declarations()[order]));
         }
         // Color and the recovered declaration each contribute one longhand.
-        let error = normalize_report_with_limits(
-            &report,
-            CssNormalizationLimits::try_new(0, 1, 2, 1).unwrap(),
-        )
-        .unwrap_err();
+        let error = report
+            .normalize(CssNormalizationLimits::try_new(0, 1, 2, 1).unwrap())
+            .unwrap_err();
         assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded {
-                resource: CssNormalizationResource::Contributions,
-                limit: 1,
-            }
+            error.exhausted_limit(),
+            Some((CssNormalizationResource::Contributions, 1))
         );
         assert_eq!(error.declaration_order(), Some(1));
         assert_eq!(report, before);

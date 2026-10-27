@@ -5,9 +5,15 @@
 //! projects the admitted flat records; it defines no arithmetic grammar/type
 //! policy. Its ordinary buffers make no controlled-allocation promise.
 
-use super::{bounded_expression as engine, *};
+use super::bounded_expression as engine;
+use crate::component::{CssComponentValue, CssComponentValueRef, CssValueTokenRef};
+use crate::numeric::expression::{
+    CssCalculationExpression, CssNumericConstructionErrorKind, NodeKind, NumericParser, Result,
+    direct_syntax, trivia,
+};
+use crate::numeric::{CssMathFunction, CssRoundingStrategy};
 
-pub(super) fn parse<'a>(
+pub(crate) fn parse<'a>(
     items: &'a [CssComponentValue],
     parser: &mut NumericParser<'a>,
     function: Option<(CssMathFunction, &'a CssComponentValue)>,
@@ -152,7 +158,7 @@ pub(super) fn parse<'a>(
     )
 }
 
-pub(super) fn rounding_strategy(name: &str) -> Option<CssRoundingStrategy> {
+pub(crate) fn rounding_strategy(name: &str) -> Option<CssRoundingStrategy> {
     if name.eq_ignore_ascii_case("nearest") {
         Some(CssRoundingStrategy::Nearest)
     } else if name.eq_ignore_ascii_case("up") {

@@ -8,8 +8,16 @@ use std::{
     sync::Arc,
     sync::atomic::{AtomicUsize, Ordering},
 };
-use surgeist_css::CssRule;
-use surgeist_css::*;
+#[cfg(test)]
+use surgeist_css::CssParser;
+use surgeist_css::declaration::{CssDeclarationList, CssSpecifiedDeclarationBlock};
+use surgeist_css::diagnostic::CssRecoveryDiagnostic;
+use surgeist_css::property::CssPropertyNameRef;
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::CssSheet;
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::{CssParseReport, CssParserContext};
 
 mod prepared_commit;
 pub use prepared_commit::{CssomCommitRetirement, CssomPreparedCommit, CssomPreparedSheet};
@@ -393,7 +401,7 @@ impl CssomBatch {
                 continue;
             }
             let child = self.staged.adopt(
-                CssomAuthoredRule::Ordinary(rule.clone()),
+                CssomAuthoredRule::Rule(rule.clone()),
                 CssomParent::Sheet(id.clone()),
                 1,
                 &self.limits,
@@ -464,12 +472,10 @@ impl CssomBatch {
     ) -> Result<CssomBlockTicket, CssomError> {
         self.apply(|this| {
             check_declarations(declarations.iter(), &this.limits)?;
-            let selected = projection(
-                CssSpecifiedDeclarationBlock::try_from_declarations_with_limits(
-                    &declarations,
-                    this.limits.css,
-                ),
-            )?;
+            let selected = projection(CssSpecifiedDeclarationBlock::try_from_declarations(
+                &declarations,
+                this.limits.css,
+            ))?;
             let id = this.staged.block_record(
                 CssomBlockData::Properties {
                     domain: CssomPropertyDomain::Ordinary,
@@ -504,14 +510,12 @@ impl CssomBatch {
         context: CssomInlineDeclarationContext,
     ) -> Result<CssomBlockTicket, CssomError> {
         self.apply(|this| {
-            let declarations = CssDeclarationList::try_new_with_limits(Vec::new(), this.limits.css)
+            let declarations = CssDeclarationList::try_new(Vec::new(), this.limits.css)
                 .map_err(CssomError::Value)?;
-            let selected = projection(
-                CssSpecifiedDeclarationBlock::try_from_declarations_with_limits(
-                    &declarations,
-                    this.limits.css,
-                ),
-            )?;
+            let selected = projection(CssSpecifiedDeclarationBlock::try_from_declarations(
+                &declarations,
+                this.limits.css,
+            ))?;
             let id = this.staged.block_record(
                 CssomBlockData::Properties {
                     domain: CssomPropertyDomain::Ordinary,
@@ -675,25 +679,18 @@ impl CssomBatch {
                 .collect::<Vec<_>>();
             let value = match domain {
                 CssomPropertyDomain::Ordinary => {
-                    CssSpecifiedDeclarationBlock::try_from_entries_with_limits(
-                        &entries,
-                        this.limits.css,
-                    )
+                    CssSpecifiedDeclarationBlock::try_from_entries(&entries, this.limits.css)
                 }
                 CssomPropertyDomain::Keyframe => {
-                    CssSpecifiedDeclarationBlock::try_from_keyframe_entries_with_limits(
+                    CssSpecifiedDeclarationBlock::try_from_keyframe_entries(
                         &entries,
                         this.limits.css,
                     )
                 }
                 CssomPropertyDomain::Margin => {
-                    CssSpecifiedDeclarationBlock::try_from_margin_entries_with_limits(
-                        &entries,
-                        this.limits.css,
-                    )
+                    CssSpecifiedDeclarationBlock::try_from_margin_entries(&entries, this.limits.css)
                 }
-            }
-            .map_err(CssomError::Declaration)?;
+            }?;
             let CssomBlockData::Properties { selected, .. } = this
                 .staged
                 .blocks
@@ -771,7 +768,7 @@ impl CssomBatch {
                 continue;
             }
             children.push(self.staged.adopt(
-                CssomAuthoredRule::Ordinary(rule.clone()),
+                CssomAuthoredRule::Rule(rule.clone()),
                 CssomParent::Sheet(id.clone()),
                 1,
                 &self.limits,
@@ -864,11 +861,11 @@ impl CssomBatch {
             .clone();
         if matches!(
             self.staged.rules[&root].authored(),
-            CssomAuthoredRule::Ordinary(CssRule::Namespace(_))
+            CssomAuthoredRule::Rule(CssRule::Namespace(_))
         ) && members.iter().any(|id| {
             !matches!(
                 self.staged.rules[id].authored(),
-                CssomAuthoredRule::Ordinary(CssRule::Namespace(_) | CssRule::Import(_))
+                CssomAuthoredRule::Rule(CssRule::Namespace(_) | CssRule::Import(_))
             )
         }) {
             return Err(CssomError::Source(CssomException::InvalidState));
@@ -902,7 +899,7 @@ impl CssomBatch {
         let bindings = self.staged.lists[list]
             .iter()
             .filter_map(|id| match self.staged.rules[id].authored() {
-                CssomAuthoredRule::Ordinary(CssRule::Namespace(v)) => {
+                CssomAuthoredRule::Rule(CssRule::Namespace(v)) => {
                     Some((v.prefix().cloned(), v.name().clone()))
                 }
                 _ => None,

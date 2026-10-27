@@ -3,31 +3,15 @@
 //! Each caller-admitted action observes at most two fixed colors or one weight.
 //! No recipe, argument array, context fact or original source is scanned here.
 
-use super::{Color, ColorError};
-use crate::CssColorInterpolationMethod as Method;
-use surgeist_color::{InterpolationError, InterpolationMethod as NumericalMethod};
+use crate::color::CssColorInterpolationMethod as Method;
+use surgeist_color::Color;
+use surgeist_color::{InterpolationMethod as NumericalMethod, UnitInterval};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Error {
     InvalidWeight,
     Empty,
     Overflow,
-    Numerical(ColorError),
-}
-impl From<ColorError> for Error {
-    fn from(value: ColorError) -> Self {
-        Self::Numerical(value)
-    }
-}
-
-impl From<InterpolationError> for Error {
-    fn from(value: InterpolationError) -> Self {
-        match value {
-            InterpolationError::InvalidProgress => Self::InvalidWeight,
-            InterpolationError::Numerical(error) => Self::Numerical(error),
-            _ => unreachable!("checked numerical method cannot reject hue"),
-        }
-    }
 }
 
 /// One admitted weight observation in source order; no argument storage.
@@ -58,10 +42,9 @@ impl WeightSummary {
             if !p.is_finite() || !(0.0..=100.0).contains(&p) {
                 return Err(Error::InvalidWeight);
             }
+            // At most `usize::MAX` weights of at most 100 sum far below
+            // binary64's range, so the sum stays finite.
             specified += p;
-            if !specified.is_finite() {
-                return Err(Error::Numerical(ColorError::Unrepresentable));
-            }
         } else {
             omitted = omitted.checked_add(1).ok_or(Error::Overflow)?;
         }
@@ -136,19 +119,18 @@ impl MixFold {
         if !weight.is_finite() || !(0.0..=1.0).contains(&weight) {
             return Err(Error::InvalidWeight);
         }
+        // Admitted weights in zero to one sum finitely.
         let total = self.weight + weight;
-        if !total.is_finite() {
-            return Err(Error::Numerical(ColorError::Unrepresentable));
-        }
         let value = if let Some(first) = self.value {
             first.interpolated(
                 value,
                 NumericalMethod::try_new(self.method.space(), self.method.effective_hue())
                     .expect("checked authored interpolation space and effective hue"),
-                if total > 0.0 { weight / total } else { 0.5 },
-            )?
+                UnitInterval::new(if total > 0.0 { weight / total } else { 0.5 })
+                    .expect("an admitted weight is at most its nonnegative running total"),
+            )
         } else {
-            value.prepared_for_interpolation(self.method.space())?
+            value.prepared_for_interpolation(self.method.space())
         };
         self.value = Some(value);
         self.weight = total;
@@ -158,19 +140,24 @@ impl MixFold {
         let value = self.value.ok_or(Error::Empty)?;
         // Color5 mixtures retain their modern serialization family; missing
         // HSL/HWB components still serialize in the natural cylindrical form.
-        Ok(Color::try_new(
+        Ok(Color::new(
             value.space(),
-            value.channels(),
-            value.alpha().map(|alpha| alpha * weights.alpha_multiplier),
-        )?
-        .with_serialization_family(surgeist_color::SerializationFamily::ColorFunction)?)
+            value.finite_channels(),
+            value.unit_alpha().map(|alpha| {
+                UnitInterval::new(alpha.get() * weights.alpha_multiplier)
+                    .expect("a product of a unit alpha and a unit multiplier is a unit value")
+            }),
+        )
+        .with_color_function())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ColorSpace as Space, HueInterpolation as Hue, PredefinedColorSpace as Predefined};
+    use surgeist_color::ColorSpace as Space;
+    use surgeist_color::HueInterpolation as Hue;
+    use surgeist_color::PredefinedColorSpace as Predefined;
     const SRGB: Space = Space::Predefined(Predefined::Srgb);
     fn method(space: Space, hue: Option<Hue>) -> Method {
         Method::try_new(space, hue).unwrap()

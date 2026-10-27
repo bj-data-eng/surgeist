@@ -1,7 +1,8 @@
-use surgeist_css::{
-    CssErrorCode, CssImageValue, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
-    CssRecoveryAction, CssRule, ErrorKind, parse_sheet, parse_style_attribute,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::values::image::CssImageValue;
 
 #[derive(Clone, Copy)]
 struct InvalidDeclaration {
@@ -406,7 +407,7 @@ const fn last_case(
     }
 }
 
-fn property_names(declarations: &surgeist_css::CssDeclarationList) -> Vec<&str> {
+fn property_names(declarations: &surgeist_css::declaration::CssDeclarationList) -> Vec<&str> {
     declarations
         .iter()
         .map(|declaration| match declaration.property_name() {
@@ -420,7 +421,7 @@ fn property_names(declarations: &surgeist_css::CssDeclarationList) -> Vec<&str> 
 fn assert_invalid_case(case: InvalidDeclaration) {
     let invalid = format!("{}: {};", case.property, case.value);
     let source = format!("--😀: kept; {invalid} color: red");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(
         property_names(report.syntax()),
         ["--😀", "color"],
@@ -481,17 +482,21 @@ fn assert_invalid_case(case: InvalidDeclaration) {
         case.record,
     );
     assert!(
-        matches!(
-            diagnostic.error().kind(),
-            ErrorKind::InvalidPropertyValue(detail)
-                if detail.property().canonical_name() == case.property
-        ),
+        (diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
+            && diagnostic
+                .error()
+                .known_property()
+                .unwrap()
+                .canonical_name()
+                == case.property),
         "{}: {diagnostic:#?}",
         case.record
     );
 
     assert_eq!(
-        surgeist_css::validate_style_attribute(&source)
+        surgeist_css::CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
             .expect_err("strict validation rejects recovered layered syntax")
             .diagnostics(),
         report.diagnostics(),
@@ -512,7 +517,7 @@ fn background_border_and_image_recovery_preserves_siblings_and_boundaries() {
         "border-image: 10 // 1 2 3 4 5; ",
         "color: red",
     );
-    let repeated_report = parse_style_attribute(repeated);
+    let repeated_report = CssParser::default().parse_block_contents(repeated);
     assert_eq!(property_names(repeated_report.syntax()), ["color"]);
     assert_eq!(repeated_report.diagnostics().len(), 3);
     for (diagnostic, property) in repeated_report.diagnostics().iter().zip([
@@ -525,10 +530,10 @@ fn background_border_and_image_recovery_preserves_siblings_and_boundaries() {
             CssErrorCode::InvalidPropertyValue
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        assert!(matches!(
-            diagnostic.error().kind(),
-            ErrorKind::InvalidPropertyValue(detail) if detail.property() == property
-        ));
+        assert!(
+            (diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
+                && diagnostic.error().known_property().unwrap() == property)
+        );
     }
 
     let nested = concat!(
@@ -537,7 +542,7 @@ fn background_border_and_image_recovery_preserves_siblings_and_boundaries() {
         "background-image: url(first.png), linear-gradient(red, blue), none; } ",
         ".after { height: 2px; }",
     );
-    let nested_report = parse_sheet(nested);
+    let nested_report = CssParser::default().parse_sheet(nested);
     assert_eq!(nested_report.diagnostics().len(), 2);
     assert!(nested_report.diagnostics().iter().all(|diagnostic| {
         diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
@@ -562,14 +567,14 @@ fn background_border_and_image_recovery_preserves_siblings_and_boundaries() {
     else {
         panic!("expected background-image value");
     };
-    assert!(matches!(images.images().images(), [
+    assert!(matches!(images.value().images(), [
         CssImageValue::Url(first),
         CssImageValue::Gradient(_),
         CssImageValue::None,
     ] if first.as_str() == "first.png"));
 
     let eof_source = "background-image: linear-gradient(red, blue),";
-    let eof_report = parse_style_attribute(eof_source);
+    let eof_report = CssParser::default().parse_block_contents(eof_source);
     let [eof] = eof_report.diagnostics() else {
         panic!("trailing background layer at EOF must recover exactly once");
     };
@@ -585,7 +590,7 @@ fn background_border_and_image_recovery_preserves_siblings_and_boundaries() {
     );
 
     let implicit_source = "background-image: linear-gradient(red, blue";
-    let implicit_report = parse_style_attribute(implicit_source);
+    let implicit_report = CssParser::default().parse_block_contents(implicit_source);
     assert_eq!(
         property_names(implicit_report.syntax()),
         ["background-image"]
@@ -614,7 +619,7 @@ fn background_border_and_image_recovery_preserves_siblings_and_boundaries() {
             ")".repeat(depth - 1),
         );
         let source = format!("background-image: {value}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(
             report.is_clean(),
             "depth {depth}: {:?}",
@@ -634,15 +639,14 @@ fn background_border_and_image_recovery_preserves_siblings_and_boundaries() {
     );
     let invalid = format!("background-image: {value};");
     let source = format!("{invalid} color: red");
-    let report = parse_style_attribute(&source);
-    assert_eq!(property_names(report.syntax()), ["color"]);
+    let report = CssParser::default().parse_block_contents(&source);
+    // Block contents charges the component limits for the whole input, so the
+    // valid sibling is refused with the over-deep declaration.
+    assert!(report.syntax().is_empty());
+    crate::css::support::parse_report::assert_contents_refused(&report, &source, "depth 257");
     let [diagnostic] = report.diagnostics() else {
         panic!("depth 257 must produce one bounded diagnostic");
     };
-    assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
-    assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
-    assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
-    assert_eq!(diagnostic.span().end().byte_offset().value(), invalid.len());
     let first_over_limit = source.match_indices("f(").nth(255).unwrap().0;
     assert_eq!(
         diagnostic.error().position().byte_offset().value(),
@@ -650,7 +654,9 @@ fn background_border_and_image_recovery_preserves_siblings_and_boundaries() {
     );
 
     assert_eq!(
-        surgeist_css::validate_style_attribute(&source)
+        surgeist_css::CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
             .expect_err("strict validation rejects layered nesting overflow")
             .diagnostics(),
         report.diagnostics(),

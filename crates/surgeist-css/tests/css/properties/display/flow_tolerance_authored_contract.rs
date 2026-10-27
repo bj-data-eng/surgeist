@@ -12,9 +12,29 @@
 //! owners; the existing CssSheet boundary supplies cumulative sibling bytes.
 
 use crate::css::support::authored_property;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::implicit_closing_origin as implicit_origin;
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{CssCalculation, CssCalculationType, CssLengthPercentage, CssNumeric};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssLonghandContributions,
+    CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyValueError,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::{CssFlowTolerance, CssFlowToleranceRef};
 
 const PROP: P = P::FlowTolerance;
 const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
@@ -45,14 +65,18 @@ fn constructed(text: &str) -> CssFlowTolerance {
         "normal" => CssFlowTolerance::normal(),
         "infinite" => CssFlowTolerance::infinite(),
         _ => {
-            let components = parse_component_values(text).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             let scalar = if text.contains('(') {
-                CssSpecifiedLengthPercentage::try_from_calculation(
-                    CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+                CssNumeric::<CssLengthPercentage>::try_from_calculation(
+                    CssCalculation::<CssLengthPercentage>::try_from_components(
+                        components,
+                        Default::default(),
+                    )
+                    .unwrap(),
                 )
                 .unwrap()
             } else {
-                CssSpecifiedLengthPercentage::try_from_component(components.items()[0].clone())
+                CssNumeric::<CssLengthPercentage>::try_from_component(components.items()[0].clone())
                     .unwrap()
             };
             CssFlowTolerance::length_percentage(scalar)
@@ -60,8 +84,7 @@ fn constructed(text: &str) -> CssFlowTolerance {
     }
 }
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("one complete terminal")
     };
@@ -89,12 +112,14 @@ fn accepted(input: &str, expected: &str) {
     for source in fronts(input) {
         let before = source.clone();
         assert_eq!(
-            value(&source).serialize_specified().unwrap(),
+            value(&source)
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected,
             "{input}"
         );
         assert_eq!(
-            source.to_specified_css().unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             format!("flow-tolerance: {expected} !important;")
         );
         let values = completed(&source);
@@ -104,11 +129,16 @@ fn accepted(input: &str, expected: &str) {
         authored_property::checked(PROP, expected, false);
         authored_property::checked(PROP, expected, true);
     }
-    assert_eq!(constructed(input).serialize_specified().unwrap(), expected);
+    assert_eq!(
+        constructed(input)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 }
 fn invalid(input: &str) {
     let css = format!("color:red;flow-tolerance:{input};color:blue");
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert_eq!(report.syntax().len(), 2, "{input}");
     assert!(
         report
@@ -120,31 +150,38 @@ fn invalid(input: &str) {
         panic!("one atomic grammar failure: {input}")
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("property-specific failure")
-    };
-    assert_eq!(detail.property(), PROP);
+    let detail = diagnostic.error();
     assert_eq!(
-        validate_style_attribute(&css).unwrap_err().diagnostics(),
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "property-specific failure"
+    );
+    assert_eq!(detail.known_property().unwrap(), PROP);
+    assert_eq!(
+        CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
-    let components = parse_component_values(input).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), input).unwrap();
     let before = components.clone();
     for result in [
-        parse_property_value(
-            CssPropertyNameRef::Known(PROP),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(PROP)),
             components.clone(),
             CssImportance::Normal,
         ),
-        parse_property_value_for_grammar(PROP.grammar(), components.clone(), CssImportance::Normal),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(PROP.grammar()),
+            components.clone(),
+            CssImportance::Normal,
+        ),
     ] {
-        assert!(
-            matches!(
-                result.unwrap_err().kind(),
-                CssPropertyValueErrorKind::Grammar(_)
-            ),
-            "{input}"
-        );
+        assert!(result.unwrap_err().code().is_some(), "{input}");
     }
     assert_eq!(components, before);
 }
@@ -201,16 +238,23 @@ fn signed_literals_keywords_and_canonical_sorting_are_preserved() {
     }
     for (input, expected) in [("NoRmAl", "normal"), (r"\69 nfinite", "infinite")] {
         for source in fronts(input) {
-            assert_eq!(value(&source).serialize_specified().unwrap(), expected);
+            assert_eq!(
+                value(&source)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                expected
+            );
         }
     }
 }
 #[test]
 fn exact_literal_payloads_and_programmatic_origins_survive_projection() {
     let component = CssComponentValue::try_dimension("-0.5", "em").unwrap();
-    let components = CssComponentValues::try_new(vec![component.clone()]).unwrap();
-    let source = parse_property_value(
-        CssPropertyNameRef::Known(PROP),
+    let components =
+        CssComponentValues::try_new(vec![component.clone()], Default::default()).unwrap();
+    let source = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(PROP)),
         components.clone(),
         CssImportance::Important,
     )
@@ -218,7 +262,10 @@ fn exact_literal_payloads_and_programmatic_origins_survive_projection() {
     let CssFlowToleranceRef::LengthPercentage(scalar) = value(&source).as_ref() else {
         panic!("signed payload")
     };
-    assert_eq!(scalar.literal_component(), Some(&component));
+    assert_eq!(
+        scalar.literal().map(|literal| literal.component()),
+        Some(&component)
+    );
     assert_eq!(component.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(source.value_components(), &components);
     assert!(source.position().is_none());
@@ -234,7 +281,12 @@ fn exact_literal_payloads_and_programmatic_origins_survive_projection() {
             let CssFlowToleranceRef::LengthPercentage(scalar) = value(&source).as_ref() else {
                 panic!("exact literal")
             };
-            match scalar.literal_component().unwrap().view() {
+            match scalar
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap()
+                .view()
+            {
                 CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) => {
                     assert_eq!(number.representation(), "-1e999");
                     assert_eq!(unit, "px");
@@ -244,7 +296,12 @@ fn exact_literal_payloads_and_programmatic_origins_survive_projection() {
                 }
                 _ => panic!("original exact numeric token"),
             }
-            assert_eq!(value(&source).serialize_specified().unwrap(), expected);
+            assert_eq!(
+                value(&source)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                expected
+            );
         }
     }
 }
@@ -300,7 +357,7 @@ fn mixed_percentage_math_unbounded_clamp_and_exception_domains_are_authored() {
     ] {
         let constructed = constructed(input);
         let before = constructed.clone();
-        let output = constructed.serialize_specified().unwrap();
+        let output = constructed.serialize_specified(Default::default()).unwrap();
         // Mixed-basis admission and canonical idempotence are controls; output
         // here is not an independently asserted canonical golden. The separate
         // 21-function table and signed sorting table supply explicit goldens.
@@ -318,7 +375,7 @@ fn mixed_percentage_math_unbounded_clamp_and_exception_domains_are_authored() {
         assert_eq!(constructed, before);
         assert_eq!(
             value(&authored_property::checked(PROP, &output, true))
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             output
         );
@@ -384,27 +441,30 @@ fn invalid_grammar_math_arity_types_and_sum_separators_drop_only_the_occurrence(
 #[test]
 fn checked_failures_map_to_the_original_responsible_annotation_token() {
     let text = "/*😀*/1px!important";
-    let components = parse_component_values(text).unwrap();
-    let serialized = components.serialize().unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
+    let serialized = components.serialize_tokens(Default::default()).unwrap();
     let expected = serialized
         .origin_at(serialized.as_css().find('!').unwrap())
         .unwrap()
         .clone();
     let before = components.clone();
     for result in [
-        parse_property_value(
-            CssPropertyNameRef::Known(PROP),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(PROP)),
             components.clone(),
             CssImportance::Normal,
         ),
-        parse_property_value_for_grammar(PROP.grammar(), components.clone(), CssImportance::Normal),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(PROP.grammar()),
+            components.clone(),
+            CssImportance::Normal,
+        ),
     ] {
         let error = result.unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
-        assert_eq!(error.origin(), &expected);
+        assert!(error.code().is_some());
+        assert_eq!(error.origin(), expected);
     }
     assert_eq!(components, before);
 }
@@ -416,13 +476,14 @@ fn every_substitution_front_reenters_all_globals_and_ordinary_values_with_exact_
         "attr(data-threshold *)",
     ] {
         for source in fronts(text) {
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("whole pending handle")
             };
             assert!(handle.source().same_occurrence(&source));
             assert_eq!(handle.source().importance(), CssImportance::Important);
             for replacement_text in ["-25%", "normal", "infinite", "calc(-2px - 3%)"] {
-                let replacement = parse_component_values(replacement_text).unwrap();
+                let replacement =
+                    CssComponentValues::parse(&CssParser::default(), replacement_text).unwrap();
                 let CssContributions::Longhands(values) =
                     handle.reenter(replacement.clone()).unwrap()
                 else {
@@ -461,7 +522,8 @@ fn every_substitution_front_reenters_all_globals_and_ordinary_values_with_exact_
                 }
             }
             for (replacement_text, keyword) in GLOBALS {
-                let replacement = parse_component_values(replacement_text).unwrap();
+                let replacement =
+                    CssComponentValues::parse(&CssParser::default(), replacement_text).unwrap();
                 let CssContributions::Longhands(values) =
                     handle.reenter(replacement.clone()).unwrap()
                 else {
@@ -490,7 +552,7 @@ fn residual_and_invalid_replacements_are_atomic_reusable_and_keep_pending_source
     ] {
         let source = authored_property::checked(PROP, text, true);
         let before = source.clone();
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending")
         };
         for replacement in [
@@ -501,13 +563,14 @@ fn residual_and_invalid_replacements_are_atomic_reusable_and_keep_pending_source
             r"\76 ar(--again)",
         ] {
             for _ in 0..2 {
-                assert!(matches!(
+                assert!(
                     handle
-                        .reenter(parse_component_values(replacement).unwrap())
+                        .reenter(
+                            CssComponentValues::parse(&CssParser::default(), replacement).unwrap()
+                        )
                         .unwrap_err()
-                        .kind(),
-                    CssExpansionErrorKind::ResidualSubstitution
-                ));
+                        .is_residual_substitution()
+                );
             }
         }
         for replacement in [
@@ -520,21 +583,18 @@ fn residual_and_invalid_replacements_are_atomic_reusable_and_keep_pending_source
         ] {
             for _ in 0..2 {
                 let error = handle
-                    .reenter(parse_component_values(replacement).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), replacement).unwrap())
                     .unwrap_err();
-                let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+                let Some(error) = error.replacement_error() else {
                     panic!("strict grammar reentry")
                 };
-                assert!(matches!(
-                    error.kind(),
-                    CssPropertyValueErrorKind::Grammar(_)
-                ));
+                assert!(error.code().is_some());
             }
         }
         assert!(handle.source().same_occurrence(&source));
         assert_eq!(source, before);
         let CssContributions::Longhands(values) = handle
-            .reenter(parse_component_values("-2px").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "-2px").unwrap())
             .unwrap()
         else {
             panic!("successful retry")
@@ -545,14 +605,11 @@ fn residual_and_invalid_replacements_are_atomic_reusable_and_keep_pending_source
     }
 }
 
-fn assert_closure(error: &CssPropertyValueParseError, origin: &CssValueOrigin) {
-    assert!(matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-    ));
+fn assert_closure(error: &CssPropertyValueError, origin: &CssValueOrigin) {
+    assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
     assert_eq!(
         error.origin(),
-        &CssSerializedOrigin::End(Some(origin.clone()))
+        CssSerializedOrigin::End(Some(origin.clone()))
     );
 }
 fn assert_original_eof(origin: &CssValueOrigin, text: &str) {
@@ -579,18 +636,20 @@ fn checked_original_comments_and_functions_cannot_be_repaired_before_grammar() {
         "env(threshold",
         "attr(data-threshold *",
     ] {
-        let components = parse_component_values(text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let before = components.clone();
         let origin = implicit_origin(&components);
         assert_original_eof(&origin, text);
         for result in [
-            parse_property_value(
-                CssPropertyNameRef::Known(PROP),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(PROP)),
                 components.clone(),
                 CssImportance::Important,
             ),
-            parse_property_value_for_grammar(
-                PROP.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(PROP.grammar()),
                 components.clone(),
                 CssImportance::Important,
             ),
@@ -614,17 +673,19 @@ fn checked_original_comments_and_functions_cannot_be_repaired_before_grammar() {
     }
     for (keyword, _) in GLOBALS {
         let text = format!("{keyword}/*");
-        let components = parse_component_values(&text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
         let origin = implicit_origin(&components);
         assert_original_eof(&origin, &text);
         for result in [
-            parse_property_value(
-                CssPropertyNameRef::Known(PROP),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(PROP)),
                 components.clone(),
                 CssImportance::Normal,
             ),
-            parse_property_value_for_grammar(
-                PROP.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(PROP.grammar()),
                 components.clone(),
                 CssImportance::Normal,
             ),
@@ -643,7 +704,7 @@ fn strict_reentry_rejects_original_closure_and_can_retry_matched_replacements() 
         "attr(data-threshold *)",
     ] {
         let source = authored_property::checked(PROP, pending, true);
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending")
         };
         for text in [
@@ -653,12 +714,12 @@ fn strict_reentry_rejects_original_closure_and_can_retry_matched_replacements() 
             "initial/*",
             "calc(-2px - 3%",
         ] {
-            let components = parse_component_values(text).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             let origin = implicit_origin(&components);
             assert_original_eof(&origin, text);
             for _ in 0..2 {
                 let error = handle.reenter(components.clone()).unwrap_err();
-                let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+                let Some(error) = error.replacement_error() else {
                     panic!("original closure rejection")
                 };
                 assert_closure(error, &origin);
@@ -667,18 +728,17 @@ fn strict_reentry_rejects_original_closure_and_can_retry_matched_replacements() 
         }
         // Residual detection has priority over reentry grammar even at repaired EOF.
         for text in ["var(--again", "env(again", "attr(data-again *"] {
-            assert!(matches!(
+            assert!(
                 handle
-                    .reenter(parse_component_values(text).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), text).unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::ResidualSubstitution
-            ));
+                    .is_residual_substitution()
+            );
         }
         for text in ["-2px/**/", "initial/**/", "calc(-2px - 3%)"] {
             assert!(
                 handle
-                    .reenter(parse_component_values(text).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), text).unwrap())
                     .is_ok()
             );
         }
@@ -694,7 +754,7 @@ fn browser_recovery_retains_occurrences_and_diagnostics_through_normalization() 
         "var(--threshold",
     ] {
         let css = format!(".a{{flow-tolerance:{text}");
-        let report = parse_sheet(&css);
+        let report = CssParser::default().parse_sheet(&css);
         assert!(!report.is_clean());
         assert!(
             report
@@ -703,12 +763,16 @@ fn browser_recovery_retains_occurrences_and_diagnostics_through_normalization() 
                 .any(|d| d.action() == CssRecoveryAction::RetainWithImplicitClosure)
         );
         assert_eq!(
-            validate_sheet(&css).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&css)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
         let before = report.clone();
         let exact = CssNormalizationLimits::try_new(0, 1, 1, 1).unwrap();
-        let normalized = normalize_report_with_limits(&report, exact).unwrap();
+        let normalized = report.normalize(exact).unwrap();
         assert_eq!(normalized.diagnostics(), report.diagnostics());
         let declarations: Vec<_> = normalized
             .syntax()
@@ -735,31 +799,26 @@ fn browser_recovery_retains_occurrences_and_diagnostics_through_normalization() 
             _ => panic!("flow recovery expansion"),
         }
         // The one recovered declaration needs one contribution.
-        let error = normalize_report_with_limits(
-            &report,
-            CssNormalizationLimits::try_new(0, 1, 1, 0).unwrap(),
-        )
-        .unwrap_err();
+        let error = report
+            .normalize(CssNormalizationLimits::try_new(0, 1, 1, 0).unwrap())
+            .unwrap_err();
         assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded {
-                resource: CssNormalizationResource::Contributions,
-                limit: 0,
-            }
+            error.exhausted_limit(),
+            Some((CssNormalizationResource::Contributions, 0))
         );
         assert_eq!(error.declaration_order(), Some(0));
         assert_eq!(report, before);
-        assert!(normalize_report_with_limits(&report, exact).is_ok());
+        assert!(report.normalize(exact).is_ok());
     }
 }
 #[test]
 fn normalization_counts_every_ordinary_global_and_whole_pending_occurrence_once() {
     let css = "@media screen{.a{flow-tolerance:normal!important;flow-tolerance:-25%;flow-tolerance:infinite;flow-tolerance:var(--threshold);flow-tolerance:unset;flow-tolerance:calc(-2px - 3%)}}";
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(report.is_clean());
     let before = report.clone();
     let exact = CssNormalizationLimits::try_new(1, 2, 6, 6).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -832,11 +891,8 @@ fn normalization_counts_every_ordinary_global_and_whole_pending_occurrence_once(
         ),
     ] {
         for _ in 0..2 {
-            let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-            assert_eq!(
-                error.kind(),
-                &CssNormalizationErrorKind::LimitExceeded { resource, limit: 5 }
-            );
+            let error = report.syntax().normalize(limits).unwrap_err();
+            assert_eq!(error.exhausted_limit(), Some((resource, 5)));
             assert_eq!(error.declaration_order(), Some(5));
             assert!(
                 error
@@ -847,12 +903,12 @@ fn normalization_counts_every_ordinary_global_and_whole_pending_occurrence_once(
         }
     }
     assert_eq!(report, before);
-    assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
+    assert!(report.syntax().normalize(exact).is_ok());
 }
 #[test]
 fn primitive_and_declaration_resources_have_exact_independent_costs_and_atomic_retry() {
-    use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
+    use crate::css::support::failure_classes::SerializationFailure as Kind;
+    use CssSerializationLimits as Limits;
     for (input, expected, inputs, projections) in [
         ("normal", "normal", 1, 1),
         ("infinite", "infinite", 1, 1),
@@ -864,17 +920,13 @@ fn primitive_and_declaration_resources_have_exact_independent_costs_and_atomic_r
         let declaration = format!("flow-tolerance: {expected} !important;");
         assert_eq!(
             value(&source)
-                .serialize_specified_with_limits(Limits::new(inputs, projections, expected.len()))
+                .serialize_specified(Limits::new(inputs, projections, expected.len()))
                 .unwrap(),
             expected
         );
         assert_eq!(
             source
-                .to_specified_css_with_limits(Limits::new(
-                    inputs + 2,
-                    projections + 2,
-                    declaration.len()
-                ))
+                .serialize_specified(Limits::new(inputs + 2, projections + 2, declaration.len()))
                 .unwrap(),
             declaration
         );
@@ -897,30 +949,29 @@ fn primitive_and_declaration_resources_have_exact_independent_costs_and_atomic_r
         ] {
             for _ in 0..2 {
                 assert_eq!(
-                    value(&source)
-                        .serialize_specified_with_limits(primitive)
-                        .unwrap_err()
-                        .kind(),
+                    serialization_failure(
+                        &value(&source).serialize_specified(primitive).unwrap_err()
+                    ),
                     kind
                 );
                 assert_eq!(
-                    source
-                        .to_specified_css_with_limits(aggregate)
-                        .unwrap_err()
-                        .kind(),
+                    serialization_failure(&source.serialize_specified(aggregate).unwrap_err()),
                     kind
                 );
                 assert_eq!(source, before);
             }
         }
-        assert_eq!(source.to_specified_css().unwrap(), declaration);
+        assert_eq!(
+            source.serialize_specified(Default::default()).unwrap(),
+            declaration
+        );
     }
 }
 #[test]
 fn sheet_siblings_share_canonical_byte_budget_with_atomic_reusable_failure() {
-    use CssSpecifiedValueSerializationLimits as Limits;
-    let report =
-        parse_sheet(".a{flow-tolerance:normal!important}.b{flow-tolerance:calc(1px + 2em)}");
+    use CssSerializationLimits as Limits;
+    let report = CssParser::default()
+        .parse_sheet(".a{flow-tolerance:normal!important}.b{flow-tolerance:calc(1px + 2em)}");
     assert!(report.is_clean());
     let sheet = report.syntax();
     let before = sheet.clone();
@@ -928,45 +979,46 @@ fn sheet_siblings_share_canonical_byte_budget_with_atomic_reusable_failure() {
         ".a { flow-tolerance: normal !important; }\n.b { flow-tolerance: calc(2em + 1px); }";
     let exact = Limits::new(usize::MAX, usize::MAX, expected.len());
     let short = Limits::new(usize::MAX, usize::MAX, expected.len() - 1);
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
     assert!(
         sheet
             .rules()
             .iter()
-            .all(|r| r.to_specified_css_with_limits(short).is_ok())
+            .all(|r| r.serialize_specified(short).is_ok())
     );
     for _ in 0..2 {
-        let error = sheet.to_specified_css_with_limits(short).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
-            )
-        );
+        let error = sheet.serialize_specified(short).unwrap_err();
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, &before);
     }
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
 }
 #[test]
 fn supported_color_control_keeps_checked_expansion_and_provider_contract() {
-    let components = parse_component_values("currentcolor").unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), "currentcolor").unwrap();
     for source in [
-        parse_property_value(
-            CssPropertyNameRef::Known(P::Color),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(P::Color)),
             components.clone(),
             CssImportance::Important,
         )
         .unwrap(),
-        parse_property_value_for_grammar(P::Color.grammar(), components, CssImportance::Important)
-            .unwrap(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(P::Color.grammar()),
+            components,
+            CssImportance::Important,
+        )
+        .unwrap(),
     ] {
         assert_eq!(
-            source.to_specified_css().unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             "color: currentcolor !important;"
         );
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("color control")
         };

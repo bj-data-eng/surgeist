@@ -3,34 +3,69 @@
 //! oracles: Conditional 5 WD20251030 §2 and Fonts 4 WD20260907 §4.3 vocabularies.
 //! Support truth, font loading and actual at-rule admission remain downstream.
 use crate::css::support::authored_syntax::checked_supports_condition as checked;
-use surgeist_css::*;
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::font_face::{CssFontFormat, CssFontFormatHint, CssFontTechHint};
+use surgeist_css::rule::{CssImportRule, CssRule, CssSheet};
+use surgeist_css::selector::{CssNamespaceContext, CssSelector};
 
-fn both(source: &str, inspect: impl Fn(&CssSupportsCondition)) {
+fn both(source: &str, inspect: impl Fn(&CssCondition<CssSupportsLeaf>)) {
     let condition = checked(source);
     inspect(&condition);
-    assert_eq!(condition.serialize().unwrap().as_css(), source);
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
     let clone = condition.clone();
     assert_eq!(condition, clone);
     let sheet = format!("@supports {source} {{}}");
-    let report = parse_sheet(&sheet);
+    let report = CssParser::default().parse_sheet(&sheet);
     assert!(report.is_clean(), "{sheet}: {:?}", report.diagnostics());
     let [CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("retained group")
     };
     inspect(rule.condition());
     assert_eq!(
-        rule.condition().serialize().unwrap().as_css(),
+        rule.condition()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         format!(" {source} ")
     );
     let expected = format!("@supports {source} {{ }}");
-    assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
-    let replay = parse_sheet(&expected);
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
+    let replay = CssParser::default().parse_sheet(&expected);
     assert!(replay.is_clean(), "{:?}", replay.diagnostics());
     let [CssRule::Supports(rule)] = replay.syntax().rules() else {
         panic!("replayed group")
     };
     inspect(rule.condition());
-    assert_eq!(replay.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        replay
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 }
 
 fn assert_token_origin(origin: &CssValueOrigin, source: &str, token: &str) {
@@ -63,14 +98,14 @@ fn every_font_technology_keyword_has_its_distinct_authored_payload() {
     ] {
         both(&format!("font-tech({name})"), |condition| {
             assert!(
-                matches!(condition.kind(), CssSupportsConditionKind::FontTech(value) if *value == expected)
+                matches!(condition.kind(), CssConditionKind::Leaf(CssSupportsLeaf::FontTech(value)) if *value == expected)
             );
         });
     }
     both(r"FoNt-\74 ech( /**/ VaRiAtIoNs /**/ )", |condition| {
         assert!(matches!(
             condition.kind(),
-            CssSupportsConditionKind::FontTech(CssFontTechHint::Variations)
+            CssConditionKind::Leaf(CssSupportsLeaf::FontTech(CssFontTechHint::Variations))
         ));
     });
 }
@@ -88,14 +123,16 @@ fn every_font_format_keyword_is_preserved_without_merging_synonymous_formats() {
     ] {
         both(&format!("font-format({name})"), |condition| {
             assert!(
-                matches!(condition.kind(), CssSupportsConditionKind::FontFormat(CssFontFormat::Keyword(value)) if *value == expected)
+                matches!(condition.kind(), CssConditionKind::Leaf(CssSupportsLeaf::FontFormat(CssFontFormat::Keyword(value))) if *value == expected)
             );
         });
     }
     both(r"FONT-\66 ormat( /**/ W\4f FF2 /**/ )", |condition| {
         assert!(matches!(
             condition.kind(),
-            CssSupportsConditionKind::FontFormat(CssFontFormat::Keyword(CssFontFormatHint::Woff2))
+            CssConditionKind::Leaf(CssSupportsLeaf::FontFormat(CssFontFormat::Keyword(
+                CssFontFormatHint::Woff2
+            )))
         ));
     });
 }
@@ -113,7 +150,7 @@ fn full_format_string_grammar_retains_decoded_strings_instead_of_keyword_truth()
         ("font-format('  WOFF2  ')", "  WOFF2  "),
     ] {
         both(source, |condition| {
-            let CssSupportsConditionKind::FontFormat(CssFontFormat::String(value)) =
+            let CssConditionKind::Leaf(CssSupportsLeaf::FontFormat(CssFontFormat::String(value))) =
                 condition.kind()
             else {
                 panic!("distinct authored String for {source}")
@@ -134,7 +171,7 @@ fn arbitrary_at_keywords_keep_original_tokens_decoded_names_and_function_delimit
     ] {
         let function = format!(r"aT-\72 ule( /**/ {argument} /**/ )");
         both(&function, |condition| {
-            let CssSupportsConditionKind::AtRule(value) = condition.kind() else {
+            let CssConditionKind::Leaf(CssSupportsLeaf::AtRule(value)) = condition.kind() else {
                 panic!("genuine AtKeyword predicate")
             };
             assert_eq!(value.name(), decoded);
@@ -142,7 +179,7 @@ fn arbitrary_at_keywords_keep_original_tokens_decoded_names_and_function_delimit
                 matches!(value.component().view(), CssComponentValueRef::Token(CssValueTokenRef::AtKeyword(name)) if name == decoded)
             );
             assert_eq!(value.origin(), value.component().origin());
-            let serialized = condition.serialize().unwrap();
+            let serialized = condition.serialize_tokens(Default::default()).unwrap();
             let lexical = serialized.as_css();
             let CssValueOrigin::Parsed(origin) = value.origin() else {
                 panic!("argument origin")
@@ -194,7 +231,7 @@ fn arbitrary_at_keywords_keep_original_tokens_decoded_names_and_function_delimit
 #[test]
 fn programmatic_function_wrapper_keeps_the_independently_parsed_at_keyword_origin() {
     let source = "/*😀*/\n@--Mixed";
-    let argument = parse_component_values(source)
+    let argument = CssComponentValues::parse(&CssParser::default(), source)
         .unwrap()
         .items()
         .last()
@@ -203,17 +240,18 @@ fn programmatic_function_wrapper_keeps_the_independently_parsed_at_keyword_origi
     let origin = argument.origin().clone();
     let function = CssComponentValue::try_function(
         "at-rule",
-        CssComponentValues::try_new(vec![argument.clone()]).unwrap(),
+        CssComponentValues::try_new(vec![argument.clone()], Default::default()).unwrap(),
     )
     .unwrap();
-    let condition = CssSupportsCondition::try_from_components(
-        CssComponentValues::try_new(vec![function]).unwrap(),
+    let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
+        CssComponentValues::try_new(vec![function], Default::default()).unwrap(),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(condition.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(condition.position(), None);
-    let CssSupportsConditionKind::AtRule(value) = condition.kind() else {
+    let CssConditionKind::Leaf(CssSupportsLeaf::AtRule(value)) = condition.kind() else {
         panic!("mixed-origin AtKeyword")
     };
     assert_eq!(value.component(), &argument);
@@ -221,7 +259,7 @@ fn programmatic_function_wrapper_keeps_the_independently_parsed_at_keyword_origi
     assert_eq!(value.origin(), &origin);
     assert_eq!(value.position().unwrap().line().value(), 1);
     assert_eq!(value.position().unwrap().column().value(), 0);
-    let output = condition.serialize().unwrap();
+    let output = condition.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), "at-rule(@--Mixed)");
     assert_eq!(
         output.origin_at(0),
@@ -235,8 +273,8 @@ fn programmatic_function_wrapper_keeps_the_independently_parsed_at_keyword_origi
 
 const COMPOSED: &str = r#"font-tech(variations) and (font-format("woff2") or at-rule(@charset)) and (--\46 eature) and selector(.probe) and (display:grid)"#;
 
-fn inspect_composed(condition: &CssSupportsCondition) {
-    let CssSupportsConditionKind::And(children) = condition.kind() else {
+fn inspect_composed(condition: &CssCondition<CssSupportsLeaf>) {
+    let CssConditionKind::And(children) = condition.kind() else {
         panic!("authored conjunction")
     };
     let [tech, grouped, named, selector, declaration] = children.conditions() else {
@@ -244,30 +282,40 @@ fn inspect_composed(condition: &CssSupportsCondition) {
     };
     assert!(matches!(
         tech.kind(),
-        CssSupportsConditionKind::FontTech(CssFontTechHint::Variations)
+        CssConditionKind::Leaf(CssSupportsLeaf::FontTech(CssFontTechHint::Variations))
     ));
-    let CssSupportsConditionKind::Or(alternatives) = grouped.kind() else {
+    let CssConditionKind::Parenthesized(group) = grouped.kind() else {
+        panic!("explicitly grouped alternatives")
+    };
+    let CssConditionKind::Or(alternatives) = group.kind() else {
         panic!("explicitly grouped alternatives")
     };
     let [format, rule] = alternatives.conditions() else {
         panic!("two alternatives")
     };
     assert!(
-        matches!(format.kind(), CssSupportsConditionKind::FontFormat(CssFontFormat::String(value)) if value.as_str() == "woff2")
+        matches!(format.kind(), CssConditionKind::Leaf(CssSupportsLeaf::FontFormat(CssFontFormat::String(value))) if value.as_str() == "woff2")
     );
     assert!(
-        matches!(rule.kind(), CssSupportsConditionKind::AtRule(value) if value.name() == "charset")
+        matches!(rule.kind(), CssConditionKind::Leaf(CssSupportsLeaf::AtRule(value)) if value.name() == "charset")
     );
     assert!(
-        matches!(named.kind(), CssSupportsConditionKind::Named(value) if value.as_str() == "--Feature")
+        matches!(named.kind(), CssConditionKind::Leaf(CssSupportsLeaf::Named(value)) if value.as_str() == "--Feature")
     );
     assert!(
-        matches!(selector.kind(), CssSupportsConditionKind::Selector(CssSelector::Class(value)) if value == "probe")
+        matches!(selector.kind(), CssConditionKind::Leaf(CssSupportsLeaf::Selector(CssSelector::Class(value))) if value == "probe")
     );
     assert!(
-        matches!(declaration.kind(), CssSupportsConditionKind::Declaration(value) if value.property() == "display")
+        matches!(declaration.kind(), CssConditionKind::Leaf(CssSupportsLeaf::Declaration(value)) if value.property() == "display")
     );
-    assert_eq!(condition.serialize().unwrap().as_css().trim(), COMPOSED);
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css()
+            .trim(),
+        COMPOSED
+    );
 }
 
 #[test]
@@ -276,18 +324,21 @@ fn predicates_compose_with_booleans_names_and_selectors_across_group_consumers()
     both(
         "not (font-tech(palettes) or at-rule(@unknown))",
         |condition| {
-            let CssSupportsConditionKind::Not(child) = condition.kind() else {
+            let CssConditionKind::Not(child) = condition.kind() else {
                 panic!("unary not")
             };
-            let CssSupportsConditionKind::Or(children) = child.kind() else {
+            let CssConditionKind::Parenthesized(group) = child.kind() else {
+                panic!("explicit group")
+            };
+            let CssConditionKind::Or(children) = group.kind() else {
                 panic!("grouped or")
             };
             assert!(matches!(
                 children.conditions()[0].kind(),
-                CssSupportsConditionKind::FontTech(CssFontTechHint::Palettes)
+                CssConditionKind::Leaf(CssSupportsLeaf::FontTech(CssFontTechHint::Palettes))
             ));
             assert!(
-                matches!(children.conditions()[1].kind(), CssSupportsConditionKind::AtRule(value) if value.name() == "unknown")
+                matches!(children.conditions()[1].kind(), CssConditionKind::Leaf(CssSupportsLeaf::AtRule(value)) if value.name() == "unknown")
             );
         },
     );
@@ -305,10 +356,10 @@ fn predicates_compose_with_booleans_names_and_selectors_across_group_consumers()
             format!("@scope (.root) {{ @supports {COMPOSED} {{ .child {{ color: red; }} }} }}"),
         ),
     ] {
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let before = report.clone();
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let conditions: Vec<_> = normalized
             .items()
             .iter()
@@ -343,7 +394,7 @@ fn predicates_compose_with_booleans_names_and_selectors_across_group_consumers()
             value
                 .source()
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css()
                 .trim(),
@@ -351,35 +402,60 @@ fn predicates_compose_with_booleans_names_and_selectors_across_group_consumers()
         );
         let reused = CssSheet::try_from_rules(report.syntax().rules().to_vec()).unwrap();
         assert_eq!(reused.rules(), report.syntax().rules());
-        assert_eq!(reused.to_specified_css().unwrap(), expected);
-        assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
+        assert_eq!(
+            reused.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_eq!(
+            report
+                .syntax()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
         assert_eq!(report, before);
-        let replay = parse_sheet(&expected);
+        let replay = CssParser::default().parse_sheet(&expected);
         assert!(replay.is_clean(), "{:?}", replay.diagnostics());
-        assert_eq!(replay.syntax().to_specified_css().unwrap(), expected);
+        assert_eq!(
+            replay
+                .syntax()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
 }
 
 #[test]
 fn import_supports_uses_the_same_typed_predicates_and_checked_lexical_owner() {
     let source = format!("@import 'x.css' supports({COMPOSED});");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Import(parsed)] = report.syntax().rules() else {
         panic!("retained import")
     };
     let constructed = CssImportRule::try_from_components(
-        parse_component_values(&source).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), &source).unwrap(),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap();
     for rule in [parsed, &constructed] {
         assert!(rule.media().is_none());
         inspect_composed(rule.supports().unwrap().condition());
-        assert_eq!(rule.serialize().unwrap().as_css(), source);
+        assert_eq!(
+            rule.serialize_tokens(Default::default()).unwrap().as_css(),
+            source
+        );
     }
-    assert_eq!(report.syntax().to_specified_css().unwrap(), source);
-    let replay = parse_sheet(&source);
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        source
+    );
+    let replay = CssParser::default().parse_sheet(&source);
     let [CssRule::Import(rule)] = replay.syntax().rules() else {
         panic!("replayed import")
     };
@@ -410,7 +486,7 @@ fn balanced_invalid_predicate_arguments_remain_opaque_but_invalid_outer_algebra_
             assert!(
                 matches!(
                     condition.kind(),
-                    CssSupportsConditionKind::GeneralEnclosed(_)
+                    CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(_))
                 ),
                 "{source}"
             );
@@ -421,16 +497,15 @@ fn balanced_invalid_predicate_arguments_remain_opaque_but_invalid_outer_algebra_
         "not not at-rule(@media)",
         "font-tech(variations) and at-rule(@media) or font-format(woff2)",
     ] {
-        let error = CssSupportsCondition::try_from_components(
-            parse_component_values(source).unwrap(),
+        let error = CssCondition::<CssSupportsLeaf>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
             &CssNamespaceContext::default(),
+            Default::default(),
         )
         .unwrap_err();
-        assert!(matches!(
-            error,
-            CssSupportsConstructionError::InvalidConditionGrammar { .. }
-        ));
-        let report = parse_sheet(&format!("@supports {source}{{}} .after{{color:red}}"));
+        assert!(error.is_invalid_condition_grammar());
+        let report =
+            CssParser::default().parse_sheet(format!("@supports {source}{{}} .after{{color:red}}"));
         assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
         let [diagnostic] = report.diagnostics() else {
             panic!("one failed outer condition")
@@ -446,27 +521,20 @@ fn balanced_invalid_predicate_arguments_remain_opaque_but_invalid_outer_algebra_
 #[test]
 fn lexical_failures_in_function_predicates_are_terminal_and_recover_to_the_later_sibling() {
     for (predicate, bad, kind) in [
-        (
-            "font-tech(url(a b))",
-            "url(",
-            CssComponentValueErrorKind::BadUrl,
-        ),
-        (
-            "at-rule(url(a b))",
-            "url(",
-            CssComponentValueErrorKind::BadUrl,
-        ),
+        ("font-tech(url(a b))", "url(", ComponentFailure::BadUrl),
+        ("at-rule(url(a b))", "url(", ComponentFailure::BadUrl),
         (
             "font-format(\"broken\n)",
             "\"broken",
-            CssComponentValueErrorKind::BadString,
+            ComponentFailure::BadString,
         ),
     ] {
-        let component_error = parse_component_values(predicate).unwrap_err();
-        assert_eq!(component_error.kind(), kind);
+        let component_error =
+            CssComponentValues::parse(&CssParser::default(), predicate).unwrap_err();
+        assert_eq!(component_failure(&component_error), kind);
         for (prefix, ending) in [("@supports ", "{}"), ("@import 'x' supports(", ");")] {
             let source = format!("/*😀*/\r\n{prefix}{predicate}{ending} .after{{color:red}}");
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(
                 matches!(report.syntax().rules(), [CssRule::Style(_)]),
                 "{source}: {report:?}"
@@ -474,10 +542,10 @@ fn lexical_failures_in_function_predicates_are_terminal_and_recover_to_the_later
             let [diagnostic] = report.diagnostics() else {
                 panic!("one terminal lexical failure: {report:?}")
             };
-            let ErrorKind::InvalidComponentValue(detail) = diagnostic.error().kind() else {
+            let Some(detail) = diagnostic.error().component_error() else {
                 panic!("lexical error survives predicate probes")
             };
-            assert_eq!(detail.kind(), kind);
+            assert_eq!(component_failure(detail), kind);
             let CssValueOrigin::Parsed(origin) = detail.origin() else {
                 panic!("original bad token")
             };
@@ -499,11 +567,11 @@ fn lexical_failures_in_function_predicates_are_terminal_and_recover_to_the_later
 #[test]
 fn complete_predicate_graph_limits_are_cumulative_and_retries_preserve_origins() {
     let source = "font-tech(variations) and at-rule(@unknown)";
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     // Two functions and their arguments, two spaces and one operator: seven
     // components at depth one. Closing delimiters affect bytes, not node count.
     let exact = CssComponentValueLimits::try_new(1, 7, source.len()).unwrap();
-    let condition = CssSupportsCondition::try_from_components_with_limits(
+    let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
         components.clone(),
         &CssNamespaceContext::default(),
         exact,
@@ -511,7 +579,7 @@ fn complete_predicate_graph_limits_are_cumulative_and_retries_preserve_origins()
     .unwrap();
     assert_eq!(
         condition
-            .serialize_with_limit(source.len())
+            .serialize_tokens(crate::css::support::byte_limits(source.len()))
             .unwrap()
             .as_css(),
         source
@@ -520,53 +588,52 @@ fn complete_predicate_graph_limits_are_cumulative_and_retries_preserve_origins()
     for (limits, kind, offset) in [
         (
             CssComponentValueLimits::try_new(0, 7, source.len()).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
             0,
         ),
         (
             CssComponentValueLimits::try_new(1, 6, source.len()).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
             source.find("@unknown").unwrap(),
         ),
         (
             CssComponentValueLimits::try_new(1, 7, source.len() - 1).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
             source.len() - 1,
         ),
     ] {
-        let error = CssSupportsCondition::try_from_components_with_limits(
+        let error = CssCondition::<CssSupportsLeaf>::try_from_components(
             components.clone(),
             &CssNamespaceContext::default(),
             limits,
         )
         .unwrap_err();
-        let CssSupportsConstructionError::Component(error) = error else {
+        let Some(error) = error.component_error() else {
             panic!("terminal component resource failure")
         };
-        assert_eq!(error.kind(), kind);
+        assert_eq!(component_failure(error), kind);
         let CssValueOrigin::Parsed(origin) = error.origin() else {
             panic!("original exhausted component")
         };
         assert_eq!(origin.source().as_str(), source);
         assert_eq!(origin.span().start().byte_offset().value(), offset);
     }
-    assert_eq!(
+    assert!(
         condition
-            .serialize_with_limit(source.len() - 1)
+            .serialize_tokens(crate::css::support::byte_limits(source.len() - 1))
             .unwrap_err()
-            .kind(),
-        CssComponentValueErrorKind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(condition, before);
     assert_eq!(
         condition
-            .serialize_with_limit(source.len())
+            .serialize_tokens(crate::css::support::byte_limits(source.len()))
             .unwrap()
             .as_css(),
         source
     );
     assert_eq!(
-        CssSupportsCondition::try_from_components_with_limits(
+        CssCondition::<CssSupportsLeaf>::try_from_components(
             components,
             &CssNamespaceContext::default(),
             exact
@@ -583,21 +650,21 @@ fn recovered_predicate_delimiters_keep_parsed_import_payloads_but_fail_strict_re
         "font-format(woff2",
         "at-rule(@media",
     ] {
-        let components = parse_component_values(predicate).unwrap();
-        let error =
-            CssSupportsCondition::try_from_components(components, &CssNamespaceContext::default())
-                .unwrap_err();
-        assert!(matches!(
-            error,
-            CssSupportsConstructionError::RecoveredInput { .. }
-        ));
+        let components = CssComponentValues::parse(&CssParser::default(), predicate).unwrap();
+        let error = CssCondition::<CssSupportsLeaf>::try_from_components(
+            components,
+            &CssNamespaceContext::default(),
+            Default::default(),
+        )
+        .unwrap_err();
+        assert!(error.is_recovered_input());
         let CssValueOrigin::ImplicitClosure { at, .. } = error.origin() else {
             panic!("original implied closure")
         };
         assert_eq!(at.source().as_str(), predicate);
         assert_eq!(at.span().start().byte_offset().value(), predicate.len());
         let source = format!("@import 'x' supports({predicate}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(!report.is_clean());
         assert!(
             report
@@ -613,32 +680,42 @@ fn recovered_predicate_delimiters_keep_parsed_import_payloads_but_fail_strict_re
         match predicate {
             "font-tech(variations" => assert!(matches!(
                 condition.kind(),
-                CssSupportsConditionKind::FontTech(CssFontTechHint::Variations)
+                CssConditionKind::Leaf(CssSupportsLeaf::FontTech(CssFontTechHint::Variations))
             )),
             "font-format(woff2" => assert!(matches!(
                 condition.kind(),
-                CssSupportsConditionKind::FontFormat(CssFontFormat::Keyword(
+                CssConditionKind::Leaf(CssSupportsLeaf::FontFormat(CssFontFormat::Keyword(
                     CssFontFormatHint::Woff2
-                ))
+                )))
             )),
             _ => assert!(
-                matches!(condition.kind(), CssSupportsConditionKind::AtRule(value) if value.name() == "media")
+                matches!(condition.kind(), CssConditionKind::Leaf(CssSupportsLeaf::AtRule(value)) if value.name() == "media")
             ),
         }
         let expected = format!("@import 'x' supports({predicate}));");
-        assert_eq!(rule.serialize().unwrap().as_css(), expected);
-        let serialized = condition.serialize().unwrap();
+        assert_eq!(
+            rule.serialize_tokens(Default::default()).unwrap().as_css(),
+            expected
+        );
+        let serialized = condition.serialize_tokens(Default::default()).unwrap();
         assert!(matches!(
             serialized.origin_at(serialized.as_css().len() - 1),
             Some(CssSerializedOrigin::Token(
                 CssValueOrigin::ImplicitClosure { .. }
             ))
         ));
-        let recovered = CssComponentValues::try_new(condition.components().to_vec()).unwrap();
-        assert!(matches!(
-            CssSupportsCondition::try_from_components(recovered, &CssNamespaceContext::default()),
-            Err(CssSupportsConstructionError::RecoveredInput { .. })
-        ));
-        assert!(parse_sheet(&expected).is_clean());
+        let recovered =
+            CssComponentValues::try_new(condition.components().to_vec(), Default::default())
+                .unwrap();
+        assert!(
+            CssCondition::<CssSupportsLeaf>::try_from_components(
+                recovered,
+                &CssNamespaceContext::default(),
+                Default::default()
+            )
+            .as_ref()
+            .is_err_and(|error| error.is_recovered_input())
+        );
+        assert!(CssParser::default().parse_sheet(&expected).is_clean());
     }
 }

@@ -1,6 +1,14 @@
 #![forbid(unsafe_code)]
 //! Inspect authored size features without choosing containers or evaluating values.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::numeric::CssCalculationExpressionRef;
+use surgeist_css::query::container::{
+    CssContainerFeatureQuery, CssContainerLeaf, CssContainerLength, CssContainerLengthRef,
+    CssContainerOrientationRef, CssContainerRatio, CssContainerRatioRef,
+};
+use surgeist_css::query::media::{CssMediaRange, CssMediaRangeRef};
+use surgeist_css::query::{CssCondition, CssConditionKind};
 
 fn describe_range<T>(range: &CssMediaRange<T>, value: impl Fn(&T) -> String) -> String {
     match range.view() {
@@ -91,12 +99,14 @@ fn main() {
         "(orientation: var(--mode))",
         "future-size(1px)",
     ] {
-        let condition =
-            CssContainerCondition::try_from_components(parse_component_values(source).unwrap())
-                .unwrap();
+        let condition = CssCondition::<CssContainerLeaf>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
         let description = match condition.kind() {
-            CssContainerConditionKind::Feature(feature) => match feature {
-                CssContainerFeatureQuery::Boolean(kind) => format!("boolean {}", kind.name()),
+            CssConditionKind::Leaf(CssContainerLeaf::Feature(feature)) => match feature {
+                CssContainerFeatureQuery::Boolean(kind) => format!("boolean {}", kind.as_str()),
                 CssContainerFeatureQuery::Width(range) => {
                     format!("width {}", describe_range(range, describe_length))
                 }
@@ -121,7 +131,9 @@ fn main() {
                 },
                 _ => "future size feature".into(),
             },
-            CssContainerConditionKind::GeneralEnclosed(_) => "unrecognized query operand".into(),
+            CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_)) => {
+                "unrecognized query operand".into()
+            }
             _ => "combined query".into(),
         };
         println!("{source}: {description}");

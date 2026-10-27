@@ -85,66 +85,47 @@ pub enum ParseStop {
     ColorProcessing(HtmlColorProcessingError),
     /// A finite CSS property owner refused its actual reached resource.
     CssPropertyLimit {
-        resource: &'static str,
+        resource: surgeist_css::source::CssUtf16Resource,
     },
     /// A CSS-owned allocation failed; its private layout is not fabricated here.
     CssPropertyAllocationFailed,
     BaseFacts(crate::HtmlBaseMissing),
 }
-/// Processing error from HTML's source-only CSS color adapter. Numerical
-/// coordinates count UTF-16 units in the selected color field, not the HTML source.
-/// The parser's original source binding remains separately owned by ParseControl.
+/// Processing error from HTML's source-only CSS color adapter. Colour
+/// numerics are total and CSS protocol misuse is static or a panic, so neither
+/// a numerical nor a protocol failure exists. The parser's original source
+/// binding remains separately owned by ParseControl.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlColorProcessingError {
-    Protocol(surgeist_css::CssColorProtocolError),
-    Unavailable(surgeist_css::CssColorUnavailable),
-    Unsupported(surgeist_css::CssColorUnsupported),
-    Facts(surgeist_css::CssColorFactError),
-    Numerical {
-        error: surgeist_color::ColorError,
-        input: surgeist_css::CssColorInputRange,
-    },
+    Unavailable(surgeist_css::color::CssColorUnavailable),
+    Unsupported(surgeist_css::color::CssColorUnsupported),
+    Facts(surgeist_css::color::CssColorFactDefect),
 }
 impl std::fmt::Display for HtmlColorProcessingError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Protocol(error) => std::fmt::Display::fmt(error, f),
             Self::Unavailable(fact) => write!(f, "reached color fact is unavailable: {fact:?}"),
             Self::Unsupported(capability) => {
                 write!(f, "reached color capability is unsupported: {capability:?}")
             }
             Self::Facts(error) => write!(f, "invalid color fact envelope: {error:?}"),
-            Self::Numerical { error, .. } => std::fmt::Display::fmt(error, f),
         }
     }
 }
-impl std::error::Error for HtmlColorProcessingError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Protocol(error) => Some(error),
-            Self::Numerical { error, .. } => Some(error),
-            _ => None,
-        }
-    }
-}
+impl std::error::Error for HtmlColorProcessingError {}
 impl HtmlColorProcessingError {
-    /// Only a source operation can enter HTML's current adapter. A future
-    /// non-source site is an adapter invariant failure, never fabricated source.
-    pub(crate) fn from_source(
-        error: surgeist_css::CssColorOperationError,
-    ) -> Result<Self, Invariant> {
-        use surgeist_css::{CssColorOperationError as E, CssColorResolutionSite as Site};
-        Ok(match error {
-            E::Protocol(error) => Self::Protocol(error),
-            E::Unavailable(error) => Self::Unavailable(error),
-            E::Unsupported(error) => Self::Unsupported(error),
-            E::Facts(error) => Self::Facts(error),
-            E::Numerical {
-                error,
-                site: Site::Source(input),
-            } => Self::Numerical { error, input },
-            E::Numerical { .. } => return Err(Invariant::InputCursorState),
-        })
+    /// The source operation's error, unchanged in kind. The adapter's UTF-16
+    /// input admits every unit, so a malformed-input report has no
+    /// processing kind; the caller records it as an adapter invariant.
+    pub(crate) fn from_source(error: surgeist_css::color::CssColorError) -> Option<Self> {
+        if let Some(fact) = error.unavailable() {
+            return Some(Self::Unavailable(fact));
+        }
+        if let Some(capability) = error.unsupported() {
+            return Some(Self::Unsupported(capability));
+        }
+        // Otherwise a fact defect or a malformed-input report.
+        error.fact_defect().map(Self::Facts)
     }
 }
 /// Actual selected closed-environment execution boundaries, not limit errors.
@@ -353,15 +334,15 @@ impl ParseControl {
     }
     pub(crate) fn stop_color_processing(
         &mut self,
-        reason: surgeist_css::CssColorOperationError,
+        reason: surgeist_css::color::CssColorError,
     ) -> ParseStop {
+        let Some(error) = HtmlColorProcessingError::from_source(reason) else {
+            return self.fail_invariant(Invariant::InputCursorState);
+        };
         if let Err(first) = self.checkpoint() {
             return first;
         }
-        match HtmlColorProcessingError::from_source(reason) {
-            Ok(reason) => self.latch_stop(ParseStop::ColorProcessing(reason)),
-            Err(reason) => self.latch_stop(ParseStop::InternalInvariant(reason)),
-        }
+        self.latch_stop(ParseStop::ColorProcessing(error))
     }
     pub(crate) fn invalid_associated_facts<T>(&mut self) -> Result<T, ParseStop> {
         self.checkpoint()?;
@@ -5058,27 +5039,44 @@ mod tests {
             assert_eq!(owner.usage(), &before);
         }
     }
+    /// The colour operation error CSS itself reports for `input` when every
+    /// colour fact is absent.
+    fn css_color_error(input: &[u8]) -> surgeist_css::color::CssColorError {
+        let facts = surgeist_css::color::CssColorFacts::new(
+            surgeist_css::color::CssColorFactIdentity::new(7, 3),
+            surgeist_css::color::CssColorPropertyFacts::Unavailable,
+            surgeist_css::color::CssColorSchemeFact::Unavailable,
+            &[],
+            &[],
+            &[],
+            surgeist_css::color::CssDeviceColorFact::Unknown,
+        );
+        surgeist_css::color::parse_used_color(
+            surgeist_css::color::CssColorInput::Utf8(input),
+            surgeist_css::color::CssColorGrammarRequest::WholeColor,
+            &facts,
+            facts.identity(),
+            surgeist_css::color::CssColorOrdinaryLimits::default(),
+        )
+        .err()
+        .and_then(|error| error.color_error().cloned())
+        .expect("CSS reports a colour operation error")
+    }
     #[test]
-    fn source_color_error_keeps_field_coordinates_and_original_source_binding() {
+    fn source_color_error_keeps_its_kind_and_original_source_binding() {
         let mut owner = control();
         let source = HtmlSource::utf16(crate::DocumentString::from("<input type=color value=red>"));
         owner.admit_source(&source).unwrap();
-        let input = surgeist_css::CssColorInputRange { start: 1, end: 3 };
-        let error = surgeist_color::ColorError::Unrepresentable;
-        let stop = owner.stop_color_processing(surgeist_css::CssColorOperationError::Numerical {
-            error,
-            site: surgeist_css::CssColorResolutionSite::Source(input),
-        });
+        let unavailable = surgeist_css::color::CssColorUnavailable::CurrentColor;
+        let stop = owner.stop_color_processing(css_color_error(b"currentcolor"));
         assert_eq!(
             stop,
-            ParseStop::ColorProcessing(HtmlColorProcessingError::Numerical { error, input })
+            ParseStop::ColorProcessing(HtmlColorProcessingError::Unavailable(unavailable))
         );
         let observed = owner.first_stop_usage().unwrap().clone();
         owner.cancellation.cancel();
         assert_eq!(
-            owner.stop_color_processing(surgeist_css::CssColorOperationError::Protocol(
-                surgeist_css::CssColorProtocolError::WrongAction
-            )),
+            owner.stop_color_processing(css_color_error(b"canvas")),
             stop
         );
         assert_eq!(owner.first_stop_usage(), Some(&observed));
@@ -5088,15 +5086,13 @@ mod tests {
         assert!(owner.stopped_source_binding().unwrap().is_none());
     }
     #[test]
-    fn source_color_protocol_projection_preserves_numerical_protocol_kind() {
+    fn malformed_input_from_the_utf16_adapter_is_an_input_cursor_invariant() {
+        // CSS Syntax preprocessing decodes every UTF-16 unit, a lone surrogate
+        // as U+FFFD, so the adapter's input is never malformed for its encoding.
         let mut owner = control();
-        let protocol = surgeist_css::CssColorProtocolError::NumericalProtocol(
-            surgeist_color::ProtocolError::ForeignSlot,
-        );
         assert_eq!(
-            owner.stop_color_processing(protocol.into()),
-            ParseStop::ColorProcessing(HtmlColorProcessingError::Protocol(protocol))
+            owner.stop_color_processing(css_color_error(b"r\xffd")),
+            ParseStop::InternalInvariant(Invariant::InputCursorState)
         );
-        assert!(owner.stopped_source_binding().unwrap().is_none());
     }
 }

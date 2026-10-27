@@ -1,7 +1,18 @@
 //! Grid Layout 2 and Flexbox 1 properties keep authored track, line and flex
 //! syntax, and reject invalid grids.
 
-use surgeist_css::*;
+use crate::css::support::value_assertions::positive_literal;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::numeric::{CssInteger, CssNumeric, CssNumericLiteral};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::values::box_model::{CssBoxSize, CssSizeValue};
+use surgeist_css::values::common::{CssCustomIdent, CssIdent};
+use surgeist_css::values::layout::{
+    CssAlignmentPosition, CssAlignmentValue, CssFlexBasisRef, CssFlexValue, CssGridAutoFlow,
+    CssGridAutoFlowAxis, CssGridAutoFlowMode, CssGridGeneralTrackList, CssGridLine,
+    CssGridLineName, CssGridLineNames, CssGridTemplateAreas, CssGridTrackSizeList,
+};
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;
@@ -18,7 +29,10 @@ fn parses_grid_track_lists_and_template_areas() {
         panic!("grid columns")
     };
     assert_eq!(
-        value.value().serialize_specified().unwrap(),
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "[main] repeat(2, minmax(10px, 1fr)) fit-content(20%)"
     );
     let areas = declaration(
@@ -31,7 +45,10 @@ fn parses_grid_track_lists_and_template_areas() {
         panic!("grid areas")
     };
     assert_eq!(
-        value.value().serialize_specified().unwrap(),
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "\"header header\" \"nav main\""
     );
     let none = declaration(
@@ -81,15 +98,18 @@ fn parses_grid_flow_lines_and_shorthands() {
         let declaration = declaration(css, property);
         let value = declaration.known().unwrap().property_value().unwrap();
         let serialized = match value {
-            CssKnownPropertyValueRef::GridRowStart(value) => {
-                value.value().serialize_specified().unwrap()
-            }
-            CssKnownPropertyValueRef::GridColumn(value) => {
-                value.value().serialize_specified().unwrap()
-            }
-            CssKnownPropertyValueRef::GridArea(value) => {
-                value.value().serialize_specified().unwrap()
-            }
+            CssKnownPropertyValueRef::GridRowStart(value) => value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            CssKnownPropertyValueRef::GridColumn(value) => value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            CssKnownPropertyValueRef::GridArea(value) => value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
             _ => panic!("grid placement"),
         };
         assert_eq!(serialized, expected);
@@ -108,7 +128,12 @@ fn parses_grid_template_and_grid_shorthands() {
         panic!("grid template")
     };
     assert_eq!(
-        value.value().rows().unwrap().serialize_specified().unwrap(),
+        value
+            .value()
+            .rows()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "100px 1fr"
     );
     assert_eq!(
@@ -116,7 +141,7 @@ fn parses_grid_template_and_grid_shorthands() {
             .value()
             .columns()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "repeat(2, minmax(10px, 1fr))"
     );
@@ -136,7 +161,7 @@ fn parses_grid_template_and_grid_shorthands() {
             .value()
             .auto_tracks()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "12px"
     );
@@ -145,7 +170,7 @@ fn parses_grid_template_and_grid_shorthands() {
             .value()
             .explicit_tracks()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "repeat(auto-fit, 10px)"
     );
@@ -158,7 +183,7 @@ fn parses_order_flex_and_content_alignment() {
         Order,
         value
     );
-    let CssIntegerValue::Literal(integer) = order else {
+    let Some(integer) = order.literal() else {
         panic!("exact order integer")
     };
     assert_eq!(integer.numeric().representation(), "-2");
@@ -171,11 +196,25 @@ fn parses_order_flex_and_content_alignment() {
         panic!("authored flex components")
     };
     assert_eq!(
-        number_spelling(components.grow().unwrap().literal_component().unwrap()),
+        number_spelling(
+            components
+                .grow()
+                .unwrap()
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap()
+        ),
         "2"
     );
     assert_eq!(
-        number_spelling(components.shrink().unwrap().literal_component().unwrap()),
+        number_spelling(
+            components
+                .shrink()
+                .unwrap()
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap()
+        ),
         "0"
     );
     let CssFlexBasisRef::Size(CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length))) =
@@ -183,7 +222,11 @@ fn parses_order_flex_and_content_alignment() {
     else {
         panic!("length flex basis")
     };
-    assert_length_literal(length.literal_component().unwrap(), "10", "rem");
+    assert_length_literal(
+        length.literal().map(|literal| literal.component()).unwrap(),
+        "10",
+        "rem",
+    );
     assert_eq!(
         property_payload!(
             declaration(".panel { flex: none; }", CssKnownProperty::Flex),
@@ -231,8 +274,9 @@ fn parses_order_flex_and_content_alignment() {
 
 #[test]
 fn grid_and_flex_property_families_accept_supported_values() {
-    let sheet = parse_sheet(
-        ".panel {
+    let sheet = CssParser::default()
+        .parse_sheet(
+            ".panel {
             grid-template-rows: [top] 100px 1fr;
             grid-template-columns: repeat(2, minmax(10px, 1fr));
             grid-template-areas: \"header header\" \"nav main\";
@@ -253,8 +297,8 @@ fn grid_and_flex_property_families_accept_supported_values() {
             justify-content: space-between;
             align-content: stretch;
         }",
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
     let declarations = style_rule(&sheet.rules()[0]).declarations();
 
     for property in [
@@ -317,14 +361,17 @@ fn checked_grid_constructors_reject_parser_invalid_states() {
     assert_eq!(CssGridLineNames::new(Vec::new()).names(), &[]);
     assert_eq!(CssGridGeneralTrackList::try_new(Vec::new()), None);
     assert_eq!(
-        CssPositiveIntegerLiteral::try_new(CssIntegerLiteral::from_i32(0)),
+        positive_literal(CssNumericLiteral::<CssInteger>::from_i32(0)),
         None
     );
     assert_eq!(CssGridTrackSizeList::try_new(Vec::new()), None);
     assert!(CssGridTemplateAreas::try_rows(Vec::new()).is_err());
     assert_eq!(
         CssGridLine::try_indexed(
-            CssIntegerValue::Literal(CssIntegerLiteral::from_i32(0)),
+            CssNumeric::<CssInteger>::try_from_literal(CssNumericLiteral::<CssInteger>::from_i32(
+                0
+            ))
+            .unwrap(),
             None
         ),
         None
@@ -350,18 +397,20 @@ fn rejects_grid_auto_flow_shorthand_without_explicit_tracks() {
 
 #[test]
 fn invalid_parser_custom_ident_errors_keep_source_location() {
-    let error = parse_sheet(".panel {\n  grid-template-columns: [auto] 1fr;\n}")
+    let error = CssParser::default()
+        .parse_sheet(".panel {\n  grid-template-columns: [auto] 1fr;\n}")
         .expect_err("rejected parse report");
 
-    assert!(matches!(error.kind(), ErrorKind::InvalidPropertyValue(_)));
+    assert!(error.code() == CssErrorCode::InvalidPropertyValue);
     assert_eq!(error.position().line().value(), 1);
     assert_ne!(error.position().column().value(), 0);
 }
 
 #[test]
 fn rejects_inconsistent_grid_template_area_row_widths() {
-    let error = parse_sheet(".panel { grid-template-areas: \"a a\" \"b\"; }")
+    let error = CssParser::default()
+        .parse_sheet(".panel { grid-template-areas: \"a a\" \"b\"; }")
         .expect_err("rejected parse report");
 
-    assert!(matches!(error.kind(), ErrorKind::InvalidPropertyValue(_)));
+    assert!(error.code() == CssErrorCode::InvalidPropertyValue);
 }

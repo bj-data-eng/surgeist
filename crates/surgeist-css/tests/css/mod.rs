@@ -3,6 +3,7 @@
 #[macro_use]
 mod support;
 
+mod characterization;
 mod color;
 mod conformance;
 mod container;

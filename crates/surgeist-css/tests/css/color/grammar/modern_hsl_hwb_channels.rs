@@ -5,7 +5,16 @@ use crate::css::support::color_and_selector_fixtures::{
     assert_color_value_rejected, parsed_important_declaration,
 };
 use crate::css::support::declaration_color as color;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssColorComponent, CssColorHue, CssColorSyntax};
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::numeric::{CssCalculationExpressionRef, CssCalculationType};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::common::CssBoxSideKind;
 
 fn number(component: &CssColorComponent, expected: f32) {
     assert!(
@@ -50,19 +59,24 @@ fn checked_mixed_channels_keep_original_parsed_and_programmatic_components() {
             let text = format!("{function}({arguments})");
             for programmatic in [false, true] {
                 let values = if programmatic {
-                    CssComponentValues::try_new(vec![
-                        CssComponentValue::try_function(
-                            function,
-                            parse_component_values(arguments).unwrap(),
-                        )
-                        .unwrap(),
-                    ])
+                    CssComponentValues::try_new(
+                        vec![
+                            CssComponentValue::try_function(
+                                function,
+                                CssComponentValues::parse(&CssParser::default(), arguments)
+                                    .unwrap(),
+                            )
+                            .unwrap(),
+                        ],
+                        Default::default(),
+                    )
                     .unwrap()
                 } else {
-                    parse_component_values(&text).unwrap()
+                    CssComponentValues::parse(&CssParser::default(), &text).unwrap()
                 };
-                let declaration = parse_property_value(
-                    CssPropertyNameRef::Known(CssKnownProperty::Color),
+                let declaration = CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
                     values.clone(),
                     CssImportance::Normal,
                 )
@@ -112,9 +126,10 @@ fn modern_number_and_percentage_calculations_keep_distinct_types_and_leaves() {
     ] {
         for declaration in [
             parsed_important_declaration("color", text),
-            parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Color),
-                parse_component_values(text).unwrap(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 CssImportance::Normal,
             )
             .expect("checked modern math channels"),
@@ -136,7 +151,8 @@ fn modern_number_and_percentage_calculations_keep_distinct_types_and_leaves() {
 
 #[test]
 fn border_color_aggregate_uses_the_same_modern_color_grammar() {
-    let report = parse_style_attribute("border-color:hsl(0 25 50) hwb(0 10 20);opacity:.5");
+    let report = CssParser::default()
+        .parse_block_contents("border-color:hsl(0 25 50) hwb(0 10 20);opacity:.5");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2);
     let CssKnownPropertyValueRef::BorderColor(value) = report.syntax()[0]
@@ -149,8 +165,8 @@ fn border_color_aggregate_uses_the_same_modern_color_grammar() {
     };
     let values = value.value();
     assert_eq!(values.kind(), CssBoxSideKind::Physical);
-    assert_eq!(values.authored_values().len(), 2);
-    let [top, right, bottom, left] = values.assigned_values();
+    assert_eq!(values.authored().len(), 2);
+    let [top, right, bottom, left] = values.assigned();
     number(top.hsl_value().unwrap().saturation(), 25.0);
     number(right.hwb_value().unwrap().whiteness(), 10.0);
     assert_eq!(top, bottom);
@@ -178,7 +194,7 @@ fn legacy_hsl_stays_percentage_only_and_invalid_modern_domains_recover() {
         ("hsl(0 25)", None),
         ("hwb(0 25 50 75)", Some("75")),
     ] {
-        let report = parse_style_attribute(&format!("color:{text};opacity:.5"));
+        let report = CssParser::default().parse_block_contents(format!("color:{text};opacity:.5"));
         let [diagnostic] = report.diagnostics() else {
             panic!("{text}: one diagnostic: {report:?}")
         };
@@ -193,9 +209,10 @@ fn legacy_hsl_stays_percentage_only_and_invalid_modern_domains_recover() {
             report.syntax()[0].known().unwrap().property(),
             CssKnownProperty::Opacity
         );
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
-            parse_component_values(text).unwrap(),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             CssImportance::Normal,
         );
         match responsible {
@@ -203,10 +220,7 @@ fn legacy_hsl_stays_percentage_only_and_invalid_modern_domains_recover() {
                 assert_color_value_rejected(checked, CssKnownProperty::Color, text, token)
             }
             None => assert!(
-                matches!(
-                    checked.unwrap_err().kind(),
-                    CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidColorSyntax(_))
-                ),
+                checked.unwrap_err().code() == Some(CssErrorCode::InvalidColorSyntax),
                 "{text}"
             ),
         }
@@ -234,9 +248,10 @@ fn former_negative_modern_hsl_fixture_is_a_valid_mixed_domain_color() {
     let text = "hsl(20 30 40%)";
     for declaration in [
         parsed_important_declaration("color", text),
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
-            parse_component_values(text).unwrap(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             CssImportance::Normal,
         )
         .expect("checked former negative fixture"),

@@ -1,0 +1,211 @@
+//! Authored font-synthesis values, intrinsic projection, and specified emission.
+//! Font matching and the execution of synthesis belong to downstream owners.
+
+use crate::serialization::CssSerializationError as Error;
+use crate::serialization::specified_rule_serialization::SpecifiedRuleWriter;
+
+type Result<T> = std::result::Result<T, Error>;
+
+/// A nonempty checked set of `font-synthesis` capabilities.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CssFontSynthesisValues {
+    weight: bool,
+    style: bool,
+    small_caps: bool,
+    position: bool,
+}
+
+impl CssFontSynthesisValues {
+    #[must_use]
+    /// Checks a nonempty set in weight/style/small-caps/position order.
+    pub const fn try_new(
+        weight: bool,
+        style: bool,
+        small_caps: bool,
+        position: bool,
+    ) -> Option<Self> {
+        if weight || style || small_caps || position {
+            Some(Self {
+                weight,
+                style,
+                small_caps,
+                position,
+            })
+        } else {
+            None
+        }
+    }
+
+    /// Returns whether `weight` was written, setting `font-synthesis-weight` to `auto`.
+    #[must_use]
+    pub const fn weight(self) -> bool {
+        self.weight
+    }
+
+    /// Returns whether `style` was written, setting `font-synthesis-style` to `auto`.
+    #[must_use]
+    pub const fn style(self) -> bool {
+        self.style
+    }
+
+    /// Returns whether `small-caps` was written, setting `font-synthesis-small-caps` to `auto`.
+    #[must_use]
+    pub const fn small_caps(self) -> bool {
+        self.small_caps
+    }
+
+    /// Returns whether `position` was written, setting `font-synthesis-position` to `auto`.
+    #[must_use]
+    pub const fn position(self) -> bool {
+        self.position
+    }
+}
+
+/// The current authored `font-synthesis` value.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssFontSynthesis {
+    /// `none`: sets all four `font-synthesis-*` longhands to `none`.
+    None,
+    /// A nonempty set of `weight`, `style`, `small-caps` and `position` keywords; each written keyword sets its longhand to `auto` and each omitted one sets it to `none`.
+    Values(CssFontSynthesisValues),
+}
+
+/// The authored `font-synthesis-weight` choice.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssFontSynthesisWeight {
+    /// `auto`: synthesis of bold faces is allowed.
+    Auto,
+    /// `none`: synthesis of bold faces is not allowed.
+    None,
+}
+
+/// The authored `font-synthesis-style` choice.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssFontSynthesisStyle {
+    /// `auto`: synthesis of oblique faces is allowed.
+    Auto,
+    /// `none`: synthesis of oblique faces is not allowed.
+    None,
+    /// `oblique-only`: synthesis of oblique faces is allowed, but they must not be used as a fallback if italic is specified.
+    ObliqueOnly,
+}
+
+/// The authored `font-synthesis-small-caps` choice.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssFontSynthesisSmallCaps {
+    /// `auto`: synthesis of small-caps faces is allowed.
+    Auto,
+    /// `none`: synthesis of small-caps faces is not allowed.
+    None,
+}
+
+/// The authored `font-synthesis-position` choice.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssFontSynthesisPosition {
+    /// `auto`: synthesis of superscript and subscript forms for `font-variant-position` is required when the font lacks them.
+    Auto,
+    /// `none`: synthesis of superscript and subscript forms is not allowed.
+    None,
+}
+
+impl CssFontSynthesis {
+    pub(crate) const fn expanded_weight(self) -> CssFontSynthesisWeight {
+        match self {
+            Self::Values(values) if values.weight() => CssFontSynthesisWeight::Auto,
+            _ => CssFontSynthesisWeight::None,
+        }
+    }
+
+    pub(crate) const fn expanded_style(self) -> CssFontSynthesisStyle {
+        match self {
+            Self::Values(values) if values.style() => CssFontSynthesisStyle::Auto,
+            _ => CssFontSynthesisStyle::None,
+        }
+    }
+
+    pub(crate) const fn expanded_small_caps(self) -> CssFontSynthesisSmallCaps {
+        match self {
+            Self::Values(values) if values.small_caps() => CssFontSynthesisSmallCaps::Auto,
+            _ => CssFontSynthesisSmallCaps::None,
+        }
+    }
+
+    pub(crate) const fn expanded_position(self) -> CssFontSynthesisPosition {
+        match self {
+            Self::Values(values) if values.position() => CssFontSynthesisPosition::Auto,
+            _ => CssFontSynthesisPosition::None,
+        }
+    }
+
+    fn write(&self, writer: &mut SpecifiedRuleWriter, start: usize) -> Result<()> {
+        match self {
+            Self::None => word(writer, start, "none"),
+            Self::Values(values) => {
+                for (index, (selected, keyword)) in [
+                    (values.weight(), "weight"),
+                    (values.style(), "style"),
+                    (values.small_caps(), "small-caps"),
+                    (values.position(), "position"),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    if selected {
+                        writer.source_member(index, |writer| word(writer, start, keyword))?;
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+fn word(writer: &mut SpecifiedRuleWriter, start: usize, value: &str) -> Result<()> {
+    writer.node()?;
+    if writer.css.len() != start {
+        writer.append(" ")?;
+    }
+    writer.append(value)
+}
+
+macro_rules! keyword_writer {
+    ($value:ty, $($variant:ident => $keyword:literal),+ $(,)?) => {
+        impl $value {
+            fn write(&self, writer: &mut SpecifiedRuleWriter, start: usize) -> Result<()> {
+                word(writer, start, match self { $(Self::$variant => $keyword),+ })
+            }
+        }
+    };
+}
+
+keyword_writer!(CssFontSynthesisWeight, Auto => "auto", None => "none");
+keyword_writer!(CssFontSynthesisStyle, Auto => "auto", None => "none", ObliqueOnly => "oblique-only");
+keyword_writer!(CssFontSynthesisSmallCaps, Auto => "auto", None => "none");
+keyword_writer!(CssFontSynthesisPosition, Auto => "auto", None => "none");
+
+macro_rules! public_serializer {
+    ($value:ty) => {
+        impl crate::serialization::specified_rule_serialization::SpecifiedProvider for $value {
+            fn append_to_rule_writer(
+                &self,
+                writer: &mut crate::serialization::specified_rule_serialization::SpecifiedRuleWriter,
+            ) -> std::result::Result<(), crate::serialization::CssSerializationError> {
+                let start = writer.css.len();
+                self.write(writer, start)?;
+                Ok(())
+            }
+        }
+        crate::serialization::specified_rule_serialization::specified_serialization!($value);
+    };
+}
+
+public_serializer!(CssFontSynthesis);
+public_serializer!(CssFontSynthesisWeight);
+public_serializer!(CssFontSynthesisStyle);
+public_serializer!(CssFontSynthesisSmallCaps);
+public_serializer!(CssFontSynthesisPosition);

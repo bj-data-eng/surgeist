@@ -4,14 +4,23 @@
 //! when a list ends after it (the last authored token, reference "Source
 //! coordinates and diagnostics").
 
-use surgeist_css::*;
+use crate::css::support::property_admission::GrammarFacts;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::property::{
+    CssKnownProperty, CssPropertyNameRef, CssPropertyTarget, CssPropertyTextTarget,
+};
 
-fn encountered(kind: &ErrorKind) -> Option<String> {
-    let ErrorKind::InvalidPropertyValue(detail) = kind else {
-        panic!("property-mapped grammar diagnostic, got {kind:?}")
-    };
-    detail
-        .encountered()
+fn encountered(error: &dyn GrammarFacts) -> Option<String> {
+    assert_eq!(
+        error.grammar_code(),
+        Some(CssErrorCode::InvalidPropertyValue),
+        "property-mapped grammar diagnostic, got {error:?}"
+    );
+    error
+        .responsible_token()
         .map(|token| token.authored().to_owned())
 }
 
@@ -19,7 +28,7 @@ fn encountered(kind: &ErrorKind) -> Option<String> {
 fn assert_encountered(name: &str, value: &str, expected: Option<&str>) {
     let property = CssKnownProperty::from_name(name).unwrap();
     let expected = expected.map(str::to_owned);
-    let report = parse_style_attribute(&format!("{name}: {value}"));
+    let report = CssParser::default().parse_block_contents(format!("{name}: {value}"));
     let [diagnostic] = report.diagnostics() else {
         panic!(
             "{name}: {value}: one diagnostic, got {:?}",
@@ -27,49 +36,56 @@ fn assert_encountered(name: &str, value: &str, expected: Option<&str>) {
         )
     };
     assert_eq!(
-        encountered(diagnostic.error().kind()),
+        encountered(diagnostic.error()),
         expected,
         "{name}: {value} (style)"
     );
-    let sheet = parse_sheet(&format!(".a{{{name}: {value}}}"));
+    let sheet = CssParser::default().parse_sheet(format!(".a{{{name}: {value}}}"));
     let [diagnostic] = sheet.diagnostics() else {
         panic!("{name}: {value}: one sheet diagnostic")
     };
     assert_eq!(
-        encountered(diagnostic.error().kind()),
+        encountered(diagnostic.error()),
         expected,
         "{name}: {value} (sheet)"
     );
-    let text = parse_property_value_text(
+    let text = CssParser::default().parse_property_value(
         value,
-        CssPropertyNameRef::Known(property),
+        CssPropertyTextTarget::Property(CssPropertyNameRef::Known(property)),
         CssImportance::Normal,
     );
     let [diagnostic] = text.diagnostics() else {
         panic!("{name}: {value}: one text diagnostic")
     };
     assert_eq!(
-        encountered(diagnostic.error().kind()),
+        encountered(diagnostic.error()),
         expected,
         "{name}: {value} (text)"
     );
     for grammar in [false, true] {
-        let components = parse_component_values(value).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
         let error = if grammar {
-            parse_property_value_for_grammar(property.grammar(), components, CssImportance::Normal)
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
+                components,
+                CssImportance::Normal,
+            )
         } else {
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components,
                 CssImportance::Normal,
             )
         }
         .unwrap_err();
-        let CssPropertyValueErrorKind::Grammar(kind) = error.kind() else {
-            panic!("{name}: {value}: grammar error, got {error:?}")
-        };
+        assert!(
+            error.code().is_some(),
+            "{name}: {value}: grammar error, got {error:?}"
+        );
         assert_eq!(
-            encountered(kind),
+            encountered(&error),
             expected,
             "{name}: {value} (checked, grammar {grammar})"
         );

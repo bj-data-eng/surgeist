@@ -7,14 +7,31 @@
 use crate::css::support::authored_syntax::{
     grammar_checked_declaration as checked, parsed_declaration as parsed,
 };
-use surgeist_css::*;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{
+    CssCustomPropertyName, CssDeclaration, CssDeclarationList, CssImportance,
+};
+use surgeist_css::property::{CssPropertyGrammar, CssPropertyNameRef, CssPropertyTarget};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::source::CssParsedOrigin;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
-type Limits = CssSpecifiedValueSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Limits = CssSerializationLimits;
+type Kind = SerializationFailure;
 
 fn custom(name: &str, values: CssComponentValues, importance: CssImportance) -> CssDeclaration {
     let name = CssCustomPropertyName::try_new(name).unwrap();
-    parse_property_value(CssPropertyNameRef::Custom(&name), values, importance).unwrap()
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Custom(&name)),
+        values,
+        importance,
+    )
+    .unwrap()
 }
 
 fn same_parsed_origin(actual: &CssParsedOrigin, original: &CssParsedOrigin) {
@@ -81,49 +98,53 @@ fn unchanged(list: &CssDeclarationList, originals: &[CssDeclaration]) {
 }
 
 fn clean_round_trip(css: &str, count: usize) {
-    let report = parse_style_attribute(css);
+    let report = CssParser::default().parse_block_contents(css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), count);
-    assert_eq!(report.syntax().to_specified_css().unwrap(), css);
-    let validated = validate_style_attribute(css).unwrap();
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        css
+    );
+    let validated = CssParser::default()
+        .parse_block_contents(css)
+        .into_validation_result()
+        .unwrap();
     assert_eq!(validated.len(), count);
-    assert_eq!(validated.to_specified_css().unwrap(), css);
+    assert_eq!(
+        validated.serialize_specified(Default::default()).unwrap(),
+        css
+    );
 }
 
 #[test]
 fn empty_membership_has_one_aggregate_charge_and_no_output_bytes() {
-    let list = CssDeclarationList::try_new_with_limits(Vec::new(), Limits::new(1, 1, 0)).unwrap();
+    let list = CssDeclarationList::try_new(Vec::new(), Limits::new(1, 1, 0)).unwrap();
     assert!(list.is_empty());
     assert_eq!(list.len(), 0);
-    assert_eq!(list.to_specified_css().unwrap(), "");
-    assert_eq!(
-        list.to_specified_css_with_limits(Limits::new(1, 1, 0))
-            .unwrap(),
-        ""
+    assert_eq!(list.serialize_specified(Default::default()).unwrap(), "");
+    assert_eq!(list.serialize_specified(Limits::new(1, 1, 0)).unwrap(), "");
+    assert!(
+        CssDeclarationList::try_new(Vec::new(), Default::default())
+            .unwrap()
+            .is_empty()
     );
-    assert!(CssDeclarationList::try_new(Vec::new()).unwrap().is_empty());
     for (limits, kind) in [
         (Limits::new(0, 1, 0), Kind::InputNodeLimit),
         (Limits::new(1, 0, 0), Kind::ProjectionNodeLimit),
     ] {
         assert_eq!(
-            CssDeclarationList::try_new_with_limits(Vec::new(), limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&CssDeclarationList::try_new(Vec::new(), limits).unwrap_err()),
             kind
         );
         assert_eq!(
-            list.to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&list.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert!(list.is_empty());
-        assert_eq!(
-            list.to_specified_css_with_limits(Limits::new(1, 1, 0))
-                .unwrap(),
-            ""
-        );
+        assert_eq!(list.serialize_specified(Limits::new(1, 1, 0)).unwrap(), "");
     }
     clean_round_trip("", 0);
 }
@@ -138,12 +159,12 @@ fn duplicate_properties_retain_order_and_priority_under_exact_aggregate_limits()
     assert_eq!(EXPECTED.len(), 45);
     // One list plus two declaration/name/color triples: I7/P7.
     let exact = Limits::new(7, 7, 45);
-    let list = CssDeclarationList::try_new_with_limits(originals.clone(), exact).unwrap();
-    assert_eq!(list.to_specified_css_with_limits(exact).unwrap(), EXPECTED);
+    let list = CssDeclarationList::try_new(originals.clone(), exact).unwrap();
+    assert_eq!(list.serialize_specified(exact).unwrap(), EXPECTED);
     assert_eq!(
-        CssDeclarationList::try_new(originals.clone())
+        CssDeclarationList::try_new(originals.clone(), Default::default())
             .unwrap()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         EXPECTED
     );
@@ -155,22 +176,23 @@ fn duplicate_properties_retain_order_and_priority_under_exact_aggregate_limits()
         (Limits::new(7, 7, 0), Kind::ByteLimit),
     ] {
         assert_eq!(
-            CssDeclarationList::try_new_with_limits(originals.clone(), limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &CssDeclarationList::try_new(originals.clone(), limits).unwrap_err()
+            ),
             kind
         );
         assert_eq!(
-            list.to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&list.serialize_specified(limits).unwrap_err()),
             kind
         );
         unchanged(&list, &originals);
-        assert_eq!(list.to_specified_css_with_limits(exact).unwrap(), EXPECTED);
+        assert_eq!(list.serialize_specified(exact).unwrap(), EXPECTED);
     }
     // Existing CSSOM terminal-winner selection is a different public operation.
-    assert_eq!(list.serialize_cssom().unwrap(), "color: purple !important;");
+    assert_eq!(
+        list.serialize_cssom(Default::default()).unwrap(),
+        "color: purple !important;"
+    );
     unchanged(&list, &originals);
     clean_round_trip(EXPECTED, 2);
 }
@@ -187,29 +209,24 @@ fn repeated_handles_are_repeated_work_and_limits_belong_to_each_request() {
     assert_eq!(EXPECTED.len(), 44);
     assert_eq!(
         declaration
-            .to_specified_css_with_limits(Limits::new(3, 3, 14))
+            .serialize_specified(Limits::new(3, 3, 14))
             .unwrap(),
         "color: purple;"
     );
     // Three individually affordable occurrences still share one aggregate budget.
-    assert_eq!(
-        CssDeclarationList::try_new_with_limits(originals.clone(), Limits::new(3, 3, 44))
+    assert!(
+        CssDeclarationList::try_new(originals.clone(), Limits::new(3, 3, 44))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
-    let list =
-        CssDeclarationList::try_new_with_limits(originals.clone(), Limits::new(100, 100, 100))
-            .unwrap();
+    let list = CssDeclarationList::try_new(originals.clone(), Limits::new(100, 100, 100)).unwrap();
     for (limits, kind) in [
         (Limits::new(9, 10, 44), Kind::InputNodeLimit),
         (Limits::new(10, 9, 44), Kind::ProjectionNodeLimit),
         (Limits::new(10, 10, 43), Kind::ByteLimit),
     ] {
         assert_eq!(
-            list.to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&list.serialize_specified(limits).unwrap_err()),
             kind
         );
         unchanged(&list, &originals);
@@ -217,11 +234,13 @@ fn repeated_handles_are_repeated_work_and_limits_belong_to_each_request() {
     assert!(list[0].same_occurrence(&list[1]));
     assert!(list[1].same_occurrence(&list[2]));
     assert_eq!(
-        list.to_specified_css_with_limits(Limits::new(10, 10, 44))
-            .unwrap(),
+        list.serialize_specified(Limits::new(10, 10, 44)).unwrap(),
         EXPECTED
     );
-    assert_eq!(list.to_specified_css().unwrap(), EXPECTED);
+    assert_eq!(
+        list.serialize_specified(Default::default()).unwrap(),
+        EXPECTED
+    );
     unchanged(&list, &originals);
     clean_round_trip(EXPECTED, 3);
 }
@@ -238,14 +257,18 @@ fn assembly_preserves_distinct_snapshots_original_contexts_and_checked_provenanc
             .same_snapshot(second.parsed_name().unwrap().source())
     );
     let quirks = CssParserContext::new(CssParserMode::Quirks);
-    let report = quirks.parse_declaration("width:7");
+    let report = CssDeclaration::parse(&CssParser::new(quirks, Default::default()), "width:7");
     assert!(report.is_clean());
     let width = report.syntax().as_ref().unwrap().clone();
     assert_eq!(width.parser_context(), quirks);
-    let programmatic = parse_property_value_for_grammar(
-        CssPropertyGrammar::from_name("color").unwrap(),
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("transparent").unwrap()])
-            .unwrap(),
+    let programmatic = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(CssPropertyGrammar::from_name("color").unwrap()),
+        CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident("transparent").unwrap()],
+            Default::default(),
+        )
+        .unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
@@ -256,10 +279,13 @@ fn assembly_preserves_distinct_snapshots_original_contexts_and_checked_provenanc
         &CssValueOrigin::Programmatic
     );
     let originals = vec![first, second, width, programmatic];
-    let list = CssDeclarationList::try_new(originals.clone()).unwrap();
+    let list = CssDeclarationList::try_new(originals.clone(), Default::default()).unwrap();
     const EXPECTED: &str =
         "color: purple !important; color: purple !important; width: 7px; color: transparent;";
-    assert_eq!(list.to_specified_css().unwrap(), EXPECTED);
+    assert_eq!(
+        list.serialize_specified(Default::default()).unwrap(),
+        EXPECTED
+    );
     unchanged(&list, &originals);
     assert_eq!(list[0].position().unwrap().byte_offset().value(), 0);
     assert_eq!(
@@ -302,24 +328,25 @@ fn custom_case_empty_values_globals_and_pending_values_keep_their_authored_meani
     let originals = vec![
         custom(
             "--Case",
-            parse_component_values("INITIAL").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "INITIAL").unwrap(),
             CssImportance::Normal,
         ),
         custom(
             "--case",
-            parse_component_values("MiXeD/**/  Tail").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "MiXeD/**/  Tail").unwrap(),
             CssImportance::Important,
         ),
         custom(
             "--Empty",
-            parse_component_values("").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "").unwrap(),
             CssImportance::Normal,
         ),
         checked("width", "INHERIT", CssImportance::Normal),
         checked("width", "VaR(--Case)", CssImportance::Important),
         custom(
             "--Pending",
-            parse_component_values("var(--Case, /*in*/  01.00PX )").unwrap(),
+            CssComponentValues::parse(&CssParser::default(), "var(--Case, /*in*/  01.00PX )")
+                .unwrap(),
             CssImportance::Normal,
         ),
     ];
@@ -330,9 +357,12 @@ fn custom_case_empty_values_globals_and_pending_values_keep_their_authored_meani
             .substitution_dependent()
             .is_some()
     );
-    let list = CssDeclarationList::try_new(originals.clone()).unwrap();
+    let list = CssDeclarationList::try_new(originals.clone(), Default::default()).unwrap();
     const EXPECTED: &str = "--Case: INITIAL; --case: MiXeD/**/  Tail !important; --Empty: ; width: inherit; width: VaR(--Case) !important; --Pending: var(--Case, /*in*/  01.00PX );";
-    assert_eq!(list.to_specified_css().unwrap(), EXPECTED);
+    assert_eq!(
+        list.serialize_specified(Default::default()).unwrap(),
+        EXPECTED
+    );
     assert_eq!(list[0].custom().unwrap().name().as_str(), "--Case");
     assert_eq!(list[1].custom().unwrap().name().as_str(), "--case");
     assert!(list[2].value_components().items().is_empty());
@@ -343,11 +373,21 @@ fn custom_case_empty_values_globals_and_pending_values_keep_their_authored_meani
 
 #[test]
 fn complete_admission_charges_utf8_and_inserted_boundaries_after_edge_trimming() {
-    let a = parse_component_values("A").unwrap().items()[0].clone();
-    let leading = parse_component_values(" \t").unwrap().items()[0].clone();
-    let trailing = parse_component_values("\n").unwrap().items()[0].clone();
+    let a = CssComponentValues::parse(&CssParser::default(), "A")
+        .unwrap()
+        .items()[0]
+        .clone();
+    let leading = CssComponentValues::parse(&CssParser::default(), " \t")
+        .unwrap()
+        .items()[0]
+        .clone();
+    let trailing = CssComponentValues::parse(&CssParser::default(), "\n")
+        .unwrap()
+        .items()[0]
+        .clone();
     let b = CssComponentValue::try_ident("B").unwrap();
-    let values = CssComponentValues::try_new(vec![leading, a, b, trailing]).unwrap();
+    let values =
+        CssComponentValues::try_new(vec![leading, a, b, trailing], Default::default()).unwrap();
     let declaration = custom("--空", values, CssImportance::Normal);
     let originals = vec![declaration.clone()];
     const EXPECTED: &str = "--空: A/**/B;";
@@ -355,8 +395,8 @@ fn complete_admission_charges_utf8_and_inserted_boundaries_after_edge_trimming()
     assert_eq!(EXPECTED.len(), 14);
     // I/P: list1 + declaration/name2 + retained aggregate1 + four leaves4.
     let exact = Limits::new(8, 8, 14);
-    let list = CssDeclarationList::try_new_with_limits(originals.clone(), exact).unwrap();
-    assert_eq!(list.to_specified_css_with_limits(exact).unwrap(), EXPECTED);
+    let list = CssDeclarationList::try_new(originals.clone(), exact).unwrap();
+    assert_eq!(list.serialize_specified(exact).unwrap(), EXPECTED);
     assert!(list[0].parsed_name().is_none());
     assert!(list[0].parsed_value().is_none());
     assert!(matches!(
@@ -374,22 +414,26 @@ fn complete_admission_charges_utf8_and_inserted_boundaries_after_edge_trimming()
         (Limits::new(8, 8, 12), Kind::ByteLimit),
     ] {
         assert_eq!(
-            CssDeclarationList::try_new_with_limits(originals.clone(), limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &CssDeclarationList::try_new(originals.clone(), limits).unwrap_err()
+            ),
             kind
         );
         assert_eq!(
-            list.to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&list.serialize_specified(limits).unwrap_err()),
             kind
         );
         unchanged(&list, &originals);
-        assert_eq!(declaration.to_specified_css().unwrap(), EXPECTED);
-        assert_eq!(list.to_specified_css_with_limits(exact).unwrap(), EXPECTED);
+        assert_eq!(
+            declaration.serialize_specified(Default::default()).unwrap(),
+            EXPECTED
+        );
+        assert_eq!(list.serialize_specified(exact).unwrap(), EXPECTED);
     }
-    let reparsed = validate_style_attribute(EXPECTED).unwrap();
+    let reparsed = CssParser::default()
+        .parse_block_contents(EXPECTED)
+        .into_validation_result()
+        .unwrap();
     let mut identifiers = Vec::new();
     for item in reparsed[0].value_components().items() {
         match item.view() {
@@ -408,21 +452,28 @@ fn complete_admission_charges_utf8_and_inserted_boundaries_after_edge_trimming()
 #[test]
 fn serializing_a_recovered_member_preserves_its_original_implicit_closure() {
     const SOURCE: &str = "--X:var(--Case";
-    let report = parse_style_attribute(SOURCE);
+    let report = CssParser::default().parse_block_contents(SOURCE);
     assert!(!report.is_clean());
     assert_eq!(report.syntax().len(), 1);
     let diagnostics = report.diagnostics().to_vec();
     assert_eq!(
-        validate_style_attribute(SOURCE).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(SOURCE)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         diagnostics.as_slice()
     );
     let originals = vec![
         checked("color", "purple", CssImportance::Normal),
         report.syntax()[0].clone(),
     ];
-    let list = CssDeclarationList::try_new(originals.clone()).unwrap();
+    let list = CssDeclarationList::try_new(originals.clone(), Default::default()).unwrap();
     const EXPECTED: &str = "color: purple; --X: var(--Case);";
-    assert_eq!(list.to_specified_css().unwrap(), EXPECTED);
+    assert_eq!(
+        list.serialize_specified(Default::default()).unwrap(),
+        EXPECTED
+    );
     let CssComponentValueRef::Function(function) = list[1].value_components().items()[0].view()
     else {
         panic!("original var function");
@@ -455,52 +506,58 @@ fn later_real_provider_failure_returns_neither_an_admitted_list_nor_partial_text
     let values = unsupported.value_components().clone();
     // Ownership consumes each submitted Vec; retry uses independently retained handles.
     for _ in 0..2 {
-        assert_eq!(
-            CssDeclarationList::try_new(retained.clone())
+        assert!(
+            CssDeclarationList::try_new(retained.clone(), Default::default())
                 .unwrap_err()
-                .kind(),
-            Kind::UnrepresentableValue
+                .is_unrepresentable_value()
         );
-        assert_eq!(
-            CssDeclarationList::try_new_with_limits(
-                retained.clone(),
-                Limits::new(1000, 1000, 1000)
-            )
-            .unwrap_err()
-            .kind(),
-            Kind::UnrepresentableValue
+        assert!(
+            CssDeclarationList::try_new(retained.clone(), Limits::new(1000, 1000, 1000))
+                .unwrap_err()
+                .is_unrepresentable_value()
         );
         assert!(retained[0].same_occurrence(&valid));
         assert!(retained[1].same_occurrence(&unsupported));
         assert_eq!(retained[1].value_components(), &values);
-        assert_eq!(valid.to_specified_css().unwrap(), "color: purple;");
         assert_eq!(
-            unsupported.to_specified_css().unwrap_err().kind(),
-            Kind::UnrepresentableValue
+            valid.serialize_specified(Default::default()).unwrap(),
+            "color: purple;"
+        );
+        assert!(
+            unsupported
+                .serialize_specified(Default::default())
+                .unwrap_err()
+                .is_unrepresentable_value()
         );
     }
     // Parsing admits authored grammar; it does not promise every provider can emit it.
-    let report = parse_style_attribute("color:purple;rotate:calc(.00000001) 1 0 30deg!important");
+    let report = CssParser::default()
+        .parse_block_contents("color:purple;rotate:calc(.00000001) 1 0 30deg!important");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2);
     let parsed_originals = report.syntax().as_slice().to_vec();
     for _ in 0..2 {
-        assert_eq!(
-            report.syntax().to_specified_css().unwrap_err().kind(),
-            Kind::UnrepresentableValue
-        );
-        assert_eq!(
+        assert!(
             report
                 .syntax()
-                .to_specified_css_with_limits(Limits::new(1000, 1000, 1000))
+                .serialize_specified(Default::default())
                 .unwrap_err()
-                .kind(),
-            Kind::UnrepresentableValue
+                .is_unrepresentable_value()
+        );
+        assert!(
+            report
+                .syntax()
+                .serialize_specified(Limits::new(1000, 1000, 1000))
+                .unwrap_err()
+                .is_unrepresentable_value()
         );
         unchanged(report.syntax(), &parsed_originals);
     }
-    let retry = CssDeclarationList::try_new(vec![valid.clone()]).unwrap();
-    assert_eq!(retry.to_specified_css().unwrap(), "color: purple;");
+    let retry = CssDeclarationList::try_new(vec![valid.clone()], Default::default()).unwrap();
+    assert_eq!(
+        retry.serialize_specified(Default::default()).unwrap(),
+        "color: purple;"
+    );
     assert!(retry[0].same_occurrence(&valid));
     unchanged(report.syntax(), &parsed_originals);
 }

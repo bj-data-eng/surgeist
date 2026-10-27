@@ -4,27 +4,32 @@
 //! opacity_specified_serialization's determinate-calculation expectations.
 //! This new serializer API has no executable preimplementation RED boundary.
 
-use surgeist_css::{
-    CssComponentValueRef, CssFlowTolerance, CssFlowToleranceRef, CssKnownPropertyValueRef,
-    CssLengthPercentageCalculation, CssSpecifiedLengthPercentage,
-    CssSpecifiedValueSerializationErrorKind as ErrorKind,
-    CssSpecifiedValueSerializationLimits as Limits, CssValueTokenRef, parse_component_values,
-    parse_style_attribute,
-};
+use crate::css::support::failure_classes::SerializationFailure as ErrorKind;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueTokenRef};
+use surgeist_css::numeric::{CssCalculation, CssLengthPercentage, CssNumeric};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits as Limits;
+use surgeist_css::values::box_model::{CssFlowTolerance, CssFlowToleranceRef};
 
 fn constructed(text: &str) -> CssFlowTolerance {
     match text {
         "normal" => CssFlowTolerance::normal(),
         "infinite" => CssFlowTolerance::infinite(),
         _ => {
-            let components = parse_component_values(text).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             let scalar = if text.contains('(') {
-                CssSpecifiedLengthPercentage::try_from_calculation(
-                    CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+                CssNumeric::<CssLengthPercentage>::try_from_calculation(
+                    CssCalculation::<CssLengthPercentage>::try_from_components(
+                        components,
+                        Default::default(),
+                    )
+                    .unwrap(),
                 )
                 .unwrap()
             } else {
-                CssSpecifiedLengthPercentage::try_from_component(components.items()[0].clone())
+                CssNumeric::<CssLengthPercentage>::try_from_component(components.items()[0].clone())
                     .unwrap()
             };
             CssFlowTolerance::length_percentage(scalar)
@@ -33,7 +38,7 @@ fn constructed(text: &str) -> CssFlowTolerance {
 }
 
 fn parsed(text: &str) -> CssFlowTolerance {
-    let report = parse_style_attribute(&format!("flow-tolerance:{text}"));
+    let report = CssParser::default().parse_block_contents(format!("flow-tolerance:{text}"));
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let Some(CssKnownPropertyValueRef::FlowTolerance(wrapper)) =
         report.syntax()[0].known().unwrap().property_value()
@@ -69,9 +74,14 @@ fn parsed_and_constructed_tolerance_emit_independent_canonical_values() {
     ] {
         for value in [parsed(input), constructed(input)] {
             let before = value.clone();
-            let css = value.serialize_specified().unwrap();
+            let css = value.serialize_specified(Default::default()).unwrap();
             assert_eq!(css, expected, "{input}");
-            assert_eq!(parsed(&css).serialize_specified().unwrap(), expected);
+            assert_eq!(
+                parsed(&css)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                expected
+            );
             assert_eq!(value, before);
         }
     }
@@ -81,10 +91,17 @@ fn parsed_and_constructed_tolerance_emit_independent_canonical_values() {
         } else {
             "infinite"
         };
-        assert_eq!(parsed(input).serialize_specified().unwrap(), expected);
+        assert_eq!(
+            parsed(input)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
     assert_eq!(
-        CssFlowTolerance::default().serialize_specified().unwrap(),
+        CssFlowTolerance::default()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "normal"
     );
 }
@@ -102,29 +119,31 @@ fn extreme_signed_literals_preserve_exact_magnitudes_and_output_limits() {
             let expected_coefficient = input.trim_end_matches("px").trim_end_matches('%');
             assert!(
                 matches!(
-                    scalar.literal_component().unwrap().view(),
+                    scalar.literal().map(|literal| literal.component()).unwrap().view(),
                     CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
                         if number.representation() == expected_coefficient && unit == "px"
                 ) || matches!(
-                    scalar.literal_component().unwrap().view(),
+                    scalar.literal().map(|literal| literal.component()).unwrap().view(),
                     CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
                         if number.representation() == expected_coefficient
                 )
             );
-            assert_eq!(value.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             assert_eq!(
                 value
-                    .serialize_specified_with_limits(Limits::new(1, 1, expected.len()))
+                    .serialize_specified(Limits::new(1, 1, expected.len()))
                     .unwrap(),
                 expected
             );
             let before = value.clone();
-            assert_eq!(
+            assert!(
                 value
-                    .serialize_specified_with_limits(Limits::new(1, 1, expected.len() - 1))
+                    .serialize_specified(Limits::new(1, 1, expected.len() - 1))
                     .unwrap_err()
-                    .kind(),
-                ErrorKind::ByteLimit
+                    .is_byte_limit()
             );
             assert_eq!(value, before);
         }
@@ -145,11 +164,7 @@ fn keywords_literals_and_calculations_obey_each_exact_resource_boundary() {
         let before = value.clone();
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(
-                    input_nodes,
-                    projection_nodes,
-                    expected.len()
-                ))
+                .serialize_specified(Limits::new(input_nodes, projection_nodes, expected.len()))
                 .unwrap(),
             expected
         );
@@ -168,15 +183,15 @@ fn keywords_literals_and_calculations_obey_each_exact_resource_boundary() {
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind,
                 "{input}"
             );
             assert_eq!(value, before);
         }
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }

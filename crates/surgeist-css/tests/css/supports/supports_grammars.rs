@@ -1,18 +1,24 @@
-use surgeist_css::{
-    CssErrorCode, CssImportance, CssKnownProperty, CssNamespaceConstraint, CssPropertyNameRef,
-    CssRecoveryAction, CssRule, CssScopedRule, CssSelector, CssSupportsConditionKind, parse_sheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{CssNamespaceConstraint, CssSelector};
 
 #[test]
 fn supports_conditions_and_group_rules_follow_conditional3() {
-    let report = parse_sheet("@supports (display: grid) { .x { color: red; } }");
+    let report =
+        CssParser::default().parse_sheet("@supports (display: grid) { .x { color: red; } }");
 
     assert!(report.is_clean(), "diagnostics: {:?}", report.diagnostics());
     assert_eq!(report.syntax().rules().len(), 1);
     let CssRule::Supports(rule) = &report.syntax().rules()[0] else {
         panic!("expected supports rule");
     };
-    let CssSupportsConditionKind::Declaration(declaration) = rule.condition().kind() else {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) = rule.condition().kind()
+    else {
         panic!("expected declaration condition");
     };
     assert_eq!(declaration.authored().unwrap(), "display: grid");
@@ -39,7 +45,7 @@ fn supports_declaration_tests_preserve_authored_false_syntax_without_diagnostics
         "@supports (display:) {}",
         "@supports ( display: grid ) {}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
 
     let declarations = report
@@ -50,7 +56,9 @@ fn supports_declaration_tests_preserve_authored_false_syntax_without_diagnostics
             let CssRule::Supports(rule) = rule else {
                 panic!("expected supports rule");
             };
-            let CssSupportsConditionKind::Declaration(declaration) = rule.condition().kind() else {
+            let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) =
+                rule.condition().kind()
+            else {
                 panic!("expected declaration condition");
             };
             declaration
@@ -80,7 +88,7 @@ fn supports_declaration_tests_preserve_authored_false_syntax_without_diagnostics
 
 #[test]
 fn supports_boolean_operators_require_grouping_when_they_mix() {
-    let valid = parse_sheet(concat!(
+    let valid = CssParser::default().parse_sheet(concat!(
         "@supports not (display: grid) {}",
         "@supports (display: grid) and (color: red) {}",
         "@supports ((display: grid) or (color: red)) and (width: 1px) {}",
@@ -94,23 +102,21 @@ fn supports_boolean_operators_require_grouping_when_they_mix() {
     else {
         panic!("expected three supports rules");
     };
-    assert!(matches!(
-        not.condition().kind(),
-        CssSupportsConditionKind::Not(_)
-    ));
+    assert!(matches!(not.condition().kind(), CssConditionKind::Not(_)));
     assert!(matches!(
         and.condition().kind(),
-        CssSupportsConditionKind::And(list) if list.conditions().len() == 2
+        CssConditionKind::And(list) if list.conditions().len() == 2
     ));
-    let CssSupportsConditionKind::And(list) = grouped.condition().kind() else {
+    let CssConditionKind::And(list) = grouped.condition().kind() else {
         panic!("expected grouped and condition");
     };
     assert!(matches!(
         list.conditions()[0].kind(),
-        CssSupportsConditionKind::Or(or) if or.conditions().len() == 2
+        CssConditionKind::Parenthesized(group)
+            if matches!(group.kind(), CssConditionKind::Or(or) if or.conditions().len() == 2)
     ));
 
-    let malformed = parse_sheet(concat!(
+    let malformed = CssParser::default().parse_sheet(concat!(
         ".before { color: red; }",
         "@supports (display: grid) and (color: red) or (width: 1px) {}",
         ".after { color: blue; }",
@@ -131,7 +137,7 @@ fn supports_boolean_operators_require_grouping_when_they_mix() {
 
 #[test]
 fn supports_general_enclosed_and_selector_fallback_preserve_exact_units() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@supports future( a, nested([x]) ) {}",
         "@supports (future stuff(\")\") [x]) {}",
         "@supports selector(.card > .item:hover) {}",
@@ -145,7 +151,7 @@ fn supports_general_enclosed_and_selector_fallback_preserve_exact_units() {
     assert!(
         matches!(
             function.condition().kind(),
-            CssSupportsConditionKind::GeneralEnclosed(value)
+            CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(value))
                 if value.authored() == Some("future( a, nested([x]) )")
         ),
         "{:?}",
@@ -156,7 +162,7 @@ fn supports_general_enclosed_and_selector_fallback_preserve_exact_units() {
     };
     assert!(matches!(
         parenthesis.condition().kind(),
-        CssSupportsConditionKind::GeneralEnclosed(value)
+        CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(value))
             if value.authored() == Some("(future stuff(\")\") [x])")
     ));
     let CssRule::Supports(selector) = &rules[2] else {
@@ -164,21 +170,21 @@ fn supports_general_enclosed_and_selector_fallback_preserve_exact_units() {
     };
     assert!(matches!(
         selector.condition().kind(),
-        CssSupportsConditionKind::Selector(_)
+        CssConditionKind::Leaf(CssSupportsLeaf::Selector(_))
     ));
     let CssRule::Supports(fallback) = &rules[3] else {
         panic!("expected selector fallback");
     };
     assert!(matches!(
         fallback.condition().kind(),
-        CssSupportsConditionKind::GeneralEnclosed(value)
+        CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(value))
             if value.authored() == Some("selector(svg|a)")
     ));
 }
 
 #[test]
 fn supports_selector_uses_active_names_and_falls_back_for_balanced_remainders() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@namespace svg \"urn:svg\";",
         "@supports selector(svg|a) {}",
         "@supports selector(undeclared|a) {}",
@@ -195,7 +201,7 @@ fn supports_selector_uses_active_names_and_falls_back_for_balanced_remainders() 
         panic!("expected retained namespace and three supports conditions")
     };
 
-    let CssSupportsConditionKind::Selector(CssSelector::Compound(selector)) =
+    let CssConditionKind::Leaf(CssSupportsLeaf::Selector(CssSelector::Compound(selector))) =
         typed.condition().kind()
     else {
         panic!("expected typed namespace-qualified selector condition")
@@ -209,19 +215,19 @@ fn supports_selector_uses_active_names_and_falls_back_for_balanced_remainders() 
     ));
     assert!(matches!(
         undeclared.condition().kind(),
-        CssSupportsConditionKind::GeneralEnclosed(value)
+        CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(value))
             if value.authored() == Some("selector(undeclared|a)")
     ));
     assert!(matches!(
         remainder.condition().kind(),
-        CssSupportsConditionKind::GeneralEnclosed(value)
+        CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(value))
             if value.authored() == Some("selector(svg|a, svg|b)")
     ));
 }
 
 #[test]
 fn supports_rules_work_in_conditional_nested_style_and_scoped_contexts() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@media screen { @supports (display: grid) { .media { color: red; } } }",
         ".host { @supports (display: grid) { color: blue; & .child { width: 1px; } } }",
         "@scope (.root) { @supports selector(.item) { .item { height: 2px; } } }",
@@ -264,10 +270,7 @@ fn supports_rules_work_in_conditional_nested_style_and_scoped_contexts() {
     let CssRule::Scope(scope) = &report.syntax().rules()[2] else {
         panic!("expected scope");
     };
-    assert!(matches!(
-        scope.rules().rules(),
-        [CssScopedRule::Supports(_)]
-    ));
+    assert!(matches!(scope.rules().rules(), [CssRule::Supports(_)]));
     let CssRule::Supports(group) = &report.syntax().rules()[3] else {
         panic!("expected supports group");
     };
@@ -279,7 +282,7 @@ fn supports_rules_work_in_conditional_nested_style_and_scoped_contexts() {
 
 #[test]
 fn invalid_supports_children_do_not_drop_the_valid_parent_or_later_sibling() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@supports (display: grid) {",
         "@import 'invalid-here.css';",
         "@supports (color: red) { .kept { color: red; } }",
@@ -308,7 +311,7 @@ fn supports_non_bmp_positions_and_repeated_failures_remain_ordered() {
         "@supports (f:g) or (h:i) and (j:k) {}",
         "@supports (color: red) {}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(
         matches!(
             report.syntax().rules(),

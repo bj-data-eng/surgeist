@@ -3,7 +3,18 @@
 //! D/W/P/T output, authored wrap facet preservation and fixed-child costs.
 
 use crate::css::support::serialization_limits::assert_limits;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueTokenRef};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssCalculation, CssLengthPercentage, CssNumeric};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValueRef, CssPropertyKindRef, CssPropertyTarget,
+};
+use surgeist_css::values::box_model::{CssFlowTolerance, CssFlowToleranceRef};
+use surgeist_css::values::layout::{
+    CssItemDirection, CssItemFlow, CssItemPack, CssItemWrap, CssItemWrapMode, CssItemWrapOrder,
+};
 
 const DIRECTIONS: [(CssItemDirection, &str); 5] = [
     (CssItemDirection::Auto, "auto"),
@@ -67,11 +78,12 @@ fn typed(declaration: &CssDeclaration) -> CssItemFlow {
 }
 
 fn fronts(text: &str) -> [CssDeclaration; 2] {
-    let report = parse_style_attribute(&format!("item-flow:{text}"));
+    let report = CssParser::default().parse_block_contents(format!("item-flow:{text}"));
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    let constructed = parse_property_value_for_grammar(
-        CssKnownProperty::ItemFlow.grammar(),
-        parse_component_values(text).unwrap(),
+    let constructed = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(CssKnownProperty::ItemFlow.grammar()),
+        CssComponentValues::parse(&CssParser::default(), text).unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
@@ -81,21 +93,28 @@ fn fronts(text: &str) -> [CssDeclaration; 2] {
 #[test]
 fn every_typed_longhand_state_emits_its_independent_text_and_exact_facet_costs() {
     for (value, expected) in DIRECTIONS {
-        assert_eq!(value.serialize_specified().unwrap(), expected);
-        assert_limits(expected, 1, 1, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_limits(expected, 1, 1, |limits| value.serialize_specified(limits));
     }
     for (value, expected, nodes) in WRAPS {
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_limits(expected, nodes, nodes, |limits| {
-            value.serialize_specified_with_limits(limits)
+            value.serialize_specified(limits)
         });
     }
     for (value, expected, nodes) in PACKS {
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_limits(expected, nodes, nodes, |limits| {
-            value.serialize_specified_with_limits(limits)
+            value.serialize_specified(limits)
         });
     }
 }
@@ -116,17 +135,23 @@ fn all_480_complete_typed_keyword_tuples_reparse_without_erasing_wrap_states() {
                     assert_eq!(value.wrap(), wrap);
                     assert_eq!(value.pack(), pack);
                     assert_eq!(value.tolerance(), &tolerance);
-                    assert_eq!(value.serialize_specified().unwrap(), expected);
+                    assert_eq!(
+                        value.serialize_specified(Default::default()).unwrap(),
+                        expected
+                    );
                     let nodes = 2 + wrap_nodes + pack_nodes;
                     assert_limits(&expected, nodes, nodes, |limits| {
-                        value.serialize_specified_with_limits(limits)
+                        value.serialize_specified(limits)
                     });
                     for declaration in fronts(&expected) {
                         let parsed = typed(&declaration);
                         assert_eq!(parsed, value, "{expected}");
-                        assert_eq!(parsed.serialize_specified().unwrap(), expected);
+                        assert_eq!(
+                            parsed.serialize_specified(Default::default()).unwrap(),
+                            expected
+                        );
                         let CssExpansion::Contributions(CssContributions::Longhands(children)) =
-                            expand_declaration(&declaration).unwrap()
+                            declaration.expand().unwrap()
                         else {
                             panic!("four ordinary constituents")
                         };
@@ -160,11 +185,11 @@ fn intrinsic_initial_payloads_and_omitted_whole_constituents_match_typed_default
     assert_eq!(default.pack(), CssItemPack::default());
     assert_eq!(default.tolerance(), &CssFlowTolerance::normal());
     assert_eq!(
-        default.serialize_specified().unwrap(),
+        default.serialize_specified(Default::default()).unwrap(),
         "auto auto normal normal"
     );
     assert_limits("auto auto normal normal", 4, 4, |limits| {
-        default.serialize_specified_with_limits(limits)
+        default.serialize_specified(limits)
     });
 
     for property in [
@@ -240,7 +265,10 @@ fn grouped_search_preserves_original_numeric_tokens_and_function_children() {
                     scalar.calculation().unwrap().components().items(),
                     std::slice::from_ref(original)
                 ),
-                _ => assert_eq!(scalar.literal_component().unwrap(), original),
+                _ => assert_eq!(
+                    scalar.literal().map(|literal| literal.component()).unwrap(),
+                    original
+                ),
             }
             let before = value.clone();
             let expected = if text.starts_with('-') {
@@ -248,7 +276,10 @@ fn grouped_search_preserves_original_numeric_tokens_and_function_children() {
             } else {
                 "row reverse dense balance calc(-3% - 2px)"
             };
-            assert_eq!(value.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             assert_eq!(value, before);
         }
     }
@@ -257,9 +288,10 @@ fn grouped_search_preserves_original_numeric_tokens_and_function_children() {
 #[test]
 fn constructed_symbolic_tolerance_composes_without_changing_owning_work_costs() {
     let tolerance = CssFlowTolerance::length_percentage(
-        CssSpecifiedLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(
-                parse_component_values("calc(1px + 2em)").unwrap(),
+        CssNumeric::<CssLengthPercentage>::try_from_calculation(
+            CssCalculation::<CssLengthPercentage>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), "calc(1px + 2em)").unwrap(),
+                Default::default(),
             )
             .unwrap(),
         )
@@ -272,9 +304,7 @@ fn constructed_symbolic_tolerance_composes_without_changing_owning_work_costs() 
         tolerance,
     );
     let expected = "row auto normal calc(2em + 1px)";
-    assert_limits(expected, 7, 8, |limits| {
-        value.serialize_specified_with_limits(limits)
-    });
+    assert_limits(expected, 7, 8, |limits| value.serialize_specified(limits));
     for declaration in fronts(expected) {
         let reparsed = typed(&declaration);
         assert_eq!(reparsed.direction(), value.direction());
@@ -282,6 +312,9 @@ fn constructed_symbolic_tolerance_composes_without_changing_owning_work_costs() 
         assert_eq!(reparsed.pack(), value.pack());
         // Owning numeric canonicalization sorts terms. Authored expression
         // structure remains distinct; canonical numeric output is stable.
-        assert_eq!(reparsed.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            reparsed.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }

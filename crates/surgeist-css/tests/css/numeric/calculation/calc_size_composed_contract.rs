@@ -2,8 +2,23 @@
 //! calc-sum independently. Interpolation basis rewriting is a later operation.
 //! Shared strict reentry retains the original occurrence and replacement origins.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::assert_parsed_span as parsed_origin;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssCalculationExpressionRef, CssCalculationValueRef};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget, CssPropertyTextTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::{
+    CssBoxSize, CssCalcSize, CssCalcSizeBasisRef, CssIntrinsicSizeKeyword, CssSizeValue,
+};
 
 // Function origins identify actual opener tokens. Closing origins separately
 // anchor the far end; only parsed_value identifies a whole declaration region.
@@ -100,12 +115,12 @@ fn checked_and_raw_width(
     basis_end: usize,
     closing_start: usize,
 ) -> CssCalcSize {
-    let components = parse_component_values(raw).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), raw).unwrap();
     let original_components = components.clone();
     let [component] = components.items() else {
         panic!("one original calc-size function")
     };
-    let value = CssCalcSize::try_from_component(component.clone()).unwrap();
+    let value = CssCalcSize::try_from_component(component.clone(), Default::default()).unwrap();
     let original_value = value.clone();
     let origin = value.origin().clone();
     let basis_origin = value.basis_origin().clone();
@@ -116,46 +131,44 @@ fn checked_and_raw_width(
 
     // Literal expected byte length applies to the complete output, including
     // both sums and every nested basis. No budget is reset between children.
-    let exact_bytes = CssSpecifiedValueSerializationLimits::new(128, 128, expected.len());
-    assert_eq!(
-        value.serialize_specified_with_limits(exact_bytes).unwrap(),
-        expected
-    );
+    let exact_bytes = CssSerializationLimits::new(128, 128, expected.len());
+    assert_eq!(value.serialize_specified(exact_bytes).unwrap(), expected);
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 128, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(0, 128, expected.len()),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(128, 0, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(128, 0, expected.len()),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(128, 128, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(128, 128, expected.len() - 1),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(value, original_value);
         assert_eq!(value.origin(), &origin);
         assert_eq!(value.basis_origin(), &basis_origin);
         assert_eq!(value.calculation().origin(), &calculation_origin);
-        assert_eq!(
-            value.serialize_specified_with_limits(exact_bytes).unwrap(),
-            expected
-        );
+        assert_eq!(value.serialize_specified(exact_bytes).unwrap(), expected);
     }
     assert_eq!(components, original_components);
-    assert_eq!(components.serialize().unwrap().as_css(), raw);
+    assert_eq!(
+        components
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        raw
+    );
 
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Width),
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
         components.clone(),
         CssImportance::Important,
     )
@@ -165,15 +178,17 @@ fn checked_and_raw_width(
     assert_eq!(width_calc(&checked), &value);
     assert_eq!(width_calc(&checked).origin(), value.origin());
     assert_eq!(
-        width_calc(&checked).serialize_specified().unwrap(),
+        width_calc(&checked)
+            .serialize_specified(Default::default())
+            .unwrap(),
         expected
     );
     assert_eq!(checked, before_checked);
     assert!(checked.same_occurrence(&before_checked));
 
-    let report = parse_property_value_text(
+    let report = CssParser::default().parse_property_value(
         raw,
-        CssPropertyNameRef::Known(CssKnownProperty::Width),
+        CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
         CssImportance::Important,
     );
     assert!(report.is_clean(), "{raw}: {:?}", report.diagnostics());
@@ -191,7 +206,12 @@ fn checked_and_raw_width(
         closing_start,
         closing_start + 1,
     );
-    assert_eq!(width_calc(parsed).serialize_specified().unwrap(), expected);
+    assert_eq!(
+        width_calc(parsed)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     assert_eq!(parsed, &before_parsed);
     assert!(parsed.same_occurrence(&before_parsed));
     value
@@ -250,7 +270,7 @@ fn nested_basis_and_both_calculations_simplify_without_flattening_the_basis() {
 #[test]
 fn pending_function_basis_reentry_preserves_occurrence_origins_and_allows_retry() {
     const SOURCE: &str = "width:calc-size(var(--basis), size + 1px)!important";
-    let report = parse_style_attribute(SOURCE);
+    let report = CssParser::default().parse_block_contents(SOURCE);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [source] = report.syntax().as_slice() else {
         panic!("one authored pending width")
@@ -273,7 +293,7 @@ fn pending_function_basis_reentry_preserves_occurrence_origins_and_allows_retry(
         27,
         28,
     );
-    let CssExpansion::Pending(handle) = expand_declaration(source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("the whole property awaits substitution")
     };
     assert!(handle.source().same_occurrence(source));
@@ -284,26 +304,27 @@ fn pending_function_basis_reentry_preserves_occurrence_origins_and_allows_retry(
         "calc-size(var(--again), size + 2px)",
         "calc-size(min-content, size + env(inset))",
     ] {
-        assert_eq!(
+        assert!(
             handle
-                .reenter(parse_component_values(residual).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), residual).unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         assert!(handle.source().same_occurrence(source));
         assert_eq!(handle.source().value_components(), &components);
     }
-    assert!(matches!(
+    assert!(
         handle
-            .reenter(parse_component_values("calc-size(any, size)").unwrap())
+            .reenter(
+                CssComponentValues::parse(&CssParser::default(), "calc-size(any, size)").unwrap()
+            )
             .unwrap_err()
-            .kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
+            .replacement_error()
+            .is_some()
+    );
 
     const REPLACEMENT: &str = "calc-size(min-content, size + 2px + 3px)";
-    let replacement = parse_component_values(REPLACEMENT).unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), REPLACEMENT).unwrap();
     let replacement_before = replacement.clone();
     function_boundaries(&replacement.items()[0], REPLACEMENT, 0, 10, 39, 40);
     for _ in 0..2 {
@@ -353,7 +374,7 @@ fn pending_function_basis_reentry_preserves_occurrence_origins_and_allows_retry(
             39,
         );
         assert_eq!(
-            value.serialize_specified().unwrap(),
+            value.serialize_specified(Default::default()).unwrap(),
             "calc-size(min-content, 5px + size)"
         );
         size_then_lengths(value.calculation(), &["2", "3"]);
@@ -362,7 +383,7 @@ fn pending_function_basis_reentry_preserves_occurrence_origins_and_allows_retry(
     // Reuse that same handle for a genuinely nested percentage basis. Reentry
     // checks the complete replacement; it does not implement var substitution.
     const NESTED: &str = "calc-size(calc-size(25% + 25%, size + 2px), size + 3px)";
-    let nested = parse_component_values(NESTED).unwrap();
+    let nested = CssComponentValues::parse(&CssParser::default(), NESTED).unwrap();
     function_boundaries(&nested.items()[0], NESTED, 0, 10, 54, 55);
     let CssComponentValueRef::Function(nested_function) = nested.items()[0].view() else {
         panic!("original nested calc-size component")
@@ -396,7 +417,7 @@ fn pending_function_basis_reentry_preserves_occurrence_origins_and_allows_retry(
     size_then_lengths(child.calculation(), &["2"]);
     size_then_lengths(value.calculation(), &["3"]);
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "calc-size(calc-size(50%, 2px + size), 3px + size)"
     );
 

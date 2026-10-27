@@ -1,7 +1,22 @@
-use surgeist_css::*;
-use surgeist_css::{CssNamespaceRule, CssRule};
+use surgeist_css::declaration::{CssImportance, CssSpecifiedDeclarationBlock};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef};
+use surgeist_css::rule::font_feature_values::{CssFontFeatureValueKind, CssFontFeatureValueRef};
+use surgeist_css::rule::{CssNamespaceName, CssSheet, CssStyleAncestor};
+use surgeist_css::rule::{CssNamespaceRule, CssRule};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::{CssGroupPreludeRef, CssRuleGraphInput, CssSerializationLimits};
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 use surgeist_cssom::*;
 
+fn graph_cssom(input: CssRuleGraphInput<'_>) -> String {
+    input
+        .serialize_cssom(
+            &CssNamespaceContext::default(),
+            CssStyleAncestor::Absent,
+            Default::default(),
+        )
+        .unwrap()
+}
 fn version(role: CssomInputRole, identity: &str, revision: u64) -> CssomInputVersion {
     CssomInputVersion {
         role,
@@ -107,7 +122,7 @@ fn owning_snapshot_retains_origin_and_selected_shorthand_survivors_after_owner_d
     }
     assert_eq!(
         after
-            .specified_property_css_text(&block, CssSpecifiedValueSerializationLimits::default())
+            .specified_property_css_text(&block, CssSerializationLimits::default())
             .unwrap(),
         "margin-right: 2px !important; margin-bottom: 3px !important; margin-left: 4px !important; --x: var(--input);"
     );
@@ -187,25 +202,23 @@ fn empty_nested_child_remains_live_and_css_provider_filters_only_its_text() {
         .iter()
         .map(|id| match after.rule(id).unwrap().data() {
             CssomRuleData::NestedDeclarations { block } => {
-                CssEditedRuleView::try_nested_declarations(selected(&after, block)).unwrap()
+                CssRuleGraphInput::nested_declarations(selected(&after, block))
             }
             _ => match after.rule(id).unwrap().authored() {
-                CssomAuthoredRule::Ordinary(v) => CssEditedRuleView::from_rule(v),
+                CssomAuthoredRule::Rule(v) => CssRuleGraphInput::from_rule(v),
                 _ => panic!("ordinary child"),
             },
         })
         .collect::<Vec<_>>();
     let CssomRuleData::Style {
-        selectors: CssomSelectors::Ordinary(selectors),
-        block,
-        ..
+        selectors, block, ..
     } = after.rule(&style).unwrap().data()
     else {
         panic!("style")
     };
-    let view = CssEditedRuleView::try_style(selectors, selected(&after, block), &views).unwrap();
+    let view = CssRuleGraphInput::style(selectors, selected(&after, block), &views);
     assert_eq!(
-        view.serialize_cssom().unwrap(),
+        graph_cssom(view),
         "a {\n  & b { color: red; }\n  & c { color: green; }\n}"
     );
     let media_id = match after.rule(&media).unwrap().data() {
@@ -216,14 +229,13 @@ fn empty_nested_child_remains_live_and_css_provider_filters_only_its_text() {
         _ => panic!("media"),
     };
     let child_views = [view];
-    let media_view = CssEditedRuleView::try_group(
-        CssEditedGroupPreludeRef::Media(after.media(media_id).unwrap()),
+    let media_view = CssRuleGraphInput::group(
+        CssGroupPreludeRef::Media(after.media(media_id).unwrap()),
         &child_views,
-    )
-    .unwrap();
+    );
     // Selected CSSOM §serialize-rule indents each serialized child item once.
     assert_eq!(
-        media_view.serialize_cssom().unwrap(),
+        graph_cssom(media_view),
         "@media screen {\n  a {\n  & b { color: red; }\n  & c { color: green; }\n}\n}"
     );
 }
@@ -366,7 +378,8 @@ fn map_cardinality_failure_poisoning_and_order_are_atomic() {
 #[test]
 fn computed_readonly_owner_and_null_base_are_independent_explicit_inputs() {
     let mut store = new_store();
-    let declarations = parse_declaration_block_contents("color: red;")
+    let declarations = CssParser::default()
+        .parse_block_contents("color: red;")
         .into_parts()
         .0;
     for computed in [false, true] {
@@ -388,10 +401,7 @@ fn computed_readonly_owner_and_null_base_are_independent_explicit_inputs() {
             assert_eq!(before.block(&id).unwrap().owner().unwrap().revision, 3);
             assert_eq!(
                 before
-                    .specified_property_css_text(
-                        &id,
-                        CssSpecifiedValueSerializationLimits::default()
-                    )
+                    .specified_property_css_text(&id, CssSerializationLimits::default())
                     .unwrap(),
                 if computed { "" } else { "color: red;" }
             );
@@ -446,7 +456,7 @@ fn typed_and_recovered_creation_share_checked_boundary_without_fabricated_origin
     let sheet = store.commit(edit).unwrap().sheet(&ticket).unwrap().clone();
     let snapshot = store.snapshot();
     match snapshot.rule(&root(&snapshot, &sheet)).unwrap().authored() {
-        CssomAuthoredRule::Ordinary(CssRule::Namespace(v)) => assert!(v.position().is_none()),
+        CssomAuthoredRule::Rule(CssRule::Namespace(v)) => assert!(v.position().is_none()),
         _ => panic!("namespace"),
     }
     let mut edit = batch(&store);
@@ -786,7 +796,7 @@ fn current_import_facets_and_nullable_child_capture_are_owned_independently() {
         before
             .media(&media)
             .unwrap()
-            .serialize_cssom()
+            .serialize_cssom(Default::default())
             .unwrap()
             .as_css(),
         "screen"
@@ -906,10 +916,7 @@ fn unavailable_symbolic_projection_is_retained_but_resource_failures_abort() {
             ..
         } => {
             assert_eq!(raw.len(), 2);
-            assert!(matches!(
-                error.kind(),
-                CssDeclarationBlockErrorKind::PendingFootprintUndetermined { .. }
-            ));
+            assert!(error.pending_footprint_property().is_some(), "{error:?}");
             assert!(raw[0].parsed_value().is_some());
         }
         _ => panic!("unavailable projection retained"),
@@ -923,7 +930,7 @@ fn unavailable_symbolic_projection_is_retained_but_resource_failures_abort() {
     assert_eq!(store.snapshot().revision(), snapshot.revision());
     let mut bounded = CssomStore::new(
         CssomLimits {
-            css: CssSpecifiedValueSerializationLimits::new(0, 0, 0),
+            css: CssSerializationLimits::new(0, 0, 0),
             ..CssomLimits::default()
         },
         CssomContext::default(),
@@ -940,7 +947,8 @@ fn unavailable_symbolic_projection_is_retained_but_resource_failures_abort() {
 
 #[test]
 fn typed_unavailable_values_cannot_bypass_input_and_component_quotas() {
-    let raw = parse_declaration_block_contents("inset:var(--inset);")
+    let raw = CssParser::default()
+        .parse_block_contents("inset:var(--inset);")
         .into_parts()
         .0;
     let mut nodes = CssomStore::new(
@@ -999,8 +1007,8 @@ fn media_with_only_empty_nested_child_keeps_literal_two_newline_frame() {
         children(&after, &media).as_slice(),
         std::slice::from_ref(&nested)
     );
-    let nested_view = CssEditedRuleView::try_nested_declarations(selected(&after, &block)).unwrap();
-    assert_eq!(nested_view.serialize_cssom().unwrap(), "");
+    let nested_view = CssRuleGraphInput::nested_declarations(selected(&after, &block));
+    assert_eq!(graph_cssom(nested_view), "");
     let children = [nested_view];
     let CssomRuleData::Group {
         prelude: CssomGroupPrelude::Media(id),
@@ -1009,18 +1017,18 @@ fn media_with_only_empty_nested_child_keeps_literal_two_newline_frame() {
     else {
         panic!("media")
     };
-    let media = CssEditedRuleView::try_group(
-        CssEditedGroupPreludeRef::Media(after.media(id).unwrap()),
+    let media = CssRuleGraphInput::group(
+        CssGroupPreludeRef::Media(after.media(id).unwrap()),
         &children,
-    )
-    .unwrap();
-    assert_eq!(media.serialize_cssom().unwrap(), "@media screen {\n\n}");
+    );
+    assert_eq!(graph_cssom(media), "@media screen {\n\n}");
 }
 
 #[test]
 fn constructed_creation_filters_imports_and_repeated_checked_ingress_gets_fresh_ids() {
     let mut store = new_store();
-    let source = parse_sheet("@import 'child.css'; a {color:red;}")
+    let source = CssParser::default()
+        .parse_sheet("@import 'child.css'; a {color:red;}")
         .into_parts()
         .0;
     let mut edit = batch(&store);
@@ -1044,7 +1052,13 @@ fn constructed_creation_filters_imports_and_repeated_checked_ingress_gets_fresh_
     assert_eq!(store.snapshot().sheet_rules(&sheet).unwrap().len(), 1);
     let mut edit = batch(&store);
     let typed = edit
-        .create_typed_sheet(parse_sheet("@import 'only.css';").into_parts().0, inputs())
+        .create_typed_sheet(
+            CssParser::default()
+                .parse_sheet("@import 'only.css';")
+                .into_parts()
+                .0,
+            inputs(),
+        )
         .unwrap();
     let parsed = edit
         .create_parsed_sheet("@import 'only.css';", inputs())
@@ -1172,7 +1186,13 @@ fn parsed_ingress_uses_current_parser_facts_and_typed_ingress_keeps_its_own() {
         .create_parsed_sheet("a { width: 10; }", inputs())
         .unwrap();
     let typed = edit
-        .create_typed_sheet(parse_sheet("b { height: 10; }").syntax().clone(), inputs())
+        .create_typed_sheet(
+            CssParser::default()
+                .parse_sheet("b { height: 10; }")
+                .syntax()
+                .clone(),
+            inputs(),
+        )
         .unwrap();
     let receipt = store.commit(edit).unwrap();
     let after = store.snapshot();
@@ -1183,10 +1203,7 @@ fn parsed_ingress_uses_current_parser_facts_and_typed_ingress_keeps_its_own() {
     let parsed_block = block(&after, &root(&after, parsed));
     assert_eq!(
         after
-            .specified_property_css_text(
-                &parsed_block,
-                CssSpecifiedValueSerializationLimits::default()
-            )
+            .specified_property_css_text(&parsed_block, CssSerializationLimits::default())
             .unwrap(),
         "width: 10px;"
     );
@@ -1215,7 +1232,7 @@ fn parsed_ingress_uses_current_parser_facts_and_typed_ingress_keeps_its_own() {
         latest
             .specified_property_css_text(
                 &block(&latest, &root(&latest, &standard)),
-                CssSpecifiedValueSerializationLimits::default()
+                CssSerializationLimits::default()
             )
             .unwrap(),
         "height: 11px;"

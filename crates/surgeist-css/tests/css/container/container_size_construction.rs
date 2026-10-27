@@ -1,15 +1,30 @@
 //! Typed authored contracts for Conditional 5 size features and scoped Values5 §9.
 //! Existing callable-boundary recognition evidence is in container_size_grammar.
 use crate::css::support::authored_syntax::checked_container_condition as condition;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin,
+};
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationExpressionRef, CssCalculationType, CssLength, CssNumber,
+    CssTreeCountingFunction,
+};
+use surgeist_css::query::container::{
+    CssContainerFeatureQuery, CssContainerLeaf, CssContainerLength, CssContainerLengthRef,
+    CssContainerOrientationRef, CssContainerRatio, CssContainerRatioRef,
+    CssContainerSizeFeatureKind, CssContainerValueDomain,
+};
+use surgeist_css::query::media::{CssMediaRangeRef, CssMediaRatio};
+use surgeist_css::query::{CssCondition, CssConditionKind, CssGeneralEnclosed, CssQueryComparison};
 
-fn feature(condition: &CssContainerCondition) -> &CssContainerFeatureQuery {
-    let CssContainerConditionKind::Feature(feature) = condition.kind() else {
+fn feature(condition: &CssCondition<CssContainerLeaf>) -> &CssContainerFeatureQuery {
+    let CssConditionKind::Leaf(CssContainerLeaf::Feature(feature)) = condition.kind() else {
         panic!("recognized feature: {condition:?}")
     };
     feature
 }
-fn length(value: &CssContainerLength) -> &CssLengthCalculation {
+fn length(value: &CssContainerLength) -> &CssCalculation<CssLength> {
     let CssContainerLengthRef::Numeric(value) = value.view() else {
         panic!("typed length")
     };
@@ -21,7 +36,7 @@ fn ratio(value: &CssContainerRatio) -> &CssMediaRatio {
     };
     value
 }
-fn number(value: &CssNumberCalculation) -> &str {
+fn number(value: &CssCalculation<CssNumber>) -> &str {
     let CssCalculationExpressionRef::Value(value) = value.expression() else {
         panic!("number literal")
     };
@@ -78,8 +93,21 @@ fn range_views_preserve_plain_prefixes_operand_order_and_inclusivity() {
     };
     assert!(left_inclusive);
     assert!(!right_inclusive);
-    assert_eq!(left.components().serialize().unwrap().as_css(), "2px");
-    assert_eq!(right.components().serialize().unwrap().as_css(), "10px");
+    assert_eq!(
+        left.components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "2px"
+    );
+    assert_eq!(
+        right
+            .components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "10px"
+    );
     let condition = self::condition("(1px < height <= 2px)");
     let CssContainerFeatureQuery::Height(range) = feature(&condition) else {
         panic!("height")
@@ -158,7 +186,7 @@ fn exact_numeric_views_retain_magnitudes_and_unitless_zero_without_f32() {
     ] {
         assert!(matches!(
             condition(source).kind(),
-            CssContainerConditionKind::GeneralEnclosed(_)
+            CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
         ));
     }
 }
@@ -216,11 +244,26 @@ fn pending_values_keep_whole_operand_and_required_domain_without_typing_fallback
             _ => panic!("selected domain"),
         };
         assert_eq!(pending.domain(), domain);
-        assert_eq!(pending.serialize().unwrap().as_css(), expected);
-        assert_eq!(pending.components().serialize().unwrap().as_css(), expected);
+        assert_eq!(
+            pending
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            expected
+        );
+        assert_eq!(
+            pending
+                .components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            expected
+        );
         // Each pending operand starts with a function name longer than one byte.
-        let error = pending.serialize_with_limit(1).unwrap_err();
-        assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
+        let error = pending
+            .serialize_tokens(crate::css::support::byte_limits(1))
+            .unwrap_err();
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.origin(), pending.components().items()[0].origin());
         let CssValueOrigin::Parsed(origin) = pending.components().items()[0].origin() else {
             panic!("original operand")
@@ -269,14 +312,12 @@ fn tree_counting_is_inspectable_and_remains_symbolic_in_container_context() {
     }
     // Tree-counting functions are scoped to element-backed contexts, so the
     // context-free number grammar does not know the function.
-    let error = CssNumberCalculation::try_from_components(
-        parse_component_values("sibling-count()").unwrap(),
+    let error = CssCalculation::<CssNumber>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "sibling-count()").unwrap(),
+        Default::default(),
     )
     .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::UnknownFunction
-    );
+    assert!(error.is_unknown_function(), "{error:?}");
     let CssValueOrigin::Parsed(origin) = error.origin().expect("located failure") else {
         panic!("{error:?}")
     };
@@ -294,15 +335,21 @@ fn tree_counting_is_inspectable_and_remains_symbolic_in_container_context() {
 
 #[test]
 fn mixed_origin_pending_components_preserve_token_origins_and_bounded_construction() {
-    let var = parse_component_values("var(--limit,)").unwrap().items()[0].clone();
-    let values = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("width").unwrap(),
-        CssComponentValue::try_token(":").unwrap(),
-        var,
-    ])
+    let var = CssComponentValues::parse(&CssParser::default(), "var(--limit,)")
+        .unwrap()
+        .items()[0]
+        .clone();
+    let values = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("width").unwrap(),
+            CssComponentValue::try_token(":").unwrap(),
+            var,
+        ],
+        Default::default(),
+    )
     .unwrap();
     let enclosed = CssGeneralEnclosed::try_parenthesized(values).unwrap();
-    let condition = CssContainerCondition::try_from_enclosed(enclosed).unwrap();
+    let condition = CssCondition::<CssContainerLeaf>::try_from_enclosed(enclosed).unwrap();
     assert_eq!(condition.origin(), &CssValueOrigin::Programmatic);
     let CssContainerFeatureQuery::Width(range) = feature(&condition) else {
         panic!("width")
@@ -313,30 +360,37 @@ fn mixed_origin_pending_components_preserve_token_origins_and_bounded_constructi
     let CssContainerLengthRef::Pending(value) = value.view() else {
         panic!("pending")
     };
-    let output = value.serialize().unwrap();
+    let output = value.serialize_tokens(Default::default()).unwrap();
     assert!(matches!(
         output.origin_at(0),
         Some(CssSerializedOrigin::Token(CssValueOrigin::Parsed(_)))
     ));
-    let components = CssComponentValues::try_new(condition.components().to_vec()).unwrap();
-    let error = CssContainerCondition::try_from_components_with_limits(
+    let components =
+        CssComponentValues::try_new(condition.components().to_vec(), Default::default()).unwrap();
+    let error = CssCondition::<CssContainerLeaf>::try_from_components(
         components,
         CssComponentValueLimits::try_new(256, usize::MAX, 1).unwrap(),
     )
     .unwrap_err();
-    assert!(matches!(error, CssContainerConstructionError::Component(_)));
+    assert!(error.component_error().is_some());
 }
 
 #[test]
 fn recovered_numeric_closures_remain_recognized_and_serialize_explicitly() {
-    let components = parse_component_values("(width: calc(1px + 2px").unwrap();
-    let condition = CssContainerCondition::try_from_components(components).unwrap();
+    let components =
+        CssComponentValues::parse(&CssParser::default(), "(width: calc(1px + 2px").unwrap();
+    let condition =
+        CssCondition::<CssContainerLeaf>::try_from_components(components, Default::default())
+            .unwrap();
     assert!(matches!(
         feature(&condition),
         CssContainerFeatureQuery::Width(_)
     ));
     assert_eq!(
-        condition.serialize().unwrap().as_css(),
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "(width: calc(1px + 2px))"
     );
 }

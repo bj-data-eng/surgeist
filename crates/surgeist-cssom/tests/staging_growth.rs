@@ -2,7 +2,9 @@
 #![forbid(unsafe_code)]
 use stats_alloc::{INSTRUMENTED_SYSTEM, Region, Stats, StatsAlloc};
 use std::{alloc::System, fmt::Write, hint::black_box};
-use surgeist_css::*;
+use surgeist_css::declaration::{CssCustomPropertyName, CssDeclarationList};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef};
+use surgeist_css::rule::font_feature_values::CssFontFeatureValueKind;
 use surgeist_cssom::*;
 
 #[global_allocator]
@@ -253,7 +255,7 @@ fn index_and_touched_payload_costs_are_distinct_from_unrelated_payloads() {
         let mut setup = batch(&store);
         let ticket = setup
             .create_declarations(
-                CssDeclarationList::try_new(Vec::new()).unwrap(),
+                CssDeclarationList::try_new(Vec::new(), Default::default()).unwrap(),
                 false,
                 false,
                 Some(CssomInputVersion {

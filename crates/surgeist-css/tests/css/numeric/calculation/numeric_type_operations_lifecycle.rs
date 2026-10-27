@@ -5,8 +5,23 @@
 //! https://www.w3.org/TR/2024/WD-css-typed-om-1-20240321/#cssnumericvalue-match
 
 use crate::css::support::component_values as components;
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::value_assertions::assert_calculation_rejected;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssColorComponent;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::numeric::{
+    CssAngle, CssCalculation, CssCalculationExpressionRef, CssCalculationType,
+    CssCalculationValueRef, CssFlex, CssFrequency, CssHintedNumber, CssInteger, CssLength,
+    CssLengthPercentage, CssNumber, CssNumericConstant, CssNumericDimension, CssNumericType,
+    CssPercentage, CssResolution, CssTime,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
+    CssPropertyTarget,
+};
+use surgeist_css::values::effects::CssOpacityValue;
 
 const AXES: [CssNumericDimension; 7] = [
     CssNumericDimension::Length,
@@ -33,7 +48,8 @@ fn assert_type(ty: CssNumericType, exponents: [i32; 7], hint: Option<CssNumericD
     assert_eq!(ty.percent_hint(), hint);
 }
 fn declaration(name: &str, text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("{name}:{text}!important;height:1px"));
+    let report =
+        CssParser::default().parse_block_contents(format!("{name}:{text}!important;height:1px"));
     assert!(
         report.is_clean(),
         "{name}:{text}: {:?}",
@@ -46,7 +62,7 @@ fn declaration(name: &str, text: &str) -> CssDeclaration {
     );
     report.syntax()[0].clone()
 }
-fn number(source: &CssDeclaration) -> &CssHintedNumberCalculation {
+fn number(source: &CssDeclaration) -> &CssCalculation<CssHintedNumber> {
     match source.known().unwrap().property_value().unwrap() {
         CssKnownPropertyValueRef::Opacity(value) => {
             let CssOpacityValue::HintedNumberCalculation(calculation) = value.value() else {
@@ -91,11 +107,20 @@ fn percentage_admitting_color_and_opacity_match_number_without_erasing_each_dime
             let source = declaration(name, &text);
             hinted_number(&source, dimension);
             assert_eq!(
-                source.value_components().serialize().unwrap().as_css(),
+                source
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 text
             );
             assert_eq!(source.importance(), CssImportance::Important);
-            assert!(validate_style_attribute(&format!("{name}:{text}")).is_ok());
+            assert!(
+                CssParser::default()
+                    .parse_block_contents(format!("{name}:{text}"))
+                    .into_validation_result()
+                    .is_ok()
+            );
         }
     }
 }
@@ -109,8 +134,9 @@ fn hinted_number_construction_preserves_original_components_and_unresolved_perce
     ] {
         let text = value_for(name, expression);
         let original = components(&text);
-        let source = parse_property_value(
-            CssPropertyNameRef::Known(property),
+        let source = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             original.clone(),
             CssImportance::Important,
         )
@@ -145,7 +171,7 @@ fn hinted_number_construction_preserves_original_components_and_unresolved_perce
         assert_eq!(percent.representation(), "1");
         // Applying the inferred hint to the sum does not rewrite its authored leaf.
         assert_type(percent.numeric_type(), [0, 0, 0, 0, 0, 0, 1], None);
-        let serialized = calculation.serialize().unwrap();
+        let serialized = calculation.serialize_tokens(Default::default()).unwrap();
         let reconstructed = declaration(name, &value_for(name, serialized.as_css()));
         hinted_number(&reconstructed, CssNumericDimension::Length);
         assert_eq!(source.value_components(), &original);
@@ -159,20 +185,21 @@ fn hinted_number_substitution_reentry_keeps_the_consumer_permission_and_source_o
         ("opacity", CssKnownProperty::Opacity),
     ] {
         let source = declaration(name, "var(--numeric)");
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending substitution")
         };
         let text = value_for(name, "calc((1px + 1%) / 1px)");
         let replacement = components(&text);
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(property),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             replacement.clone(),
             CssImportance::Important,
         )
         .unwrap();
         hinted_number(&checked, CssNumericDimension::Length);
         let CssExpansion::Contributions(CssContributions::Longhands(expected)) =
-            expand_declaration(&checked).unwrap()
+            checked.expand().unwrap()
         else {
             panic!("checked terminal")
         };
@@ -193,10 +220,7 @@ fn hinted_number_substitution_reentry_keeps_the_consumer_permission_and_source_o
             value_for(name, "calc(1px + 1s)"),
         ] {
             let error = handle.reenter(components(&invalid)).unwrap_err();
-            assert!(matches!(
-                error.kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
+            assert!(error.replacement_error().is_some());
         }
         assert!(handle.reenter(replacement).is_ok());
     }
@@ -206,11 +230,12 @@ fn hinted_number_substitution_reentry_keeps_the_consumer_permission_and_source_o
 fn pure_number_roots_reject_inferred_hints_even_after_dimension_exponents_cancel() {
     for (_, unit) in DIMENSION_UNITS {
         let source = format!("calc((1{unit} + 1%) / 1{unit})");
-        let error = CssNumberCalculation::try_from_components(components(&source)).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch
-        );
+        let error = CssCalculation::<CssNumber>::try_from_components(
+            components(&source),
+            Default::default(),
+        )
+        .unwrap_err();
+        assert!(error.is_root_domain_mismatch(), "{error:?}");
         assert!(error.origin().is_some());
     }
 }
@@ -218,21 +243,26 @@ fn pure_number_roots_reject_inferred_hints_even_after_dimension_exponents_cancel
 #[test]
 fn ordinary_numeric_axes_and_math_constants_have_exact_non_evaluated_types() {
     macro_rules! axis {
-        ($root:ident, $text:literal, $powers:expr) => {
-            let value = $root::try_from_components(components($text)).unwrap();
+        ($root:ty, $text:literal, $powers:expr) => {
+            let value =
+                <$root>::try_from_components(components($text), Default::default()).unwrap();
             assert_type(value.numeric_type(), $powers, None);
             assert_type(value.expression().numeric_type(), $powers, None);
         };
     }
-    axis!(CssNumberCalculation, "1e99999", [0; 7]);
-    axis!(CssIntegerCalculation, "9007199254740993", [0; 7]);
-    axis!(CssLengthCalculation, "1px", [1, 0, 0, 0, 0, 0, 0]);
-    axis!(CssAngleCalculation, "1deg", [0, 1, 0, 0, 0, 0, 0]);
-    axis!(CssTimeCalculation, "1s", [0, 0, 1, 0, 0, 0, 0]);
-    axis!(CssFrequencyCalculation, "1hz", [0, 0, 0, 1, 0, 0, 0]);
-    axis!(CssResolutionCalculation, "1dppx", [0, 0, 0, 0, 1, 0, 0]);
-    axis!(CssFlexCalculation, "1fr", [0, 0, 0, 0, 0, 1, 0]);
-    axis!(CssPercentageCalculation, "1%", [0, 0, 0, 0, 0, 0, 1]);
+    axis!(CssCalculation<CssNumber>, "1e99999", [0; 7]);
+    axis!(CssCalculation<CssInteger>, "9007199254740993", [0; 7]);
+    axis!(CssCalculation<CssLength>, "1px", [1, 0, 0, 0, 0, 0, 0]);
+    axis!(CssCalculation<CssAngle>, "1deg", [0, 1, 0, 0, 0, 0, 0]);
+    axis!(CssCalculation<CssTime>, "1s", [0, 0, 1, 0, 0, 0, 0]);
+    axis!(CssCalculation<CssFrequency>, "1hz", [0, 0, 0, 1, 0, 0, 0]);
+    axis!(
+        CssCalculation<CssResolution>,
+        "1dppx",
+        [0, 0, 0, 0, 1, 0, 0]
+    );
+    axis!(CssCalculation<CssFlex>, "1fr", [0, 0, 0, 0, 0, 1, 0]);
+    axis!(CssCalculation<CssPercentage>, "1%", [0, 0, 0, 0, 0, 0, 1]);
     for (text, expected) in [
         ("e", CssNumericConstant::E),
         ("pi", CssNumericConstant::Pi),
@@ -240,8 +270,11 @@ fn ordinary_numeric_axes_and_math_constants_have_exact_non_evaluated_types() {
         ("-infinity", CssNumericConstant::NegativeInfinity),
         ("NaN", CssNumericConstant::NaN),
     ] {
-        let value = CssNumberCalculation::try_from_components(components(&format!("calc({text})")))
-            .unwrap();
+        let value = CssCalculation::<CssNumber>::try_from_components(
+            components(&format!("calc({text})")),
+            Default::default(),
+        )
+        .unwrap();
         assert_type(value.numeric_type(), [0; 7], None);
         let CssCalculationExpressionRef::NestedCalc(calc) = value.expression() else {
             panic!("constant calc")
@@ -253,7 +286,10 @@ fn ordinary_numeric_axes_and_math_constants_have_exact_non_evaluated_types() {
         assert_type(constant.numeric_type(), [0; 7], None);
     }
     assert_calculation_rejected(
-        CssNumberCalculation::try_from_components(components("calc(custom-name)")),
+        CssCalculation::<CssNumber>::try_from_components(
+            components("calc(custom-name)"),
+            Default::default(),
+        ),
         None,
     );
 }
@@ -265,7 +301,9 @@ fn products_retain_positive_negative_and_mixed_intermediate_powers_before_cancel
         ("calc((1 / 1px) * 2px)", [-1, 0, 0, 0, 0, 0, 0]),
         ("calc((1px * 2s) / 1px / 1s)", [1, 0, 1, 0, 0, 0, 0]),
     ] {
-        let value = CssNumberCalculation::try_from_components(components(text)).unwrap();
+        let value =
+            CssCalculation::<CssNumber>::try_from_components(components(text), Default::default())
+                .unwrap();
         assert_type(value.numeric_type(), [0; 7], None);
         let CssCalculationExpressionRef::NestedCalc(calc) = value.expression() else {
             panic!("outer calc")
@@ -281,10 +319,16 @@ fn products_retain_positive_negative_and_mixed_intermediate_powers_before_cancel
     }
     for (_, unit) in DIMENSION_UNITS {
         let text = format!("calc(1{unit} / 2{unit})");
-        let value = CssNumberCalculation::try_from_components(components(&text)).unwrap();
+        let value =
+            CssCalculation::<CssNumber>::try_from_components(components(&text), Default::default())
+                .unwrap();
         assert_type(value.numeric_type(), [0; 7], None);
     }
-    let value = CssNumberCalculation::try_from_components(components("calc(1% / 2%)")).unwrap();
+    let value = CssCalculation::<CssNumber>::try_from_components(
+        components("calc(1% / 2%)"),
+        Default::default(),
+    )
+    .unwrap();
     assert_type(value.numeric_type(), [0; 7], None);
 }
 
@@ -297,16 +341,30 @@ fn compatible_percentage_hints_propagate_through_addition_multiplication_and_div
         "calc((1px + 1%) / (2px + 2%) * 1px)",
         "calc(1% / 2% * 1px)",
     ] {
-        let value = CssLengthPercentageCalculation::try_from_components(components(text)).unwrap();
+        let value = CssCalculation::<CssLengthPercentage>::try_from_components(
+            components(text),
+            Default::default(),
+        )
+        .unwrap();
         assert_type(
             value.numeric_type(),
             [1, 0, 0, 0, 0, 0, 0],
             Some(CssNumericDimension::Length),
         );
-        assert_eq!(value.components().serialize().unwrap().as_css(), text);
+        assert_eq!(
+            value
+                .components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            text
+        );
     }
-    let pure =
-        CssLengthCalculation::try_from_components(components("calc(1% / 2% * 1px)")).unwrap();
+    let pure = CssCalculation::<CssLength>::try_from_components(
+        components("calc(1% / 2% * 1px)"),
+        Default::default(),
+    )
+    .unwrap();
     assert_type(pure.numeric_type(), [1, 0, 0, 0, 0, 0, 0], None);
 }
 
@@ -320,12 +378,10 @@ fn incompatible_dimensions_and_conflicting_hints_fail_before_zero_simplification
         "calc((1px + 1%) / (1s + 1%))",
         "calc((1px + 1%) + (1s + 1%))",
     ] {
-        let error = CssNumberCalculation::try_from_components(components(text)).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::IncompatibleTypes,
-            "{text}"
-        );
+        let error =
+            CssCalculation::<CssNumber>::try_from_components(components(text), Default::default())
+                .unwrap_err();
+        assert!(error.is_incompatible_types(), "{text}");
         assert!(error.origin().is_some());
     }
     for text in [
@@ -334,7 +390,7 @@ fn incompatible_dimensions_and_conflicting_hints_fail_before_zero_simplification
         "calc(calc(1px * 1px) / 1px / 1px)",
     ] {
         assert_calculation_rejected(
-            CssNumberCalculation::try_from_components(components(text)),
+            CssCalculation::<CssNumber>::try_from_components(components(text), Default::default()),
             None,
         );
     }
@@ -342,32 +398,33 @@ fn incompatible_dimensions_and_conflicting_hints_fail_before_zero_simplification
 
 #[test]
 fn integer_number_phase_and_unitless_zero_controls_do_not_promote_or_mix_domains() {
-    let integer = CssIntegerCalculation::try_from_components(components("calc(1.5)")).unwrap();
+    let integer = CssCalculation::<CssInteger>::try_from_components(
+        components("calc(1.5)"),
+        Default::default(),
+    )
+    .unwrap();
     assert!(integer.requires_rounding());
     assert_type(integer.numeric_type(), [0; 7], None);
     assert_calculation_rejected(
-        CssIntegerCalculation::try_from_components(components("1.5")),
+        CssCalculation::<CssInteger>::try_from_components(components("1.5"), Default::default()),
         None,
     );
-    assert!(CssLengthCalculation::try_from_components(components("0")).is_ok());
+    assert!(
+        CssCalculation::<CssLength>::try_from_components(components("0"), Default::default())
+            .is_ok()
+    );
     for (text, kind) in [
-        (
-            "calc(0)",
-            surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
-        ),
-        (
-            "calc(0 + 1px)",
-            surgeist_css::CssNumericConstructionErrorKind::IncompatibleTypes,
-        ),
+        ("calc(0)", NumericFailure::RootDomainMismatch),
+        ("calc(0 + 1px)", NumericFailure::IncompatibleTypes),
     ] {
         assert_calculation_rejected(
-            CssLengthCalculation::try_from_components(components(text)),
+            CssCalculation::<CssLength>::try_from_components(components(text), Default::default()),
             Some(kind),
         );
     }
     for name in ["color", "opacity"] {
         let text = value_for(name, "calc(.25 + 25%)");
-        let report = parse_style_attribute(&format!("{name}:{text};height:1px"));
+        let report = CssParser::default().parse_block_contents(format!("{name}:{text};height:1px"));
         assert_eq!(report.syntax().len(), 1);
         assert_eq!(
             report.syntax()[0].known().unwrap().property(),
@@ -379,7 +436,9 @@ fn integer_number_phase_and_unitless_zero_controls_do_not_promote_or_mix_domains
             CssRecoveryAction::DropDeclaration
         );
         assert_eq!(
-            validate_style_attribute(&format!("{name}:{text};height:1px"))
+            CssParser::default()
+                .parse_block_contents(format!("{name}:{text};height:1px"))
+                .into_validation_result()
                 .unwrap_err()
                 .diagnostics(),
             report.diagnostics()

@@ -1,11 +1,13 @@
 //! Conditional 5 §8 selects modern block contents, including nested at-rule
 //! termination at a real parent close. Checked output may supply a semicolon.
 
-use surgeist_css::{
-    CssNamedSupportsConstructionError, CssRecoveryAction, CssRule, CssSerializedOrigin,
-    CssSupportsAtRuleTest, CssSupportsConditionRule, CssSupportsTestBody, CssSupportsTestItem,
-    CssValueOrigin, parse_component_values, parse_sheet, validate_sheet,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::query::supports::{
+    CssSupportsAtRuleTest, CssSupportsTestBody, CssSupportsTestItem,
 };
+use surgeist_css::rule::{CssRule, CssSupportsConditionRule};
 
 fn statement(body: &CssSupportsTestBody) -> &CssSupportsAtRuleTest {
     let [CssSupportsTestItem::AtRule(statement)] = body.items() else {
@@ -18,7 +20,7 @@ fn statement(body: &CssSupportsTestBody) -> &CssSupportsAtRuleTest {
 }
 
 fn generated_semicolon(body: &CssSupportsTestBody) {
-    let output = body.serialize().unwrap();
+    let output = body.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), "@future;");
     assert!(matches!(
         output.origin_at(7),
@@ -30,7 +32,7 @@ fn generated_semicolon(body: &CssSupportsTestBody) {
 fn explicit_named_body_close_and_checked_components_allow_an_unterminated_symbolic_statement() {
     // Pinned Syntax block supplement §§5.5.2/5.5.5 uses nested=true.
     let source = "/*🦊*/\r\n@supports-condition --x{@future}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::SupportsCondition(definition)] = report.syntax().rules() else {
         panic!("one named definition")
@@ -45,11 +47,17 @@ fn explicit_named_body_close_and_checked_components_allow_an_unterminated_symbol
     assert_eq!(origin.span().end().byte_offset().value(), start + 7);
     assert!(definition.body().recovery_origin().is_none());
     generated_semicolon(definition.body());
-    assert_eq!(validate_sheet(source).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
 
-    let input = parse_component_values("@future").unwrap();
+    let input = CssComponentValues::parse(&CssParser::default(), "@future").unwrap();
     let input_origin = input.items()[0].origin().clone();
-    let body = CssSupportsTestBody::try_from_components(input).unwrap();
+    let body = CssSupportsTestBody::try_from_components(input, Default::default()).unwrap();
     let keyword = statement(&body);
     assert_eq!(keyword.origin(), &input_origin);
     let (CssValueOrigin::Parsed(before), CssValueOrigin::Parsed(after)) =
@@ -65,7 +73,7 @@ fn explicit_named_body_close_and_checked_components_allow_an_unterminated_symbol
 #[test]
 fn actual_source_eof_retains_the_statement_and_only_the_real_named_body_closure() {
     let source = "/*🦊*/\r\n@supports-condition --x{@future";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::SupportsCondition(definition)] = report.syntax().rules() else {
         panic!("EOF-recovered named definition")
     };
@@ -93,11 +101,19 @@ fn actual_source_eof_retains_the_statement_and_only_the_real_named_body_closure(
     assert!(opening.source().same_snapshot(at.source()));
     assert_eq!(at.source().as_str(), source);
     assert_eq!(
-        validate_sheet(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
-    assert!(matches!(
-        CssSupportsConditionRule::try_new(definition.name().clone(), definition.body().clone()),
-        Err(CssNamedSupportsConstructionError::RecoveredInput { origin }) if &origin == recovery
-    ));
+    assert!(
+        CssSupportsConditionRule::try_new(
+            definition.name().clone(),
+            definition.body().clone(),
+            Default::default()
+        )
+        .is_err_and(|error| error.is_recovered_input() && error.origin() == recovery)
+    );
 }

@@ -6,22 +6,28 @@
 //! 57.29578. Degree and turn literals are exact multiples and keep their
 //! exact decimal.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::parsed_color;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssSpecifiedDeclarationBlock;
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn cssom(value: &str) -> String {
     let source = format!("color: {value}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax())
+    CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
         .unwrap()
-        .serialize_cssom()
+        .serialize_cssom(Default::default())
         .unwrap()
 }
 
 fn assert_hue_text(source: &str, expected: &str) {
     assert_eq!(
-        parsed_color(source).to_specified_css().unwrap(),
+        parsed_color(source)
+            .serialize_specified(Default::default())
+            .unwrap(),
         expected,
         "{source}"
     );
@@ -85,8 +91,8 @@ fn rounded_hue_budgets_are_exact_at_the_limit_and_one_short() {
     // Characterizes the cumulative budget of the six-decimal hue: four input
     // nodes, the projection work of the exact conversion and its rounding,
     // and exactly the emitted UTF-8 bytes.
-    type Limits = CssSpecifiedValueSerializationLimits;
-    type Kind = CssSpecifiedValueSerializationErrorKind;
+    type Limits = CssSerializationLimits;
+    type Kind = SerializationFailure;
     for (source, expected, input, projection) in [
         ("hsl(1rad none 50%)", "hsl(57.29578 none 50%)", 4, 19),
         ("hsl(100grad none 50%)", "hsl(90 none 50%)", 4, 11),
@@ -94,7 +100,7 @@ fn rounded_hue_budgets_are_exact_at_the_limit_and_one_short() {
         let value = parsed_color(source);
         let bytes = expected.len();
         let serialize = |input, projection, bytes| {
-            value.to_specified_css_with_limits(Limits::new(input, projection, bytes))
+            value.serialize_specified(Limits::new(input, projection, bytes))
         };
         assert_eq!(
             serialize(input, projection, bytes).unwrap(),
@@ -107,7 +113,7 @@ fn rounded_hue_budgets_are_exact_at_the_limit_and_one_short() {
             ((input, projection, bytes - 1), Kind::ByteLimit),
         ] {
             assert_eq!(
-                serialize(limits.0, limits.1, limits.2).unwrap_err().kind(),
+                serialization_failure(&serialize(limits.0, limits.1, limits.2).unwrap_err()),
                 kind,
                 "{source}: {limits:?}"
             );

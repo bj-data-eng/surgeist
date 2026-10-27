@@ -1,10 +1,12 @@
 //! Typed `color` property payloads shared by color declaration fixtures.
 
 use super::{declaration_color, normal_checked_declaration};
-use surgeist_css::*;
+use surgeist_css::color::CssColor;
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef, CssPropertyValue};
 
 /// The `color` property value carried by a known declaration.
-pub fn color_property_value(declaration: &CssDeclaration) -> &CssColorPropertyValue {
+pub fn color_property_value(declaration: &CssDeclaration) -> &CssPropertyValue<CssColor> {
     let CssKnownPropertyValueRef::Color(value) =
         declaration.known().unwrap().property_value().unwrap()
     else {

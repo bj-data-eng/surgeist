@@ -8,11 +8,13 @@
 
 use std::ops::Range;
 
-use surgeist_css::{
-    CssComponentValue, CssComponentValueErrorKind, CssComponentValueLimits, CssComponentValueRef,
-    CssHashFlag, CssRule, CssSupportsTestItem, CssValueOrigin, CssValueTokenRef,
-    parse_component_values, parse_component_values_with_limits, parse_sheet, parse_style_attribute,
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssHashFlag, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::query::supports::CssSupportsTestItem;
+use surgeist_css::rule::CssRule;
+use surgeist_css::{CssParser, CssParserContext};
 
 fn assert_span(origin: &CssValueOrigin, source: &str, expected: Range<usize>) {
     let CssValueOrigin::Parsed(origin) = origin else {
@@ -72,7 +74,8 @@ fn assert_split(
 fn invalid_at_keyword_escape_splits_delimiters_with_original_spans() {
     for newline in ["\n", "\r", "\r\n", "\u{c}"] {
         let source = format!("@-\\{newline}");
-        let values = parse_component_values(&source).expect("delimiter sequence is representable");
+        let values = CssComponentValues::parse(&CssParser::default(), &source)
+            .expect("delimiter sequence is representable");
         assert_eq!(values.component_count(), 4);
         assert_split(values.items(), &source, 0, "@", newline);
     }
@@ -83,8 +86,8 @@ fn invalid_dimension_escape_splits_exact_signed_and_exponent_numbers() {
     for number in ["1", "+1", "-1", ".5", "-.5", "1e2", "-1.5e+2"] {
         for newline in ["\n", "\r", "\r\n", "\u{c}"] {
             let source = format!("{number}-\\{newline}");
-            let values =
-                parse_component_values(&source).expect("number and delimiters are representable");
+            let values = CssComponentValues::parse(&CssParser::default(), &source)
+                .expect("number and delimiters are representable");
             assert_eq!(values.component_count(), 4);
             assert_split(values.items(), &source, 0, number, newline);
         }
@@ -94,7 +97,8 @@ fn invalid_dimension_escape_splits_exact_signed_and_exponent_numbers() {
 #[test]
 fn function_children_split_dispatch_tokens_and_keep_original_utf16_positions() {
     let source = "😀 f(@-\\\r\n)";
-    let values = parse_component_values(source).expect("complete function");
+    let values =
+        CssComponentValues::parse(&CssParser::default(), source).expect("complete function");
     assert_eq!(values.component_count(), 7);
     assert_eq!(values.nesting_depth(), 1);
     let CssComponentValueRef::Function(function) = values.items()[2].view() else {
@@ -119,7 +123,8 @@ fn function_children_split_dispatch_tokens_and_keep_original_utf16_positions() {
 #[test]
 fn nested_blocks_split_dimension_dispatch_without_spending_extra_depth() {
     let source = "[f(-1.5e+2-\\\n)]";
-    let values = parse_component_values(source).expect("complete nested blocks");
+    let values =
+        CssComponentValues::parse(&CssParser::default(), source).expect("complete nested blocks");
     assert_eq!(values.component_count(), 6);
     assert_eq!(values.nesting_depth(), 2);
     let CssComponentValueRef::Block(block) = values.items()[0].view() else {
@@ -134,16 +139,22 @@ fn nested_blocks_split_dimension_dispatch_without_spending_extra_depth() {
 #[test]
 fn split_at_keyword_components_count_separately_toward_the_limit() {
     let source = "@-\\\n";
-    let failure = parse_component_values_with_limits(
+    let failure = CssComponentValues::parse(
+        &CssParser::new(
+            CssParserContext::default(),
+            CssComponentValueLimits::try_new(0, 3, 100).unwrap(),
+        ),
         source,
-        CssComponentValueLimits::try_new(0, 3, 100).unwrap(),
     )
     .expect_err("the fourth whitespace token exceeds a three-component budget");
-    assert_eq!(failure.kind(), CssComponentValueErrorKind::ComponentLimit);
+    assert!(failure.is_component_limit(), "{failure:?}");
     assert_span(failure.origin(), source, 3..4);
-    let admitted = parse_component_values_with_limits(
+    let admitted = CssComponentValues::parse(
+        &CssParser::new(
+            CssParserContext::default(),
+            CssComponentValueLimits::try_new(0, 4, 100).unwrap(),
+        ),
         source,
-        CssComponentValueLimits::try_new(0, 4, 100).unwrap(),
     )
     .unwrap();
     assert_eq!(admitted.component_count(), 4);
@@ -152,16 +163,22 @@ fn split_at_keyword_components_count_separately_toward_the_limit() {
 #[test]
 fn split_dimension_components_count_separately_toward_the_limit() {
     let source = "1e2-\\\r\n";
-    let failure = parse_component_values_with_limits(
+    let failure = CssComponentValues::parse(
+        &CssParser::new(
+            CssParserContext::default(),
+            CssComponentValueLimits::try_new(0, 3, 100).unwrap(),
+        ),
         source,
-        CssComponentValueLimits::try_new(0, 3, 100).unwrap(),
     )
     .expect_err("the fourth whitespace token exceeds a three-component budget");
-    assert_eq!(failure.kind(), CssComponentValueErrorKind::ComponentLimit);
+    assert!(failure.is_component_limit(), "{failure:?}");
     assert_span(failure.origin(), source, 5..7);
-    let admitted = parse_component_values_with_limits(
+    let admitted = CssComponentValues::parse(
+        &CssParser::new(
+            CssParserContext::default(),
+            CssComponentValueLimits::try_new(0, 4, 100).unwrap(),
+        ),
         source,
-        CssComponentValueLimits::try_new(0, 4, 100).unwrap(),
     )
     .unwrap();
     assert_eq!(admitted.component_count(), 4);
@@ -170,12 +187,15 @@ fn split_dimension_components_count_separately_toward_the_limit() {
 #[test]
 fn a_one_component_limit_reports_the_first_split_hyphen_range() {
     for (source, hyphen) in [("@-\\\n", 1..2), ("1e2-\\\n", 3..4)] {
-        let failure = parse_component_values_with_limits(
+        let failure = CssComponentValues::parse(
+            &CssParser::new(
+                CssParserContext::default(),
+                CssComponentValueLimits::try_new(0, 1, 100).unwrap(),
+            ),
             source,
-            CssComponentValueLimits::try_new(0, 1, 100).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(failure.kind(), CssComponentValueErrorKind::ComponentLimit);
+        assert!(failure.is_component_limit(), "{failure:?}");
         assert_span(failure.origin(), source, hyphen);
     }
 }
@@ -184,7 +204,7 @@ fn a_one_component_limit_reports_the_first_split_hyphen_range() {
 fn authored_declaration_components_preserve_both_split_dispatch_branches() {
     for prefix in ["@", "1e2"] {
         let source = format!("--x:{prefix}-\\\n;--after:kept");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 2);
         let declaration = &report.syntax()[0];
         assert_eq!(declaration.custom().unwrap().name().as_str(), "--x");
@@ -206,7 +226,7 @@ fn authored_declaration_components_preserve_both_split_dispatch_branches() {
 fn recovering_named_test_collector_preserves_split_value_prefixes() {
     for prefix in ["@", "1e2"] {
         let source = format!("@supports-condition --probe{{mystery:{prefix}-\\\n;}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::SupportsCondition(rule)] = report.syntax().rules() else {
             panic!("retained named test: {report:?}");
         };
@@ -246,7 +266,7 @@ fn recovering_named_test_collector_preserves_split_value_prefixes() {
 #[test]
 fn eof_escapes_start_at_keywords_and_dimension_units() {
     for (source, unit) in [("@-\\", "-\u{fffd}"), ("1-\\", "-\u{fffd}")] {
-        let values = parse_component_values(source).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         let [component] = values.items() else {
             panic!("EOF escape keeps one token");
         };
@@ -272,7 +292,7 @@ fn eof_escapes_start_at_keywords_and_dimension_units() {
 #[test]
 fn escaped_hyphen_names_are_not_split_after_decoding() {
     for source in [r"@\2d ", r"@\00002d "] {
-        let values = parse_component_values(source).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         assert_eq!(values.component_count(), 1);
         assert!(matches!(
             values.items()[0].view(),
@@ -281,7 +301,7 @@ fn escaped_hyphen_names_are_not_split_after_decoding() {
         assert_span(values.items()[0].origin(), source, 0..source.len());
     }
     for source in [r"1\2d ", r"1\00002d "] {
-        let values = parse_component_values(source).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         assert_eq!(values.component_count(), 1);
         assert!(
             matches!(values.items()[0].view(), CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit: "-" }) if number.representation() == "1")
@@ -293,7 +313,7 @@ fn escaped_hyphen_names_are_not_split_after_decoding() {
 #[test]
 fn nul_preprocessing_preserves_identifier_start_dispatch() {
     for (source, decoded) in [("@\0", "\u{fffd}"), ("@-\0", "-\u{fffd}")] {
-        let values = parse_component_values(source).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         assert_eq!(values.component_count(), 1);
         assert!(
             matches!(values.items()[0].view(), CssComponentValueRef::Token(CssValueTokenRef::AtKeyword(actual)) if actual == decoded)
@@ -301,7 +321,7 @@ fn nul_preprocessing_preserves_identifier_start_dispatch() {
         assert_span(values.items()[0].origin(), source, 0..source.len());
     }
     for (source, decoded) in [("1\0", "\u{fffd}"), ("1-\0", "-\u{fffd}")] {
-        let values = parse_component_values(source).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         assert_eq!(values.component_count(), 1);
         assert!(
             matches!(values.items()[0].view(), CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) if number.representation() == "1" && unit == decoded)
@@ -309,7 +329,7 @@ fn nul_preprocessing_preserves_identifier_start_dispatch() {
         assert_span(values.items()[0].origin(), source, 0..source.len());
     }
     for (source, decoded) in [("#\0", "\u{fffd}"), ("#-\0", "-\u{fffd}")] {
-        let values = parse_component_values(source).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         assert_eq!(values.component_count(), 1);
         assert!(
             matches!(values.items()[0].view(), CssComponentValueRef::Token(CssValueTokenRef::Hash { value, flag: CssHashFlag::Id }) if value == decoded)
@@ -321,7 +341,7 @@ fn nul_preprocessing_preserves_identifier_start_dispatch() {
 #[test]
 fn normal_hyphen_names_keep_at_keyword_and_dimension_identity() {
     for (source, expected) in [("@--", "--"), ("@-name", "-name"), (r"@-\61 ", "-a")] {
-        let values = parse_component_values(source).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         assert_eq!(values.component_count(), 1);
         assert!(matches!(
             values.items()[0].view(),
@@ -329,7 +349,7 @@ fn normal_hyphen_names_keep_at_keyword_and_dimension_identity() {
         ));
     }
     for (source, expected) in [("1--", "--"), ("1-name", "-name"), (r"1-\61 ", "-a")] {
-        let values = parse_component_values(source).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         assert_eq!(values.component_count(), 1);
         assert!(matches!(
             values.items()[0].view(),

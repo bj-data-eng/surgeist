@@ -8,7 +8,17 @@ use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssKnownPropertyValueRef, CssLonghandValue, CssPropertyKindRef, CssPropertyNameRef,
+};
+use surgeist_css::values::box_model::{CssOverflow, CssOverflowValue};
 
 const LONGHANDS: [&str; 4] = [
     "overflow-x",
@@ -132,7 +142,7 @@ fn terminal_initials_and_wrappers_preserve_authored_overflow() {
         for keyword in ["visible", "hidden", "clip", "scroll", "auto", "overlay"] {
             let source = declaration(name, keyword);
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("{name}:{keyword} has one ordinary contribution")
             };
@@ -200,7 +210,7 @@ fn shorthand_sets_only_x_then_y_and_preserves_uncomputed_axis_values() {
     ] {
         let source = declaration(SHORTHAND, authored);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("overflow has two terminal contributions")
         };
@@ -244,7 +254,10 @@ fn shorthand_sets_only_x_then_y_and_preserves_uncomputed_axis_values() {
             panic!("existing overflow wrapper")
         };
         assert_eq!(
-            value.value().serialize_specified().unwrap(),
+            value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
             authored.replace("overlay", "auto")
         );
     }
@@ -256,7 +269,7 @@ fn shorthand_sets_only_x_then_y_and_preserves_uncomputed_axis_values() {
     assert_eq!(
         declaration("overflow-x", "overlay")
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "overlay",
@@ -268,7 +281,7 @@ fn shorthand_sets_only_x_then_y_and_preserves_uncomputed_axis_values() {
 fn css_wide_all_and_pending_reentry_keep_axes_and_occurrence() {
     let all_source = declaration("all", "initial");
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&all_source).unwrap()
+        all_source.expand().unwrap()
     else {
         panic!("symbolic all reset")
     };
@@ -285,7 +298,7 @@ fn css_wide_all_and_pending_reentry_keep_axes_and_occurrence() {
             let source = declaration(name, text);
             checked(name, text);
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("{name} has symbolic global contributions")
             };
@@ -298,27 +311,28 @@ fn css_wide_all_and_pending_reentry_keep_axes_and_occurrence() {
         }
         for pending in ["var(--overflow)", "env(--overflow)"] {
             let source = declaration(name, pending);
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("{name} keeps substitution pending")
             };
             assert!(handle.source().same_occurrence(&source));
             for bad in ["none", "visible hidden clip", "initial clip"] {
-                assert!(matches!(
+                assert!(
                     handle
-                        .reenter(parse_component_values(bad).unwrap())
+                        .reenter(CssComponentValues::parse(&CssParser::default(), bad).unwrap())
                         .unwrap_err()
-                        .kind(),
-                    CssExpansionErrorKind::InvalidReplacement(_)
-                ));
+                        .replacement_error()
+                        .is_some()
+                );
             }
-            assert_eq!(
+            assert!(
                 handle
-                    .reenter(parse_component_values("var(--again)").unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap()
+                    )
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
-            let replacement = parse_component_values("overlay").unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), "overlay").unwrap();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
                 panic!("{name} reenters to ordinary contributions")
@@ -340,7 +354,7 @@ fn css_wide_all_and_pending_reentry_keep_axes_and_occurrence() {
                 assert_eq!(item.replacement_components(), Some(&replacement));
             }
             let CssContributions::Longhands(globals) = handle
-                .reenter(parse_component_values("inherit").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "inherit").unwrap())
                 .unwrap()
             else {
                 panic!("{name} reenters to symbolic global contributions")
@@ -360,7 +374,7 @@ fn css_wide_all_and_pending_reentry_keep_axes_and_occurrence() {
 #[test]
 fn normalization_preserves_order_and_logical_names_after_invalid_recovery() {
     let sheet = ".a{overflow-block:overlay;overflow-x:clip;overflow:visible hidden;overflow-inline:none;overflow-inline:auto;overflow-y:scroll}";
-    let report = parse_sheet(sheet);
+    let report = CssParser::default().parse_sheet(sheet);
     let [diagnostic] = report.diagnostics() else {
         panic!(
             "one invalid inline overflow diagnostic: {:?}",
@@ -369,7 +383,7 @@ fn normalization_preserves_order_and_logical_names_after_invalid_recovery() {
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
     assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -398,7 +412,7 @@ fn normalization_preserves_order_and_logical_names_after_invalid_recovery() {
         assert_eq!(
             item.source()
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css(),
             authored

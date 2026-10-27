@@ -1,15 +1,29 @@
 //! Typed authored contracts from Conditional5 sections 5.4 and 6.3; no matching.
 use crate::css::support::authored_syntax::checked_container_condition as construct;
-use surgeist_css::*;
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::query::container::{
+    CssContainerLeaf, CssContainerPendingValue, CssContainerScrollDirectionKeyword,
+    CssContainerScrollDirectionValueRef, CssContainerScrollFeature, CssContainerScrollFeatureKind,
+    CssContainerSnappedKeyword, CssContainerSnappedValueRef, CssContainerStuckKeyword,
+    CssContainerStuckValueRef, CssContainerValueDomain, CssScrollStateLeaf,
+};
+use surgeist_css::query::{CssCondition, CssConditionKind, CssGeneralEnclosed};
+use surgeist_css::rule::CssRule;
 
-fn scroll(condition: &CssContainerCondition) -> &CssContainerScrollQuery {
-    let CssContainerConditionKind::ScrollState(query) = condition.kind() else {
+fn scroll(condition: &CssCondition<CssContainerLeaf>) -> &CssCondition<CssScrollStateLeaf> {
+    let CssConditionKind::Leaf(CssContainerLeaf::ScrollState(query)) = condition.kind() else {
         panic!("scroll query")
     };
     query
 }
-fn feature(query: &CssContainerScrollQuery) -> &CssContainerScrollFeature {
-    let CssContainerScrollQueryKind::Feature(feature) = query.kind() else {
+fn feature(query: &CssCondition<CssScrollStateLeaf>) -> &CssContainerScrollFeature {
+    let CssConditionKind::Leaf(CssScrollStateLeaf::Feature(feature)) = query.kind() else {
         panic!("feature")
     };
     feature
@@ -51,7 +65,7 @@ fn boolean_features_preserve_all_four_identities_without_invented_values() {
         assert!(
             matches!(feature(scroll(&condition)), CssContainerScrollFeature::Boolean(kind) if *kind == expected)
         );
-        assert_eq!(expected.name(), name);
+        assert_eq!(expected.as_str(), name);
     }
 }
 
@@ -76,8 +90,11 @@ fn stuck_keywords_have_the_exact_physical_and_logical_edge_domain() {
         assert!(
             matches!(value.view(), CssContainerStuckValueRef::Keyword(actual) if actual == expected)
         );
-        assert_eq!(value.serialize().unwrap().as_css(), spelling);
-        assert_eq!(expected.name(), spelling);
+        assert_eq!(
+            value.serialize_tokens(Default::default()).unwrap().as_css(),
+            spelling
+        );
+        assert_eq!(expected.as_str(), spelling);
     }
 }
 
@@ -99,12 +116,15 @@ fn snapped_keywords_keep_both_and_axis_names_without_accepting_edges() {
         assert!(
             matches!(value.view(), CssContainerSnappedValueRef::Keyword(actual) if actual == expected)
         );
-        assert_eq!(value.serialize().unwrap().as_css(), spelling);
-        assert_eq!(expected.name(), spelling);
+        assert_eq!(
+            value.serialize_tokens(Default::default()).unwrap().as_css(),
+            spelling
+        );
+        assert_eq!(expected.as_str(), spelling);
     }
     assert!(matches!(
         construct("scroll-state(snapped:top)").kind(),
-        CssContainerConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
     ));
 }
 
@@ -136,8 +156,11 @@ fn shared_direction_domain_retains_distinct_scrollable_and_scrolled_features() {
             assert!(
                 matches!(value.view(), CssContainerScrollDirectionValueRef::Keyword(actual) if actual == expected)
             );
-            assert_eq!(value.serialize().unwrap().as_css(), spelling);
-            assert_eq!(expected.name(), spelling);
+            assert_eq!(
+                value.serialize_tokens(Default::default()).unwrap().as_css(),
+                spelling
+            );
+            assert_eq!(expected.as_str(), spelling);
         }
     }
 }
@@ -167,7 +190,13 @@ fn pending_domains_preserve_complete_values_and_do_not_evaluate_fallbacks() {
         let condition = construct(&source);
         let pending = pending(feature(scroll(&condition)));
         assert_eq!(pending.domain(), domain);
-        assert_eq!(pending.serialize().unwrap().as_css(), body);
+        assert_eq!(
+            pending
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            body
+        );
         let first = pending.components().items().first().unwrap();
         let CssValueOrigin::Parsed(origin) = first.origin() else {
             panic!("original operand")
@@ -193,43 +222,48 @@ fn pending_domains_preserve_complete_values_and_do_not_evaluate_fallbacks() {
 #[test]
 fn recursive_queries_expose_inner_unknowns_without_dynamic_query_substitution() {
     let condition = construct("scroll-state(not ((stuck) and (future: top)))");
-    let CssContainerScrollQueryKind::Not(group) = scroll(&condition).kind() else {
+    let CssConditionKind::Not(group) = scroll(&condition).kind() else {
         panic!("not")
     };
-    let CssContainerScrollQueryKind::Parenthesized(and) = group.kind() else {
+    let CssConditionKind::Parenthesized(and) = group.kind() else {
         panic!("group")
     };
-    let CssContainerScrollQueryKind::And(list) = and.kind() else {
+    let CssConditionKind::And(list) = and.kind() else {
         panic!("and")
     };
-    let [known, unknown] = list.queries() else {
+    let [known, unknown] = list.conditions() else {
         panic!("two operands")
     };
-    assert!(matches!(
-        known.kind(),
-        CssContainerScrollQueryKind::Parenthesized(_)
-    ));
-    let CssContainerScrollQueryKind::GeneralEnclosed(opaque) = unknown.kind() else {
+    assert!(matches!(known.kind(), CssConditionKind::Parenthesized(_)));
+    let CssConditionKind::Leaf(CssScrollStateLeaf::GeneralEnclosed(opaque)) = unknown.kind() else {
         panic!("unknown")
     };
     assert_eq!(opaque.authored(), Some("(future: top)"));
     let detached = unknown.clone();
     drop(condition);
-    assert_eq!(detached.serialize().unwrap().as_css(), "(future: top)");
+    assert_eq!(
+        detached
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "(future: top)"
+    );
 
     let condition = construct("scroll-state(var(--query))");
-    let CssContainerScrollQueryKind::GeneralEnclosed(opaque) = scroll(&condition).kind() else {
+    let CssConditionKind::Leaf(CssScrollStateLeaf::GeneralEnclosed(opaque)) =
+        scroll(&condition).kind()
+    else {
         panic!("opaque function, not query substitution")
     };
     assert_eq!(opaque.authored(), Some("var(--query)"));
     assert!(matches!(
         construct("scroll-state(future: top)").kind(),
-        CssContainerConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
     ));
     let condition = construct("scroll-state((stuck: both))");
     assert!(matches!(
         scroll(&condition).kind(),
-        CssContainerScrollQueryKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssScrollStateLeaf::GeneralEnclosed(_))
     ));
 }
 
@@ -245,7 +279,10 @@ fn escaped_names_keywords_and_function_case_keep_original_lexical_origins() {
         value.view(),
         CssContainerStuckValueRef::Keyword(CssContainerStuckKeyword::Top)
     ));
-    assert_eq!(value.serialize().unwrap().as_css(), r"T\4f P");
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        r"T\4f P"
+    );
     let CssValueOrigin::Parsed(origin) = value.origin() else {
         panic!("parsed keyword")
     };
@@ -254,9 +291,15 @@ fn escaped_names_keywords_and_function_case_keep_original_lexical_origins() {
         value.position().unwrap().byte_offset().value(),
         source.find('T').unwrap()
     );
-    assert_eq!(condition.serialize().unwrap().as_css(), source);
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
     let input = format!("@container {source}{{}}");
-    let report = parse_sheet(&input);
+    let report = CssParser::default().parse_sheet(&input);
     assert!(report.is_clean());
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("rule")
@@ -270,12 +313,18 @@ fn escaped_names_keywords_and_function_case_keep_original_lexical_origins() {
         parsed.view(),
         CssContainerStuckValueRef::Keyword(CssContainerStuckKeyword::Top)
     ));
-    assert_eq!(parsed.serialize().unwrap().as_css(), r"T\4f P");
+    assert_eq!(
+        parsed
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        r"T\4f P"
+    );
 }
 
 #[test]
 fn mixed_origin_pending_components_keep_token_boundaries_after_parent_drop() {
-    let number = parse_component_values("/*😀*/1")
+    let number = CssComponentValues::parse(&CssParser::default(), "/*😀*/1")
         .unwrap()
         .items()
         .last()
@@ -283,19 +332,25 @@ fn mixed_origin_pending_components_keep_token_boundaries_after_parent_drop() {
         .clone();
     let variable = CssComponentValue::try_function(
         "var",
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("--empty").unwrap()])
-            .unwrap(),
+        CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident("--empty").unwrap()],
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap();
-    let components = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("stuck").unwrap(),
-        CssComponentValue::try_token(":").unwrap(),
-        number,
-        CssComponentValue::try_ident("e2").unwrap(),
-        variable,
-    ])
+    let components = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("stuck").unwrap(),
+            CssComponentValue::try_token(":").unwrap(),
+            number,
+            CssComponentValue::try_ident("e2").unwrap(),
+            variable,
+        ],
+        Default::default(),
+    )
     .unwrap();
-    let condition = CssContainerCondition::try_from_enclosed(
+    let condition = CssCondition::<CssContainerLeaf>::try_from_enclosed(
         CssGeneralEnclosed::try_function("scroll-state", components).unwrap(),
     )
     .unwrap();
@@ -313,7 +368,7 @@ fn mixed_origin_pending_components_keep_token_boundaries_after_parent_drop() {
         &CssValueOrigin::Programmatic
     );
     assert_eq!(
-        leaf.serialize().unwrap().as_css(),
+        leaf.serialize_tokens(Default::default()).unwrap().as_css(),
         "1/**/e2/**/var(--empty)"
     );
 }
@@ -321,7 +376,7 @@ fn mixed_origin_pending_components_keep_token_boundaries_after_parent_drop() {
 #[test]
 fn limits_and_recovered_closures_keep_typed_resource_and_source_information() {
     let source = "scroll-state((stuck:var(--edge,)))";
-    let values = parse_component_values(source).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let exact = CssComponentValueLimits::try_new(
         values.nesting_depth(),
         values.component_count(),
@@ -329,34 +384,38 @@ fn limits_and_recovered_closures_keep_typed_resource_and_source_information() {
     )
     .unwrap();
     assert_eq!(
-        CssContainerCondition::try_from_components_with_limits(values.clone(), exact).unwrap(),
-        CssContainerCondition::try_from_components(values.clone()).unwrap()
+        CssCondition::<CssContainerLeaf>::try_from_components(values.clone(), exact).unwrap(),
+        CssCondition::<CssContainerLeaf>::try_from_components(values.clone(), Default::default())
+            .unwrap()
     );
     for (limits, expected) in [
         (
             CssComponentValueLimits::try_new(1, usize::MAX, usize::MAX).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, 1, usize::MAX).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, usize::MAX, 1).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
     ] {
-        let Err(CssContainerConstructionError::Component(error)) =
-            CssContainerCondition::try_from_components_with_limits(values.clone(), limits)
+        let Err(outer) =
+            CssCondition::<CssContainerLeaf>::try_from_components(values.clone(), limits)
         else {
             panic!("resource failure")
         };
-        assert_eq!(error.kind(), expected);
+        let Some(error) = outer.component_error() else {
+            panic!("resource failure")
+        };
+        assert_eq!(component_failure(error), expected);
     }
     let recovered = "scroll-state(stuck:var(--edge,";
     let condition = construct(recovered);
     let pending = pending(feature(scroll(&condition)));
-    let output = pending.serialize().unwrap();
+    let output = pending.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), "var(--edge,)");
     assert!(matches!(
         output.origin_at(output.as_css().len() - 1),
@@ -364,20 +423,20 @@ fn limits_and_recovered_closures_keep_typed_resource_and_source_information() {
             CssValueOrigin::ImplicitClosure { .. }
         ))
     ));
-    assert_eq!(
-        pending.serialize_with_limit(1).unwrap_err().kind(),
-        CssComponentValueErrorKind::ByteLimit
+    assert!(
+        pending
+            .serialize_tokens(crate::css::support::byte_limits(1))
+            .unwrap_err()
+            .is_byte_limit()
     );
-    assert!(matches!(
-        parse_component_values(&format!(
-            "scroll-state({}stuck{})",
-            "(".repeat(256),
-            ")".repeat(256)
-        ))
+    assert!(
+        CssComponentValues::parse(
+            &CssParser::default(),
+            format!("scroll-state({}stuck{})", "(".repeat(256), ")".repeat(256))
+        )
         .unwrap_err()
-        .kind(),
-        CssComponentValueErrorKind::NestingLimit
-    ));
+        .is_nesting_limit()
+    );
 }
 
 #[test]
@@ -402,7 +461,13 @@ fn maximum_scroll_depth_and_deep_pending_lifetimes_fit_an_ordinary_stack() {
                     drop(condition);
                     let cloned = detached.clone();
                     assert_eq!(detached, cloned);
-                    assert_eq!(cloned.serialize().unwrap().as_css(), inner);
+                    assert_eq!(
+                        cloned
+                            .serialize_tokens(Default::default())
+                            .unwrap()
+                            .as_css(),
+                        inner
+                    );
                     drop(detached);
                     drop(cloned);
                 }
@@ -419,7 +484,13 @@ fn maximum_scroll_depth_and_deep_pending_lifetimes_fit_an_ordinary_stack() {
                 assert_eq!(leaf, cloned_leaf);
                 drop(leaf);
                 assert_eq!(cloned_leaf.domain(), CssContainerValueDomain::Stuck);
-                assert_eq!(cloned_leaf.serialize().unwrap().as_css(), body);
+                assert_eq!(
+                    cloned_leaf
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
+                    body
+                );
                 drop(cloned_leaf);
             })
             .unwrap();

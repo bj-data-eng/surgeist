@@ -4,7 +4,39 @@
 //! retained graph that external callers cannot reach; behavior reachable
 //! through the public API is tested in `tests/css`.
 
-use super::*;
+use crate::declaration::{
+    CssAuthoredDeclarationValue, CssCustomPropertyName, CssCustomPropertyValue, CssDeclaration,
+    CssDeclarationList, CssSubstitutionDependentValue, CssVariableFallback, CssVariableReference,
+};
+use crate::query::container::{CssContainerName, CssContainerPrelude};
+use crate::query::media::CssMediaQueryList;
+use crate::rule::font_face::{
+    CssFontDisplay, CssFontFaceDescriptor, CssFontFaceDescriptorValue, CssFontFaceDescriptors,
+    CssFontFaceFamily, CssFontFaceRule, CssFontFaceSource, CssFontFaceSourceList,
+    CssFontFaceUrlSource,
+};
+use crate::rule::keyframes::{
+    CssKeyframeBlock, CssKeyframeDeclarationList, CssKeyframePercent, CssKeyframeSelector,
+    CssKeyframeSelectorList, CssKeyframesIdent, CssKeyframesName, CssKeyframesRule,
+    CssKeyframesString,
+};
+use crate::rule::{
+    CssContainerRule, CssLayerBlockRule, CssLayerName, CssLayerNameList, CssLayerStatementRule,
+    CssMediaRule, CssRule, CssScopeNestingContext, CssScopeRule, CssStyleRule,
+};
+use crate::selector::{
+    CssComplexSelector, CssComplexSelectorPart, CssCompoundSelector, CssCompoundSelectorArgument,
+    CssNamespaceContext, CssNthChildPattern, CssNthPattern, CssPartName, CssPartNameList,
+    CssPseudoClass, CssPseudoElement, CssPseudoElementSegment, CssPseudoElementSequence,
+    CssPseudoSelectorList, CssPseudoSelectorListItem, CssRelativeSelector, CssScopeSelectorList,
+    CssSelector, CssSelectorCombinator, CssStyleSelector, CssStyleSelectorList,
+};
+use crate::serialization::specified_serialization::CssSpecifiedValueSerializationErrorKind;
+use crate::source::CssSourcePosition;
+#[cfg(test)]
+use crate::test_support::CssParseReportTestExt;
+use crate::values::common::CssCustomIdent;
+use crate::values::font::{CssFontFaceStyle, CssFontStyleKeyword};
 
 fn source_position(line: u32, column: u32) -> CssSourcePosition {
     let source = format!(
@@ -35,7 +67,7 @@ fn keyframes_rule(rule: &CssRule) -> &CssKeyframesRule {
 /// The sole declaration of a clean `.test { name: value; }` sheet.
 fn parse_single_declaration(property_name: &str, authored_value: &str) -> CssDeclaration {
     let input = format!(".test {{ {property_name}: {authored_value}; }}");
-    let sheet = parse_sheet(&input).unwrap();
+    let sheet = crate::CssParser::default().parse_sheet(&input).unwrap();
     let [rule] = sheet.rules() else {
         panic!("{input} should parse exactly one rule");
     };
@@ -49,7 +81,8 @@ fn parse_single_declaration(property_name: &str, authored_value: &str) -> CssDec
 fn container_rule_accessors_expose_authored_structure() {
     let name = CssContainerName::try_new("sidebar").unwrap();
     let prelude = CssContainerPrelude::try_from_components(
-        crate::parse_component_values("sidebar (inline-size > 30rem)").unwrap(),
+        crate::component::values::parse_component_values("sidebar (inline-size > 30rem)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     let condition = prelude.entries()[0].query().unwrap().clone();
@@ -122,7 +155,9 @@ fn keyframes_rule_accessors_expose_authored_structure() {
         CssKeyframesIdent::try_new(CssCustomIdent::try_new("fade").unwrap()).unwrap(),
     );
     let selector = CssKeyframeSelectorList::try_new(vec![CssKeyframeSelector::From]).unwrap();
-    let keyframes = parse_sheet("@keyframes fade { from { opacity: 0; } }").unwrap();
+    let keyframes = crate::CssParser::default()
+        .parse_sheet("@keyframes fade { from { opacity: 0; } }")
+        .unwrap();
     let declaration = keyframes_rule(&keyframes.rules()[0]).blocks()[0].declarations()[0].clone();
     let block = CssKeyframeBlock::new(
         selector,
@@ -198,54 +233,51 @@ fn layer_rule_models_preserve_authored_statement_and_block_shapes() {
 }
 
 #[test]
-fn scope_rule_model_keeps_scoped_selectors_and_rules_separate() {
+fn scope_rule_model_holds_ordinary_rules_and_boundary_selectors() {
     assert_eq!(CssScopeSelectorList::try_new(Vec::new()), None);
-    assert_eq!(CssScopedStyleSelectorList::try_new(Vec::new()), None);
+    assert_eq!(CssStyleSelectorList::try_new(Vec::new()), None);
 
     let root_selector = CssSelector::Class("card".to_owned());
     let root =
-        CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(root_selector.clone())])
+        CssScopeSelectorList::try_new(vec![CssStyleSelector::Selector(root_selector.clone())])
             .unwrap();
     let limit_selector = CssSelector::Class("boundary".to_owned());
     let limit =
-        CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(limit_selector.clone())])
+        CssScopeSelectorList::try_new(vec![CssStyleSelector::Selector(limit_selector.clone())])
             .unwrap();
 
-    let implicit_selector =
-        CssScopedStyleSelector::Selector(CssSelector::Class("title".to_owned()));
+    let implicit_selector = CssStyleSelector::Selector(CssSelector::Class("title".to_owned()));
     let relative = CssRelativeSelector::new(
         CssSelectorCombinator::Child,
         CssSelector::Class("action".to_owned()),
     );
-    let relative_selector = CssScopedStyleSelector::Relative(relative.clone());
-    let selectors = CssScopedStyleSelectorList::try_new(vec![
-        implicit_selector.clone(),
-        relative_selector.clone(),
-    ])
-    .unwrap();
+    let relative_selector = CssStyleSelector::Relative(relative.clone());
+    let selectors =
+        CssStyleSelectorList::try_new(vec![implicit_selector.clone(), relative_selector.clone()])
+            .unwrap();
     let declaration = parse_single_declaration("color", "rgba(0, 0, 0, 1)");
-    let style = CssScopedStyleRule::new(
+    let style = CssStyleRule::new(
         selectors.clone(),
         CssDeclarationList::new(vec![declaration.clone()]),
         Vec::new(),
         source_position(5, 3),
     );
-    let scoped_rules = CssScopedRuleList::from_rules(vec![CssScopedRule::Style(style.clone())]);
+    let body = vec![CssRule::Style(style.clone())];
     let location = source_position(5, 1);
     let scope = CssScopeRule::new(
         Some(root.clone()),
         Some(limit.clone()),
-        scoped_rules.clone(),
+        body.clone(),
         location,
     );
 
     assert_eq!(
         root.selectors(),
-        &[CssScopeSelector::Selector(root_selector)]
+        &[CssStyleSelector::Selector(root_selector)]
     );
     assert_eq!(
         limit.selectors(),
-        &[CssScopeSelector::Selector(limit_selector)]
+        &[CssStyleSelector::Selector(limit_selector)]
     );
     assert_eq!(
         selectors.selectors(),
@@ -256,22 +288,19 @@ fn scope_rule_model_keeps_scoped_selectors_and_rules_separate() {
     assert_eq!(style.position(), source_position(5, 3));
     assert_eq!(scope.root(), Some(&root));
     assert_eq!(scope.limit(), Some(&limit));
-    assert_eq!(scope.rules(), &scoped_rules);
+    assert_eq!(scope.rules().rules(), body.as_slice());
     assert_eq!(scope.position(), Some(location));
     assert_eq!(CssRule::Scope(scope.clone()), CssRule::Scope(scope));
-
-    let empty_rules = CssScopedRuleList::new();
-    assert!(empty_rules.rules().is_empty());
 }
 
 #[test]
 fn scope_selector_list_constructor_rejects_pseudo_elements() {
     let ordinary = CssSelector::Class("card".to_owned());
     let ordinary_list =
-        CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(ordinary.clone())]).unwrap();
+        CssScopeSelectorList::try_new(vec![CssStyleSelector::Selector(ordinary.clone())]).unwrap();
     assert_eq!(
         ordinary_list.selectors(),
-        &[CssScopeSelector::Selector(ordinary)]
+        &[CssStyleSelector::Selector(ordinary)]
     );
 
     let pseudo_element = CssPseudoElementSequence::try_new(vec![CssPseudoElement::Before]).unwrap();
@@ -288,7 +317,7 @@ fn scope_selector_list_constructor_rejects_pseudo_elements() {
     );
 
     assert_eq!(
-        CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(selector)]),
+        CssScopeSelectorList::try_new(vec![CssStyleSelector::Selector(selector)]),
         None
     );
 
@@ -306,79 +335,72 @@ fn scope_selector_list_constructor_rejects_pseudo_elements() {
             Some(CssPseudoElementSequence::try_new(vec![CssPseudoElement::Before]).unwrap()),
         ),
     );
-    let selector = CssSelector::Complex(CssComplexSelector::try_new(first, vec![part]).unwrap());
+    let selector = CssSelector::Complex(
+        CssComplexSelector::try_new(first, vec![part], Default::default()).unwrap(),
+    );
 
     assert_eq!(
-        CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(selector)]),
+        CssScopeSelectorList::try_new(vec![CssStyleSelector::Selector(selector)]),
         None
     );
 }
 
 #[test]
-fn scoped_group_rule_models_keep_scoped_children() {
-    let child_selector =
-        CssScopedStyleSelectorList::try_new(vec![CssScopedStyleSelector::Selector(
-            CssSelector::Class("label".to_owned()),
-        )])
-        .unwrap();
+fn group_rules_inside_a_scope_body_are_ordinary_rules() {
+    let child_selector = CssStyleSelectorList::try_new(vec![CssStyleSelector::Selector(
+        CssSelector::Class("label".to_owned()),
+    )])
+    .unwrap();
     let location = source_position(8, 9);
-    let child = CssScopedRule::Style(CssScopedStyleRule::new(
+    let child = CssRule::Style(CssStyleRule::new(
         child_selector,
         CssDeclarationList::new(Vec::new()),
         Vec::new(),
         location,
     ));
-    let scoped_children = CssScopedRuleList::from_rules(vec![child.clone()]);
+    let children = vec![child.clone()];
     let query = CssMediaQueryList::new(vec![
-        crate::parse_media_query("screen")
+        crate::query::media::CssMediaQuery::parse(&crate::CssParser::default(), "screen")
             .into_validation_result()
             .unwrap(),
     ]);
-    let media = CssScopedMediaRule::new(query.clone(), scoped_children.clone(), location);
+    let media = CssMediaRule::new(query.clone(), children.clone(), location);
     assert_eq!(media.query(), &query);
-    assert_eq!(media.rules(), &scoped_children);
+    assert_eq!(media.rules(), children.as_slice());
     assert_eq!(media.position(), Some(location));
 
     let prelude = CssContainerPrelude::try_from_components(
-        crate::parse_component_values("sidebar (inline-size > 30rem)").unwrap(),
+        crate::component::values::parse_component_values("sidebar (inline-size > 30rem)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     let condition = prelude.entries()[0].query().unwrap().clone();
     let name = CssContainerName::try_new("sidebar").unwrap();
-    let container = CssScopedContainerRule::new(prelude.clone(), scoped_children.clone(), location);
+    let container = CssContainerRule::new(prelude.clone(), children.clone(), location);
     assert_eq!(container.prelude().entries()[0].name(), Some(&name));
     assert_eq!(container.prelude().entries()[0].query(), Some(&condition));
-    assert_eq!(container.rules(), &scoped_children);
+    assert_eq!(container.rules(), children.as_slice());
     assert_eq!(container.position(), Some(location));
 
     let layer_name = CssLayerName::try_new(["theme"]).unwrap();
     let layer_names = CssLayerNameList::try_new(vec![layer_name.clone()]).unwrap();
-    let statement = CssScopedLayerStatementRule::new(layer_names.clone(), location);
+    let statement = CssLayerStatementRule::new(layer_names.clone(), location);
     assert_eq!(statement.names(), &layer_names);
     assert_eq!(statement.position(), location);
 
-    let block =
-        CssScopedLayerBlockRule::new(Some(layer_name.clone()), scoped_children.clone(), location);
+    let block = CssLayerBlockRule::new(Some(layer_name.clone()), children.clone(), location);
     assert_eq!(block.name(), Some(&layer_name));
-    assert_eq!(block.rules(), &scoped_children);
+    assert_eq!(block.rules(), children.as_slice());
     assert_eq!(block.position(), Some(location));
 
-    assert_eq!(
-        CssScopedRule::Media(media.clone()),
-        CssScopedRule::Media(media)
-    );
-    assert_eq!(
-        CssScopedRule::Container(container.clone()),
-        CssScopedRule::Container(container)
-    );
-    assert_eq!(
-        CssScopedRule::LayerStatement(statement.clone()),
-        CssScopedRule::LayerStatement(statement)
-    );
-    assert_eq!(
-        CssScopedRule::LayerBlock(block.clone()),
-        CssScopedRule::LayerBlock(block)
-    );
+    let body = vec![
+        CssRule::Media(media),
+        CssRule::Container(container),
+        CssRule::LayerStatement(statement),
+        CssRule::LayerBlock(block),
+    ];
+    let scope = CssScopeRule::new(None, None, body.clone(), location);
+    assert_eq!(scope.rules().rules(), body.as_slice());
 }
 
 #[test]
@@ -396,8 +418,8 @@ fn scoped_selector_model_preserves_authored_scope_anchor_marker() {
     assert_eq!(anchored.classes(), &["active".to_owned()]);
     assert_eq!(anchored.pseudo_classes(), &[CssPseudoClass::Scope]);
 
-    let selector = CssScopedStyleSelector::Selector(CssSelector::Compound(anchored.clone()));
-    let list = CssScopedStyleSelectorList::try_new(vec![selector.clone()]).unwrap();
+    let selector = CssStyleSelector::Selector(CssSelector::Compound(anchored.clone()));
+    let list = CssStyleSelectorList::try_new(vec![selector.clone()]).unwrap();
     assert_eq!(list.selectors(), &[selector]);
 }
 
@@ -414,7 +436,7 @@ fn font_face_rule_accessors_expose_authored_structure() {
             CssFontFaceDescriptorValue::Src(
                 CssFontFaceSourceList::try_new(vec![CssFontFaceSource::Url(
                     CssFontFaceUrlSource::new(
-                        crate::CssUrl::new("fonts/avenir.woff2"),
+                        crate::values::common::CssUrl::new("fonts/avenir.woff2"),
                         None,
                         Vec::new(),
                     ),
@@ -445,7 +467,7 @@ fn font_face_rule_accessors_expose_authored_structure() {
 fn checked_part_and_complex_reject_invalid_private_compound_graphs() {
     // The owning private harness can express corrupt provider internals that
     // public checked compound construction correctly prevents from escaping.
-    let empty = CssPseudoSelectorList::try_new_forgiving(Vec::new()).unwrap();
+    let empty = CssPseudoSelectorList::try_new_forgiving(Vec::new(), Default::default()).unwrap();
     let invalids = [
         CssCompoundSelector::new(None, None, vec![String::new()], Vec::new(), Vec::new()),
         CssCompoundSelector::new(None, None, vec!["a\0b".into()], Vec::new(), Vec::new()),
@@ -459,15 +481,19 @@ fn checked_part_and_complex_reject_invalid_private_compound_graphs() {
     ];
     let valid = CssCompoundSelector::new(None, None, vec!["One".into()], Vec::new(), Vec::new());
     for invalid in invalids {
-        let part_error =
-            CssComplexSelectorPart::try_new(CssSelectorCombinator::Child, invalid.clone())
-                .unwrap_err();
+        let part_error = CssComplexSelectorPart::try_new(
+            CssSelectorCombinator::Child,
+            invalid.clone(),
+            Default::default(),
+        )
+        .unwrap_err();
         let first_error = CssComplexSelector::try_new(
             invalid.clone(),
             vec![CssComplexSelectorPart::new(
                 CssSelectorCombinator::Child,
                 valid.clone(),
             )],
+            Default::default(),
         )
         .unwrap_err();
         let rest_error = CssComplexSelector::try_new(
@@ -476,23 +502,27 @@ fn checked_part_and_complex_reject_invalid_private_compound_graphs() {
                 CssSelectorCombinator::Child,
                 invalid,
             )],
+            Default::default(),
         )
         .unwrap_err();
         for error in [part_error, first_error, rest_error] {
-            let CssSelectorConstructionErrorKind::Specified(cause) = error.kind() else {
+            let Some(cause) = error.serialization_error() else {
                 panic!("complete graph admission error: {error:?}");
             };
-            assert_eq!(
-                cause.kind(),
-                CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
-            );
+            assert!(cause.is_unrepresentable_value(), "{cause:?}");
         }
     }
-    let part =
-        CssComplexSelectorPart::try_new(CssSelectorCombinator::Child, valid.clone()).unwrap();
-    let value = CssComplexSelector::try_new(valid, vec![part]).unwrap();
+    let part = CssComplexSelectorPart::try_new(
+        CssSelectorCombinator::Child,
+        valid.clone(),
+        Default::default(),
+    )
+    .unwrap();
+    let value = CssComplexSelector::try_new(valid, vec![part], Default::default()).unwrap();
     assert_eq!(
-        CssSelector::Complex(value).to_specified_css().unwrap(),
+        CssSelector::Complex(value)
+            .serialize_specified(Default::default())
+            .unwrap(),
         ".One > .One"
     );
 }
@@ -514,12 +544,12 @@ fn complex_selector_constructor_rejects_parts_after_pseudo_elements() {
         CssCompoundSelector::new(None, None, vec!["icon".to_owned()], Vec::new(), Vec::new()),
     );
 
-    assert!(CssComplexSelector::try_new(first, vec![part]).is_err());
+    assert!(CssComplexSelector::try_new(first, vec![part], Default::default()).is_err());
 }
 
 #[test]
 fn pseudo_selector_list_constructor_accepts_complex_selectors() {
-    assert!(CssPseudoSelectorList::try_new(Vec::new()).is_err());
+    assert!(CssPseudoSelectorList::try_new(Vec::new(), Default::default()).is_err());
 
     let first =
         CssCompoundSelector::new(None, None, vec!["field".to_owned()], Vec::new(), Vec::new());
@@ -527,9 +557,11 @@ fn pseudo_selector_list_constructor_accepts_complex_selectors() {
         CssSelectorCombinator::Descendant,
         CssCompoundSelector::new(None, None, vec!["icon".to_owned()], Vec::new(), Vec::new()),
     );
-    let complex = CssSelector::Complex(CssComplexSelector::try_new(first, vec![part]).unwrap());
+    let complex = CssSelector::Complex(
+        CssComplexSelector::try_new(first, vec![part], Default::default()).unwrap(),
+    );
 
-    let list = CssPseudoSelectorList::try_new(vec![complex.clone()]).unwrap();
+    let list = CssPseudoSelectorList::try_new(vec![complex.clone()], Default::default()).unwrap();
     assert_eq!(
         list.items(),
         &[CssPseudoSelectorListItem::Selector(complex)]
@@ -577,7 +609,11 @@ mod selector_list_admission_defenses {
     use super::*;
 
     fn parsed(source: &str) -> CssSelector {
-        let report = parse_selector(source, &CssNamespaceContext::default());
+        let report = crate::selector::CssSelector::parse(
+            &crate::CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.is_clean(), "{source:?}: {report:?}");
         report.into_validation_result().unwrap().unwrap()
     }
@@ -585,9 +621,17 @@ mod selector_list_admission_defenses {
     fn exact(source: &str, expected: &str) {
         let selector = parsed(source);
         let before = selector.clone();
-        assert_eq!(selector.to_specified_css().unwrap(), expected);
+        assert_eq!(
+            selector.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(selector, before);
-        assert_eq!(parsed(expected).to_specified_css().unwrap(), expected);
+        assert_eq!(
+            parsed(expected)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
 
     fn pseudo_element_list() -> CssPseudoSelectorList {
@@ -596,7 +640,7 @@ mod selector_list_admission_defenses {
 
     fn invalid_graph(selector: CssSelector) {
         let before = selector.clone();
-        let result = selector.to_specified_css();
+        let result = selector.serialize_specified(Default::default());
         assert!(
             result.is_err(),
             "invalid retained graph emitted: {result:?}"
@@ -693,7 +737,7 @@ mod selector_list_admission_defenses {
             ]))),
         ] {
             assert!(
-                CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(invalid)]).is_none()
+                CssScopeSelectorList::try_new(vec![CssStyleSelector::Selector(invalid)]).is_none()
             );
         }
     }
@@ -705,7 +749,7 @@ mod selector_list_admission_defenses {
                 CssSelector::Class("\0".into()),
             ])));
         let root =
-            CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(selector)]).unwrap();
+            CssScopeSelectorList::try_new(vec![CssStyleSelector::Selector(selector)]).unwrap();
         let error = CssScopeRule::try_new(
             Some(root),
             None,
@@ -714,10 +758,7 @@ mod selector_list_admission_defenses {
             CssScopeNestingContext::None,
         )
         .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssRuleConstructionErrorKind::InvalidSelectorIdentifier
-        );
+        assert!(error.is_invalid_selector_identifier(), "{error:?}");
         assert!(error.path().is_empty());
         assert_eq!(error.position(), None);
     }

@@ -9,7 +9,18 @@ use crate::css::support::important_speech_components as checked;
 use crate::css::support::important_speech_declaration as declaration;
 use crate::css::support::known_property as property;
 use crate::css::support::named_property::longhand_contributions as expanded;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValue, CssLonghandValueRef, CssPropertyKindRef,
+    CssPropertyNameRef, CssPropertyTarget, CssUserAgentInitial,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
 
 struct Case {
     name: &'static str,
@@ -218,66 +229,28 @@ fn targets(name: &str) -> Vec<&str> {
 // bytes above are source-derived, never captured from the implementation.
 fn specified(
     source: &CssDeclaration,
-    limits: CssSpecifiedValueSerializationLimits,
-) -> Result<String, CssSpecifiedValueSerializationError> {
+    limits: CssSerializationLimits,
+) -> Result<String, CssSerializationError> {
     match source.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::Cue(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::CueAfter(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::CueBefore(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::Pause(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::PauseAfter(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::PauseBefore(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::Rest(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::RestAfter(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::RestBefore(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::Speak(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::SpeakAs(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::VoiceBalance(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::VoiceDuration(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::VoiceFamily(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::VoicePitch(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::VoiceRange(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::VoiceRate(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::VoiceStress(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
-        CssKnownPropertyValueRef::VoiceVolume(value) => {
-            value.value().serialize_specified_with_limits(limits)
-        }
+        CssKnownPropertyValueRef::Cue(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::CueAfter(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::CueBefore(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::Pause(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::PauseAfter(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::PauseBefore(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::Rest(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::RestAfter(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::RestBefore(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::Speak(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::SpeakAs(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::VoiceBalance(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::VoiceDuration(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::VoiceFamily(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::VoicePitch(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::VoiceRange(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::VoiceRate(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::VoiceStress(value) => value.value().serialize_specified(limits),
+        CssKnownPropertyValueRef::VoiceVolume(value) => value.value().serialize_specified(limits),
         _ => panic!("fixture dispatch covers exactly the source's Speech properties"),
     }
 }
@@ -285,23 +258,39 @@ fn specified(
 fn terminal_specified(value: &CssLonghandValue) -> String {
     match value.view() {
         CssLonghandValueRef::CueBefore(value) | CssLonghandValueRef::CueAfter(value) => {
-            value.serialize_specified().unwrap()
+            value.serialize_specified(Default::default()).unwrap()
         }
         CssLonghandValueRef::PauseBefore(value)
         | CssLonghandValueRef::PauseAfter(value)
         | CssLonghandValueRef::RestBefore(value)
-        | CssLonghandValueRef::RestAfter(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::Speak(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::SpeakAs(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::VoiceBalance(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::VoiceDuration(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::VoiceFamily(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::VoicePitch(value) | CssLonghandValueRef::VoiceRange(value) => {
-            value.serialize_specified().unwrap()
+        | CssLonghandValueRef::RestAfter(value) => {
+            value.serialize_specified(Default::default()).unwrap()
         }
-        CssLonghandValueRef::VoiceRate(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::VoiceStress(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::VoiceVolume(value) => value.serialize_specified().unwrap(),
+        CssLonghandValueRef::Speak(value) => value.serialize_specified(Default::default()).unwrap(),
+        CssLonghandValueRef::SpeakAs(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::VoiceBalance(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::VoiceDuration(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::VoiceFamily(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::VoicePitch(value) | CssLonghandValueRef::VoiceRange(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::VoiceRate(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::VoiceStress(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::VoiceVolume(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
         _ => panic!("Speech terminal"),
     }
 }
@@ -316,14 +305,24 @@ fn ordinary_block() -> String {
 #[test]
 fn all_nineteen_ordinary_speech_properties_compose_in_attributes_and_stylesheets() {
     let text = ordinary_block();
-    let report = parse_style_attribute(&text);
+    let report = CssParser::default().parse_block_contents(&text);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 19);
-    assert!(validate_style_attribute(&text).is_ok());
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&text)
+            .into_validation_result()
+            .is_ok()
+    );
     let sheet_text = format!(".speech{{{text}}}");
-    let sheet = parse_sheet(&sheet_text);
+    let sheet = CssParser::default().parse_sheet(&sheet_text);
     assert!(sheet.is_clean(), "{:?}", sheet.diagnostics());
-    assert!(validate_sheet(&sheet_text).is_ok());
+    assert!(
+        CssParser::default()
+            .parse_sheet(&sheet_text)
+            .into_validation_result()
+            .is_ok()
+    );
     let [CssRule::Style(rule)] = sheet.syntax().rules() else {
         panic!("one composed Speech rule")
     };
@@ -343,11 +342,15 @@ fn all_nineteen_ordinary_speech_properties_compose_in_attributes_and_stylesheets
             assert!(known.substitution_dependent().is_none());
             assert_eq!(source.importance(), CssImportance::Important);
             assert_eq!(
-                source.value_components().serialize().unwrap().as_css(),
+                source
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 case.authored
             );
             assert_eq!(
-                specified(source, CssSpecifiedValueSerializationLimits::default()).unwrap(),
+                specified(source, CssSerializationLimits::default()).unwrap(),
                 case.canonical
             );
         }
@@ -379,30 +382,32 @@ fn every_speech_property_crosses_strict_construction_and_owning_bounded_canonica
             constructed.known().unwrap().property_value(),
             source.known().unwrap().property_value()
         );
-        let limits = CssSpecifiedValueSerializationLimits::default();
-        let exact = CssSpecifiedValueSerializationLimits::new(
+        let limits = CssSerializationLimits::default();
+        let exact = CssSerializationLimits::new(
             limits.max_input_nodes(),
             limits.max_projection_nodes(),
             case.canonical.len(),
         );
         assert_eq!(specified(&constructed, exact).unwrap(), case.canonical);
-        let too_small = CssSpecifiedValueSerializationLimits::new(
+        let too_small = CssSerializationLimits::new(
             limits.max_input_nodes(),
             limits.max_projection_nodes(),
             case.canonical.len() - 1,
         );
-        assert_eq!(
-            specified(&constructed, too_small).unwrap_err().kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+        assert!(
+            specified(&constructed, too_small)
+                .unwrap_err()
+                .is_byte_limit()
         );
         assert_eq!(constructed.value_components(), &components);
         assert_eq!(specified(&constructed, exact).unwrap(), case.canonical);
         let canonical = declaration(case.name, case.canonical);
         assert_eq!(specified(&canonical, exact).unwrap(), case.canonical);
         assert!(
-            parse_property_value(
-                CssPropertyNameRef::Known(property(case.name)),
-                parse_component_values(case.invalid).unwrap(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property(case.name))),
+                CssComponentValues::parse(&CssParser::default(), case.invalid).unwrap(),
                 CssImportance::Normal
             )
             .is_err()
@@ -417,11 +422,21 @@ fn all_five_css_wide_keywords_compose_across_all_nineteen_properties_and_their_t
             .iter()
             .map(|case| format!("{}:{text}!important;", case.name))
             .collect();
-        let report = parse_style_attribute(&block);
+        let report = CssParser::default().parse_block_contents(&block);
         assert!(report.is_clean());
         assert_eq!(report.syntax().len(), 19);
-        assert!(validate_style_attribute(&block).is_ok());
-        assert!(validate_sheet(&format!(".speech{{{block}}}")).is_ok());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&block)
+                .into_validation_result()
+                .is_ok()
+        );
+        assert!(
+            CssParser::default()
+                .parse_sheet(format!(".speech{{{block}}}"))
+                .into_validation_result()
+                .is_ok()
+        );
         let mut terminals = 0;
         for (source, case) in report.syntax().iter().zip(&CASES) {
             let known = source.known().unwrap();
@@ -429,7 +444,11 @@ fn all_five_css_wide_keywords_compose_across_all_nineteen_properties_and_their_t
             assert_eq!(known.global(), Some(keyword));
             assert!(known.property_value().is_none());
             assert_eq!(
-                source.value_components().serialize().unwrap().as_css(),
+                source
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 text
             );
             let constructed = checked(case.name, source.value_components().clone());
@@ -445,9 +464,11 @@ fn all_five_css_wide_keywords_compose_across_all_nineteen_properties_and_their_t
                 assert_eq!(item.source().importance(), CssImportance::Important);
             }
             assert!(
-                parse_property_value(
-                    CssPropertyNameRef::Known(property(case.name)),
-                    parse_component_values(&format!("{text} extra")).unwrap(),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(property(case.name))),
+                    CssComponentValues::parse(&CssParser::default(), format!("{text} extra"))
+                        .unwrap(),
                     CssImportance::Normal
                 )
                 .is_err()
@@ -501,25 +522,21 @@ fn all_properties_reenter_ordinary_and_global_values_atomically_with_both_occurr
         .iter()
         .map(|case| format!("{}:var(--speech)!important;", case.name))
         .collect();
-    let report = parse_style_attribute(&block);
+    let report = CssParser::default().parse_block_contents(&block);
     assert!(report.is_clean());
     assert_eq!(report.syntax().len(), 19);
     for (source, case) in report.syntax().iter().zip(&CASES) {
-        let CssExpansion::Pending(handle) = expand_declaration(source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending Speech property")
         };
-        let replacement = parse_component_values(case.authored).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), case.authored).unwrap();
         let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
         else {
             panic!("completed ordinary Speech")
         };
         let constructed = checked(case.name, replacement.clone());
         assert_eq!(
-            specified(
-                &constructed,
-                CssSpecifiedValueSerializationLimits::default()
-            )
-            .unwrap(),
+            specified(&constructed, CssSerializationLimits::default()).unwrap(),
             case.canonical
         );
         let expected = expanded(&constructed);
@@ -532,7 +549,7 @@ fn all_properties_reenter_ordinary_and_global_values_atomically_with_both_occurr
             assert_eq!(item.replacement_components(), Some(&replacement));
         }
         for (text, keyword) in GLOBALS {
-            let replacement = parse_component_values(text).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
                 panic!("completed global Speech")
@@ -552,27 +569,28 @@ fn all_properties_reenter_ordinary_and_global_values_atomically_with_both_occurr
             format!("{};color:red", case.authored),
         ] {
             assert!(
-                matches!(
-                    handle
-                        .reenter(parse_component_values(&invalid).unwrap())
-                        .unwrap_err()
-                        .kind(),
-                    CssExpansionErrorKind::InvalidReplacement(_)
-                ),
+                handle
+                    .reenter(CssComponentValues::parse(&CssParser::default(), &invalid).unwrap())
+                    .unwrap_err()
+                    .replacement_error()
+                    .is_some(),
                 "{}:{invalid}",
                 case.name
             );
         }
-        assert_eq!(
+        assert!(
             handle
-                .reenter(parse_component_values("var(--again)").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         assert!(handle.reenter(replacement).is_ok());
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             "var(--speech)"
         );
     }
@@ -646,7 +664,7 @@ fn composed_invalid_occurrences_drop_atomically_with_precise_utf16_crlf_provenan
         body.push_str(&format!("{}:{}!important;", case.name, case.authored));
     }
     body.push_str("height:1px");
-    let report = parse_style_attribute(&body);
+    let report = CssParser::default().parse_block_contents(&body);
     assert_eq!(report.syntax().len(), 21);
     assert_eq!(report.diagnostics().len(), 19);
     assert_eq!(
@@ -664,7 +682,7 @@ fn composed_invalid_occurrences_drop_atomically_with_precise_utf16_crlf_provenan
     {
         assert_eq!(source.known().unwrap().property(), property(case.name));
         assert_eq!(
-            specified(source, CssSpecifiedValueSerializationLimits::default()).unwrap(),
+            specified(source, CssSerializationLimits::default()).unwrap(),
             case.canonical
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
@@ -689,11 +707,15 @@ fn composed_invalid_occurrences_drop_atomically_with_precise_utf16_crlf_provenan
         );
     }
     assert_eq!(
-        validate_style_attribute(&body).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&body)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     let sheet_text = format!(".speech{{{body}}}");
-    let sheet = parse_sheet(&sheet_text);
+    let sheet = CssParser::default().parse_sheet(&sheet_text);
     let [CssRule::Style(rule)] = sheet.syntax().rules() else {
         panic!("retained composed style rule")
     };
@@ -714,7 +736,11 @@ fn composed_invalid_occurrences_drop_atomically_with_precise_utf16_crlf_provenan
         );
     }
     assert_eq!(
-        validate_sheet(&sheet_text).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(&sheet_text)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         sheet.diagnostics()
     );
 }

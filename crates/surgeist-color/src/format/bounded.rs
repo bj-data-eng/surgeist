@@ -2,6 +2,7 @@
 
 use super::RoundingMode;
 use super::rounded_millionths;
+use crate::finite::Finite;
 
 /// (2^53 - 1) * 2^971 has 309 decimal digits. Every finite binary64 integer
 /// lies below it; a rounded fractional coefficient fits in u128.
@@ -57,7 +58,6 @@ pub(crate) struct FiniteFormatSummary {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum FormatProtocolError {
-    NonFinite,
     InvalidDigit,
     WrongReply,
     WrongIndex,
@@ -99,12 +99,9 @@ pub(crate) struct FiniteFormatCursor {
 }
 impl FiniteFormatCursor {
     /// The caller admits the actual fixed cursor layout before construction.
-    pub(crate) fn new(value: f64, rounding: RoundingMode) -> Result<Self, FormatProtocolError> {
-        if !value.is_finite() {
-            return Err(FormatProtocolError::NonFinite);
-        }
-        Ok(Self {
-            bits: value.to_bits(),
+    pub(crate) fn new(value: Finite, rounding: RoundingMode) -> Self {
+        Self {
+            bits: value.get().to_bits(),
             rounding,
             negative: false,
             coefficient: 0,
@@ -118,7 +115,7 @@ impl FiniteFormatCursor {
             extent: None,
             emitted: 0,
             phase: Phase::Compute(FormatKernel::PlanFinite),
-        })
+        }
     }
     /// Fixed cached metadata; no payload is observed or computed here.
     pub(crate) fn next_request(&self) -> FormatRequest {
@@ -365,6 +362,10 @@ fn check_write(
 mod tests {
     use super::*;
 
+    fn finite(value: f64) -> Finite {
+        Finite::new(value).expect("finite formatter fixture")
+    }
+
     // Ordinary, actual caller storage. The cursor never receives these buffers.
     fn reply(
         request: FormatRequest,
@@ -459,7 +460,7 @@ mod tests {
                 "1000000000000000128",
             ),
         ] {
-            let mut cursor = FiniteFormatCursor::new(value, rounding).unwrap();
+            let mut cursor = FiniteFormatCursor::new(finite(value), rounding);
             let mut scratch = Vec::new();
             let mut output = String::new();
             let summary = drive(&mut cursor, &mut scratch, &mut output, expected.len()).unwrap();
@@ -486,7 +487,7 @@ mod tests {
             } else {
                 INTEGER.into()
             };
-            let mut cursor = FiniteFormatCursor::new(value, RoundingMode::AwayFromZero).unwrap();
+            let mut cursor = FiniteFormatCursor::new(finite(value), RoundingMode::AwayFromZero);
             let mut scratch = Vec::new();
             let mut output = String::new();
             let summary = drive(&mut cursor, &mut scratch, &mut output, expected.len()).unwrap();
@@ -499,7 +500,7 @@ mod tests {
     #[test]
     fn wrong_reply_index_and_generated_digit_leave_pending_request_and_storage_intact() {
         let mut cursor =
-            FiniteFormatCursor::new(9_007_199_254_740_992.0, RoundingMode::AwayFromZero).unwrap();
+            FiniteFormatCursor::new(finite(9_007_199_254_740_992.0), RoundingMode::AwayFromZero);
         let mut scratch = Vec::new();
         let mut output = String::new();
         let mut append = false;
@@ -594,9 +595,10 @@ mod tests {
         let mut scratch = Vec::new();
         let mut output = String::new();
         let (index, before, recovered) = {
-            let mut cursor =
-                FiniteFormatCursor::new(9_007_199_254_740_992.0, RoundingMode::AwayFromZero)
-                    .unwrap();
+            let mut cursor = FiniteFormatCursor::new(
+                finite(9_007_199_254_740_992.0),
+                RoundingMode::AwayFromZero,
+            );
             let mut refused_append = false;
             let mut retained = None;
             for _ in 0..10_000 {
@@ -638,7 +640,7 @@ mod tests {
     #[test]
     fn one_short_final_output_keeps_real_prefix_and_pending_byte_until_acknowledged() {
         for (value, expected) in [(0.0, "0"), (-0.0078125, "-0.007813"), (0.9999996, "1")] {
-            let mut cursor = FiniteFormatCursor::new(value, RoundingMode::AwayFromZero).unwrap();
+            let mut cursor = FiniteFormatCursor::new(finite(value), RoundingMode::AwayFromZero);
             let mut scratch = Vec::new();
             let mut output = String::new();
             let pending =
@@ -653,13 +655,7 @@ mod tests {
     }
 
     #[test]
-    fn nonfinite_and_nondecimal_digit_construction_is_typed_refusal() {
-        for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-            assert!(matches!(
-                FiniteFormatCursor::new(value, RoundingMode::AwayFromZero),
-                Err(FormatProtocolError::NonFinite)
-            ));
-        }
+    fn nondecimal_digit_construction_is_typed_refusal() {
         for digit in [10, 128, 255] {
             assert_eq!(
                 FormatDigit::new(digit),

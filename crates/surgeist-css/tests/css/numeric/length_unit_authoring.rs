@@ -1,12 +1,23 @@
 //! Values 4 length units and `calc()` keep authored dimensions in ordinary and
 //! calculation contexts; unknown units and functions are rejected.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssValueTokenRef};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationExpressionRef, CssCalculationSumOperator, CssCalculationType,
+    CssCalculationValueRef, CssLengthPercentage, CssLengthUnit, CssNumericUnit,
+};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::values::box_model::{
+    CssBoxSize, CssFlowToleranceRef, CssMarginValue, CssSizeValue,
+};
+use surgeist_css::values::layout::CssGapValue;
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;
 
-fn sizing_calculation(value: &CssSizeValue) -> &CssLengthPercentageCalculation {
+fn sizing_calculation(value: &CssSizeValue) -> &CssCalculation<CssLengthPercentage> {
     let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = value else {
         panic!("checked length-percentage")
     };
@@ -85,7 +96,10 @@ fn parses_calc_width_as_css_calc_length() {
         calculation.result_type(),
         CssCalculationType::LengthPercentage
     );
-    assert_eq!(value.serialize_specified().unwrap(), "calc(10% + 20px)");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "calc(10% + 20px)"
+    );
 }
 
 #[test]
@@ -198,7 +212,7 @@ fn parses_supported_length_units_as_authored_dimensions() {
         let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = &value else {
             panic!("ordinary dimension")
         };
-        let Some(component) = length.literal_component() else {
+        let Some(component) = length.literal().map(|literal| literal.component()) else {
             panic!("ordinary dimension token")
         };
         let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
@@ -212,7 +226,7 @@ fn parses_supported_length_units_as_authored_dimensions() {
         );
         // Values 4 §6 unit names are ASCII case-insensitive.
         assert!(
-            expected_unit.as_css_str().eq_ignore_ascii_case(unit),
+            expected_unit.as_str().eq_ignore_ascii_case(unit),
             "{authored} names {expected_unit:?}"
         );
         assert_eq!(authored, format!("{}{}", number.representation(), unit));
@@ -284,7 +298,7 @@ fn unit_matrix_accepts_every_supported_length_unit_in_ordinary_length_contexts()
         let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = value.value() else {
             panic!("ordinary length")
         };
-        let Some(component) = length.literal_component() else {
+        let Some(component) = length.literal().map(|literal| literal.component()) else {
             panic!("ordinary token")
         };
         let CssComponentValueRef::Token(CssValueTokenRef::Dimension {
@@ -300,7 +314,7 @@ fn unit_matrix_accepts_every_supported_length_unit_in_ordinary_length_contexts()
             "{authored} retains its unit spelling"
         );
         assert!(
-            unit.as_css_str().eq_ignore_ascii_case(authored_unit),
+            unit.as_str().eq_ignore_ascii_case(authored_unit),
             "{authored} names its Values 4 length unit {unit:?}"
         );
     }
@@ -348,23 +362,32 @@ fn unit_matrix_rejects_unknown_length_units_in_ordinary_and_calc_contexts() {
 
 #[test]
 fn unknown_dimension_units_are_reported_as_unknown_units() {
-    let error = parse_sheet(".panel { width: 1quux; }").expect_err("rejected parse report");
+    let error = CssParser::default()
+        .parse_sheet(".panel { width: 1quux; }")
+        .expect_err("rejected parse report");
 
-    let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-        panic!("unexpected error kind: {:?}", error.kind());
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Width);
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "unexpected error kind: {error:?}"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Width);
 }
 
 #[test]
 fn unknown_calc_dimension_units_are_reported_as_unknown_units() {
-    let error =
-        parse_sheet(".panel { width: calc(1quux + 2px); }").expect_err("rejected parse report");
+    let error = CssParser::default()
+        .parse_sheet(".panel { width: calc(1quux + 2px); }")
+        .expect_err("rejected parse report");
 
-    let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-        panic!("unexpected error kind: {:?}", error.kind());
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Width);
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "unexpected error kind: {error:?}"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Width);
 }
 
 #[test]
@@ -383,10 +406,13 @@ fn flow_tolerance_calc_is_preserved_as_css_syntax() {
             let calc = length.calculation().expect("checked flow calculation");
             assert_eq!(
                 calc.numeric_type().percent_hint(),
-                Some(surgeist_css::CssNumericDimension::Length)
+                Some(surgeist_css::numeric::CssNumericDimension::Length)
             );
             assert_eq!(
-                calc.components().serialize().unwrap().as_css(),
+                calc.components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 "calc(8px + 2%)"
             );
         }
@@ -396,14 +422,17 @@ fn flow_tolerance_calc_is_preserved_as_css_syntax() {
 
 #[test]
 fn rejects_unknown_calc_functions() {
-    let error = parse_sheet(".panel { width: unknown-math(10px, 20px); }")
+    let error = CssParser::default()
+        .parse_sheet(".panel { width: unknown-math(10px, 20px); }")
         .expect_err("rejected parse report");
-    assert!(matches!(error.kind(), ErrorKind::InvalidPropertyValue(_)));
+    assert!(error.code() == CssErrorCode::InvalidPropertyValue);
 }
 
 #[test]
 fn parses_calc_in_edge_shorthands() {
-    let sheet = parse_sheet(".panel { margin: calc(4px + 1%) 2px; }").expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet(".panel { margin: calc(4px + 1%) 2px; }")
+        .expect("clean parse report");
     let edges = property_payload!(
         declaration(
             ".panel { margin: calc(4px + 1%) 2px; }",
@@ -412,7 +441,7 @@ fn parses_calc_in_edge_shorthands() {
         Margin,
         value
     );
-    let [top, right, bottom, left] = edges.assigned_values();
+    let [top, right, bottom, left] = edges.assigned();
     let CssMarginValue::LengthPercentage(top) = top else {
         panic!("expected checked calculation")
     };
@@ -420,11 +449,17 @@ fn parses_calc_in_edge_shorthands() {
         top.calculation().unwrap().result_type(),
         CssCalculationType::LengthPercentage
     );
-    assert_eq!(top.serialize_specified().unwrap(), "calc(1% + 4px)");
+    assert_eq!(
+        top.serialize_specified(Default::default()).unwrap(),
+        "calc(1% + 4px)"
+    );
     assert_eq!(top, bottom.length_percentage().unwrap());
     assert_eq!(right, left);
-    assert_eq!(right.serialize_specified().unwrap(), "2px");
-    assert_eq!(edges.authored_values().len(), 2);
+    assert_eq!(
+        right.serialize_specified(Default::default()).unwrap(),
+        "2px"
+    );
+    assert_eq!(edges.authored().len(), 2);
 
     assert_eq!(style_rule(&sheet.rules()[0]).declarations().len(), 1);
 }
@@ -437,8 +472,8 @@ fn parses_authored_normal_gap_without_canonicalizing_it() {
     else {
         panic!("gap wrapper")
     };
-    assert_eq!(value.value().row(), &CssGapValue::Normal);
-    assert!(value.value().authored_column().is_none());
+    assert_eq!(value.value().first(), &CssGapValue::Normal);
+    assert!(value.value().authored_second().is_none());
     assert_eq!(value.as_css(), "normal");
 }
 
@@ -450,7 +485,7 @@ fn parses_authored_calc_gap_without_canonicalizing_it() {
     else {
         panic!("gap wrapper")
     };
-    match value.value().row() {
+    match value.value().first() {
         CssGapValue::LengthPercentage(length) => {
             assert!(length.calculation().is_some());
             assert_eq!(value.as_css(), "calc(8px + 2%)");

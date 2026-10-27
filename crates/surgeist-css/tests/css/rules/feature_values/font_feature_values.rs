@@ -2,7 +2,9 @@ use crate::css::support::descriptor_phases;
 use descriptor_phases::*;
 
 use crate::css::support::rules::{ExpectedRejection, invalid_descriptor, rejected_bang};
-use surgeist_css::{CssNamespaceContext, parse_rule, parse_sheet, validate_sheet};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssError;
+use surgeist_css::selector::CssNamespaceContext;
 
 // Fonts 4 (7 September 2026), section 6.9.2 and frozen WebKit select the
 // authored index policy; section 6.9.1's contradictory ranges remain unresolved.
@@ -14,10 +16,20 @@ fn font_feature_values_retains_empty_named_family_rules() {
         "@font-feature-values Demo, \"Other Font\" {}",
         "@font-feature-values \"serif\" {}",
     ] {
-        let report = parse_rule(source, &CssNamespaceContext::default());
+        let report = CssRule::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert!(report.syntax().is_some(), "{source}");
-        assert!(validate_sheet(source).is_ok(), "{source}");
+        assert!(
+            CssParser::default()
+                .parse_sheet(source)
+                .into_validation_result()
+                .is_ok(),
+            "{source}"
+        );
     }
 }
 
@@ -33,10 +45,15 @@ fn font_feature_values_retains_all_defined_blocks_and_display_descriptor() {
         @ornaments { fleur: 3; }\
         @annotation { circled: 4; }\
     }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().rules().len(), 1);
-    assert!(validate_sheet(source).is_ok());
+    assert!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .is_ok()
+    );
 }
 
 #[test]
@@ -52,25 +69,34 @@ fn font_feature_values_rejects_missing_or_generic_family_preludes() {
         ("@font-feature-values serif {}", prelude.clone().at("serif")),
         ("@font-feature-values Demo, {}", prelude.clone().at_end()),
     ] {
-        let report = parse_rule(source, &CssNamespaceContext::default());
+        let report = CssRule::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.syntax().is_none(), "{source}");
         expected.assert_first(&report);
         expected.assert_sheet(source);
     }
 }
 
-use surgeist_css::{
-    CssErrorCode, CssFontDisplay, CssFontFaceFamily, CssFontFeatureDisplayOccurrence,
-    CssFontFeatureValueBlock as Block, CssFontFeatureValueDefinition as Definition,
-    CssFontFeatureValueIndex as Index, CssFontFeatureValueKind as Kind,
-    CssFontFeatureValueName as Name, CssFontFeatureValuesErrorKind as ConstructionError,
-    CssFontFeatureValuesItem, CssFontFeatureValuesRule, CssNormalizationErrorKind,
-    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem, CssRule,
-    CssRuleContextKindRef, normalize_sheet, normalize_sheet_with_limits,
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem, CssRuleContextKindRef,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::{CssFontDisplay, CssFontFaceFamily};
+use surgeist_css::rule::font_feature_values::CssFontFeatureValueBlock as Block;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValueDefinition as Definition;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValueIndex as Index;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValueKind as Kind;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValueName as Name;
+use surgeist_css::rule::font_feature_values::{
+    CssFontFeatureDisplayOccurrence, CssFontFeatureValuesItem, CssFontFeatureValuesRule,
 };
 
 fn authored(source: &str) -> CssFontFeatureValuesRule {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::FontFeatureValues(rule)] = report.syntax().rules() else {
         panic!("expected one font rule")
@@ -205,47 +231,48 @@ fn checked_construction_normalizes_decimal_syntax_without_inventing_source() {
         assert!(index.origin().is_none());
     }
     for input in ["", "+", "-", " 1", "1 ", "1.0", "1e2", "1,2", "++1", "١"] {
-        assert_eq!(
-            Index::try_from_decimal(input).unwrap_err().kind(),
-            ConstructionError::InvalidIntegerSyntax,
+        assert!(
+            Index::try_from_decimal(input)
+                .unwrap_err()
+                .is_invalid_integer_syntax(),
             "{input}"
         );
     }
-    assert_eq!(
-        Index::try_from_decimal("-1").unwrap_err().kind(),
-        ConstructionError::NegativeIndex
+    assert!(
+        Index::try_from_decimal("-1")
+            .unwrap_err()
+            .is_negative_index()
     );
     for input in ["a+b", "inherit", "initial", "unset", "revert", "default"] {
         assert_eq!(Name::try_new(input).unwrap().as_str(), input);
     }
     for input in ["", "a\0b"] {
-        assert_eq!(
-            Name::try_new(input).unwrap_err().kind(),
-            ConstructionError::InvalidIdentifier
-        );
+        assert!(Name::try_new(input).unwrap_err().is_invalid_identifier());
     }
-    assert!(matches!(
-        checked_feature_value(Kind::Swash, &[]).unwrap_err().kind(),
-        surgeist_css::CssFontFeatureValueErrorKind::Grammar(
-            surgeist_css::ErrorKind::UnexpectedEnd(_)
-        )
-    ));
-    assert_eq!(
+    assert!(
+        checked_feature_value(Kind::Swash, &[])
+            .unwrap_err()
+            .diagnostic()
+            .map(CssError::code)
+            == Some(CssErrorCode::UnexpectedEnd)
+    );
+    assert!(
         CssFontFeatureValuesRule::try_new(vec![], vec![])
             .unwrap_err()
-            .kind(),
-        ConstructionError::EmptyFamilies
+            .is_empty_families()
     );
     let definition = definition(Kind::Swash, &[1]);
     assert!(definition.position().is_none());
     let block = Block::try_new(Kind::Swash, vec![definition]).unwrap();
     assert!(block.position().is_none());
     let display = CssFontFeatureDisplayOccurrence::new(
-        surgeist_css::CssFontFeatureDisplayValue::try_from_components(
-            surgeist_css::CssComponentValues::try_new(vec![
-                surgeist_css::CssComponentValue::try_ident("swap").unwrap(),
-            ])
+        surgeist_css::rule::font_feature_values::CssFontFeatureDisplayValue::try_from_components(
+            surgeist_css::component::CssComponentValues::try_new(
+                vec![surgeist_css::component::CssComponentValue::try_ident("swap").unwrap()],
+                Default::default(),
+            )
             .unwrap(),
+            Default::default(),
         )
         .unwrap(),
     );
@@ -277,14 +304,13 @@ fn character_variant_accepts_one_or_two_indexes_and_rejects_three() {
         )
         .is_ok()
     );
-    assert!(matches!(
+    assert!(
         checked_feature_value(Kind::CharacterVariant, &["1", "2", "3"])
             .unwrap_err()
-            .kind(),
-        surgeist_css::CssFontFeatureValueErrorKind::Grammar(
-            surgeist_css::ErrorKind::UnexpectedToken(_)
-        )
-    ));
+            .diagnostic()
+            .map(CssError::code)
+            == Some(CssErrorCode::UnexpectedToken)
+    );
 }
 #[test]
 fn character_variant_first_index_has_no_font_feature_upper_bound() {
@@ -329,7 +355,7 @@ fn assert_invalid_value(kind: &str, value: &str) {
             "1"
         }
     );
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     // `!important` is no part of a feature value declaration.
     let expected = if value.contains('!') {
         rejected_bang(kind, "bad")
@@ -377,18 +403,19 @@ fn invalid_values_recover_only_the_definition() {
         Kind::Ornaments,
         Kind::Annotation,
     ] {
-        assert!(matches!(
-            checked_feature_value(kind, &["1", "2"]).unwrap_err().kind(),
-            surgeist_css::CssFontFeatureValueErrorKind::Grammar(
-                surgeist_css::ErrorKind::UnexpectedToken(_)
-            )
-        ));
+        assert!(
+            checked_feature_value(kind, &["1", "2"])
+                .unwrap_err()
+                .diagnostic()
+                .map(CssError::code)
+                == Some(CssErrorCode::UnexpectedToken)
+        );
     }
 }
 #[test]
 fn malformed_blocks_and_descriptors_leave_valid_siblings_and_empty_containers() {
     let source = "@font-feature-values Demo { font-display: invalid; @unknown { nested: [1]; } @swash extra { a: 1; } font-display: swap !important; font-display: block; @annotation { @swash { bad: 1; } keep: 2; } @swash {} }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     // Fonts 4 §6.9.2: font-display takes auto | block | swap | fallback | optional.
     invalid_descriptor("font-feature-values", "font-display")
         .at("invalid")
@@ -424,7 +451,13 @@ fn malformed_blocks_and_descriptors_leave_valid_siblings_and_empty_containers() 
             prelude.clone().at(","),
         ),
     ] {
-        assert!(parse_sheet(source).syntax().rules().is_empty());
+        assert!(
+            CssParser::default()
+                .parse_sheet(source)
+                .syntax()
+                .rules()
+                .is_empty()
+        );
         expected.assert_sheet(source);
     }
 }
@@ -442,9 +475,9 @@ fn ordinary_groups_preserve_complete_font_payload_and_parent_context() {
         let source = format!(
             "{prefix}@font-feature-values Demo {{ @swash {{ Fancy: 2; Fancy: 3; }} font-display: swap; }}{suffix}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let fonts = normalized
             .items()
             .iter()
@@ -483,11 +516,11 @@ fn style_ancestry_rejects_font_rules_through_intervening_groups() {
         let source = format!(
             ".root {{ color: red; {prefix}@font-feature-values Demo {{ @swash {{ a: 1; }} }}{suffix} color: blue; }}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(!report.is_clean(), "{source}");
         assert!(report.diagnostics().iter().any(|diagnostic| diagnostic.error().code() == CssErrorCode::InvalidAtRulePlacement), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().rules().len(), 1);
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         assert!(normalized.items().iter().all(|item| !matches!(item, CssNormalizedItem::Rule(context) if matches!(context.kind(), CssRuleContextKindRef::FontFeatureValues(_)))));
         if prefix.starts_with("@scope") {
             assert!(normalized.items().iter().any(|item| matches!(item, CssNormalizedItem::Rule(context) if matches!(context.kind(), CssRuleContextKindRef::Scope { .. }))));
@@ -496,32 +529,22 @@ fn style_ancestry_rejects_font_rules_through_intervening_groups() {
 }
 #[test]
 fn normalization_counts_one_opaque_font_rule_and_fails_atomically_at_rule_limit() {
-    let report =
-        parse_sheet("@font-feature-values Demo { @swash { a: 1; b: 2; } font-display: swap; }");
+    let report = CssParser::default()
+        .parse_sheet("@font-feature-values Demo { @swash { a: 1; b: 2; } font-display: swap; }");
     let limits = CssNormalizationLimits::try_new(0, 1, 0, 0).unwrap();
+    assert_eq!(report.syntax().normalize(limits).unwrap().items().len(), 1);
     assert_eq!(
-        normalize_sheet_with_limits(report.syntax(), limits)
-            .unwrap()
-            .items()
-            .len(),
-        1
-    );
-    assert_eq!(
-        normalize_sheet_with_limits(
-            report.syntax(),
-            CssNormalizationLimits::try_new(0, 0, 0, 0).unwrap()
-        )
-        .unwrap_err()
-        .kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Rules,
-            limit: 0
-        }
+        report
+            .syntax()
+            .normalize(CssNormalizationLimits::try_new(0, 0, 0, 0).unwrap())
+            .unwrap_err()
+            .exhausted_limit(),
+        Some((CssNormalizationResource::Rules, 0))
     );
 }
 #[test]
 fn eof_retains_accepted_rules_with_real_closure_diagnostics() {
-    let report = parse_sheet("@font-feature-values Demo { @swash { a: 1;");
+    let report = CssParser::default().parse_sheet("@font-feature-values Demo { @swash { a: 1;");
     let [CssRule::FontFeatureValues(rule)] = report.syntax().rules() else {
         panic!("{:?}", report.diagnostics())
     };
@@ -535,7 +558,7 @@ fn eof_retains_accepted_rules_with_real_closure_diagnostics() {
             .diagnostics()
             .iter()
             .all(|diagnostic| diagnostic.action()
-                == surgeist_css::CssRecoveryAction::RetainWithImplicitClosure)
+                == surgeist_css::diagnostic::CssRecoveryAction::RetainWithImplicitClosure)
     );
 }
 #[test]
@@ -546,7 +569,7 @@ fn structural_limits_scan_even_discarded_subsidiary_contents() {
             "(".repeat(260),
             ")".repeat(260)
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             report
                 .diagnostics()
@@ -565,9 +588,9 @@ fn scoped_chunk_conversion_preserves_font_payload_at_the_structural_ceiling() {
         "@media all {".repeat(253),
         "}".repeat(253)
     );
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let fonts = normalized
         .items()
         .iter()
@@ -596,7 +619,7 @@ fn style_ancestry_survives_scoped_chunk_splitting() {
         "@media all {".repeat(70),
         "}".repeat(70)
     );
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(
         report
             .diagnostics()
@@ -605,7 +628,7 @@ fn style_ancestry_survives_scoped_chunk_splitting() {
         "{:?}",
         report.diagnostics()
     );
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     assert!(normalized.items().iter().all(|item| !matches!(item, CssNormalizedItem::Rule(context) if matches!(context.kind(), CssRuleContextKindRef::FontFeatureValues(_)))));
 }
 
@@ -617,13 +640,13 @@ fn inherited_scope_keeps_scoped_declaration_and_selector_semantics_across_chunks
             "@media all {".repeat(depth),
             "}".repeat(depth)
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             report.is_clean(),
             "style-nested scopes admit declarations, depth={depth}: {:?}",
             report.diagnostics()
         );
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let scoped_styles = normalized.items().iter().filter(|item| matches!(item, CssNormalizedItem::Rule(context) if matches!(context.kind(), CssRuleContextKindRef::ScopedStyle(_)))).count();
         assert_eq!(
             scoped_styles,
@@ -644,7 +667,7 @@ fn inherited_scope_keeps_scoped_declaration_and_selector_semantics_across_chunks
             .unwrap();
         assert_eq!(
             selectors.selectors()[0].binding(),
-            surgeist_css::CssSelectorBinding::ScopeAnchors
+            surgeist_css::normalize::CssSelectorBinding::ScopeAnchors
         );
         assert!(selectors.parent().is_none());
         assert!(selectors.scope_context().is_some());
@@ -660,7 +683,7 @@ fn inherited_scope_keeps_scoped_declaration_and_selector_semantics_across_chunks
         for (order, name) in ["red", "blue"].into_iter().enumerate() {
             let declaration = declarations[order];
             assert_eq!(declaration.order(), order);
-            let surgeist_css::CssKnownPropertyValueRef::Color(value) = declaration
+            let surgeist_css::property::CssKnownPropertyValueRef::Color(value) = declaration
                 .source()
                 .known()
                 .unwrap()
@@ -674,7 +697,7 @@ fn inherited_scope_keeps_scoped_declaration_and_selector_semantics_across_chunks
                 declaration
                     .source()
                     .value_components()
-                    .serialize()
+                    .serialize_tokens(Default::default())
                     .unwrap()
                     .as_css(),
                 format!(" {name}")
@@ -705,11 +728,11 @@ fn inherited_scope_keeps_scoped_declaration_and_selector_semantics_across_chunks
         };
         assert_eq!(
             outer_selectors.selectors()[0].selector(),
-            &surgeist_css::CssSelector::Class("root".into())
+            &surgeist_css::selector::CssSelector::Class("root".into())
         );
         assert_eq!(
             outer_selectors.selectors()[0].binding(),
-            surgeist_css::CssSelectorBinding::Absolute
+            surgeist_css::normalize::CssSelectorBinding::Absolute
         );
         assert!(outer_selectors.parent().is_none());
         assert!(outer_selectors.scope_context().is_none());
@@ -749,8 +772,8 @@ fn inherited_scope_keeps_scoped_declaration_and_selector_semantics_across_chunks
         };
         assert_eq!(
             root.unwrap().selectors(),
-            &[surgeist_css::CssScopeSelector::Selector(
-                surgeist_css::CssSelector::Class("inner".into())
+            &[surgeist_css::selector::CssStyleSelector::Selector(
+                surgeist_css::selector::CssSelector::Class("inner".into())
             )]
         );
         assert!(limit.is_none());

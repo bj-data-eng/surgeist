@@ -1,13 +1,13 @@
 //! Shapes 1 property composition over shared authored image and shape owners.
 
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
-use crate::{CssShapeBox, CssShapeOutside, CssShapeOutsideShape};
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::values::shape::{CssShapeBox, CssShapeOutside, CssShapeOutsideShape};
 use cssparser::Token;
 
-pub(super) fn parse_shape_outside<'i, 't>(
+pub(crate) fn parse_shape_outside<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssShapeOutside, ParseError<'i, Error>> {
     // `none` is the property branch, never an image-only value.
     if input

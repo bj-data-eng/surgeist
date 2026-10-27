@@ -9,16 +9,26 @@
 //! magnitudeComparable and fullyResolved. Same-unit contextual dimensions
 //! remain comparable coefficients without resolving their actual magnitudes.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::numeric::{
+    CssCalculation, CssLengthPercentage, CssNumeric, CssNumericDimension, CssPercentage,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::shape::{CssInsetShape, CssInsetShapeOffsets};
 
-type Limits = CssSpecifiedValueSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Limits = CssSerializationLimits;
+type Kind = SerializationFailure;
 
-fn length_percentage(source: &str) -> CssSpecifiedLengthPercentage {
-    let components = parse_component_values(source).unwrap();
-    let calculation = CssLengthPercentageCalculation::try_from_components(components).unwrap();
-    CssSpecifiedLengthPercentage::try_from_calculation(calculation).unwrap()
+fn length_percentage(source: &str) -> CssNumeric<CssLengthPercentage> {
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
+    let calculation =
+        CssCalculation::<CssLengthPercentage>::try_from_components(components, Default::default())
+            .unwrap();
+    CssNumeric::<CssLengthPercentage>::try_from_calculation(calculation).unwrap()
 }
 
 fn assert_length_percentage(source: &str, expected: &str) {
@@ -27,8 +37,14 @@ fn assert_length_percentage(source: &str, expected: &str) {
     let calculation = value.calculation().unwrap();
     let components = calculation.components().clone();
     let origin = value.origin().clone();
-    assert_eq!(components.serialize().unwrap().as_css(), source);
-    let result = value.serialize_specified();
+    assert_eq!(
+        components
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
+    let result = value.serialize_specified(Default::default());
     assert_eq!(value, before);
     assert_eq!(value.origin(), &origin);
     assert_eq!(value.calculation().unwrap().components(), &components);
@@ -95,13 +111,16 @@ fn raw_percentage_comparisons_fold_without_a_dimension_hint() {
         ("clamp(none,2%,3%)", "calc(2%)"),
         ("clamp(1%,2%,none)", "calc(2%)"),
     ] {
-        let components = parse_component_values(source).unwrap();
-        let calculation =
-            CssPercentageCalculation::try_from_components(components.clone()).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
+        let calculation = CssCalculation::<CssPercentage>::try_from_components(
+            components.clone(),
+            Default::default(),
+        )
+        .unwrap();
         assert_eq!(calculation.numeric_type().percent_hint(), None);
-        let value = CssSpecifiedPercentage::try_from_calculation(calculation).unwrap();
+        let value = CssNumeric::<CssPercentage>::try_from_calculation(calculation).unwrap();
         let before = value.clone();
-        let result = value.serialize_specified();
+        let result = value.serialize_specified(Default::default());
         assert_eq!(value, before);
         assert_eq!(value.calculation().unwrap().components(), &components);
         assert_eq!(value.origin(), before.origin());
@@ -125,20 +144,26 @@ fn same_unit_contextual_dimensions_remain_comparable_and_unbounded_clamp_keeps_i
 
 #[test]
 fn programmatic_comparison_keeps_exact_coefficients_and_programmatic_origin() {
-    let arguments = CssComponentValues::try_new(vec![
-        CssComponentValue::try_token("+01.0000000%").unwrap(),
-        CssComponentValue::try_token(",").unwrap(),
-        CssComponentValue::try_token("2e0%").unwrap(),
-    ])
+    let arguments = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_token("+01.0000000%").unwrap(),
+            CssComponentValue::try_token(",").unwrap(),
+            CssComponentValue::try_token("2e0%").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let root = CssComponentValue::try_function("MAX", arguments).unwrap();
-    let components = CssComponentValues::try_new(vec![root]).unwrap();
-    let calculation =
-        CssLengthPercentageCalculation::try_from_components(components.clone()).unwrap();
-    let value = CssSpecifiedLengthPercentage::try_from_calculation(calculation).unwrap();
+    let components = CssComponentValues::try_new(vec![root], Default::default()).unwrap();
+    let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
+        components.clone(),
+        Default::default(),
+    )
+    .unwrap();
+    let value = CssNumeric::<CssLengthPercentage>::try_from_calculation(calculation).unwrap();
     let before = value.clone();
     assert!(matches!(value.origin(), CssValueOrigin::Programmatic));
-    let result = value.serialize_specified();
+    let result = value.serialize_specified(Default::default());
     assert_eq!(value, before);
     assert_eq!(value.calculation().unwrap().components(), &components);
     assert_eq!(value.origin(), before.origin());
@@ -158,7 +183,7 @@ fn assert_numeric_limits(source: &str, expected: &str, inputs: usize, projection
     };
     LimitLadder::new(expected, inputs, projections).assert_unchanged_with(
         &value,
-        |value, limits| value.serialize_specified_with_limits(limits),
+        |value, limits| value.serialize_specified(limits),
         |_, _, _| unchanged(),
     );
     // Several limits exhausted at once.
@@ -166,8 +191,8 @@ fn assert_numeric_limits(source: &str, expected: &str, inputs: usize, projection
         (Limits::new(0, 0, 0), Kind::InputNodeLimit),
         (Limits::new(inputs, 0, 0), Kind::ProjectionNodeLimit),
     ] {
-        let error = value.serialize_specified_with_limits(limits).unwrap_err();
-        assert_eq!(error.kind(), kind, "{source}: {limits:?}");
+        let error = value.serialize_specified(limits).unwrap_err();
+        assert_eq!(serialization_failure(&error), kind, "{source}: {limits:?}");
         unchanged();
     }
 }
@@ -207,8 +232,8 @@ fn sibling_hinted_comparisons_keep_one_cumulative_enclosing_budget() {
         (Limits::new(8, 7, expected.len()), Kind::ProjectionNodeLimit),
         (Limits::new(8, 8, expected.len() - 1), Kind::ByteLimit),
     ] {
-        let error = shape.serialize_specified_with_limits(limits).unwrap_err();
-        assert_eq!(error.kind(), kind, "{limits:?}");
+        let error = shape.serialize_specified(limits).unwrap_err();
+        assert_eq!(serialization_failure(&error), kind, "{limits:?}");
         assert_eq!(shape, before);
         for (value, original) in shape
             .offsets()
@@ -223,7 +248,7 @@ fn sibling_hinted_comparisons_keep_one_cumulative_enclosing_budget() {
             );
         }
     }
-    let result = shape.serialize_specified_with_limits(Limits::new(8, 8, expected.len()));
+    let result = shape.serialize_specified(Limits::new(8, 8, expected.len()));
     assert_eq!(shape, before);
     assert_eq!(result.unwrap(), expected);
 }

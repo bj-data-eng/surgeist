@@ -1,18 +1,41 @@
 //! Source-owned Supports selector probes preserve the outer lexical contract.
-use surgeist_css::*;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix, CssRule};
+use surgeist_css::selector::{
+    CssLanguageRange, CssNamespaceConstraint, CssNamespaceContext, CssPartName, CssPseudoClass,
+    CssPseudoElement, CssPseudoElementSegment, CssPseudoSelectorListItem, CssSelector,
+};
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
-fn checked(source: &str, namespaces: &CssNamespaceContext) -> CssSupportsCondition {
-    let components = parse_component_values(source).unwrap();
+fn checked(source: &str, namespaces: &CssNamespaceContext) -> CssCondition<CssSupportsLeaf> {
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let original = components.clone();
-    let condition = CssSupportsCondition::try_from_components(components, namespaces).unwrap();
+    let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
+        components,
+        namespaces,
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(condition.components(), original.items());
     assert_eq!(condition.origin(), original.items()[0].origin());
-    assert_eq!(condition.serialize().unwrap().as_css(), source);
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
     condition
 }
 
-fn selector(condition: &CssSupportsCondition) -> &CssSelector {
-    let CssSupportsConditionKind::Selector(selector) = condition.kind() else {
+fn selector(condition: &CssCondition<CssSupportsLeaf>) -> &CssSelector {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Selector(selector)) = condition.kind() else {
         panic!("clean typed selector")
     };
     selector
@@ -34,7 +57,10 @@ fn constructed_logical_selectors_have_decoded_typed_members_and_original_spellin
     ] {
         let condition = checked(source, &CssNamespaceContext::default());
         let selector = selector(&condition);
-        assert_eq!(selector.to_specified_css().unwrap(), specified);
+        assert_eq!(
+            selector.serialize_specified(Default::default()).unwrap(),
+            specified
+        );
         let expected: Vec<_> = names
             .into_iter()
             .map(|name| CssPseudoSelectorListItem::Selector(CssSelector::Class(name.into())))
@@ -46,7 +72,7 @@ fn constructed_logical_selectors_have_decoded_typed_members_and_original_spellin
 #[test]
 fn parsed_unicode_crlf_rule_keeps_original_opener_and_serialized_token_origins() {
     let source = "/*😀*/\r\n@supports selector(:is(.A)) { .Keep {color:red;} }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean());
     let [CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("Supports rule")
@@ -66,7 +92,7 @@ fn parsed_unicode_crlf_rule_keeps_original_opener_and_serialized_token_origins()
     assert_eq!(origin.span().end().byte_offset().value(), 29);
     assert_eq!(origin.span().start().line().value(), 1);
     assert_eq!(origin.span().start().column().value(), 10);
-    let serialized = condition.serialize().unwrap();
+    let serialized = condition.serialize_tokens(Default::default()).unwrap();
     assert_eq!(serialized.as_css(), " selector(:is(.A)) ");
     assert_eq!(
         serialized.origin_at(1),
@@ -130,11 +156,11 @@ fn generated_snapshot_preserves_default_and_case_sensitive_named_namespace_conte
     let condition = checked("selector(:is(svg|Leaf))", &namespaces);
     assert!(matches!(
         condition.kind(),
-        CssSupportsConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(_))
     ));
     let source =
         "@namespace Svg 'urn:svg'; @namespace 'urn:default'; @supports selector(:is(Svg|Leaf)) {}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean());
     let [
         CssRule::Namespace(_),
@@ -165,12 +191,13 @@ fn diagnosed_selector_probes_remain_original_general_enclosed_without_raw_carrie
         "selector(:is(.A),.B)",
     ] {
         let condition = checked(source, &CssNamespaceContext::default());
-        let CssSupportsConditionKind::GeneralEnclosed(opaque) = condition.kind() else {
+        let CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(opaque)) = condition.kind()
+        else {
             panic!("diagnosed or incomplete selector remains opaque")
         };
         assert_eq!(opaque.authored(), Some(source));
         assert_eq!(opaque.component(), &condition.components()[0]);
-        let report = parse_sheet(&format!(
+        let report = CssParser::default().parse_sheet(format!(
             "@supports {source} {{ .Keep {{color:red;}} }} .After {{color:blue;}}"
         ));
         assert!(report.is_clean());
@@ -179,7 +206,7 @@ fn diagnosed_selector_probes_remain_original_general_enclosed_without_raw_carrie
         };
         assert!(matches!(
             rule.condition().kind(),
-            CssSupportsConditionKind::GeneralEnclosed(_)
+            CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(_))
         ));
         assert!(matches!(rule.rules(), [CssRule::Style(_)]));
     }
@@ -189,7 +216,7 @@ fn diagnosed_selector_probes_remain_original_general_enclosed_without_raw_carrie
 fn nested_style_context_and_outer_eof_closures_stay_with_the_original_owner() {
     let context =
         CssParserContext::new(CssParserMode::Quirks).with_svg_glyph_orientation_vertical();
-    let report = context.parse_sheet(
+    let report = CssParser::new(context, Default::default()).parse_sheet(
         ".Parent { @supports selector(:is(.A)) {color:red; & .Child {color:blue;} } }",
     );
     assert!(report.is_clean());
@@ -210,7 +237,7 @@ fn nested_style_context_and_outer_eof_closures_stay_with_the_original_owner() {
         [CssRule::NestedDeclarations(_), CssRule::Style(_)]
     ));
     let source = "@supports selector(:is(.A)) { .Keep {color:red;";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("retained EOF blocks")
     };
@@ -235,20 +262,30 @@ fn nested_style_context_and_outer_eof_closures_stay_with_the_original_owner() {
 
 #[test]
 fn programmatic_components_and_output_retry_do_not_invent_original_coordinates() {
-    let class = CssComponentValues::try_new(vec![
-        CssComponentValue::try_token(".").unwrap(),
-        CssComponentValue::try_ident("A").unwrap(),
-    ])
+    let class = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_token(".").unwrap(),
+            CssComponentValue::try_ident("A").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let is = CssComponentValue::try_function("is", class).unwrap();
-    let arguments =
-        CssComponentValues::try_new(vec![CssComponentValue::try_token(":").unwrap(), is]).unwrap();
-    for arguments in [arguments, parse_component_values(":is(.A)").unwrap()] {
+    let arguments = CssComponentValues::try_new(
+        vec![CssComponentValue::try_token(":").unwrap(), is],
+        Default::default(),
+    )
+    .unwrap();
+    for arguments in [
+        arguments,
+        CssComponentValues::parse(&CssParser::default(), ":is(.A)").unwrap(),
+    ] {
         let original = arguments.clone();
         let outer = CssComponentValue::try_function("selector", arguments).unwrap();
-        let condition = CssSupportsCondition::try_from_components(
-            CssComponentValues::try_new(vec![outer]).unwrap(),
+        let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
+            CssComponentValues::try_new(vec![outer], Default::default()).unwrap(),
             &CssNamespaceContext::default(),
+            Default::default(),
         )
         .unwrap();
         let CssComponentValueRef::Function(function) = condition.components()[0].view() else {
@@ -266,12 +303,17 @@ fn programmatic_components_and_output_retry_do_not_invent_original_coordinates()
         let before = condition.clone();
         // The seventeenth byte is the closing parenthesis of the programmatic
         // outer function.
-        let error = condition.serialize_with_limit(16).unwrap_err();
-        assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
+        let error = condition
+            .serialize_tokens(crate::css::support::byte_limits(16))
+            .unwrap_err();
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
         assert_eq!(condition, before);
         assert_eq!(
-            condition.serialize_with_limit(17).unwrap().as_css(),
+            condition
+                .serialize_tokens(crate::css::support::byte_limits(17))
+                .unwrap()
+                .as_css(),
             "selector(:is(.A))"
         );
     }
@@ -332,12 +374,13 @@ fn component_backed_dir_lang_and_part_arguments_use_the_generated_owner() {
 
 #[test]
 fn scoped_and_import_supports_share_the_same_source_owning_operand() {
-    let report = parse_sheet("@scope (.Root) { @supports selector(:where(.A)) { .Keep {} } }");
+    let report = CssParser::default()
+        .parse_sheet("@scope (.Root) { @supports selector(:where(.A)) { .Keep {} } }");
     assert!(report.is_clean());
     let [CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("scope")
     };
-    let [CssScopedRule::Supports(rule)] = scope.rules().rules() else {
+    let [CssRule::Supports(rule)] = scope.rules().rules() else {
         panic!("scoped Supports")
     };
     assert_eq!(
@@ -346,7 +389,8 @@ fn scoped_and_import_supports_share_the_same_source_owning_operand() {
             "A".into()
         ))]
     );
-    let report = parse_sheet("@import 'x.css' supports(selector(:is(.A))); .Keep {}");
+    let report =
+        CssParser::default().parse_sheet("@import 'x.css' supports(selector(:is(.A))); .Keep {}");
     assert!(report.is_clean());
     let [CssRule::Import(import), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("import and sibling")
@@ -358,5 +402,11 @@ fn scoped_and_import_supports_share_the_same_source_owning_operand() {
             "A".into()
         ))]
     );
-    assert_eq!(condition.serialize().unwrap().as_css(), "selector(:is(.A))");
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "selector(:is(.A))"
+    );
 }

@@ -1,17 +1,34 @@
 //! Generic Syntax block partitioning for authored supports-condition tests.
 
-use super::*;
-use crate::error::invalid_component_value;
-use crate::named_supports::*;
+use crate::CssParseReport;
+use crate::component::CssComponentValues;
+use crate::component::values::CssComponentValueErrorKind;
+use crate::component::{
+    CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueLimits,
+    CssValueOrigin,
+};
+use crate::declaration::CssCustomPropertyName;
+use crate::diagnostic::CssError;
+use crate::diagnostic::error::invalid_component_value;
+use crate::diagnostic::error::{from_parse_error, invalid_syntax, with_at_rule_prelude_context};
+use crate::diagnostic::{CssRecoveryAction, CssRecoveryDiagnostic};
+use crate::parser::recovery::RecoveryState;
+use crate::parser::{fragments, recovery, syntax_bridge};
+use crate::query::supports::CssSupportsConstructionError;
+use crate::query::supports::named_supports::retained_component_recovery;
+use crate::query::supports::{
+    CssSupportsAtRuleTest, CssSupportsConditionName, CssSupportsQualifiedRuleTest,
+    CssSupportsTestBody, CssSupportsTestChild, CssSupportsTestChildRef, CssSupportsTestDeclaration,
+    CssSupportsTestDeclarations, CssSupportsTestItem,
+};
+use crate::rule::CssSupportsConditionRule;
+use crate::source::{CssParsedOrigin, CssSourceSnapshot};
 use crate::syntax_consumption::{
     self as syntax, CursorItem, GroupEnd, ListId, NodeId, SyntaxCursor, SyntaxDocument, SyntaxNode,
     SyntaxRange, TokenKind,
 };
-use crate::{
-    CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
-    CssComponentValueLimits, CssParseReport, CssRecoveryAction, CssRecoveryDiagnostic,
-    CssValueOrigin,
-};
+#[cfg(test)]
+use cssparser::Token;
 use cssparser::{ParseError, Parser, ParserState};
 
 enum PartitionIssue {
@@ -34,21 +51,21 @@ impl PartitionIssue {
     }
 }
 
-pub(super) struct NamedSupportsPrelude {
+pub(crate) struct NamedSupportsPrelude {
     pub(super) name: CssSupportsConditionName,
 }
 
 pub(super) fn parse_prelude<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &RecoveryState,
-) -> Result<NamedSupportsPrelude, ParseError<'i, Error>> {
+) -> Result<NamedSupportsPrelude, ParseError<'i, CssError>> {
     let at = input.current_source_location();
     let values = CssComponentValues::collect_from_parser(input, recovery.source_snapshot())
         .map_err(|error| invalid_component_value(at, error))?;
     let meaningful: Vec<_> = values
         .items()
         .iter()
-        .filter(|value| !crate::supports::trivia(value))
+        .filter(|value| !crate::query::supports::construction::trivia(value))
         .collect();
     let [component] = meaningful.as_slice() else {
         return Err(with_at_rule_prelude_context(
@@ -77,7 +94,7 @@ pub(super) fn parse_rule<'i, 't>(
     input: &mut Parser<'i, 't>,
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
-) -> Result<CssSupportsConditionRule, ParseError<'i, Error>> {
+) -> Result<CssSupportsConditionRule, ParseError<'i, CssError>> {
     let (body, opening, closing) = parse_body(source, input, diagnostics, recovery)?;
     let document = recovery
         .syntax_document(source)
@@ -107,7 +124,7 @@ pub(super) fn parse_body<'i, 't>(
     input: &mut Parser<'i, 't>,
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
-) -> Result<(CssSupportsTestBody, CssValueOrigin, CssValueOrigin), ParseError<'i, Error>> {
+) -> Result<(CssSupportsTestBody, CssValueOrigin, CssValueOrigin), ParseError<'i, CssError>> {
     let body_start = input.position().byte_index();
     // Arena preparation may omit resource-invalid components. Actual current
     // source admission must therefore precede checked promotion of this body.
@@ -176,7 +193,11 @@ fn promote(
     document: &SyntaxDocument<'_>,
     nodes: &[NodeId],
 ) -> Result<CssComponentValues, CssComponentValueError> {
-    crate::component_values::promote_nodes(document, nodes, CssComponentValueLimits::default())
+    crate::component::values::parse::promote_nodes(
+        document,
+        nodes,
+        CssComponentValueLimits::default(),
+    )
 }
 
 fn parsed_delimiter(source: &CssSourceSnapshot, offset: usize, expected: u8) -> CssValueOrigin {
@@ -191,7 +212,7 @@ fn parsed_delimiter(source: &CssSourceSnapshot, offset: usize, expected: u8) -> 
 
 fn issue_diagnostic(source: &str, issue: PartitionIssue) -> Option<CssRecoveryDiagnostic> {
     let origin = issue.origin();
-    let position = crate::media::parsed_position(origin)?;
+    let position = crate::query::media::construction::parsed_position(origin)?;
     let location = cssparser::SourceLocation {
         line: position.line().value(),
         column: position.column().value() + 1,
@@ -213,7 +234,7 @@ fn issue_diagnostic(source: &str, issue: PartitionIssue) -> Option<CssRecoveryDi
 pub(crate) fn construct_test_body(
     values: CssComponentValues,
     limits: CssComponentValueLimits,
-) -> Result<CssSupportsTestBody, CssNamedSupportsConstructionError> {
+) -> Result<CssSupportsTestBody, CssSupportsConstructionError> {
     values.validate_with_limits(limits)?;
     let document = syntax::normalize(
         syntax::SyntaxInput::CheckedComponents(values.items()),
@@ -229,9 +250,11 @@ pub(crate) fn construct_test_body(
     let mut issues = Vec::new();
     let body = partition(&document, document.root, None, false, &mut issues)?;
     if let Some(issue) = issues.into_iter().next() {
-        return Err(CssNamedSupportsConstructionError::InvalidBodyGrammar {
-            origin: issue.origin().clone(),
-        });
+        return Err(CssSupportsConstructionError::from(
+            crate::query::supports::construction::SupportsConstructionKind::InvalidBodyGrammar {
+                origin: issue.origin().clone(),
+            },
+        ));
     }
     Ok(body)
 }
@@ -437,7 +460,7 @@ fn partition(
                     .map(|issue| issue.origin().clone()),
             );
             let prelude = if malformed {
-                CssComponentValues::try_new(Vec::new())?
+                CssComponentValues::try_new(Vec::new(), Default::default())?
             } else {
                 promote(document, &candidate.prelude)?
             };
@@ -564,7 +587,7 @@ fn partition(
                     .map(|issue| issue.origin().clone()),
             );
             let prelude = if malformed {
-                CssComponentValues::try_new(Vec::new())?
+                CssComponentValues::try_new(Vec::new(), Default::default())?
             } else {
                 promote(document, &candidate.prelude)?
             };
@@ -618,17 +641,8 @@ fn partition(
     }
 }
 
-/// Admits complete genuine unbraced named-test contents. Recovered syntax is
-/// `Some` with diagnostics; typed resource failure is `None`, never a clearing.
 #[must_use]
-pub fn parse_supports_test_contents(source: &str) -> CssParseReport<Option<CssSupportsTestBody>> {
-    parse_supports_test_contents_with_limits(source, CssComponentValueLimits::default())
-}
-
-/// Whole original input, including discarded units/trivia, shares one arena's
-/// component, byte and structural-depth admission before native partitioning.
-#[must_use]
-pub fn parse_supports_test_contents_with_limits(
+pub(crate) fn parse_supports_test_contents_with_limits(
     source: &str,
     limits: CssComponentValueLimits,
 ) -> CssParseReport<Option<CssSupportsTestBody>> {
@@ -654,8 +668,8 @@ pub fn parse_supports_test_contents_with_limits(
         for origin in body.recovery_origins() {
             if let CssValueOrigin::ImplicitClosure { opening, at } = origin
                 && let Some(diagnostic) = CssRecoveryDiagnostic::new(
-                    crate::error::implicit_eof(source),
-                    crate::CssSourceSpan::new(opening.span().start(), at.span().end())
+                    crate::diagnostic::error::implicit_eof(source),
+                    crate::source::CssSourceSpan::new(opening.span().start(), at.span().end())
                         .expect("actual implicit source extent"),
                     CssRecoveryAction::RetainWithImplicitClosure,
                 )
@@ -667,15 +681,8 @@ pub fn parse_supports_test_contents_with_limits(
     })
 }
 
-/// Admits exactly one flattened direct child with no discarded candidate or
-/// structural recovery. Empty semicolons/trivia are ignored at every depth.
 #[must_use]
-pub fn parse_supports_test_child(source: &str) -> CssParseReport<Option<CssSupportsTestChild>> {
-    parse_supports_test_child_with_limits(source, CssComponentValueLimits::default())
-}
-
-#[must_use]
-pub fn parse_supports_test_child_with_limits(
+pub(crate) fn parse_supports_test_child_with_limits(
     source: &str,
     limits: CssComponentValueLimits,
 ) -> CssParseReport<Option<CssSupportsTestChild>> {
@@ -720,7 +727,7 @@ pub fn parse_supports_test_child_with_limits(
 }
 
 #[cfg(test)]
-mod candidate_membership_independent_tests;
+pub(crate) mod candidate_membership_independent_tests;
 
 #[cfg(test)]
 mod tests {
@@ -739,16 +746,16 @@ mod tests {
                 origin: Cow::Borrowed(component.origin()),
             }
         }
-        let before = crate::parse_component_values(
+        let before = crate::component::values::parse_component_values(
             "                                                  before:yes;",
         )
         .unwrap();
-        let bad = crate::parse_component_values("bad:;").unwrap();
-        let after = crate::parse_component_values("after:yes;").unwrap();
+        let bad = crate::component::values::parse_component_values("bad:;").unwrap();
+        let after = crate::component::values::parse_component_values("after:yes;").unwrap();
         let mut tokens: Vec<_> = before
             .items()
             .iter()
-            .filter(|value| !crate::supports::trivia(value))
+            .filter(|value| !crate::query::supports::construction::trivia(value))
             .map(checked)
             .collect();
         tokens.extend(bad.items()[..2].iter().map(checked));

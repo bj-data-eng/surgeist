@@ -6,7 +6,18 @@ use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{
+    CssFeatureKind, CssSupportStatus, feature_metadata, property_support_metadata,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssLonghandValue, CssPropertyKindRef, CssPropertyNameRef,
+};
 
 const MODERN: [&str; 3] = ["break-before", "break-after", "break-inside"];
 const LEGACY: [&str; 3] = ["page-break-before", "page-break-after", "page-break-inside"];
@@ -39,15 +50,18 @@ fn accepted(name: &str, value: &str) {
         assert_eq!(source.known().unwrap().grammar(), grammar(name));
         assert_eq!(source.importance(), CssImportance::Important);
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
     }
 }
 
 fn one_value(source: &CssDeclaration) -> CssLonghandValue {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("one terminal contribution")
     };
@@ -229,7 +243,7 @@ fn legacy_shorthands_map_one_terminal_with_auto_initials_and_no_reset_members() 
                 assert_eq!(known.grammar(), grammar(legacy));
                 assert_eq!(known.property(), grammar(modern).target_property());
                 let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                    expand_declaration(&source).unwrap()
+                    source.expand().unwrap()
                 else {
                     panic!("{legacy}:{authored} maps to one modern terminal")
                 };
@@ -245,7 +259,11 @@ fn legacy_shorthands_map_one_terminal_with_auto_initials_and_no_reset_members() 
                 assert_eq!(item.source().importance(), CssImportance::Important);
                 assert!(item.replacement_components().is_none());
                 assert_eq!(
-                    source.value_components().serialize().unwrap().as_css(),
+                    source
+                        .value_components()
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
                     *authored
                 );
             }
@@ -257,7 +275,7 @@ fn legacy_shorthands_map_one_terminal_with_auto_initials_and_no_reset_members() 
 fn css_wide_values_and_all_include_each_modern_target_through_legacy_grammars() {
     let all_source = declaration("all", "initial");
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&all_source).unwrap()
+        all_source.expand().unwrap()
     else {
         panic!("symbolic all reset")
     };
@@ -274,7 +292,7 @@ fn css_wide_values_and_all_include_each_modern_target_through_legacy_grammars() 
                 let source = declaration(name, text);
                 checked(name, text);
                 let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                    expand_declaration(&source).unwrap()
+                    source.expand().unwrap()
                 else {
                     panic!("{name} has one symbolic global")
                 };
@@ -296,24 +314,29 @@ fn pending_reentry_rechecks_original_legacy_grammar_and_preserves_occurrence() {
         for name in [modern, legacy] {
             for pending in ["var(--break)", "env(--break)"] {
                 let source = declaration(name, pending);
-                let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+                let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                     panic!("{name} retains substitution")
                 };
                 assert!(handle.source().same_occurrence(&source));
                 let invalid_value = if name == modern { "always" } else { "page" };
-                assert!(matches!(
+                assert!(
                     handle
-                        .reenter(parse_component_values(invalid_value).unwrap())
+                        .reenter(
+                            CssComponentValues::parse(&CssParser::default(), invalid_value)
+                                .unwrap()
+                        )
                         .unwrap_err()
-                        .kind(),
-                    CssExpansionErrorKind::InvalidReplacement(_)
-                ));
-                assert_eq!(
+                        .replacement_error()
+                        .is_some()
+                );
+                assert!(
                     handle
-                        .reenter(parse_component_values("var(--again)").unwrap())
+                        .reenter(
+                            CssComponentValues::parse(&CssParser::default(), "var(--again)")
+                                .unwrap()
+                        )
                         .unwrap_err()
-                        .kind(),
-                    &CssExpansionErrorKind::ResidualSubstitution
+                        .is_residual_substitution()
                 );
                 let replacement_text = if modern == "break-inside" {
                     "avoid"
@@ -327,7 +350,8 @@ fn pending_reentry_rechecks_original_legacy_grammar_and_preserves_occurrence() {
                 } else {
                     replacement_text
                 };
-                let replacement = parse_component_values(replacement_text).unwrap();
+                let replacement =
+                    CssComponentValues::parse(&CssParser::default(), replacement_text).unwrap();
                 let CssContributions::Longhands(values) =
                     handle.reenter(replacement.clone()).unwrap()
                 else {
@@ -351,9 +375,7 @@ fn pending_reentry_rechecks_original_legacy_grammar_and_preserves_occurrence() {
 
 #[test]
 fn normalization_retains_order_and_original_legacy_occurrences_after_recovery() {
-    let report = parse_sheet(
-        ".a{page-break-before:always;break-after:recto;page-break-inside:avoid;page-break-after:column;break-inside:avoid-region;page-break-after:verso}",
-    );
+    let report = CssParser::default().parse_sheet(".a{page-break-before:always;break-after:recto;page-break-inside:avoid;page-break-after:column;break-inside:avoid-region;page-break-after:verso}");
     let [diagnostic] = report.diagnostics() else {
         panic!(
             "one invalid legacy keyword diagnostic: {:?}",
@@ -362,7 +384,7 @@ fn normalization_retains_order_and_original_legacy_occurrences_after_recovery() 
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
     assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -392,7 +414,7 @@ fn normalization_retains_order_and_original_legacy_occurrences_after_recovery() 
         assert_eq!(
             item.source()
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css(),
             keyword

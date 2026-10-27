@@ -3,20 +3,41 @@
 //! immutable, branch-preserving checked construction are Surgeist contracts.
 
 use crate::css::support::serialization_limits::assert_limits as exact_limits;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssCalculation, CssLength, CssLengthPercentage, CssNonNegative, CssNumber, CssNumeric,
+    CssPercentage,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::border::{
+    CssBorderImage, CssBorderImageOutset, CssBorderImageOutsetComponent, CssBorderImageRepeat,
+    CssBorderImageRepeatKeyword, CssBorderImageSlice, CssBorderImageSliceComponent,
+    CssBorderImageWidth, CssBorderImageWidthComponent,
+};
+use surgeist_css::values::image::CssImageValue;
 
-type Limits = CssSpecifiedValueSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Limits = CssSerializationLimits;
 
-fn number(text: &str) -> CssSpecifiedNonNegativeNumber {
+fn number(text: &str) -> CssNumeric<CssNumber, CssNonNegative> {
     if text.starts_with("calc(") {
-        CssSpecifiedNonNegativeNumber::try_from_calculation(
-            CssNumberCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap(),
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(
+            CssCalculation::<CssNumber>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap()
     } else {
-        CssSpecifiedNonNegativeNumber::try_from_component(
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
             CssComponentValue::try_number(text).unwrap(),
         )
         .unwrap()
@@ -30,7 +51,7 @@ fn slice(texts: &[&str], fill: bool) -> CssBorderImageSlice {
             .map(|text| {
                 if text.ends_with('%') {
                     CssBorderImageSliceComponent::Percentage(
-                        CssSpecifiedNonNegativePercentage::try_from_component(
+                        CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
                             CssComponentValue::try_token(text).unwrap(),
                         )
                         .unwrap(),
@@ -66,9 +87,10 @@ fn outset(texts: &[&str]) -> CssBorderImageOutset {
 }
 
 fn declaration(text: &str) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::BorderImage),
-        parse_component_values(text).unwrap(),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::BorderImage)),
+        CssComponentValues::parse(&CssParser::default(), text).unwrap(),
         CssImportance::Normal,
     )
     .unwrap()
@@ -81,13 +103,13 @@ fn image(text: &str) -> CssBorderImage {
     else {
         panic!("border-image typed value");
     };
-    value.border_image().clone()
+    value.value().clone()
 }
 
 fn expanded_texts(text: &str) -> Vec<String> {
     let declaration = declaration(text);
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&declaration).unwrap()
+        declaration.expand().unwrap()
     else {
         panic!("completed border-image longhands");
     };
@@ -99,11 +121,21 @@ fn expanded_texts(text: &str) -> Vec<String> {
                 panic!("ordinary typed value");
             };
             match value {
-                CssLonghandValueRef::BorderImageSource(value) => value.serialize_specified(),
-                CssLonghandValueRef::BorderImageSlice(value) => value.serialize_specified(),
-                CssLonghandValueRef::BorderImageWidth(value) => value.serialize_specified(),
-                CssLonghandValueRef::BorderImageOutset(value) => value.serialize_specified(),
-                CssLonghandValueRef::BorderImageRepeat(value) => value.serialize_specified(),
+                CssLonghandValueRef::BorderImageSource(value) => {
+                    value.serialize_specified(Default::default())
+                }
+                CssLonghandValueRef::BorderImageSlice(value) => {
+                    value.serialize_specified(Default::default())
+                }
+                CssLonghandValueRef::BorderImageWidth(value) => {
+                    value.serialize_specified(Default::default())
+                }
+                CssLonghandValueRef::BorderImageOutset(value) => {
+                    value.serialize_specified(Default::default())
+                }
+                CssLonghandValueRef::BorderImageRepeat(value) => {
+                    value.serialize_specified(Default::default())
+                }
                 _ => panic!("ordered border-image member"),
             }
             .unwrap()
@@ -143,11 +175,19 @@ fn checked_construction_preserves_fields_origins_and_expanded_edges() {
         let token = match edge {
             CssBorderImageSliceComponent::Number(number) if !percentage => {
                 assert_eq!(number.origin(), &CssValueOrigin::Programmatic);
-                number.literal_component().unwrap().view()
+                number
+                    .literal()
+                    .map(|literal| literal.component())
+                    .unwrap()
+                    .view()
             }
             CssBorderImageSliceComponent::Percentage(number) if percentage => {
                 assert_eq!(number.origin(), &CssValueOrigin::Programmatic);
-                number.literal_component().unwrap().view()
+                number
+                    .literal()
+                    .map(|literal| literal.component())
+                    .unwrap()
+                    .view()
             }
             _ => panic!("independent expected slice branch"),
         };
@@ -172,8 +212,11 @@ fn checked_construction_preserves_fields_origins_and_expanded_edges() {
         let CssBorderImageWidthComponent::Number(number) = edge else {
             panic!("number width edge");
         };
-        let CssComponentValueRef::Token(CssValueTokenRef::Number(token)) =
-            number.literal_component().unwrap().view()
+        let CssComponentValueRef::Token(CssValueTokenRef::Number(token)) = number
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap()
+            .view()
         else {
             panic!("literal number width edge");
         };
@@ -184,8 +227,11 @@ fn checked_construction_preserves_fields_origins_and_expanded_edges() {
         let CssBorderImageOutsetComponent::Number(number) = edge else {
             panic!("number outset edge");
         };
-        let CssComponentValueRef::Token(CssValueTokenRef::Number(token)) =
-            number.literal_component().unwrap().view()
+        let CssComponentValueRef::Token(CssValueTokenRef::Number(token)) = number
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap()
+            .view()
         else {
             panic!("literal number outset edge");
         };
@@ -204,9 +250,15 @@ fn checked_construction_preserves_fields_origins_and_expanded_edges() {
         panic!("number");
     };
     assert_eq!(top.origin(), &CssValueOrigin::Programmatic);
-    assert_eq!(slice.serialize_specified().unwrap(), "10 20% 30 fill");
-    assert_eq!(width.serialize_specified().unwrap(), "2 3");
-    assert_eq!(outset.serialize_specified().unwrap(), "4");
+    assert_eq!(
+        slice.serialize_specified(Default::default()).unwrap(),
+        "10 20% 30 fill"
+    );
+    assert_eq!(
+        width.serialize_specified(Default::default()).unwrap(),
+        "2 3"
+    );
+    assert_eq!(outset.serialize_specified(Default::default()).unwrap(), "4");
 
     let parsed = image("fill 10 20% 30 / 2 3 / 4 round space");
     let copy = parsed.clone();
@@ -229,7 +281,7 @@ fn checked_construction_preserves_fields_origins_and_expanded_edges() {
     assert_eq!(top.origin(), copied_top.origin());
     assert_eq!(parsed, copy);
     assert_eq!(
-        parsed.serialize_specified().unwrap(),
+        parsed.serialize_specified(Default::default()).unwrap(),
         "10 20% 30 fill / 2 3 / 4 round space"
     );
 }
@@ -294,21 +346,23 @@ fn canonical_equal_edges_use_shortest_one_to_four_sequences() {
         (["1", "2", "3", "4"], "1 2 3 4"),
     ] {
         for result in [
-            slice(&input, false).serialize_specified(),
-            width(&input).serialize_specified(),
-            outset(&input).serialize_specified(),
+            slice(&input, false).serialize_specified(Default::default()),
+            width(&input).serialize_specified(Default::default()),
+            outset(&input).serialize_specified(Default::default()),
         ] {
             assert_eq!(result.unwrap(), expected);
         }
     }
     assert_eq!(
         slice(&["0", "0%", "0", "0%"], false)
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "0 0%"
     );
     assert_eq!(
-        slice(&["100%"], true).serialize_specified().unwrap(),
+        slice(&["100%"], true)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "100% fill"
     );
 }
@@ -316,25 +370,15 @@ fn canonical_equal_edges_use_shortest_one_to_four_sequences() {
 #[test]
 fn scalar_limits_charge_all_four_edges_even_when_one_is_emitted() {
     let value = slice(&["+1.0", "1e0", "01", "1"], false);
-    exact_limits("1", 9, 9, |limits| {
-        value.serialize_specified_with_limits(limits)
-    });
+    exact_limits("1", 9, 9, |limits| value.serialize_specified(limits));
     let value = slice(&["1"], true);
-    exact_limits("1 fill", 10, 10, |limits| {
-        value.serialize_specified_with_limits(limits)
-    });
+    exact_limits("1 fill", 10, 10, |limits| value.serialize_specified(limits));
     let value = width(&["1"]);
-    exact_limits("1", 9, 9, |limits| {
-        value.serialize_specified_with_limits(limits)
-    });
+    exact_limits("1", 9, 9, |limits| value.serialize_specified(limits));
     let value = outset(&["0"]);
-    exact_limits("0", 9, 9, |limits| {
-        value.serialize_specified_with_limits(limits)
-    });
+    exact_limits("0", 9, 9, |limits| value.serialize_specified(limits));
     let value = CssBorderImageWidth::try_new(vec![CssBorderImageWidthComponent::Auto]).unwrap();
-    exact_limits("auto", 5, 5, |limits| {
-        value.serialize_specified_with_limits(limits)
-    });
+    exact_limits("auto", 5, 5, |limits| value.serialize_specified(limits));
     for (horizontal, vertical, expected) in [
         (
             CssBorderImageRepeatKeyword::Stretch,
@@ -348,9 +392,7 @@ fn scalar_limits_charge_all_four_edges_even_when_one_is_emitted() {
         ),
     ] {
         let value = CssBorderImageRepeat::new(horizontal, vertical);
-        exact_limits(expected, 3, 3, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        exact_limits(expected, 3, 3, |limits| value.serialize_specified(limits));
     }
 }
 
@@ -363,7 +405,7 @@ fn canonical_math_compression_preserves_symbolic_roots_and_all_projection_costs(
         false,
     );
     exact_limits("calc(0.5)", 17, 15, |limits| {
-        value.serialize_specified_with_limits(limits)
+        value.serialize_specified(limits)
     });
 
     let values = [
@@ -375,9 +417,10 @@ fn canonical_math_compression_preserves_symbolic_roots_and_all_projection_costs(
     .iter()
     .map(|text| {
         CssBorderImageWidthComponent::LengthPercentage(
-            CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-                CssLengthPercentageCalculation::try_from_components(
-                    parse_component_values(text).unwrap(),
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
+                CssCalculation::<CssLengthPercentage>::try_from_components(
+                    CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+                    Default::default(),
                 )
                 .unwrap(),
             )
@@ -389,11 +432,11 @@ fn canonical_math_compression_preserves_symbolic_roots_and_all_projection_costs(
     // Each unresolved sum visits group/sum/two values, then projects two leaves,
     // two same-unit combined values and the sum: four inputs/five projections.
     exact_limits("calc(1em + 2px)", 21, 25, |limits| {
-        value.serialize_specified_with_limits(limits)
+        value.serialize_specified(limits)
     });
     let value = image("calc(100%) / calc(1) / calc(0) stretch");
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "calc(100%) / calc(1) / calc(0)"
     );
 }
@@ -403,11 +446,14 @@ fn slot_serialization_keeps_number_percentage_and_length_zero_branches() {
     let width = CssBorderImageWidth::try_new(vec![
         CssBorderImageWidthComponent::Number(number("0")),
         CssBorderImageWidthComponent::LengthPercentage(
-            CssSpecifiedNonNegativeLengthPercentage::zero(),
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
+                CssComponentValue::try_number("0").unwrap(),
+            )
+            .unwrap(),
         ),
         CssBorderImageWidthComponent::Number(number("0")),
         CssBorderImageWidthComponent::LengthPercentage(
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
                 CssComponentValue::try_token("0%").unwrap(),
             )
             .unwrap(),
@@ -415,15 +461,16 @@ fn slot_serialization_keeps_number_percentage_and_length_zero_branches() {
     ])
     .unwrap();
     exact_limits("0 0px 0 0%", 9, 9, |limits| {
-        width.serialize_specified_with_limits(limits)
+        width.serialize_specified(limits)
     });
     let outset = CssBorderImageOutset::try_new(vec![CssBorderImageOutsetComponent::Length(
-        CssSpecifiedNonNegativeLength::zero(),
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component(
+            CssComponentValue::try_number("0").unwrap(),
+        )
+        .unwrap(),
     )])
     .unwrap();
-    exact_limits("0px", 9, 9, |limits| {
-        outset.serialize_specified_with_limits(limits)
-    });
+    exact_limits("0px", 9, 9, |limits| outset.serialize_specified(limits));
     let value = CssBorderImage::try_new(
         None,
         Some(slice(&["100%"], false)),
@@ -432,7 +479,7 @@ fn slot_serialization_keeps_number_percentage_and_length_zero_branches() {
         None,
     )
     .unwrap();
-    let text = value.serialize_specified().unwrap();
+    let text = value.serialize_specified(Default::default()).unwrap();
     assert_eq!(text, "100% / 0 0px 0 0% / 0px");
     let reentered = image(&text);
     assert!(matches!(
@@ -471,8 +518,16 @@ fn shorthand_initials_coupling_fill_and_order_have_independent_expected_text() {
         ),
     ] {
         let value = image(authored);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
-        assert_eq!(image(expected).serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_eq!(
+            image(expected)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
         assert_eq!(expanded_texts(authored), expanded_texts(expected));
     }
     assert_eq!(
@@ -488,18 +543,14 @@ fn shorthand_initials_coupling_fill_and_order_have_independent_expected_text() {
 #[test]
 fn omitted_initials_visit_all_children_without_consuming_discarded_bytes() {
     let value = image("none 100% / 1 / 0 stretch stretch");
-    exact_limits("none", 32, 33, |limits| {
-        value.serialize_specified_with_limits(limits)
-    });
+    exact_limits("none", 32, 33, |limits| value.serialize_specified(limits));
     let value = image("none");
-    exact_limits("none", 2, 3, |limits| {
-        value.serialize_specified_with_limits(limits)
-    });
+    exact_limits("none", 2, 3, |limits| value.serialize_specified(limits));
     // The source consumes the complete final byte allowance. Initial numeric
     // groups must be visited without attempting even one discarded byte.
     let value = image("url(x) 100% / 1 / 0 stretch stretch");
     exact_limits("url(\"x\")", 33, 33, |limits| {
-        value.serialize_specified_with_limits(limits)
+        value.serialize_specified(limits)
     });
     let exponent = "9".repeat(100);
     let value = CssBorderImage::try_new(
@@ -513,36 +564,31 @@ fn omitted_initials_visit_all_children_without_consuming_discarded_bytes() {
         )),
     )
     .unwrap();
-    exact_limits("none", 32, 33, |limits| {
-        value.serialize_specified_with_limits(limits)
-    });
+    exact_limits("none", 32, 33, |limits| value.serialize_specified(limits));
 }
 
 #[test]
 fn huge_exact_literals_bound_expansion_and_preserve_input_after_failure() {
     let value = slice(&["1e20"], false);
     exact_limits("100000000000000000000", 9, 9, |limits| {
-        value.serialize_specified_with_limits(limits)
+        value.serialize_specified(limits)
     });
     let value = slice(&["1e20", "1", "1e20", "1"], false);
     exact_limits("100000000000000000000 1", 9, 9, |limits| {
-        value.serialize_specified_with_limits(limits)
+        value.serialize_specified(limits)
     });
     let huge = format!("1e{}", "9".repeat(100));
     let value = slice(&[&huge], false);
     let before = value.clone();
-    assert_eq!(
+    assert!(
         value
-            .serialize_specified_with_limits(Limits::new(100, 100, 4))
+            .serialize_specified(Limits::new(100, 100, 4))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
     let value = slice(&[&format!("-0e{}", "9".repeat(100))], false);
-    exact_limits("0", 9, 9, |limits| {
-        value.serialize_specified_with_limits(limits)
-    });
+    exact_limits("0", 9, 9, |limits| value.serialize_specified(limits));
 }
 
 #[test]
@@ -550,19 +596,18 @@ fn cumulative_source_prefix_and_later_groups_fail_atomically() {
     let value = image("url(x) 100% / 2 / 3 round space");
     // Root1 + URL2 + three groups9 each + Repeat3 =33; no fallback.
     exact_limits("url(\"x\") 100% / 2 / 3 round space", 33, 33, |limits| {
-        value.serialize_specified_with_limits(limits)
+        value.serialize_specified(limits)
     });
     let before = value.clone();
-    assert_eq!(
+    assert!(
         value
-            .serialize_specified_with_limits(Limits::new(33, 33, 20))
+            .serialize_specified(Limits::new(33, 33, 20))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "url(\"x\") 100% / 2 / 3 round space"
     );
 }

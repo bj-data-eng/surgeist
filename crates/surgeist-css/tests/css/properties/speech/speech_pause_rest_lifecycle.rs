@@ -11,7 +11,16 @@ use crate::css::support::{
     important_speech_components as checked, important_speech_declaration as declaration,
     known_property as property,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueTokenRef};
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssLonghandValue, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
 
 const LONGHANDS: [&str; 4] = ["pause-before", "pause-after", "rest-before", "rest-after"];
 const ALL: [&str; 6] = [
@@ -37,9 +46,10 @@ fn assert_admitted(name: &str, text: &str) {
     assert!(source.known().unwrap().property_value().is_some());
     assert!(source.known().unwrap().global().is_none());
     assert!(source.known().unwrap().substitution_dependent().is_none());
-    let components = parse_component_values(text).unwrap();
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(property(name)),
+    let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property(name))),
         components.clone(),
         CssImportance::Important,
     )
@@ -49,8 +59,18 @@ fn assert_admitted(name: &str, text: &str) {
     assert_eq!(checked.value_components(), &components);
     assert_eq!(checked.importance(), CssImportance::Important);
     assert!(checked.position().is_none());
-    assert!(validate_style_attribute(&format!("{name}:{text}")).is_ok());
-    assert!(validate_sheet(&format!(".speech{{{name}:{text}}}")).is_ok());
+    assert!(
+        CssParser::default()
+            .parse_block_contents(format!("{name}:{text}"))
+            .into_validation_result()
+            .is_ok()
+    );
+    assert!(
+        CssParser::default()
+            .parse_sheet(format!(".speech{{{name}:{text}}}"))
+            .into_validation_result()
+            .is_ok()
+    );
 }
 
 #[test]
@@ -82,7 +102,11 @@ fn pause_rest_time_calculations_remain_authored_without_computed_range_evaluatio
             assert_admitted(name, value);
             let source = declaration(name, value);
             assert_eq!(
-                source.value_components().serialize().unwrap().as_css(),
+                source
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 value
             );
         }
@@ -127,10 +151,19 @@ fn pause_rest_shorthands_expand_one_value_twice_and_two_values_before_then_after
                 (left, before, first, parts[0]),
                 (right, after, second, *parts.last().unwrap()),
             ] {
-                // Reuse exact child origins: authored value equality includes
-                // provenance, so independently parsed occurrences are unequal.
-                let component = CssComponentValues::try_new(vec![component.clone()]).unwrap();
-                assert_eq!(component.serialize().unwrap().as_css(), expected);
+                // Rebuild the terminal from the exact source component. Numeric
+                // value equality ignores provenance, so this checked value equals
+                // the expanded one; origins are not part of the comparison.
+                let component =
+                    CssComponentValues::try_new(vec![component.clone()], Default::default())
+                        .unwrap();
+                assert_eq!(
+                    component
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
+                    expected
+                );
                 let expected = expanded(&checked(terminal, component));
                 assert_eq!(item.property(), property(terminal));
                 assert_eq!(
@@ -223,14 +256,19 @@ fn pause_rest_global_keywords_expand_at_the_whole_property_boundary() {
                 assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
                 assert!(item.source().same_occurrence(&source));
             }
-            let checked = parse_property_value(
-                CssPropertyNameRef::Known(property(name)),
-                parse_component_values(text).unwrap(),
+            let checked = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property(name))),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 CssImportance::Important,
             )
             .unwrap();
             assert_eq!(checked.known().unwrap().global(), Some(keyword));
-            assert!(!parse_style_attribute(&format!("{name}:{text} weak")).is_clean());
+            assert!(
+                !CssParser::default()
+                    .parse_block_contents(format!("{name}:{text} weak"))
+                    .is_clean()
+            );
         }
     }
 }
@@ -261,7 +299,7 @@ fn invalid_pause_rest_values_drop_only_the_declaration_and_remain_grammar_errors
         }
         for value in invalid {
             let source = format!("color:red;{name}:{value};height:1px");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert_eq!(report.syntax().len(), 2, "{source}");
             assert_eq!(
                 report.syntax()[0].known().unwrap().property(),
@@ -286,14 +324,19 @@ fn invalid_pause_rest_values_drop_only_the_declaration_and_remain_grammar_errors
                 "{source}"
             );
             assert_eq!(
-                validate_style_attribute(&source).unwrap_err().diagnostics(),
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 report.diagnostics()
             );
             assert!(
-                parse_property_value(
-                    CssPropertyNameRef::Known(property(name)),
-                    parse_component_values(value).unwrap(),
-                    CssImportance::Normal,
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(property(name))),
+                    CssComponentValues::parse(&CssParser::default(), value).unwrap(),
+                    CssImportance::Normal
                 )
                 .is_err(),
                 "checked {name}:{value}"
@@ -315,7 +358,7 @@ fn pause_rest_substitution_reentry_is_atomic_ordered_and_retains_replacement_ori
                 .as_css(),
             "var(--speech)"
         );
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending authored substitution")
         };
         let valid = if LONGHANDS.contains(&name) {
@@ -324,7 +367,7 @@ fn pause_rest_substitution_reentry_is_atomic_ordered_and_retains_replacement_ori
             "weak 250ms"
         };
         for text in [valid, "inherit"] {
-            let replacement = parse_component_values(text).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
                 panic!("completed replacement")
@@ -347,20 +390,20 @@ fn pause_rest_substitution_reentry_is_atomic_ordered_and_retains_replacement_ori
             "weak;color:red",
         ] {
             let error = handle
-                .reenter(parse_component_values(text).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), text).unwrap())
                 .unwrap_err();
             assert!(
-                matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(_)),
+                error.replacement_error().is_some(),
                 "{name}:{text}: {error:?}"
             );
         }
         let error = handle
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err();
-        assert_eq!(error.kind(), &CssExpansionErrorKind::ResidualSubstitution);
+        assert!(error.is_residual_substitution(), "{error:?}");
         assert!(
             handle
-                .reenter(parse_component_values(valid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), valid).unwrap())
                 .is_ok()
         );
     }
@@ -376,7 +419,7 @@ fn pause_rest_authored_case_escapes_comments_and_exact_numbers_survive_bounded_s
         ("rest-after", "rest-after", "1e-400s"),
         (r"r\65 st", "rest", "MEDIUM/**/250ms"),
     ] {
-        let report = parse_style_attribute(&format!("{name}:{text}!important"));
+        let report = CssParser::default().parse_block_contents(format!("{name}:{text}!important"));
         assert!(
             report.is_clean(),
             "{name}:{text}: {:?}",
@@ -389,19 +432,24 @@ fn pause_rest_authored_case_escapes_comments_and_exact_numbers_survive_bounded_s
         let components = source.value_components();
         assert_eq!(
             components
-                .serialize_with_limit(text.len())
+                .serialize_tokens(crate::css::support::byte_limits(text.len()))
                 .unwrap()
                 .as_css(),
             text
         );
+        assert!(
+            components
+                .serialize_tokens(crate::css::support::byte_limits(text.len() - 1))
+                .unwrap_err()
+                .is_byte_limit()
+        );
         assert_eq!(
             components
-                .serialize_with_limit(text.len() - 1)
-                .unwrap_err()
-                .kind(),
-            CssComponentValueErrorKind::ByteLimit
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            text
         );
-        assert_eq!(components.serialize().unwrap().as_css(), text);
     }
 }
 
@@ -411,7 +459,7 @@ fn negative_pause_rest_time_diagnostics_preserve_token_location_and_balanced_dec
         let prefix = "color:red;/*😀*/";
         let unit = format!("{name}:-1ms;");
         let source = format!("{prefix}{unit}height:1px");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 2);
         let [diagnostic] = report.diagnostics() else {
             panic!("one negative time diagnostic")
@@ -431,14 +479,18 @@ fn negative_pause_rest_time_diagnostics_preserve_token_location_and_balanced_dec
             prefix.len() + unit.len()
         );
         let sheet_source = format!(".a{{{source}}}");
-        let sheet = parse_sheet(&sheet_source);
+        let sheet = CssParser::default().parse_sheet(&sheet_source);
         let [CssRule::Style(rule)] = sheet.syntax().rules() else {
             panic!("retained style rule")
         };
         assert_eq!(rule.declarations().len(), 2);
         assert_eq!(sheet.diagnostics().len(), 1);
         assert_eq!(
-            validate_sheet(&sheet_source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&sheet_source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             sheet.diagnostics()
         );
     }

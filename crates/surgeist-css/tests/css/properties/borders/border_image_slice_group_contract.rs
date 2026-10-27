@@ -6,10 +6,24 @@
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#component-combinators
 
 use crate::css::support::check_property_text as checked;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use crate::css::support::property_admission::property_value_facts;
 use crate::css::support::property_admission::{
     assert_checked_rejected, assert_style_attribute_rejected,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssLonghandContributions, CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::border::{CssBorderImageSlice, CssBorderImageSliceComponent};
 
 const PROPERTIES: [CssKnownProperty; 2] = [
     CssKnownProperty::BorderImageSlice,
@@ -18,15 +32,14 @@ const PROPERTIES: [CssKnownProperty; 2] = [
 
 fn parsed(property: CssKnownProperty, text: &str) -> CssDeclaration {
     let css = format!("{}: {text} !important;", property.canonical_name());
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1);
     report.syntax()[0].clone()
 }
 
 fn contributions(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("completed longhands")
     };
@@ -113,31 +126,35 @@ fn pending_reentry_rejects_split_groups_atomically_and_remains_reusable() {
             parsed(property, "var(--slice)"),
             checked(property, "var(--slice)").unwrap(),
         ] {
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("pending substitution")
             };
-            let before = source.to_specified_css().unwrap();
+            let before = source.serialize_specified(Default::default()).unwrap();
             for _ in 0..2 {
                 for (text, _) in split_groups() {
-                    let replacement = parse_component_values(text).unwrap();
+                    let replacement =
+                        CssComponentValues::parse(&CssParser::default(), text).unwrap();
                     let error = handle
                         .reenter(replacement)
                         .expect_err("pending split group rejection");
                     let direct = checked(property, text).expect_err("checked group rejection");
-                    let CssExpansionErrorKind::InvalidReplacement(actual) = error.kind() else {
+                    let Some(actual) = error.replacement_error() else {
                         panic!("intrinsic grammar error: {error:?}")
                     };
-                    assert_eq!(actual.kind(), direct.kind());
+                    assert_eq!(property_value_facts(actual), property_value_facts(&direct));
                     assert_eq!(actual.origin(), direct.origin());
                 }
-                let replacement = parse_component_values("fill 1 2 3 4").unwrap();
+                let replacement =
+                    CssComponentValues::parse(&CssParser::default(), "fill 1 2 3 4").unwrap();
                 let CssContributions::Longhands(values) =
                     handle.reenter(replacement.clone()).unwrap()
                 else {
                     panic!("completed reentry")
                 };
                 assert_eq!(
-                    slice(&values).serialize_specified().unwrap(),
+                    slice(&values)
+                        .serialize_specified(Default::default())
+                        .unwrap(),
                     "1 2 3 4 fill"
                 );
                 for item in values.items() {
@@ -145,22 +162,31 @@ fn pending_reentry_rejects_split_groups_atomically_and_remains_reusable() {
                     assert_eq!(item.source().importance(), CssImportance::Important);
                     let retained = item.replacement_components().unwrap();
                     assert_eq!(
-                        retained.serialize().unwrap().as_css(),
-                        replacement.serialize().unwrap().as_css()
+                        retained
+                            .serialize_tokens(Default::default())
+                            .unwrap()
+                            .as_css(),
+                        replacement
+                            .serialize_tokens(Default::default())
+                            .unwrap()
+                            .as_css()
                     );
                     for (a, b) in retained.items().iter().zip(replacement.items()) {
                         assert_eq!(a.origin(), b.origin());
                     }
                 }
                 assert!(handle.source().same_occurrence(&source));
-                assert_eq!(source.to_specified_css().unwrap(), before);
+                assert_eq!(
+                    source.serialize_specified(Default::default()).unwrap(),
+                    before
+                );
                 let error = handle
-                    .reenter(parse_component_values("var(--remaining)").unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), "var(--remaining)")
+                            .unwrap(),
+                    )
                     .unwrap_err();
-                assert!(matches!(
-                    error.kind(),
-                    CssExpansionErrorKind::ResidualSubstitution
-                ));
+                assert!(error.is_residual_substitution());
             }
         }
     }
@@ -171,7 +197,7 @@ fn recovery_drops_only_the_split_group_and_preserves_siblings_and_coordinates() 
     for property in PROPERTIES {
         let declaration = format!("{}: 1 fill 2;", property.canonical_name());
         let css = format!("--😀: kept; {declaration} color: red;");
-        let report = parse_style_attribute(&css);
+        let report = CssParser::default().parse_block_contents(&css);
         let [diagnostic] = report.diagnostics() else {
             panic!("one split-group diagnostic: {:?}", report.diagnostics())
         };
@@ -198,7 +224,11 @@ fn recovery_drops_only_the_split_group_and_preserves_siblings_and_coordinates() 
             css[..offset].encode_utf16().count()
         );
         assert_eq!(
-            validate_style_attribute(&css).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&css)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -224,7 +254,10 @@ fn fill_before_or_after_complete_groups_preserves_edges_and_round_trips() {
                     assert_eq!(value.fill(), text.contains("fill"));
                     let expected =
                         format!("{canonical}{}", if value.fill() { " fill" } else { "" });
-                    assert_eq!(value.serialize_specified().unwrap(), expected);
+                    assert_eq!(
+                        value.serialize_specified(Default::default()).unwrap(),
+                        expected
+                    );
                     for edge in value.values() {
                         let origin = match edge {
                             CssBorderImageSliceComponent::Number(number) => number.origin(),
@@ -233,12 +266,12 @@ fn fill_before_or_after_complete_groups_preserves_edges_and_round_trips() {
                         };
                         assert!(matches!(origin, CssValueOrigin::Parsed(_)));
                     }
-                    let css = source.to_specified_css().unwrap();
-                    let reparsed = parse_style_attribute(&css);
+                    let css = source.serialize_specified(Default::default()).unwrap();
+                    let reparsed = CssParser::default().parse_block_contents(&css);
                     assert!(reparsed.is_clean(), "{css}: {:?}", reparsed.diagnostics());
                     assert_eq!(
                         slice(&contributions(&reparsed.syntax()[0]))
-                            .serialize_specified()
+                            .serialize_specified(Default::default())
                             .unwrap(),
                         expected
                     );
@@ -307,7 +340,8 @@ fn masking_slice_keeps_its_separate_trailing_fill_grammar() {
         for text in ["1", "1 2%", "1 2 3 4 fill"] {
             assert!(checked(property, text).is_ok(), "mask control: {text}");
             assert!(
-                parse_style_attribute(&format!("{}: {text};", property.canonical_name()))
+                CssParser::default()
+                    .parse_block_contents(format!("{}: {text};", property.canonical_name()))
                     .is_clean()
             );
         }
@@ -330,25 +364,29 @@ fn masking_slice_keeps_its_separate_trailing_fill_grammar() {
 #[test]
 fn mixed_origin_checked_slice_groups_retain_nonnegative_scalar_ownership() {
     for property in PROPERTIES {
-        let parsed = parse_component_values("fill 1 2% 3 4%").unwrap();
+        let parsed = CssComponentValues::parse(&CssParser::default(), "fill 1 2% 3 4%").unwrap();
         let mut items = parsed.items().to_vec();
         let index = items.iter().position(|item| matches!(item.view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.representation() == "3")).unwrap();
         items[index] = CssComponentValue::try_number("+3").unwrap();
-        let components = CssComponentValues::try_new(items).unwrap();
-        let source = parse_property_value(
-            CssPropertyNameRef::Known(property),
+        let components = CssComponentValues::try_new(items, Default::default()).unwrap();
+        let source = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components,
             CssImportance::Important,
         )
         .unwrap();
         let values = contributions(&source);
         let value = slice(&values);
-        assert_eq!(value.serialize_specified().unwrap(), "1 2% 3 4% fill");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            "1 2% 3 4% fill"
+        );
         let CssBorderImageSliceComponent::Number(third) = &value.values()[2] else {
             panic!("third number")
         };
         assert_eq!(third.origin(), &CssValueOrigin::Programmatic);
-        assert_eq!(third.serialize_specified().unwrap(), "3");
+        assert_eq!(third.serialize_specified(Default::default()).unwrap(), "3");
     }
 }
 
@@ -358,11 +396,11 @@ fn slice_serialization_budgets_charge_the_complete_group_and_fill_atomically() {
     let values = contributions(&source);
     let value = slice(&values);
     let expected = "1 2% 3 4% fill";
-    type Limits = CssSpecifiedValueSerializationLimits;
-    type Kind = CssSpecifiedValueSerializationErrorKind;
+    type Limits = CssSerializationLimits;
+    type Kind = SerializationFailure;
     assert_eq!(
         value
-            .serialize_specified_with_limits(Limits::new(10, 10, expected.len()))
+            .serialize_specified(Limits::new(10, 10, expected.len()))
             .unwrap(),
         expected
     );
@@ -375,12 +413,12 @@ fn slice_serialization_budgets_charge_the_complete_group_and_fill_atomically() {
         (Limits::new(10, 10, expected.len() - 1), Kind::ByteLimit),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }

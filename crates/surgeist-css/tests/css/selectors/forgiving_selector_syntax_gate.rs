@@ -5,13 +5,18 @@
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#parse-as-a-forgiving-selector-list
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value
 use crate::css::support::color_and_selector_fixtures::assert_strict_validation_rejects;
-use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem,
-    CssRecoveryAction, CssSelector, CssTokenKind, ErrorKind, parse_selector,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem, CssSelector,
 };
 
 fn assert_rejected(source: &str) {
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(
         report.syntax().is_none(),
         "invalid whole selector retained: {source}: {report:?}"
@@ -67,7 +72,11 @@ fn retained_members(selector: &Option<CssSelector>) -> &[CssPseudoSelectorListIt
 fn lexical_validity_does_not_prevent_forgiving_removal_of_invalid_selector_members() {
     for pseudo in ["is", "where"] {
         let source = format!(":{pseudo}(:unknown(x),.ok)");
-        let report = parse_selector(&source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            &source,
+            &CssNamespaceContext::default(),
+        );
         assert_eq!(
             retained_members(report.syntax()),
             [CssPseudoSelectorListItem::Selector(CssSelector::Class(
@@ -93,7 +102,11 @@ fn lexical_validity_does_not_prevent_forgiving_removal_of_invalid_selector_membe
 #[test]
 fn missing_eof_closure_retains_a_lexically_valid_forgiving_selector() {
     for source in [":is(.a", ":where(.a", ":is(.a,.b", ":where(.a,.b"] {
-        let report = parse_selector(source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         let expected = if source.contains(',') {
             vec![
                 CssSelector::Class("a".into()),
@@ -135,7 +148,11 @@ fn not_and_has_do_not_forgive_invalid_selector_members() {
         assert_rejected(source);
     }
     for source in [":not(.ok)", ":has(>.ok)", ":is(.ok)", ":where(.ok)"] {
-        let report = parse_selector(source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.is_clean(), "{source}: {report:?}");
         assert!(report.into_validation_result().unwrap().is_some());
     }
@@ -149,7 +166,11 @@ fn bad_tokens_are_not_forgiven_and_the_responsible_unicode_source_position_is_re
         (".ok,]", "]", CssTokenKind::CloseSquareBracket),
     ] {
         let source = format!("/*😀*/\r\n/*é*/:is({body})");
-        let report = parse_selector(&source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            &source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.syntax().is_none(), "{source}: {report:?}");
         let diagnostic = report
             .diagnostics()
@@ -157,9 +178,12 @@ fn bad_tokens_are_not_forgiven_and_the_responsible_unicode_source_position_is_re
             .find(|diagnostic| diagnostic.action() == CssRecoveryAction::RejectInput)
             .expect("whole selector rejection");
         assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidSelector);
-        let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-            panic!("selector diagnostic")
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidSelector,
+            "selector diagnostic"
+        );
         assert_eq!(detail.encountered().unwrap().kind(), kind);
         let expected_offset = source.find(offending).unwrap();
         assert_eq!(
@@ -191,7 +215,11 @@ fn a_lexically_valid_nested_invalid_selector_allows_the_outer_valid_sibling() {
         ":is(.ok,:not(:unknown(x)))",
         ":where(.ok,:not(:unknown(x)))",
     ] {
-        let report = parse_selector(source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         assert_eq!(
             retained_members(report.syntax()),
             [CssPseudoSelectorListItem::Selector(CssSelector::Class(

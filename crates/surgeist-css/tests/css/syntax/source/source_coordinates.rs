@@ -3,11 +3,15 @@ use std::hash::Hash;
 use crate::css::support::parse_report as common;
 
 use common::CssParseReportTestExt;
-use surgeist_css::{
-    CssByteOffset, CssErrorCode, CssKnownProperty, CssLineIndex, CssMediaConditionKind,
-    CssMediaQuery, CssMediaType, CssRecoveryAction, CssRule, CssSourcePosition, CssSourceSpan,
-    CssSupportsConditionKind, CssTokenKind, CssUtf16ColumnIndex, ErrorKind, parse_sheet,
-    parse_style_attribute,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{CssMediaLeaf, CssMediaQuery, CssMediaType};
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::rule::CssRule;
+use surgeist_css::source::{
+    CssByteOffset, CssLineIndex, CssSourcePosition, CssSourceSpan, CssUtf16ColumnIndex,
 };
 
 fn assert_copy_hash_ord<T: Copy + Eq + Ord + Hash>() {}
@@ -21,7 +25,7 @@ fn assert_position(position: CssSourcePosition, byte_offset: usize, line: u32, c
 #[test]
 fn opaque_media_nodes_preserve_exact_non_bmp_byte_and_utf16_positions() {
     let source = "@media /*😀*/ only F\\75ture, /*😀*/ (UnKnOwN: CAlc(1foo + 2px)) {}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Media(rule)] = report.syntax().rules() else {
         panic!("expected retained media rule")
@@ -53,7 +57,7 @@ fn opaque_media_nodes_preserve_exact_non_bmp_byte_and_utf16_positions() {
     assert_eq!(unknown_type.as_css(), "F\\75ture");
 
     let condition_offset = source.find("(UnKnOwN").unwrap();
-    let CssMediaConditionKind::GeneralEnclosed(enclosed) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(enclosed)) = condition.kind() else {
         panic!("expected general enclosure details")
     };
     assert_position(
@@ -72,7 +76,7 @@ fn counter_style_descriptor_positions_and_errors_use_non_bmp_utf16_coordinates()
         "/*😀*/@counter-style kept { system: additive; range: infinite -1; ",
         "additive-symbols: 10 X, 10 I; additive-symbols: 10 X, 1 I; }",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
         panic!("expected retained counter style")
     };
@@ -113,12 +117,13 @@ fn counter_style_descriptor_positions_and_errors_use_non_bmp_utf16_coordinates()
 #[test]
 fn supports_nodes_preserve_exact_non_bmp_byte_and_utf16_positions() {
     let source = "/*😀*/\n@supports /*🦊*/ (D\\69splay: grid) {}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("expected supports rule");
     };
-    let CssSupportsConditionKind::Declaration(declaration) = rule.condition().kind() else {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) = rule.condition().kind()
+    else {
         panic!("expected declaration condition");
     };
 
@@ -154,7 +159,7 @@ fn supports_nodes_preserve_exact_non_bmp_byte_and_utf16_positions() {
 #[test]
 fn font_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
     let source = "--😀: 1; font: menu serif; color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("mispositioned system font must recover once");
@@ -167,15 +172,20 @@ fn font_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
     assert_position(diagnostic.error().position(), 17, 0, 15);
     assert_position(diagnostic.span().start(), 11, 0, 9);
     assert_position(diagnostic.span().end(), 28, 0, 26);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected font property error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Font);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected font property error"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Font);
     assert_eq!(detail.encountered().unwrap().kind(), CssTokenKind::Ident);
     assert_eq!(detail.encountered().unwrap().authored(), "menu");
 
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects the recovered font shorthand");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -184,7 +194,7 @@ fn font_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
 #[test]
 fn opentype_tag_error_has_exact_utf16_coordinates_and_full_declaration_span() {
     let source = "--😀: 1; font-feature-settings: \"😀abc\"; color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("supplementary OpenType tag must recover once");
@@ -223,10 +233,16 @@ fn opentype_tag_error_has_exact_utf16_coordinates_and_full_declaration_span() {
         u32::try_from(source[..declaration_end].encode_utf16().count())
             .expect("UTF-16 declaration end"),
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected font feature property error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::FontFeatureSettings);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected font feature property error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::FontFeatureSettings
+    );
     let encountered = detail.encountered().expect("responsible tag token");
     assert_eq!(encountered.kind(), CssTokenKind::String);
     assert_eq!(encountered.authored(), "\"😀abc\"");
@@ -236,7 +252,9 @@ fn opentype_tag_error_has_exact_utf16_coordinates_and_full_declaration_span() {
     );
 
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects the recovered supplementary tag");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -248,7 +266,7 @@ fn font_face_feature_error_after_non_bmp_text_has_exact_descriptor_span() {
         "/*😀*/@font-face{font-family:Demo;src:url(face);",
         "font-feature-settings:\"😀abc\"}.after{color:red}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(matches!(
         report.syntax().rules(),
         [CssRule::FontFace(_), CssRule::Style(_)]
@@ -287,7 +305,7 @@ fn font_face_feature_error_after_non_bmp_text_has_exact_descriptor_span() {
 #[test]
 fn size_adjust_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
     let source = "--😀: 1; font-size-adjust: -1; color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("negative size adjustment must recover once");
@@ -318,10 +336,16 @@ fn size_adjust_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
         0,
         u32::try_from(source[..declaration_end].encode_utf16().count()).unwrap(),
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected font-size-adjust property error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::FontSizeAdjust);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected font-size-adjust property error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::FontSizeAdjust
+    );
     let encountered = detail.encountered().expect("responsible negative number");
     assert_eq!(encountered.kind(), CssTokenKind::Number);
     assert_eq!(encountered.authored(), "-1");
@@ -331,7 +355,9 @@ fn size_adjust_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
     );
 
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects recovered negative size adjustment");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -340,7 +366,7 @@ fn size_adjust_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
 #[test]
 fn font_variant_conflict_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
     let source = "--😀: 1; font-variant: jis04 traditional; color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("conflicting East Asian forms must recover once");
@@ -371,10 +397,16 @@ fn font_variant_conflict_after_non_bmp_text_has_exact_utf16_coordinates_and_span
         0,
         u32::try_from(source[..declaration_end].encode_utf16().count()).unwrap(),
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected font-variant property error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::FontVariant);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected font-variant property error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::FontVariant
+    );
     let encountered = detail
         .encountered()
         .expect("responsible conflicting keyword");
@@ -386,7 +418,9 @@ fn font_variant_conflict_after_non_bmp_text_has_exact_utf16_coordinates_and_span
     );
 
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects the recovered shorthand");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -399,7 +433,7 @@ fn font_source_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
         "@font-face{font-family:Demo;src:url(face) format(woff3)}",
         ".after{color:blue}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(matches!(
         report.syntax().rules(),
         [CssRule::Style(_), CssRule::FontFace(_), CssRule::Style(_)]
@@ -432,14 +466,19 @@ fn font_source_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
         0,
         u32::try_from(source[..descriptor_end].encode_utf16().count()).unwrap(),
     );
-    let ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind() else {
-        panic!("expected font source descriptor error");
-    };
-    assert_eq!(detail.descriptor().as_str(), "src");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidDescriptorValue,
+        "expected font source descriptor error"
+    );
+    assert_eq!(detail.descriptor().unwrap().as_str(), "src");
     assert_eq!(detail.encountered().unwrap().authored(), "woff3");
 
     {
-        let failure = surgeist_css::validate_sheet(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
             .expect_err("strict validation rejects recovered font source");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -448,7 +487,7 @@ fn font_source_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
 #[test]
 fn timing_type_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
     let source = "--😀: 1; transition-duration: calc(1px + 2px); color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("invalid time calculation must recover once");
@@ -461,16 +500,24 @@ fn timing_type_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
     assert_position(diagnostic.error().position(), 32, 0, 30);
     assert_position(diagnostic.span().start(), 11, 0, 9);
     assert_position(diagnostic.span().end(), 48, 0, 46);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected structured timing property error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::TransitionDuration);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected structured timing property error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::TransitionDuration
+    );
     let encountered = detail.encountered().expect("responsible calculation root");
     assert_eq!(encountered.kind(), CssTokenKind::Function);
     assert_eq!(encountered.authored(), "calc(");
 
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects recovered timing type error");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -479,7 +526,7 @@ fn timing_type_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
 #[test]
 fn opacity_domain_error_after_non_bmp_text_has_exact_coordinates_and_span() {
     let source = "--😀: 1; opacity: 1px; color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("invalid opacity dimension must recover once");
@@ -492,16 +539,21 @@ fn opacity_domain_error_after_non_bmp_text_has_exact_coordinates_and_span() {
     assert_position(diagnostic.error().position(), 20, 0, 18);
     assert_position(diagnostic.span().start(), 11, 0, 9);
     assert_position(diagnostic.span().end(), 24, 0, 22);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected structured opacity property error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Opacity);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected structured opacity property error"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Opacity);
     let encountered = detail.encountered().expect("responsible dimension token");
     assert_eq!(encountered.kind(), CssTokenKind::Dimension);
     assert_eq!(encountered.authored(), "1px");
 
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects recovered opacity dimension");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -510,7 +562,7 @@ fn opacity_domain_error_after_non_bmp_text_has_exact_coordinates_and_span() {
 #[test]
 fn grid_repeat_error_after_non_bmp_text_has_exact_coordinates_and_span() {
     let source = "--😀: 1; grid-template-columns: repeat(auto-fit, minmax(1fr, 10px)); color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("invalid auto-repeat must recover once");
@@ -541,10 +593,16 @@ fn grid_repeat_error_after_non_bmp_text_has_exact_coordinates_and_span() {
         0,
         u32::try_from(source[..declaration_end].encode_utf16().count()).unwrap(),
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected Grid property error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::GridTemplateColumns);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected Grid property error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::GridTemplateColumns
+    );
     assert_eq!(
         detail.encountered().unwrap().kind(),
         CssTokenKind::Dimension
@@ -552,7 +610,9 @@ fn grid_repeat_error_after_non_bmp_text_has_exact_coordinates_and_span() {
     assert_eq!(detail.encountered().unwrap().authored(), "1fr");
 
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects flexible auto-repeat");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -561,7 +621,7 @@ fn grid_repeat_error_after_non_bmp_text_has_exact_coordinates_and_span() {
 #[test]
 fn color_component_error_after_non_bmp_text_has_exact_coordinates_and_span() {
     let source = "--😀: 1; color: rgb(1px 2 3); opacity: 0.5";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("invalid RGB component must recover once");
@@ -594,11 +654,14 @@ fn color_component_error_after_non_bmp_text_has_exact_coordinates_and_span() {
         0,
         u32::try_from(declaration_end - 2).expect("UTF-16 column"),
     );
-    let ErrorKind::InvalidColorSyntax(detail) = diagnostic.error().kind() else {
-        panic!("expected structured color error");
-    };
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.component().map(|value| value.as_str()),
+        detail.code(),
+        CssErrorCode::InvalidColorSyntax,
+        "expected structured color error"
+    );
+    assert_eq!(
+        detail.color_component().map(|value| value.as_str()),
         Some("component")
     );
     assert_eq!(
@@ -608,7 +671,9 @@ fn color_component_error_after_non_bmp_text_has_exact_coordinates_and_span() {
     assert_eq!(detail.encountered().unwrap().authored(), "1px");
 
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects recovered color component error");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -617,7 +682,7 @@ fn color_component_error_after_non_bmp_text_has_exact_coordinates_and_span() {
 #[test]
 fn perceptual_color_error_after_non_bmp_text_has_exact_coordinates_and_span() {
     let source = "--😀: 1; color: lab(50% 1px 30); opacity: 0.5";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("invalid Lab component must recover once");
@@ -649,11 +714,14 @@ fn perceptual_color_error_after_non_bmp_text_has_exact_coordinates_and_span() {
         0,
         u32::try_from(source[..declaration_end].encode_utf16().count()).expect("UTF-16 column"),
     );
-    let ErrorKind::InvalidColorSyntax(detail) = diagnostic.error().kind() else {
-        panic!("expected structured color error");
-    };
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.component().map(|value| value.as_str()),
+        detail.code(),
+        CssErrorCode::InvalidColorSyntax,
+        "expected structured color error"
+    );
+    assert_eq!(
+        detail.color_component().map(|value| value.as_str()),
         Some("component")
     );
     let encountered = detail.encountered().expect("responsible Lab component");
@@ -661,7 +729,9 @@ fn perceptual_color_error_after_non_bmp_text_has_exact_coordinates_and_span() {
     assert_eq!(encountered.authored(), "1px");
 
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects recovered Lab component error");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -670,7 +740,7 @@ fn perceptual_color_error_after_non_bmp_text_has_exact_coordinates_and_span() {
 #[test]
 fn relative_color_error_after_non_bmp_text_has_exact_coordinates_span_and_strict_parity() {
     let source = "--😀: 1; color: hwb(from red h s b); opacity: 0.5";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("foreign relative channel must recover once");
@@ -702,11 +772,14 @@ fn relative_color_error_after_non_bmp_text_has_exact_coordinates_span_and_strict
         0,
         u32::try_from(source[..declaration_end].encode_utf16().count()).expect("UTF-16 column"),
     );
-    let ErrorKind::InvalidColorSyntax(detail) = diagnostic.error().kind() else {
-        panic!("expected structured relative-color detail");
-    };
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.component().map(|component| component.as_str()),
+        detail.code(),
+        CssErrorCode::InvalidColorSyntax,
+        "expected structured relative-color detail"
+    );
+    assert_eq!(
+        detail.color_component().map(|component| component.as_str()),
         Some("relative channel")
     );
     let encountered = detail.encountered().expect("responsible foreign channel");
@@ -714,7 +787,9 @@ fn relative_color_error_after_non_bmp_text_has_exact_coordinates_span_and_strict
     assert_eq!(encountered.authored(), "s");
 
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects foreign relative channels");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -723,7 +798,7 @@ fn relative_color_error_after_non_bmp_text_has_exact_coordinates_span_and_strict
 #[test]
 fn color_mix_error_after_non_bmp_text_has_exact_coordinates_span_and_strict_parity() {
     let source = "--😀: 1; color: color-mix(in srgb longer hue, red, blue); opacity: 0.5";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("rectangular-space hue method must recover once");
@@ -755,11 +830,14 @@ fn color_mix_error_after_non_bmp_text_has_exact_coordinates_span_and_strict_pari
         0,
         u32::try_from(source[..declaration_end].encode_utf16().count()).expect("UTF-16 column"),
     );
-    let ErrorKind::InvalidColorSyntax(detail) = diagnostic.error().kind() else {
-        panic!("expected structured color-mix detail");
-    };
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.component().map(|component| component.as_str()),
+        detail.code(),
+        CssErrorCode::InvalidColorSyntax,
+        "expected structured color-mix detail"
+    );
+    assert_eq!(
+        detail.color_component().map(|component| component.as_str()),
         Some("hue interpolation"),
     );
     let encountered = detail.encountered().expect("responsible hue method");
@@ -767,7 +845,9 @@ fn color_mix_error_after_non_bmp_text_has_exact_coordinates_span_and_strict_pari
     assert_eq!(encountered.authored(), "longer");
 
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects rectangular-space hue methods");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -776,7 +856,7 @@ fn color_mix_error_after_non_bmp_text_has_exact_coordinates_span_and_strict_pari
 #[test]
 fn legacy_rgb_mixed_domain_reports_the_later_component_and_retains_its_sibling() {
     let source = "--😀: 1; color: rgb(1, 20%, 3); opacity: 0.5";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     assert_eq!(
         report.syntax()[1]
@@ -797,11 +877,14 @@ fn legacy_rgb_mixed_domain_reports_the_later_component_and_retains_its_sibling()
         0,
         u32::try_from(source[..responsible].encode_utf16().count()).expect("UTF-16 column"),
     );
-    let ErrorKind::InvalidColorSyntax(detail) = diagnostic.error().kind() else {
-        panic!("expected structured color error");
-    };
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.component().map(|value| value.as_str()),
+        detail.code(),
+        CssErrorCode::InvalidColorSyntax,
+        "expected structured color error"
+    );
+    assert_eq!(
+        detail.color_component().map(|value| value.as_str()),
         Some("component")
     );
     let encountered = detail.encountered().expect("responsible percentage token");
@@ -809,7 +892,9 @@ fn legacy_rgb_mixed_domain_reports_the_later_component_and_retains_its_sibling()
     assert_eq!(encountered.authored(), "20%");
 
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects mixed legacy RGB component domains");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -818,7 +903,7 @@ fn legacy_rgb_mixed_domain_reports_the_later_component_and_retains_its_sibling()
 #[test]
 fn easing_count_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
     let source = "--😀: 1; transition-timing-function: steps(1, jump-none); color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("invalid jump-none count must recover once");
@@ -856,11 +941,14 @@ fn easing_count_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() 
         0,
         u32::try_from(declaration_end - 2).expect("UTF-16 column"),
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected structured easing property error");
-    };
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.property(),
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected structured easing property error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
         CssKnownProperty::TransitionTimingFunction
     );
     let encountered = detail.encountered().expect("responsible step position");
@@ -868,7 +956,9 @@ fn easing_count_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() 
     assert_eq!(encountered.authored(), "jump-none");
 
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects recovered easing count error");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -877,7 +967,7 @@ fn easing_count_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() 
 #[test]
 fn generic_position_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
     let source = "--😀: 1; mask-position: 50% left; color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("invalid generic position must recover once");
@@ -890,10 +980,16 @@ fn generic_position_error_after_non_bmp_text_has_exact_utf16_coordinates_and_spa
     assert_position(diagnostic.error().position(), 30, 0, 28);
     assert_position(diagnostic.span().start(), 11, 0, 9);
     assert_position(diagnostic.span().end(), 35, 0, 33);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected structured position property error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::MaskPosition);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected structured position property error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::MaskPosition
+    );
     let encountered = detail
         .encountered()
         .expect("responsible horizontal keyword");
@@ -901,7 +997,9 @@ fn generic_position_error_after_non_bmp_text_has_exact_utf16_coordinates_and_spa
     assert_eq!(encountered.authored(), "left");
 
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects recovered generic position input");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -910,7 +1008,7 @@ fn generic_position_error_after_non_bmp_text_has_exact_utf16_coordinates_and_spa
 #[test]
 fn object_position_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
     let source = "--😀: 1; object-position: left top 10px; color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("invalid object position must recover once");
@@ -945,16 +1043,24 @@ fn object_position_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span
         0,
         u32::try_from(declaration_end - 2).expect("UTF-16 column"),
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected structured object-position property error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::ObjectPosition);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected structured object-position property error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::ObjectPosition
+    );
     let encountered = detail.encountered().expect("responsible third component");
     assert_eq!(encountered.kind(), CssTokenKind::Dimension);
     assert_eq!(encountered.authored(), "10px");
 
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects recovered object-position input");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -963,7 +1069,7 @@ fn object_position_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span
 #[test]
 fn transform_domain_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
     let source = "--😀: 1; transform: translate3d(1px, 2px, 3%); color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("invalid transform z percentage must recover once");
@@ -998,16 +1104,24 @@ fn transform_domain_error_after_non_bmp_text_has_exact_utf16_coordinates_and_spa
         0,
         u32::try_from(declaration_end - 2).expect("UTF-16 column"),
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected structured transform property error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Transform);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected structured transform property error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::Transform
+    );
     let encountered = detail.encountered().expect("responsible z percentage");
     assert_eq!(encountered.kind(), CssTokenKind::Percentage);
     assert_eq!(encountered.authored(), "3%");
 
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects recovered transform input");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -1016,7 +1130,7 @@ fn transform_domain_error_after_non_bmp_text_has_exact_utf16_coordinates_and_spa
 #[test]
 fn filter_domain_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
     let source = "--😀: 1; filter: brightness(-1); color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("invalid filter amount must recover once");
@@ -1051,16 +1165,21 @@ fn filter_domain_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span()
         0,
         u32::try_from(declaration_end - 2).expect("UTF-16 column"),
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected structured filter property error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Filter);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected structured filter property error"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Filter);
     let encountered = detail.encountered().expect("responsible filter number");
     assert_eq!(encountered.kind(), CssTokenKind::Number);
     assert_eq!(encountered.authored(), "-1");
 
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects recovered filter input");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -1069,7 +1188,7 @@ fn filter_domain_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span()
 #[test]
 fn basic_shape_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
     let source = "--😀: 1; clip-path: polygon(round 10%, 0 0); color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("invalid polygon rounding must recover once");
@@ -1100,23 +1219,30 @@ fn basic_shape_error_after_non_bmp_text_has_exact_utf16_coordinates_and_span() {
         0,
         u32::try_from(declaration_end - 2).unwrap(),
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected structured clip-path property error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::ClipPath);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected structured clip-path property error"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::ClipPath);
     let encountered = detail.encountered().expect("responsible polygon radius");
     assert_eq!(encountered.kind(), CssTokenKind::Percentage);
     assert_eq!(encountered.authored(), "10%");
 
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects recovered basic shape");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
 }
 
 fn first_declaration_position(source: &str) -> CssSourcePosition {
-    let sheet = parse_sheet(source).expect("valid stylesheet");
+    let sheet = CssParser::default()
+        .parse_sheet(source)
+        .expect("valid stylesheet");
     let CssRule::Style(rule) = &sheet.rules()[0] else {
         panic!("expected style rule");
     };
@@ -1152,13 +1278,16 @@ fn source_public_nodes_expose_zero_based_byte_line_and_utf16_coordinates() {
     );
     assert_position(first_declaration_position(".😀2 { width: 1px; }"), 9, 0, 7);
 
-    let sheet = parse_sheet("/*a\nbc*/@import \"theme.css\";").expect("valid import");
+    let sheet = CssParser::default()
+        .parse_sheet("/*a\nbc*/@import \"theme.css\";")
+        .expect("valid import");
     let CssRule::Import(rule) = &sheet.rules()[0] else {
         panic!("expected import rule");
     };
     assert_position(rule.position().unwrap(), 8, 1, 4);
 
-    let sheet = parse_sheet("/*😀*/@import \"x\" supports(display: grid);")
+    let sheet = CssParser::default()
+        .parse_sheet("/*😀*/@import \"x\" supports(display: grid);")
         .expect("valid conditional import");
     let CssRule::Import(rule) = &sheet.rules()[0] else {
         panic!("expected conditional import rule");
@@ -1175,7 +1304,8 @@ fn source_public_nodes_expose_zero_based_byte_line_and_utf16_coordinates() {
         27,
     );
 
-    let sheet = parse_sheet("/*😀*/\n  @namespace s\\76 g \"urn:svg\";")
+    let sheet = CssParser::default()
+        .parse_sheet("/*😀*/\n  @namespace s\\76 g \"urn:svg\";")
         .expect("valid namespace declaration");
     let CssRule::Namespace(rule) = &sheet.rules()[0] else {
         panic!("expected namespace rule");
@@ -1187,7 +1317,7 @@ fn source_public_nodes_expose_zero_based_byte_line_and_utf16_coordinates() {
 #[test]
 fn undeclared_namespace_prefix_at_eof_preserves_non_bmp_coordinates() {
     let source = "@namespace svg \"u\";/*😀*/missing|a {";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(matches!(report.syntax().rules(), [CssRule::Namespace(_)]));
     let [diagnostic] = report.diagnostics() else {
         panic!("expected one undeclared-prefix diagnostic")
@@ -1202,7 +1332,8 @@ fn undeclared_namespace_prefix_at_eof_preserves_non_bmp_coordinates() {
 #[test]
 fn language_errors_preserve_non_bmp_and_eof_coordinates() {
     // Selectors 4 §7.2 accepts string ranges; numbers remain invalid operands.
-    let quoted = parse_sheet("/*😀*/.before {} .valid:lang(\"en\") {} .after {}");
+    let quoted =
+        CssParser::default().parse_sheet("/*😀*/.before {} .valid:lang(\"en\") {} .after {}");
     assert!(quoted.diagnostics().is_empty());
     assert!(matches!(
         quoted.syntax().rules(),
@@ -1210,7 +1341,7 @@ fn language_errors_preserve_non_bmp_and_eof_coordinates() {
     ));
 
     let source = "/*😀*/.before {} .bad:lang(1234) {} .after {}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(matches!(
         report.syntax().rules(),
         [CssRule::Style(_), CssRule::Style(_)]
@@ -1243,7 +1374,7 @@ fn language_errors_preserve_non_bmp_and_eof_coordinates() {
     );
 
     let eof_source = "/*😀*/.before {} .bad:lang(";
-    let eof = parse_sheet(eof_source);
+    let eof = CssParser::default().parse_sheet(eof_source);
     assert!(matches!(eof.syntax().rules(), [CssRule::Style(_)]));
     let [diagnostic] = eof.diagnostics() else {
         panic!("expected one EOF language-range diagnostic")
@@ -1279,7 +1410,7 @@ fn malformed_escaped_path_maps_decoded_failure_to_its_original_string_token() {
     let prefix = "/*😀*/ ";
     let unit = "clip-path:path('M\\30  0L1');";
     let source = format!("{prefix}{unit}color:blue");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     let [diagnostic] = report.diagnostics() else {
         panic!("one invalid SVG path diagnostic")
     };

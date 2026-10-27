@@ -27,7 +27,7 @@ fn public_property_metadata_consumer_preserves_initials_and_grammar_identity() {
 // that the not-yet-compiling owner assertions ran.
 #[test]
 fn expansion_owner_preserves_user_agent_initial_requirement() {
-    let name = "expansion::metadata_initial_tests::omitted_initial_preserves_user_agent_requirement_and_fixed_value";
+    let name = "property::expansion::metadata_initial_tests::omitted_initial_preserves_user_agent_requirement_and_fixed_value";
     let output = external_consumer::run_selected_library_test(name);
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(

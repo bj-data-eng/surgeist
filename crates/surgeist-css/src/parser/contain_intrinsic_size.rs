@@ -1,13 +1,13 @@
 //! Sizing 4 authored contained intrinsic-size declarations.
 
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError};
+use super::side_shapes::parse_side_pair;
+use crate::diagnostic::error::property::{Error, ParseError};
 
 use super::values::parse_nonnegative_length;
-use crate::numeric::NumericInputContext;
-use crate::{
-    CssContainIntrinsicSize, CssContainIntrinsicSizeFallback, CssContainIntrinsicSizeValue,
-};
+use crate::numeric::expression::NumericInputContext;
+use crate::values::box_model::{CssContainIntrinsicSizeFallback, CssContainIntrinsicSizeValue};
+use crate::values::common::CssSidePair;
 
 pub(super) fn parse_contain_intrinsic_size_value<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -34,12 +34,8 @@ pub(super) fn parse_contain_intrinsic_size_value<'i, 't>(
 pub(super) fn parse_contain_intrinsic_size<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssContainIntrinsicSize, ParseError<'i, Error>> {
-    let width = parse_contain_intrinsic_size_value(input, numeric)?;
-    let height = if input.is_exhausted() {
-        None
-    } else {
-        Some(parse_contain_intrinsic_size_value(input, numeric)?)
-    };
-    Ok(CssContainIntrinsicSize::new(width, height))
+) -> Result<CssSidePair<CssContainIntrinsicSizeValue>, ParseError<'i, Error>> {
+    parse_side_pair(input, |input| {
+        parse_contain_intrinsic_size_value(input, numeric)
+    })
 }

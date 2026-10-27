@@ -1,5 +1,19 @@
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::assert_component_rejected;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValue;
+use surgeist_css::declaration::CssGlobalKeyword;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::numeric::{CssLength, CssNumeric};
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+};
+use surgeist_css::values::background::{CssBlendMode, CssBlendModeList};
+use surgeist_css::values::box_model::{CssContain, CssContainComponent, CssContainComponentList};
+use surgeist_css::values::common::CssBoxEdgeKeyword;
+use surgeist_css::values::effects::CssIsolation;
+use surgeist_css::values::transform::CssTransformBox;
+use surgeist_css::values::ui::{CssCaretColor, CssResize};
 
 #[test]
 fn residual_ui_containment_and_compositing_properties_are_typed() {
@@ -14,7 +28,7 @@ fn residual_ui_containment_and_compositing_properties_are_typed() {
         "mix-blend-mode: soft-light; ",
         "color: red",
     );
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
 
     if !report.is_clean() {
         assert_eq!(report.diagnostics().len(), 8);
@@ -60,7 +74,7 @@ fn residual_ui_containment_and_compositing_properties_are_typed() {
     else {
         panic!("expected caret-color");
     };
-    let CssCaretColor::Color(color) = caret.caret() else {
+    let CssCaretColor::Color(color) = caret.value() else {
         panic!("expected authored caret color");
     };
     assert_eq!(color.named().unwrap().name(), "rebeccapurple");
@@ -75,7 +89,7 @@ fn residual_ui_containment_and_compositing_properties_are_typed() {
         panic!("expected outline-offset");
     };
     assert!(exact_dimension(
-        offset.offset().literal_component(),
+        offset.value().literal().map(|literal| literal.component()),
         "-2",
         "px"
     ));
@@ -88,7 +102,7 @@ fn residual_ui_containment_and_compositing_properties_are_typed() {
     else {
         panic!("expected resize");
     };
-    assert_eq!(resize.resize(), &CssResize::Horizontal);
+    assert_eq!(resize.value(), &CssResize::Horizontal);
 
     let CssKnownPropertyValueRef::Contain(contain) = report.syntax()[3]
         .known()
@@ -98,7 +112,7 @@ fn residual_ui_containment_and_compositing_properties_are_typed() {
     else {
         panic!("expected contain");
     };
-    let CssContain::Components(components) = contain.containment() else {
+    let CssContain::Components(components) = contain.value() else {
         panic!("expected authored contain components");
     };
     assert_eq!(
@@ -114,10 +128,7 @@ fn residual_ui_containment_and_compositing_properties_are_typed() {
     else {
         panic!("expected transform-box");
     };
-    assert_eq!(
-        transform_box.reference_box().edge(),
-        CssBoxEdgeKeyword::ViewBox,
-    );
+    assert_eq!(transform_box.value().edge(), CssBoxEdgeKeyword::ViewBox,);
 
     let CssKnownPropertyValueRef::BackgroundBlendMode(background) = report.syntax()[5]
         .known()
@@ -128,7 +139,7 @@ fn residual_ui_containment_and_compositing_properties_are_typed() {
         panic!("expected background-blend-mode");
     };
     assert_eq!(
-        background.modes().modes(),
+        background.value().modes(),
         &[CssBlendMode::Multiply, CssBlendMode::Luminosity],
     );
 
@@ -140,7 +151,7 @@ fn residual_ui_containment_and_compositing_properties_are_typed() {
     else {
         panic!("expected isolation");
     };
-    assert_eq!(isolation.isolation(), &CssIsolation::Isolate);
+    assert_eq!(isolation.value(), &CssIsolation::Isolate);
 
     let CssKnownPropertyValueRef::MixBlendMode(mix) = report.syntax()[7]
         .known()
@@ -150,10 +161,12 @@ fn residual_ui_containment_and_compositing_properties_are_typed() {
     else {
         panic!("expected mix-blend-mode");
     };
-    assert_eq!(mix.mode(), &CssBlendMode::SoftLight);
+    assert_eq!(mix.value(), &CssBlendMode::SoftLight);
 
     assert_eq!(
-        surgeist_css::validate_style_attribute(source)
+        surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect("strict validation accepts selected UI and compositing grammars"),
         report.syntax().clone(),
     );
@@ -182,7 +195,7 @@ fn ui_containment_transform_and_isolation_keyword_domains_are_exact() {
         "isolation: auto",
         "isolation: isolate",
     ] {
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 1, "{source}");
     }
@@ -204,7 +217,7 @@ fn ui_containment_transform_and_isolation_keyword_domains_are_exact() {
         "contain: paint size layout",
         "contain: paint layout size",
     ] {
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 1, "{source}");
     }
@@ -237,18 +250,18 @@ fn compositing_blend_mode_domain_and_background_order_are_exact() {
             CssBlendMode::from_keyword(&authored.to_ascii_uppercase()),
             Some(mode),
         );
-        assert_eq!(mode.as_css_str(), authored);
+        assert_eq!(mode.as_str(), authored);
 
         for property in ["mix-blend-mode", "background-blend-mode"] {
             let source = format!("{property}: {authored}");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             assert_eq!(report.syntax().len(), 1, "{source}");
         }
     }
 
     let source = "background-blend-mode: hue, normal, multiply, hue";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BackgroundBlendMode(value) = report.syntax()[0]
         .known()
@@ -259,7 +272,7 @@ fn compositing_blend_mode_domain_and_background_order_are_exact() {
         panic!("expected background blend-mode list");
     };
     assert_eq!(
-        value.modes().modes(),
+        value.value().modes(),
         &[
             CssBlendMode::Hue,
             CssBlendMode::Normal,
@@ -315,13 +328,13 @@ fn checked_public_containment_transform_and_list_construction_rejects_invalid_st
 
     for css in ["auto", "10%"] {
         assert_component_rejected(
-            CssSpecifiedLength::try_from_component,
+            CssNumeric::<CssLength>::try_from_component,
             CssComponentValue::try_token(css).unwrap(),
-            CssNumericConstructionErrorKind::RootDomainMismatch,
+            NumericFailure::RootDomainMismatch,
         );
     }
     assert!(
-        CssSpecifiedLength::try_from_component(
+        CssNumeric::<CssLength>::try_from_component(
             CssComponentValue::try_dimension("-2", "px").unwrap()
         )
         .is_ok()
@@ -351,7 +364,7 @@ fn ui_containment_and_compositing_globals_and_substitutions_are_whole_property_b
     for property in PROPERTIES {
         for (keyword, expected) in GLOBALS {
             let source = format!("{property}: {keyword}");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             assert!(matches!(
                 report.syntax()[0].known().unwrap().declared_value(),
@@ -360,7 +373,7 @@ fn ui_containment_and_compositing_globals_and_substitutions_are_whole_property_b
         }
 
         let source = format!("{property}: var(--ui, initial)");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert!(matches!(
             report.syntax()[0].known().unwrap().declared_value(),
@@ -400,7 +413,7 @@ fn ui_containment_and_compositing_invalid_values_drop_only_their_declaration() {
     ] {
         let invalid = format!("{property}: {value}");
         let source = format!("{invalid}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
@@ -431,15 +444,19 @@ fn ui_containment_and_compositing_invalid_values_drop_only_their_declaration() {
             "{source}",
         );
         if expected_code == CssErrorCode::InvalidPropertyValue {
-            let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-                panic!("{source}: expected property-specific error");
-            };
-            assert_eq!(detail.property().canonical_name(), property, "{source}");
+            let detail = diagnostic.error();
+            assert_eq!(
+                detail.code(),
+                CssErrorCode::InvalidPropertyValue,
+                "{source}: expected property-specific error"
+            );
+            assert_eq!(
+                detail.known_property().unwrap().canonical_name(),
+                property,
+                "{source}"
+            );
         } else {
-            assert!(matches!(
-                diagnostic.error().kind(),
-                ErrorKind::InvalidColorSyntax(_)
-            ));
+            assert!(diagnostic.error().code() == CssErrorCode::InvalidColorSyntax);
         }
         assert!(
             diagnostic.error().position().byte_offset().value() < invalid.len() + 1,
@@ -447,7 +464,9 @@ fn ui_containment_and_compositing_invalid_values_drop_only_their_declaration() {
         );
 
         assert_eq!(
-            surgeist_css::validate_style_attribute(&source)
+            surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect_err("strict validation rejects recovered T3 syntax")
                 .diagnostics(),
             report.diagnostics(),
@@ -458,12 +477,13 @@ fn ui_containment_and_compositing_invalid_values_drop_only_their_declaration() {
 
 #[test]
 fn ui_containment_and_compositing_eof_and_non_bmp_recovery_preserve_coordinates() {
-    let clean_eof = parse_style_attribute("background-blend-mode: normal, luminosity");
+    let clean_eof =
+        CssParser::default().parse_block_contents("background-blend-mode: normal, luminosity");
     assert!(clean_eof.is_clean(), "{:?}", clean_eof.diagnostics());
     assert_eq!(clean_eof.syntax().len(), 1);
 
     let invalid_eof_source = "background-blend-mode: normal,";
-    let invalid_eof = parse_style_attribute(invalid_eof_source);
+    let invalid_eof = CssParser::default().parse_block_contents(invalid_eof_source);
     let [diagnostic] = invalid_eof.diagnostics() else {
         panic!("trailing blend-mode comma at EOF must recover exactly once");
     };
@@ -480,7 +500,7 @@ fn ui_containment_and_compositing_eof_and_non_bmp_recovery_preserve_coordinates(
     );
 
     let source = "--😀: 1; background-blend-mode: normal multiply; color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("missing blend-mode comma must recover exactly once");
@@ -505,11 +525,11 @@ fn ui_containment_and_compositing_eof_and_non_bmp_recovery_preserve_coordinates(
         declaration_end,
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert!(matches!(
-        diagnostic.error().kind(),
-        ErrorKind::InvalidPropertyValue(detail)
-            if detail.property() == CssKnownProperty::BackgroundBlendMode
-    ));
+    assert!(
+        (diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
+            && diagnostic.error().known_property().unwrap()
+                == CssKnownProperty::BackgroundBlendMode)
+    );
     assert_eq!(
         report.syntax()[1].known().unwrap().property(),
         CssKnownProperty::Color,
@@ -517,9 +537,9 @@ fn ui_containment_and_compositing_eof_and_non_bmp_recovery_preserve_coordinates(
 }
 
 fn exact_dimension(
-    component: Option<&surgeist_css::CssComponentValue>,
+    component: Option<&surgeist_css::component::CssComponentValue>,
     representation: &str,
     expected_unit: &str,
 ) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
 }

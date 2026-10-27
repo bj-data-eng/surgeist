@@ -2,25 +2,40 @@
 //! §§10.12–10.13 defer math range checks and integer rounding beyond specified values.
 //! https://www.w3.org/TR/2023/CRD-css-easing-1-20230213/#serialization
 
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::Responsible::At;
 use crate::css::support::property_admission::{assert_invalid_value, assert_numeric_rejected};
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::*;
+use crate::css::support::value_assertions::positive_literal;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::numeric::{
+    CssCalculation, CssInteger, CssNumber, CssNumeric, CssNumericLiteral, CssPositive,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::animation::{
+    CssCubicBezier, CssEasing, CssEasingKeyword, CssEasingList, CssStepPosition, CssSteps,
+};
 
 fn parsed_for(property: CssKnownProperty, source: &str) -> CssEasingList {
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(property),
-        parse_component_values(source).unwrap(),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
     match declaration.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::TransitionTimingFunction(value) => {
-            value.timing_functions().clone()
-        }
-        CssKnownPropertyValueRef::AnimationTimingFunction(value) => {
-            value.timing_functions().clone()
-        }
+        CssKnownPropertyValueRef::TransitionTimingFunction(value) => value.value().clone(),
+        CssKnownPropertyValueRef::AnimationTimingFunction(value) => value.value().clone(),
         _ => panic!("easing list"),
     }
 }
@@ -29,22 +44,25 @@ fn parsed(source: &str) -> CssEasingList {
     parsed_for(CssKnownProperty::TransitionTimingFunction, source)
 }
 
-fn number(source: &str) -> CssSpecifiedNumber {
-    let components = parse_component_values(source).unwrap();
-    CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(components).unwrap(),
+fn number(source: &str) -> CssNumeric<CssNumber> {
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
+    CssNumeric::<CssNumber>::try_from_calculation(
+        CssCalculation::<CssNumber>::try_from_components(components, Default::default()).unwrap(),
     )
     .unwrap()
 }
 
-fn count(source: &str) -> CssPositiveIntegerValue {
-    CssPositiveIntegerValue::Literal(
-        CssPositiveIntegerLiteral::try_new(
-            CssIntegerLiteral::try_from_component(CssComponentValue::try_number(source).unwrap())
-                .unwrap(),
+fn count(source: &str) -> CssNumeric<CssInteger, CssPositive> {
+    CssNumeric::<CssInteger, CssPositive>::try_from_literal(
+        positive_literal(
+            CssNumericLiteral::<CssInteger>::try_from_component(
+                CssComponentValue::try_number(source).unwrap(),
+            )
+            .unwrap(),
         )
         .unwrap(),
     )
+    .unwrap()
 }
 
 fn assert_list(source: &str, expected: &str) {
@@ -54,36 +72,38 @@ fn assert_list(source: &str, expected: &str) {
     ] {
         let value = parsed_for(property, source);
         let original = value.clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected, "{source}");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{source}"
+        );
         assert_eq!(
             parsed_for(property, expected)
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             expected
         );
         assert_eq!(value, original);
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    65_536,
-                    262_144,
-                    expected.len(),
-                ))
+                .serialize_specified(CssSerializationLimits::new(65_536, 262_144, expected.len(),))
                 .unwrap(),
             expected,
         );
-        assert_eq!(
+        assert!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+                .serialize_specified(CssSerializationLimits::new(
                     65_536,
                     262_144,
                     expected.len() - 1,
                 ))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                .is_byte_limit()
         );
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(value, original);
     }
 }
@@ -101,15 +121,14 @@ fn keywords_keep_five_identities_and_canonicalize_only_step_aliases() {
     ] {
         assert_list(source, expected);
         let value = CssEasing::Keyword(keyword);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(value, CssEasing::Keyword(keyword));
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    expected.len(),
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, expected.len(),))
                 .unwrap(),
             expected,
         );
@@ -149,7 +168,10 @@ fn positions_omit_end_aliases_and_preserve_start_spelling() {
     ] {
         assert_list(input, expected);
         let value = CssSteps::try_new(count("2"), position).unwrap();
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(value.position(), position);
     }
 }
@@ -225,7 +247,7 @@ fn checked_composition_retains_original_components_and_origins() {
         .map(|value| value.origin().clone())
         .collect();
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "cubic-bezier(0.25, sign(-2em), 1, -2.000001)"
     );
     for (index, actual) in [
@@ -238,8 +260,14 @@ fn checked_composition_retains_original_components_and_origins() {
     .enumerate()
     {
         assert_eq!(actual.origin(), &before[index]);
-        if let Some(component) = originals[index].literal_component() {
-            assert_eq!(actual.literal_component(), Some(component));
+        if let Some(component) = originals[index]
+            .literal()
+            .map(|literal| literal.component())
+        {
+            assert_eq!(
+                actual.literal().map(|literal| literal.component()),
+                Some(component)
+            );
         } else {
             assert_eq!(
                 actual.calculation().unwrap().components(),
@@ -249,8 +277,8 @@ fn checked_composition_retains_original_components_and_origins() {
     }
     let list = CssEasingList::try_new(vec![CssEasing::CubicBezier(value.clone())]).unwrap();
     assert_eq!(
-        list.serialize_specified().unwrap(),
-        value.serialize_specified().unwrap()
+        list.serialize_specified(Default::default()).unwrap(),
+        value.serialize_specified(Default::default()).unwrap()
     );
     assert!(CssEasingList::try_new(Vec::new()).is_none());
 }
@@ -278,7 +306,7 @@ fn invalid_grammar_drops_only_easing_and_strict_validation_agrees() {
         ("steps(calc((1px + 1%) / 1px))", At("calc(")),
     ] {
         let source = format!("transition-timing-function:{invalid};color:red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(!report.is_clean(), "{invalid}");
         assert_eq!(report.syntax().len(), 1, "{invalid}");
         assert_eq!(
@@ -291,12 +319,16 @@ fn invalid_grammar_drops_only_easing_and_strict_validation_agrees() {
             CssRecoveryAction::DropDeclaration
         );
         assert_invalid_value(
-            report.diagnostics()[0].error().kind(),
+            report.diagnostics()[0].error(),
             CssKnownProperty::TransitionTimingFunction,
             token,
         );
         assert_eq!(
-            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -311,32 +343,48 @@ fn checked_ranges_and_pure_roots_share_admission_with_parsing() {
     }
     assert!(CssSteps::try_new(count("1"), Some(CssStepPosition::JumpNone)).is_none());
     for source in ["0", "-1"] {
-        let integer =
-            CssIntegerLiteral::try_from_component(CssComponentValue::try_number(source).unwrap())
-                .unwrap();
-        assert!(CssPositiveIntegerLiteral::try_new(integer).is_none());
+        let integer = CssNumericLiteral::<CssInteger>::try_from_component(
+            CssComponentValue::try_number(source).unwrap(),
+        )
+        .unwrap();
+        assert!(positive_literal(integer).is_none());
     }
-    let contextual = parse_component_values("calc((1px + 1%) / 1px)").unwrap();
+    let contextual =
+        CssComponentValues::parse(&CssParser::default(), "calc((1px + 1%) / 1px)").unwrap();
     assert_numeric_rejected(
-        CssNumberCalculation::try_from_components(contextual.clone()),
-        CssNumericConstructionErrorKind::RootDomainMismatch,
+        CssCalculation::<CssNumber>::try_from_components(contextual.clone(), Default::default()),
+        NumericFailure::RootDomainMismatch,
     );
     assert_numeric_rejected(
-        CssIntegerCalculation::try_from_components(contextual),
-        CssNumericConstructionErrorKind::RootDomainMismatch,
+        CssCalculation::<CssInteger>::try_from_components(contextual, Default::default()),
+        NumericFailure::RootDomainMismatch,
     );
-    let fraction =
-        CssIntegerCalculation::try_from_components(parse_component_values("calc(1.5)").unwrap())
-            .unwrap();
-    let value = CssSteps::try_new(CssPositiveIntegerValue::Calculation(fraction), None).unwrap();
-    assert_eq!(value.serialize_specified().unwrap(), "steps(calc(1.5))");
+    let fraction = CssCalculation::<CssInteger>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "calc(1.5)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
+    let value = CssSteps::try_new(
+        CssNumeric::<CssInteger, CssPositive>::try_from_calculation(fraction).unwrap(),
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "steps(calc(1.5))"
+    );
 }
 
 fn assert_limits(value: &CssEasingList, expected: &str, input: usize, projection: usize) {
     LimitLadder::new(expected, input, projection).assert_unchanged_with(
         value,
-        CssEasingList::serialize_specified_with_limits,
-        |_, _, _| assert_eq!(value.serialize_specified().unwrap(), expected),
+        CssEasingList::serialize_specified,
+        |_, _, _| {
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                expected
+            )
+        },
     );
 }
 
@@ -371,36 +419,32 @@ fn standalone_aggregates_apply_the_same_exact_resource_contract() {
     let expected = "cubic-bezier(0, -2, 1, 3)";
     assert_eq!(
         cubic
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                5,
-                5,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(5, 5, expected.len()))
             .unwrap(),
         expected
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(4, 5, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(4, 5, expected.len()),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 4, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(5, 4, expected.len()),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 5, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(5, 5, expected.len() - 1),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            cubic
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&cubic.serialize_specified(limits).unwrap_err()),
             kind
         );
-        assert_eq!(cubic.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            cubic.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     for (position, expected, inputs, projections) in [
         (None, "steps(2)", 2, 2),
@@ -411,7 +455,7 @@ fn standalone_aggregates_apply_the_same_exact_resource_contract() {
         let steps = CssSteps::try_new(count("2"), position).unwrap();
         assert_eq!(
             steps
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+                .serialize_specified(CssSerializationLimits::new(
                     inputs,
                     projections,
                     expected.len()
@@ -421,27 +465,27 @@ fn standalone_aggregates_apply_the_same_exact_resource_contract() {
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(inputs - 1, projections, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(inputs - 1, projections, expected.len()),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(inputs, projections - 1, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(inputs, projections - 1, expected.len()),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(inputs, projections, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(inputs, projections, expected.len() - 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                steps
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&steps.serialize_specified(limits).unwrap_err()),
                 kind
             );
             assert_eq!(steps.position(), position);
-            assert_eq!(steps.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                steps.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
         }
     }
 }
@@ -466,7 +510,8 @@ fn list_order_and_shorthand_omissions_survive_canonical_output() {
         "ease-out, step-start, steps(4, jump-start), step-end, linear",
         "ease-out, steps(1, start), steps(4, jump-start), steps(1), linear",
     );
-    let report = parse_style_attribute("transition:opacity 1s;animation:fade 2s step-start");
+    let report = CssParser::default()
+        .parse_block_contents("transition:opacity 1s;animation:fade 2s step-start");
     assert!(report.is_clean());
     let CssKnownPropertyValueRef::Transition(value) = report.syntax()[0]
         .known()
@@ -476,7 +521,7 @@ fn list_order_and_shorthand_omissions_survive_canonical_output() {
     else {
         panic!("transition")
     };
-    assert!(value.transitions().values()[0].timing_function().is_none());
+    assert!(value.value().values()[0].timing_function().is_none());
     let CssKnownPropertyValueRef::Animation(value) = report.syntax()[1]
         .known()
         .unwrap()
@@ -486,26 +531,26 @@ fn list_order_and_shorthand_omissions_survive_canonical_output() {
         panic!("animation")
     };
     assert_eq!(
-        value.animations().values()[0]
+        value.value().values()[0]
             .timing_function()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "steps(1, start)"
     );
     assert!(matches!(
-        value.animations().values()[0].timing_function(),
+        value.value().values()[0].timing_function(),
         Some(CssEasing::Keyword(CssEasingKeyword::StepStart))
     ));
 }
 
 #[test]
 fn both_timing_families_expand_their_typed_easing_lists() {
-    let report =
-        parse_style_attribute("transition-timing-function:steps(2,end);animation:fade 1s ease");
+    let report = CssParser::default()
+        .parse_block_contents("transition-timing-function:steps(2,end);animation:fade 1s ease");
     assert!(report.is_clean());
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&report.syntax()[0]).unwrap()
+        report.syntax()[0].expand().unwrap()
     else {
         panic!("ordinary transition easing")
     };
@@ -518,11 +563,13 @@ fn both_timing_families_expand_their_typed_easing_lists() {
         panic!("typed transition easing")
     };
     assert_eq!(
-        easing.values()[0].serialize_specified().unwrap(),
+        easing.values()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "steps(2)"
     );
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&report.syntax()[1]).unwrap()
+        report.syntax()[1].expand().unwrap()
     else {
         panic!("ordinary animation")
     };

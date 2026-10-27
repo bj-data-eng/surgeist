@@ -1,9 +1,31 @@
 //! Checked construction expectations from Color 5 WD20260908 §7 and the
 //! existing complete structural ceiling: function nodes add one; none adds zero.
 use crate::css::support::color_and_selector_fixtures::named_color as named;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssAbsoluteColorEligibility, CssAbsoluteColorExclusion, CssColor, CssLightDarkColor,
+};
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::conformance::{
+    CssFeatureKind, CssSupportStatus, feature_metadata, specification_source,
+};
+use surgeist_css::numeric::{
+    CssAngle, CssAngleOrZero, CssCalculation, CssLength, CssLengthPercentage, CssNonNegative,
+    CssNumeric,
+};
+use surgeist_css::values::common::{
+    CssIdent, CssUrl, CssUrlFunction, CssUrlModifier, CssUrlModifierFunction,
+};
+use surgeist_css::values::image::{
+    CssColorStopList, CssColorStopListItem, CssGradient, CssGradientColorStop, CssImage,
+    CssImageConstructionError, CssImageValue, CssLightDarkImage, CssLinearGradient,
+    CssLinearGradientDirection, CssRadialEllipseSize, CssRadialGradient, CssRadialSize,
+};
+use surgeist_css::values::position::{
+    CssHorizontalPosition, CssPhysicalPosition, CssVerticalPosition,
+};
 
-fn stops(color: CssColor, position: Option<CssSpecifiedLengthPercentage>) -> CssColorStopList {
+fn stops(color: CssColor, position: Option<CssNumeric<CssLengthPercentage>>) -> CssColorStopList {
     CssColorStopList::try_new(vec![
         CssColorStopListItem::Stop(Box::new(CssGradientColorStop::from_color(color, position))),
         CssColorStopListItem::Stop(Box::new(CssGradientColorStop::from_color(
@@ -19,21 +41,29 @@ fn math(depth: usize, leaf: &str) -> CssComponentValues {
     for _ in 0..depth {
         value = format!("calc({value})");
     }
-    let value = parse_component_values(&value).unwrap();
+    let value = CssComponentValues::parse(&CssParser::default(), &value).unwrap();
     assert_eq!(value.nesting_depth() as usize, depth);
     value
 }
 
-fn length_percentage(depth: usize) -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_calculation(
-        CssLengthPercentageCalculation::try_from_components(math(depth, "1px")).unwrap(),
+fn length_percentage(depth: usize) -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_calculation(
+        CssCalculation::<CssLengthPercentage>::try_from_components(
+            math(depth, "1px"),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
 
-fn nonnegative_length_percentage(depth: usize) -> CssSpecifiedNonNegativeLengthPercentage {
-    CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-        CssLengthPercentageCalculation::try_from_components(math(depth, "1px")).unwrap(),
+fn nonnegative_length_percentage(depth: usize) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
+    CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
+        CssCalculation::<CssLengthPercentage>::try_from_components(
+            math(depth, "1px"),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
@@ -51,7 +81,7 @@ fn assert_image_admission_in_both_branches(value: CssImageValue, admitted: bool)
         if admitted {
             assert!(result.is_ok());
         } else {
-            assert_eq!(result.unwrap_err(), CssImageConstructionError::NestingLimit);
+            assert!(result.unwrap_err().is_nesting_limit());
         }
     }
 }
@@ -68,7 +98,7 @@ fn checked_color_pair_accessors_preserve_independently_constructed_children() {
     assert_eq!(value.light_dark_value(), Some(&pair));
     assert!(light.light_dark_value().is_none());
     assert_eq!(
-        value.to_specified_css().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "light-dark(red, currentcolor)"
     );
     assert_eq!(
@@ -86,19 +116,20 @@ fn checked_image_pairs_preserve_url_none_identity_and_are_real_images() {
     assert_eq!(pair.dark(), &CssImageValue::None);
     assert_eq!(
         CssImageValue::LightDark(Box::new(pair))
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "light-dark(url(\"a.svg\"), none)"
     );
     let pair = CssLightDarkImage::try_new(CssImageValue::None, CssImageValue::None).unwrap();
     let image = CssImage::try_new(CssImageValue::LightDark(Box::new(pair))).unwrap();
     assert_eq!(
-        image.serialize_specified().unwrap(),
+        image.serialize_specified(Default::default()).unwrap(),
         "light-dark(none, none)"
     );
-    assert_eq!(
-        CssImage::try_new(CssImageValue::None).unwrap_err(),
-        CssImageConstructionError::NotImage
+    assert!(
+        CssImage::try_new(CssImageValue::None)
+            .unwrap_err()
+            .is_not_image()
     );
 }
 
@@ -113,23 +144,22 @@ fn checked_color_and_image_pairs_admit_256_functions_and_reject_the_next() {
             CssLightDarkImage::try_new(image, CssImageValue::None).unwrap(),
         ));
     }
-    assert_eq!(
-        CssLightDarkColor::try_new(named("blue"), color.clone()).unwrap_err(),
-        CssColorConstructionError::NestingLimit
+    assert!(
+        CssLightDarkColor::try_new(named("blue"), color.clone())
+            .unwrap_err()
+            .is_nesting_limit()
     );
-    assert_eq!(
-        CssLightDarkColor::try_new(color, named("blue")).unwrap_err(),
-        CssColorConstructionError::NestingLimit
+    assert!(
+        CssLightDarkColor::try_new(color, named("blue"))
+            .unwrap_err()
+            .is_nesting_limit()
     );
     assert_image_admission_in_both_branches(image, false);
     let mut image = CssImageValue::Url(CssUrl::new("a.svg"));
     for _ in 0..255 {
         image = CssImageValue::LightDark(Box::new(wrap_image(image).unwrap()));
     }
-    assert_eq!(
-        wrap_image(image).unwrap_err(),
-        CssImageConstructionError::NestingLimit
-    );
+    assert!(wrap_image(image).unwrap_err().is_nesting_limit());
 }
 
 #[test]
@@ -155,8 +185,12 @@ fn checked_image_depth_includes_deep_gradient_color_subtrees_and_oversized_child
 fn checked_image_depth_includes_all_gradient_numeric_component_roles() {
     for depth in [254, 255] {
         let direction = CssLinearGradientDirection::Angle(CssAngleOrZero::Angle(
-            CssAngleValue::try_from_calculation(
-                CssAngleCalculation::try_from_components(math(depth, "1deg")).unwrap(),
+            CssNumeric::<CssAngle>::try_from_calculation(
+                CssCalculation::<CssAngle>::try_from_components(
+                    math(depth, "1deg"),
+                    Default::default(),
+                )
+                .unwrap(),
             )
             .unwrap(),
         ));
@@ -184,17 +218,27 @@ fn checked_image_depth_includes_all_gradient_numeric_component_roles() {
             None, hint_stops,
         )));
         let circle = CssRadialSize::Circle(
-            CssSpecifiedNonNegativeLength::try_from_calculation(
-                CssLengthCalculation::try_from_components(math(depth, "1px")).unwrap(),
+            CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(
+                CssCalculation::<CssLength>::try_from_components(
+                    math(depth, "1px"),
+                    Default::default(),
+                )
+                .unwrap(),
             )
             .unwrap(),
         );
         let ellipse = CssRadialSize::Ellipse(CssRadialEllipseSize::new(
             nonnegative_length_percentage(depth),
-            CssSpecifiedNonNegativeLengthPercentage::zero(),
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
+                CssComponentValue::try_number("0").unwrap(),
+            )
+            .unwrap(),
         ));
         let reverse_ellipse = CssRadialSize::Ellipse(CssRadialEllipseSize::new(
-            CssSpecifiedNonNegativeLengthPercentage::zero(),
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
+                CssComponentValue::try_number("0").unwrap(),
+            )
+            .unwrap(),
             nonnegative_length_percentage(depth),
         ));
         let mut values = vec![direction_image, stop_image, hint_image];
@@ -260,21 +304,11 @@ fn checked_image_depth_includes_url_modifier_function_and_argument_trees() {
 
 #[test]
 fn new_image_construction_errors_implement_the_semantic_error_contract() {
-    for (value, text) in [
-        (CssImageConstructionError::NotImage, "none is not an image"),
-        (
-            CssImageConstructionError::NestingLimit,
-            "image nesting limit exceeded",
-        ),
-        (
-            CssImageConstructionError::CapacityOverflow,
-            "image capacity overflow",
-        ),
-    ] {
-        assert_eq!(value.to_string(), text);
-        let error: &dyn std::error::Error = &value;
-        assert!(error.source().is_none());
-    }
+    let value = CssImage::try_new(CssImageValue::None).unwrap_err();
+    assert!(value.is_not_image(), "{value:?}");
+    assert_eq!(value.to_string(), "none is not an image");
+    let error: &dyn std::error::Error = &value;
+    assert!(error.source().is_none());
 }
 
 #[test]
@@ -302,7 +336,12 @@ fn light_dark_metadata_identifies_complete_authored_productions_and_the_dated_so
         );
         assert!(metadata.supported_subset().is_none());
         assert!(metadata.unsupported_remainder().is_none());
-        assert!(validate_style_attribute(source).is_ok());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(source)
+                .into_validation_result()
+                .is_ok()
+        );
     }
     assert!(specification_source("I-COLOR5-20260908").is_some());
     assert_eq!(

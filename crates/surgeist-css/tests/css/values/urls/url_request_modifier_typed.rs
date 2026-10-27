@@ -3,17 +3,21 @@
 //! The constructor and inspection API retain authored request syntax, without
 //! applying Fetch operations or cryptographic interpretation.
 use crate::css::support::value_assertions::background_image_url as parsed;
-use surgeist_css::{
-    CssComponentValue, CssComponentValueErrorKind, CssComponentValueRef, CssComponentValues,
-    CssIdent, CssRequestUrlModifierRef as Request, CssUrl, CssUrlCrossOrigin as CrossOrigin,
-    CssUrlFunction, CssUrlModifier, CssUrlModifierFunction, CssUrlReferrerPolicy as Policy,
-    CssValueOrigin, CssValueTokenRef, parse_component_values,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::values::common::CssRequestUrlModifierRef as Request;
+use surgeist_css::values::common::CssUrlCrossOrigin as CrossOrigin;
+use surgeist_css::values::common::CssUrlReferrerPolicy as Policy;
+use surgeist_css::values::common::{
+    CssIdent, CssUrl, CssUrlFunction, CssUrlModifier, CssUrlModifierFunction,
 };
 
 fn function(name: &str, text: &str) -> CssUrlModifierFunction {
     CssUrlModifierFunction::try_new(
         CssIdent::try_new(name).unwrap(),
-        parse_component_values(text).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), text).unwrap(),
     )
     .unwrap()
 }
@@ -38,7 +42,11 @@ fn both_crossorigin_choices_are_typed_without_changing_authored_identity() {
         };
         assert_eq!(parsed.request_modifier(), constructed.request_modifier());
         assert_eq!(
-            parsed.argument_components().serialize().unwrap().as_css(),
+            parsed
+                .argument_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             arguments
         );
         assert!(url.is_local_url());
@@ -108,7 +116,7 @@ fn integrity_view_borrows_decoded_string_without_hash_validation_or_token_loss()
             "asset",
             vec![CssUrlModifier::Function(constructed.clone())],
         );
-        let reparse = parsed(&url.serialize_specified().unwrap());
+        let reparse = parsed(&url.serialize_specified(Default::default()).unwrap());
         let [CssUrlModifier::Function(reparsed)] = reparse.modifiers() else {
             panic!("function")
         };
@@ -137,31 +145,31 @@ fn checked_constructor_rejects_all_known_argument_arity_and_category_failures() 
     ] {
         let error = CssUrlModifierFunction::try_new(
             CssIdent::try_new(name).unwrap(),
-            parse_component_values(arguments).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), arguments).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssComponentValueErrorKind::InvalidFunction,
-            "{name}({arguments})"
-        );
+        assert!(error.is_invalid_function(), "{name}({arguments})");
     }
 }
 
 #[test]
 fn checked_invalid_argument_errors_preserve_original_and_programmatic_origins() {
-    let arguments = parse_component_values("\"hash\" extra").unwrap();
+    let arguments = CssComponentValues::parse(&CssParser::default(), "\"hash\" extra").unwrap();
     let extra_origin = arguments.items()[2].origin().clone();
     let error = CssUrlModifierFunction::try_new(CssIdent::try_new("integrity").unwrap(), arguments)
         .unwrap_err();
-    assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidFunction);
+    assert!(error.is_invalid_function(), "{error:?}");
     assert_eq!(error.origin(), &extra_origin);
     let error = CssUrlModifierFunction::try_new(
         CssIdent::try_new("crossorigin").unwrap(),
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("wrong").unwrap()]).unwrap(),
+        CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident("wrong").unwrap()],
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap_err();
-    assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidFunction);
+    assert!(error.is_invalid_function(), "{error:?}");
     assert!(matches!(error.origin(), CssValueOrigin::Programmatic));
 }
 
@@ -201,12 +209,16 @@ fn unknown_names_and_bare_identifiers_do_not_become_recognized_requests() {
 
 #[test]
 fn request_metadata_qualifies_authored_grammar_and_downstream_execution() {
-    let record = surgeist_css::feature_metadata("required.value.request-url-modifier").unwrap();
-    assert_eq!(record.status(), surgeist_css::CssSupportStatus::Partial);
+    let record =
+        surgeist_css::conformance::feature_metadata("required.value.request-url-modifier").unwrap();
+    assert_eq!(
+        record.status(),
+        surgeist_css::conformance::CssSupportStatus::Partial
+    );
     assert_eq!(record.source().id().as_str(), "I-VALUES5-REQUEST");
     assert_eq!(
         record.source().tier(),
-        surgeist_css::CssSpecificationTier::Snapshot2026PreCrException
+        surgeist_css::conformance::CssSpecificationTier::Snapshot2026PreCrException
     );
     assert_eq!(
         record.source().url(),
@@ -228,13 +240,12 @@ fn request_metadata_qualifies_authored_grammar_and_downstream_execution() {
         function("referrerpolicy", "origin").request_modifier(),
         Some(Request::ReferrerPolicy(Policy::Origin))
     );
-    assert_eq!(
+    assert!(
         CssUrlModifierFunction::try_new(
             CssIdent::try_new("referrerpolicy").unwrap(),
-            parse_component_values("default").unwrap()
+            CssComponentValues::parse(&CssParser::default(), "default").unwrap()
         )
         .unwrap_err()
-        .kind(),
-        CssComponentValueErrorKind::InvalidFunction
+        .is_invalid_function()
     );
 }

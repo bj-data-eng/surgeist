@@ -3,7 +3,19 @@
 //! 16 keywords. No glyph alias grammar or math-substitution assertion is made.
 use crate::css::support::named_property::property_declaration as declaration;
 use CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{
+    CssCustomPropertyName, CssDeclaration, CssGlobalKeyword, CssImportance,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef,
+    CssPropertyTarget,
+};
+use surgeist_css::values::text::{
+    CssDirection, CssTextOrientation, CssUnicodeBidi, CssWritingMode,
+};
 
 #[derive(Clone, Copy)]
 enum Expected {
@@ -98,7 +110,7 @@ fn assert_keyword(declaration: &CssDeclaration, text: &str, expected: Expected) 
             value.as_css()
         }
         (CssKnownPropertyValueRef::UnicodeBidi(value), Expected::Bidi(expected)) => {
-            assert_eq!(value.bidi(), &expected);
+            assert_eq!(value.value(), &expected);
             value.as_css()
         }
         (CssKnownPropertyValueRef::WritingMode(value), Expected::Writing(expected)) => {
@@ -106,7 +118,7 @@ fn assert_keyword(declaration: &CssDeclaration, text: &str, expected: Expected) 
             value.as_css()
         }
         (CssKnownPropertyValueRef::TextOrientation(value), Expected::Orientation(expected)) => {
-            assert_eq!(value.orientation(), &expected);
+            assert_eq!(value.value(), &expected);
             value.as_css()
         }
         _ => panic!("independently expected typed keyword"),
@@ -149,11 +161,14 @@ fn expansion_states(property: P, reentry_keyword: &str) {
                 continue;
             }
             let parsed = declaration(property, text, importance);
-            let components =
-                CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()])
-                    .unwrap();
-            let checked = parse_property_value(
-                CssPropertyNameRef::Known(property),
+            let components = CssComponentValues::try_new(
+                vec![CssComponentValue::try_token(text).unwrap()],
+                Default::default(),
+            )
+            .unwrap();
+            let checked = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components.clone(),
                 importance,
             )
@@ -161,7 +176,7 @@ fn expansion_states(property: P, reentry_keyword: &str) {
             assert_eq!(checked.value_components(), &components);
             for source in [parsed, checked] {
                 let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                    expand_declaration(&source).expect("ordinary keyword expansion")
+                    source.expand().expect("ordinary keyword expansion")
                 else {
                     panic!("longhand expansion")
                 };
@@ -187,7 +202,7 @@ fn expansion_states(property: P, reentry_keyword: &str) {
         ] {
             let source = declaration(property, text, importance);
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("global expansion")
             };
@@ -200,11 +215,12 @@ fn expansion_states(property: P, reentry_keyword: &str) {
             assert_eq!(value.source().importance(), importance);
         }
         let source = declaration(property, "var(--mode)", importance);
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("pending property")
         };
         assert!(pending.source().same_occurrence(&source));
-        let replacement = parse_component_values(reentry_keyword).unwrap();
+        let replacement =
+            CssComponentValues::parse(&CssParser::default(), reentry_keyword).unwrap();
         let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
         else {
             panic!("replacement contribution")
@@ -221,7 +237,7 @@ fn expansion_states(property: P, reentry_keyword: &str) {
         assert_eq!(value.source().importance(), importance);
         assert_eq!(value.replacement_components(), Some(&replacement));
         let CssContributions::Longhands(globals) = pending
-            .reenter(parse_component_values("inherit").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "inherit").unwrap())
             .unwrap()
         else {
             panic!("global reentry")
@@ -232,21 +248,20 @@ fn expansion_states(property: P, reentry_keyword: &str) {
             globals.items()[0].value(),
             CssContributionValueRef::Global(CssGlobalKeyword::Inherit)
         );
-        assert_eq!(
+        assert!(
             pending
-                .reenter(parse_component_values("var(--again)").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         for invalid in ["unknown", "inherit extra", "rtl; color:red"] {
-            assert!(matches!(
+            assert!(
                 pending
-                    .reenter(parse_component_values(invalid).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
+                    .replacement_error()
+                    .is_some()
+            );
         }
     }
 }
@@ -276,11 +291,14 @@ fn sixteen_keywords_have_exact_parsed_and_checked_views() {
                 parsed.value_components().items()[0].origin(),
                 CssValueOrigin::Parsed(_)
             ));
-            let components =
-                CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()])
-                    .unwrap();
-            let checked = parse_property_value(
-                CssPropertyNameRef::Known(property),
+            let components = CssComponentValues::try_new(
+                vec![CssComponentValue::try_token(text).unwrap()],
+                Default::default(),
+            )
+            .unwrap();
+            let checked = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components.clone(),
                 importance,
             )
@@ -332,7 +350,7 @@ fn text_orientation_metadata_and_transport_are_complete() {
 fn all_reset_exclusions_do_not_change_with_keyword_metadata() {
     let source = declaration(P::All, "initial", CssImportance::Important);
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&source).unwrap()
+        source.expand().unwrap()
     else {
         panic!("symbolic all reset")
     };

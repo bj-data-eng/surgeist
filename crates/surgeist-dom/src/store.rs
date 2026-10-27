@@ -349,14 +349,9 @@ pub enum DomError {
         limit: u64,
     },
     InputNumeric(surgeist_html::bounded::RangeNumericError),
-    InputColorProtocol(surgeist_css::CssColorProtocolError),
-    InputColorUnavailable(surgeist_css::CssColorUnavailable),
-    InputColorUnsupported(surgeist_css::CssColorUnsupported),
-    InputColorFacts(surgeist_css::CssColorFactError),
-    InputColorNumerical {
-        error: surgeist_color::ColorError,
-        input: surgeist_css::CssColorInputRange,
-    },
+    InputColorUnavailable(surgeist_css::color::CssColorUnavailable),
+    InputColorUnsupported(surgeist_css::color::CssColorUnsupported),
+    InputColorFacts(surgeist_css::color::CssColorFactDefect),
     StyleCompositionRequired(surgeist_html::HtmlStyleUpdateAction),
     StyleOwnerAttributesCompositionRequired,
     StyleDisabledCompositionRequired,
@@ -476,7 +471,7 @@ pub struct DomLimits {
     encoding_url_work: u64,
     meta_work: u64,
     meta_theme_scratch: usize,
-    meta_color_scheme: Option<surgeist_css::CssUtf16PropertyValueLimits>,
+    meta_color_scheme: Option<surgeist_css::source::CssUtf16PropertyValueLimits>,
     meta_color_scheme_bytes: usize,
     select_tasks: usize,
     select_scratch: usize,
@@ -807,14 +802,14 @@ impl DomLimits {
     /// Complete finite CSS-owned UTF16/property allowance; unconfigured is unavailable.
     pub const fn with_meta_color_scheme_limits(
         mut self,
-        limits: surgeist_css::CssUtf16PropertyValueLimits,
+        limits: surgeist_css::source::CssUtf16PropertyValueLimits,
     ) -> Self {
         self.meta_color_scheme = Some(limits);
         self
     }
     pub const fn meta_color_scheme_limits(
         self,
-    ) -> Option<surgeist_css::CssUtf16PropertyValueLimits> {
+    ) -> Option<surgeist_css::source::CssUtf16PropertyValueLimits> {
         self.meta_color_scheme
     }
     /// Aggregate installed CSS report/source backing across all Documents.

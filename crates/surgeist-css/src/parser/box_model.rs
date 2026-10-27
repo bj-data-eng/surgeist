@@ -1,16 +1,18 @@
 use super::color::parse_color;
 use super::combinators::{Combinator, Tail, commit, fill, keyword, parse_group};
 use super::property_input::Parser;
-use crate::error::property::{CssFeatureId, Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::CssFeatureId;
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::match_ignore_ascii_case;
 
 use super::values::{parse_shadow_length, parse_shadow_nonnegative_length};
-use crate::syntax::*;
+use crate::values::box_model::CssBoxDecorationBreak;
+use crate::values::effects::{CssBoxShadow, CssBoxShadowList, CssDropShadow, CssShadow};
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] =
     &[CssFeatureId::new("official.value.box-edge-keywords")];
 
-pub(super) fn parse_box_decoration_break<'i, 't>(
+pub(crate) fn parse_box_decoration_break<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBoxDecorationBreak, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -22,9 +24,9 @@ pub(super) fn parse_box_decoration_break<'i, 't>(
     }
 }
 
-pub(super) fn parse_box_shadow<'i, 't>(
+pub(crate) fn parse_box_shadow<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssBoxShadow, ParseError<'i, Error>> {
     let state = input.state();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned)
@@ -44,7 +46,7 @@ pub(super) fn parse_box_shadow<'i, 't>(
 
 pub(super) fn parse_shadow<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssShadow, ParseError<'i, Error>> {
     // `<color>? && [ <length>{2} <length [0,∞]>? <length>? ] && inset?`: the
     // && grammar reorders whole operands, never the lengths within one.
@@ -91,7 +93,7 @@ pub(super) fn parse_shadow<'i, 't>(
 
 pub(super) fn parse_drop_shadow<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssDropShadow, ParseError<'i, Error>> {
     // `<color>? && [ <length>{2} <length [0,∞]>? ]`.
     let (mut color, mut lengths) = (None, None);

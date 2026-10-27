@@ -1,4 +1,5 @@
-use crate::{CssGlobalKeyword, CssKnownProperty};
+use crate::declaration::CssGlobalKeyword;
+use crate::property::CssKnownProperty;
 
 pub(crate) fn property_for_supported_name(name: &str) -> Option<CssKnownProperty> {
     CssKnownProperty::from_name(name)

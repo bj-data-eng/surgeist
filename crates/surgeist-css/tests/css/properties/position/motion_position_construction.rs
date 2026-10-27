@@ -2,15 +2,31 @@
 //! immutable published parser RED covers preimplementation regression behavior;
 //! these typed calls first become expressible with the full owning payload.
 use crate::css::support::serialization_limits::assert_node_limits as budget;
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValue, CssValueOrigin};
+use surgeist_css::numeric::{
+    CssAngle, CssAngleUnit, CssLengthPercentage, CssNumeric, CssNumericLiteral,
+};
+use surgeist_css::values::position::{
+    CssBlockPosition, CssCartesianPosition, CssHorizontalPosition, CssInlinePosition, CssPosition,
+    CssPositionRef, CssRelativeAxisPosition, CssVerticalPosition,
+};
+use surgeist_css::values::transform::{
+    CssCoordBox, CssOffset, CssOffsetAnchor, CssOffsetPath, CssOffsetPathKind, CssOffsetPathValue,
+    CssOffsetPosition, CssRay, CssRaySize,
+};
 
-fn scalar(text: &str) -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_component(CssComponentValue::try_token(text).unwrap())
-        .unwrap()
+fn scalar(text: &str) -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_component(
+        CssComponentValue::try_token(text).unwrap(),
+    )
+    .unwrap()
 }
 
-fn angle() -> CssAngleValue {
-    CssAngleValue::from_literal(CssAngleLiteral::try_new(".25", CssAngleUnit::Turns).unwrap())
+fn angle() -> CssNumeric<CssAngle> {
+    CssNumeric::<CssAngle>::try_from_literal(
+        CssNumericLiteral::<CssAngle>::try_new(".25", CssAngleUnit::Turns).unwrap(),
+    )
+    .unwrap()
 }
 
 fn families() -> Vec<(CssPosition, &'static str, usize)> {
@@ -79,12 +95,8 @@ fn direct_position_and_anchor_constructors_retain_each_checked_symbolic_family()
         let before = position.clone();
         let offset = CssOffsetPosition::Position(position.clone());
         let anchor = CssOffsetAnchor::Position(position.clone());
-        budget(expected, nodes, |limits| {
-            offset.serialize_specified_with_limits(limits)
-        });
-        budget(expected, nodes, |limits| {
-            anchor.serialize_specified_with_limits(limits)
-        });
+        budget(expected, nodes, |limits| offset.serialize_specified(limits));
+        budget(expected, nodes, |limits| anchor.serialize_specified(limits));
         assert_eq!(offset, CssOffsetPosition::Position(before.clone()));
         assert_eq!(anchor, CssOffsetAnchor::Position(before.clone()));
         assert_eq!(position, before);
@@ -104,7 +116,7 @@ fn checked_ray_construction_retains_logical_positions_angle_units_and_omissions(
         budget(
             &format!("ray(0.25turn at {expected})"),
             nodes + 2,
-            |limits| ray.serialize_specified_with_limits(limits),
+            |limits| ray.serialize_specified(limits),
         );
         assert_eq!(ray, before);
     }
@@ -122,7 +134,7 @@ fn checked_offset_composes_full_positions_without_fabricating_omitted_constituen
         )
         .unwrap();
         budget(expected, nodes + 1, |limits| {
-            position_only.serialize_specified_with_limits(limits)
+            position_only.serialize_specified(limits)
         });
         assert!(position_only.path().is_none());
         assert!(position_only.distance().is_none());
@@ -152,7 +164,7 @@ fn checked_offset_composes_full_positions_without_fabricating_omitted_constituen
         budget(
             &format!("{expected} ray(0.25turn contain at {expected}) border-box / {expected}"),
             nodes * 3 + 7,
-            |limits| full.serialize_specified_with_limits(limits),
+            |limits| full.serialize_specified(limits),
         );
         assert_eq!(full, before);
     }
@@ -197,7 +209,13 @@ fn motion_composition_keeps_programmatic_logical_offset_scalar_origins() {
         for scalar in scalars {
             assert_eq!(scalar.origin(), &CssValueOrigin::Programmatic);
         }
-        assert_eq!(scalars[0].serialize_specified().unwrap(), "-2px");
-        assert_eq!(scalars[1].serialize_specified().unwrap(), "10%");
+        assert_eq!(
+            scalars[0].serialize_specified(Default::default()).unwrap(),
+            "-2px"
+        );
+        assert_eq!(
+            scalars[1].serialize_specified(Default::default()).unwrap(),
+            "10%"
+        );
     }
 }

@@ -130,13 +130,15 @@ import is retired: the 2026 draft's parsing sections match its text apart from
 formatting, and the localized terminal-declaration and named-supports
 reconciliations now apply to the 2026 text.
 
-Four items still rest on the 2021 draft and are deferred: the non-ASCII ident
+One item still rests on the 2021 draft and is deferred: the non-ASCII ident
 code point restriction, a non-trivial change to the crate's lexical correction
-over the pinned `cssparser` tokenizer, tracked separately; the
-public `parse_declaration_list_text` front, which implements the removed
-"parse a list of declarations"; the style-attribute front's handling of a root
-`}`; and the Snapshot-official `O-SYNTAX3` identity in the public conformance
-registry. Public API decisions go to [#1353](https://github.com/bj-data-eng/surgeist/issues/1353).
+over the pinned `cssparser` tokenizer, tracked separately. The other three items
+that were deferred to [#1353](https://github.com/bj-data-eng/surgeist/issues/1353)
+are settled by its step 9: the public `parse_declaration_list_text` front, which
+implemented the removed "parse a list of declarations", is gone; the style
+attribute is parsed as block contents, so a root `}` ends it
+(`CssParser::parse_block_contents`); and the Snapshot-official `O-SYNTAX3` identity
+in the public conformance registry names the 2026-10-01 publication.
 
 ## Importer-selected witnesses
 

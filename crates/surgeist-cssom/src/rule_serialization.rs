@@ -1,8 +1,17 @@
 //! Bounded preparation and native serialization of current live rule payloads.
 use crate::{model::State, *};
 use std::cell::OnceCell;
-use surgeist_css::CssRule;
-use surgeist_css::*;
+use surgeist_css::declaration::CssSpecifiedDeclarationBlock;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::CssStyleAncestor;
+use surgeist_css::rule::keyframes::CssKeyframeRuleView;
+use surgeist_css::rule::page::{
+    CssMarginRuleView, CssPageRuleView, CssSpecifiedPageDeclarationBlock,
+};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::{
+    CssGroupPreludeRef, CssRuleGraphInput, CssRuleSerializationLimits, CssSerializationLimits,
+};
 
 /// Limits one current rule text read. Preparation counts actual context/traversal
 /// steps and view nodes; CSS independently owns its one cumulative graph budget.
@@ -12,7 +21,7 @@ pub struct CssomRuleFormatLimits {
     pub max_nodes: usize,
     pub max_preparation_steps: usize,
     pub max_depth: usize,
-    pub css: CssSpecifiedValueSerializationLimits,
+    pub css: CssSerializationLimits,
 }
 impl Default for CssomRuleFormatLimits {
     fn default() -> Self {
@@ -20,7 +29,7 @@ impl Default for CssomRuleFormatLimits {
             max_nodes: 100_000,
             max_preparation_steps: 1_000_000,
             max_depth: 256,
-            css: CssSpecifiedValueSerializationLimits::default(),
+            css: CssSerializationLimits::default(),
         }
     }
 }
@@ -95,10 +104,10 @@ impl State {
     }
     fn keyframe_view(&self, id: &CssomRuleId) -> Result<CssKeyframeRuleView<'_>, CssomError> {
         match self.rule(id)?.data() {
-            CssomRuleData::Keyframe { selectors, block } => {
-                CssKeyframeRuleView::try_new(selectors, self.current_properties(block)?)
-                    .map_err(CssomError::Keyframe)
-            }
+            CssomRuleData::Keyframe { selectors, block } => Ok(CssKeyframeRuleView::try_new(
+                selectors,
+                self.current_properties(block)?,
+            )?),
             _ => Err(CssomError::WrongKind),
         }
     }
@@ -116,8 +125,7 @@ impl State {
         id: &CssomRuleId,
     ) -> Result<CssRuleGraphInput<'_>, CssomError> {
         match self.rule(id)?.authored() {
-            CssomAuthoredRule::Ordinary(rule) => Ok(CssRuleGraphInput::from_rule(rule)),
-            CssomAuthoredRule::Scoped(rule) => Ok(CssRuleGraphInput::from_scoped_rule(rule)),
+            CssomAuthoredRule::Rule(rule) => Ok(CssRuleGraphInput::from_rule(rule)),
             _ => Err(CssomError::WrongKind),
         }
     }
@@ -140,16 +148,10 @@ impl State {
             });
         }
         if matches!(root.data(), CssomRuleData::Keyframe { .. }) {
-            return self
-                .keyframe_view(id)?
-                .serialize_cssom_with_limits(limits.css)
-                .map_err(CssomError::Keyframe);
+            return Ok(self.keyframe_view(id)?.serialize_cssom(limits.css)?);
         }
         if matches!(root.data(), CssomRuleData::Margin { .. }) {
-            return self
-                .margin_view(id)?
-                .serialize_cssom_with_limits(limits.css)
-                .map_err(CssomError::Format);
+            return Ok(self.margin_view(id)?.serialize_cssom(limits.css)?);
         }
         let mut parent = &root.parent;
         let mut ancestor = CssStyleAncestor::Absent;
@@ -270,33 +272,26 @@ impl State {
                     match rule.data() {
                         CssomRuleData::Style {
                             selectors, block, ..
-                        } => match selectors {
-                            CssomSelectors::Ordinary(selectors) => CssRuleGraphInput::style(
-                                selectors,
-                                self.current_properties(block)?,
-                                current,
-                            ),
-                            CssomSelectors::Scoped(selectors) => CssRuleGraphInput::scoped_style(
-                                selectors,
-                                self.current_properties(block)?,
-                                current,
-                            ),
-                        },
+                        } => CssRuleGraphInput::style(
+                            selectors,
+                            self.current_properties(block)?,
+                            current,
+                        ),
                         CssomRuleData::Group { prelude, .. } => match prelude {
                             CssomGroupPrelude::Media(media) => CssRuleGraphInput::group(
-                                CssEditedGroupPreludeRef::Media(self.media(media)?),
+                                CssGroupPreludeRef::Media(self.media(media)?),
                                 current,
                             ),
                             CssomGroupPrelude::Supports(condition) => CssRuleGraphInput::group(
-                                CssEditedGroupPreludeRef::Supports(condition),
+                                CssGroupPreludeRef::Supports(condition),
                                 current,
                             ),
                             CssomGroupPrelude::Container(condition) => CssRuleGraphInput::group(
-                                CssEditedGroupPreludeRef::Container(condition),
+                                CssGroupPreludeRef::Container(condition),
                                 current,
                             ),
                             CssomGroupPrelude::Layer(name) => CssRuleGraphInput::group(
-                                CssEditedGroupPreludeRef::Layer(name.as_ref()),
+                                CssGroupPreludeRef::Layer(name.as_ref()),
                                 current,
                             ),
                             _ => self.original_failure_input(id)?,
@@ -341,7 +336,7 @@ impl State {
                 }
                 CssomRuleData::Import { media, .. } => {
                     let original = match rule.authored() {
-                        CssomAuthoredRule::Ordinary(CssRule::Import(import)) => import,
+                        CssomAuthoredRule::Rule(CssRule::Import(import)) => import,
                         _ => return Err(CssomError::WrongKind),
                     };
                     CssRuleGraphInput::import(original, self.media(media)?)
@@ -358,8 +353,7 @@ impl State {
                     }
                 }
                 CssomRuleData::Leaf { current } => match current {
-                    CssomAuthoredRule::Ordinary(rule) => CssRuleGraphInput::from_rule(rule),
-                    CssomAuthoredRule::Scoped(rule) => CssRuleGraphInput::from_scoped_rule(rule),
+                    CssomAuthoredRule::Rule(rule) => CssRuleGraphInput::from_rule(rule),
                     _ => return Err(CssomError::WrongKind),
                 },
                 // The native whole-rule wrapper is unavailable before its body.
@@ -370,18 +364,14 @@ impl State {
             };
             views[index].set(input).expect("single assignment");
         }
-        views[0]
-            .get()
-            .expect("root initialized")
-            .serialize_cssom_with_graph_limits(
-                namespaces,
-                ancestor,
-                CssRuleGraphSerializationLimits {
-                    values: limits.css,
-                    max_depth: limits.max_depth.saturating_sub(depth),
-                },
-            )
-            .map_err(CssomError::Format)
+        Ok(views[0].get().expect("root initialized").serialize_cssom(
+            namespaces,
+            ancestor,
+            CssRuleSerializationLimits {
+                values: limits.css,
+                max_depth: limits.max_depth.saturating_sub(depth),
+            },
+        )?)
     }
 }
 

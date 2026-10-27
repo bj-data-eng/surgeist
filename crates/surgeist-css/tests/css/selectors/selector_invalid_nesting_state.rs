@@ -4,14 +4,31 @@ use crate::css::support::color_and_selector_fixtures::{
     assert_selector_input_rejected, assert_strict_validation_rejects,
     assert_unrepresentable_construction,
 };
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::serialization_limits::LimitFailure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizedItem, CssSelectorBinding};
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix};
+use surgeist_css::selector::{
+    CssCompoundSelectorArgument, CssInvalidNestingSelectorItem, CssNamespaceContext,
+    CssNthChildPattern, CssNthPattern, CssPartName, CssPartNameList, CssPseudoClass,
+    CssPseudoElement, CssPseudoElementSegment, CssPseudoElementSequence, CssPseudoSelectorList,
+    CssPseudoSelectorListItem, CssRelativeSelector, CssRelativeSelectorList, CssSelector,
+    CssSelectorCombinator, CssSelectorList,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn parsed(source: &str) -> CssSelector {
-    parse_selector(source, &CssNamespaceContext::default())
-        .syntax()
-        .clone()
-        .expect("retained selector")
+    CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    )
+    .syntax()
+    .clone()
+    .expect("retained selector")
 }
 fn logical(selector: &CssSelector) -> &CssPseudoSelectorList {
     let CssSelector::PseudoClass(CssPseudoClass::Is(list) | CssPseudoClass::Where(list)) = selector
@@ -28,18 +45,23 @@ fn invalid(item: &CssPseudoSelectorListItem) -> &CssInvalidNestingSelectorItem {
 }
 fn has(selector: CssSelector) -> CssSelector {
     CssSelector::PseudoClass(CssPseudoClass::Has(
-        CssRelativeSelectorList::try_new(vec![CssRelativeSelector::new(
-            CssSelectorCombinator::Descendant,
-            selector,
-        )])
+        CssRelativeSelectorList::try_new(
+            vec![CssRelativeSelector::new(
+                CssSelectorCombinator::Descendant,
+                selector,
+            )],
+            Default::default(),
+        )
         .unwrap(),
     ))
 }
 fn unrepresentable(selector: &CssSelector) {
     let before = selector.clone();
-    assert_eq!(
-        selector.to_specified_css().unwrap_err().kind(),
-        CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
+    assert!(
+        selector
+            .serialize_specified(Default::default())
+            .unwrap_err()
+            .is_unrepresentable_value()
     );
     assert_eq!(*selector, before);
 }
@@ -47,7 +69,11 @@ fn unrepresentable(selector: &CssSelector) {
 #[test]
 fn mixed_items_keep_source_order_complete_trivia_and_truthful_recovery() {
     let source = ":is(.A,\t/*L*/:NoPe(inner(&)) /*T*/ ,.B)";
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     let selector = report.syntax().as_ref().unwrap();
     let [
         CssPseudoSelectorListItem::Selector(a),
@@ -76,7 +102,7 @@ fn mixed_items_keep_source_order_complete_trivia_and_truthful_recovery() {
     );
     assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidSelector);
     assert_eq!(
-        selector.to_specified_css().unwrap(),
+        selector.serialize_specified(Default::default()).unwrap(),
         ":is(.A,\t/*L*/:NoPe(inner(&)) /*T*/ , .B)"
     );
     assert_strict_validation_rejects(report);
@@ -91,19 +117,22 @@ fn invalid_only_and_empty_and_valid_factories_are_distinct_states() {
         ":future(&)"
     );
     assert!(!logical(&selector).has_pseudo_elements());
-    let empty = CssPseudoSelectorList::try_new_forgiving(Vec::new()).unwrap();
+    let empty = CssPseudoSelectorList::try_new_forgiving(Vec::new(), Default::default()).unwrap();
     assert!(empty.items().is_empty());
     assert_ne!(logical(&selector), &empty);
-    let checked = CssPseudoSelectorList::try_new(vec![CssSelector::Class("A".into())]).unwrap();
+    let checked =
+        CssPseudoSelectorList::try_new(vec![CssSelector::Class("A".into())], Default::default())
+            .unwrap();
     assert_eq!(
         checked.items(),
         [CssPseudoSelectorListItem::Selector(CssSelector::Class(
             "A".into()
         ))]
     );
-    assert_unrepresentable_construction(CssPseudoSelectorList::try_new_forgiving(vec![
-        CssSelector::Class(String::new()),
-    ]));
+    assert_unrepresentable_construction(CssPseudoSelectorList::try_new_forgiving(
+        vec![CssSelector::Class(String::new())],
+        Default::default(),
+    ));
 }
 
 #[test]
@@ -121,11 +150,14 @@ fn strict_not_and_nth_reject_cloned_invalid_state_atomically() {
         ))),
     ] {
         unrepresentable(&selector);
-        assert_unrepresentable_construction(CssSelectorList::try_new(vec![selector]));
+        assert_unrepresentable_construction(CssSelectorList::try_new(
+            vec![selector],
+            Default::default(),
+        ));
     }
     assert_eq!(
         CssSelector::PseudoClass(CssPseudoClass::Where(list))
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         ":where(:future(&), .A)"
     );
@@ -134,29 +166,46 @@ fn strict_not_and_nth_reject_cloned_invalid_state_atomically() {
 #[test]
 fn unchanged_and_stronger_receiving_contexts_preserve_the_original_invalid_state() {
     let selector = parsed(":is(:future(&))");
-    assert_eq!(selector.to_specified_css().unwrap(), ":is(:future(&))");
     assert_eq!(
-        has(selector).to_specified_css().unwrap(),
+        selector.serialize_specified(Default::default()).unwrap(),
+        ":is(:future(&))"
+    );
+    assert_eq!(
+        has(selector)
+            .serialize_specified(Default::default())
+            .unwrap(),
         ":has(:is(:future(&)))"
     );
     let source = ":has(:is(:has(&)))";
     let outer = parsed(source);
-    assert_eq!(outer.to_specified_css().unwrap(), source);
+    assert_eq!(
+        outer.serialize_specified(Default::default()).unwrap(),
+        source
+    );
     let CssSelector::PseudoClass(CssPseudoClass::Has(relative)) = &outer else {
         panic!("Has")
     };
     let inner = relative.selectors()[0].selector();
     assert_eq!(invalid(&logical(inner).items()[0]).authored(), ":has(&)");
     unrepresentable(inner); // Removing outer Has would re-enable the raw Has.
-    assert_unrepresentable_construction(CssPseudoSelectorList::try_new(vec![inner.clone()]));
-    assert_eq!(outer.to_specified_css().unwrap(), source);
+    assert_unrepresentable_construction(CssPseudoSelectorList::try_new(
+        vec![inner.clone()],
+        Default::default(),
+    ));
+    assert_eq!(
+        outer.serialize_specified(Default::default()).unwrap(),
+        source
+    );
 }
 
 #[test]
 fn compound_context_cannot_be_weakened_and_can_be_restored_at_its_owner() {
     let source = ":host(:is(.a &))";
     let host = parsed(source);
-    assert_eq!(host.to_specified_css().unwrap(), source);
+    assert_eq!(
+        host.serialize_specified(Default::default()).unwrap(),
+        source
+    );
     let CssSelector::PseudoClass(CssPseudoClass::HostFunction(argument)) = &host else {
         panic!("Host")
     };
@@ -172,13 +221,20 @@ fn compound_context_cannot_be_weakened_and_can_be_restored_at_its_owner() {
     };
     // No mutation of checked relative members is available; receiving a compound
     // raw state through the ordinary relative factory already rejects weakening.
-    assert_unrepresentable_construction(CssRelativeSelectorList::try_new(vec![
-        CssRelativeSelector::new(CssSelectorCombinator::Descendant, detached.clone()),
-    ]));
-    assert_eq!(relative.to_specified_css().unwrap(), ".A");
+    assert_unrepresentable_construction(CssRelativeSelectorList::try_new(
+        vec![CssRelativeSelector::new(
+            CssSelectorCombinator::Descendant,
+            detached.clone(),
+        )],
+        Default::default(),
+    ));
+    assert_eq!(
+        relative.serialize_specified(Default::default()).unwrap(),
+        ".A"
+    );
     assert!(CssCompoundSelectorArgument::try_new(detached).is_some()); // Compound receiving context restores the proof.
     assert_eq!(
-        has(host).to_specified_css().unwrap(),
+        has(host).serialize_specified(Default::default()).unwrap(),
         ":has(:host(:is(.a &)))"
     );
 }
@@ -190,11 +246,15 @@ fn raw_context_invalid_pseudo_elements_and_nested_has_are_not_admitted_children(
         ":has(:where(:has(&),.A))",
         ":host(:is(.a &))",
     ] {
-        let report = parse_selector(source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         let selector = report.syntax().as_ref().unwrap();
         assert!(!selector.has_pseudo_elements());
         assert_eq!(
-            selector.to_specified_css().unwrap(),
+            selector.serialize_specified(Default::default()).unwrap(),
             source.replace(",.A", ", .A")
         );
         assert!(
@@ -213,7 +273,11 @@ fn raw_context_invalid_pseudo_elements_and_nested_has_are_not_admitted_children(
     ] {
         assert_selector_input_rejected(
             source,
-            parse_selector(source, &CssNamespaceContext::default()),
+            CssSelector::parse(
+                &CssParser::default(),
+                source,
+                &CssNamespaceContext::default(),
+            ),
         );
     }
 }
@@ -258,12 +322,15 @@ fn namespace_invalidity_remains_bound_to_original_parse_and_reparse_is_explicit(
     let raw = invalid(&logical(&original).items()[0]);
     assert_eq!(raw.authored(), "p|Leaf&");
     let literal = ":is(p|Leaf&, .A)";
-    assert_eq!(original.to_specified_css().unwrap(), literal);
+    assert_eq!(
+        original.serialize_specified(Default::default()).unwrap(),
+        literal
+    );
     let context = CssNamespaceContext::from_bindings([(
         Some(CssNamespacePrefix::try_new("p").unwrap()),
         CssNamespaceName::new("urn:p"),
     )]);
-    let reparsed = parse_selector(literal, &context)
+    let reparsed = CssSelector::parse(&CssParser::default(), literal, &context)
         .into_validation_result()
         .unwrap()
         .unwrap();
@@ -273,7 +340,10 @@ fn namespace_invalidity_remains_bound_to_original_parse_and_reparse_is_explicit(
     ));
     assert_ne!(original, reparsed);
     assert_eq!(raw.authored(), "p|Leaf&");
-    assert_eq!(original.to_specified_css().unwrap(), literal);
+    assert_eq!(
+        original.serialize_specified(Default::default()).unwrap(),
+        literal
+    );
 }
 
 #[test]
@@ -306,10 +376,17 @@ fn implicit_eof_terminations_preserve_authored_chunks_and_emit_stable_complete_s
             ":is(:future(&'tail\\\n'))",
         ),
     ] {
-        let report = parse_selector(source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         let selector = report.syntax().as_ref().unwrap();
         assert_eq!(invalid(&logical(selector).items()[0]).authored(), authored);
-        assert_eq!(selector.to_specified_css().unwrap(), literal);
+        assert_eq!(
+            selector.serialize_specified(Default::default()).unwrap(),
+            literal
+        );
         assert!(
             report
                 .diagnostics()
@@ -318,7 +395,10 @@ fn implicit_eof_terminations_preserve_authored_chunks_and_emit_stable_complete_s
                     == CssRecoveryAction::RetainWithImplicitClosure)
         );
         let reparsed = parsed(literal);
-        assert_eq!(reparsed.to_specified_css().unwrap(), literal);
+        assert_eq!(
+            reparsed.serialize_specified(Default::default()).unwrap(),
+            literal
+        );
         assert_strict_validation_rejects(report);
     }
 }
@@ -329,12 +409,20 @@ fn parsed_reverse_solidus_keeps_newline_or_escaped_token_termination() {
     let selector = parsed(source);
     assert_eq!(invalid(&logical(&selector).items()[0]).authored(), "!&\\\n");
     // A newline after the delimiter makes this original token boundary safe.
-    assert_eq!(selector.to_specified_css().unwrap(), source);
+    assert_eq!(
+        selector.serialize_specified(Default::default()).unwrap(),
+        source
+    );
     let unsafe_source = ":is(!&\\)";
     let unsafe_selector = parsed(unsafe_source);
     // The escape consumes ')' into an identifier here: its EOF completion belongs
     // to the token owner, rather than a bare reverse-solidus output sentinel.
-    assert_eq!(unsafe_selector.to_specified_css().unwrap(), ":is(!&\\))");
+    assert_eq!(
+        unsafe_selector
+            .serialize_specified(Default::default())
+            .unwrap(),
+        ":is(!&\\))"
+    );
 }
 
 #[test]
@@ -343,42 +431,32 @@ fn retained_component_graph_and_closings_share_exact_cumulative_limits_and_atomi
     let selector = parsed(source);
     // Pseudo=1, two raw carriers=2, two graphs(colon,function,delim)=6.
     // Each actual function-closing traversal additionally costs one projection.
-    let limits = CssSpecifiedValueSerializationLimits::new(9, 11, source.len());
-    assert_eq!(
-        selector.to_specified_css_with_limits(limits).unwrap(),
-        source
-    );
+    let limits = CssSerializationLimits::new(9, 11, source.len());
+    assert_eq!(selector.serialize_specified(limits).unwrap(), source);
     let before = selector.clone();
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(8, 11, source.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(8, 11, source.len()),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(9, 10, source.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(9, 10, source.len()),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(9, 11, source.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(9, 11, source.len() - 1),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            selector
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&selector.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(selector, before);
     }
     assert_eq!(
         selector
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                9,
-                11,
-                source.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(9, 11, source.len()))
             .unwrap(),
         source
     );
@@ -392,24 +470,24 @@ fn deep_unknown_components_are_charged_fully_and_parser_resource_errors_are_not_
     // Raw graph: colon + future + depth x functions + delimiter. Closings depth+1.
     let input = depth + 5;
     let projection = input + depth + 1;
-    let limits = CssSpecifiedValueSerializationLimits::new(input, projection, source.len());
-    assert_eq!(
-        selector.to_specified_css_with_limits(limits).unwrap(),
-        source
-    );
-    assert_eq!(
+    let limits = CssSerializationLimits::new(input, projection, source.len());
+    assert_eq!(selector.serialize_specified(limits).unwrap(), source);
+    assert!(
         selector
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
+            .serialize_specified(CssSerializationLimits::new(
                 input - 1,
                 projection,
                 source.len()
             ))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
     let source = format!(":is(:future({}&{}))", "x(".repeat(255), ")".repeat(255));
-    let report = parse_selector(&source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        &source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.syntax().is_none());
     assert!(
         report
@@ -424,8 +502,8 @@ fn deep_unknown_components_are_charged_fully_and_parser_resource_errors_are_not_
 
 #[test]
 fn retained_unknown_ampersand_marks_real_nested_selector_binding_before_normalization() {
-    let report = parse_sheet(".Parent { :is(:future(&)) { color:red; } }");
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let report = CssParser::default().parse_sheet(".Parent { :is(:future(&)) { color:red; } }");
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -444,7 +522,7 @@ fn retained_unknown_ampersand_marks_real_nested_selector_binding_before_normaliz
     assert_eq!(
         context.selectors()[0]
             .selector()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         ":is(:future(&))"
     );
@@ -465,7 +543,10 @@ fn suffix_context_relocation_obeys_element_backing_permissions() {
     }
     let part = parsed("::part(x):is(:future(&))");
     let pseudo = suffix(&part);
-    assert_eq!(part.to_specified_css().unwrap(), "::part(x):is(:future(&))");
+    assert_eq!(
+        part.serialize_specified(Default::default()).unwrap(),
+        "::part(x):is(:future(&))"
+    );
     assert!(
         CssPseudoElementSequence::try_from_segments(vec![
             CssPseudoElementSegment::PseudoElement(CssPseudoElement::Before),
@@ -475,7 +556,7 @@ fn suffix_context_relocation_obeys_element_backing_permissions() {
     ); // Element-backed to non-element-backed tightens permission.
     let before = parsed("::before:is(:future(&))");
     assert_eq!(
-        before.to_specified_css().unwrap(),
+        before.serialize_specified(Default::default()).unwrap(),
         "::before:is(:future(&))"
     );
     let pseudo = suffix(&before);
@@ -500,7 +581,11 @@ fn url_string_comment_and_escaped_identifier_ampersands_are_not_delimiters() {
         r":future(\&)",
         r":future(\26)",
     ] {
-        let report = parse_selector(&format!(":is({item},.A)"), &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            format!(":is({item},.A)"),
+            &CssNamespaceContext::default(),
+        );
         assert_eq!(
             logical(report.syntax().as_ref().unwrap()).items(),
             [CssPseudoSelectorListItem::Selector(CssSelector::Class(
@@ -521,41 +606,33 @@ fn trivia_unicode_bytes_and_real_rule_retry_are_cumulative() {
     // Pseudo + raw carrier + colon/function/comment/delim + admitted Class = 7.
     assert_eq!(
         selector
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                7,
-                8,
-                literal.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(7, 8, literal.len()))
             .unwrap(),
         literal
     );
-    assert_eq!(
+    assert!(
         selector
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                7,
-                8,
-                literal.len() - 1
-            ))
+            .serialize_specified(CssSerializationLimits::new(7, 8, literal.len() - 1))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
-    let report = parse_sheet(":is(:future(/*Ω*/&),.A) {color:red;} .B {color:blue;}");
+    let report =
+        CssParser::default().parse_sheet(":is(:future(/*Ω*/&),.A) {color:red;} .B {color:blue;}");
     let sheet = report.syntax();
-    let css = sheet.to_specified_css().unwrap();
+    let css = sheet.serialize_specified(Default::default()).unwrap();
     let before = sheet.clone();
     assert_eq!(
         sheet
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
+            .serialize_specified(CssSerializationLimits::new(
                 usize::MAX,
                 usize::MAX,
                 css.len() - 1
             ))
             .unwrap_err()
             .limit_kind(),
-        Some(CssSpecifiedValueSerializationErrorKind::ByteLimit)
+        Some(SerializationFailure::ByteLimit)
     );
     assert_eq!(*sheet, before);
-    assert_eq!(sheet.to_specified_css().unwrap(), css);
+    assert_eq!(sheet.serialize_specified(Default::default()).unwrap(), css);
     assert!(css.contains(literal));
 }

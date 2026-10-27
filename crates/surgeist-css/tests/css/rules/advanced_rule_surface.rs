@@ -1,7 +1,28 @@
 //! Supported and unsupported advanced rule forms, and the public structure of
 //! the retained rule graph.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::query::container::{
+    CssContainerFeatureQuery, CssContainerLeaf, CssContainerLengthRef, CssContainerName,
+};
+use surgeist_css::query::media::{
+    CssColorSchemePreference, CssMediaFeatureQuery, CssMediaLeaf, CssMediaQuery, CssMediaRangeRef,
+    CssMediaType,
+};
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::query::{CssConditionKind, CssQueryComparison};
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
+    CssFontFaceSource, CssFontFormat, CssFontFormatHint,
+};
+use surgeist_css::rule::keyframes::{CssKeyframeSelector, CssKeyframesIdent, CssKeyframesName};
+use surgeist_css::rule::{CssImportTarget, CssRule};
+use surgeist_css::selector::{
+    CssAttributeCaseSensitivity, CssAttributeMatcher, CssPseudoClass, CssQualifiedSelectorName,
+    CssSelector, CssSelectorCombinator, CssStyleSelector,
+};
+use surgeist_css::values::common::CssCustomIdent;
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;
@@ -21,17 +42,21 @@ fn advanced_css_surface_matrix_accepts_supported_forms() {
     ];
 
     for css in accepted {
-        assert!(parse_sheet(css).is_clean(), "{css} should parse");
+        assert!(
+            CssParser::default().parse_sheet(css).is_clean(),
+            "{css} should parse"
+        );
     }
 
-    let sheet = parse_sheet(r#"@import url("theme.css") supports(display: grid) layer(theme);"#)
+    let sheet = CssParser::default()
+        .parse_sheet(r#"@import url("theme.css") supports(display: grid) layer(theme);"#)
         .expect("clean parse report");
     let [CssRule::Import(import)] = sheet.rules() else {
         panic!("expected retained conditional import")
     };
     assert!(matches!(import.target(), CssImportTarget::Url(url) if url.as_str() == "theme.css"));
     assert!(import.layer().is_none());
-    let CssSupportsConditionKind::Declaration(declaration) = import
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) = import
         .supports()
         .expect("selected supports clause")
         .condition()
@@ -44,7 +69,7 @@ fn advanced_css_surface_matrix_accepts_supported_forms() {
     else {
         panic!("expected condition-only media")
     };
-    let CssMediaConditionKind::GeneralEnclosed(enclosed) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(enclosed)) = condition.kind() else {
         panic!("expected layer function as opaque media")
     };
     assert_eq!(enclosed.authored(), Some("layer(theme)"));
@@ -79,8 +104,9 @@ fn advanced_css_surface_matrix_rejects_unsupported_forms() {
 
 #[test]
 fn advanced_css_rule_surface_is_structurally_accessible() {
-    let sheet = parse_sheet(
-        r#"
+    let sheet = CssParser::default()
+        .parse_sheet(
+            r#"
             @import url("theme.css") screen and (min-width: 600px);
             @font-face { font-family: Inter; src: url("inter.woff2") format("woff2"); }
             @media (prefers-color-scheme: dark) { .panel { color: black; } }
@@ -88,8 +114,8 @@ fn advanced_css_rule_surface_is_structurally_accessible() {
                 .toolbar > button[aria-expanded=true] { color: black; }
             }
         "#,
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
 
     let [
         CssRule::Import(import),
@@ -112,7 +138,7 @@ fn advanced_css_rule_surface_is_structurally_accessible() {
     let Some(import_condition) = import_query.condition() else {
         panic!("expected import width condition");
     };
-    let CssMediaConditionKind::Feature(CssMediaFeatureQuery::Width(width)) =
+    let CssConditionKind::Leaf(CssMediaLeaf::Feature(CssMediaFeatureQuery::Width(width))) =
         import_condition.kind()
     else {
         panic!("expected import width condition");
@@ -136,8 +162,9 @@ fn advanced_css_rule_surface_is_structurally_accessible() {
     let [CssMediaQuery::Condition(media_condition)] = media.query().queries() else {
         panic!("expected prefers-color-scheme media condition");
     };
-    let CssMediaConditionKind::Feature(CssMediaFeatureQuery::PrefersColorScheme(color_scheme)) =
-        media_condition.kind()
+    let CssConditionKind::Leaf(CssMediaLeaf::Feature(CssMediaFeatureQuery::PrefersColorScheme(
+        color_scheme,
+    ))) = media_condition.kind()
     else {
         panic!("expected prefers-color-scheme media condition");
     };
@@ -154,8 +181,9 @@ fn advanced_css_rule_surface_is_structurally_accessible() {
         container.prelude().entries()[0].name(),
         Some(&CssContainerName::try_new("sidebar").unwrap())
     );
-    let CssContainerConditionKind::Feature(CssContainerFeatureQuery::InlineSize(inline_size)) =
-        container.prelude().entries()[0].query().unwrap().kind()
+    let CssConditionKind::Leaf(CssContainerLeaf::Feature(CssContainerFeatureQuery::InlineSize(
+        inline_size,
+    ))) = container.prelude().entries()[0].query().unwrap().kind()
     else {
         panic!("expected inline-size container condition");
     };
@@ -166,7 +194,14 @@ fn advanced_css_rule_surface_is_structurally_accessible() {
     let CssContainerLengthRef::Numeric(value) = value.view() else {
         panic!("typed length")
     };
-    assert_eq!(value.components().serialize().unwrap().as_css(), "30rem");
+    assert_eq!(
+        value
+            .components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "30rem"
+    );
     let [container_nested] = container.rules() else {
         panic!("expected one nested container rule");
     };
@@ -202,7 +237,7 @@ fn advanced_css_rule_surface_is_structurally_accessible() {
 
 #[test]
 fn keyframes_and_authored_nesting_are_structurally_accessible() {
-    let sheet = parse_sheet("@keyframes fade { from { opacity: 0; } to { opacity: 1; } } .card { color: black; &:hover { opacity: 0.9; } @media (min-width: 600px) { > .title { color: white; } } }").expect("clean parse report");
+    let sheet = CssParser::default().parse_sheet("@keyframes fade { from { opacity: 0; } to { opacity: 1; } } .card { color: black; &:hover { opacity: 0.9; } @media (min-width: 600px) { > .title { color: white; } } }").expect("clean parse report");
     let [CssRule::Keyframes(keyframes), card] = sheet.rules() else {
         panic!("expected keyframes and authored card");
     };

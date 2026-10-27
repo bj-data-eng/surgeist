@@ -7,7 +7,16 @@
 //! omission, selector/child order and declaration runs are authored contracts.
 
 use crate::css::support::rules::clean_sheet as sheet;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::{CssRule, CssScopeNestingContext, CssScopeRule, CssSheet};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssPseudoClass, CssPseudoSelectorList, CssScopeSelectorList, CssSelector,
+    CssStyleSelector,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn scope(source: &str) -> CssScopeRule {
     let input = sheet(source);
@@ -21,7 +30,7 @@ fn classes(names: &[&str]) -> CssScopeSelectorList {
     CssScopeSelectorList::try_new(
         names
             .iter()
-            .map(|name| CssScopeSelector::Selector(CssSelector::Class((*name).into())))
+            .map(|name| CssStyleSelector::Selector(CssSelector::Class((*name).into())))
             .collect(),
     )
     .unwrap()
@@ -35,7 +44,7 @@ fn assert_classes(list: Option<&CssScopeSelectorList>, names: Option<&[&str]>) {
 }
 
 fn assert_last_scope_bound_count(input: &CssSheet, source: &str, is_root: bool, count: usize) {
-    let normalized = normalize_sheet(input).unwrap();
+    let normalized = input.normalize(Default::default()).unwrap();
     let target = source.rfind("@scope").unwrap();
     let bounds: Vec<_> = normalized
         .items()
@@ -87,7 +96,11 @@ fn parsed_scope_preserves_all_boundary_omissions_and_selector_order() {
         assert_classes(input.limit(), limits);
         assert!(input.rules().rules().is_empty());
         assert_eq!(input.position().unwrap().byte_offset().value(), 0);
-        let fragment = parse_rule(source, &CssNamespaceContext::default());
+        let fragment = CssRule::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         assert!(
             fragment.is_clean(),
             "{source}: {:?}",
@@ -127,7 +140,7 @@ fn checked_scope_preserves_boundary_omissions_and_descendant_origins() {
         let [CssRule::Scope(outer)] = composed.rules() else {
             panic!("constructed scope")
         };
-        let [CssScopedRule::Scope(inner)] = outer.rules().rules() else {
+        let [CssRule::Scope(inner)] = outer.rules().rules() else {
             panic!("parsed descendant")
         };
         assert_eq!(
@@ -148,7 +161,7 @@ fn scope_relative_limits_are_admitted_in_ordinary_style_and_scope_contexts() {
             format!(".parent{{@scope(.root)to ({bound}){{}}}}"),
             format!("@scope(.outer){{@scope(.root)to ({bound}){{}}}}"),
         ] {
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             assert_eq!(report.syntax().rules().len(), 1);
             assert_last_scope_bound_count(report.syntax(), &source, false, 2);
@@ -163,13 +176,13 @@ fn scope_relative_roots_require_style_or_scope_ancestry() {
             format!(".parent{{@scope({combinator} .root){{}}}}"),
             format!("@scope(.outer){{@scope({combinator} .root){{}}}}"),
         ] {
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             assert_eq!(report.syntax().rules().len(), 1);
             assert_last_scope_bound_count(report.syntax(), &source, true, 1);
         }
         let source = format!("@scope({combinator} .root){{}}.after{{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(!report.is_clean(), "{source}");
         assert!(
             report
@@ -206,7 +219,7 @@ fn malformed_and_pseudo_element_boundaries_drop_scope_without_losing_neighbors()
             format!(".parent{{@scope{prelude}{{.lost{{}}}}.after{{}}}}"),
             format!("@scope(.outer){{@scope{prelude}{{.lost{{}}}}.after{{}}}}"),
         ] {
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(!report.is_clean(), "{source}");
             assert!(
                 report
@@ -216,7 +229,7 @@ fn malformed_and_pseudo_element_boundaries_drop_scope_without_losing_neighbors()
                 "{source}: {:?}",
                 report.diagnostics()
             );
-            let normalized = normalize_report(&report).unwrap();
+            let normalized = report.normalize(Default::default()).unwrap();
             let styles: Vec<_> = normalized
                 .syntax()
                 .items()
@@ -263,12 +276,12 @@ fn checked_boundary_lists_reject_empty_and_recursive_pseudo_elements() {
     };
     // The recursive Is/Not(PE) boundary defenses remain in owning private tests;
     // these graphs cannot be admitted through the corrected public list front.
-    assert!(CssPseudoSelectorList::try_new(vec![selector.clone()]).is_err());
+    assert!(CssPseudoSelectorList::try_new(vec![selector.clone()], Default::default()).is_err());
     assert!(
-        CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(selector.clone())]).is_none()
+        CssScopeSelectorList::try_new(vec![CssStyleSelector::Selector(selector.clone())]).is_none()
     );
     assert!(
-        CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(CssSelector::PseudoClass(
+        CssScopeSelectorList::try_new(vec![CssStyleSelector::Selector(CssSelector::PseudoClass(
             CssPseudoClass::Scope
         ))])
         .is_some()
@@ -286,7 +299,7 @@ fn contextual_relative_boundaries_reject_pseudo_elements() {
                 format!(".parent{{@scope{prelude}{{}}}}"),
                 format!("@scope(.outer){{@scope{prelude}{{}}}}"),
             ] {
-                let report = parse_sheet(&source);
+                let report = CssParser::default().parse_sheet(&source);
                 assert!(!report.is_clean(), "{source}");
                 assert!(
                     report
@@ -304,12 +317,12 @@ fn contextual_relative_boundaries_reject_pseudo_elements() {
 #[test]
 fn ordinary_scope_rejects_declarations_while_style_nested_scope_retains_runs() {
     let source = "@scope{.child{}opacity:.5;}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(!report.is_clean());
     let [CssRule::Scope(outer)] = report.syntax().rules() else {
         panic!("scope")
     };
-    assert!(matches!(outer.rules().rules(), [CssScopedRule::Style(_)]));
+    assert!(matches!(outer.rules().rules(), [CssRule::Style(_)]));
     let styled = sheet(".parent{@scope{opacity:.25;.child{}opacity:.5;}}");
     let [CssRule::Style(parent)] = styled.rules() else {
         panic!("parent")
@@ -318,9 +331,9 @@ fn ordinary_scope_rejects_declarations_while_style_nested_scope_retains_runs() {
         panic!("scope")
     };
     let [
-        CssScopedRule::NestedDeclarations(first),
-        CssScopedRule::Style(child),
-        CssScopedRule::NestedDeclarations(last),
+        CssRule::NestedDeclarations(first),
+        CssRule::Style(child),
+        CssRule::NestedDeclarations(last),
     ] = outer.rules().rules()
     else {
         panic!("two separate runs around child")
@@ -335,7 +348,7 @@ fn ordinary_scope_rejects_declarations_while_style_nested_scope_retains_runs() {
     assert_eq!(
         first.declarations()[0]
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         ".25"
@@ -343,7 +356,7 @@ fn ordinary_scope_rejects_declarations_while_style_nested_scope_retains_runs() {
     assert_eq!(
         last.declarations()[0]
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         ".5"
@@ -362,10 +375,7 @@ fn ordinary_scope_rejects_declarations_while_style_nested_scope_retains_runs() {
         CssScopeNestingContext::None,
     )
     .unwrap_err();
-    assert_eq!(
-        detached.kind(),
-        CssRuleConstructionErrorKind::InvalidPlacement
-    );
+    assert!(detached.is_invalid_placement(), "{detached:?}");
     assert_eq!(detached.path(), &[0]);
 }
 
@@ -405,7 +415,10 @@ fn parsed_and_checked_scope_serialize_every_boundary_omission_explicitly() {
         );
         for value in [parsed, constructed] {
             let before = value.clone();
-            assert_eq!(value.to_specified_css().unwrap(), expected);
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             assert_eq!(value, before);
             let output = scope(expected);
             let CssRule::Scope(original) = &value else {
@@ -433,12 +446,13 @@ fn scope_serialization_preserves_nested_rule_order_and_authored_origins() {
     let expected = "@scope (.root) to (.stop) { @scope (.first) { } @scope to (.second) { } }";
     for value in [parsed, constructed] {
         let before = value.clone();
-        let text = CssRule::Scope(value.clone()).to_specified_css().unwrap();
+        let text = CssRule::Scope(value.clone())
+            .serialize_specified(Default::default())
+            .unwrap();
         assert_eq!(text, expected);
         assert_eq!(value, before);
         let output = scope(&text);
-        let [CssScopedRule::Scope(first), CssScopedRule::Scope(second)] = output.rules().rules()
-        else {
+        let [CssRule::Scope(first), CssRule::Scope(second)] = output.rules().rules() else {
             panic!("authored nested order")
         };
         assert_classes(first.root(), Some(&["first"]));
@@ -453,7 +467,7 @@ fn style_nested_scope_serialization_preserves_direct_declaration_run_order() {
     let input = sheet(".parent{@scope{opacity:.25;.child{}opacity:.5;}}");
     let before = input.clone();
     assert_eq!(
-        input.to_specified_css().unwrap(),
+        input.serialize_specified(Default::default()).unwrap(),
         ".parent { @scope { opacity: 0.25; .child { } opacity: 0.5; } }"
     );
     assert_eq!(input, before);
@@ -476,28 +490,22 @@ fn scope_serialization_byte_limits_are_atomic_and_cumulative_across_sheet_rules(
     let expected = "@scope { }\n@scope { }";
     assert_eq!(
         input
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                65536,
-                65536,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(65536, 65536, expected.len()))
             .unwrap(),
         expected
     );
     let error = input
-        .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
+        .serialize_specified(CssSerializationLimits::new(
             65536,
             65536,
             expected.len() - 1,
         ))
         .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        CssSpecifiedRuleSerializationErrorKind::Resource(
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
-        )
-    );
+    assert!(error.is_byte_limit(), "{error:?}");
     assert_eq!(error.rule_index(), Some(1));
     assert_eq!(input, before);
-    assert_eq!(input.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        input.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }

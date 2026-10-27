@@ -2,8 +2,23 @@
 //! and the shared CSSOM identifier serialization contract. Contextual execution
 //! remains outside these authored models.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::color_adjust::{
+    CssColorScheme, CssColorSchemeKeyword, CssColorSchemeName, CssForcedColorAdjust,
+    CssPrintColorAdjust,
+};
+use surgeist_css::values::common::CssIdent;
 
 fn scheme(source: &CssDeclaration) -> &CssColorScheme {
     let CssKnownPropertyValueRef::ColorScheme(value) =
@@ -34,9 +49,10 @@ fn checked_scheme_names_apply_only_generic_and_local_exclusions() {
         "revert",
         "REVERT-LAYER",
     ] {
-        assert_eq!(
-            CssColorSchemeName::try_new(CssIdent::try_new(name).unwrap()).unwrap_err(),
-            CssColorSchemeConstructionError::ReservedName,
+        assert!(
+            CssColorSchemeName::try_new(CssIdent::try_new(name).unwrap())
+                .unwrap_err()
+                .is_reserved_name(),
             "{name}"
         );
     }
@@ -55,17 +71,14 @@ fn checked_scheme_names_apply_only_generic_and_local_exclusions() {
     }
     for name in ["", "bad\0name"] {
         let error = CssIdent::try_new(name).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssComponentValueErrorKind::InvalidIdentifier,
-            "{name:?}"
-        );
+        assert!(error.is_invalid_identifier(), "{name:?}");
         assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
     }
     for only in [false, true] {
-        assert_eq!(
-            CssColorScheme::try_new(vec![], only).unwrap_err(),
-            CssColorSchemeConstructionError::EmptySchemes
+        assert!(
+            CssColorScheme::try_new(vec![], only)
+                .unwrap_err()
+                .is_empty_schemes()
         );
     }
 }
@@ -84,7 +97,7 @@ fn checked_scheme_lists_retain_order_repetition_custom_case_and_normal_identity(
     assert!(value.only());
     assert!(!value.is_normal());
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "light light Future future dark only"
     );
     assert_ne!(value, CssColorScheme::try_new(entries, false).unwrap());
@@ -92,7 +105,10 @@ fn checked_scheme_lists_retain_order_repetition_custom_case_and_normal_identity(
     assert!(normal.is_normal());
     assert!(normal.schemes().is_empty());
     assert!(!normal.only());
-    assert_eq!(normal.serialize_specified().unwrap(), "normal");
+    assert_eq!(
+        normal.serialize_specified(Default::default()).unwrap(),
+        "normal"
+    );
 }
 
 #[test]
@@ -109,7 +125,11 @@ fn parsed_and_checked_schemes_canonicalize_only_last_without_erasing_authored_da
         let original = source.value_components().clone();
         let value = scheme(&source);
         let snapshot = value.clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected, "{authored}");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{authored}"
+        );
         assert_eq!(value, &snapshot);
         assert_eq!(source.value_components(), &original);
         assert_eq!(source.importance(), CssImportance::Important);
@@ -119,8 +139,9 @@ fn parsed_and_checked_schemes_canonicalize_only_last_without_erasing_authored_da
                 .iter()
                 .all(|item| !matches!(item.origin(), CssValueOrigin::Programmatic))
         );
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::ColorScheme),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ColorScheme)),
             original.clone(),
             CssImportance::Important,
         )
@@ -133,7 +154,7 @@ fn parsed_and_checked_schemes_canonicalize_only_last_without_erasing_authored_da
     let value =
         CssColorScheme::try_new(vec![custom("Future Theme"), custom("9dawn")], false).unwrap();
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         r"Future\ Theme \39 dawn"
     );
 }
@@ -144,52 +165,42 @@ fn scheme_modifier_consumes_cumulative_nodes_and_late_bytes_atomically() {
     let original = source.value_components().clone();
     let value = scheme(&source);
     let snapshot = value.clone();
-    let exact = CssSpecifiedValueSerializationLimits::new(4, 4, 15);
-    assert_eq!(
-        value.serialize_specified_with_limits(exact).unwrap(),
-        "light dark only"
-    );
+    let exact = CssSerializationLimits::new(4, 4, 15);
+    assert_eq!(value.serialize_specified(exact).unwrap(), "light dark only");
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(3, 4, 15),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(3, 4, 15),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 3, 15),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(4, 3, 15),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 4, 14),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(4, 4, 14),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(value, &snapshot);
         assert_eq!(source.value_components(), &original);
-        assert_eq!(
-            value.serialize_specified_with_limits(exact).unwrap(),
-            "light dark only"
-        );
+        assert_eq!(value.serialize_specified(exact).unwrap(), "light dark only");
     }
     let normal = CssColorScheme::normal();
     assert_eq!(
         normal
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 6))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 6))
             .unwrap(),
         "normal"
     );
-    assert_eq!(
+    assert!(
         normal
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 5))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 5))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }
 
@@ -201,20 +212,17 @@ fn escaped_custom_scheme_bytes_share_the_aggregate_budget() {
     )
     .unwrap();
     let original = value.clone();
-    let exact = CssSpecifiedValueSerializationLimits::new(4, 4, 24);
+    let exact = CssSerializationLimits::new(4, 4, 24);
     assert_eq!(
-        value.serialize_specified_with_limits(exact).unwrap(),
+        value.serialize_specified(exact).unwrap(),
         r"light Future\ Theme only"
     );
     for bytes in [12, 23] {
-        assert_eq!(
+        assert!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    4, 4, bytes
-                ))
+                .serialize_specified(CssSerializationLimits::new(4, 4, bytes))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(value, original);
     }
@@ -243,36 +251,32 @@ fn keyword_models_emit_source_derived_canonical_hints_with_exact_limits() {
             CssForcedColorAdjust::PreserveParentColor => "preserve-parent-color",
             _ => unreachable!(),
         };
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, expected.len()))
                 .unwrap(),
             expected
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(0, 1, expected.len()),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(1, 0, expected.len()),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(1, 1, expected.len() - 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind
             );
         }
@@ -290,36 +294,32 @@ fn keyword_models_emit_source_derived_canonical_hints_with_exact_limits() {
             };
             assert_eq!(typed, &value);
         }
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, expected.len()))
                 .unwrap(),
             expected
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(0, 1, expected.len()),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(1, 0, expected.len()),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(1, 1, expected.len() - 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind
             );
         }
@@ -328,24 +328,24 @@ fn keyword_models_emit_source_derived_canonical_hints_with_exact_limits() {
 
 #[test]
 fn reserved_scheme_failure_maps_to_the_original_late_mixed_source_token() {
-    let head = parse_component_values("light").unwrap();
-    let tail = parse_component_values("DEFAULT").unwrap();
+    let head = CssComponentValues::parse(&CssParser::default(), "light").unwrap();
+    let tail = CssComponentValues::parse(&CssParser::default(), "DEFAULT").unwrap();
     let original_tail = tail.items()[0].origin().clone();
-    let components =
-        CssComponentValues::try_new(vec![head.items()[0].clone(), tail.items()[0].clone()])
-            .unwrap();
+    let components = CssComponentValues::try_new(
+        vec![head.items()[0].clone(), tail.items()[0].clone()],
+        Default::default(),
+    )
+    .unwrap();
     let snapshot = components.clone();
-    let error = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::ColorScheme),
+    let error = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ColorScheme)),
         components.clone(),
         CssImportance::Important,
     )
     .unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(_)
-    ));
-    assert_eq!(error.origin(), &CssSerializedOrigin::Token(original_tail));
+    assert!(error.code().is_some());
+    assert_eq!(error.origin(), CssSerializedOrigin::Token(original_tail));
     assert_eq!(components, snapshot);
 }
 
@@ -353,8 +353,7 @@ fn reserved_scheme_failure_maps_to_the_original_late_mixed_source_token() {
 fn shorthand_expansion_keeps_one_typed_print_hint_and_original_identity() {
     let source = declaration("color-adjust", "EXACT");
     let original = source.value_components().clone();
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("one completed member")
     };
@@ -373,7 +372,10 @@ fn shorthand_expansion_keeps_one_typed_print_hint_and_original_identity() {
     );
     assert_eq!(item.source().importance(), CssImportance::Important);
     assert_eq!(source.value_components(), &original);
-    assert_eq!(value.serialize_specified().unwrap(), "exact");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "exact"
+    );
     assert_ne!(
         CssKnownProperty::PrintColorAdjust,
         CssKnownProperty::ColorAdjust

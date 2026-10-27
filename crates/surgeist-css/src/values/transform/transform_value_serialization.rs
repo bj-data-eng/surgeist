@@ -1,0 +1,661 @@
+//! Bounded specified transform syntax, before contextual matrix execution.
+//!
+//! A transform list, individual value, origin and function each cost one input
+//! and projection node. Origin also visits its planar position owner. Numeric
+//! children retain their own costs, even when an exact ordinary default is
+//! omitted. Punctuation costs bytes only. Rotation's synthesized components cost
+//! projection nodes in its owner. Six-place formatting never selects omission.
+
+use crate::component::{CssComponentValue, CssComponentValueRef, CssValueTokenRef};
+use crate::numeric::projection::{NumericProjectionScale, capture_specified_scaled};
+use crate::numeric::{CssAngleOrZero, CssLengthPercentage, CssNumeric, CssPercentage};
+use crate::serialization::CssSerializationError;
+use crate::serialization::exact_decimal::LexicalDecimal;
+use crate::serialization::specified_rule_serialization::SpecifiedProvider as _;
+use crate::serialization::specified_rule_serialization::SpecifiedRuleWriter;
+use crate::values::transform::{
+    CssPerspective, CssScale, CssTransform, CssTransformFunction, CssTransformOrigin,
+    CssTransformPerspective, CssTransformScaleComponent, CssTranslate,
+};
+
+type Result<T> = std::result::Result<T, CssSerializationError>;
+
+fn ordinary_zero(component: &CssComponentValue, allow_percentage: bool) -> bool {
+    let number = match component.view() {
+        CssComponentValueRef::Token(CssValueTokenRef::Number(number))
+        | CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, .. }) => number,
+        CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) if allow_percentage => {
+            number
+        }
+        _ => return false,
+    };
+    LexicalDecimal::new(number.representation()).is_zero()
+}
+
+fn zero_translation(value: &CssNumeric<CssLengthPercentage>, allow_percentage: bool) -> bool {
+    value
+        .literal_component()
+        .is_some_and(|value| ordinary_zero(value, allow_percentage))
+}
+
+fn ordinary_scale(value: &CssTransformScaleComponent) -> Option<LexicalDecimal<'_>> {
+    let (component, shift) = match value {
+        CssTransformScaleComponent::Number(v) => (v.literal_component()?, 0),
+        CssTransformScaleComponent::Percentage(v) => (v.literal_component()?, -2),
+        CssTransformScaleComponent::HintedNumberCalculation(_) => return None,
+    };
+    let number = match component.view() {
+        CssComponentValueRef::Token(
+            CssValueTokenRef::Number(v) | CssValueTokenRef::Percentage(v),
+        ) => v,
+        _ => unreachable!("checked scale literal"),
+    };
+    Some(LexicalDecimal::new(number.representation()).shifted(shift))
+}
+fn ordinary_one(value: &CssTransformScaleComponent) -> bool {
+    ordinary_scale(value).is_some_and(|v| v.value_eq(&LexicalDecimal::new("1")))
+}
+fn scale_factors_equal(
+    left: &CssTransformScaleComponent,
+    right: &CssTransformScaleComponent,
+) -> bool {
+    match (ordinary_scale(left), ordinary_scale(right)) {
+        (Some(left), Some(right)) => left.value_eq(&right),
+        // Same typed calculation structure proves equality without resolving its basis.
+        (None, None) => left == right,
+        _ => false,
+    }
+}
+
+crate::serialization::specified_rule_serialization::specified_serialization!(CssPerspective);
+impl crate::serialization::specified_rule_serialization::SpecifiedProvider for CssPerspective {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        match self {
+            Self::None => writer.keyword("none"),
+            Self::Length(value) => {
+                writer.node()?;
+                value.append_to_rule_writer(writer)
+            }
+        }
+    }
+}
+
+fn zero_angle(value: &CssAngleOrZero) -> bool {
+    match value {
+        CssAngleOrZero::Zero(_) => true,
+        CssAngleOrZero::Angle(value) => value.literal().is_some_and(|literal| {
+            LexicalDecimal::new(literal.numeric().representation()).is_zero()
+        }),
+    }
+}
+
+crate::serialization::specified_rule_serialization::specified_serialization!(CssTransformOrigin);
+impl crate::serialization::specified_rule_serialization::SpecifiedProvider for CssTransformOrigin {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        writer.node()?;
+        self.append_planar_to_rule_writer(writer)?;
+        if let Some(z) = self.z() {
+            writer.append(" ")?;
+            z.append_to_rule_writer(writer)?;
+        }
+        Ok(())
+    }
+}
+
+crate::serialization::specified_rule_serialization::specified_serialization!(CssTranslate);
+impl crate::serialization::specified_rule_serialization::SpecifiedProvider for CssTranslate {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        writer.node()?;
+        let Self::Values(values) = self else {
+            return writer.append("none");
+        };
+        values.x().append_to_rule_writer(writer)?;
+        let retain_z = values.z().is_some_and(|z| {
+            !z.literal_component()
+                .is_some_and(|value| ordinary_zero(value, false))
+        });
+        if let Some(y) = values.y() {
+            if retain_z || !zero_translation(y, false) {
+                writer.append(" ")?;
+                y.append_to_rule_writer(writer)?;
+            } else {
+                writer.without_output(|writer| y.append_to_rule_writer(writer))?;
+            }
+        }
+        if let Some(z) = values.z() {
+            if retain_z {
+                writer.append(" ")?;
+                z.append_to_rule_writer(writer)?;
+            } else {
+                writer.without_output(|writer| z.append_to_rule_writer(writer))?;
+            }
+        }
+        Ok(())
+    }
+}
+
+crate::serialization::specified_rule_serialization::specified_serialization!(CssScale);
+impl crate::serialization::specified_rule_serialization::SpecifiedProvider for CssScale {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        writer.node()?;
+        let Self::Values(values) = self else {
+            return writer.append("none");
+        };
+        let values = values.values();
+        // Construction guarantees one to three checked factors; defaults compare before rounding.
+        let retain_z = values.get(2).is_some_and(|z| !ordinary_one(z));
+        append_scale_component(&values[0], writer)?;
+        if let Some(y) = values.get(1) {
+            if retain_z || !scale_factors_equal(&values[0], y) {
+                writer.append(" ")?;
+                append_scale_component(y, writer)?;
+            } else {
+                writer.without_output(|writer| append_scale_component(y, writer))?;
+            }
+        }
+        if let Some(z) = values.get(2) {
+            if retain_z {
+                writer.append(" ")?;
+                append_scale_component(z, writer)?;
+            } else {
+                writer.without_output(|writer| append_scale_component(z, writer))?;
+            }
+        }
+        Ok(())
+    }
+}
+
+crate::serialization::specified_rule_serialization::specified_serialization!(CssTransform);
+impl crate::serialization::specified_rule_serialization::SpecifiedProvider for CssTransform {
+    fn append_to_rule_writer(&self, writer: &mut SpecifiedRuleWriter) -> Result<()> {
+        // The enum is the list's semantic carrier, without another node charge.
+        writer.node()?;
+        let Self::Functions(functions) = self else {
+            return writer.append("none");
+        };
+        writer.space_separated(functions.functions(), |writer, function| {
+            append_function(function, writer)
+        })?;
+        Ok(())
+    }
+}
+
+fn append_function(
+    function: &CssTransformFunction,
+    writer: &mut SpecifiedRuleWriter,
+) -> Result<()> {
+    writer.node()?;
+    match function {
+        CssTransformFunction::Matrix(value) => {
+            writer.append("matrix(")?;
+            append_numbers(value.components(), writer)?;
+        }
+        CssTransformFunction::Matrix3d(value) => {
+            writer.append("matrix3d(")?;
+            append_numbers(value.components(), writer)?;
+        }
+        CssTransformFunction::Perspective(value) => {
+            writer.append("perspective(")?;
+            match value {
+                CssTransformPerspective::None => writer.keyword("none")?,
+                CssTransformPerspective::Length(value) => value.append_to_rule_writer(writer)?,
+            }
+        }
+        CssTransformFunction::Rotate(value) => append_angle("rotate(", value, writer)?,
+        CssTransformFunction::RotateX(value) => append_angle("rotateX(", value, writer)?,
+        CssTransformFunction::RotateY(value) => append_angle("rotateY(", value, writer)?,
+        CssTransformFunction::RotateZ(value) => append_angle("rotateZ(", value, writer)?,
+        CssTransformFunction::Rotate3d(value) => {
+            writer.append("rotate3d(")?;
+            value.append_rotation_arguments_to_rule_writer(writer)?;
+        }
+        CssTransformFunction::Scale(value) => {
+            writer.append("scale(")?;
+            append_scale_component(value.x(), writer)?;
+            if let Some(y) = value.y() {
+                if scale_factors_equal(value.x(), y) {
+                    writer.without_output(|writer| append_scale_component(y, writer))?;
+                } else {
+                    writer.append(", ")?;
+                    append_scale_component(y, writer)?;
+                }
+            }
+        }
+        CssTransformFunction::Scale3d(value) => {
+            writer.append("scale3d(")?;
+            append_scale_component(value.x(), writer)?;
+            writer.append(", ")?;
+            append_scale_component(value.y(), writer)?;
+            writer.append(", ")?;
+            append_scale_component(value.z(), writer)?;
+        }
+        CssTransformFunction::ScaleX(value) => {
+            writer.append("scaleX(")?;
+            append_scale_component(value, writer)?;
+        }
+        CssTransformFunction::ScaleY(value) => {
+            writer.append("scaleY(")?;
+            append_scale_component(value, writer)?;
+        }
+        CssTransformFunction::ScaleZ(value) => {
+            writer.append("scaleZ(")?;
+            append_scale_component(value, writer)?;
+        }
+        CssTransformFunction::Skew(value) => {
+            append_angle("skew(", value.x(), writer)?;
+            if let Some(y) = value.y() {
+                if zero_angle(y) {
+                    writer.without_output(|writer| {
+                        y.append_specified(&mut writer.context, &mut writer.css)
+                    })?;
+                } else {
+                    writer.append(", ")?;
+                    y.append_specified(&mut writer.context, &mut writer.css)?;
+                }
+            }
+        }
+        CssTransformFunction::SkewX(value) => append_angle("skewX(", value, writer)?,
+        CssTransformFunction::SkewY(value) => append_angle("skewY(", value, writer)?,
+        CssTransformFunction::Translate(value) => {
+            writer.append("translate(")?;
+            value.x().append_to_rule_writer(writer)?;
+            if let Some(y) = value.y() {
+                if zero_translation(y, true) {
+                    writer.without_output(|writer| y.append_to_rule_writer(writer))?;
+                } else {
+                    writer.append(", ")?;
+                    y.append_to_rule_writer(writer)?;
+                }
+            }
+        }
+        CssTransformFunction::Translate3d(value) => {
+            writer.append("translate3d(")?;
+            value.x().append_to_rule_writer(writer)?;
+            writer.append(", ")?;
+            value.y().append_to_rule_writer(writer)?;
+            writer.append(", ")?;
+            value.z().append_to_rule_writer(writer)?;
+        }
+        CssTransformFunction::TranslateX(value) => {
+            writer.append("translateX(")?;
+            value.append_to_rule_writer(writer)?;
+        }
+        CssTransformFunction::TranslateY(value) => {
+            writer.append("translateY(")?;
+            value.append_to_rule_writer(writer)?;
+        }
+        CssTransformFunction::TranslateZ(value) => {
+            writer.append("translateZ(")?;
+            value.append_to_rule_writer(writer)?;
+        }
+    }
+    writer.append(")")
+}
+
+fn append_numbers(
+    values: &[crate::numeric::CssNumeric<crate::numeric::CssNumber>],
+    writer: &mut SpecifiedRuleWriter,
+) -> Result<()> {
+    writer.comma_separated(values, |writer, value| value.append_to_rule_writer(writer))?;
+    Ok(())
+}
+
+fn append_angle(
+    opening: &str,
+    value: &CssAngleOrZero,
+    writer: &mut SpecifiedRuleWriter,
+) -> Result<()> {
+    writer.append(opening)?;
+    value.append_specified(&mut writer.context, &mut writer.css)
+}
+
+fn append_scale_component(
+    value: &CssTransformScaleComponent,
+    writer: &mut SpecifiedRuleWriter,
+) -> Result<()> {
+    match value {
+        CssTransformScaleComponent::Number(value) => value.append_to_rule_writer(writer),
+        // This is already a Number result, with its own unresolved dimensional
+        // hint. Scaling the whole expression by 1/100 would change its meaning.
+        CssTransformScaleComponent::HintedNumberCalculation(value) => {
+            value.append_specified(&mut writer.context, &mut writer.css)
+        }
+        CssTransformScaleComponent::Percentage(value) => append_percentage_as_number(value, writer),
+    }
+}
+
+fn append_percentage_as_number(
+    value: &CssNumeric<CssPercentage>,
+    writer: &mut SpecifiedRuleWriter,
+) -> Result<()> {
+    if let Some(component) = value.literal_component() {
+        writer.node()?;
+        if writer.context.output_suppressed() {
+            return Ok(());
+        }
+        let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) = component.view()
+        else {
+            unreachable!("checked percentage literal")
+        };
+        // Transforms 2 §12: scale percentages serialize as their Number factor.
+        let text = crate::serialization::numeric_formatting::format_css_number(
+            number.representation(),
+            -2,
+            writer.context.remaining_bytes(),
+        )?;
+        writer.append(&text)
+    } else {
+        let (text, _) = capture_specified_scaled(
+            &value
+                .calculation()
+                .expect("checked percentage calculation")
+                .expression,
+            NumericProjectionScale::PercentageToNumber {
+                numerator: 1,
+                denominator: 100,
+            },
+            &mut writer.context,
+        )?;
+        writer.append(&text)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::property::CssKnownPropertyValueRef;
+    use crate::serialization::specified_serialization::CssSpecifiedValueSerializationErrorKind as K;
+    type L = crate::serialization::CssSerializationLimits;
+
+    fn transform(source: &str) -> CssTransform {
+        let report =
+            crate::CssParser::default().parse_block_contents(format!("transform:{source}"));
+        assert!(report.is_clean(), "{:?}", report.diagnostics());
+        let CssKnownPropertyValueRef::Transform(value) = report.syntax()[0]
+            .known()
+            .unwrap()
+            .property_value()
+            .unwrap()
+        else {
+            panic!("transform")
+        };
+        value.value().clone()
+    }
+
+    fn shared(
+        css: &str,
+        input: usize,
+        projection: usize,
+        append: impl Fn(&mut SpecifiedRuleWriter) -> Result<()>,
+    ) {
+        let expected = format!("p:{css};{css}");
+        let mut writer =
+            SpecifiedRuleWriter::new(L::new(input * 2, projection * 2, expected.len()));
+        writer.append("p:").unwrap();
+        append(&mut writer).unwrap();
+        writer.append(";").unwrap();
+        append(&mut writer).unwrap();
+        assert_eq!(writer.css, expected);
+        for (limits, kind) in [
+            (
+                L::new(input * 2 - 1, projection * 2, expected.len()),
+                K::InputNodeLimit,
+            ),
+            (
+                L::new(input * 2, projection * 2 - 1, expected.len()),
+                K::ProjectionNodeLimit,
+            ),
+            (
+                L::new(input * 2, projection * 2, expected.len() - 1),
+                K::ByteLimit,
+            ),
+        ] {
+            let mut writer = SpecifiedRuleWriter::new(limits);
+            writer.append("p:").unwrap();
+            append(&mut writer).unwrap();
+            writer.append(";").unwrap();
+            assert_eq!(append(&mut writer).unwrap_err().kind(), kind);
+        }
+        let mut writer = SpecifiedRuleWriter::new(L::new(input * 2, projection * 2, css.len() + 2));
+        writer.append("p:").unwrap();
+        writer.without_output(|writer| append(writer)).unwrap();
+        append(&mut writer).unwrap();
+        assert_eq!(writer.css, format!("p:{css}"));
+        assert_eq!(
+            writer.context.charge_input(1).unwrap_err().kind(),
+            K::InputNodeLimit
+        );
+        assert_eq!(
+            writer.context.charge_projection(1).unwrap_err().kind(),
+            K::ProjectionNodeLimit
+        );
+
+        // Both nested suppression levels restore the enclosing output mode,
+        // including a child failure after partial cumulative work.
+        for (limits, kind) in [
+            (L::new(input - 1, projection, 1), K::InputNodeLimit),
+            (L::new(input, projection - 1, 1), K::ProjectionNodeLimit),
+        ] {
+            let mut writer = SpecifiedRuleWriter::new(limits);
+            assert_eq!(
+                writer
+                    .without_output(|writer| writer.without_output(|writer| append(writer)))
+                    .unwrap_err()
+                    .kind(),
+                kind
+            );
+            writer.append("x").unwrap();
+            assert_eq!(writer.css, "x");
+        }
+    }
+
+    #[test]
+    fn every_provider_borrows_prefix_sibling_budgets_and_restores_suppression() {
+        let value = transform("scale(2, 2) translate(1px, 0px)");
+        shared("scale(2) translate(1px)", 7, 7, |writer| {
+            value.append_to_rule_writer(writer)
+        });
+        let translate = CssTranslate::Values(
+            crate::values::transform::CssTranslateValues::try_new(
+                crate::numeric::CssNumeric::<crate::numeric::CssLengthPercentage>::try_from_component(
+                    crate::component::CssComponentValue::try_token("1px").unwrap(),
+                )
+                .unwrap(),
+                Some(
+                    crate::numeric::CssNumeric::<crate::numeric::CssLengthPercentage>::try_from_component(
+                        crate::component::CssComponentValue::try_token("0px").unwrap(),
+                    )
+                    .unwrap(),
+                ),
+                Some(
+                    crate::numeric::CssNumeric::<crate::numeric::CssLength>::try_from_component(
+                        crate::component::CssComponentValue::try_token("0px").unwrap(),
+                    )
+                    .unwrap(),
+                ),
+            )
+            .unwrap(),
+        );
+        shared("1px", 4, 4, |writer| {
+            translate.append_to_rule_writer(writer)
+        });
+        let scale = CssScale::Values(
+            crate::values::transform::CssScaleValues::try_new(
+                ["2", "2", "1"]
+                    .map(|text| {
+                        crate::numeric::CssNumeric::<crate::numeric::CssNumber>::try_from_component(
+                            crate::component::CssComponentValue::try_number(text).unwrap(),
+                        )
+                        .unwrap()
+                    })
+                    .map(CssTransformScaleComponent::Number)
+                    .to_vec(),
+            )
+            .unwrap(),
+        );
+        shared("2", 4, 4, |writer| scale.append_to_rule_writer(writer));
+        let origin = CssTransformOrigin::try_new(
+            crate::values::position::CssPhysicalPosition::try_new(
+                crate::values::position::CssHorizontalPosition::Left,
+                crate::values::position::CssVerticalPosition::Top,
+            )
+            .unwrap(),
+            None,
+        )
+        .unwrap();
+        shared("left top", 4, 4, |writer| {
+            origin.append_to_rule_writer(writer)
+        });
+        shared("none", 1, 1, |writer| {
+            CssTransform::None.append_to_rule_writer(writer)
+        });
+        shared("none", 1, 1, |writer| {
+            CssTranslate::None.append_to_rule_writer(writer)
+        });
+        shared("none", 1, 1, |writer| {
+            CssScale::None.append_to_rule_writer(writer)
+        });
+    }
+
+    #[test]
+    fn math_conversion_and_rotation_replacements_visit_under_suppression() {
+        let value = transform("translateX(calc(1px + 2px))");
+        shared("translateX(calc(3px))", 6, 5, |writer| {
+            value.append_to_rule_writer(writer)
+        });
+        let value = transform("scaleZ(50%)");
+        shared("scaleZ(0.5)", 3, 3, |writer| {
+            value.append_to_rule_writer(writer)
+        });
+        let value = transform("scaleZ(calc(50% + 50%))");
+        // Four checked math input nodes, six projection nodes including the
+        // percentage divisor, inverse and resolved product; two aggregates.
+        shared("scaleZ(calc(1))", 6, 8, |writer| {
+            value.append_to_rule_writer(writer)
+        });
+        let value = transform("rotate3d(0, 0, 0, 30deg)");
+        shared("rotate3d(0, 0, 1, 0deg)", 6, 10, |writer| {
+            value.append_to_rule_writer(writer)
+        });
+        let value = transform("rotate3d(-2, 0, 0, 30deg)");
+        shared("rotate3d(1, 0, 0, -30deg)", 6, 10, |writer| {
+            value.append_to_rule_writer(writer)
+        });
+    }
+
+    #[test]
+    fn authored_3d_and_expanded_scale_providers_share_work_and_restore_nested_suppression() {
+        shared("preserve-3d", 1, 1, |writer| {
+            crate::values::transform::CssTransformStyle::Preserve3d.append_to_rule_writer(writer)
+        });
+        shared("hidden", 1, 1, |writer| {
+            crate::values::transform::CssBackfaceVisibility::Hidden.append_to_rule_writer(writer)
+        });
+        shared("none", 1, 1, |writer| {
+            CssPerspective::None.append_to_rule_writer(writer)
+        });
+        let perspective = CssPerspective::Length(crate::numeric::CssNumeric::<
+            crate::numeric::CssLength,
+            crate::numeric::CssNonNegative,
+        >::exact_zero());
+        shared("0", 2, 2, |writer| {
+            perspective.append_to_rule_writer(writer)
+        });
+        let perspective = CssPerspective::Length(
+            crate::numeric::CssNumeric::<crate::numeric::CssLength, crate::numeric::CssNonNegative>::try_from_calculation(
+                crate::numeric::CssCalculation::<crate::numeric::CssLength>::try_from_components(
+                    crate::component::values::parse_component_values("calc(1px - 2px)").unwrap(),
+                    Default::default(),
+                )
+                .unwrap(),
+            )
+            .unwrap(),
+        );
+        shared("calc(-1px)", 5, 5, |writer| {
+            perspective.append_to_rule_writer(writer)
+        });
+        let origin = crate::property::expansion::initial_transform_position();
+        shared("50% 50%", 5, 5, |writer| {
+            origin.append_to_rule_writer(writer)
+        });
+        let values = crate::values::transform::CssScaleValues::try_new(vec![
+            CssTransformScaleComponent::Percentage(
+                crate::numeric::CssNumeric::<crate::numeric::CssPercentage>::try_from_component(
+                    crate::component::CssComponentValue::try_token("50%").unwrap(),
+                )
+                .unwrap(),
+            ),
+            CssTransformScaleComponent::Number(
+                crate::numeric::CssNumeric::<crate::numeric::CssNumber>::try_from_component(
+                    crate::component::CssComponentValue::try_number(".5").unwrap(),
+                )
+                .unwrap(),
+            ),
+            CssTransformScaleComponent::Percentage(
+                crate::numeric::CssNumeric::<crate::numeric::CssPercentage>::try_from_component(
+                    crate::component::CssComponentValue::try_token("100%").unwrap(),
+                )
+                .unwrap(),
+            ),
+        ])
+        .unwrap();
+        let value = CssScale::Values(values);
+        shared("0.5", 4, 4, |writer| value.append_to_rule_writer(writer));
+        let symbolic = CssTransformScaleComponent::HintedNumberCalculation(
+            crate::numeric::CssCalculation::<crate::numeric::CssHintedNumber>::try_from_components(
+                crate::component::values::parse_component_values("calc((1px + 1%) / 1px)").unwrap(),
+                Default::default(),
+            )
+            .unwrap(),
+        );
+        let value = CssScale::Values(
+            crate::values::transform::CssScaleValues::try_new(vec![
+                symbolic.clone(),
+                symbolic,
+                CssTransformScaleComponent::Number(
+                    crate::numeric::CssNumeric::<crate::numeric::CssNumber>::try_from_component(
+                        crate::component::CssComponentValue::try_number("1").unwrap(),
+                    )
+                    .unwrap(),
+                ),
+            ])
+            .unwrap(),
+        );
+        // Two 7/8 checked hinted calculations, one literal, one aggregate;
+        // the duplicate Y and ordinary Z are still fully visited while omitted.
+        shared("calc((1% + 1px) / 1px)", 16, 18, |writer| {
+            value.append_to_rule_writer(writer)
+        });
+        for (source, output, input, projection) in [
+            ("scale(50%, .5)", "scale(0.5)", 4, 4),
+            ("scaleX(calc(50% + 50%))", "scaleX(calc(1))", 6, 8),
+            (
+                "scaleY(calc((1px + 1%) / 1px))",
+                "scaleY(calc((1% + 1px) / 1px))",
+                9,
+                10,
+            ),
+        ] {
+            let value = transform(source);
+            shared(output, input, projection, |writer| {
+                value.append_to_rule_writer(writer)
+            });
+        }
+    }
+
+    #[test]
+    fn suppressed_calculations_preserve_arithmetic_failure_and_restore_output() {
+        let value = transform("scaleZ(calc(50% + 50%))");
+        let mut writer = SpecifiedRuleWriter::new(L::new(usize::MAX, usize::MAX, 1));
+        writer.context.charge_projection(usize::MAX - 3).unwrap();
+        assert_eq!(
+            writer
+                .without_output(|writer| value.append_to_rule_writer(writer))
+                .unwrap_err()
+                .kind(),
+            K::CapacityOverflow
+        );
+        writer.append("x").unwrap();
+        assert_eq!(writer.css, "x");
+    }
+}

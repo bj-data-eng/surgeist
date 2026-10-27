@@ -4,24 +4,43 @@
 //! with Cartesian horizontal/vertical and symbolic flow block/inline serialization.
 
 use crate::css::support::serialization_limits::assert_limits as budget;
-use surgeist_css::{
-    CssBlockPosition as B, CssHorizontalPosition as H, CssInlinePosition as I,
-    CssPositionConstructionError as E, CssRelativeAxisPosition as R,
-    CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L,
-    CssVerticalPosition as V, *,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::numeric::{CssCalculation, CssLength, CssLengthPercentage, CssNumeric};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::background::CssBackgroundPosition;
+use surgeist_css::values::common::CssBoxEdgeKeyword;
+use surgeist_css::values::effects::{CssClipPath, CssClipPathShape, CssMaskLayer};
+use surgeist_css::values::position::CssBlockPosition as B;
+use surgeist_css::values::position::CssHorizontalPosition as H;
+use surgeist_css::values::position::CssInlinePosition as I;
+use surgeist_css::values::position::CssRelativeAxisPosition as R;
+use surgeist_css::values::position::CssVerticalPosition as V;
+use surgeist_css::values::position::{
+    CssCartesianPosition, CssHorizontalPositionKeyword, CssPhysicalPosition, CssPosition,
+    CssPositionList, CssPositionRef, CssVerticalPositionKeyword,
+};
+use surgeist_css::values::shape::{
+    CssBasicShape, CssCircleRadius, CssCircleShape, CssEllipseShape,
+};
+use surgeist_css::values::transform::CssTransformOrigin;
 
-fn lp(text: &str) -> CssSpecifiedLengthPercentage {
+fn lp(text: &str) -> CssNumeric<CssLengthPercentage> {
     if text.contains('(') {
-        CssSpecifiedLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(
-                parse_component_values(text).unwrap(),
+        CssNumeric::<CssLengthPercentage>::try_from_calculation(
+            CssCalculation::<CssLengthPercentage>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+                Default::default(),
             )
             .unwrap(),
         )
         .unwrap()
     } else {
-        CssSpecifiedLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage>::try_from_component(
             CssComponentValue::try_token(text).unwrap(),
         )
         .unwrap()
@@ -31,7 +50,8 @@ fn cartesian(horizontal: H, vertical: V) -> CssPosition {
     CssPosition::from_cartesian(CssCartesianPosition::try_new(horizontal, vertical).unwrap())
 }
 fn parsed(text: &str) -> CssPosition {
-    let report = parse_style_attribute(&format!("/*😀*/ clip-path:circle(at {text})"));
+    let report =
+        CssParser::default().parse_block_contents(format!("/*😀*/ clip-path:circle(at {text})"));
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::ClipPath(value) = report.syntax()[0]
         .known()
@@ -181,9 +201,10 @@ fn every_checked_generic_family_rejects_unpaired_edge_offsets_with_typed_error()
         (H::Offset(lp("1px")), V::BottomOffset(lp("2%"))),
         (H::LeftOffset(lp("1px")), V::Offset(lp("2%"))),
     ] {
-        assert_eq!(
-            CssCartesianPosition::try_new(horizontal, vertical).unwrap_err(),
-            E::UnpairedEdgeOffsets
+        assert!(
+            CssCartesianPosition::try_new(horizontal, vertical)
+                .unwrap_err()
+                .is_unpaired_edge_offsets()
         );
     }
     for (block, inline) in [
@@ -192,9 +213,10 @@ fn every_checked_generic_family_rejects_unpaired_edge_offsets_with_typed_error()
         (B::Start, I::StartOffset(lp("2%"))),
         (B::Center, I::EndOffset(lp("2%"))),
     ] {
-        assert_eq!(
-            CssPosition::try_from_named_axes(block, inline).unwrap_err(),
-            E::UnpairedEdgeOffsets
+        assert!(
+            CssPosition::try_from_named_axes(block, inline)
+                .unwrap_err()
+                .is_unpaired_edge_offsets()
         );
     }
     for (block, inline) in [
@@ -203,16 +225,20 @@ fn every_checked_generic_family_rejects_unpaired_edge_offsets_with_typed_error()
         (R::End, R::StartOffset(lp("2%"))),
         (R::Center, R::EndOffset(lp("2%"))),
     ] {
-        assert_eq!(
-            CssPosition::try_from_relative_axes(block, inline).unwrap_err(),
-            E::UnpairedEdgeOffsets
+        assert!(
+            CssPosition::try_from_relative_axes(block, inline)
+                .unwrap_err()
+                .is_unpaired_edge_offsets()
         );
     }
-    let error: &dyn std::error::Error = &E::UnpairedEdgeOffsets;
+    let error = CssCartesianPosition::try_new(H::XStartOffset(lp("1px")), V::Center).unwrap_err();
+    let error: &dyn std::error::Error = &error;
     assert_eq!(error.to_string(), "position edge offsets must be paired");
     assert!(error.source().is_none());
     assert_eq!(
-        E::NonPhysicalKeyword.to_string(),
+        CssPhysicalPosition::try_new(H::XStart, V::Center)
+            .unwrap_err()
+            .to_string(),
         "physical position cannot contain axis-relative keywords"
     );
 }
@@ -220,23 +246,26 @@ fn every_checked_generic_family_rejects_unpaired_edge_offsets_with_typed_error()
 #[test]
 fn physical_and_background_construction_reject_every_new_cartesian_branch() {
     for horizontal in [H::XStart, H::XEnd] {
-        assert_eq!(
-            CssPhysicalPosition::try_new(horizontal.clone(), V::Top).unwrap_err(),
-            E::NonPhysicalKeyword
+        assert!(
+            CssPhysicalPosition::try_new(horizontal.clone(), V::Top)
+                .unwrap_err()
+                .is_non_physical_keyword()
         );
         assert!(CssBackgroundPosition::try_new(horizontal, V::Top).is_none());
     }
     for vertical in [V::YStart, V::YEnd] {
-        assert_eq!(
-            CssPhysicalPosition::try_new(H::Left, vertical.clone()).unwrap_err(),
-            E::NonPhysicalKeyword
+        assert!(
+            CssPhysicalPosition::try_new(H::Left, vertical.clone())
+                .unwrap_err()
+                .is_non_physical_keyword()
         );
         assert!(CssBackgroundPosition::try_new(H::Left, vertical).is_none());
     }
     for horizontal in [H::XStartOffset(lp("1px")), H::XEndOffset(lp("1px"))] {
-        assert_eq!(
-            CssPhysicalPosition::try_new(horizontal.clone(), V::TopOffset(lp("2%"))).unwrap_err(),
-            E::NonPhysicalKeyword
+        assert!(
+            CssPhysicalPosition::try_new(horizontal.clone(), V::TopOffset(lp("2%")))
+                .unwrap_err()
+                .is_non_physical_keyword()
         );
         assert!(
             CssBackgroundPosition::try_new(horizontal.clone(), V::TopOffset(lp("2%"))).is_none()
@@ -244,18 +273,20 @@ fn physical_and_background_construction_reject_every_new_cartesian_branch() {
         assert!(CssBackgroundPosition::try_new(horizontal, V::Top).is_none());
     }
     for vertical in [V::YStartOffset(lp("2%")), V::YEndOffset(lp("2%"))] {
-        assert_eq!(
-            CssPhysicalPosition::try_new(H::LeftOffset(lp("1px")), vertical.clone()).unwrap_err(),
-            E::NonPhysicalKeyword
+        assert!(
+            CssPhysicalPosition::try_new(H::LeftOffset(lp("1px")), vertical.clone())
+                .unwrap_err()
+                .is_non_physical_keyword()
         );
         assert!(
             CssBackgroundPosition::try_new(H::LeftOffset(lp("1px")), vertical.clone()).is_none()
         );
         assert!(CssBackgroundPosition::try_new(H::Left, vertical).is_none());
     }
-    assert_eq!(
-        CssPhysicalPosition::try_new(H::LeftOffset(lp("1px")), V::Center).unwrap_err(),
-        E::UnpairedEdgeOffsets
+    assert!(
+        CssPhysicalPosition::try_new(H::LeftOffset(lp("1px")), V::Center)
+            .unwrap_err()
+            .is_unpaired_edge_offsets()
     );
     let background = CssBackgroundPosition::try_new(H::LeftOffset(lp("1px")), V::Center).unwrap();
     assert_eq!(background.horizontal(), &H::LeftOffset(lp("1px")));
@@ -276,28 +307,31 @@ fn restriction_lifting_and_restricted_consumers_keep_one_physical_payload() {
     assert_eq!(view.horizontal(), physical.horizontal());
     assert_eq!(view.vertical(), physical.vertical());
     let layer =
-        CssMaskLayer::try_new(None, Some(physical.clone()), None, None, None, None, None).unwrap();
-    assert_eq!(layer.position(), Some(&physical));
-    let list = CssPhysicalPositionList::try_new(vec![physical.clone()]).unwrap();
-    assert_eq!(list.positions(), std::slice::from_ref(&physical));
-    assert!(CssPhysicalPositionList::try_new(Vec::new()).is_none());
+        CssMaskLayer::try_new(None, Some(lifted.clone()), None, None, None, None, None).unwrap();
+    assert_eq!(layer.position(), Some(&lifted));
+    let list = CssPositionList::try_new(vec![lifted.clone()]).unwrap();
+    assert_eq!(list.positions(), std::slice::from_ref(&lifted));
+    assert!(CssPositionList::try_new(Vec::new()).is_none());
     budget("right bottom", 4, 4, |limits| {
-        list.serialize_specified_with_limits(limits)
+        list.serialize_specified(limits)
     });
-    let layers = CssPhysicalPositionList::try_new(vec![
-        physical.clone(),
-        CssPhysicalPosition::try_new(H::Left, V::Top).unwrap(),
+    let layers = CssPositionList::try_new(vec![
+        lifted.clone(),
+        CssPhysicalPosition::try_new(H::Left, V::Top)
+            .unwrap()
+            .into(),
     ])
     .unwrap();
     budget("right bottom, left top", 7, 7, |limits| {
-        layers.serialize_specified_with_limits(limits)
+        layers.serialize_specified(limits)
     });
     let origin = CssTransformOrigin::try_new(physical.clone(), None).unwrap();
     assert_eq!(origin.horizontal(), physical.horizontal());
     assert_eq!(origin.vertical(), physical.vertical());
     assert!(origin.z().is_none());
-    let z = CssSpecifiedLength::try_from_component(CssComponentValue::try_token("-3px").unwrap())
-        .unwrap();
+    let z =
+        CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_token("-3px").unwrap())
+            .unwrap();
     let origin = CssTransformOrigin::try_new(physical, Some(z.clone())).unwrap();
     assert_eq!(origin.z(), Some(&z));
     let paired =
@@ -341,7 +375,7 @@ fn specified_order_preserves_keyword_family_and_serializes_implied_center() {
     ] {
         let position = parsed(authored);
         assert_eq!(
-            position.serialize_specified().unwrap(),
+            position.serialize_specified(Default::default()).unwrap(),
             expected,
             "{authored}"
         );
@@ -412,12 +446,14 @@ fn parsed_and_programmatic_families_compare_numeric_structure_and_preserve_origi
             origin.source().as_str()[..start].encode_utf16().count()
         );
         assert_eq!(constructed_scalar.origin(), &CssValueOrigin::Programmatic);
-        assert_ne!(parsed_scalar, constructed_scalar);
-        assert!(matches!(parsed_scalar.literal_component().unwrap().view(),
+        assert_eq!(parsed_scalar, constructed_scalar);
+        assert!(
+            matches!(parsed_scalar.literal().map(|literal| literal.component()).unwrap().view(),
             CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
-                if number.representation() == "-1e-999" && unit == "px"));
+                if number.representation() == "-1e-999" && unit == "px")
+        );
     }
-    assert_ne!(
+    assert_eq!(
         parsed("x-start 1.0px y-end 2%"),
         parsed("x-start 1px y-end 2%")
     );
@@ -455,7 +491,7 @@ fn every_family_charges_one_aggregate_two_axes_and_authored_scalars() {
     ] {
         let before = position.clone();
         budget(expected, 3, 3, |limits| {
-            position.serialize_specified_with_limits(limits)
+            position.serialize_specified(limits)
         });
         assert_eq!(position, before);
     }
@@ -480,21 +516,21 @@ fn every_family_charges_one_aggregate_two_axes_and_authored_scalars() {
     ] {
         let before = position.clone();
         budget(expected, 5, 5, |limits| {
-            position.serialize_specified_with_limits(limits)
+            position.serialize_specified(limits)
         });
         assert_eq!(position, before);
     }
     let physical = CssPhysicalPosition::try_new(H::Right, V::Bottom).unwrap();
     budget("right bottom", 3, 3, |limits| {
-        physical.serialize_specified_with_limits(limits)
+        physical.serialize_specified(limits)
     });
     let full: CssPosition = physical.into();
     budget("right bottom", 3, 3, |limits| {
-        full.serialize_specified_with_limits(limits)
+        full.serialize_specified(limits)
     });
     let background = CssBackgroundPosition::try_new(H::RightOffset(lp("2%")), V::Top).unwrap();
     budget("right 2% top", 4, 4, |limits| {
-        background.serialize_specified_with_limits(limits)
+        background.serialize_specified(limits)
     });
 }
 
@@ -503,29 +539,29 @@ fn shape_composition_charges_no_extra_family_or_view_nodes() {
     let position = CssPosition::try_from_relative_axes(R::Start, R::End).unwrap();
     let circle = CssCircleShape::new(CssCircleRadius::Default, Some(position.clone()));
     budget("circle(at start end)", 4, 4, |limits| {
-        circle.serialize_specified_with_limits(limits)
+        circle.serialize_specified(limits)
     });
     let ellipse = CssEllipseShape::new(None, Some(position));
     budget("ellipse(at start end)", 4, 4, |limits| {
-        ellipse.serialize_specified_with_limits(limits)
+        ellipse.serialize_specified(limits)
     });
     let clip = CssClipPath::BasicShape(CssClipPathShape::new(
         CssBasicShape::Circle(circle.clone()),
         None,
     ));
     budget("circle(at start end)", 5, 5, |limits| {
-        clip.serialize_specified_with_limits(limits)
+        clip.serialize_specified(limits)
     });
     let boxed = CssClipPath::BasicShape(CssClipPathShape::new(
         CssBasicShape::Circle(circle),
         Some(CssBoxEdgeKeyword::BorderBox),
     ));
     budget("circle(at start end) border-box", 6, 6, |limits| {
-        boxed.serialize_specified_with_limits(limits)
+        boxed.serialize_specified(limits)
     });
     let omitted = CssCircleShape::new(CssCircleRadius::Default, None);
     budget("circle()", 1, 1, |limits| {
-        omitted.serialize_specified_with_limits(limits)
+        omitted.serialize_specified(limits)
     });
 }
 
@@ -553,12 +589,12 @@ fn math_arenas_are_cumulative_across_both_flow_axes_and_shape_composition() {
     ] {
         let before = position.clone();
         budget(expected, 11, 13, |limits| {
-            position.serialize_specified_with_limits(limits)
+            position.serialize_specified(limits)
         });
         assert_eq!(position, before);
         let circle = CssCircleShape::new(CssCircleRadius::Default, Some(position));
         budget(&format!("circle(at {expected})"), 12, 14, |limits| {
-            circle.serialize_specified_with_limits(limits)
+            circle.serialize_specified(limits)
         });
     }
 }
@@ -595,7 +631,10 @@ fn mixed_math_offsets_keep_family_order_and_original_numeric_provenance() {
     ] {
         let value = parsed(source);
         assert_eq!(value, constructed);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         let offset = match value.view() {
             CssPositionRef::Cartesian(view) => {
                 let H::XStartOffset(offset) = view.horizontal() else {
@@ -621,7 +660,11 @@ fn mixed_math_offsets_keep_family_order_and_original_numeric_provenance() {
         assert!(matches!(before, CssValueOrigin::Parsed(_)));
         let calculation = offset.calculation().unwrap();
         assert_eq!(
-            calculation.components().serialize().unwrap().as_css(),
+            calculation
+                .components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             "calc(10% - 1px)"
         );
         let CssComponentValueRef::Function(function) = calculation.components().items()[0].view()
@@ -638,19 +681,18 @@ fn mixed_math_offsets_keep_family_order_and_original_numeric_provenance() {
             closing.span().end().column().value() as usize,
             closing.source().as_str()[..end].encode_utf16().count()
         );
-        assert_eq!(
+        assert!(
             value
-                .serialize_specified_with_limits(L::new(0, 100, 100))
+                .serialize_specified(L::new(0, 100, 100))
                 .unwrap_err()
-                .kind(),
-            K::InputNodeLimit
+                .is_input_node_limit()
         );
         assert_eq!(offset.origin(), &before);
     }
 }
 
 #[test]
-fn physical_consumers_reject_logical_families_while_gradients_import_full_position() {
+fn physical_consumers_reject_logical_families_while_full_position_consumers_accept_them() {
     for position in [
         "x-start y-end",
         "block-start inline-end",
@@ -659,16 +701,34 @@ fn physical_consumers_reject_logical_families_while_gradients_import_full_positi
         "block-start 1px inline-end 2%",
         "start 1px end 2%",
     ] {
+        // Values 5 `<position>` consumers (#1379): flow-relative keywords stay unresolved.
         for declaration in [
             format!("object-position:{position}"),
+            format!("perspective-origin:{position}"),
             format!("mask-position:{position}"),
             format!("mask:url(mask.png) {position}"),
+        ] {
+            let source = format!("{declaration};color:blue");
+            let report = CssParser::default().parse_block_contents(&source);
+            assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
+            assert_eq!(report.syntax().len(), 2, "{source}");
+            assert_eq!(
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .unwrap(),
+                *report.syntax()
+            );
+        }
+        // `background-position` stays physical until csswg-drafts#9690 settles its longhands;
+        // `transform-origin` keeps its older physical grammar.
+        for declaration in [
             format!("background-position:{position}"),
             format!("background:url(bg.png) {position}"),
             format!("transform-origin:{position}"),
         ] {
             let source = format!("{declaration};color:blue");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert_eq!(report.diagnostics().len(), 1, "{source}");
             assert_eq!(report.syntax().len(), 1, "{source}");
             assert_eq!(
@@ -680,7 +740,11 @@ fn physical_consumers_reject_logical_families_while_gradients_import_full_positi
                 CssRecoveryAction::DropDeclaration
             );
             assert_eq!(
-                validate_style_attribute(&source).unwrap_err().diagnostics(),
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 report.diagnostics()
             );
         }
@@ -688,10 +752,16 @@ fn physical_consumers_reject_logical_families_while_gradients_import_full_positi
         // Position, superseding its general Values3 fallback prose.
         for function in ["radial-gradient", "repeating-radial-gradient"] {
             let source = format!("background-image:{function}(at {position},red,blue);color:blue");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             assert_eq!(report.syntax().len(), 2, "{source}");
-            assert_eq!(validate_style_attribute(&source).unwrap(), *report.syntax());
+            assert_eq!(
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .unwrap(),
+                *report.syntax()
+            );
         }
     }
 }
