@@ -8,6 +8,7 @@ mod eof_comment_diagnostics;
 mod eof_quoted_string_recovery;
 mod eof_rule_provenance;
 mod escape_recovery_provenance;
+mod escaped_block_punctuation;
 mod nested_structural_recovery;
 mod recovered_tree_contract;
 mod specialized_list_recovery;

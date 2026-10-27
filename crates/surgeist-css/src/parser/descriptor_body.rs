@@ -39,7 +39,7 @@ pub(super) fn parse<'i, Item>(
             consume_failed_rule_block(
                 context.source,
                 items.input,
-                true,
+                start,
                 context.recovery,
                 production,
             )

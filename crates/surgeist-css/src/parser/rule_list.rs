@@ -619,7 +619,7 @@ where
             consume_failed_rule_block(
                 source,
                 input,
-                true,
+                unit_start,
                 grammar.recovery(),
                 structural_recovery_production(failed_unit),
             )

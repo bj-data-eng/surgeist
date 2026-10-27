@@ -97,7 +97,7 @@ pub(super) fn parse_body<'i>(
             consume_failed_rule_block(
                 source,
                 input,
-                true,
+                unit_start,
                 &parser.recovery,
                 structural_recovery_production(failed_unit),
             )
@@ -153,7 +153,7 @@ pub(super) fn parse_declarations<'i>(
             consume_failed_rule_block(
                 source,
                 items.input,
-                true,
+                unit_start,
                 &items.parser.recovery,
                 "baseline.rule.keyframes",
             )

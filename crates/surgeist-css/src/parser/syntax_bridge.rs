@@ -268,8 +268,14 @@ where
             let prelude = match prelude {
                 Ok(prelude) => prelude,
                 Err(error) => {
-                    let resource =
-                        consume_failed_rule_block(source, input, true, recovery, "css.at-rule").1;
+                    let resource = consume_failed_rule_block(
+                        source,
+                        input,
+                        start.position().byte_index(),
+                        recovery,
+                        "css.at-rule",
+                    )
+                    .1;
                     return Err(resource.unwrap_or(error));
                 }
             };
@@ -313,8 +319,14 @@ where
             if end_of_input {
                 return Err(error);
             }
-            let resource =
-                consume_failed_rule_block(source, input, true, recovery, "css.qualified-rule").1;
+            let resource = consume_failed_rule_block(
+                source,
+                input,
+                start.position().byte_index(),
+                recovery,
+                "css.qualified-rule",
+            )
+            .1;
             return Err(resource.unwrap_or(error));
         }
     };

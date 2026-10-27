@@ -111,7 +111,7 @@ pub(super) fn parse_body<'i>(
             consume_failed_rule_block(
                 source,
                 items.input,
-                true,
+                unit_start,
                 &items.parser.recovery,
                 "baseline.rule.font-face",
             )
