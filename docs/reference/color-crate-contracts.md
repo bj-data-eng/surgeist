@@ -58,14 +58,25 @@ while invalid native numerical method construction belongs to Color.
 
 ## Native numerical front door
 
-The following is the selected public API shape. Signatures describe that
-shape; the shipped signatures are those of the `surgeist-color` audit,
-[`api/crates/surgeist-color.txt`](../../api/crates/surgeist-color.txt), and win
-where they differ. `surgeist-css` holds no mirror implementation of any of
-it. Fields of invariant-bearing structs are private.
+The following lists the public API of the numerical front door, abridged from
+the `surgeist-color` audit,
+[`api/crates/surgeist-color.txt`](../../api/crates/surgeist-color.txt), which
+carries every signature. `surgeist-css` holds no mirror implementation of any
+of it. Fields of invariant-bearing structs are private.
 
 ```rust
 // surgeist_color
+pub struct Finite(/* private */);          // finite binary64
+impl Finite {
+    pub const fn new(value: f64) -> Option<Self>;
+    pub const fn get(self) -> f64;
+}
+pub struct UnitInterval(/* private */);    // finite value in [0, 1]
+impl UnitInterval {
+    pub const fn new(value: f64) -> Option<Self>;
+    pub fn clamped(value: Finite) -> Self;
+    pub const fn get(self) -> f64;
+}
 pub enum PredefinedColorSpace {
     Srgb, SrgbLinear, DisplayP3, DisplayP3Linear, A98Rgb,
     ProphotoRgb, Rec2020, XyzD50, XyzD65,
@@ -76,10 +87,10 @@ pub enum ColorSpace {
 pub enum HueInterpolation { Shorter, Longer, Increasing, Decreasing }
 pub struct InterpolationMethod { /* checked numerical method */ }
 impl InterpolationMethod {
-    pub fn try_new(space: ColorSpace, hue: Option<HueInterpolation>)
+    pub const fn try_new(space: ColorSpace, hue: Option<HueInterpolation>)
         -> Result<Self, InterpolationError>;
-    pub fn space(self) -> ColorSpace;
-    pub fn hue(self) -> Option<HueInterpolation>;
+    pub const fn space(self) -> ColorSpace;
+    pub const fn hue(self) -> Option<HueInterpolation>;
 }
 pub enum SerializationFamily { Natural, ColorFunction, LegacySrgb }
 pub enum Transformation {
@@ -87,27 +98,28 @@ pub enum Transformation {
 }
 pub struct Color { /* space, coordinates, alpha, byte backing, family */ }
 impl Color {
-    pub fn try_new(space: ColorSpace, channels: [Option<f64>; 3], alpha: Option<f64>)
-        -> Result<Self, ColorError>;
+    pub fn new(space: ColorSpace, channels: [Option<Finite>; 3], alpha: Option<UnitInterval>)
+        -> Self;
     pub const fn from_srgba8(value: [u8; 4]) -> Self;
     pub const fn opaque_black() -> Self;
-    pub fn space(&self) -> ColorSpace;
+    pub const fn space(&self) -> ColorSpace;
     pub fn channels(&self) -> [Option<f64>; 3];
-    pub fn alpha(&self) -> Option<f64>;
-    pub fn srgb_bytes(&self) -> Option<[u8; 3]>;
-    pub fn alpha_byte(&self) -> Option<u8>;
+    pub fn finite_channels(&self) -> [Option<Finite>; 3];
+    pub const fn alpha(&self) -> Option<f64>;
+    pub fn unit_alpha(&self) -> Option<UnitInterval>;
+    pub const fn srgb_bytes(&self) -> Option<[u8; 3]>;
+    pub const fn alpha_byte(&self) -> Option<u8>;
     pub fn serialization_family(&self) -> SerializationFamily;
     pub fn identical(self, other: Self) -> bool;
-    pub fn converted(self, destination: ColorSpace) -> Result<Self, ColorError>;
-    pub fn prepared_for_interpolation(self, destination: ColorSpace)
-        -> Result<Self, ColorError>;
-    pub fn interpolated(self, second: Self, method: InterpolationMethod, progress: f64)
-        -> Result<Self, InterpolationError>;
-    pub fn transformed(self, transformation: Transformation) -> Result<Self, ColorError>;
-    pub fn with_alpha(self, alpha: Option<f64>) -> Result<Self, ColorError>;
-    pub fn with_serialization_family(self, family: SerializationFamily)
-        -> Result<Self, ColorError>;
-    pub fn black_white_contrast(self) -> Result<Self, ColorError>;
+    pub fn converted(self, destination: ColorSpace) -> Self;
+    pub fn prepared_for_interpolation(self, destination: ColorSpace) -> Self;
+    pub fn interpolated(self, second: Self, method: InterpolationMethod, progress: UnitInterval)
+        -> Self;
+    pub fn transformed(self, transformation: Transformation) -> Self;
+    pub fn with_alpha(self, alpha: Option<UnitInterval>) -> Self;
+    pub const fn with_color_function(self) -> Self;
+    pub fn to_legacy_srgb(self) -> Self;
+    pub fn black_white_contrast(self) -> Self;
 }
 pub enum SerializationRequest { Css, HtmlCompatible }
 pub struct SerializationLimits {
@@ -118,27 +130,41 @@ pub fn serialize(color: Color, request: SerializationRequest, limits: Serializat
 pub fn byte_alpha_for_serialization(alpha: u8) -> f64;
 ```
 
-Numerical space/hue/error enums are `#[non_exhaustive]`; request/family choices
-are closed. These are pre-v1 breaking moves, with no old-path aliases or public
-CSS reexports of numerical names. Color and coordinate carriers remain
-`Clone + Copy + Debug + PartialEq`; they do not derive `Eq`, `Ord` or `Hash` over
-floating values. `identical` compares coordinate and alpha bits, missingness,
-actual byte backing, space and effective serialization family. It is the
-identity predicate used by protocol record checks; ordinary `PartialEq` retains
-its current numerical behavior, including equal signed zeros.
+`PredefinedColorSpace`, `ColorSpace`, `HueInterpolation`, `RectangularSpace`
+and the three error enums (`InterpolationError`, `SerializationError` and
+`format::FormatError`) are `#[non_exhaustive]`; `SerializationRequest`,
+`Transformation` and `SerializationFamily` are closed. These are pre-v1
+breaking moves, with no old-path aliases or public CSS reexports of numerical
+names. `Finite`, `UnitInterval`, `Color` and the coordinate carriers are
+`Clone + Copy + Debug + PartialEq`; they do not derive `Eq`, `Ord` or `Hash`
+over floating values. `identical` compares coordinate and alpha bits,
+missingness, actual byte backing, space and effective serialization family;
+ordinary `PartialEq` compares the stored values numerically, so it treats equal
+signed zeros as equal.
 
-`try_new` visits channels 0, 1, 2, then alpha and returns the first
-`ColorError::NonFinite { component }`; present alpha must then be in `[0,1]` or
-returns `AlphaOutOfRange`. It preserves signed zero and all finite extended
-channels, including signed chroma/saturation. `None` is an explicit missing
-channel/alpha, not omitted syntax. Omitted authored alpha is resolved by CSS to
-`Some(1.0)` before construction. No method accepts NaN/infinity as a missing
-sentinel. Native construction neither clamps color channels nor infers bytes.
-`ColorError` has `NonFinite { component: usize }`, `AlphaOutOfRange`,
-`InvalidCoordinates`, `Unrepresentable`, `RequiresSrgb` and
-`InvalidSerializationFamily` kinds. The existing specialized coordinate errors
-retain their component indices and validation order rather than being flattened
-into ColorError at their own front doors.
+Every operation above is total. Invalid numbers cannot reach one: `Finite::new`
+returns `None` for NaN and both infinities, and `UnitInterval::new` returns
+`None` outside `[0,1]` (so also for NaN and the infinities). A caller meets the
+refusal where it builds the operand, and the operations that follow cannot
+fail. `UnitInterval::new` admits negative zero and keeps its bits;
+`UnitInterval::clamped` takes a `Finite` to the nearest value in `[0,1]`. There
+is no raw-`f64` constructor of `Color` and no error type for color
+construction, conversion or transformation. A value that would leave binary64
+is returned as the signed closest finite value (see below).
+
+`Color::new` takes `Finite` channels and an optional `UnitInterval` alpha. It
+preserves signed zero and all finite extended channels, including signed
+chroma/saturation, and neither clamps color channels nor infers byte backing
+from integral floating-point values. `None` is an explicit missing
+channel/alpha, not omitted syntax: CSS resolves omitted authored alpha to
+`Some(1.0)` before construction. `Color::channels` and `alpha` give plain
+numbers for arithmetic and display; `finite_channels` and `unit_alpha` give the
+same values back as proofs for another operation. `Color::new` selects the
+color-function family for a predefined space and the natural family for every
+other space; `from_srgba8` establishes actual channel and alpha byte backing
+and the legacy `rgb()` family. `serialization_family` reports `ColorFunction`
+when the modern marker is set, otherwise `LegacySrgb` for sRGB and `Natural`
+for every other space.
 
 | Space | Ordered numerical units |
 | --- | --- |
@@ -168,202 +194,252 @@ it does not promise preservation of missing masks across all spaces. The
 separate preparation operation preserves analogous missing components and
 applies the existing powerless-hue thresholds only when converting spaces.
 Signed polar chroma and HSL saturation use the existing opposite-hue Cartesian
-adapter. Final unrepresentable results return `Unrepresentable`; arithmetic
-does not fail merely because a wider intermediate exceeds finite f64. Forward
-HSL/HWB conversion instead returns each overflowing sRGB channel as its signed
-closest finite value, the CSS Values 4 closest supported value.
+adapter. Arithmetic does not fail merely because a wider intermediate exceeds
+finite f64: only the final channel is limited, and a channel whose exact value
+is beyond binary64 is the signed closest finite value (`f64::MAX` with the
+sign), the CSS Values 4 closest supported value. This is a numeric-range rule
+and applies no gamut mapping.
 
-`InterpolationMethod::try_new` rejects hue on a rectangular space and defaults
-polar omission to `Shorter`; its `hue()` returns the effective strategy. The
-two-color operation first checks finite progress in `[0,1]`, then prepares the
-first and second operands in that order, carries analogous missing components,
-uses the existing premultiplied-alpha calculation with hue excluded, preserves
-both-missing components, and applies the selected hue arc. No extrapolation is
-added. `InterpolationError` distinguishes `InvalidProgress`,
-`HueRequiresPolarSpace`, and `Numerical(ColorError)`. CSS's ordered mix fold
-retains the existing zero-total two-operand progress of 0.5, omitted-weight
-normalization and final alpha multiplier; it requests `ColorFunction` after the
-fold. These steps do not become an alternative native CSS resolver.
+`InterpolationMethod::try_new` is the one fallible Color constructor: it
+rejects a hue strategy on a rectangular space with
+`InterpolationError::HueRequiresPolarSpace` and defaults polar omission to
+`Shorter`; its `hue()` returns the effective strategy. Progress is a
+`UnitInterval`, so its range is established by the type and no extrapolation is
+possible. The two-color operation prepares the first and second operands in
+that order, carries analogous missing components, uses the existing
+premultiplied-alpha calculation with hue excluded, preserves both-missing
+components, applies the selected hue arc and keeps the interpolated alpha in
+`[0,1]`. CSS's ordered mix fold retains the existing zero-total two-operand
+progress of 0.5, omitted-weight normalization and final alpha multiplier; it
+requests the color-function family after the fold. These steps do not become an
+alternative native CSS resolver.
 
-`ForceOpaqueAlpha` preserves channel/alpha backing and replaces alpha by unity;
-`with_alpha` validates first, preserves channel backing, and intentionally makes
-alpha floating. `QuantizeSrgb` requires encoded sRGB (`RequiresSrgb` otherwise),
-clamps present coordinates to `[0,1]`, rounds positive half ties to bytes and
-preserves missingness. It neither changes alpha nor infers alpha bytes.
-`ColorFunction` selects modern serialization without a conversion. Family
-selection accepts `LegacySrgb` only for encoded sRGB; `Natural` chooses the same
-space-based natural family as `try_new`, while `ColorFunction` retains the
-modern marker across conversions, including cylindrical spaces. Invalid family
-selection returns `InvalidSerializationFamily` before mutation. `black_white_contrast`
-retains the current XYZ-D65 luminance clamp and white/black comparison, ignores
-alpha, chooses white on ties and returns actual opaque sRGB bytes. It selects no
-new contrast or gamut algorithm.
+`ForceOpaqueAlpha` preserves channel backing and replaces alpha by unity: byte
+alpha becomes byte 255, and floating or missing alpha becomes 1.0. `with_alpha`
+preserves channel backing and intentionally makes alpha floating.
+`QuantizeSrgb` converts a value in another space to sRGB, clamps present
+coordinates to `[0,1]`, rounds positive half ties to bytes and preserves
+missingness: the channels become sRGB byte channels only when all three are
+present, and a missing channel keeps the value floating. It neither changes
+alpha nor infers alpha bytes. `ColorFunction` (the `Transformation` variant and
+`with_color_function`) selects modern serialization without a conversion, and
+the marker survives later conversions, including to cylindrical spaces.
+`to_legacy_srgb` converts to sRGB and selects the legacy `rgb()` family,
+clearing that marker; `Transformation` has no legacy variant.
+`black_white_contrast` converts to XYZ-D65, reads Y (zero when missing) clamped
+to `[0,1]`, compares the white and black contrast ratios, ignores alpha,
+chooses white on ties and returns actual opaque sRGB bytes. It selects no new
+contrast or gamut algorithm.
 
 ## Controlled numerical execution
 
 Color must support the original parser controller without depending on that
 controller. It publishes concrete operations, actions and opaque digit records;
-it does not publish a trait that claims admission happened elsewhere.
+it does not publish a trait that claims admission happened elsewhere. Three
+continuations exist: `Computation` for one fixed numerical request,
+`Serialization` for a resolved color's text and `format::FiniteFormatter` for
+one finite number. Each is a typestate over an exclusive `OperationOwner`:
+every transition consumes the continuation and returns the next state, so a
+used or completed operation cannot be driven again, and dropping a
+continuation or one of its actions abandons it without further numerical work.
 
 ```rust
+// surgeist_color, abridged from the audit
 pub struct OperationOwner { /* exclusive monotonic phase */ }
 pub struct DigitSlot<'owner> { /* owner, phase, index, checked digit */ }
 pub enum NumericalRequest {
-    Construct { space: ColorSpace, channels: [Option<f64>; 3], alpha: Option<f64> },
+    Construct { space: ColorSpace, channels: [Option<Finite>; 3], alpha: Option<UnitInterval> },
     Convert { value: Color, destination: ColorSpace },
     Prepare { value: Color, destination: ColorSpace },
-    Interpolate { first: Color, second: Color, method: InterpolationMethod, progress: f64 },
-    Transform { value: Color, transformation: Transformation },
-    WithAlpha { value: Color, alpha: Option<f64> },
-    WithFamily { value: Color, family: SerializationFamily },
+    Interpolate { first: Color, second: Color, method: InterpolationMethod, progress: UnitInterval },
+    WithAlpha { value: Color, alpha: Option<UnitInterval> },
+    WithColorFunction { value: Color },
+    ToLegacySrgb { value: Color },
     BlackWhiteContrast { value: Color },
+    Transform { value: Color, transformation: Transformation },
+}
+impl NumericalRequest {
+    pub const fn kernel(self) -> Kernel;
+    pub fn execute(self) -> Color;
 }
 pub struct Computation<'owner> { /* fixed registers only */ }
+impl<'owner> Computation<'owner> {
+    pub fn new(owner: &'owner mut OperationOwner, request: NumericalRequest) -> Self;
+    pub const fn kernel(&self) -> Kernel;
+    pub const fn layout(&self) -> ActionLayout;
+    pub fn compute(self) -> Color;
+    pub const fn into_request(self) -> NumericalRequest;
+}
 pub struct Serialization<'owner> { /* fixed plan and finite cursor only */ }
-pub enum ActionDescription {
-    Compute(Kernel), ReadDigit { index: usize }, AppendDigit { index: usize },
-    ReplaceDigit { index: usize }, EmitByte { unit: u8 }, Ready, Failed, Abandoned,
+impl<'owner> Serialization<'owner> {
+    pub fn new(owner: &'owner mut OperationOwner, value: Color, request: SerializationRequest)
+        -> Self;
+    pub fn step(self) -> SerializationStep<'owner>;
+}
+pub enum SerializationStep<'owner> {
+    Pending(SerializationAction<'owner>), Complete(SerializationReceipt),
+}
+pub enum SerializationAction<'owner> {
+    Compute(SerializationCompute<'owner>), ReadDigit(ReadDigit<'owner>),
+    AppendDigit(WriteDigit<'owner>), ReplaceDigit(WriteDigit<'owner>), Emit(Emit<'owner>),
 }
 pub struct ActionLayout {
     pub read_bytes: usize, pub write_bytes: usize, pub output_bytes: usize,
 }
 ```
 
-`OperationOwner::layout_bytes()`, `Computation::register_bytes()`,
-`Computation::action_bytes()`, `Serialization::register_bytes()`,
-`Serialization::action_bytes()` and the corresponding FiniteFormatter methods
-are associated static functions callable before any instance is constructed.
-`OperationOwner::new()` is allocation-free. `Computation::new(&mut owner,
-request)` and `Serialization::new(&mut owner, value, request)` return
-`Result<_, ProtocolError>`, advancing a checked phase only after initialization
-is admitted. They copy fixed operands but do not execute them. Both expose
-`register_bytes()`, `action_bytes()`, `action()`, `next_action()`, `abandon()`;
-`Computation::take(slot: &mut Option<Self>) -> Result<Color, ComputationError>`
-preflights through a shared borrow of the slot and removes its operation only
-at Ready. EmptySlot, NotReady, Failed and Abandoned leave the original slot
-unchanged. Failed returns its stored computation error; Abandoned returns
-Terminated. A refused take can therefore be followed by the same pending action.
-`ComputationError` distinguishes `Numerical(ColorError)`,
-`Interpolation(InterpolationError)` and `Protocol(ProtocolError)`.
-`Computation::original(&self) -> NumericalRequest` permits recovery of the exact
-copyable request on failure/abandonment; it creates no result or resource credit.
-One admitted compute executes exactly its fixed request, reusing the ordinary
-kernel and its validation order. The public low-level coordinate operations
-are also fixed kernels: a controlled caller must admit their actual fixed
-operands/registers before invoking them, with no variable scans hidden inside.
+`OperationOwner::new()` is allocation-free (`OperationOwner` also implements
+`Default`). `Computation::new(&mut owner, request)` and
+`Serialization::new(&mut owner, value, request)` begin a checked phase of the
+owner and copy fixed operands without executing them. A computation observes no
+digit record and emits nothing, so `Computation::compute` executes the whole
+request. It returns the `Color` directly, with the same kernels as the
+`Color` methods and no error: every request is total, and
+`NumericalRequest::execute` runs the same request without a continuation.
+`Computation::into_request` declines the computation and returns the unexecuted
+request. The public low-level coordinate operations are likewise total over
+`Finite` operands, and a controlled caller admits their fixed operands and
+registers before invoking them, with no variable scans hidden inside.
 
-`Kernel` identifies the actual fixed numerical request or the existing finite
-formatting transitions (`PlanFinite`, `TrimMillionths`, `ExtractDigit`,
-`MultiplyDigit`, `NextMultiply`, `PlanOutput`, `PlanEmission`) and serialization
-planning/piece advancement. Scalar library arithmetic remains an atomic bounded
+`Kernel` names the work an action performs. For a computation it is the actual
+fixed request (`Construct`, `Convert(space)`, `Prepare(space)`, `Interpolate`,
+`Transform(transformation)`, `WithAlpha`, `WithColorFunction`, `ToLegacySrgb` or
+`BlackWhiteContrast`). For serialization it is `SerializationPlan`,
+`SerializationPiece` or, while a number is formatted, a finite-formatting
+transition: `PlanFinite`, `TrimMillionths`, `ExtractDigit`, `MultiplyDigit`,
+`NextMultiply`, `PlanOutput` or `PlanEmission`. A `FiniteFormatter` issues those
+same transitions. Scalar library arithmetic remains an atomic bounded
 operation; the contract does not invent internal instruction counts.
 
-An action guard exclusively borrows its operation and exposes `description()`
-and `layout()` without inspecting variable payloads or doing numerical work.
-Its consuming `compute()` executes the advertised fixed kernel; `read_digit(index,
-&slot)` observes one qualified slot; `record(&mut self)` generates the advertised
-append/replacement record after admission; `written(self, index, &slot)` checks
-the actual stored record before acknowledging it; `emitted(self, unit)`
-acknowledges an actual ASCII write. All return typed `ProtocolError` or the
-operation's numerical error. Wrong action/index/digit/owner/phase or terminal
-state is rejected without changing the pending action. `record()` is idempotent
-for that pending write. Dropping a guard performs no compute, acknowledgement,
-release, phase change or output. A rejected or refused action can be serviced
-again against the same state.
+`Serialization::step(self)` consumes the serialization and yields either
+`SerializationStep::Pending` with exactly one `SerializationAction` or
+`Complete` with a `SerializationReceipt`. An action exposes `layout()` without
+inspecting variable payloads or doing numerical work, and each variant exposes
+only its own completion, so a completion of the wrong kind is a compile error:
 
-An admitted computation that returns a numerical error enters Failed, stores
-that first typed error and produces no replacement result. `failure()` borrows
-that error; `take(&mut slot)` returns it while retaining the Failed operation.
-Numerical failure is not a resumable pending
-compute. Abandonment preserves the first failure for inspection. Protocol
-errors are distinct: the pending action remains available for a corrected reply.
-`ProtocolError` distinguishes `Overflow`, `ForeignSlot`, `WrongAction`,
-`WrongIndex`, `WrongDigit`, `WrongReply`, `NotReady`, `StorageNotEmpty` and
-`Terminated` and `EmptySlot`. Only Ready permits successful take; an early take
-is NotReady. None of these refusals removes or replaces the operation.
+| Action | Inspection | Completion, returning the next `Serialization` |
+| --- | --- | --- |
+| `Compute(SerializationCompute)` | `kernel()` | `compute()` runs the advertised fixed kernel |
+| `ReadDigit(ReadDigit)` | `index()` | `read(&DigitSlot)` observes one qualified record |
+| `AppendDigit`, `ReplaceDigit` (`WriteDigit`) | `index()` | `record()` mints the `DigitSlot` and a `DigitReceipt`; the receipt's `stored(&DigitSlot)` acknowledges the caller's actual storage |
+| `Emit(Emit)` | `unit()` | `emitted()` acknowledges the ASCII byte the action issued |
 
-`Computation::recover(slot: &mut Option<Self>) -> Result<NumericalRequest,
-ProtocolError>` preflights Some, removes that operation in any state and returns
-its original copyable request. `Serialization::recover(slot: &mut Option<Self>)
--> Result<SerializationRecovery, ProtocolError>` similarly returns the original
-Color, SerializationRequest and acknowledged output length. FiniteFormatter's
-recover returns `FormatRecovery` containing its original f64, rounding mode
-and acknowledged length. Both recovery structs have read-only accessors.
-Recovery performs no compute, output, capacity release or source publication.
-Only EmptySlot refuses recovery, leaving None unchanged. These transitions
-are associated functions, so Rust's guard borrow also prevents taking/recovering
-an operation while one of its actions remains borrowed.
+`SerializationAction::into_serialization` and `DigitReceipt::into_serialization`
+decline an action, or report refused storage, without effect: the returned
+continuation waits at the same action, and a refused write can be serviced again
+against the same state. `FiniteFormatter` has the same shape in the `format`
+module, as `FormatStep`, `FormatAction`, `FormatCompute`, `FormatReadDigit`,
+`FormatWriteDigit`, `FormatDigitReceipt` and `FormatEmit`, with
+`into_formatter` for declining, and completes with a `FormatSummary`.
 
-The caller admits fixed owner/register/guard layout before construction and
-every guard, then admits actual payload reads, work, allocation/capacity, writes
-and output before invoking that action. `ActionLayout` is computed with actual
-compiled `size_of` values, including record wrappers and alignment, never
-copied constants from the mixed CSS record. `register_bytes()` includes retained
-plans/cursors. Caller wrappers add their own storage and checkpoint fields once.
+The caller admits the fixed owner and register layout before construction and
+every action's `ActionLayout` before completing it, then admits the actual
+payload reads, work, allocation or capacity, writes and output of that action.
+`OperationOwner::layout_bytes()`, `Computation::register_bytes()`,
+`Serialization::register_bytes()` and `action_bytes()`, and the corresponding
+`FiniteFormatter` functions are associated functions callable before any
+instance exists. They and `ActionLayout` report actual compiled `size_of`
+values, including record wrappers and alignment, never constants copied from
+the mixed CSS record. A digit read observes a `DigitSlot` and its owner
+qualification, a digit write mints one `DigitSlot`, an emission writes one
+output byte, and a computation does none of these. `register_bytes()` includes
+retained plans and cursors; caller wrappers add their own storage and
+checkpoint fields once.
+
 `DigitSlot` contains only numerical ownership, phase, index and digit; it has no
-CSS source/fact identity. Pointer/phase qualification is safe Rust and does not
-use global IDs or unsafe code. OperationOwner privately contains a nonzero-sized
-marker and checked usize phase. New receives `&'owner mut OperationOwner`,
-increments its phase only on success and stores `&'owner OperationOwner` in the
-continuation; DigitSlot stores that same shared reference, phase and index.
-There is no interior-mutable numerical owner reachable through a CSS checkpoint.
-The exclusive initialization borrow prevents concurrent new operations and
-owner reuse while numerical records remain live. Checked phases additionally
-reject retired or foreign records supplied through a public action.
+CSS source or fact identity. Pointer and phase qualification is safe Rust and
+uses no global IDs or unsafe code. `OperationOwner` privately holds a
+nonzero-sized marker and a checked `usize` phase. Constructing a continuation
+takes `&'owner mut OperationOwner`, begins the next phase and stores
+`&'owner OperationOwner`; each `DigitSlot` stores that same shared reference,
+the phase and its index. There is no interior-mutable numerical owner reachable
+through a CSS checkpoint. The exclusive borrow prevents concurrent new
+operations while a continuation or any record is live, and the phase check
+rejects retired or foreign records supplied through a public action. A computed
+`Color` and a `SerializationReceipt` (`value()` and `length()`, no source or fact
+fields and no borrowed digits) no longer borrow the owner, so the owner serves
+the next operation once the caller drops the digit records.
+
+A mismatch between a record and the pending action is a defect in the driving
+code and panics, as slice indexing does, rather than returning an error:
+reading a record that another operation or index minted panics, and so does
+acknowledging storage with such a record or with one holding a different digit.
+The check covers only the record's operation, index and digit. It cannot tell
+whether the caller stored the minted record or another of the same identity,
+and reading back a different stored record yields wrong output that the fixed
+registers cannot detect. An owner that has begun `usize::MAX` operations also
+panics; no input reaches that count. Declining an action leaves the same action
+pending, so a caller whose admission refuses it can stop and drop the
+continuation. A caller that must retry starts a new operation from the original
+color and request, which begins a new phase.
 
 Serialization appends scratch digits at the actual bank length, updates only an
-existing qualified index, and never owns/reserves caller buffers. At most 309
-coefficient digits are needed for one finite binary64 value; a complete color
-may retain multiple numbers' records, so the total digit admission is the actual
-reported append sequence, not a blanket 309-record promise. The caller may reuse
-scratch only after the operation explicitly retires its phase; no action releases
-capacity or caller ledger charges. `Serialization::take(slot: &mut Option<Self>)`
-returns `Result<SerializationReceipt, SerializationError>` and removes the
-operation only after all bytes are acknowledged. Empty/not-ready/failed/abandoned
-refusals retain Some exactly as Computation does. The receipt carries `value()`
-and `length()`, with no source/fact
-fields and no borrowed digits. `abandon()` moves to Abandoned and performs no
-useful work or resource cleanup. The caller frees its exact owned storage.
+existing qualified index, and never owns or reserves caller buffers. The bank
+index continues across the numbers of one color, so the digits a color retains
+are the total of its appends. At most 309 coefficient digits are needed for one
+finite binary64 value; the total digit admission is the actual reported append
+sequence, not a blanket 309-record promise. The caller reuses scratch only
+after dropping the records, and no action releases capacity or caller ledger
+charges. The consumer owns its output buffer and frees its exact owned storage;
+`Serialization` performs no cleanup.
 
-Admission refusal and cancellation are caller outcomes, not numerical invalidity.
-The caller's first stop remains sticky; cleanup attempts every owned release
-without polling or replacing that stop. Before stop, an unacknowledged action
-can resume. After stop, abandon and release; restarting uses a new phase and
-the retained original request/checkpoint. A local output prefix can exist after
-acknowledged bytes, but is never a successful public result. Failed serialization
-discards it. Only the complete receipt and fully built output may be installed.
-Ordinary `serialize` services the same actions with local vectors, checked
-logical action/digit/output ceilings and fallible allocation. Its
-`SerializationError` distinguishes numerical, protocol, limit (resource,
-required, allowed), allocation and count overflow. Those ordinary ceilings do
-not claim physical allocation accounting or manufacture an HTML controller.
+Admission refusal and cancellation are caller outcomes, not numerical
+invalidity. The caller's first stop remains sticky; cleanup attempts every owned
+release without polling or replacing that stop. Before the stop, an
+unacknowledged action can still be completed. After it, the caller drops the
+action and releases its storage; restarting uses a new phase and the retained
+original request or checkpoint. A local output prefix can exist after
+acknowledged bytes, but is never a successful public result. A refused
+serialization discards it. Only the complete receipt and fully built output may
+be installed. Ordinary `serialize` services the same actions with local
+vectors, checked logical action, digit and output ceilings and fallible
+allocation. Its `SerializationError` distinguishes `Limit` (a
+`SerializationResource` of `Actions`, `Digits` or `OutputBytes`, with the
+required and allowed counts), `Allocation` (the resource whose allocation
+failed) and `CountOverflow`. Those ordinary ceilings do not claim physical
+allocation accounting or manufacture an HTML controller.
 
 ## One finite formatter and one rounding policy
 
 Color exposes `format::RoundingMode::{AwayFromZero, TowardPositiveInfinity}`,
-`format::format_finite(value: f64, rounding: RoundingMode, byte_limit: usize)
--> Result<String, FormatError>`, and `format::rounds_to_zero(value: f64,
-rounding: RoundingMode) -> Result<bool, FormatError>`. Both validate finiteness;
-`FormatError` distinguishes NonFinite, ByteLimit, CapacityOverflow and Protocol.
-`RoundingMode::rounds_up(half_order: std::cmp::Ordering, negative: bool) -> bool`
-owns the shared tie rule and is reused by CSS's exact arithmetic. It increments
-above half; at exact half it increments always for AwayFromZero and only for
-nonnegative values for TowardPositiveInfinity.
+`format::format_finite(value: Finite, rounding: RoundingMode, byte_limit: usize)
+-> Result<String, FormatError>`, and `format::rounds_to_zero(value: Finite,
+rounding: RoundingMode) -> bool`. The `Finite` operand carries the finiteness
+proof, so neither function validates its input. `FormatError` is
+`#[non_exhaustive]` and distinguishes `ByteLimit` and `CapacityOverflow`.
+`RoundingMode::rounds_up(self, ordering: std::cmp::Ordering, negative: bool) ->
+bool` owns the shared tie rule and is reused by CSS's exact arithmetic. It
+increments above half; at exact half it increments always for AwayFromZero and
+only for nonnegative values for TowardPositiveInfinity.
 
 `format::FiniteFormatter<'owner>` uses `OperationOwner`, `DigitSlot` and the
-same action guard contract as Serialization. Its constructor takes value and
-rounding; it exposes `planned_length() -> Option<usize>` before any emission and
-`take(slot: &mut Option<Self>) -> Result<FormatSummary, FormatError>` preflights
-Ready before removal; all error paths retain the operation. Its summary has
-`is_zero` and `emitted` accessors. This wraps the
-existing `FiniteFormatCursor`; Color keeps that arithmetic private and shared
-with complete color serialization. One kernel formats the actual finite bits
-to at most six fractional places, strips trailing zeros, emits positive zero,
-expands finite integers exactly, and preflights final output rather than a
-temporary shortest-decimal spelling. No shortest-string conversion or float
-rounding replacement is allowed. CSS's `format_projected_number` and
-`format_ordinary_color_number` in `serialization/numeric_formatting.rs` are
-error-mapping calls, not retained math.
+same typestate contract as Serialization, described under
+[controlled numerical execution](#controlled-numerical-execution). Its
+constructor `new(owner, value: Finite, rounding)` takes the value and rounding;
+`planned_length() -> Option<usize>` reports the exact output length once
+planning has run, before any emission; `step()` yields a `FormatStep` that is
+either one pending `FormatAction` or `Complete` with a `FormatSummary`, whose
+`is_zero()` and `emitted()` accessors report the zero classification and the
+count of acknowledged bytes. The formatter shares its arithmetic with complete
+color serialization; Color keeps that arithmetic private. One kernel formats
+the actual finite bits to at most six fractional places, strips trailing zeros,
+emits positive zero, expands finite integers exactly, and preflights final
+output rather than a temporary shortest-decimal spelling. No shortest-string
+conversion or float rounding replacement is allowed.
+
+CSS reaches the formatter through three functions in
+`serialization/numeric_formatting.rs`. `format_projected_number` and
+`format_ordinary_color_number` build a `Finite` from the projected scalar and
+call `format::format_finite` with `AwayFromZero` and `TowardPositiveInfinity`
+respectively; they map `FormatError::ByteLimit` and `CapacityOverflow` to the
+CSS serialization errors of the same names and any other error to
+`UnrepresentableValue`. `projected_number_rounds_to_zero` calls
+`format::rounds_to_zero` with `AwayFromZero`. These wrappers retain no rounding
+arithmetic. The specified-value serializer in `color/syntax/serialization.rs`
+formats ordinary color numbers through `format_ordinary_color_number`, but its
+byte-alpha spelling passes `byte_alpha_for_serialization` to CSS's own
+`format_binary64` in `serialization/specified_serialization.rs`, which does not
+call Color's formatter.
 
 CSS retains `LexicalDecimal`, arbitrary-length coefficient/exponent handling,
 exact rationals, specified shifts/sign inversion, projection work and the exact
@@ -375,7 +451,7 @@ coefficients beyond finite f64 and discarded-exponent behavior remain exact.
 | Finite consumer | Owner/policy and regression consequence |
 | --- | --- |
 | Used-color output of `color::controlled::CssUsedColorCheckpoint` and `color::CssColorOrdinaryOutcome::Used` | Color serializer (`surgeist_color::Serialization`), ties toward positive infinity, caller-owned digit/write actions; preserve one-short and pending-byte behavior. |
-| `serialization/specified_serialization.rs::format_binary64`, called by `color/syntax/serialization.rs` | CSS specified color policy keeps its own nearest-decimal selection, taking the numerically greater candidate at an exact decimal midpoint, on the post-scale binary result; exact color calculations retain their own rational phase. |
+| `serialization/specified_serialization.rs::format_binary64`, called for byte alpha by `color/syntax/serialization.rs` and for scalar text by `numeric/projection.rs` | CSS specified color policy keeps its own nearest-decimal selection, taking the numerically greater candidate at an exact decimal midpoint, on the post-scale binary result; exact color calculations retain their own rational phase. It does not call Color's formatter. |
 | `numeric/projection.rs` finite coefficient serialization | Color finite formatting with away-from-zero ties; CSS retains unit/suffix limits, expression visits and projection charges. |
 | `rule/keyframes/page_keyframe_serialization.rs` computed selector percentages | Same projected formatter and away-from-zero ties; preserve rounded selector collisions, occurrence order, suppressed output and shared writer budgets. Page rules themselves retain their existing nonnumeric writer behavior. |
 | `values/transform/rotate.rs` projected axis zero classification, via `projected_number_rounds_to_zero` in `serialization/numeric_formatting.rs` | Color `rounds_to_zero(_, AwayFromZero)`; CSS retains axis/identity decisions, exact authored sign inversion, traversal and suppression. No rendering-to-string probe is introduced. Actual projected output goes through the existing numeric projection path. |
@@ -396,7 +472,8 @@ serialization stays in CSS.
 `byte_alpha_for_serialization` uses the existing integer two/three-decimal
 Color 4 algorithm for every byte: try nearest hundredth and retain it if its
 round trip recovers the byte, otherwise nearest thousandth. Color's serializer
-feeds this result into the shared positive-tie finite formatter; the specified
+feeds this result, for the legacy `rgba()` spelling, into the shared
+positive-tie finite formatter; the specified
 serializer feeds it to CSS's `format_binary64`, which takes the greater candidate
 at an exact decimal midpoint.
 Bytes 236 and 237 produce 0.925 and 0.93 respectively. Actual floating alpha is
@@ -470,7 +547,8 @@ source range.
 
 `CssColorComponentPath` owns a checked sequence of `CssColorPathStep` values,
 with `steps() -> &[CssColorPathStep]` for inspection and `capacity()` and
-`capacity_bytes()` for the allocation it owns. The closed steps are `Source`,
+`capacity_bytes()` for the allocation it owns. `CssColorPathStep` is
+`#[non_exhaustive]`; its current steps are `Source`,
 `Channel(usize)`, `Alpha`, `First`, `Second`, `MixColor(usize)`,
 `MixWeight(usize)` and `ExpressionOperand(usize)`: `Source` denotes the source
 color of a relative or `alpha()` color or the operand of `contrast-color()`;
@@ -628,26 +706,41 @@ transforms and serializes through the Color types above. Authored callers use
 
 ## Public use and HTML adapter
 
-This native example is the intended Color-only public consumer. It is a future
-API example, not an executed example at this source basis.
+This native example is the intended Color-only public consumer.
 
 ```rust
-use surgeist_color::{Color, ColorSpace, PredefinedColorSpace, Transformation,
-    SerializationLimits, SerializationRequest, serialize};
+use surgeist_color::{Color, ColorSpace, Finite, PredefinedColorSpace, SerializationLimits,
+    SerializationRequest, Transformation, UnitInterval, serialize};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-let p3 = Color::try_new(
-    ColorSpace::Predefined(PredefinedColorSpace::DisplayP3),
-    [Some(1.2), Some(0.1), Some(-0.1)], Some(0.75),
-)?;
-let srgb = p3.converted(ColorSpace::Predefined(PredefinedColorSpace::Srgb))?;
-let quantized = srgb.transformed(Transformation::QuantizeSrgb)?;
-let text = serialize(quantized, SerializationRequest::Css,
-    SerializationLimits { actions: 100_000, digits: 4_096, output_bytes: 1_024 })?;
-assert!(!text.is_empty());
-Ok(())
+    let p3 = Color::new(
+        ColorSpace::Predefined(PredefinedColorSpace::DisplayP3),
+        [Finite::new(1.2), Finite::new(0.1), Finite::new(-0.1)],
+        UnitInterval::new(0.75),
+    );
+    let srgb = p3.converted(ColorSpace::Predefined(PredefinedColorSpace::Srgb));
+    let quantized = srgb.transformed(Transformation::QuantizeSrgb);
+    let text = serialize(quantized, SerializationRequest::Css,
+        SerializationLimits { actions: 100_000, digits: 4_096, output_bytes: 1_024 })?;
+    assert!(quantized.srgb_bytes().is_some());
+    assert_eq!(quantized.alpha_byte(), None);
+    assert!(text.starts_with("color(srgb ") && text.ends_with(" / 0.75)"));
+    Ok(())
 }
 ```
+
+`Finite::new` and `UnitInterval::new` return the `Option` operands that
+`Color::new` takes, and each is `Some` here because its argument is finite or
+within `[0,1]`. A missing channel is spelled `None`, not passed as NaN. The
+channel values lie outside the sRGB gamut, so `converted` returns extended sRGB
+coordinates without clamping them. `QuantizeSrgb` clamps those coordinates to `[0,1]` and
+rounds them to bytes, so the color gains sRGB byte channels while its alpha
+stays floating at 0.75 and gains no alpha byte. Because the original value was
+built in a predefined space, it carries the color-function family through both
+steps, and the Css request spells it as `color(srgb ...)` rather than `rgb()`.
+Only two steps can refuse: building an operand, where `Finite::new` or
+`UnitInterval::new` returns `None`, and `serialize`, which can refuse a limit or
+an allocation.
 
 These numerical limits are caller choices, not product defaults. A render
 consumer can use `srgb.channels()` and `alpha()` without serialization. Render
@@ -834,11 +927,12 @@ The focused acceptance evidence must cover:
   manifest feature/target section proving the empty production/build graph.
 - Current rectangular/HSL/HWB/Lab/naive-CMYK numerical oracles, extended finite
   values, signed zero, missing analogues, powerless hue, same-space identity,
-  alpha/channel byte provenance, invalid native methods/progress and error order.
+  alpha/channel byte provenance, rejected native methods, and the `Finite` and
+  `UnitInterval` constructors' refusal of NaN, infinities and out-of-range alpha.
 - `numeric_formatting` finite-bit tests: dyadic half neighbors, both signs,
   subnormals, exact 309-digit maximum integer, carries, zero classification and
   exact/one-short final bounds. Retain `bounded` wrong-reply/index/digit,
-  refused append/replace, pending-byte and nonfinite cases against public APIs.
+  refused append/replace and pending-byte cases against public APIs.
 - All 256 byte alphas agree between specified and used serialization, while
   floating-alpha cases retain their separate results and identity.
 - CSS source and checked-authored resolution, all native authored branches,
@@ -860,5 +954,5 @@ The focused acceptance evidence must cover:
   source scans proving no copied numerical/formatting/resolution algorithm,
   compatibility alias, forbidden dependency or unsafe implementation.
 
-The prior 266-test review is baseline evidence only. This design document does
-not claim those checks have run against the future public API or extracted crate.
+The prior 266-test review is baseline evidence only. This document does not
+claim those checks have run against the current Color API.

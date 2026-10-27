@@ -19,7 +19,8 @@ The [README](README.md), [native example](examples/native.rs), inline tests and
 
 Operations and caller-owned digits borrow the actual independent numerical
 anchor. Preserve admission before numerical work, record access and output,
-refusal without ownership loss, explicit recovery, and the actual compiled
+refusal without ownership loss, declining an action without effect (the
+operation stays pending), and the actual compiled
 layout descriptions. Reuse one numerical/formatting implementation for ordinary
 and controlled APIs. Do not copy kernels into consumers.
 
@@ -36,7 +37,7 @@ cargo fmt -p surgeist-color -- --check
 
 Conversion tests preserve extended/missing coordinates and closest-finite
 overflow behavior. Controlled-operation tests cover native use, actual guard lifetimes,
-foreign digits, refusal, recovery, finite limits and emitted output. CSS and
+foreign digits, refusal, declined actions, finite limits and emitted output. CSS and
 HTML own cross-crate behavior tests. The [property tests](tests/property.rs)
 generate proof-typed operands through `surgeist-fuzz`'s `property` feature, a
 dev-dependency, and run under ordinary `cargo test`; this crate owns their
