@@ -581,13 +581,7 @@ fn unavailable_current_color() -> CssColorResolveError {
         CssColorGrammarRequest::WholeColor,
         &facts,
         facts.identity(),
-        CssColorOrdinaryLimits {
-            input_units: 1024,
-            algorithm_records: 16_384,
-            arithmetic_records: 4096,
-            evaluation_records: 4096,
-            actions: 4_000_000,
-        },
+        CssColorOrdinaryLimits::default(),
     )
     .err()
     .expect("unavailable current colour")

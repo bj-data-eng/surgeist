@@ -383,6 +383,8 @@ pub surgeist_css::color::CssAuthoredColorOrdinaryLimits::algorithm_records: usiz
 pub surgeist_css::color::CssAuthoredColorOrdinaryLimits::arithmetic_records: usize
 pub surgeist_css::color::CssAuthoredColorOrdinaryLimits::evaluation_records: usize
 pub surgeist_css::color::CssAuthoredColorOrdinaryLimits::path_steps: usize
+impl core::default::Default for surgeist_css::color::CssAuthoredColorOrdinaryLimits
+pub fn surgeist_css::color::CssAuthoredColorOrdinaryLimits::default() -> Self
 pub struct surgeist_css::color::CssAuthoredColorResult<'authored, 'facts>
 impl<'authored, 'facts> surgeist_css::color::CssAuthoredColorResult<'authored, 'facts>
 pub const fn surgeist_css::color::CssAuthoredColorResult<'authored, 'facts>::authored(&self) -> &'authored surgeist_css::color::CssColor
@@ -548,6 +550,8 @@ pub surgeist_css::color::CssColorOrdinaryLimits::algorithm_records: usize
 pub surgeist_css::color::CssColorOrdinaryLimits::arithmetic_records: usize
 pub surgeist_css::color::CssColorOrdinaryLimits::evaluation_records: usize
 pub surgeist_css::color::CssColorOrdinaryLimits::input_units: usize
+impl core::default::Default for surgeist_css::color::CssColorOrdinaryLimits
+pub fn surgeist_css::color::CssColorOrdinaryLimits::default() -> Self
 pub struct surgeist_css::color::CssColorOrdinaryResult<'source, 'facts>
 impl<'source, 'facts> surgeist_css::color::CssColorOrdinaryResult<'source, 'facts>
 pub const fn surgeist_css::color::CssColorOrdinaryResult<'source, 'facts>::facts(&self) -> &'facts surgeist_css::color::CssColorFacts<'facts>

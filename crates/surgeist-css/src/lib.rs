@@ -208,14 +208,9 @@
 //!     &[],
 //!     CssDeviceColorFact::Unknown,
 //! );
-//! // Every ceiling is explicit; there is no default and no shared controller.
-//! let limits = CssColorOrdinaryLimits {
-//!     input_units: 4096,
-//!     algorithm_records: 65_536,
-//!     arithmetic_records: 16_384,
-//!     evaluation_records: 16_384,
-//!     actions: 16_000_000,
-//! };
+//! // The default ceilings cover inputs of up to 1,024 units and create no shared
+//! // controller; pass explicit limits for longer inputs.
+//! let limits = CssColorOrdinaryLimits::default();
 //! let result = parse_used_color(
 //!     CssColorInput::Utf8(b"red"),
 //!     CssColorGrammarRequest::WholeColor,
@@ -232,13 +227,7 @@
 //! else {
 //!     panic!("color");
 //! };
-//! let authored_limits = CssAuthoredColorOrdinaryLimits {
-//!     path_steps: 4096,
-//!     algorithm_records: 65_536,
-//!     arithmetic_records: 16_384,
-//!     evaluation_records: 16_384,
-//!     actions: 16_000_000,
-//! };
+//! let authored_limits = CssAuthoredColorOrdinaryLimits::default();
 //! let authored = color.value().resolve(&facts, facts.identity(), authored_limits);
 //! assert!(authored.is_ok());
 //! ```

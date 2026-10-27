@@ -26,13 +26,7 @@ fn used_css(input: &str) -> String {
         CssColorGrammarRequest::WholeColor,
         &facts,
         facts.identity(),
-        CssColorOrdinaryLimits {
-            input_units: 1024,
-            algorithm_records: 16_384,
-            arithmetic_records: 4096,
-            evaluation_records: 4096,
-            actions: 40_000_000,
-        },
+        CssColorOrdinaryLimits::default(),
     )
     .unwrap_or_else(|error| panic!("{input}: {error:?}"));
     let CssColorOrdinaryOutcome::Used(value) = result.outcome() else {

@@ -361,11 +361,14 @@ UTF-8 or UTF-16 input and explicit immutable `CssColorFacts`. Select
 color prefix; the result retains the actual input, fact envelope and consumed
 original-unit range. `CssColorOrdinaryOutcome` contains a
 [`surgeist_color::Color`](../surgeist-color/README.md) or a
-`CssColorStandardFailure`. Parsing creates no output. Its explicit
+`CssColorStandardFailure`. Parsing creates no output. Its
 `CssColorOrdinaryLimits` bound source units, logical parse-bank records and
 actions; they do not bound allocator capacity or replace a consumer's resource
-controller. For a native numerical value, use Color's `serialize` with
-`SerializationRequest` and `SerializationLimits`. See the
+controller. Their `Default` covers inputs of up to 1,024 units; a caller with
+longer inputs passes explicit limits, and an input beyond a ceiling is refused
+with a `CssColorResolveError` whose `exhausted_limit()` names the resource. For
+a native numerical value, use Color's `serialize` with `SerializationRequest`
+and `SerializationLimits`. See the
 [public operation examples](tests/css/color/used_color_operations.rs).
 
 The shared grammar recognizes all 21 retained color branches: currentcolor,
@@ -382,7 +385,8 @@ For an existing checked `CssColor`, use `CssColor::resolve` with the same
 explicit facts. Its `CssAuthoredColorResult` borrows the original value and facts;
 the outcome contains a numerical color or the actual standard-failure cause.
 `CssAuthoredColorOrdinaryLimits` bounds the three logical record banks, path
-steps and actions. Internally a crate-private controlled operation services the
+steps and actions; its `Default` covers authored colors of up to 1,024 source
+units. Internally a crate-private controlled operation services the
 same resolver with local banks and a path buffer, preserving Parsed,
 Programmatic and ImplicitClosure origins without serialization or reparsing.
 Colour numerics are total, so resolution has no numerical error. See the

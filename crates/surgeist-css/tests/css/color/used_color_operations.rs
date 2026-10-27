@@ -19,15 +19,9 @@ fn numerical_color(space: ColorSpace, channels: [Option<f64>; 3], alpha: Option<
     )
 }
 fn limits() -> CssColorOrdinaryLimits {
-    // Explicit ordinary logical allowances for these short literal fixtures.
+    // The default ordinary logical ceilings cover these short literal fixtures.
     // They are neither a physical allocator bound nor an HTML work ledger.
-    CssColorOrdinaryLimits {
-        input_units: 1024,
-        algorithm_records: 16_384,
-        arithmetic_records: 4096,
-        evaluation_records: 4096,
-        actions: 4_000_000,
-    }
+    CssColorOrdinaryLimits::default()
 }
 fn numerical_limits() -> surgeist_color::SerializationLimits {
     surgeist_color::SerializationLimits {
@@ -606,16 +600,14 @@ fn nested_overflowing_mix_resolves_to_closest_finite_srgb_in_original_utf16_unit
     let prefix = "/*🦀*/color-mix(in srgb, ";
     let text = format!("{prefix}{inner}, blue)");
     let input: Vec<u16> = text.encode_utf16().collect();
-    let mut allowance = limits();
     // Exact conversion of a large authored exponent runs through the original
-    // incremental decimal owner.
-    allowance.actions = 100_000_000;
+    // incremental decimal owner, within the default action ceiling.
     let result = parse_used_color(
         CssColorInput::Utf16(&input),
         CssColorGrammarRequest::WholeColor,
         &facts,
         facts.identity(),
-        allowance,
+        limits(),
     )
     .unwrap();
     assert_eq!(result.source().consumed.start, 0);

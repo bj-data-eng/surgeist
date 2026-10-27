@@ -435,8 +435,18 @@ evaluation occur only on reached branches. Source decoding
 reached fact or capability failures are separate.
 
 `CssColorOrdinaryLimits` names `input_units`, `algorithm_records`,
-`arithmetic_records`, `evaluation_records` and `actions`; every ceiling is
-explicit and the type has no default. The ordinary driver admits the input
+`arithmetic_records`, `evaluation_records` and `actions`; every field value is
+valid, zero refuses, and a refusal is a `CssColorResolveError` with
+`exhausted_limit()`, never a standard color failure. `Default` admits 1,024
+input units and limits the records and actions to four times the worst
+requirement per unit of the characterization corpus's color cases, scaled to
+that length (275,295 algorithm records, 3,476 arithmetic records, 3,476
+evaluation records, 2,036,468,185 actions). The margin holds for the corpus,
+not for every input of that length, and the actions ceiling is a coarse work
+bound: many extreme literals such as `1e308` can need far more work than any
+corpus input before the refusal. Callers with longer inputs, more extreme
+literals or a tighter work budget pass explicit limits, raising the record and
+action ceilings together with `input_units`. The ordinary driver admits the input
 length, counts each serviced action once, admits each bank's required length
 before an append and reports a refused allocation. It creates no hidden
 controller and retires its banks before it returns.
@@ -480,7 +490,11 @@ resource, and authored paths never consume `InputUnits`. The driver counts each
 action once and checks requested and observed capacity even after an
 allocation failure or overshoot. It creates no second controller or hidden
 tree-size budget, and it retires its banks and path buffer before it returns,
-moving any published failure path into the result.
+moving any published failure path into the result. `Default` gives the same
+record and action ceilings as `CssColorOrdinaryLimits::default()` and 1,024
+`path_steps`, one per source unit of the 1,024-unit default length; the fields
+stay public, zero refuses, and callers with larger sources pass explicit
+limits.
 
 ### Errors
 
@@ -655,19 +669,12 @@ use surgeist_css::color::{CssColor, CssHexColor, CssColorFactIdentity, CssColorF
 let facts = CssColorFacts::new(
     CssColorFactIdentity::new(7, 3), CssColorPropertyFacts::Unavailable,
     CssColorSchemeFact::Unavailable, &[], &[], &[], CssDeviceColorFact::Unknown);
-let limits = CssColorOrdinaryLimits {
-    input_units: 1_024, algorithm_records: 16_384,
-    arithmetic_records: 4_096, evaluation_records: 4_096,
-    actions: 4_000_000,
-};
+let limits = CssColorOrdinaryLimits::default();
 let original: Vec<u16> = "red".encode_utf16().collect();
 let parsed = parse_used_color(CssColorInput::Utf16(&original),
     CssColorGrammarRequest::WholeColor, &facts, facts.identity(), limits).unwrap();
 let authored = CssColor::from_hex(CssHexColor::try_new("ff0000").unwrap());
-let authored_limits = CssAuthoredColorOrdinaryLimits {
-    algorithm_records: 16_384, arithmetic_records: 4_096,
-    evaluation_records: 4_096, path_steps: 1_024, actions: 4_000_000,
-};
+let authored_limits = CssAuthoredColorOrdinaryLimits::default();
 let resolved = authored.resolve(&facts, facts.identity(), authored_limits).unwrap();
 let CssColorOrdinaryOutcome::Used(from_source) = parsed.outcome() else { panic!("red") };
 let CssAuthoredColorOutcome::Used(from_authored) = resolved.outcome() else { panic!("hex") };
@@ -675,9 +682,9 @@ assert!(from_source.identical(*from_authored));
 assert!(std::ptr::eq(resolved.authored(), &authored));
 ```
 
-These explicit fixture ceilings match the existing standalone color test's
-logical allowances. The fact identity qualifies the supplied CSS envelope;
-the native example requires none. Exact authored component construction uses
+The default ceilings cover short color text like the fixture; a caller with
+longer inputs passes explicit limits. The fact identity qualifies the supplied
+CSS envelope; the native example requires none. Exact authored component construction uses
 `component::CssComponentValue::try_number` and the existing checked scalar/function
 constructors before this resolution call, retaining original tokens. The
 authored path builds no source string.

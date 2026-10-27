@@ -89,6 +89,47 @@ const AUTHORED_LIMITS: CssAuthoredColorOrdinaryLimits = CssAuthoredColorOrdinary
     actions: 16_000_000,
 };
 
+/// A used-colour or authored front under the given limits instead of the fixed ones,
+/// for tests of the default limits. Only the five resolution fronts take limits.
+pub fn observe_under(
+    front: &str,
+    set: &str,
+    input: &str,
+    ordinary: CssColorOrdinaryLimits,
+    authored_limits: CssAuthoredColorOrdinaryLimits,
+) -> Observation {
+    let facts = facts(set);
+    let units = input.encode_utf16().collect::<Vec<_>>();
+    match front {
+        "color.used.utf8.whole" => used_with(
+            CssColorInput::Utf8(input.as_bytes()),
+            CssColorGrammarRequest::WholeColor,
+            &facts,
+            ordinary,
+        ),
+        "color.used.utf16.whole" => used_with(
+            CssColorInput::Utf16(&units),
+            CssColorGrammarRequest::WholeColor,
+            &facts,
+            ordinary,
+        ),
+        "color.used.utf8.prefix" => used_with(
+            CssColorInput::Utf8(input.as_bytes()),
+            CssColorGrammarRequest::PrefixColor,
+            &facts,
+            ordinary,
+        ),
+        "color.used.utf16.prefix" => used_with(
+            CssColorInput::Utf16(&units),
+            CssColorGrammarRequest::PrefixColor,
+            &facts,
+            ordinary,
+        ),
+        "color.authored" => authored(input, &facts, authored_limits),
+        other => panic!("colour front `{other}` takes no ordinary limits"),
+    }
+}
+
 pub fn observe(front: &str, set: &str, input: &str) -> Observation {
     let facts = facts(set);
     let units = input.encode_utf16().collect::<Vec<_>>();
@@ -207,9 +248,9 @@ fn used_with(
 }
 
 /// The smallest ordinary limit of each resource at which `parse_used_color`
-/// keeps its outcome, every other limit at the fixed value. CSS has no
-/// public default ordinary colour limits, so these rows show where each
-/// limit starts to refuse.
+/// keeps its outcome, every other limit at the fixed value. The fixed value
+/// pins the limits these rows were recorded under; the defaults are tested
+/// against this corpus in `color_limits`, not here.
 fn used_limits(input: &[u8], facts: &CssColorFacts<'_>) -> Observation {
     let observe = |limits: CssColorOrdinaryLimits| {
         let mut observation = Observation::default();

@@ -29,13 +29,7 @@ fn facts() -> CssColorFacts<'static> {
 }
 
 fn limits() -> CssColorOrdinaryLimits {
-    CssColorOrdinaryLimits {
-        input_units: 1024,
-        algorithm_records: 16_384,
-        arithmetic_records: 4096,
-        evaluation_records: 4096,
-        actions: 40_000_000,
-    }
+    CssColorOrdinaryLimits::default()
 }
 
 fn used(input: &str) -> Option<Color> {

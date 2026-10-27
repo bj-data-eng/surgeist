@@ -5056,13 +5056,7 @@ mod tests {
             surgeist_css::color::CssColorGrammarRequest::WholeColor,
             &facts,
             facts.identity(),
-            surgeist_css::color::CssColorOrdinaryLimits {
-                input_units: 1024,
-                algorithm_records: 16_384,
-                arithmetic_records: 4096,
-                evaluation_records: 4096,
-                actions: 4_000_000,
-            },
+            surgeist_css::color::CssColorOrdinaryLimits::default(),
         )
         .err()
         .and_then(|error| error.color_error().cloned())

@@ -8,6 +8,10 @@ use crate::color::controlled::{
     CssColorBank, CssColorOperationOwner, CssColorParse, CssColorParseAction, CssColorParseOutcome,
     CssColorParseStep, CssColorSlot,
 };
+use crate::color::ordinary_defaults::{
+    DEFAULT_ACTIONS, DEFAULT_ALGORITHM_RECORDS, DEFAULT_ARITHMETIC_RECORDS,
+    DEFAULT_EVALUATION_RECORDS, DEFAULT_INPUT_UNITS,
+};
 use crate::color::{
     CssColorError, CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInputKind,
     CssColorInputRange, CssColorSourceDescriptor, CssColorStandardFailure,
@@ -55,7 +59,19 @@ impl CssColorInput<'_> {
         }
     }
 }
-/// Explicit ordinary logical ceilings. No shared/global controller is created.
+/// Ordinary logical ceilings. No shared/global controller is created.
+///
+/// Every field value is valid and zero refuses, so the fields are public. A refusal is a
+/// [`CssColorResolveError`] whose [`exhausted_limit`](CssColorResolveError::exhausted_limit)
+/// names the resource, never a standard color failure.
+///
+/// [`Default`] admits inputs of up to 1,024 original units. Its record and action ceilings are
+/// four times the worst requirement per unit measured over the color cases of the
+/// characterization corpus, scaled to that length; the margin holds for the corpus, not for
+/// every input of that length. The actions ceiling is a coarse work bound: a value made of many
+/// extreme numeric literals such as `1e308` can need far more work than any corpus input before
+/// it is refused. A caller with longer inputs, more extreme literals or a tighter work budget
+/// passes explicit limits, raising the record and action ceilings together with `input_units`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssColorOrdinaryLimits {
     /// Maximum number of original input units admitted.
@@ -68,6 +84,23 @@ pub struct CssColorOrdinaryLimits {
     pub evaluation_records: usize,
     /// Maximum number of serviced parse actions.
     pub actions: usize,
+}
+impl Default for CssColorOrdinaryLimits {
+    /// Returns the ceilings for inputs of up to 1,024 original units: 1,024 input units,
+    /// 275,295 algorithm records, 3,476 arithmetic records, 3,476 evaluation records and
+    /// 2,036,468,185 actions.
+    ///
+    /// The record and action ceilings are four times the worst corpus requirement per input
+    /// unit, scaled to 1,024 units. Callers with larger inputs pass explicit limits.
+    fn default() -> Self {
+        Self {
+            input_units: DEFAULT_INPUT_UNITS,
+            algorithm_records: DEFAULT_ALGORITHM_RECORDS,
+            arithmetic_records: DEFAULT_ARITHMETIC_RECORDS,
+            evaluation_records: DEFAULT_EVALUATION_RECORDS,
+            actions: DEFAULT_ACTIONS,
+        }
+    }
 }
 /// The actual exhausted ordinary resource, separate from CSS invalidity.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -420,13 +453,7 @@ mod tests {
         )
     }
     fn limits() -> CssColorOrdinaryLimits {
-        CssColorOrdinaryLimits {
-            input_units: 128,
-            algorithm_records: 4096,
-            arithmetic_records: 512,
-            evaluation_records: 512,
-            actions: 1_000_000,
-        }
+        CssColorOrdinaryLimits::default()
     }
     #[test]
     fn parse_only_preserves_actual_input_and_facts() {

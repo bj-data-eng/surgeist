@@ -13,6 +13,8 @@ mod facts;
 mod fronts;
 mod report;
 
+pub use color::observe_under as observe_color_under;
+
 use std::cell::Cell;
 use std::error::Error as StdError;
 use std::fmt;

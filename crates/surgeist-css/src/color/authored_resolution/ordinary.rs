@@ -8,11 +8,27 @@ use crate::color::authored_resolution::controlled::{
 use crate::color::authored_resolution::path::{CssColorPathBuffer, CssColorPathReservationStatus};
 use crate::color::controlled::protocol::ColorProtocolError;
 use crate::color::controlled::{CssColorBank, CssColorOperationOwner};
+use crate::color::ordinary_defaults::{
+    DEFAULT_ACTIONS, DEFAULT_ALGORITHM_RECORDS, DEFAULT_ARITHMETIC_RECORDS,
+    DEFAULT_EVALUATION_RECORDS, DEFAULT_INPUT_UNITS,
+};
 use crate::color::{
     CssColorFactIdentity, CssColorFacts, CssColorOrdinaryResource, CssColorResolveError,
 };
 
 /// Ordinary logical ceilings for resolving an authored color; no shared controller is created.
+///
+/// Every field value is valid and zero refuses, so the fields are public. A refusal is a
+/// [`CssColorResolveError`] whose [`exhausted_limit`](CssColorResolveError::exhausted_limit)
+/// names the resource, never a standard color failure.
+///
+/// [`Default`] covers authored colors of up to 1,024 source units: the same record and action
+/// ceilings as [`CssColorOrdinaryLimits`](crate::color::CssColorOrdinaryLimits), and 1,024
+/// path steps, since the component path of a color parsed from source has at most one step per
+/// source unit. As there, the margin holds for the corpus, not for every color of that length. A
+/// caller with longer sources, more extreme numeric literals than the corpus or a tighter work
+/// budget passes explicit limits, raising the record and action ceilings together with
+/// `path_steps`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssAuthoredColorOrdinaryLimits {
     /// Maximum number of records in the algorithm bank.
@@ -25,6 +41,23 @@ pub struct CssAuthoredColorOrdinaryLimits {
     pub path_steps: usize,
     /// Maximum number of serviced parse actions.
     pub actions: usize,
+}
+impl Default for CssAuthoredColorOrdinaryLimits {
+    /// Returns the ceilings for authored colors of up to 1,024 source units: 275,295
+    /// algorithm records, 3,476 arithmetic records, 3,476 evaluation records, 1,024 path
+    /// steps and 2,036,468,185 actions.
+    ///
+    /// The record and action ceilings are four times the worst corpus requirement per source
+    /// unit, scaled to 1,024 units. Callers with larger inputs pass explicit limits.
+    fn default() -> Self {
+        Self {
+            algorithm_records: DEFAULT_ALGORITHM_RECORDS,
+            arithmetic_records: DEFAULT_ARITHMETIC_RECORDS,
+            evaluation_records: DEFAULT_EVALUATION_RECORDS,
+            path_steps: DEFAULT_INPUT_UNITS,
+            actions: DEFAULT_ACTIONS,
+        }
+    }
 }
 /// The outcome of resolving one authored color, borrowing the authored color and the fact set.
 pub struct CssAuthoredColorResult<'authored, 'facts> {

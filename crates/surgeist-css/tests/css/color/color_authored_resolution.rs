@@ -38,13 +38,7 @@ fn facts() -> CssColorFacts<'static> {
     )
 }
 fn limits() -> CssAuthoredColorOrdinaryLimits {
-    CssAuthoredColorOrdinaryLimits {
-        algorithm_records: 100_000,
-        arithmetic_records: 10_000,
-        evaluation_records: 10_000,
-        path_steps: 100,
-        actions: 30_000_000,
-    }
+    CssAuthoredColorOrdinaryLimits::default()
 }
 #[test]
 fn literal_checked_values_and_exact_expressions_resolve_through_the_public_front_door() {
@@ -425,13 +419,7 @@ fn parser_produced_eof_recovery_remains_resolvable_and_retains_implicit_closures
         CssColorGrammarRequest::WholeColor,
         &facts,
         facts.identity(),
-        CssColorOrdinaryLimits {
-            input_units: source.len(),
-            algorithm_records: 100_000,
-            arithmetic_records: 10_000,
-            evaluation_records: 10_000,
-            actions: 30_000_000,
-        },
+        CssColorOrdinaryLimits::default(),
     )
     .unwrap();
     let CssColorOrdinaryOutcome::Used(source_value) = parsed.outcome() else {

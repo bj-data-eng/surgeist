@@ -24,6 +24,7 @@
 
 mod adapter;
 mod cases;
+mod color_limits;
 
 use std::fmt::Write as _;
 use std::path::Path;
