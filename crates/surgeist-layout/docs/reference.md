@@ -112,6 +112,11 @@ anchor, including when nested local positions round independently. Top/bottom
 content without a named baseline contribution establishes extents, while its
 named anchor remains unknown.
 
+Atomic [Top/Bottom alignment](../../../references/css-inline-3--WD-css-inline-3-20241218--a73a73a45bf5.md#valdef-baseline-shift-top)
+places its margin box against the line's physical line-over/under edge. Block
+progression does not rename those edges. Signed margins locate the border from
+that edge and can place it outside the line box.
+
 For a block scroll container with `baseline_source: Auto`, the last set places
 both names at its own signed block-end margin edge. Layout then clamps exported
 available coordinates to that container's border interval. Explicit `First` or

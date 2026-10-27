@@ -1,4 +1,5 @@
 //! Independently derived WM4 named margin-box baselines through public layout.
+mod atomic_margin_edges;
 mod atomic_receivers;
 
 use std::{cell::Cell, convert::Infallible, slice, sync::Arc};
