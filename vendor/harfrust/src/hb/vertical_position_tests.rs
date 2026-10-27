@@ -848,3 +848,6 @@ fn supplier_error_source_retains_the_original_owned_error_without_string_flatten
         assert_eq!(*owned.marker, 7);
     });
 }
+
+#[path = "vertical_fallback_origin_tests.rs"]
+mod fallback_origin;
