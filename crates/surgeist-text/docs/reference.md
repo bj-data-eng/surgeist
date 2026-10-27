@@ -82,12 +82,15 @@ admitted manual-priority measurements for a restored automatic variant.
 variants, and alternative readback returns an optional ordinary opportunity.
 A retained suppressed variant does not gain ordinary selection authority.
 
-The current non-complex provider lacks Thai/Lao lexical models and uses AL/CM
+The current non-complex provider lacks Thai/Lao/Khmer lexical models and uses AL/CM
 ordinary SA context. Normal and KeepAll separately supply fallback cuts between
 qualified whole letter units,
 without declaring detected word boundaries or changing locale metadata. See
 the [missing-capability contract](../../../docs/text-layout-contract.md#missing-lexical-capability)
 for wrapping, intrinsic sizing and the bounded writing-system support.
+The shared [Khmer line-unit profile](../../../references/text-khmer-line-units--determination-20261027.md)
+protects post-vowel COENG sequences across automatic wrapping modes while
+preserving the retained Unicode 17 editing EGCs.
 
 ## Native line breaking
 
@@ -458,6 +461,11 @@ glyph policy. These are catalogue capabilities. The private owned engine retains
 resources through actual preparation, selected-line finalization and placement;
 the public mixed-line protocol lends those actual phases without copying glyph packets.
 
+Font fallback credits nominal coverage only for the cluster's shaping
+contributors. A noncontributing format scalar such as TAG SPACE cannot make
+a missing letter complete. Genuine glyph-free text can still retain an admitted
+font's metrics without adding paint or changing its original source.
+
 ## Glyph-free associated-font metrics
 
 `System::registered_font_faces()` lends accepted registrations in request order,
@@ -706,6 +714,17 @@ interior carets to the preceding/following legal logical stop by affinity before
 bidi placement. Noncollapsed partial-unit selections cover complete typographic
 units; collapsed selections remain collapsed. Offset-taking interaction methods
 return `Result`, and invalid endpoints refuse rather than clamp.
+
+Native physical inline Start/End events use their exact admitted decoded atom
+seams instead of caret affinity. A physical endpoint between a base and its
+connected mark retains its captured order, while both glyphs retain the shared
+provider range and attachment. Its used edge is a separate source-free interval;
+it grants no interior line cut or boundary-exact control. Source points inside
+one connected scalar or indivisible Phase-I replacement retain their precise
+validation refusal rather than being rounded to a side.
+Other native anchors retain their supplied typographic affinity. If those
+projected positions cross an exact physical event, analysis retains the existing
+`InvalidAnchorOrder` refusal; it does not reorder the original occurrences.
 
 The [owned AccessKit projection](../src/accessibility.rs) retains the exact analysis
 identity and source maps. Source-only updates need no point and omit font, glyph,

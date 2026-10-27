@@ -148,18 +148,13 @@ impl CharCluster {
                 }
 
                 let composer = analysis_data_sources.composing_normalizer();
-                let comp = composer.compose(self.chars[0].ch, self.chars[1].ch);
-                match comp {
-                    None => {}
-                    Some(ch) => {
-                        let mut copy = self.chars[0];
-                        copy.ch = ch;
-                        copy.contributes_to_shaping =
-                            Self::contributes_to_shaping(ch, analysis_data_sources);
-                        self.comp.chars[0] = copy;
-                        self.comp.len = 1;
-                    }
-                }
+                let ch = composer.compose(self.chars[0].ch, self.chars[1].ch)?;
+                let mut copy = self.chars[0];
+                copy.ch = ch;
+                copy.contributes_to_shaping =
+                    Self::contributes_to_shaping(ch, analysis_data_sources);
+                self.comp.chars[0] = copy;
+                self.comp.len = 1;
 
                 self.comp.state = FormState::Valid;
                 self.comp.setup();
@@ -191,7 +186,7 @@ impl CharCluster {
         }
         ratio = Mapper {
             chars: &self.chars[..len],
-            map_len: self.map_len.max(1),
+            map_len: self.map_len,
         }
         .map(&f);
         if ratio > self.best_ratio {
@@ -271,12 +266,11 @@ impl Form {
 
     #[inline(always)]
     fn setup(&mut self) {
-        self.map_len = (self
+        self.map_len = self
             .chars()
             .iter()
-            .filter(|c| !c.is_control_character)
-            .count())
-        .max(1);
+            .filter(|c| c.contributes_to_shaping)
+            .count();
     }
 
     #[inline(always)]
@@ -307,8 +301,6 @@ impl Mapper<'_> {
             let covered = f(character.ch);
             if character.contributes_to_shaping {
                 mapped += usize::from(covered);
-            } else if self.map_len == 1 {
-                mapped += 1;
             }
         }
         Coverage {

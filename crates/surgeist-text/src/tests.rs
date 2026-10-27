@@ -2,6 +2,7 @@ use super::layout::decoration_top;
 use super::*;
 
 mod catalogue;
+mod fallback_coverage;
 mod kern_font;
 mod phrase_font;
 mod utf16;

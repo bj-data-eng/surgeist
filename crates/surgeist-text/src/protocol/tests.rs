@@ -27,6 +27,7 @@ mod phase_two;
 mod raw_automatic_hyphenation;
 mod scope_incidence_locality;
 mod separators;
+mod shared_unit_endpoints;
 mod tab_stops;
 mod wbr;
 mod whitespace_edges;

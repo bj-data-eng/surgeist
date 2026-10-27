@@ -96,7 +96,9 @@ fn different_source_cuts_in_one_old_egc_use_rebuilt_typography_without_reorderin
                 reverse,
                 operation,
             );
-            // Actual later pipeline changes must preserve the projected cuts too.
+            // Physical Start retains its exact original component seam; Wbr
+            // retains its own requested typography affinity. Later casing and
+            // separator expansion carry each of those distinct real cuts.
             p.base_style.text_transform =
                 TextTransform::Set(TextTransformSet::none().with_case(CaseTransform::Lowercase));
             for control in &mut p.controls {
@@ -126,14 +128,14 @@ fn different_source_cuts_in_one_old_egc_use_rebuilt_typography_without_reorderin
                 cuts,
                 if operation == WordSpaceTransform::None {
                     if reverse {
-                        vec![0, 0, 3]
+                        vec![0, 2, 3]
                     } else {
-                        vec![3, 3, 3]
+                        vec![1, 3, 3]
                     }
                 } else if reverse {
-                    vec![1, 1, 4]
+                    vec![1, 3, 4]
                 } else {
-                    vec![2, 2, 4]
+                    vec![1, 2, 4]
                 }
             );
             let actual: Vec<_> = a
@@ -181,6 +183,21 @@ fn no_emission_retains_phase_i_replacement_projection_but_positive_interior_seam
             let mut p = ordered(text, 2, 2, false, operation);
             p.base_style.white_space = mode;
             p.segment_breaks = breaks.clone();
+            // Physical Start2 is inside the one executed Phase-I replacement
+            // of source1..3. It has no exact emitted side, independently of
+            // whether the Wbr would emit or be suppressed by a forced break.
+            let error = AnalyzedSource::from_paragraph(p.clone()).unwrap_err();
+            assert_eq!(error.code, ErrorCode::InvalidTextProtocol);
+            assert_eq!(
+                error.detail(),
+                Some(&ErrorDetail::InvalidTextProtocol {
+                    reason: ProtocolError::InvalidControl { control: 0, at: 2 }
+                })
+            );
+            // Keep the actual Wbr at2 and the same source/Phase-I replacement,
+            // but put physical Start at its genuine boundary1. This retains
+            // independent coverage of Wbr no-emission and positive refusal.
+            p.controls[0].at = 1;
             let a = AnalyzedSource::from_paragraph(p);
             if operation == WordSpaceTransform::Space && mode == WhiteSpace::PreserveSpaces {
                 let error = a.unwrap_err();
@@ -198,7 +215,7 @@ fn no_emission_retains_phase_i_replacement_projection_but_positive_interior_seam
             } else {
                 let a = a.unwrap();
                 assert_eq!(a.inner.projection.text, expected);
-                assert_eq!(a.inner.projection.anchor_atoms, [Some(2), Some(2), Some(3)]);
+                assert_eq!(a.inner.projection.anchor_atoms, [Some(1), Some(2), Some(3)]);
                 assert_eq!(
                     a.source().text().code_units(),
                     text.encode_utf16().collect::<Vec<_>>()
@@ -221,7 +238,8 @@ fn no_emission_retains_phase_i_replacement_projection_but_positive_interior_seam
 fn crossing_requested_typographic_affinities_refuse_with_typed_order_error() {
     let mut p = ordered("A\u{3099}\u{3099}", 2, 1, true, WordSpaceTransform::None);
     // This is intentionally different from the valid Before/Before dual case:
-    // original Wbr After projects to3, then the later Start Before projects0.
+    // Wbr After1 projects to3, but the later physical Start remains exact2
+    // regardless of Before affinity. The requested cuts still cross: 3 > 2.
     p.anchor_order[0].affinity = Affinity::After;
     let error = AnalyzedSource::from_paragraph(p).unwrap_err();
     assert_eq!(error.code, ErrorCode::InvalidTextProtocol);

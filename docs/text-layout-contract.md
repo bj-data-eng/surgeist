@@ -465,19 +465,22 @@ its atomic compatibility exception, subject to actual ancestor wrapping. This
 does not change the atomic's geometry or margin-edge custody. A genuine Wbr or
 forced occurrence retains its independent authority at its exact mixed cut.
 
-The current typography boundary is the retained extended-grapheme analysis.
-These operations do not establish additional syllabic tailoring or complete
-lexical/orthographic support for every writing system. Those capabilities remain
-separate from accepting a native LineBreak value.
+Automatic line breaking derives its units from the retained extended-grapheme
+analysis, with the bounded [Khmer line-unit profile](../references/text-khmer-line-units--determination-20261027.md)
+shared by ordinary and emergency consumers. Editing, cursor and selection EGCs
+retain their own Unicode 17 boundary owner. This does not establish complete
+lexical/orthographic support for every writing system or a global Unicode 18
+upgrade; those capabilities remain separate from accepting a native LineBreak
+value.
 
 ### Missing lexical capability
 
-The selected non-complex line segmenter has no Thai/Lao lexical models. Ordinary
+The selected non-complex line segmenter has no Thai/Lao/Khmer lexical models. Ordinary
 SA context uses AL, or CM for SA nonspacing/spacing marks, through a provider-only
 input with exact original endpoints. A provider slice end is not an analyzed
-linguistic boundary. For adjacent Thai or Lao SA letter units in the same
+linguistic boundary. For adjacent Thai, Lao or Khmer SA letter units in the same
 writing system, Text supplies
-ordinary fallback opportunities between whole retained typographic units.
+ordinary fallback opportunities between whole retained line-breaking units.
 Normal and KeepAll retain this fallback; effective BreakWord uses Normal.
 BreakAll retains its independent ID-based permission. The
 [lexical-fallback determination](../references/text-lexical-fallback--determination-20261025.md)
@@ -743,6 +746,11 @@ An endpoint inside an indivisible typographic unit remains a numeric contributio
 with its own interval, while the unit retains shared glyph associations and
 provider positions. Count the edge once before positioning the next unit;
 never move an attached mark independently or introduce an interior break.
+Physical Start/End events retain their captured order at an admitted decoded
+atom seam, independently of caret affinity. An exact event inside the unit is
+still not a boundary-exact control or a legal line cut. A source point inside
+one connected scalar or an indivisible processed replacement cannot be assigned
+an invented side; retain the owning source-validation refusal.
 
 One canonical visual-order contribution supplies raw/occupied flow, fit,
 alignment, MinContent/MaxContent, tabs, prefixes, placement and overflow. Positive

@@ -202,15 +202,21 @@ fn provider(input: &ProviderInput<'_>, policy: Policy) -> (Vec<bool>, MissingLex
     (cuts, MissingLexicalModels(()))
 }
 
+pub(super) struct LineRules<'a> {
+    pub(super) policies: &'a [Policy],
+    pub(super) units: &'a super::line_units::LineBreakUnits,
+}
+
 pub(super) fn apply(
     projection: &SourceProjection,
     styles: &[AnalyzedStyleRun],
-    policies: &[Policy],
+    rules: LineRules<'_>,
     offsets: &[usize],
     component: Range<usize>,
     boundaries: &mut [Boundary],
     candidates: &mut Vec<LineCandidate>,
 ) -> crate::Result<MissingLexicalModels> {
+    let LineRules { policies, units } = rules;
     let mut needed = Vec::new();
     for atom in component.clone() {
         let policy = policies[style_at(projection, styles, atom)];
@@ -330,7 +336,9 @@ pub(super) fn apply(
                 (policy.word != OrdinaryWordBreak::Normal).then(|| provider(&input, policy).0);
             let actual = actual_storage.as_ref().unwrap_or(normal);
             for atom in component.start + 1..component.end {
-                if policies[style_at(projection, styles, atom)] != policy {
+                if !units.permits_edge(atom)
+                    || policies[style_at(projection, styles, atom)] != policy
+                {
                     continue;
                 }
                 let byte = offsets[atom] - start;
@@ -396,13 +404,15 @@ pub(super) fn apply(
         .take(component.end)
         .skip(component.start + 1)
     {
-        if [atom - 1, atom].into_iter().any(|at| {
-            styles[style_at(projection, styles, at)]
-                .style
-                .authored()
-                .line_break
-                == LineBreak::Anywhere
-        }) && !is_hard_separator(projection.atoms[atom - 1].code_point)
+        if units.permits_edge(atom)
+            && [atom - 1, atom].into_iter().any(|at| {
+                styles[style_at(projection, styles, at)]
+                    .style
+                    .authored()
+                    .line_break
+                    == LineBreak::Anywhere
+            })
+            && !is_hard_separator(projection.atoms[atom - 1].code_point)
             && !is_hard_separator(projection.atoms[atom].code_point)
             && projection
                 .graphemes
@@ -747,7 +757,10 @@ mod tests {
         apply(
             &projection,
             &styles,
-            &policies(&styles).unwrap(),
+            LineRules {
+                policies: &policies(&styles).unwrap(),
+                units: &super::super::line_units::LineBreakUnits::new(&projection).unwrap(),
+            },
             &offsets,
             0..projection.atoms.len(),
             &mut boundaries,
@@ -913,7 +926,10 @@ mod tests {
             apply(
                 &projection,
                 &styles,
-                &policies(&styles).unwrap(),
+                LineRules {
+                    policies: &policies(&styles).unwrap(),
+                    units: &super::super::line_units::LineBreakUnits::new(&projection).unwrap(),
+                },
                 &offsets,
                 0..projection.atoms.len(),
                 &mut boundaries,
@@ -959,7 +975,10 @@ mod tests {
             apply(
                 &projection,
                 &styles,
-                &policies(&styles).unwrap(),
+                LineRules {
+                    policies: &policies(&styles).unwrap(),
+                    units: &super::super::line_units::LineBreakUnits::new(&projection).unwrap(),
+                },
                 &offsets,
                 0..seam,
                 &mut boundaries,

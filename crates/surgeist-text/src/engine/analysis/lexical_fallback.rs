@@ -1,4 +1,4 @@
-//! Ordinary line assumptions for qualified Thai/Lao TCUs without lexical models.
+//! Ordinary line assumptions for qualified Thai/Lao/Khmer units without lexical models.
 //! These proposals never enter detected word ranges or cluster word boundaries.
 
 use std::ops::Range;
@@ -20,7 +20,7 @@ pub(super) fn propose(
     _missing_models: MissingLexicalModels,
     projection: &SourceProjection,
     styles: &[AnalyzedStyleRun],
-    units: &[Range<usize>],
+    units: impl IntoIterator<Item = Range<usize>>,
     proposals: &mut [bool],
 ) {
     // The caller partitions already-built TCUs once across genuine components.
@@ -46,7 +46,7 @@ pub(super) fn propose(
     }
 }
 
-/// Appendix-E properties of a real Thai/Lao SA letter unit, not a block guess.
+/// Appendix-E properties of a real qualified SA letter unit, not a block guess.
 fn qualified_unit(projection: &SourceProjection, unit: Range<usize>) -> Option<Script> {
     let atoms = &projection.atoms[unit];
     let categories = CodePointMapData::<GeneralCategory>::new();
@@ -65,7 +65,7 @@ fn qualified_unit(projection: &SourceProjection, unit: Range<usize>) -> Option<S
     {
         return None;
     }
-    [Script::Thai, Script::Lao]
+    [Script::Thai, Script::Lao, Script::Khmer]
         .into_iter()
         .find(|script| scripts.has_script32(base.code_point, *script))
 }
@@ -200,3 +200,7 @@ mod tests {
         assert_eq!(qualified_unit(&projection, 0..2), None);
     }
 }
+
+#[cfg(test)]
+#[path = "lexical_fallback/khmer_tests.rs"]
+mod khmer_tests;
