@@ -142,6 +142,8 @@ pub enum TextWrapStyle {
     /// Repair the final paragraph pair when its shorter natural line can grow
     /// without transferring the deficiency to its predecessor.
     AvoidShortLastLine,
+    /// Improve body raggedness after preserving the paragraph-tail preference.
+    Pretty,
 }
 
 /// The implemented native expansion method, rather than CSS-wide `auto`.

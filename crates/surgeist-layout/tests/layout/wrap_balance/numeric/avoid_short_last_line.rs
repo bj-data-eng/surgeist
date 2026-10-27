@@ -1,7 +1,7 @@
 //! Native real-box witnesses; no synthetic Text or measured-font substitutes.
 use super::*;
 
-fn geometry<S: l::LayoutScalar>(
+pub(super) fn geometry<S: l::LayoutScalar>(
     batch: &l::CompletedLayoutBatchOf<u32, S>,
     direction: l::Direction,
     width: f64,
@@ -40,7 +40,7 @@ fn geometry<S: l::LayoutScalar>(
         }
     }
 }
-fn profile_tree<S: l::LayoutScalar>(
+pub(super) fn profile_tree<S: l::LayoutScalar>(
     direction: l::Direction,
     width: f64,
     widths: &[f64],

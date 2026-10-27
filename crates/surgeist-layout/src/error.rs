@@ -334,6 +334,8 @@ pub enum LayoutInternalInvariant {
     InvalidInlineBalance,
     /// A private paragraph-tail program did not reproduce its retained basis.
     InvalidInlineTailSelection,
+    /// A private Pretty program did not reproduce its retained phase or fallback basis.
+    InvalidInlinePrettySelection,
     /// A deferred receiving metric no longer matched its retained atomic source.
     InvalidAtomicReceiverBasis,
     MissingLeafMeasurementProvider,

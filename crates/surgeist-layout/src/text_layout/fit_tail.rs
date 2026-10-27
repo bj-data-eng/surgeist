@@ -2,7 +2,8 @@
 
 use super::balance::{GroupProof, GroupReference, LineProof, Observations};
 use super::*;
-use crate::inline_wrapping::tail::{TailGoal, TailLine, TailPair, TailTrial, choose_tail};
+use crate::inline_wrapping::quality::NaturalLine;
+use crate::inline_wrapping::tail::{TailGoal, TailPair, TailTrial, choose_tail};
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -21,7 +22,7 @@ struct TailTarget {
     reference: Vec<LineProof>,
 }
 
-fn pair(lines: &[FittedLine]) -> Option<TailPair> {
+pub(super) fn pair(lines: &[FittedLine]) -> Option<TailPair> {
     let mut formatted = lines
         .iter()
         .rev()
@@ -29,7 +30,7 @@ fn pair(lines: &[FittedLine]) -> Option<TailPair> {
     let line = |line: &FittedLine| {
         let selected = line.finalized.selected_line();
         let request = selected.request();
-        TailLine::from_components(
+        NaturalLine::from_components(
             request.context.available_inline?,
             request.context.indent,
             line.natural_advance,
@@ -40,7 +41,7 @@ fn pair(lines: &[FittedLine]) -> Option<TailPair> {
     Some(TailPair::new(penultimate, last))
 }
 
-fn formatted_paragraph(lines: &[FittedLine]) -> bool {
+pub(super) fn formatted_paragraph(lines: &[FittedLine]) -> bool {
     lines.last().is_some_and(|line| {
         line.disposition.is_formatted()
             && line.finalized.selected_line().request().context.end == LineEnd::Paragraph
@@ -96,6 +97,7 @@ where
                 max_formatted: Some(reference.basis.count),
                 goal: Some(LineQualityGoal::Tail(goal)),
                 goal_after: reference.basis.count - 2,
+                goal_before: None,
                 opportunity_start: reference.window.start,
                 opportunity_end: reference.window.end,
             },
@@ -144,6 +146,7 @@ where
         max_formatted: None,
         goal: None,
         goal_after: 0,
+        goal_before: None,
         opportunity_start: 0,
         opportunity_end: runner.opportunities.len(),
     };

@@ -206,6 +206,15 @@ fn compute<S: LayoutScalar>(
     available: AvailableOf<S>,
     width: Option<f64>,
 ) -> CompletedLayoutBatchOf<u32, S> {
+    compute_with_style::<S>(p, available, width, crate::TextWrapStyle::Auto)
+}
+
+fn compute_with_style<S: LayoutScalar>(
+    p: &text::PreparedText,
+    available: AvailableOf<S>,
+    width: Option<f64>,
+    wrap_style: crate::TextWrapStyle,
+) -> CompletedLayoutBatchOf<u32, S> {
     let origins = p
         .origin_views()
         .enumerate()
@@ -237,6 +246,7 @@ fn compute<S: LayoutScalar>(
             0,
             NodeInputOf {
                 display: Display::Block,
+                text_wrap_style: wrap_style,
                 size: Size::new(
                     width.map_or(PreferredSizeOf::AUTO, |w| {
                         PreferredSizeOf::px(S::from_f64(w))
@@ -301,10 +311,31 @@ fn assert_lines<S: LayoutScalar>(
     consecutive: bool,
     placement: text::HyphenationPlacement,
 ) {
+    assert_lines_with_style::<S>(
+        p,
+        definition,
+        consecutive,
+        placement,
+        crate::TextWrapStyle::Auto,
+    );
+}
+
+fn assert_lines_with_style<S: LayoutScalar>(
+    p: &text::PreparedText,
+    definition: Definition,
+    consecutive: bool,
+    placement: text::HyphenationPlacement,
+    wrap_style: crate::TextWrapStyle,
+) {
     let source = original(definition, consecutive)
         .encode_utf16()
         .collect::<Vec<_>>();
-    let batch = compute::<S>(p, AvailableOf::definite(S::from_f64(40.0)), Some(40.0));
+    let batch = compute_with_style::<S>(
+        p,
+        AvailableOf::definite(S::from_f64(40.0)),
+        Some(40.0),
+        wrap_style,
+    );
     assert_eq!(
         batch.placed_text()[0].layout().source().text().code_units(),
         source
@@ -463,6 +494,13 @@ fn assert_intrinsics<S: LayoutScalar>(p: &text::PreparedText, minimum: f64, maxi
 }
 
 fn assert_outgoing_counter_once(p: &text::PreparedText) {
+    assert_outgoing_counter_once_with_style(p, crate::TextWrapStyle::Auto);
+}
+
+fn assert_outgoing_counter_once_with_style(
+    p: &text::PreparedText,
+    wrap_style: crate::TextWrapStyle,
+) {
     // Exercise the actual private fitter's committed state, not a duplicated
     // counter fold over public output. No floats/atomics/struts are authored.
     use crate::text_layout::fit;
@@ -477,7 +515,7 @@ fn assert_outgoing_counter_once(p: &text::PreparedText) {
     let fitted = fit::fit(
         fit::FitInput {
             groups: crate::group_alignment::Snapshot::default(),
-            wrap_style: crate::TextWrapStyle::Auto,
+            wrap_style,
             wrapping: None,
             formatted: &super::super::formatted::FormattedTailSnapshot::default(),
             line_box_context: crate::line_box::LineBoxContext::new(
@@ -627,4 +665,42 @@ fn consecutive_control_both_sides_keeps_each_outgoing_count_once_f32() {
 #[test]
 fn consecutive_control_both_sides_keeps_each_outgoing_count_once_f64() {
     check::<f64>(Definition::Control, true);
+}
+
+fn check_pretty<S: LayoutScalar>() {
+    // At width40 the single actual BothSides cut is the only fitting split:
+    // AB + Before A =30; receiving After A + CDE =40. With two cuts, skipping
+    // either real cut requires50, so the unique legal sequence is30/40/30.
+    // Quality goals cannot create another opportunity or discard a receiver.
+    for definition in [Definition::Source, Definition::Control] {
+        for consecutive in [false, true] {
+            let p = prepare(
+                definition,
+                consecutive,
+                text::HyphenationPlacement::BothSides,
+            )
+            .expect("real native BothSides fixture must prepare");
+            qualify(&p, definition, consecutive);
+            assert_lines_with_style::<S>(
+                &p,
+                definition,
+                consecutive,
+                text::HyphenationPlacement::BothSides,
+                crate::TextWrapStyle::Pretty,
+            );
+            if consecutive {
+                assert_outgoing_counter_once_with_style(&p, crate::TextWrapStyle::Pretty);
+            }
+        }
+    }
+}
+
+#[test]
+fn pretty_both_sides_retains_real_source_control_receivers_and_outgoing_counts_f32() {
+    check_pretty::<f32>();
+}
+
+#[test]
+fn pretty_both_sides_retains_real_source_control_receivers_and_outgoing_counts_f64() {
+    check_pretty::<f64>();
 }
