@@ -218,6 +218,31 @@ impl Lookup {
         }
     }
 }
+// One unscaled owner for the raw observation and the used upright adapter.
+// Derivation provenance identifies which edge is authored or synthesized.
+pub(super) struct VerticalEm {
+    pub under: f64,
+    pub over: f64,
+    pub central: f64,
+    pub provenance: FontBaselineProvenance,
+    pub script: Option<[u8; 4]>,
+    pub absence: Option<FontBaselineAbsence>,
+}
+pub(super) enum VerticalEmOutcome {
+    Available(VerticalEm),
+    Unavailable {
+        value: FontBaselineUnavailable,
+        script: Option<[u8; 4]>,
+    },
+}
+pub(super) fn vertical_em(
+    instance: &EffectiveFontInstance<'_>,
+    script: FontBaselineScript,
+) -> Result<(u16, VerticalEmOutcome)> {
+    let reader = Reader::new(instance)?;
+    Ok((reader.upem, reader.vertical_em(script)?))
+}
+
 struct Reader<'instance, 'font> {
     instance: &'instance EffectiveFontInstance<'font>,
     font: FontRef<'instance>,
@@ -322,42 +347,38 @@ impl<'instance, 'font> Reader<'instance, 'font> {
                 ))
             };
         }
+        if axis == VerticalX {
+            return match self.vertical_em(script)? {
+                VerticalEmOutcome::Available(em) => {
+                    self.available(em.central, em.provenance, em.script, em.absence)
+                }
+                VerticalEmOutcome::Unavailable { value, .. } => {
+                    Ok(FontBaselineOutcome::Unavailable(value))
+                }
+            };
+        }
         let bottom = self.lookup(script, axis, *b"ideo")?;
         let top = self.lookup(script, axis, *b"idtp")?;
-        if axis == VerticalX
-            && let Some(value) = bottom.coordinate
-            && value != 0.0
-        {
-            return Err(numeric(
-                Field::BaselineIdeographicOrigin,
-                Phase::Unscaled,
-                Numeric::NonZero,
-                value,
-            ));
-        }
-        let base_script = bottom.script;
-        match (bottom.coordinate, top.coordinate, axis) {
-            (Some(bottom), Some(top), _) => self.available(
-                self.midpoint(bottom, top)?,
+        match (bottom.coordinate, top.coordinate) {
+            (Some(under), Some(over)) => self.available(
+                self.midpoint(under, over)?,
                 P::BaseEdgesCssMidpoint,
-                base_script,
+                bottom.script,
                 None,
             ),
-            (Some(bottom), None, HorizontalY) => self.available(
-                self.midpoint(bottom, bottom + f64::from(self.upem))?,
+            (Some(value), None) => self.available(
+                self.midpoint(value, value + f64::from(self.upem))?,
                 P::IdeographicBottomOneEmCssMidpoint,
-                base_script,
+                bottom.script,
                 top.absence,
             ),
-            (None, Some(top), HorizontalY) => self.available(
-                self.midpoint(top - f64::from(self.upem), top)?,
+            (None, Some(value)) => self.available(
+                self.midpoint(value - f64::from(self.upem), value)?,
                 P::IdeographicTopOneEmCssMidpoint,
                 bottom.script,
                 bottom.absence,
             ),
-            (None, None, HorizontalY) => {
-                // Reuse the existing actual-instance selector and MVAR owner,
-                // without a second typo rule, em normalization or line leading.
+            (None, None) => {
                 let metrics = self.instance.metrics(expected)?;
                 let scaled = self.midpoint(metrics.ascent(), metrics.descent())?;
                 Ok(FontBaselineOutcome::Available(FontBaselineValue {
@@ -367,35 +388,72 @@ impl<'instance, 'font> Reader<'instance, 'font> {
                     absence: bottom.absence,
                 }))
             }
-            (Some(_), None, VerticalX) => self.available(
-                f64::from(self.upem) / 2.0,
-                P::IdeographicBottomOneEmCssMidpoint,
-                bottom.script,
-                top.absence,
-            ),
-            (None, Some(top), VerticalX) => self.available(
-                self.midpoint(0.0, top)?,
-                P::VerticalTopZeroOriginCssMidpoint,
-                bottom.script,
-                bottom.absence,
-            ),
-            (None, None, VerticalX) => {
-                let horizontal = self.lookup(script, HorizontalY, *b"ideo")?;
-                if horizontal.coordinate.is_some() {
-                    self.available(
-                        f64::from(self.upem) / 2.0,
+        }
+    }
+    fn vertical_em(&self, script: FontBaselineScript) -> Result<VerticalEmOutcome> {
+        use FontBaselineAxis::{HorizontalY, VerticalX};
+        use FontBaselineProvenance as P;
+        let bottom = self.lookup(script, VerticalX, *b"ideo")?;
+        let top = self.lookup(script, VerticalX, *b"idtp")?;
+        if let Some(value) = bottom.coordinate
+            && value != 0.0
+        {
+            return Err(numeric(
+                Field::BaselineIdeographicOrigin,
+                Phase::Unscaled,
+                Numeric::NonZero,
+                value,
+            ));
+        }
+        let (under, over, provenance, base_script, absence) =
+            match (bottom.coordinate, top.coordinate) {
+                (Some(under), Some(over)) => {
+                    (under, over, P::BaseEdgesCssMidpoint, bottom.script, None)
+                }
+                (Some(_), None) => (
+                    0.0,
+                    f64::from(self.upem),
+                    P::IdeographicBottomOneEmCssMidpoint,
+                    bottom.script,
+                    top.absence,
+                ),
+                (None, Some(over)) => (
+                    0.0,
+                    over,
+                    P::VerticalTopZeroOriginCssMidpoint,
+                    bottom.script,
+                    bottom.absence,
+                ),
+                (None, None) => {
+                    let horizontal = self.lookup(script, HorizontalY, *b"ideo")?;
+                    if horizontal.coordinate.is_none() {
+                        return Ok(VerticalEmOutcome::Unavailable {
+                            value: FontBaselineUnavailable {
+                                reason: FontBaselineUnavailableReason::VerticalEmBoxReference,
+                                absence: bottom
+                                    .absence
+                                    .expect("unavailable lookup retains its absence"),
+                            },
+                            script: bottom.script,
+                        });
+                    }
+                    (
+                        0.0,
+                        f64::from(self.upem),
                         P::HorizontalEmBoxCssMidpoint,
                         horizontal.script,
                         bottom.absence,
                     )
-                } else {
-                    Ok(unavailable(
-                        FontBaselineUnavailableReason::VerticalEmBoxReference,
-                        bottom,
-                    ))
                 }
-            }
-        }
+            };
+        Ok(VerticalEmOutcome::Available(VerticalEm {
+            under,
+            over,
+            central: self.midpoint(under, over)?,
+            provenance,
+            script: base_script,
+            absence,
+        }))
     }
     fn lookup(
         &self,

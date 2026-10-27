@@ -100,6 +100,11 @@ with retained font/script identity and unhinted horizontal-Y or vertical-X
 coordinates. Alphabetic and central availability are independent. These metrics
 leave vertical paragraph shaping and placement with their own capability gates.
 
+A separate [used upright metric observation](docs/reference.md#used-upright-font-metrics)
+retains absolute BASE or nominal-pen-relative em sides, Central and provenance.
+It preserves qualified fractional BASE and same-instance vhea/MVAR values without
+admitting upright paragraphs or imposing a glyph shaper's coordinate grid.
+
 `EffectiveFontInstance::glyph_outline` reads conservative same-instance outline
 bounds, including synthesis, or proven empty geometry. It qualifies simple and
 dense-variable TrueType outlines and static translation-only composites; other

@@ -1,4 +1,5 @@
 mod baseline;
+mod upright;
 mod variation;
 mod vertical;
 pub use baseline::{
@@ -6,6 +7,7 @@ pub use baseline::{
     FontBaselineOutcome, FontBaselineProvenance, FontBaselineScript, FontBaselineUnavailable,
     FontBaselineUnavailableReason, FontBaselineValue,
 };
+pub use upright::{UprightFontMetrics, UprightMetricProvenance, UprightMetricReference};
 pub use vertical::{VerticalGlyphMetricProvenance, VerticalGlyphMetrics};
 
 use skrifa::{
@@ -445,3 +447,6 @@ fn numeric(field: Field, phase: Phase, category: Numeric, value: f64) -> Error {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod upright_tests;

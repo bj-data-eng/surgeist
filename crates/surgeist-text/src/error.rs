@@ -593,6 +593,16 @@ pub enum FontMetricField {
     StrikeoutThickness,
     /// Named font-design baseline coordinate.
     BaselineCoordinate,
+    /// Used upright em-under coordinate or nominal-pen distance.
+    UprightEmUnder,
+    /// Used upright em-over coordinate or nominal-pen distance.
+    UprightEmOver,
+    /// Used upright Central coordinate or nominal-pen distance.
+    UprightCentral,
+    /// Em-under distance from used upright Central.
+    UprightUsedUnder,
+    /// Em-over distance from used upright Central.
+    UprightUsedOver,
     /// Nominal horizontal advance.
     HorizontalAdvance,
     /// Nonnegative vertical advance magnitude.
