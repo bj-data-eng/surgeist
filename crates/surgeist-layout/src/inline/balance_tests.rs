@@ -1,7 +1,7 @@
 use super::*;
 use crate::TextWrapStyle;
 
-fn input<S: LayoutScalar>(
+pub(super) fn input<S: LayoutScalar>(
     widths: &[f64],
     mandatory: &[usize],
     direction: Direction,
@@ -53,7 +53,7 @@ fn input<S: LayoutScalar>(
     }
 }
 
-fn groups<S: LayoutScalar>(report: &MixedInlineRunReportOf<S>) -> Vec<Vec<usize>> {
+pub(super) fn groups<S: LayoutScalar>(report: &MixedInlineRunReportOf<S>) -> Vec<Vec<usize>> {
     (0..report.line_bands.len())
         .map(|line| {
             report

@@ -6,11 +6,19 @@ use super::boxes::{
 use super::formatted::FormattedTailSnapshot;
 pub(crate) use super::roles::{RoleBasis, RoleUse};
 use crate::inline_wrapping::balance::{BalanceGoal, NaturalResidual};
+use crate::inline_wrapping::tail::{LineQualityGoal, LineQualityKey};
 use crate::{TextAlign, TextAlignLast, TextJustification};
 
 #[path = "fit_balance.rs"]
 mod balance;
-pub(crate) use balance::BalanceBasis;
+#[path = "fit_tail.rs"]
+mod tail;
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum SelectionProgram {
+    Balance(balance::BalanceBasis),
+    Tail(tail::TailBasis),
+}
 use surgeist_text::{
     Alignment, AtomicAllocation, ConditionalDisposition, ConditionalPurpose, ConditionalStage,
     ControlAllocation, FinalizedLine, HyphenationContinuation, LineContext, LineEnd,
@@ -225,7 +233,7 @@ pub(crate) struct FittedLine {
     pub finalized: FinalizedLine,
     pub amounts: Vec<f64>,
     pub natural_advance: f64,
-    pub balance: Option<std::sync::Arc<BalanceBasis>>,
+    pub program: Option<std::sync::Arc<SelectionProgram>>,
     pub inline_start: f64,
     pub placed_start: f64,
     pub available: f64,
@@ -243,6 +251,7 @@ pub(crate) enum FitError {
     Text(surgeist_text::Error),
     Wrapping(crate::inline_wrapping::WrappingScopeError),
     FeedbackCycle,
+    InvalidTailBasis,
     SpacingBudget { available: f64, advance: f64 },
     NonFinite(f64),
     Numeric(f64, crate::LayoutTextNumericError),
@@ -661,8 +670,8 @@ impl EvaluatedCandidate {
         }
     }
 
-    fn natural_residual(&self) -> Option<NaturalResidual> {
-        NaturalResidual::from_components(
+    fn quality_key(&self, goal: LineQualityGoal) -> Option<LineQualityKey> {
+        goal.key(
             self.request.context.available_inline?,
             self.request.context.indent,
             self.natural_advance,
@@ -735,7 +744,7 @@ struct ComparisonBasis {
 
 #[derive(Default)]
 struct ScopedChoices {
-    goal: Option<BalanceGoal>,
+    goal: Option<LineQualityGoal>,
     frontier: Option<crate::inline_wrapping::PreferenceFrontier<EvaluatedCandidate>>,
     error: Option<FitError>,
 }
@@ -754,12 +763,12 @@ impl ScopedChoices {
                 let frontier = self.frontier.get_or_insert_with(|| class.frontier());
                 if let Some(goal) = self.goal {
                     candidate
-                        .natural_residual()
+                        .quality_key(goal)
                         .ok_or(FitError::InvalidGeometry)?;
                     frontier.consider_ranked(class, candidate, |left, right| {
-                        goal.compare_distance(
-                            left.natural_residual().expect("finite goal candidate"),
-                            right.natural_residual().expect("finite goal candidate"),
+                        goal.compare(
+                            left.quality_key(goal).expect("finite goal candidate"),
+                            right.quality_key(goal).expect("finite goal candidate"),
                         )
                     })
                 } else {
@@ -779,9 +788,9 @@ impl ScopedChoices {
         Ok(self.frontier.and_then(|frontier| {
             if let Some(goal) = self.goal {
                 frontier.into_preferred_ranked(|left, right| {
-                    goal.compare_distance(
-                        left.natural_residual().expect("finite goal candidate"),
-                        right.natural_residual().expect("finite goal candidate"),
+                    goal.compare(
+                        left.quality_key(goal).expect("finite goal candidate"),
+                        right.quality_key(goal).expect("finite goal candidate"),
                     )
                 })
             } else {
@@ -792,7 +801,7 @@ impl ScopedChoices {
 }
 
 fn prefer_candidate(
-    goal: Option<BalanceGoal>,
+    goal: Option<LineQualityGoal>,
     candidate: &EvaluatedCandidate,
     current: Option<&EvaluatedCandidate>,
 ) -> Result<bool, FitError> {
@@ -805,12 +814,10 @@ fn prefer_candidate(
         return Ok(true);
     };
     let candidate = candidate
-        .natural_residual()
+        .quality_key(goal)
         .ok_or(FitError::InvalidGeometry)?;
-    let current = current
-        .natural_residual()
-        .ok_or(FitError::InvalidGeometry)?;
-    Ok(goal.compare_distance(candidate, current) != std::cmp::Ordering::Greater)
+    let current = current.quality_key(goal).ok_or(FitError::InvalidGeometry)?;
+    Ok(goal.compare(candidate, current) != std::cmp::Ordering::Greater)
 }
 
 #[derive(Clone, Copy)]
@@ -1764,14 +1771,21 @@ pub(crate) fn fit(
         accept: accept_encounters,
         clear: clear_source,
     };
-    let balance = match runner.input.wrap_style {
-        crate::TextWrapStyle::Auto | crate::TextWrapStyle::Stable => false,
-        crate::TextWrapStyle::Balance => {
-            matches!(runner.input.available, Available::Definite(_))
+    match runner.input.wrap_style {
+        crate::TextWrapStyle::Balance
+            if matches!(runner.input.available, Available::Definite(_)) =>
+        {
+            return balance::fit(&mut runner, entry, checkpoint_group);
         }
-    };
-    if balance {
-        return balance::fit(&mut runner, entry, checkpoint_group);
+        crate::TextWrapStyle::AvoidShortLastLine
+            if matches!(runner.input.available, Available::Definite(_)) =>
+        {
+            return tail::fit(&mut runner, entry, checkpoint_group);
+        }
+        crate::TextWrapStyle::Auto
+        | crate::TextWrapStyle::Stable
+        | crate::TextWrapStyle::Balance
+        | crate::TextWrapStyle::AvoidShortLastLine => {}
     }
     let mut result = Vec::new();
     let scope = SequenceScope {
@@ -1779,6 +1793,7 @@ pub(crate) fn fit(
         stop_at_forced: false,
         max_formatted: None,
         goal: None,
+        goal_after: 0,
         opportunity_start: 0,
         opportunity_end: runner.opportunities.len(),
     };
@@ -1812,7 +1827,8 @@ struct SequenceScope {
     reset: EncounterReset,
     stop_at_forced: bool,
     max_formatted: Option<usize>,
-    goal: Option<BalanceGoal>,
+    goal: Option<LineQualityGoal>,
+    goal_after: usize,
     opportunity_start: usize,
     opportunity_end: usize,
 }
@@ -1886,6 +1902,7 @@ where
             let mut current_boundary = entry.boundary.clone();
             let mut formatted_count = 0;
             while !completed_end {
+                let goal = scope.goal.filter(|_| formatted_count >= scope.goal_after);
                 let start_boundary = current_boundary.clone();
                 let rejected_choices: &[CandidateKey] = if constrained {
                     if visited.len() <= result.len() - entry.prefix_len {
@@ -1924,7 +1941,7 @@ where
                         let mut ends = FittingEnds::default();
                         let mut terminal = None;
                         let mut scoped = ScopedChoices {
-                            goal: scope.goal,
+                            goal,
                             ..ScopedChoices::default()
                         };
                         for (end, opportunity, kind, alternatives) in opportunities {
@@ -1988,12 +2005,12 @@ where
                             }
                             if let Some(candidate) = endpoint_choice {
                                 if wrapping.is_some() {
-                                    ends.observe(&candidate, scope.goal.is_some());
+                                    ends.observe(&candidate, goal.is_some());
                                 }
                                 if comparison_basis.is_some()
                                     && candidate.fits
                                     && candidate.disposition.is_formatted()
-                                    && (scope.goal.is_some()
+                                    && (goal.is_some()
                                         || candidate.request.context.end == LineEnd::Soft)
                                 {
                                     scoped.consider(
@@ -2005,7 +2022,7 @@ where
                                     || (!matches!(input.available, Available::Minimum)
                                         && (candidate.fits
                                             || matches!(input.available, Available::Maximum))))
-                                    && prefer_candidate(scope.goal, &candidate, choice.as_ref())?
+                                    && prefer_candidate(goal, &candidate, choice.as_ref())?
                                 {
                                     choice = Some(candidate);
                                 }
@@ -2139,7 +2156,7 @@ where
                                 stage_progress = None;
                                 let mut ends = FittingEnds::default();
                                 let mut scoped = ScopedChoices {
-                                    goal: scope.goal,
+                                    goal,
                                     ..ScopedChoices::default()
                                 };
                                 let mut from = 0;
@@ -2174,7 +2191,7 @@ where
                                     dispositions.extend(endpoint.dispositions);
                                     if let Some(trial) = endpoint.candidate {
                                         if wrapping.is_some() {
-                                            ends.observe(&trial, scope.goal.is_some());
+                                            ends.observe(&trial, goal.is_some());
                                         }
                                         if comparison_basis.is_some()
                                             && trial.fits
@@ -2197,7 +2214,7 @@ where
                                             stage_progress = Some(trial);
                                         } else if (stage_choice.is_none() || trial.fits)
                                             && prefer_candidate(
-                                                scope.goal,
+                                                goal,
                                                 &trial,
                                                 stage_choice.as_ref(),
                                             )?
@@ -2377,7 +2394,7 @@ where
                         finalized: candidate.finalized,
                         amounts: candidate.amounts,
                         natural_advance: candidate.natural_advance,
-                        balance: None,
+                        program: None,
                         inline_start: candidate.bands.combined().start,
                         placed_start: candidate.placed_start,
                         available,

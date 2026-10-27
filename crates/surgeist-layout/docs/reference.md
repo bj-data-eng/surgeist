@@ -90,7 +90,33 @@ Stable does not freeze an old line sequence or promise unchanged geometry after
 every suffix edit. Supply coherent current preparation and use ordinary changed-node
 invalidation when changing the mode. See the pinned
 [Text 4 selection rule](../../../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#valdef-text-wrap-style-stable).
-Pretty and AvoidShortLastLine are not exposed.
+`AvoidShortLastLine` attempts a bounded repair of the final two formatted lines
+in the final genuinely Paragraph-ending group. It preserves the ordinary line
+count, terminal occurrence and earlier accepted prefix, including geometry and
+state. A final formatted Forced line followed by a nonformatted Paragraph receipt
+is not a target; earlier Forced groups remain ordinary, and content never moves
+across Forced. This Paragraph-only target is Surgeist policy.
+
+Quality uses natural advances before justification and each trial's actual
+usable capacity, accounting for indent once. The ordinary last line must be
+less full than its predecessor. A repair must strictly increase the last line's
+fullness, the weaker final-pair fullness, and the last line's natural advance.
+Narrowing a float band without lengthening the natural tail is insufficient.
+There is no fixed shortness ratio, word-count cutoff or degradation budget.
+The greatest improved minimum wins; equal improved scores retain the existing
+deterministic incumbent. The finite search is a heuristic, not a global optimizer
+or a promise to find every possible repair; it has no Balance ten-line limit.
+
+Only finite positive capacities and natural advances between zero and capacity
+participate in this optional comparison. Valid hanging, signed, overflowing or
+otherwise out-of-domain ordinary results remain valid ordinary results. Quality
+ineligibility cannot hide a real provider failure or create a geometry error.
+Real zero-size atomic participants retain their formatted-line authority;
+nonformatted completion and metric-only receipts do not become scored lines.
+The same scope priorities, conditional authority, float/height feedback and
+terminal constraints apply before quality. These choices implement the
+[pinned Text 4 bias](../../../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#valdef-text-wrap-style-avoid-short-last-line)
+through an explicit native policy. Pretty is not exposed.
 
 #### Numeric inline baseline references
 

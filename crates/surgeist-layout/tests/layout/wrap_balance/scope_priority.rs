@@ -254,3 +254,5 @@ fn native_scope_priority_precedes_balanced_numeric_line_lengths() {
         qualify::<f64>(direction);
     }
 }
+
+mod avoid_short_last_line;

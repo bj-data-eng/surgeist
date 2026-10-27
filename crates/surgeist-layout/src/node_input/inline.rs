@@ -139,6 +139,9 @@ pub enum TextWrapStyle {
     /// Use ordinary line-local quality preference, retaining actual legality,
     /// geometry and element-terminal constraints rather than prior edit results.
     Stable,
+    /// Repair the final paragraph pair when its shorter natural line can grow
+    /// without transferring the deficiency to its predecessor.
+    AvoidShortLastLine,
 }
 
 /// The implemented native expansion method, rather than CSS-wide `auto`.

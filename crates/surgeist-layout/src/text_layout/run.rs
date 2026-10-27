@@ -978,7 +978,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         line_bands: Vec::new(),
         formatted_lines: None,
     };
-    let balance = lines.first().and_then(|line| line.balance.clone());
+    let program = lines.first().and_then(|line| line.program.clone());
     let mut natural_advances = Vec::new();
     let mut placements = Vec::new();
     let mut bands = Vec::new();
@@ -1370,7 +1370,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             prepared: binding.prepared.clone(),
             entries: placements,
             wrap_style: context.wrap_style,
-            balance,
+            program,
             natural_advances,
             boxes: box_assignments,
             bands,

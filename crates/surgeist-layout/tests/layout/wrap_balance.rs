@@ -678,3 +678,5 @@ mod advanced;
 mod numeric;
 
 mod scope_priority;
+
+mod avoid_short_last_line;

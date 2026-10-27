@@ -423,3 +423,5 @@ fn balance_leaves_true_auto_width_numeric_min_and_max_content_unchanged() {
         numeric_intrinsic::<f64>(direction);
     }
 }
+
+mod avoid_short_last_line;

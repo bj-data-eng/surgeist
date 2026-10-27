@@ -624,3 +624,5 @@ fn changed_font_height_replays_its_real_float_bands_through_publication_and_inva
 }
 
 mod stable;
+
+mod avoid_short_last_line;
