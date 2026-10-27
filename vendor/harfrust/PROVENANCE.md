@@ -1,7 +1,8 @@
 # Maintained Harfrust dependency
 
-This directory supplies the pinned Harfrust 0.6.2 dependency through the root
-[`patch.crates-io`](../../Cargo.toml). It remains outside the product workspace.
+This directory supplies the pinned Harfrust 0.6.2 dependency through Text's direct
+[path dependency](../../crates/surgeist-text/Cargo.toml). It remains outside the
+product workspace.
 Text owns its consuming adapter; this directory owns the provider implementation.
 
 ## Exact source
