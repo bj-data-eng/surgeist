@@ -450,7 +450,53 @@ fn physical_before_and_after_avoidance_selects_real_fitting_text_receipts() {
 }
 
 #[test]
-fn cross_origin_snapped_pair_preserves_its_precise_admission_refusal() {
+fn cross_origin_snapped_pair_admits_but_keeps_precise_edge_incidence_limits() {
+    // Qualify this retained fixture's real precomposed glyph, not hypothetical
+    // combining-mark coverage. Harfrust may canonically compose A + acute.
+    let u16_at = |bytes: &[u8], at| u16::from_be_bytes(bytes[at..at + 2].try_into().unwrap());
+    let table = |tag: [u8; 4]| {
+        let at = (0..usize::from(u16_at(AHEM, 4)))
+            .map(|i| 12 + i * 16)
+            .find(|at| AHEM[*at..*at + 4] == tag)
+            .unwrap();
+        let start = u32::from_be_bytes(AHEM[at + 8..at + 12].try_into().unwrap()) as usize;
+        let len = u32::from_be_bytes(AHEM[at + 12..at + 16].try_into().unwrap()) as usize;
+        &AHEM[start..start + len]
+    };
+    assert_eq!(u16_at(table(*b"head"), 18), 1000);
+    assert!(u16_at(table(*b"hhea"), 34) > 165);
+    for glyph in [165, 36, 37, 38, 39, 40] {
+        assert_eq!(u16_at(table(*b"hmtx"), glyph * 4), 1000);
+    }
+    let cmap = table(*b"cmap");
+    let record = (0..usize::from(u16_at(cmap, 2)))
+        .map(|i| 4 + i * 8)
+        .find(|at| u16_at(cmap, *at) == 3 && u16_at(cmap, *at + 2) == 1)
+        .unwrap();
+    let at = u32::from_be_bytes(cmap[record + 4..record + 8].try_into().unwrap()) as usize;
+    let format4 = &cmap[at..];
+    assert_eq!(u16_at(format4, 0), 4);
+    let count = usize::from(u16_at(format4, 6)) / 2;
+    let cp = 0xc1_u16;
+    let segment = (0..count)
+        .find(|i| {
+            u16_at(format4, 16 + 2 * count + i * 2) <= cp && cp <= u16_at(format4, 14 + i * 2)
+        })
+        .unwrap();
+    let start = u16_at(format4, 16 + 2 * count + segment * 2);
+    let delta = u16_at(format4, 16 + 4 * count + segment * 2);
+    let position = 16 + 6 * count + segment * 2;
+    let offset = u16_at(format4, position);
+    let glyph = if offset == 0 {
+        cp
+    } else {
+        u16_at(
+            format4,
+            position + usize::from(offset) + usize::from(cp - start) * 2,
+        )
+    };
+    assert_ne!(glyph, 0);
+    assert_eq!(glyph.wrapping_add(delta), 165);
     fn lane<S: LayoutScalar>() {
         for before in [false, true] {
             let fixture = Fixture::new("A\u{301}BCDEF", if before { 1..3 } else { 0..1 }, true);
@@ -501,10 +547,78 @@ fn cross_origin_snapped_pair_preserves_its_precise_admission_refusal() {
                     .control_is_boundary_exact(control)
                     .unwrap()
             );
-            // Snapping moves the actual control past the mark's native owner.
-            // This existing association profile refuses before late incidence,
-            // including for neutral declarations. Do not bypass admission to
-            // manufacture coverage of the fitter's later exactness guard.
+            let start = fixture
+                .binding
+                .prepared
+                .boundary_views()
+                .next()
+                .unwrap()
+                .handle();
+            let end = fixture
+                .binding
+                .prepared
+                .opportunity_views()
+                .find(|offer| offer.kind() == text::PreparedBreakKind::Allowed)
+                .unwrap()
+                .handle();
+            let search = fixture
+                .binding
+                .prepared
+                .conditional_search(
+                    &start,
+                    None,
+                    &end,
+                    text::ConditionalPurpose::MinContent,
+                    &[],
+                    None,
+                )
+                .unwrap();
+            assert!(search.begin(&[]).unwrap().opportunities().is_empty());
+            let hidden_side = if before {
+                text::CapturedScopeIncidence::AtBefore
+            } else {
+                text::CapturedScopeIncidence::AtAfter
+            };
+            for offer in fixture
+                .binding
+                .prepared
+                .opportunity_views()
+                .filter(|offer| offer.kind() == text::PreparedBreakKind::Allowed)
+            {
+                let incidences = fixture
+                    .binding
+                    .prepared
+                    .boundary_incidences(&offer.boundary())
+                    .unwrap();
+                assert!(!incidences.is_empty());
+                for incidence in incidences {
+                    assert_ne!(
+                        fixture
+                            .binding
+                            .prepared
+                            .incidence_scope_relation(&incidence, &fixture.scope)
+                            .unwrap(),
+                        hidden_side,
+                        "the authenticated original cut proves the hidden side is a nonmatch"
+                    );
+                }
+            }
+            for form in 0..3 {
+                let tree = fixture.tree::<S>();
+                LayoutFlowInput::try_new(
+                    &tree,
+                    0,
+                    vec![fixture.binding.clone()],
+                    WrappingInput {
+                        scopes: fixture.policies(WrapEdges::AUTO, form),
+                        child_order: Vec::new(),
+                    },
+                )
+                .expect("all genuine declaration forms retain strict neutral association");
+            }
+            // The known hidden side is a nonmatch, not missing correspondence.
+            // Avoid cannot alter any actual ending here. Late Line still
+            // requires an earlier source-processing receipt.
             for form in 0..3 {
                 for edge in [
                     WrapEdge::Auto,
@@ -514,18 +628,60 @@ fn cross_origin_snapped_pair_preserves_its_precise_admission_refusal() {
                     WrapEdge::Line,
                     WrapEdge::Flex,
                 ] {
-                    let error = fixture.compute::<S>(edges(before, edge), form).expect_err(
-                        "cross-origin snapped pair has no monotone native participant association",
-                    );
-                    assert!(
-                        matches!(
-                            error.kind(),
-                            LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::TextBinding(
-                                TextBindingError::ParticipantOrder
-                            ))
+                    match edge {
+                        WrapEdge::Line => assert_error(
+                            fixture
+                                .compute::<S>(edges(before, edge), form)
+                                .expect_err("late Line requires its genuine early cause"),
+                            WrappingScopeError::SourceProcessingRequired,
                         ),
-                        "{error:?}"
-                    );
+                        WrapEdge::Auto
+                        | WrapEdge::Avoid
+                        | WrapEdge::AvoidLine
+                        | WrapEdge::AvoidFlex
+                        | WrapEdge::Flex => {
+                            let batch = fixture.compute::<S>(edges(before, edge), form).unwrap();
+                            let layout = batch.placed_text()[0].layout();
+                            assert_eq!(layout.source().text(), &text::Text::from("A\u{301}BCDEF"));
+                            // Actual Ahem cmap supplies canonical A-acute165
+                            // at one em: [A+acute,B,C] and [D,E,F] each fill30.
+                            assert_eq!(
+                                layout
+                                    .lines()
+                                    .iter()
+                                    .map(|line| line.range())
+                                    .collect::<Vec<_>>(),
+                                [text::Range::new(0, 4), text::Range::new(4, 7)]
+                            );
+                            let lines = finalized(&batch);
+                            assert_eq!(
+                                lines
+                                    .iter()
+                                    .map(|line| line.measurements().fit().advance())
+                                    .collect::<Vec<_>>(),
+                                [30.0, 30.0]
+                            );
+                            let glyphs = lines
+                                .iter()
+                                .flat_map(|line| {
+                                    line.run_views().flat_map(|run| {
+                                        assert_eq!(run.face().bytes(), AHEM);
+                                        run.glyphs()
+                                            .map(|glyph| {
+                                                (glyph.id(), glyph.range(), glyph.advance())
+                                            })
+                                            .collect::<Vec<_>>()
+                                    })
+                                })
+                                .collect::<Vec<_>>();
+                            let mut expected = vec![(165, text::Range::new(0, 2), 10.0)];
+                            expected
+                                .extend((2..7).map(|at| {
+                                    (34 + at as u32, text::Range::new(at, at + 1), 10.0)
+                                }));
+                            assert_eq!(glyphs, expected);
+                        }
+                    }
                 }
             }
         }

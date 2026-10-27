@@ -544,6 +544,15 @@ pub(crate) fn project_anchor_atom(
     mut index: usize,
 ) -> usize {
     let anchor = paragraph.anchor_order[occurrence];
+    // Native physical endpoints retain their actual admitted event seam even
+    // inside an EGC. Projection has already qualified that source/Phase-I cut;
+    // preserving it grants neither a caret stop nor a line-break opportunity.
+    if paragraph.base_direction.is_some()
+        && matches!(anchor.item, SemanticAnchorItem::Control(control)
+            if crate::protocol::boundary::is_endpoint(&paragraph.controls[control].kind))
+    {
+        return index;
+    }
     let source = anchor_position(anchor.item, paragraph, boxes);
     if projection
         .atoms

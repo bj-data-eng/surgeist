@@ -384,9 +384,12 @@ An atomic's signed margins cannot stand in for a non-atomic margin-only witness.
 Text-backed scopes use authenticated mixed-prefix and canonical source incidence,
 including transformed, collapsed and removed content. A semantic captured scope
 can span a whole typographic unit without physical endpoints. Physical paired
-endpoints that cannot preserve genuine participant order across that unit remain
-unsupported; Layout refuses the association rather than moving endpoints around
-the glyph. `WrappingScopeError` identifies invalid or unprovable scope facts.
+endpoints at admitted decoded atom seams retain their genuine captured order,
+including inside a unit shared by same-font connected origins. Their used
+border/padding contributes once without separating the shared glyphs or granting
+an interior line cut. Layout validates that order and canonical pairing;
+unrepresentable source seams remain precise Text refusals.
+`WrappingScopeError` identifies invalid or unprovable scope facts.
 Contradictory numeric metric/band feedback returns `InlineFeedbackCycle`; the
 Text-backed fitter retains `TextFeedbackCycle`. Neither publishes a partial batch.
 

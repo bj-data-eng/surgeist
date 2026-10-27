@@ -6,6 +6,9 @@ use super::*;
 use std::sync::Arc;
 use surgeist_text as text;
 
+#[path = "boundary_owner_composition/shared_unit_endpoints.rs"]
+mod shared_unit_endpoints;
+
 const PHRASE: &[u8] =
     include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/phrase-ahem/PhraseAhem.ttf");
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -278,7 +281,11 @@ fn capture(
     }
 }
 
-fn tree<S: LayoutScalar>(p: &TextParagraphBinding<u32>, rtl: bool) -> PublicLayoutTreeOf<S> {
+fn tree<S: LayoutScalar>(
+    p: &TextParagraphBinding<u32>,
+    rtl: bool,
+    edges: &[(u32, InlineBoundaryEdgeOf<S>)],
+) -> PublicLayoutTreeOf<S> {
     let mut tree = PublicLayoutTreeOf::new()
         .children(0, p.nodes.iter().copied())
         .style(
@@ -312,7 +319,10 @@ fn tree<S: LayoutScalar>(p: &TextParagraphBinding<u32>, rtl: bool) -> PublicLayo
                         S::from_f64(10.0),
                     )
                     .unwrap(),
-                    InlineBoundaryEdgeOf::ZERO,
+                    edges
+                        .iter()
+                        .find_map(|(node, edge)| (*node == control.node).then_some(*edge))
+                        .unwrap_or(InlineBoundaryEdgeOf::ZERO),
                 )
                 .with_direction(if rtl { Direction::Rtl } else { Direction::Ltr }),
             ),
@@ -326,7 +336,7 @@ fn compute<S: LayoutScalar>(
     rtl: bool,
     width: AvailableOf<S>,
 ) -> CompletedLayoutBatchOf<u32, S> {
-    let tree = tree::<S>(p, rtl);
+    let tree = tree::<S>(p, rtl, &[]);
     let capture = LayoutFlowInput::try_new(
         &tree,
         0,
@@ -679,7 +689,7 @@ fn either_side_anywhere_obeys_actual_common_ancestor_and_rejects_stale_bindings(
                     rtl,
                     &[(153, 10.0), (35, 10.0)],
                 );
-                let tree = tree::<S>(&old, rtl);
+                let tree = tree::<S>(&old, rtl, &[]);
                 let Err(error) = LayoutFlowInput::try_new(
                     &tree,
                     0,
