@@ -1,9 +1,20 @@
+use std::cell::Cell;
+
+use super::block_units::{
+    DeclarationUnit, GrammarError, NativeError, drive_units, dropped_unit, grammar_error,
+    location_at, native_error, offset_of, refused_declaration,
+};
+use super::declaration_unit::{DeclarationText, parse_declaration_unit};
 use super::property_input::NativeValueRange;
+use super::syntax_types::{Attached, Stream, SyntaxError};
 use cssparser::{
     AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, ParserState,
     QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser,
 };
-use surgeist_css_parser::match_ignore_ascii_case;
+use surgeist_css_parser::grammar::{
+    AtRule, BlockGrammar, QualifiedRule, RuleEnd, RuleGrammar, UnitKind,
+};
+use surgeist_css_parser::{Token, match_ignore_ascii_case};
 
 use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
 use super::{
@@ -14,7 +25,8 @@ use crate::component::{CssComponentValueRef, CssValueTokenRef};
 use crate::declaration::CssDeclarationBody;
 use crate::declaration::syntax::DeclarationContext;
 use crate::diagnostic::error::{
-    basic, invalid_at_rule_body, property_name_error, unexpected_at, with_property_context,
+    basic, invalid_at_rule_body, invalid_at_rule_body_at, property_name_error, unexpected_at,
+    unexpected_syntax_end, unexpected_syntax_token, with_property_context,
 };
 use crate::diagnostic::{CssError, CssFeatureId};
 use crate::property::{CssKnownProperty, CssKnownPropertyValueRef};
@@ -115,31 +127,12 @@ pub(super) fn parse_body<'i>(
     diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
 ) -> CssPageBody {
-    parse_body_inner(source, input, diagnostics, recovery, false)
-}
-pub(super) fn parse_margin_body<'i>(
-    source: &'i str,
-    input: &mut Parser<'i, '_>,
-    diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
-    recovery: RecoveryState,
-) -> CssMarginDeclarationBlock {
-    let body = parse_body_inner(source, input, diagnostics, recovery, true);
-    CssMarginDeclarationBlock::from_parsed(body.declarations().properties().clone())
-}
-fn parse_body_inner<'i>(
-    source: &'i str,
-    input: &mut Parser<'i, '_>,
-    diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
-    recovery: RecoveryState,
-    margin: bool,
-) -> CssPageBody {
     let mut declarations = Vec::new();
     let mut margin_rules = Vec::new();
     let mut parser = PageBodyParser {
         source,
         recovery,
         diagnostics: Vec::new(),
-        margin,
     };
     let mut items = RuleBodyParser::new(input, &mut parser);
     loop {
@@ -182,84 +175,395 @@ struct PageBodyParser<'s> {
     source: &'s str,
     recovery: RecoveryState,
     diagnostics: Vec<crate::diagnostic::CssRecoveryDiagnostic>,
-    margin: bool,
 }
 
-/// The detached boundary admits only the existing Page margin branch. Other
-/// Page-body items never become a detached margin occurrence.
-struct DetachedMarginParser<'s> {
-    page: PageBodyParser<'s>,
+/// The declarations of a margin box's block, from the native callback that was
+/// handed the block: the contents of the block are the scope.
+pub(super) fn parse_margin_body<'i>(
+    source: &'i str,
+    input: &mut Parser<'i, '_>,
+    diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
+    recovery: RecoveryState,
+) -> Result<CssMarginDeclarationBlock, ParseError<'i, CssError>> {
+    let numeric =
+        crate::numeric::expression::NumericInputContext::parsed(recovery.source_snapshot());
+    let (declarations, mut recovered) = super::property_input::adapt_native(
+        input,
+        &numeric,
+        NativeValueRange::Scope,
+        |contents, _| Ok(drive_margin_body(contents, source, &recovery)),
+    )?;
+    diagnostics.append(&mut recovered);
+    Ok(declarations)
 }
-impl<'i> AtRuleParser<'i> for DetachedMarginParser<'i> {
-    type Prelude = PageBodyAtRulePrelude<'i>;
-    type AtRule = PageBodyItem;
-    type Error = CssError;
-    fn parse_prelude<'t>(
-        &mut self,
-        name: CowRcStr<'i>,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self::Prelude, ParseError<'i, CssError>> {
-        let location = input.current_source_location();
-        match AtRuleParser::parse_prelude(&mut self.page, name.clone(), input)? {
-            prelude @ PageBodyAtRulePrelude::MarginBox(_) => Ok(prelude),
-            PageBodyAtRulePrelude::TopLevelOnly(name, location) => {
-                Err(top_level_only_at_rule_placement(location, name.as_ref()))
+
+/// Consumes the declarations of a margin box's block. A unit that is not a
+/// declaration is dropped with its recovery diagnostic; the valid declarations
+/// around it survive.
+pub(super) fn drive_margin_body<'i>(
+    contents: &mut Stream<'i>,
+    source: &str,
+    recovery: &RecoveryState,
+) -> (
+    CssMarginDeclarationBlock,
+    Vec<crate::diagnostic::CssRecoveryDiagnostic>,
+) {
+    let snapshot = recovery.source_snapshot();
+    // Whether the grammar rejected the prelude of the at-rule it last refused.
+    let prelude_failed = Cell::new(false);
+    let mut grammar = MarginBodyParser {
+        source,
+        recovery: recovery.clone(),
+        prelude_failed: &prelude_failed,
+    };
+    let mut legacy = MarginBodyParser {
+        source,
+        recovery: recovery.clone(),
+        prelude_failed: &prelude_failed,
+    };
+    let mut declarations = Vec::new();
+    let mut diagnostics = Vec::new();
+    drive_units(contents, &mut grammar, |unit| {
+        let failed = match unit {
+            Ok(declaration) => {
+                declarations.push(declaration);
+                return None;
             }
-            PageBodyAtRulePrelude::Other => {
-                Err(location.new_error(cssparser::BasicParseErrorKind::AtRuleInvalid(name)))
+            Err(failed) => failed,
+        };
+        let mut dropped = dropped_unit(snapshot, source, &failed);
+        if let Some((start, end)) = refused_declaration(&failed) {
+            // The native block parser read the value of a declaration that
+            // step 8 refuses, to its `;`, and reported its grammar's verdict.
+            let text = DeclarationText::read(start, end);
+            let name = match start.token() {
+                Some(surgeist_css_parser::Token::Ident(name)) => name,
+                _ => "",
+            };
+            match legacy.admit(name, &text) {
+                Ok(declaration) => {
+                    declarations.push(declaration);
+                    return Some(end);
+                }
+                Err(error) => dropped.error = error,
             }
         }
+        // The native block parser left the block of a failed rule pending and
+        // skipped it with the next unit: the dropped unit ends after the
+        // block's opening token. An at-rule whose prelude it accepted had its
+        // block entered and consumed whole; one whose prelude it rejected is
+        // sliced before the `;` or `{` that ended it.
+        let (text, end) = match dropped.kind {
+            UnitKind::AtRule if prelude_failed.replace(false) => {
+                (dropped.text_to_prelude_end(), dropped.text_to_block().1)
+            }
+            UnitKind::AtRule => (dropped.text(), dropped.end),
+            _ => dropped.text_to_block(),
+        };
+        let action = if is_declaration_recovery_unit(text) {
+            crate::diagnostic::CssRecoveryAction::DropDeclaration
+        } else {
+            crate::diagnostic::CssRecoveryAction::DropAtRule
+        };
+        if let Some(diagnostic) = block_item_diagnostic(source, dropped.error, text, end, action) {
+            diagnostics.push(diagnostic);
+        }
+        None
+    });
+    let body = CssPageDeclarationBlock::from_parsed(declarations);
+    (
+        CssMarginDeclarationBlock::from_parsed(body.properties().clone()),
+        diagnostics,
+    )
+}
+
+/// The grammar of the block of a margin box: declarations of the properties
+/// that apply to a margin box, and nothing else. A margin box admits no
+/// descriptor and no rule (Paged Media 3, Appendix A).
+struct MarginBodyParser<'s> {
+    source: &'s str,
+    recovery: RecoveryState,
+    /// Set when the prelude of an at-rule is rejected, which is a different
+    /// recovery from the rejection of its block.
+    prelude_failed: &'s Cell<bool>,
+}
+
+impl<'i> RuleGrammar<'i, Attached<'i>> for MarginBodyParser<'_> {
+    type Item = CssPageDeclaration;
+    type Error = NativeError<'i>;
+
+    fn at_rule(&mut self, rule: AtRule<'i, Attached<'i>>) -> Result<Self::Item, GrammarError<'i>> {
+        let snapshot = self.recovery.source_snapshot();
+        let name = rule.name();
+        let location = location_at(snapshot, offset_of(rule.prelude().start_site()));
+        let fail = |error| grammar_error(rule.start(), error);
+        // The prelude of a margin box's name has to be empty; any other is
+        // read to its end.
+        if CssMarginBox::from_name(name).is_some() {
+            rule.prelude().require_empty().map_err(|error| {
+                self.prelude_failed.set(true);
+                fail(native_error(snapshot, &SyntaxError::from(error)))
+            })?;
+        }
+        let Some(block) = rule.block() else {
+            return Err(fail(unexpected_syntax_token(
+                location_at(snapshot, offset_of(rule.end())),
+                Token::Semicolon,
+            )));
+        };
+        if name.eq_ignore_ascii_case("counter-style") || name.eq_ignore_ascii_case("page") {
+            return Err(fail(top_level_only_at_rule_placement(location, name)));
+        }
+        Err(fail(page_margin_body_error(
+            snapshot,
+            offset_of(block.start_site()),
+        )))
     }
-    fn rule_without_block(
+
+    fn qualified_rule(
         &mut self,
-        prelude: Self::Prelude,
-        start: &ParserState,
-    ) -> Result<Self::AtRule, ()> {
-        AtRuleParser::rule_without_block(&mut self.page, prelude, start)
-    }
-    fn parse_block<'t>(
-        &mut self,
-        prelude: Self::Prelude,
-        start: &ParserState,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self::AtRule, ParseError<'i, CssError>> {
-        AtRuleParser::parse_block(&mut self.page, prelude, start, input)
+        rule: QualifiedRule<'i, Attached<'i>>,
+    ) -> Result<Self::Item, GrammarError<'i>> {
+        let snapshot = self.recovery.source_snapshot();
+        Err(grammar_error(
+            rule.start(),
+            page_margin_body_error(snapshot, offset_of(rule.start())),
+        ))
     }
 }
-impl<'i> QualifiedRuleParser<'i> for DetachedMarginParser<'i> {
-    type Prelude = ();
-    type QualifiedRule = PageBodyItem;
-    type Error = CssError;
+
+impl<'i> BlockGrammar<'i, Attached<'i>> for MarginBodyParser<'_> {
+    fn declaration(
+        &mut self,
+        declaration: DeclarationUnit<'i>,
+    ) -> Result<Self::Item, GrammarError<'i>> {
+        let at = declaration.start();
+        self.admit(declaration.name(), &DeclarationText::of(&declaration))
+            .map_err(|error| grammar_error(at, error))
+    }
+}
+
+impl MarginBodyParser<'_> {
+    /// Admits the declaration named `name` that lies at `text`.
+    fn admit<'i>(
+        &mut self,
+        name: &str,
+        text: &DeclarationText,
+    ) -> Result<CssPageDeclaration, NativeError<'i>> {
+        let snapshot = self.recovery.source_snapshot();
+        let implicit_closures = self.recovery.check_component_values_from(
+            self.source,
+            text.value_start,
+            "css.declaration",
+        )?;
+        let declaration_start = location_at(snapshot, text.name_start());
+        if CssPageDescriptorKind::from_name(name).is_some() {
+            return Err(property_name_error(declaration_start, name));
+        }
+        let property = page_property_name(name, declaration_start)?;
+        if property.is_some_and(|property| !is_page_margin_property(property)) {
+            return Err(with_property_context(
+                unexpected_at(location_at(snapshot, text.value_start)),
+                name,
+            ));
+        }
+        let parsed = parse_declaration_unit(
+            DeclarationMode::Ordinary,
+            name,
+            text,
+            snapshot,
+            self.recovery.parser_context(),
+        )?;
+        if let Some(violation) = page_declaration_violation(&parsed.body, &parsed.components) {
+            return Err(page_violation_error(
+                &violation,
+                &parsed.components,
+                name,
+                location_at(snapshot, text.end),
+            ));
+        }
+        self.recovery.retain_component_closures(implicit_closures);
+        Ok(CssPageDeclaration::Property(
+            parsed.into_declaration_in_context(DeclarationContext::Page),
+        ))
+    }
+}
+
+/// The error of a rule in a margin box's block, whose contents are declarations
+/// of the properties that apply to the box.
+fn page_margin_body_error<'i>(
+    snapshot: &crate::source::CssSourceSnapshot,
+    offset: usize,
+) -> NativeError<'i> {
+    invalid_at_rule_body_at(
+        snapshot
+            .position_at(offset)
+            .expect("a driver boundary of the source is a character boundary"),
+        location_at(snapshot, offset),
+        "page",
+        "later.rule.page",
+        "page-context margin declarations",
+    )
+}
+
+/// The error of a declaration that applies to a margin box but breaks one of
+/// the additional Page restrictions, at `location` when the violation names no
+/// component.
+fn page_violation_error<'i>(
+    violation: &PageDeclarationViolation<'_>,
+    components: &crate::component::CssComponentValues,
+    name: &str,
+    location: cssparser::SourceLocation,
+) -> NativeError<'i> {
+    let component = violation
+        .component()
+        .or_else(|| first_page_component(components));
+    let error = component.map_or_else(
+        || unexpected_at(location),
+        |component| {
+            crate::diagnostic::error::unexpected_component_value(
+                component,
+                "an admitted Page margin value",
+            )
+        },
+    );
+    with_property_context(error, name)
+}
+
+/// The detached boundary admits only the Page margin branch: an at-rule named
+/// for a margin box, with the block of that box. Other Page-body items never
+/// become a detached margin occurrence.
+struct DetachedMarginParser<'s> {
+    source: &'s str,
+    recovery: RecoveryState,
+    /// What the recovery of the box's block reported.
+    diagnostics: Vec<crate::diagnostic::CssRecoveryDiagnostic>,
+}
+
+impl<'i> RuleGrammar<'i, Attached<'i>> for DetachedMarginParser<'_> {
+    type Item = CssMarginRule;
+    type Error = NativeError<'i>;
+
+    fn at_rule(&mut self, rule: AtRule<'i, Attached<'i>>) -> Result<Self::Item, GrammarError<'i>> {
+        let at = rule.start();
+        self.admit(&rule).map_err(|error| grammar_error(at, error))
+    }
+
+    fn qualified_rule(
+        &mut self,
+        rule: QualifiedRule<'i, Attached<'i>>,
+    ) -> Result<Self::Item, GrammarError<'i>> {
+        // A qualified rule is no margin box; the failed rule's block is
+        // checked for the resources entering it would be charged.
+        let resource = self.recovery.check_failed_rule_block_at(
+            self.source,
+            offset_of(rule.block().start_site()),
+            "css.qualified-rule",
+        );
+        Err(match resource {
+            Some(error) => grammar_error(rule.start(), error),
+            None => SyntaxError::invalid_qualified_rule_error(rule.start()),
+        })
+    }
+}
+
+impl DetachedMarginParser<'_> {
+    fn admit<'i>(
+        &mut self,
+        rule: &AtRule<'i, Attached<'i>>,
+    ) -> Result<CssMarginRule, NativeError<'i>> {
+        let snapshot = self.recovery.source_snapshot();
+        let name = rule.name();
+        let location = location_at(snapshot, offset_of(rule.prelude().start_site()));
+        let prelude = match CssMarginBox::from_name(name) {
+            Some(margin) => rule
+                .prelude()
+                .require_empty()
+                .map(|()| margin)
+                .map_err(|error| native_error(snapshot, &SyntaxError::from(error))),
+            None if name.eq_ignore_ascii_case("counter-style")
+                || name.eq_ignore_ascii_case("page") =>
+            {
+                Err(top_level_only_at_rule_placement(location, name))
+            }
+            None => Err(cssparser::ParseError {
+                kind: cssparser::ParseErrorKind::Basic(
+                    cssparser::BasicParseErrorKind::AtRuleInvalid(cssparser::CowRcStr::from(name)),
+                ),
+                location,
+            }),
+        };
+        let margin = match prelude {
+            Ok(margin) => margin,
+            Err(error) => {
+                // A failed prelude of a rule with a block: the block is
+                // checked for the resources entering it would be charged.
+                let resource = rule.block().and_then(|block| {
+                    self.recovery.check_failed_rule_block_at(
+                        self.source,
+                        offset_of(block.start_site()),
+                        "css.at-rule",
+                    )
+                });
+                return Err(resource.unwrap_or(error));
+            }
+        };
+        let Some(mut block) = rule.block() else {
+            // A margin box has to have its block; the rule driver of a
+            // detached rule, unlike a block's, tells a `;` from the end.
+            let location = location_at(snapshot, offset_of(rule.end()));
+            return Err(match rule.rule_end() {
+                RuleEnd::Semicolon => unexpected_syntax_token(location, Token::Semicolon),
+                _ => unexpected_syntax_end(location),
+            });
+        };
+        let opening = offset_of(block.start_site()).saturating_sub(1);
+        let mut depth =
+            self.recovery
+                .enter_rule_block_at(self.source, opening, "later.rule.page")?;
+        let (declarations, mut recovered) =
+            drive_margin_body(&mut block, self.source, &self.recovery);
+        self.diagnostics.append(&mut recovered);
+        depth.retain();
+        Ok(CssMarginRule::from_parsed(
+            margin,
+            declarations,
+            crate::source::CssSourcePosition::from_byte_offset_in(
+                snapshot.as_str(),
+                offset_of(rule.start()),
+            ),
+        ))
+    }
 }
 
 pub(crate) fn admit_margin_rule(
     source: &str,
     recovery: RecoveryState,
-    envelope: &super::rule_candidate::RuleEnvelope,
 ) -> crate::CssParseReport<Option<CssMarginRule>> {
-    let working_source = crate::tokenization::prepare(source);
-    let mut parser_input = cssparser::ParserInput::new(&working_source);
-    let mut input = Parser::new(&mut parser_input);
+    let snapshot = recovery.source_snapshot().clone();
     let mut parser = DetachedMarginParser {
-        page: PageBodyParser {
-            source,
-            recovery: recovery.clone(),
-            diagnostics: Vec::new(),
-            margin: false,
-        },
+        source,
+        recovery: recovery.clone(),
+        diagnostics: Vec::new(),
     };
-    let admitted =
-        super::syntax_bridge::admit_envelope(source, &mut input, &mut parser, &recovery, envelope);
-    let (margin, mut diagnostics) = match admitted {
-        Ok(PageBodyItem::Margin(margin)) => (Some(margin), parser.page.diagnostics),
-        Ok(PageBodyItem::Declaration(_)) => unreachable!("rule driver cannot emit a declaration"),
+    let rejected = |error| {
+        vec![super::fragments::reject(
+            source,
+            error,
+            crate::diagnostic::CssRecoveryAction::RejectInput,
+        )]
+    };
+    let (margin, mut diagnostics) = match recovery.syntax_document(source) {
+        Ok(document) => match document.root().parse_rule(&mut parser) {
+            Ok(margin) => (Some(margin), std::mem::take(&mut parser.diagnostics)),
+            Err(failed) => (None, rejected(native_error(&snapshot, failed.error()))),
+        },
         Err(error) => (
             None,
-            vec![super::fragments::reject(
-                source,
+            rejected(crate::diagnostic::error::invalid_component_value(
+                location_at(&snapshot, 0),
                 error,
-                crate::diagnostic::CssRecoveryAction::RejectInput,
-            )],
+            )),
         ),
     };
     let margin = if super::recovery::has_resource_failure(&diagnostics) {
@@ -282,7 +586,6 @@ pub(super) fn parse_contents(
                 source,
                 recovery,
                 diagnostics: Vec::new(),
-                margin: false,
             }
         })
         .into_parts();
@@ -363,9 +666,7 @@ impl<'i> AtRuleParser<'i> for PageBodyParser<'i> {
         let location = input.current_source_location();
         if let Some(margin) = CssMarginBox::from_name(name.as_ref()) {
             input.expect_exhausted().map_err(basic)?;
-            if !self.margin {
-                return Ok(PageBodyAtRulePrelude::MarginBox(margin));
-            }
+            return Ok(PageBodyAtRulePrelude::MarginBox(margin));
         }
         while input.next_including_whitespace_and_comments().is_ok() {}
         if name.eq_ignore_ascii_case("counter-style") || name.eq_ignore_ascii_case("page") {
@@ -398,7 +699,7 @@ impl<'i> AtRuleParser<'i> for PageBodyParser<'i> {
                     input,
                     &mut self.diagnostics,
                     self.recovery.clone(),
-                );
+                )?;
                 depth.retain();
                 Ok(PageBodyItem::Margin(CssMarginRule::from_parsed(
                     name,
@@ -464,12 +765,6 @@ impl<'i, 's: 'i> DeclarationParser<'i> for PageBodyParser<'s> {
             self.recovery
                 .check_component_values(self.source, input, "css.declaration")?;
         if let Some(kind) = CssPageDescriptorKind::from_name(name.as_ref()) {
-            if self.margin {
-                return Err(property_name_error(
-                    declaration_start.source_location(),
-                    name.as_ref(),
-                ));
-            }
             let value_start = input.state();
             input.reset(declaration_start);
             input.expect_ident().map_err(basic)?;
@@ -526,19 +821,12 @@ impl<'i, 's: 'i> DeclarationParser<'i> for PageBodyParser<'s> {
             self.recovery.parser_context(),
         )?;
         if let Some(violation) = page_declaration_violation(&parsed.body, &parsed.components) {
-            let component = violation
-                .component()
-                .or_else(|| first_page_component(&parsed.components));
-            let error = component.map_or_else(
-                || unexpected_at(input.current_source_location()),
-                |component| {
-                    crate::diagnostic::error::unexpected_component_value(
-                        component,
-                        "an admitted Page margin value",
-                    )
-                },
-            );
-            return Err(with_property_context(error, name.as_ref()));
+            return Err(page_violation_error(
+                &violation,
+                &parsed.components,
+                name.as_ref(),
+                input.current_source_location(),
+            ));
         }
         self.recovery.retain_component_closures(implicit_closures);
         Ok(PageBodyItem::Declaration(CssPageDeclaration::Property(

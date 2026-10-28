@@ -2190,7 +2190,7 @@ pub(crate) fn invalid_at_rule_block<'i, 't>(
     invalid_at_rule_body_at(position, location, name, production, expectation)
 }
 
-fn invalid_at_rule_body_at<'i>(
+pub(crate) fn invalid_at_rule_body_at<'i>(
     position: CssSourcePosition,
     location: cssparser::SourceLocation,
     name: &str,
@@ -2567,6 +2567,33 @@ pub(crate) fn unexpected_at<'i>(location: cssparser::SourceLocation) -> ParseErr
         location,
         ErrorKind::UnexpectedEnd(CssUnexpectedEndError {
             expectation: EXPECT_DECLARATION_VALUE,
+        }),
+    )
+}
+
+/// The error of a token stream that met `token` where its grammar needed
+/// another, as a cursor that reads tokens one at a time reports it.
+pub(crate) fn unexpected_syntax_token<'i>(
+    location: cssparser::SourceLocation,
+    token: surgeist_css_parser::Token<'_>,
+) -> ParseError<'i, CssError> {
+    error_at(
+        location,
+        ErrorKind::UnexpectedToken(CssUnexpectedTokenError {
+            expectation: EXPECT_CSS_SYNTAX,
+            encountered: CssTokenSummary::from_syntax_token(token),
+        }),
+    )
+}
+
+/// The error of a token stream that ended where its grammar needed a token.
+pub(crate) fn unexpected_syntax_end<'i>(
+    location: cssparser::SourceLocation,
+) -> ParseError<'i, CssError> {
+    error_at(
+        location,
+        ErrorKind::UnexpectedEnd(CssUnexpectedEndError {
+            expectation: EXPECT_CSS_SYNTAX,
         }),
     )
 }

@@ -555,6 +555,16 @@ impl RecoveryState {
         self.enter(source, opening_offset, enclosing_production)
     }
 
+    /// Enters the rule block whose opening token starts at `opening_offset`.
+    pub(super) fn enter_rule_block_at<'i>(
+        &self,
+        source: &str,
+        opening_offset: usize,
+        enclosing_production: &'static str,
+    ) -> Result<RecoveryDepthGuard, ParseError<'i, CssError>> {
+        self.enter(source, opening_offset, enclosing_production)
+    }
+
     /// Current entered structural block depth, including the active rule body.
     #[cfg(test)]
     pub(super) fn structural_depth(&self) -> u32 {
@@ -577,7 +587,21 @@ impl RecoveryState {
         input: &Parser<'i, '_>,
         enclosing_production: &'static str,
     ) -> Result<Vec<usize>, ParseError<'i, CssError>> {
-        let start = input.position().byte_index();
+        self.check_component_values_from(
+            source,
+            input.position().byte_index(),
+            enclosing_production,
+        )
+    }
+
+    /// [`check_component_values`](Self::check_component_values) for a
+    /// declaration value that starts at the byte `start`.
+    pub(super) fn check_component_values_from<'i>(
+        &self,
+        source: &str,
+        start: usize,
+        enclosing_production: &'static str,
+    ) -> Result<Vec<usize>, ParseError<'i, CssError>> {
         let end = scan_nested_tokens(
             source,
             start,
@@ -722,7 +746,17 @@ impl RecoveryState {
         input: &Parser<'i, '_>,
         enclosing_production: &'static str,
     ) -> Option<ParseError<'i, CssError>> {
-        let content_start = input.position().byte_index();
+        self.check_failed_rule_block_at(source, input.position().byte_index(), enclosing_production)
+    }
+
+    /// [`check_failed_rule_block`](Self::check_failed_rule_block) for a failed
+    /// rule whose block contents start at the byte `content_start`.
+    pub(super) fn check_failed_rule_block_at<'i>(
+        &self,
+        source: &str,
+        content_start: usize,
+        enclosing_production: &'static str,
+    ) -> Option<ParseError<'i, CssError>> {
         let opening_offset = content_start.saturating_sub(1);
         if self.depth.get() >= STRUCTURAL_NESTING_LIMIT {
             return Some(nesting_limit(

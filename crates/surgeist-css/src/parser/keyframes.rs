@@ -1,8 +1,12 @@
-use super::property_input::NativeValueRange;
-use cssparser::{
-    AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, ParserState,
-    QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser, Token,
+use super::block_units::{
+    DeclarationUnit, GrammarError, NativeError, drive_units, dropped_unit, grammar_error,
+    location_at, offset_of, refused_declaration,
 };
+use super::declaration_unit::{DeclarationText, parse_declaration_unit};
+use super::property_input::NativeValueRange;
+use super::syntax_types::{Attached, Stream, SyntaxError};
+use cssparser::{AtRuleParser, ParseError, Parser, ParserState, QualifiedRuleParser, Token};
+use surgeist_css_parser::grammar::{AtRule, BlockGrammar, QualifiedRule, RuleGrammar, UnitKind};
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
@@ -11,7 +15,7 @@ use super::values::{
 };
 use super::{
     DeclarationMode, consume_failed_rule_block, is_declaration_recovery_unit,
-    parse_declaration_core, structural_recovery_production, structural_rule_diagnostic,
+    structural_recovery_production, structural_rule_diagnostic,
 };
 use crate::diagnostic::error::{basic, invalid_at_rule_placement, invalid_syntax, unexpected_at};
 use crate::diagnostic::{CssError, CssFeatureId};
@@ -133,66 +137,105 @@ pub(super) fn parse_body<'i>(
     Ok(blocks)
 }
 
+/// The declarations of a keyframe's block, from the native callback that was
+/// handed the block: the contents of the block are the scope.
 pub(super) fn parse_declarations<'i>(
     source: &'i str,
     input: &mut Parser<'i, '_>,
     diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
 ) -> Result<CssKeyframeDeclarationList, ParseError<'i, CssError>> {
+    let numeric =
+        crate::numeric::expression::NumericInputContext::parsed(recovery.source_snapshot());
+    let (declarations, mut recovered) = super::property_input::adapt_native(
+        input,
+        &numeric,
+        NativeValueRange::Scope,
+        |contents, _| Ok(drive_declarations(contents, source, &recovery)),
+    )?;
+    diagnostics.append(&mut recovered);
+    Ok(declarations)
+}
+
+/// Consumes the declarations of a keyframe's block, with the recovery of
+/// Syntax 3 (2026 CRD) §7.1: qualified rules and at-rules are invalid in a
+/// keyframe's `<declaration-list>` and are dropped one by one; the keyframe
+/// block itself survives.
+pub(super) fn drive_declarations<'i>(
+    contents: &mut Stream<'i>,
+    source: &str,
+    recovery: &RecoveryState,
+) -> (
+    CssKeyframeDeclarationList,
+    Vec<crate::diagnostic::CssRecoveryDiagnostic>,
+) {
+    let snapshot = recovery.source_snapshot();
+    let mut grammar = KeyframeDeclarationParser {
+        source,
+        recovery: recovery.clone(),
+    };
     let mut declarations = Vec::new();
-    let mut declaration_parser = KeyframeDeclarationParser { source, recovery };
-    let mut items = RuleBodyParser::new(input, &mut declaration_parser);
-    loop {
-        let progress = RecoveryProgress::record(items.input);
-        let unit_start = super::rule_list::skip_block_contents_trivia(items.input);
-        let Some(item) = items.next() else {
-            break;
+    let mut diagnostics = Vec::new();
+    let mut legacy = KeyframeDeclarationParser {
+        source,
+        recovery: recovery.clone(),
+    };
+    drive_units(contents, &mut grammar, |unit| {
+        let failed = match unit {
+            Ok(declaration) => {
+                declarations.push(declaration);
+                return None;
+            }
+            Err(failed) => failed,
         };
-        // A failed nested rule leaves its block pending; consume it as part
-        // of the dropped unit so the recovery span covers the whole unit.
-        let failed_block_error = item.as_ref().err().and_then(|_| {
-            consume_failed_rule_block(
-                source,
-                items.input,
-                unit_start,
-                &items.parser.recovery,
-                "baseline.rule.keyframes",
-            )
-            .1
-        });
-        let retained = item.is_ok();
-        let progress_outcome = progress.finish(items.input, retained);
-        let unit_end = items.input.position().byte_index();
-        match item {
-            Ok(declaration) => declarations.push(declaration),
-            // Syntax 3 (2026 CRD) §7.1: qualified rules and at-rules are
-            // invalid in a keyframe's `<declaration-list>` and are dropped one
-            // by one; the keyframe block itself survives.
-            Err((error, failed_unit)) => {
-                let action = if is_declaration_recovery_unit(failed_unit) {
-                    crate::diagnostic::CssRecoveryAction::DropDeclaration
-                } else if failed_unit.trim_start().starts_with('@') {
-                    crate::diagnostic::CssRecoveryAction::DropAtRule
-                } else {
-                    crate::diagnostic::CssRecoveryAction::DropQualifiedRule
-                };
-                if let Some(diagnostic) = structural_rule_diagnostic(
-                    source,
-                    failed_block_error.unwrap_or(error),
-                    failed_unit,
-                    unit_start,
-                    unit_end,
-                    action,
-                ) {
-                    diagnostics.push(diagnostic);
+        let mut dropped = dropped_unit(snapshot, source, &failed);
+        if let Some((start, end)) = refused_declaration(&failed) {
+            // The native block parser read the value of a declaration that
+            // step 8 refuses, to its `;`, and reported its grammar's verdict.
+            let text = DeclarationText::read(start, end);
+            let name = match start.token() {
+                Some(surgeist_css_parser::Token::Ident(name)) => name,
+                _ => "",
+            };
+            match legacy.admit(name, &text) {
+                Ok(declaration) => {
+                    declarations.push(declaration);
+                    return Some(end);
                 }
+                Err(error) => dropped.error = error,
             }
         }
-        if progress_outcome == RecoveryLoopOutcome::Terminated {
-            break;
+        // cssparser slices an at-rule whose prelude it rejected before the `;`
+        // or `{` that ended it, and every at-rule is rejected in a keyframe's
+        // block.
+        let text = if dropped.kind == UnitKind::AtRule {
+            dropped.text_to_prelude_end()
+        } else {
+            dropped.text()
+        };
+        // A failed rule's block is checked for the resources a grammar would
+        // have been charged for entering it.
+        let error = dropped
+            .block_contents
+            .and_then(|contents| {
+                recovery.check_failed_rule_block_at(source, contents, "baseline.rule.keyframes")
+            })
+            .unwrap_or(dropped.error);
+        let action = if is_declaration_recovery_unit(text) {
+            crate::diagnostic::CssRecoveryAction::DropDeclaration
+        } else if text.trim_start().starts_with('@') {
+            crate::diagnostic::CssRecoveryAction::DropAtRule
+        } else {
+            crate::diagnostic::CssRecoveryAction::DropQualifiedRule
+        };
+        if let Some(diagnostic) =
+            structural_rule_diagnostic(source, error, text, dropped.start, dropped.end, action)
+        {
+            diagnostics.push(diagnostic);
         }
-    }
-    Ok(CssKeyframeDeclarationList::new(declarations))
+        None
+    });
+    (CssKeyframeDeclarationList::new(declarations), diagnostics)
 }
 
 pub(super) fn parse_detached_rule<'i>(
@@ -328,67 +371,64 @@ fn parse_keyframe_selector<'i, 't>(
     }
 }
 
+/// The grammar of the declarations of a keyframe's block: declarations only,
+/// admitted as the declarations of every other block are, with the keyframe
+/// restrictions of the declaration mode. An at-rule or a qualified rule is not
+/// valid (Syntax 3 (2026 CRD) §5.5.5 reads a unit that is not a declaration
+/// as a qualified rule with a `;` stop token, and §7.1 admits no rule here).
 struct KeyframeDeclarationParser<'s> {
     source: &'s str,
     recovery: RecoveryState,
 }
 
-impl<'i> AtRuleParser<'i> for KeyframeDeclarationParser<'i> {
-    type Prelude = ();
-    type AtRule = CssKeyframeDeclaration;
-    type Error = CssError;
+impl<'i> RuleGrammar<'i, Attached<'i>> for KeyframeDeclarationParser<'_> {
+    type Item = CssKeyframeDeclaration;
+    type Error = NativeError<'i>;
 
-    fn parse_prelude<'t>(
-        &mut self,
-        name: CowRcStr<'i>,
-        input: &mut Parser<'i, 't>,
-    ) -> std::result::Result<Self::Prelude, ParseError<'i, Self::Error>> {
-        Err(invalid_at_rule_placement(
-            input.current_source_location(),
-            name.as_ref(),
-            "a keyframe declaration list",
+    fn at_rule(&mut self, rule: AtRule<'i, Attached<'i>>) -> Result<Self::Item, GrammarError<'i>> {
+        let snapshot = self.recovery.source_snapshot();
+        let location = location_at(snapshot, offset_of(rule.prelude().start_site()));
+        Err(grammar_error(
+            rule.start(),
+            invalid_at_rule_placement(location, rule.name(), "a keyframe declaration list"),
         ))
     }
-}
 
-impl<'i> QualifiedRuleParser<'i> for KeyframeDeclarationParser<'i> {
-    type Prelude = ();
-    type QualifiedRule = CssKeyframeDeclaration;
-    type Error = CssError;
-}
-
-impl<'i> RuleBodyItemParser<'i, CssKeyframeDeclaration, CssError>
-    for KeyframeDeclarationParser<'i>
-{
-    fn parse_declarations(&self) -> bool {
-        true
-    }
-
-    // Syntax 3 (2026 CRD) §5.5.5 reconsumes a failed declaration, and any
-    // other non-at-rule unit, as a nested qualified rule with a `;` stop token.
-    fn parse_qualified(&self) -> bool {
-        true
-    }
-}
-
-impl<'i> DeclarationParser<'i> for KeyframeDeclarationParser<'i> {
-    type Declaration = CssKeyframeDeclaration;
-    type Error = CssError;
-
-    fn parse_value<'t>(
+    fn qualified_rule(
         &mut self,
-        name: CowRcStr<'i>,
-        input: &mut Parser<'i, 't>,
-        declaration_start: &ParserState,
-    ) -> std::result::Result<Self::Declaration, ParseError<'i, Self::Error>> {
-        let implicit_closures =
-            self.recovery
-                .check_component_values(self.source, input, "css.declaration")?;
-        let parsed = parse_declaration_core(
+        rule: QualifiedRule<'i, Attached<'i>>,
+    ) -> Result<Self::Item, GrammarError<'i>> {
+        Err(SyntaxError::invalid_qualified_rule_error(rule.start()))
+    }
+}
+
+impl<'i> BlockGrammar<'i, Attached<'i>> for KeyframeDeclarationParser<'_> {
+    fn declaration(
+        &mut self,
+        declaration: DeclarationUnit<'i>,
+    ) -> Result<Self::Item, GrammarError<'i>> {
+        let at = declaration.start();
+        self.admit(declaration.name(), &DeclarationText::of(&declaration))
+            .map_err(|error| grammar_error(at, error))
+    }
+}
+
+impl KeyframeDeclarationParser<'_> {
+    /// Admits the declaration named `name` that lies at `text`.
+    fn admit<'i>(
+        &mut self,
+        name: &str,
+        text: &DeclarationText,
+    ) -> Result<CssKeyframeDeclaration, NativeError<'i>> {
+        let implicit_closures = self.recovery.check_component_values_from(
+            self.source,
+            text.value_start,
+            "css.declaration",
+        )?;
+        let parsed = parse_declaration_unit(
             DeclarationMode::Keyframe,
             name,
-            input,
-            declaration_start,
+            text,
             self.recovery.source_snapshot(),
             self.recovery.parser_context(),
         )?;
