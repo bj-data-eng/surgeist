@@ -681,8 +681,8 @@ pub enum TextNumericError {
     OutOfRange,
 }
 
-pub(crate) fn shaping_refused(reason: harfrust::ShapingRefusal) -> Error {
-    use harfrust::ShapingRefusal as Provider;
+pub(crate) fn shaping_refused(reason: surgeist_shaper::ShapingRefusal) -> Error {
+    use surgeist_shaper::ShapingRefusal as Provider;
     let reason = match reason {
         Provider::GrowthLimit => ShapingRefusalReason::GrowthLimit,
         Provider::WorkLimit => ShapingRefusalReason::WorkLimit,

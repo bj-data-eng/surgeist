@@ -17,6 +17,11 @@ Shared source does not make every model or feature combination interoperable.
 Dependencies remain acyclic, each semantic phase has one owner, and authored
 symbolic values remain unresolved until that owner has the required context.
 
+[Shaper](../crates/surgeist-shaper/README.md) owns lower-level substitution,
+positioning and provider completion/custody. Text consumes it directly and owns
+its shaping adapter, font selection, paragraph interpretation and text/line
+composition. Shaper does not depend on Text, Layout, Runtime or the facade.
+
 ### Language Values, Authored State And Live Identity
 
 [CSS](../crates/surgeist-css/README.md) owns authored syntax, recovery and

@@ -2194,7 +2194,7 @@ This is a mechanism-level extraction inventory proven by the installed 0.9 sourc
 | --- | --- | --- |
 | `analysis/mod.rs`, `analysis/cluster.rs`, `bidi.rs` | Unicode/cluster analysis and bidi facts. | Additional CSS feature semantics stay in their existing issues. |
 | `resolve/mod.rs`, `resolve/range.rs`, relevant `style/` conversion | Font-family, feature/variation/style resolution for the current owned source model. | Tree builder and upstream style front door are not required; adapt `setting.rs`/`inline_box.rs` conversions to the existing owned setting/inline-box values instead of retaining parallel public models. |
-| `shape/mod.rs`, `shape/cache.rs`, `convert.rs` | Harfrust buffers/plans/instances, fallback shaping, source clusters and safe provider conversions. | Replace external-input unwraps and compact-offset assumptions. |
+| `shape/mod.rs`, `shape/cache.rs`, `convert.rs` | Shaper buffers/plans/instances, fallback shaping, source clusters and safe provider conversions. | Replace external-input unwraps and compact-offset assumptions. |
 | `context.rs`, `builder.rs`, `font.rs` | Necessary preparation orchestration and safe Fontique calls, folded into existing `System`. | Do not ingest parallel public builder/context/font APIs. |
 | `layout/data.rs`, `layout/run.rs`, cluster/line access mechanisms | Shaped storage, normalized coordinates, effective font metrics, cluster/source mapping and finalized line access. | Separate shaped data from line placement; do not preserve provider-chosen composed wrapping. |
 | `layout/line_break.rs`, `layout/alignment.rs` | Selected-line finalization/line-edge and glyph-adjustment mechanisms; required simple standalone chooser subset. | Composed break/float choice, box allocation and placement stay in layout. Consolidate duplicated L2 reorder. |
@@ -2207,7 +2207,7 @@ The baseline is Parley `0.9.0`, crates.io checksum `8fad031076f48f0d4d85ce1aea9b
 | Provider | Resolved version | Text requested features (`default-features = false`) | Role |
 | --- | --- | --- | --- |
 | Fontique | 0.9.0 | `std`, `system` | Safe font catalogue/matching/fallback and byte resources; native implementation remains external. |
-| Harfrust | 0.6.2 | `std` | Shaping. Parley 0.9 is not Swash-backed. |
+| [surgeist-shaper](../crates/surgeist-shaper/README.md) | 0.1.0 (Harfrust 0.6.2 origin) | `std` | Owned shaping provider. Parley 0.9 is not Swash-backed. |
 | Skrifa | 0.42.1 | `std` | Same-instance font/outline metrics. Render independently owns its Skrifa feature needs. |
 | ICU normalizer/properties/segmenter | 2.2.0 each | `compiled_data` | Current Unicode analysis data. Segmenter's `auto`/LSTM feature is not implied by current Parley behavior. |
 | Parley Data | 0.9.0 | `baked` | Unicode analysis data; package use does not preserve the Parley intermediary. |

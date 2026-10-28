@@ -59,14 +59,14 @@ This product depends on Fontique, distributed by the Parley Authors:
 Fontique supplies safe catalogue, registration and font selection interfaces.
 Its native implementation remains an external dependency.
 
-### harfrust 0.6.2
+### surgeist-shaper 0.1.0 (Harfrust 0.6.2 origin)
 
-This product depends on the maintained Harfrust source in this repository:
+This product depends directly on the owned Shaper crate, derived from Harfrust:
 
 * License: [MIT](licenses/harfrust/LICENSE)
 * Homepage: [Harfrust](https://github.com/harfbuzz/harfrust)
 * Additional material: [Unicode license](licenses/harfrust/UNICODE-LICENSE)
-* Exact source and modifications: [provider provenance](../../vendor/harfrust/PROVENANCE.md)
+* Exact source and modifications: [provider provenance](../surgeist-shaper/PROVENANCE.md)
 
 Text consumes its safe shaping interface and explicit completion/refusal status.
 

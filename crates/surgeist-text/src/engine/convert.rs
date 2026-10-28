@@ -17,7 +17,7 @@ pub(crate) fn script_to_fontique(
         .unwrap_or(fontique::Script::UNKNOWN)
 }
 
-pub(crate) fn script_to_harfrust(script: fontique::Script) -> harfrust::Script {
-    harfrust::Script::from_iso15924_tag(harfrust::Tag::new(&script.to_bytes()))
-        .unwrap_or(harfrust::script::UNKNOWN)
+pub(crate) fn script_to_shaper(script: fontique::Script) -> surgeist_shaper::Script {
+    surgeist_shaper::Script::from_iso15924_tag(surgeist_shaper::Tag::new(&script.to_bytes()))
+        .unwrap_or(surgeist_shaper::script::UNKNOWN)
 }
