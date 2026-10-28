@@ -808,3 +808,126 @@ fn native_frames_content_actual_cache_replay_and_failed_publication_f32() {
 fn native_frames_content_actual_cache_replay_and_failed_publication_f64() {
     frames_content_and_replay::<f64>();
 }
+
+fn physical_none_signed_margins<S: l::LayoutScalar>() {
+    let font = fixture();
+    let parent = super::parent(&font.bytes);
+    let empty = child_input::<S>();
+    let qualifier = Host::new(empty.clone());
+    let qualified = l::compute_layout(
+        &qualifier,
+        0,
+        l::LayoutRootRequestOf::viewport(available(6.0, 14.0)).unwrap(),
+    )
+    .unwrap();
+    let pair = node(qualified.unrounded_entries(), 0)
+        .named_baselines
+        .get(l::BaselineName::Central);
+    assert_eq!(
+        (pair.first(), pair.last()),
+        (l::BaselineFactOf::Absent, l::BaselineFactOf::Absent)
+    );
+    for (mode, cross) in [
+        (l::WritingMode::VerticalRl, 32.0),
+        (l::WritingMode::VerticalLr, 2.0),
+    ] {
+        let mut input = empty.clone();
+        input.margin = l::Edges {
+            left: margin(-2.0),
+            right: margin(4.0),
+            top: margin(-3.0),
+            bottom: margin(1.0),
+        };
+        let mut scene = make_scene::<S>(&parent, mode, (40.0, 20.0), input, None);
+        scene.host.change(0, |input| {
+            input.inline_baseline_context = l::InlineBaselineContext::Physical;
+        });
+        let batch = run(&scene, available(40.0, 20.0), &[]).unwrap();
+        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+            assert_eq!(
+                node(entries, 0).named_baselines,
+                l::NamedBaselinesOf::unknown()
+            );
+            let child = node(entries, 2);
+            assert_eq!(child.size, l::Size::new(n(6.0), n(14.0)));
+            assert_eq!(child.location, l::Point::new(n(cross - 2.0), n(1.0)));
+            let pair = child.named_baselines.get(l::BaselineName::Central);
+            assert_eq!(
+                (pair.first(), pair.last()),
+                (l::BaselineFactOf::Absent, l::BaselineFactOf::Absent)
+            );
+        }
+        let binding = &scene.bindings[0];
+        atomic_rect(&batch, binding, t::Rect::new(cross - 2.0, 1.0, 6.0, 14.0));
+        let lines = receipts(&batch, binding);
+        assert_eq!(lines.len(), 1);
+        let line = &lines[&0];
+        assert_eq!(
+            (
+                line.feedback().advance,
+                line.feedback().baseline,
+                line.feedback().line_height
+            ),
+            (20.0, 8.0, 10.0)
+        );
+        let slots = line.atomic_slots().collect::<Vec<_>>();
+        assert_eq!(slots.len(), 1);
+        assert_eq!(slots[0].occurrence, binding.atomics[0].occurrence);
+        assert_eq!(slots[0].origin, t::Point::new(4.0, 8.0));
+        let t::AtomicLineAllocation::InFlow {
+            flow, alignment, ..
+        } = slots[0].allocation
+        else {
+            panic!("actual empty child must retain its InFlow allocation");
+        };
+        assert_eq!(alignment, t::LineBoxAlignment::Baseline);
+        assert_eq!(
+            (
+                flow.advance,
+                flow.occupied_start,
+                flow.occupied_end,
+                flow.before_baseline,
+                flow.after_baseline
+            ),
+            (12.0, -3.0, 12.0, 8.0, 0.0)
+        );
+        let text = placed(&batch, 0);
+        assert_eq!(text.lines()[0].baseline(), cross);
+        assert_eq!(
+            text.lines()[0].bounds(),
+            t::Rect::new(cross - 2.0, 0.0, 10.0, 20.0)
+        );
+        assert_eq!(
+            text.run_views()
+                .flat_map(|run| run
+                    .glyphs()
+                    .map(|g| run.origin().y + g.pen())
+                    .collect::<Vec<_>>())
+                .collect::<Vec<_>>(),
+            [0.0, 16.0]
+        );
+        for row in batch.unrounded_inline_fragments() {
+            let owner = match row.owner() {
+                l::InlineFragmentOwner::Node(node) if [1, 3].contains(node) => *node,
+                _ => continue,
+            };
+            let fragment = row.fragment();
+            assert_eq!(fragment.baseline(), l::Point::new(n(cross), n(0.0)));
+            let rect = fragment.rect().unwrap();
+            assert_eq!(
+                rect.origin(),
+                l::Point::new(n(cross - 2.0), n(if owner == 1 { 0.0 } else { 16.0 }))
+            );
+            assert_eq!(rect.size(), l::Size::new(n(4.0), n(4.0)));
+        }
+    }
+}
+
+#[test]
+fn native_physical_none_reference_keeps_signed_margin_edge_f32() {
+    physical_none_signed_margins::<f32>();
+}
+#[test]
+fn native_physical_none_reference_keeps_signed_margin_edge_f64() {
+    physical_none_signed_margins::<f64>();
+}
