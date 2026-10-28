@@ -1,0 +1,351 @@
+{
+  "schema_version": 1,
+  "purpose": "Reviewed acquisition evidence for an explicit WPT css-syntax test subset; not a Git tree attestation.",
+  "repository": "https://github.com/web-platform-tests/wpt.git",
+  "revision": "ddcca5943fd41232d42149aaa19d9a04c5651b18",
+  "commit_url": "https://github.com/web-platform-tests/wpt/commit/ddcca5943fd41232d42149aaa19d9a04c5651b18",
+  "commit_api_url": "https://api.github.com/repos/web-platform-tests/wpt/commits/ddcca5943fd41232d42149aaa19d9a04c5651b18",
+  "commit_committer_date": "2026-09-10T01:09:39Z",
+  "selection_cutoff": "2026-09-10T02:16:24Z",
+  "declared_git_tree": "c86ffada3bb6b36203cbb7ea66d59fb0c93a3aa6",
+  "retrieval": "Installed curl over HTTPS with certificate validation; per-file immutable raw URL; no JavaScript/browser execution.",
+  "selection": "The 23 css/css-syntax tests that the pinned CSS Syntax 3 edition cites outside css/css-syntax/charset/, plus the upstream license. The 21 charset/* tests are not acquired: their observables are HTTP headers and HTML documents. The tests load only the shared /resources/testharness.js and /resources/testharnessreport.js, which are not acquired and are never executed.",
+  "license": {
+    "path": "LICENSE.md",
+    "spdx": "BSD-3-Clause",
+    "copyright": "Copyright © web-platform-tests contributors",
+    "ancestor_directories_checked": [
+      "/",
+      "css",
+      "css/css-syntax"
+    ],
+    "ancestor_directories_basis": "Inherited from the record of the sibling corpus crates/surgeist-css/tests/corpus/wpt/acquisition.json, which checked these directories at the same revision; not repeated here.",
+    "other_applicable_legal_files_found": []
+  },
+  "files": [
+    {
+      "path": "LICENSE.md",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/LICENSE.md",
+      "sha256": "5fac07febb0e2a97fb0d7b0def149ec08b642e1ba4b9c345283ab1cbd2af6570",
+      "bytes": 1500,
+      "kind": "license",
+      "licenses": [],
+      "explicit_authors": []
+    },
+    {
+      "path": "css/css-syntax/anb-parsing.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-syntax/anb-parsing.html",
+      "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+      "bytes": 3336,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": [
+        {
+          "title": "Tab Atkins-Bittner"
+        }
+      ]
+    },
+    {
+      "path": "css/css-syntax/anb-serialization.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-syntax/anb-serialization.html",
+      "sha256": "9016b296ae079a56c21233513ac8f0fd5223837c934c37e6541715fd47a09500",
+      "bytes": 1397,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": [
+        {
+          "title": "Tab Atkins-Bittner"
+        }
+      ]
+    },
+    {
+      "path": "css/css-syntax/at-rule-in-declaration-list.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-syntax/at-rule-in-declaration-list.html",
+      "sha256": "00093c4749ae4a24fa4fffbe5cd3f881f7b4a0f17dff3558a7089fa82d07feaa",
+      "bytes": 1844,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": []
+    },
+    {
+      "path": "css/css-syntax/cdc-vs-ident-tokens.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-syntax/cdc-vs-ident-tokens.html",
+      "sha256": "5f52d414359c7e39d49e356c84af9be914f336926d31ddb94321978131d5edf9",
+      "bytes": 662,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": [
+        {
+          "title": "Tab Atkins-Bittner"
+        }
+      ]
+    },
+    {
+      "path": "css/css-syntax/charset-is-not-a-rule.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-syntax/charset-is-not-a-rule.html",
+      "sha256": "17c76572cdb4c09b6efc78be51648b2e2df32ba4f669cdff34f1ce93c54c94d9",
+      "bytes": 559,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": [
+        {
+          "title": "Tab Atkins-Bittner"
+        }
+      ]
+    },
+    {
+      "path": "css/css-syntax/custom-property-rule-ambiguity.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-syntax/custom-property-rule-ambiguity.html",
+      "sha256": "fe7b5a092b043dcd195af19a62f896a256ab5b2b1f9787d80a836eb5c5dea034",
+      "bytes": 2723,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": []
+    },
+    {
+      "path": "css/css-syntax/decimal-points-in-numbers.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-syntax/decimal-points-in-numbers.html",
+      "sha256": "fb28315244b2e1da0277b9e5d20bcd0470a3a11bd0cfc6b531fd3b072df859ed",
+      "bytes": 1710,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": [
+        {
+          "title": "Tab Atkins-Bittner"
+        }
+      ]
+    },
+    {
+      "path": "css/css-syntax/declarations-trim-whitespace.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-syntax/declarations-trim-whitespace.html",
+      "sha256": "af6e5414e18c8ce42c3d0f8614837493e7495b5a7f8f84f8bddb9d2654d4c62d",
+      "bytes": 1975,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": [
+        {
+          "title": "Tab Atkins-Bittner"
+        }
+      ]
+    },
+    {
+      "path": "css/css-syntax/escaped-eof.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-syntax/escaped-eof.html",
+      "sha256": "dec0d40911d7247999dbb2866c5a58b7a884198285dd766bf55d5ce468c8cff2",
+      "bytes": 1730,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": [
+        {
+          "title": "Tab Atkins-Bittner"
+        }
+      ]
+    },
+    {
+      "path": "css/css-syntax/ident-three-code-points.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-syntax/ident-three-code-points.html",
+      "sha256": "322c18b47b5ad84f3ed48523ffc7936f2a82922e07beb4cd1f51ce81cbdcfe7b",
+      "bytes": 1754,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": [
+        {
+          "title": "Greg Whitworth",
+          "href": "gwhit@microsoft.com"
+        }
+      ]
+    },
+    {
+      "path": "css/css-syntax/inclusive-ranges.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-syntax/inclusive-ranges.html",
+      "sha256": "1564c7326e163a1af28b4dee6ba83a1806b6e75c150c215fc1bd1598b2ee16b6",
+      "bytes": 1823,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": [
+        {
+          "title": "Tab Atkins-Bittner"
+        }
+      ]
+    },
+    {
+      "path": "css/css-syntax/input-preprocessing.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-syntax/input-preprocessing.html",
+      "sha256": "8792806053c83b90517e2c4b64fec98ba8b6146e15f19e1fa1078694aace6aa0",
+      "bytes": 1311,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": [
+        {
+          "title": "Tab Atkins-Bittner"
+        }
+      ]
+    },
+    {
+      "path": "css/css-syntax/invalid-nested-rules.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-syntax/invalid-nested-rules.html",
+      "sha256": "fe53ac01f159378c2e0288ce7250ac541c9ee8cea2850cf551292b3dfb000086",
+      "bytes": 726,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": []
+    },
+    {
+      "path": "css/css-syntax/non-ascii-codepoints.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-syntax/non-ascii-codepoints.html",
+      "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+      "bytes": 2179,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": [
+        {
+          "title": "Tab Atkins-Bittner"
+        }
+      ]
+    },
+    {
+      "path": "css/css-syntax/serialize-consecutive-tokens.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-syntax/serialize-consecutive-tokens.html",
+      "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+      "bytes": 4748,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": [
+        {
+          "title": "Tab Atkins-Bittner"
+        }
+      ]
+    },
+    {
+      "path": "css/css-syntax/serialize-escape-identifiers.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-syntax/serialize-escape-identifiers.html",
+      "sha256": "8dc1a23f3b52255ac0749c25b3bb269660165c00be5dd0f20c9762cafad8f498",
+      "bytes": 1134,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": []
+    },
+    {
+      "path": "css/css-syntax/trailing-braces.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-syntax/trailing-braces.html",
+      "sha256": "279e348aa2dfdc33507d6fd07f59ecec7b9a5f9cd43707c51d0d1168b6e29f02",
+      "bytes": 546,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": []
+    },
+    {
+      "path": "css/css-syntax/unclosed-constructs.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-syntax/unclosed-constructs.html",
+      "sha256": "c723813cc24a16220ac06632f076bf779fea06687ec67c91ac9ff42fe19e0426",
+      "bytes": 857,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": [
+        {
+          "title": "Tab Atkins-Bittner"
+        }
+      ]
+    },
+    {
+      "path": "css/css-syntax/unclosed-url-at-eof.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-syntax/unclosed-url-at-eof.html",
+      "sha256": "b4dbc9b5aa113d06ba8627bc1fdc0abd9b669ccebc399c81d8f07889e135f2ca",
+      "bytes": 1099,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": [
+        {
+          "title": "Tab Atkins-Bittner"
+        }
+      ]
+    },
+    {
+      "path": "css/css-syntax/url-whitespace-consumption.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-syntax/url-whitespace-consumption.html",
+      "sha256": "de6b0b77b042d25cc5c9746f15a0a7743d9086d8f116f1d71f81a63414b71f85",
+      "bytes": 965,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": [
+        {
+          "title": "Tab Atkins-Bittner"
+        }
+      ]
+    },
+    {
+      "path": "css/css-syntax/var-with-blocks.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-syntax/var-with-blocks.html",
+      "sha256": "af3956010a00321e51159d67f92bf7554ca79881c78de745ea2c5ccef91620bc",
+      "bytes": 6061,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": []
+    },
+    {
+      "path": "css/css-syntax/whitespace.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-syntax/whitespace.html",
+      "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+      "bytes": 2183,
+      "kind": "source",
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "explicit_authors": [
+        {
+          "title": "Tab Atkins-Bittner"
+        }
+      ]
+    }
+  ],
+  "cited_but_absent_at_revision": [
+    {
+      "path": "css/css-syntax/parse-invalid-input.html",
+      "url": "https://raw.githubusercontent.com/web-platform-tests/wpt/ddcca5943fd41232d42149aaa19d9a04c5651b18/css/css-syntax/parse-invalid-input.html",
+      "http_status": 404,
+      "cited_by": "references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md"
+    }
+  ]
+}

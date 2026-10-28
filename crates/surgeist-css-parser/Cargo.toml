@@ -14,4 +14,6 @@ path = "src/lib.rs"
 
 [dev-dependencies]
 cssparser = "=0.37.0"
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.145"
 surgeist-fuzz = { path = "../surgeist-fuzz", features = ["property"] }

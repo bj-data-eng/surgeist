@@ -1,0 +1,293 @@
+{
+  "schema_version": 1,
+  "source_revision": "ddcca5943fd41232d42149aaa19d9a04c5651b18",
+  "assertion_kind": "code-point-is-not-a-whitespace-token",
+  "cases": [
+    {
+      "id": "not-whitespace-000b",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\u000bb",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    },
+    {
+      "id": "not-whitespace-0085",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\u0085b",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    },
+    {
+      "id": "not-whitespace-00a0",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\u00a0b",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    },
+    {
+      "id": "not-whitespace-1680",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\u1680b",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    },
+    {
+      "id": "not-whitespace-2000",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\u2000b",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    },
+    {
+      "id": "not-whitespace-2001",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\u2001b",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    },
+    {
+      "id": "not-whitespace-2002",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\u2002b",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    },
+    {
+      "id": "not-whitespace-2003",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\u2003b",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    },
+    {
+      "id": "not-whitespace-2004",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\u2004b",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    },
+    {
+      "id": "not-whitespace-2005",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\u2005b",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    },
+    {
+      "id": "not-whitespace-2006",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\u2006b",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    },
+    {
+      "id": "not-whitespace-2007",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\u2007b",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    },
+    {
+      "id": "not-whitespace-2008",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\u2008b",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    },
+    {
+      "id": "not-whitespace-2009",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\u2009b",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    },
+    {
+      "id": "not-whitespace-200a",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\u200ab",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    },
+    {
+      "id": "not-whitespace-2928",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\u2928b",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    },
+    {
+      "id": "not-whitespace-2029",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\u2029b",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    },
+    {
+      "id": "not-whitespace-202f",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\u202fb",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    },
+    {
+      "id": "not-whitespace-205f",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\u205fb",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    },
+    {
+      "id": "not-whitespace-3000",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\u3000b",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    },
+    {
+      "id": "not-whitespace-180e",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\u180eb",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    },
+    {
+      "id": "not-whitespace-200b",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\u200bb",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    },
+    {
+      "id": "not-whitespace-200c",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\u200cb",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    },
+    {
+      "id": "not-whitespace-200d",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\u200db",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    },
+    {
+      "id": "not-whitespace-2060",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\u2060b",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    },
+    {
+      "id": "not-whitespace-feff",
+      "source": {
+        "path": "css/css-syntax/whitespace.html",
+        "sha256": "a0e5681545a109760025d0bf7e919c251747a5c09febbe705d4f6b322647fe51",
+        "line": 53,
+        "case": "var notWhitespace = [0xb, 0x85, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2928, 0x2029, 0x202f, 0x205f, 0x3000, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0xfeff];"
+      },
+      "input": ".a\ufeffb",
+      "remainder": "That the selector is invalid or matches another element is a selector result."
+    }
+  ]
+}

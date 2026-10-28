@@ -441,6 +441,15 @@ The CSS crate also includes an explicit CSS source subset at revision
 identify the selected files and retained authorship. This subset uses the
 preserved [BSD-3-Clause license](crates/surgeist-css/tests/corpus/wpt/source/LICENSE.md).
 
+The CSS Syntax parser crate packages 22 `css/css-syntax` WPT test files from the
+same revision as test fixtures, with reviewed data adaptations. Its
+[corpus guide](crates/surgeist-css-parser/tests/corpus/wpt/README.md) and
+[acquisition record](crates/surgeist-css-parser/tests/corpus/wpt/acquisition.json)
+identify the selected files and retained authorship, and its
+[crate notice](crates/surgeist-css-parser/NOTICE.md) records the packaged
+attribution. They use the preserved
+[BSD-3-Clause license](crates/surgeist-css-parser/tests/corpus/wpt/source/LICENSE.md).
+
 * License: [BSD-3-Clause](licenses/web-platform-tests/LICENSE.md), with [CC0-1.0](licenses/web-platform-tests/legalcode.txt) for individually dedicated source material
 * Homepage: [Web Platform Tests](https://web-platform-tests.org)
 * Source authors and individual dedications: [upstream notices](licenses/web-platform-tests/NOTICE.md)
@@ -502,7 +511,7 @@ transitive binary-release inventory.
 | surgeist-animation | [NOTICE.md](crates/surgeist-animation/NOTICE.md) |
 | surgeist-color | [NOTICE.md](crates/surgeist-color/NOTICE.md) |
 | surgeist-css | [NOTICE.md](crates/surgeist-css/NOTICE.md) |
-| surgeist-css-parser | [MIT License](LICENSE); authored in this repository |
+| surgeist-css-parser | [NOTICE.md](crates/surgeist-css-parser/NOTICE.md) |
 | surgeist-cssom | [MIT License](LICENSE); authored in this repository |
 | surgeist-dialog | [LICENSE](crates/surgeist-dialog/LICENSE); no separate notice |
 | surgeist-dom | [MIT License](LICENSE); authored in this repository |

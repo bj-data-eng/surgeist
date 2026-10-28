@@ -1,0 +1,1138 @@
+{
+  "schema_version": 1,
+  "source_revision": "ddcca5943fd41232d42149aaa19d9a04c5651b18",
+  "assertion_kind": "anb-recognition-and-serialization",
+  "cases": [
+    {
+      "id": "anb-parsing-001",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 32,
+        "case": "testANB(\"odd\", \"2n+1\");"
+      },
+      "input": "odd",
+      "expected": "2n+1",
+      "a": 2,
+      "b": 1
+    },
+    {
+      "id": "anb-parsing-002",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 33,
+        "case": "testANB(\"even\", \"2n\");"
+      },
+      "input": "even",
+      "expected": "2n",
+      "a": 2,
+      "b": 0
+    },
+    {
+      "id": "anb-parsing-003",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 35,
+        "case": "testANB(\"1\", \"1\");"
+      },
+      "input": "1",
+      "expected": "1",
+      "a": 0,
+      "b": 1
+    },
+    {
+      "id": "anb-parsing-004",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 36,
+        "case": "testANB(\"+1\", \"1\");"
+      },
+      "input": "+1",
+      "expected": "1",
+      "a": 0,
+      "b": 1
+    },
+    {
+      "id": "anb-parsing-005",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 37,
+        "case": "testANB(\"-1\", \"-1\");"
+      },
+      "input": "-1",
+      "expected": "-1",
+      "a": 0,
+      "b": -1
+    },
+    {
+      "id": "anb-parsing-006",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 40,
+        "case": "testANB(\"5n\", \"5n\");"
+      },
+      "input": "5n",
+      "expected": "5n",
+      "a": 5,
+      "b": 0
+    },
+    {
+      "id": "anb-parsing-007",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 41,
+        "case": "testANB(\"5N\", \"5n\");"
+      },
+      "input": "5N",
+      "expected": "5n",
+      "a": 5,
+      "b": 0
+    },
+    {
+      "id": "anb-parsing-008",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 43,
+        "case": "testANB(\"+n\", \"n\");"
+      },
+      "input": "+n",
+      "expected": "n",
+      "a": 1,
+      "b": 0
+    },
+    {
+      "id": "anb-parsing-009",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 44,
+        "case": "testANB(\"n\", \"n\");"
+      },
+      "input": "n",
+      "expected": "n",
+      "a": 1,
+      "b": 0
+    },
+    {
+      "id": "anb-parsing-010",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 45,
+        "case": "testANB(\"N\", \"n\");"
+      },
+      "input": "N",
+      "expected": "n",
+      "a": 1,
+      "b": 0
+    },
+    {
+      "id": "anb-parsing-011",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 46,
+        "case": "testANB(\"+ n\", \"parse error\");"
+      },
+      "input": "+ n",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-012",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 48,
+        "case": "testANB(\"-n\", \"-n\");"
+      },
+      "input": "-n",
+      "expected": "-n",
+      "a": -1,
+      "b": 0
+    },
+    {
+      "id": "anb-parsing-013",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 49,
+        "case": "testANB(\"-N\", \"-n\");"
+      },
+      "input": "-N",
+      "expected": "-n",
+      "a": -1,
+      "b": 0
+    },
+    {
+      "id": "anb-parsing-014",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 52,
+        "case": "testANB(\"5n-5\", \"5n-5\");"
+      },
+      "input": "5n-5",
+      "expected": "5n-5",
+      "a": 5,
+      "b": -5
+    },
+    {
+      "id": "anb-parsing-015",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 54,
+        "case": "testANB(\"+n-5\", \"n-5\");"
+      },
+      "input": "+n-5",
+      "expected": "n-5",
+      "a": 1,
+      "b": -5
+    },
+    {
+      "id": "anb-parsing-016",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 55,
+        "case": "testANB(\"n-5\", \"n-5\");"
+      },
+      "input": "n-5",
+      "expected": "n-5",
+      "a": 1,
+      "b": -5
+    },
+    {
+      "id": "anb-parsing-017",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 56,
+        "case": "testANB(\"+ n-5\", \"parse error\");"
+      },
+      "input": "+ n-5",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-018",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 58,
+        "case": "testANB(\"-n-5\", \"-n-5\");"
+      },
+      "input": "-n-5",
+      "expected": "-n-5",
+      "a": -1,
+      "b": -5
+    },
+    {
+      "id": "anb-parsing-019",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 61,
+        "case": "testANB(\"5n +5\", \"5n+5\");"
+      },
+      "input": "5n +5",
+      "expected": "5n+5",
+      "a": 5,
+      "b": 5
+    },
+    {
+      "id": "anb-parsing-020",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 62,
+        "case": "testANB(\"5n -5\", \"5n-5\");"
+      },
+      "input": "5n -5",
+      "expected": "5n-5",
+      "a": 5,
+      "b": -5
+    },
+    {
+      "id": "anb-parsing-021",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 64,
+        "case": "testANB(\"+n +5\", \"n+5\");"
+      },
+      "input": "+n +5",
+      "expected": "n+5",
+      "a": 1,
+      "b": 5
+    },
+    {
+      "id": "anb-parsing-022",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 65,
+        "case": "testANB(\"n +5\", \"n+5\");"
+      },
+      "input": "n +5",
+      "expected": "n+5",
+      "a": 1,
+      "b": 5
+    },
+    {
+      "id": "anb-parsing-023",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 66,
+        "case": "testANB(\"+n -5\", \"n-5\");"
+      },
+      "input": "+n -5",
+      "expected": "n-5",
+      "a": 1,
+      "b": -5
+    },
+    {
+      "id": "anb-parsing-024",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 67,
+        "case": "testANB(\"+ n +5\", \"parse error\");"
+      },
+      "input": "+ n +5",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-025",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 68,
+        "case": "testANB(\"n 5\", \"parse error\");"
+      },
+      "input": "n 5",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-026",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 70,
+        "case": "testANB(\"-n +5\", \"-n+5\");"
+      },
+      "input": "-n +5",
+      "expected": "-n+5",
+      "a": -1,
+      "b": 5
+    },
+    {
+      "id": "anb-parsing-027",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 71,
+        "case": "testANB(\"-n -5\", \"-n-5\");"
+      },
+      "input": "-n -5",
+      "expected": "-n-5",
+      "a": -1,
+      "b": -5
+    },
+    {
+      "id": "anb-parsing-028",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 72,
+        "case": "testANB(\"-n 5\", \"parse error\");"
+      },
+      "input": "-n 5",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-029",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 75,
+        "case": "testANB(\"5n- 5\", \"5n-5\");"
+      },
+      "input": "5n- 5",
+      "expected": "5n-5",
+      "a": 5,
+      "b": -5
+    },
+    {
+      "id": "anb-parsing-030",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 76,
+        "case": "testANB(\"5n- -5\", \"parse error\");"
+      },
+      "input": "5n- -5",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-031",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 77,
+        "case": "testANB(\"5n- +5\", \"parse error\");"
+      },
+      "input": "5n- +5",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-032",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 78,
+        "case": "testANB(\"-5n- 5\", \"-5n-5\");"
+      },
+      "input": "-5n- 5",
+      "expected": "-5n-5",
+      "a": -5,
+      "b": -5
+    },
+    {
+      "id": "anb-parsing-033",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 80,
+        "case": "testANB(\"+n- 5\", \"n-5\");"
+      },
+      "input": "+n- 5",
+      "expected": "n-5",
+      "a": 1,
+      "b": -5
+    },
+    {
+      "id": "anb-parsing-034",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 81,
+        "case": "testANB(\"n- 5\", \"n-5\");"
+      },
+      "input": "n- 5",
+      "expected": "n-5",
+      "a": 1,
+      "b": -5
+    },
+    {
+      "id": "anb-parsing-035",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 82,
+        "case": "testANB(\"+ n- 5\", \"parse error\");"
+      },
+      "input": "+ n- 5",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-036",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 83,
+        "case": "testANB(\"n- +5\", \"parse error\");"
+      },
+      "input": "n- +5",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-037",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 84,
+        "case": "testANB(\"n- -5\", \"parse error\");"
+      },
+      "input": "n- -5",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-038",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 86,
+        "case": "testANB(\"-n- 5\", \"-n-5\");"
+      },
+      "input": "-n- 5",
+      "expected": "-n-5",
+      "a": -1,
+      "b": -5
+    },
+    {
+      "id": "anb-parsing-039",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 87,
+        "case": "testANB(\"-n- +5\", \"parse error\");"
+      },
+      "input": "-n- +5",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-040",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 88,
+        "case": "testANB(\"-n- -5\", \"parse error\");"
+      },
+      "input": "-n- -5",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-041",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 91,
+        "case": "testANB(\"5n + 5\", \"5n+5\");"
+      },
+      "input": "5n + 5",
+      "expected": "5n+5",
+      "a": 5,
+      "b": 5
+    },
+    {
+      "id": "anb-parsing-042",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 92,
+        "case": "testANB(\"5n - 5\", \"5n-5\");"
+      },
+      "input": "5n - 5",
+      "expected": "5n-5",
+      "a": 5,
+      "b": -5
+    },
+    {
+      "id": "anb-parsing-043",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 93,
+        "case": "testANB(\"5n + +5\", \"parse error\");"
+      },
+      "input": "5n + +5",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-044",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 94,
+        "case": "testANB(\"5n + -5\", \"parse error\");"
+      },
+      "input": "5n + -5",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-045",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 95,
+        "case": "testANB(\"5n - +5\", \"parse error\");"
+      },
+      "input": "5n - +5",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-046",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 96,
+        "case": "testANB(\"5n - -5\", \"parse error\");"
+      },
+      "input": "5n - -5",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-047",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 98,
+        "case": "testANB(\"+n + 5\", \"n+5\");"
+      },
+      "input": "+n + 5",
+      "expected": "n+5",
+      "a": 1,
+      "b": 5
+    },
+    {
+      "id": "anb-parsing-048",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 99,
+        "case": "testANB(\"n + 5\", \"n+5\");"
+      },
+      "input": "n + 5",
+      "expected": "n+5",
+      "a": 1,
+      "b": 5
+    },
+    {
+      "id": "anb-parsing-049",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 100,
+        "case": "testANB(\"+ n + 5\", \"parse error\");"
+      },
+      "input": "+ n + 5",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-050",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 101,
+        "case": "testANB(\"+n - 5\", \"n-5\");"
+      },
+      "input": "+n - 5",
+      "expected": "n-5",
+      "a": 1,
+      "b": -5
+    },
+    {
+      "id": "anb-parsing-051",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 102,
+        "case": "testANB(\"+n + +5\", \"parse error\");"
+      },
+      "input": "+n + +5",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-052",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 103,
+        "case": "testANB(\"+n + -5\", \"parse error\");"
+      },
+      "input": "+n + -5",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-053",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 104,
+        "case": "testANB(\"+n - +5\", \"parse error\");"
+      },
+      "input": "+n - +5",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-054",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 105,
+        "case": "testANB(\"+n - -5\", \"parse error\");"
+      },
+      "input": "+n - -5",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-055",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 107,
+        "case": "testANB(\"-n + 5\", \"-n+5\");"
+      },
+      "input": "-n + 5",
+      "expected": "-n+5",
+      "a": -1,
+      "b": 5
+    },
+    {
+      "id": "anb-parsing-056",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 108,
+        "case": "testANB(\"-n - 5\", \"-n-5\");"
+      },
+      "input": "-n - 5",
+      "expected": "-n-5",
+      "a": -1,
+      "b": -5
+    },
+    {
+      "id": "anb-parsing-057",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 109,
+        "case": "testANB(\"-n + +5\", \"parse error\");"
+      },
+      "input": "-n + +5",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-058",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 110,
+        "case": "testANB(\"-n + -5\", \"parse error\");"
+      },
+      "input": "-n + -5",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-059",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 111,
+        "case": "testANB(\"-n - +5\", \"parse error\");"
+      },
+      "input": "-n - +5",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-060",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 112,
+        "case": "testANB(\"-n - -5\", \"parse error\");"
+      },
+      "input": "-n - -5",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-061",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 115,
+        "case": "testANB(\"1 - n\", \"parse error\");"
+      },
+      "input": "1 - n",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-062",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 116,
+        "case": "testANB(\"0 - n\", \"parse error\");"
+      },
+      "input": "0 - n",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-063",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 117,
+        "case": "testANB(\"-1 + n\", \"parse error\");"
+      },
+      "input": "-1 + n",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-064",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 120,
+        "case": "testANB(\"2 n + 2\", \"parse error\");"
+      },
+      "input": "2 n + 2",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-065",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 121,
+        "case": "testANB(\"- 2n\", \"parse error\");"
+      },
+      "input": "- 2n",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-066",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 122,
+        "case": "testANB(\"+ 2n\", \"parse error\");"
+      },
+      "input": "+ 2n",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-parsing-067",
+      "source": {
+        "path": "css/css-syntax/anb-parsing.html",
+        "sha256": "e11b74d37e03deda5595ac3a26ecfcf10c4efeb08acfed9371ca56fffe5695db",
+        "line": 123,
+        "case": "testANB(\"+2 n\", \"parse error\");"
+      },
+      "input": "+2 n",
+      "expected": "parse error",
+      "a": null,
+      "b": null
+    },
+    {
+      "id": "anb-serialization-001",
+      "source": {
+        "path": "css/css-syntax/anb-serialization.html",
+        "sha256": "9016b296ae079a56c21233513ac8f0fd5223837c934c37e6541715fd47a09500",
+        "line": 31,
+        "case": "testANB(\"1\", \"1\");"
+      },
+      "input": "1",
+      "expected": "1",
+      "a": 0,
+      "b": 1
+    },
+    {
+      "id": "anb-serialization-002",
+      "source": {
+        "path": "css/css-syntax/anb-serialization.html",
+        "sha256": "9016b296ae079a56c21233513ac8f0fd5223837c934c37e6541715fd47a09500",
+        "line": 32,
+        "case": "testANB(\"+1\", \"1\");"
+      },
+      "input": "+1",
+      "expected": "1",
+      "a": 0,
+      "b": 1
+    },
+    {
+      "id": "anb-serialization-003",
+      "source": {
+        "path": "css/css-syntax/anb-serialization.html",
+        "sha256": "9016b296ae079a56c21233513ac8f0fd5223837c934c37e6541715fd47a09500",
+        "line": 33,
+        "case": "testANB(\"-1\", \"-1\");"
+      },
+      "input": "-1",
+      "expected": "-1",
+      "a": 0,
+      "b": -1
+    },
+    {
+      "id": "anb-serialization-004",
+      "source": {
+        "path": "css/css-syntax/anb-serialization.html",
+        "sha256": "9016b296ae079a56c21233513ac8f0fd5223837c934c37e6541715fd47a09500",
+        "line": 34,
+        "case": "testANB(\"0n + 0\", \"0\");"
+      },
+      "input": "0n + 0",
+      "expected": "0",
+      "a": 0,
+      "b": 0
+    },
+    {
+      "id": "anb-serialization-005",
+      "source": {
+        "path": "css/css-syntax/anb-serialization.html",
+        "sha256": "9016b296ae079a56c21233513ac8f0fd5223837c934c37e6541715fd47a09500",
+        "line": 35,
+        "case": "testANB(\"0n + 1\", \"1\");"
+      },
+      "input": "0n + 1",
+      "expected": "1",
+      "a": 0,
+      "b": 1
+    },
+    {
+      "id": "anb-serialization-006",
+      "source": {
+        "path": "css/css-syntax/anb-serialization.html",
+        "sha256": "9016b296ae079a56c21233513ac8f0fd5223837c934c37e6541715fd47a09500",
+        "line": 36,
+        "case": "testANB(\"0n - 1\", \"-1\");"
+      },
+      "input": "0n - 1",
+      "expected": "-1",
+      "a": 0,
+      "b": -1
+    },
+    {
+      "id": "anb-serialization-007",
+      "source": {
+        "path": "css/css-syntax/anb-serialization.html",
+        "sha256": "9016b296ae079a56c21233513ac8f0fd5223837c934c37e6541715fd47a09500",
+        "line": 39,
+        "case": "testANB(\"1n\", \"n\");"
+      },
+      "input": "1n",
+      "expected": "n",
+      "a": 1,
+      "b": 0
+    },
+    {
+      "id": "anb-serialization-008",
+      "source": {
+        "path": "css/css-syntax/anb-serialization.html",
+        "sha256": "9016b296ae079a56c21233513ac8f0fd5223837c934c37e6541715fd47a09500",
+        "line": 40,
+        "case": "testANB(\"1n - 0\", \"n\");"
+      },
+      "input": "1n - 0",
+      "expected": "n",
+      "a": 1,
+      "b": 0
+    },
+    {
+      "id": "anb-serialization-009",
+      "source": {
+        "path": "css/css-syntax/anb-serialization.html",
+        "sha256": "9016b296ae079a56c21233513ac8f0fd5223837c934c37e6541715fd47a09500",
+        "line": 41,
+        "case": "testANB(\"1n + 1\", \"n+1\");"
+      },
+      "input": "1n + 1",
+      "expected": "n+1",
+      "a": 1,
+      "b": 1
+    },
+    {
+      "id": "anb-serialization-010",
+      "source": {
+        "path": "css/css-syntax/anb-serialization.html",
+        "sha256": "9016b296ae079a56c21233513ac8f0fd5223837c934c37e6541715fd47a09500",
+        "line": 42,
+        "case": "testANB(\"1n - 1\", \"n-1\");"
+      },
+      "input": "1n - 1",
+      "expected": "n-1",
+      "a": 1,
+      "b": -1
+    },
+    {
+      "id": "anb-serialization-011",
+      "source": {
+        "path": "css/css-syntax/anb-serialization.html",
+        "sha256": "9016b296ae079a56c21233513ac8f0fd5223837c934c37e6541715fd47a09500",
+        "line": 45,
+        "case": "testANB(\"-1n\", \"-n\");"
+      },
+      "input": "-1n",
+      "expected": "-n",
+      "a": -1,
+      "b": 0
+    },
+    {
+      "id": "anb-serialization-012",
+      "source": {
+        "path": "css/css-syntax/anb-serialization.html",
+        "sha256": "9016b296ae079a56c21233513ac8f0fd5223837c934c37e6541715fd47a09500",
+        "line": 46,
+        "case": "testANB(\"-1n - 0\", \"-n\");"
+      },
+      "input": "-1n - 0",
+      "expected": "-n",
+      "a": -1,
+      "b": 0
+    },
+    {
+      "id": "anb-serialization-013",
+      "source": {
+        "path": "css/css-syntax/anb-serialization.html",
+        "sha256": "9016b296ae079a56c21233513ac8f0fd5223837c934c37e6541715fd47a09500",
+        "line": 47,
+        "case": "testANB(\"-1n + 1\", \"-n+1\");"
+      },
+      "input": "-1n + 1",
+      "expected": "-n+1",
+      "a": -1,
+      "b": 1
+    },
+    {
+      "id": "anb-serialization-014",
+      "source": {
+        "path": "css/css-syntax/anb-serialization.html",
+        "sha256": "9016b296ae079a56c21233513ac8f0fd5223837c934c37e6541715fd47a09500",
+        "line": 48,
+        "case": "testANB(\"-1n - 1\", \"-n-1\");"
+      },
+      "input": "-1n - 1",
+      "expected": "-n-1",
+      "a": -1,
+      "b": -1
+    },
+    {
+      "id": "anb-serialization-015",
+      "source": {
+        "path": "css/css-syntax/anb-serialization.html",
+        "sha256": "9016b296ae079a56c21233513ac8f0fd5223837c934c37e6541715fd47a09500",
+        "line": 51,
+        "case": "testANB(\"+n+1\", \"n+1\");"
+      },
+      "input": "+n+1",
+      "expected": "n+1",
+      "a": 1,
+      "b": 1
+    },
+    {
+      "id": "anb-serialization-016",
+      "source": {
+        "path": "css/css-syntax/anb-serialization.html",
+        "sha256": "9016b296ae079a56c21233513ac8f0fd5223837c934c37e6541715fd47a09500",
+        "line": 52,
+        "case": "testANB(\"-n-1\", \"-n-1\");"
+      },
+      "input": "-n-1",
+      "expected": "-n-1",
+      "a": -1,
+      "b": -1
+    },
+    {
+      "id": "anb-serialization-017",
+      "source": {
+        "path": "css/css-syntax/anb-serialization.html",
+        "sha256": "9016b296ae079a56c21233513ac8f0fd5223837c934c37e6541715fd47a09500",
+        "line": 55,
+        "case": "testANB(\"n + 0\", \"n\");"
+      },
+      "input": "n + 0",
+      "expected": "n",
+      "a": 1,
+      "b": 0
+    },
+    {
+      "id": "anb-serialization-018",
+      "source": {
+        "path": "css/css-syntax/anb-serialization.html",
+        "sha256": "9016b296ae079a56c21233513ac8f0fd5223837c934c37e6541715fd47a09500",
+        "line": 56,
+        "case": "testANB(\"n - 0\", \"n\");"
+      },
+      "input": "n - 0",
+      "expected": "n",
+      "a": 1,
+      "b": 0
+    },
+    {
+      "id": "anb-serialization-019",
+      "source": {
+        "path": "css/css-syntax/anb-serialization.html",
+        "sha256": "9016b296ae079a56c21233513ac8f0fd5223837c934c37e6541715fd47a09500",
+        "line": 59,
+        "case": "testANB(\"2n + 2\", \"2n+2\");"
+      },
+      "input": "2n + 2",
+      "expected": "2n+2",
+      "a": 2,
+      "b": 2
+    },
+    {
+      "id": "anb-serialization-020",
+      "source": {
+        "path": "css/css-syntax/anb-serialization.html",
+        "sha256": "9016b296ae079a56c21233513ac8f0fd5223837c934c37e6541715fd47a09500",
+        "line": 60,
+        "case": "testANB(\"-2n - 2\", \"-2n-2\");"
+      },
+      "input": "-2n - 2",
+      "expected": "-2n-2",
+      "a": -2,
+      "b": -2
+    }
+  ]
+}

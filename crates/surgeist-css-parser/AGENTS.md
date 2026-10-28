@@ -135,6 +135,19 @@ The sizes of `AnPlusB`, `AnPlusBError`, `RuleEnd`, `UnitKind`, `Failed`,
 `AtRule`, `QualifiedRule`, `Declaration` and `Adjacency` are pinned in
 [tests/layout_pins.rs](tests/layout_pins.rs).
 
+## WPT Vector Facts
+
+[tests/corpus/wpt](tests/corpus/wpt/README.md) holds the `css/css-syntax` WPT
+files that the pinned edition cites, imported by `surgeist-css-generate
+import-wpt` (never hand-edit `source/` or its receipt) with the vectors adapted
+from them. [tests/wpt_syntax.rs](tests/wpt_syntax.rs) checks every vector's
+binding to its upstream path, digest and line before running it. Write an
+expectation from the upstream assertion and the pinned edition, never from this
+crate's output; a case whose observable is a CSS object-model, selector,
+property-validity or `var()` result is deferred and claimed nowhere. A
+disagreement between upstream and the edition goes in a profile file, and the
+edition governs. [NOTICE.md](NOTICE.md) records the packaged fixtures' license.
+
 ## Command Inventory
 
 Select affected checks under the root process/resource policy, from repository
