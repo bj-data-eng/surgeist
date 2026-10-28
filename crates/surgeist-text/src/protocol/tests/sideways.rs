@@ -2,6 +2,7 @@
 //! Literal geometry uses horizontal Ahem10 metrics8/2 and the exact CW map;
 //! the qualified GSUB fixture supplies real distinct retained outlines.
 mod atomics;
+mod break_all;
 mod constraints;
 mod movement;
 mod source_ranges;
