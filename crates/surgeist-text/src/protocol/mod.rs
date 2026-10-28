@@ -618,11 +618,11 @@ pub struct LineAnchor {
 #[derive(Clone, Debug, PartialEq)]
 pub struct AtomicPlacement {
     pub occurrence: PreparedAtomic,
-    /// Actual physical border rectangle, validated against the finalized cell.
+    /// Actual physical border rectangle; in-flow geometry must match the finalized cell.
     pub border: Rect,
     /// Actual physical content rectangle in the same placement frame.
     pub content: Rect,
-    /// Physical cross-axis baseline: y for Horizontal, x for native Vertical.
+    /// Physical cross-axis baseline: y for Horizontal, x for Vertical or Sideways.
     pub baseline: f64,
 }
 #[derive(Clone, Debug, PartialEq)]
@@ -888,11 +888,6 @@ pub enum ProtocolError {
     },
     MismatchedContext {
         field: ProtocolContextField,
-    },
-    /// The bounded clockwise sideways profile cannot place independent boxes.
-    UnsupportedSidewaysAtomic {
-        /// Actual original box occurrence in this paragraph, including out-of-flow.
-        occurrence: usize,
     },
     InvalidAtomicGeometry {
         occurrence: usize,
