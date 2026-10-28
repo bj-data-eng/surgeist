@@ -282,6 +282,37 @@ pub(crate) fn source_window_document(
     build_source(text, range.start, original, SyntaxInputLimits::default(), 0)
 }
 
+/// The tree of the window `range` of the text `original` holds, for a native
+/// callback that hands a ported grammar its whole scope, whose positions are
+/// those of `original`.
+///
+/// The tree has no ceiling on nesting of its own. The scope lies inside blocks
+/// the structural scans of the recovery state have already counted, and they,
+/// not the depth of a tree built for the scope's contents, judge each unit
+/// against the ceiling of 256 levels (counted from the whole source): a unit
+/// nested past it is dropped alone, and the units around it survive. A tree
+/// that failed the build instead would drop the whole scope. Building is
+/// iterative, so depth costs no stack.
+pub(crate) fn source_scope_document(
+    original: &CssSourceSnapshot,
+    range: Range<usize>,
+) -> Result<Document<'_>, CssComponentValueError> {
+    let text = original
+        .as_str()
+        .get(range.clone())
+        .expect("bounded source range");
+    let options = Options::default().origin(Offset::new(range.start));
+    let mut document = Document::parse(
+        text,
+        &options,
+        Limits::new(u32::MAX, usize::MAX, usize::MAX),
+        DepthExcess::Fail,
+    )
+    .map_err(|error| source_failure(&error, text, range.start, original))?;
+    document.attach(Host::source(original).into_attached());
+    Ok(document)
+}
+
 /// How far past a token the lexer looks to decide where the token ends, in
 /// scalars (the machine's lookahead window).
 const LEXER_LOOKAHEAD: usize = 4;
