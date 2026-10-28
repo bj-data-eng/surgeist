@@ -11,8 +11,10 @@ inline-box alignment requests do not imply CSS vertical-alignment execution.
 See the [support reference](docs/reference.md) for the current contract.
 Native prepared lines also support [clockwise sideways placement](docs/reference.md#clockwise-sideways-placement),
 with preparation-bound font features and the same physical basis for paint and
-interaction. Independent atomic content and upright/mixed typography retain
-explicit capability refusals.
+interaction. Matching upright analyses also support a complete
+[native unrotated upright paragraph](docs/reference.md#native-whole-upright-paragraphs)
+through placement, interaction and Text accessibility, within explicit script,
+font, decoration and atomic-content limits.
 
 `process_source_whitespace` executes source-local whitespace processing before
 fonts. `process_contextual_source` additionally consumes captured box, paragraph
@@ -29,7 +31,8 @@ retains original source and pre-font semantic analysis. Its constructors take
 interpretation, or `Upright { computed_direction }` for [font-independent upright
 source analysis](docs/reference.md#source-typography-and-upright-analysis).
 Upright executes used-LTR bidi while retaining computed direction and genuine
-body/control custody; font preparation still has its own capability boundary.
+body/control custody. Its native paragraph path requires matching Vertical
+preparation; the standalone convenience layout remains horizontal.
 `Style::word_space_transform`
 replaces eligible original U+200B with SPACE or IDEOGRAPHIC SPACE using
 `WordSpaceTransform::{Space, IdeographicSpace}`; None is neutral. This runs after
@@ -117,9 +120,10 @@ dense-variable TrueType outlines and static translation-only composites; other
 outline formats refuse explicitly. These bounds do not select color or bitmap paint.
 
 Borrowed run, face and effective-instance views expose actual positioned output
-without copying glyph arrays. Logical origins and pens are `f64`; raw canonical
-glyph offsets/advances and font sizes remain `f32`. The optional standalone paint adapter belongs to
-[Render](../surgeist-render/README.md) under its `render-text` feature; Text does
+without copying glyph arrays. `GlyphBasis` distinguishes outline axes from the
+line cell frame. Logical origins and pens are `f64`; raw canonical glyph
+offsets/advances and font sizes remain `f32`. The optional standalone paint
+adapter belongs to [Render](../surgeist-render/README.md) under its `render-text` feature; Text does
 not depend on Render.
 
 ## Start

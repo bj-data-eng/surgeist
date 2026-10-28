@@ -6,6 +6,7 @@
 mod cache;
 #[cfg(test)]
 mod tests;
+mod vertical;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -25,8 +26,8 @@ use super::{
     },
     convert,
     layout::data::{
-        ClusterContent, GlyphData, PreparedCluster, PreparedRun, RunMetrics, ShapedData,
-        ShapedItem, Whitespace,
+        ClusterContent, GlyphData, HorizontalRunMetrics, PreparedCluster, PreparedRun,
+        RunMetricBasis, RunMetrics, ShapedData, ShapedItem, Whitespace,
     },
     lru_cache::LruCache,
     resolve::ResolvedStyle,
@@ -168,6 +169,7 @@ pub(crate) fn assign_fonts(
     prepared: &super::PreparedData,
     projection: &crate::projection::SourceProjection,
     analysis: &super::analysis::Analysis,
+    profile: super::upright::ShapingProfile<'_>,
     scopes: &[crate::protocol::prepared::presentation::DirectionalScope],
 ) -> Result<Vec<crate::protocol::prepared::RetainedAssignment>> {
     let input = ShapingInput {
@@ -178,6 +180,7 @@ pub(crate) fn assign_fonts(
         font_catalogue: &prepared.font_catalogue,
         paragraph: &prepared.analyzed.paragraph,
         css_tabs: prepared.options.tabs() == crate::TabPreparation::CssStops,
+        profile,
     };
     let mut cluster = CharCluster::default();
     let mut assignments: Vec<crate::protocol::prepared::RetainedAssignment> = Vec::new();
@@ -330,6 +333,28 @@ fn provider_direction(level: u8) -> surgeist_shaper::Direction {
     }
 }
 
+fn provider_features(
+    style: &ResolvedStyle,
+    native_isolated: bool,
+) -> Vec<surgeist_shaper::Feature> {
+    let mut features = Vec::with_capacity(style.font_features.len() + usize::from(native_isolated));
+    if native_isolated {
+        features.push(surgeist_shaper::Feature::new(
+            surgeist_shaper::Tag::new(b"isol"),
+            1,
+            ..,
+        ));
+    }
+    features.extend(style.font_features.iter().map(|feature| {
+        surgeist_shaper::Feature::new(
+            surgeist_shaper::Tag::new(&feature.tag.to_bytes()),
+            u32::from(feature.value),
+            ..,
+        )
+    }));
+    features
+}
+
 fn joining_source_error(error: surgeist_shaper::JoiningSourceError) -> Error {
     super::shaping_refused(match error {
         surgeist_shaper::JoiningSourceError::Refused(reason) => reason,
@@ -405,7 +430,7 @@ fn shape_impl(
     let mut output = ShapedData::default();
     let mut queries = Vec::new();
     let sources = AnalysisDataSources;
-    let barriers: BTreeSet<_> = input.projection.barrier_atoms.iter().copied().collect();
+    let barriers = shaping_barriers(&input);
     let count = input.projection.atoms.len();
     // Empty/default-font metrics are an explicit preparation-profile operation.
     // Body shaping never infers that policy from source content or body style.
@@ -619,6 +644,7 @@ pub(crate) fn finalize(
         font_catalogue: &prepared.font_catalogue,
         paragraph: &prepared.analyzed.paragraph,
         css_tabs: prepared.options.tabs() == crate::TabPreparation::CssStops,
+        profile: super::upright::selected_profile(prepared, presentation),
     };
     let mut output = ShapedData::default();
     let native = selected.metric_policy == crate::protocol::selection::LineMetricPolicy::Native;
@@ -645,8 +671,39 @@ pub(crate) fn finalize(
         let barriers = &selected.boundaries.presentation;
         let mut selected_domains: Vec<JoiningDomain> = Vec::new();
         let mut original_domains: Vec<JoiningDomain> = Vec::new();
+        let mut upright_barriers = shaping_barriers(&input);
+        upright_barriers.extend(barriers.iter().copied());
         for assignment in &presentation.assignments {
             let run = &assignment.run;
+            if input.is_upright() {
+                let mut first = assignment.atoms.start;
+                let ends = upright_barriers
+                    .range((
+                        std::ops::Bound::Excluded(first),
+                        std::ops::Bound::Excluded(assignment.atoms.end),
+                    ))
+                    .copied()
+                    .chain(std::iter::once(assignment.atoms.end));
+                for end in ends {
+                    let atoms = first..end;
+                    let extent = bounded_context(
+                        atoms.clone(),
+                        0..input.projection.atoms.len(),
+                        &upright_barriers,
+                    );
+                    append_retained_run(
+                        &input,
+                        atoms.clone(),
+                        run,
+                        run.script,
+                        RunContext::new(input.projection, atoms, extent),
+                        scratch,
+                        &mut output,
+                    )?;
+                    first = end;
+                }
+                continue;
+            }
             let extent = bounded_context(
                 assignment.atoms.clone(),
                 0..input.projection.atoms.len(),
@@ -1202,10 +1259,15 @@ fn append_request(
         output.runs.push(run);
         return Ok(());
     }
-    let direction = if request.level & 1 == 0 {
-        surgeist_shaper::Direction::LeftToRight
+    if request.input.is_upright() && request.atoms.is_empty() {
+        let (run, _, _) = resolved_run(&request, shaper.coords())?;
+        output.empty_run = Some(run);
+        return Ok(());
+    }
+    let direction = if request.input.is_upright() {
+        surgeist_shaper::Direction::TopToBottom
     } else {
-        surgeist_shaper::Direction::RightToLeft
+        provider_direction(request.level)
     };
     let script = convert::script_to_shaper(convert::script_to_fontique(
         request.script,
@@ -1226,17 +1288,14 @@ fn append_request(
                 })
         })
         .transpose()?;
-    let features: Vec<_> = style
-        .font_features
-        .iter()
-        .map(|feature| {
-            surgeist_shaper::Feature::new(
-                surgeist_shaper::Tag::new(&feature.tag.to_bytes()),
-                u32::from(feature.value),
-                ..,
-            )
-        })
-        .collect();
+    let native_isolated = request.input.is_upright()
+        && matches!(request.script, Script::Arabic | Script::Syriac)
+        && request
+            .input
+            .upright_units()
+            .iter()
+            .any(|unit| unit.isolate() && unit.atoms.contains(&request.atoms.start));
+    let features = provider_features(style, native_isolated);
     let mut plan_key = key;
     plan_key.coords = shaper
         .coords()
@@ -1338,6 +1397,22 @@ fn append_request(
             _ => surgeist_shaper::ShapingRefusal::JoiningInput,
         }));
     }
+    if request.input.is_upright() {
+        let shaped = vertical::shape(&request, &shaper, plan, buffer, &features);
+        return match shaped {
+            Ok(glyph_buffer) => {
+                let result = extract_vertical_run(&request, &glyph_buffer, shaper.coords(), output);
+                scratch.buffer = Some(glyph_buffer.clear());
+                result
+            }
+            Err(error) => {
+                // The provider consumes refused invocations and returns no
+                // accepted buffer. Retain a fresh reusable input for next time.
+                scratch.buffer = Some(surgeist_shaper::UnicodeBuffer::new());
+                Err(error)
+            }
+        };
+    }
     let glyph_buffer = shaper.shape_with_plan(plan, buffer, &features);
     // This is the actual returned invocation's status. No glyph, position,
     // metric or immutable result row is observed before this fence.
@@ -1377,6 +1452,15 @@ fn bounded_context(
     allowed
 }
 
+fn shaping_barriers(input: &ShapingInput<'_>) -> BTreeSet<usize> {
+    let mut barriers: BTreeSet<_> = input.projection.barrier_atoms.iter().copied().collect();
+    for unit in input.upright_units().iter().filter(|unit| unit.isolate()) {
+        barriers.insert(unit.atoms.start);
+        barriers.insert(unit.atoms.end);
+    }
+    barriers
+}
+
 /// Metric attribution does not split otherwise compatible joint shaping.
 fn resolved_line_height(
     style: &ResolvedStyle,
@@ -1395,6 +1479,18 @@ fn resolved_line_height(
     }
 }
 
+fn component_line_height(style: &ResolvedStyle, metrics: &RunMetrics, leading: f64) -> Result<f64> {
+    match metrics.basis {
+        RunMetricBasis::Horizontal(_) => {
+            resolved_line_height(style, metrics.ascent, metrics.descent, leading)
+        }
+        RunMetricBasis::Upright {
+            normal_extent_design,
+            design_scale,
+        } => vertical::line_height(style, normal_extent_design, design_scale),
+    }
+}
+
 fn resolved_run(
     request: &RunRequest<'_, '_>,
     coords: &[surgeist_shaper::NormalizedCoord],
@@ -1408,6 +1504,9 @@ fn resolved_run(
         &stored_coords,
         request.synthesis,
     )?;
+    if input.is_upright() {
+        return vertical::resolved_run(request, instance, &stored_coords);
+    }
     let metrics = instance.metrics(input.font_catalogue)?;
     let font_ref = skrifa::FontRef::from_index(request.font.bytes(), request.font.index())
         .map_err(|_| Error::new(ErrorCode::FontLoadFailed, "invalid selected font face"))?;
@@ -1431,12 +1530,12 @@ fn resolved_run(
         ascent,
         descent,
         line_height,
-        underline_top,
-        underline_thickness,
-        strike_center: metrics.strikeout().center_offset(),
-        strike_thickness: metrics.strikeout().thickness(),
-        x_height: raw_metrics.x_height.map_or(0.0, f64::from),
-        cap_height: raw_metrics.cap_height.map_or(0.0, f64::from),
+        basis: RunMetricBasis::Horizontal(HorizontalRunMetrics {
+            underline_top,
+            underline_thickness,
+            strike_center: metrics.strikeout().center_offset(),
+            strike_thickness: metrics.strikeout().thickness(),
+        }),
     };
     for (field, value) in [
         ("ascent", ascent),
@@ -1445,8 +1544,8 @@ fn resolved_run(
         ("line height", line_height),
         ("underline top", underline_top),
         ("underline thickness", underline_thickness),
-        ("x height", run_metrics.x_height),
-        ("cap height", run_metrics.cap_height),
+        ("x height", raw_metrics.x_height.map_or(0.0, f64::from)),
+        ("cap height", raw_metrics.cap_height.map_or(0.0, f64::from)),
     ] {
         if !value.is_finite() {
             return Err(super::text_numeric_error(
@@ -1485,6 +1584,66 @@ fn extract_run(
     let receipt = glyph_buffer
         .default_ignorable_receipt()
         .map_err(super::shaping_refused)?;
+    let positions: Vec<_> = glyph_buffer
+        .glyph_positions()
+        .iter()
+        .map(|position| ProviderPosition {
+            advance: f64::from(position.x_advance),
+            x: f64::from(position.x_offset),
+            y: -f64::from(position.y_offset),
+        })
+        .collect();
+    extract_output(
+        request,
+        glyph_buffer.glyph_infos(),
+        &positions,
+        receipt,
+        coords,
+        output,
+    )
+}
+
+struct ProviderPosition {
+    advance: f64,
+    x: f64,
+    y: f64,
+}
+
+fn extract_vertical_run(
+    request: &RunRequest<'_, '_>,
+    glyph_buffer: &surgeist_shaper::VerticalGlyphBuffer,
+    coords: &[surgeist_shaper::NormalizedCoord],
+    output: &mut ShapedData,
+) -> Result<()> {
+    let receipt = glyph_buffer
+        .default_ignorable_receipt()
+        .map_err(super::shaping_refused)?;
+    let positions: Vec<_> = glyph_buffer
+        .glyph_positions()
+        .map(|position| ProviderPosition {
+            advance: -position.y_advance,
+            x: position.x_offset,
+            y: -position.y_offset,
+        })
+        .collect();
+    extract_output(
+        request,
+        glyph_buffer.glyph_infos(),
+        &positions,
+        receipt,
+        coords,
+        output,
+    )
+}
+
+fn extract_output(
+    request: &RunRequest<'_, '_>,
+    infos: &[surgeist_shaper::GlyphInfo],
+    positions: &[ProviderPosition],
+    receipt: surgeist_shaper::DefaultIgnorableReceipt<'_>,
+    coords: &[surgeist_shaper::NormalizedCoord],
+    output: &mut ShapedData,
+) -> Result<()> {
     let input = request.input;
     let (run, scale, leading) = resolved_run(request, coords)?;
     let font_ref = skrifa::FontRef::from_index(request.font.bytes(), request.font.index())
@@ -1493,8 +1652,6 @@ fn extract_run(
         output.empty_run = Some(run);
         return Ok(());
     }
-    let infos = glyph_buffer.glyph_infos();
-    let positions = glyph_buffer.glyph_positions();
     if infos.len() != positions.len() {
         return Err(Error::new(
             ErrorCode::LayoutFailed,
@@ -1580,12 +1737,12 @@ fn extract_run(
                     num_glyphs: max_glyph,
                 }));
             }
-            let glyph_advance = canonical("glyph advance", f64::from(position.x_advance) * scale)?;
+            let glyph_advance = canonical("glyph advance", position.advance * scale)?;
             advance += f64::from(glyph_advance);
             output.glyphs.push(GlyphData {
                 id: info.glyph_id,
-                x: canonical("glyph x offset", f64::from(position.x_offset) * scale)?,
-                y: canonical("glyph y offset", -f64::from(position.y_offset) * scale)?,
+                x: canonical("glyph x offset", position.x * scale)?,
+                y: canonical("glyph y offset", position.y * scale)?,
                 advance: glyph_advance,
                 source: cluster_source,
                 style: input.analysis.infos[atom_start].1,
@@ -1631,12 +1788,7 @@ fn extract_run(
             let with_letter_spacing = logical_add("letter spacing", base_advance, letter_spacing)?;
             let cluster_advance = logical_add("word spacing", with_letter_spacing, word_spacing)?;
             output.clusters.push(PreparedCluster {
-                line_height: resolved_line_height(
-                    style,
-                    run.metrics.ascent,
-                    run.metrics.descent,
-                    leading,
-                )?,
+                line_height: component_line_height(style, &run.metrics, leading)?,
                 shaped_advance: base_advance,
                 logical_adjustments: [letter_spacing, word_spacing, 0.0],
                 source: original.source,
@@ -1746,13 +1898,18 @@ pub(crate) fn measure_character(
     style_index: usize,
     ch: char,
     direction: crate::ParagraphBaseDirection,
+    content: crate::UprightContent,
     scratch: &mut ShapeContext,
 ) -> Result<Option<(f64, PreparedRun)>> {
     // Independent hypothetical character analysis: Common uses the existing
     // isolated Latin fallback. SPACE WS follows the actual block base, while
     // ZERO EN is requested with its even/LTR resolved level.
     let level = u8::from(direction == crate::ParagraphBaseDirection::RightToLeft);
-    let direction = provider_direction(level);
+    let direction = if input.is_upright() {
+        surgeist_shaper::Direction::TopToBottom
+    } else {
+        provider_direction(level)
+    };
     let style = &input.styles[style_index].style;
     configure_query(
         &mut query,
@@ -1813,17 +1970,7 @@ pub(crate) fn measure_character(
         .instance(Some(&instance))
         .point_size(Some(style.font_size))
         .build();
-    let features: Vec<_> = style
-        .font_features
-        .iter()
-        .map(|f| {
-            surgeist_shaper::Feature::new(
-                surgeist_shaper::Tag::new(&f.tag.to_bytes()),
-                u32::from(f.value),
-                ..,
-            )
-        })
-        .collect();
+    let features = provider_features(style, false);
     let language = style
         .locale
         .as_ref()
@@ -1844,21 +1991,57 @@ pub(crate) fn measure_character(
     if let Some(language) = language {
         buffer.set_language(language);
     }
-    let buffer = shaper.shape_with_plan(&plan, buffer, &features);
-    if let surgeist_shaper::ShapingStatus::Refused(reason) = buffer.shaping_status() {
-        return Err(super::shaping_refused(reason));
-    }
-    let advance = buffer
-        .glyph_positions()
-        .iter()
-        .try_fold(0.0, |total, position| {
-            logical_add(
-                "tab character advance",
-                total,
-                f64::from(position.x_advance),
-            )
-        })?
-        * f64::from(style.font_size)
+    let advances: Vec<_> = if input.is_upright() {
+        let effective = crate::EffectiveFontInstance::qualify_synthesized(
+            run.font.face(),
+            run.font_size,
+            &run.coords,
+            run.synthesis,
+        )?;
+        let buffer = vertical::Operation {
+            shaper: &shaper,
+            plan: &plan,
+            features: &features,
+        }
+        .shape_with_instance(
+            &effective,
+            input.font_catalogue,
+            Script::Latin,
+            || content,
+            buffer,
+        )?;
+        let receipt = buffer
+            .default_ignorable_receipt()
+            .map_err(super::shaping_refused)?;
+        buffer
+            .glyph_positions()
+            .enumerate()
+            .filter_map(|(index, position)| {
+                (!receipt.residual_glyph_positions().contains(&(index as u32)))
+                    .then_some(-position.y_advance)
+            })
+            .collect()
+    } else {
+        let buffer = shaper.shape_with_plan(&plan, buffer, &features);
+        if let surgeist_shaper::ShapingStatus::Refused(reason) = buffer.shaping_status() {
+            return Err(super::shaping_refused(reason));
+        }
+        let receipt = buffer
+            .default_ignorable_receipt()
+            .map_err(super::shaping_refused)?;
+        buffer
+            .glyph_positions()
+            .iter()
+            .enumerate()
+            .filter_map(|(index, position)| {
+                (!receipt.residual_glyph_positions().contains(&(index as u32)))
+                    .then_some(f64::from(position.x_advance))
+            })
+            .collect()
+    };
+    let advance = advances.into_iter().try_fold(0.0, |total, advance| {
+        logical_add("tab character advance", total, advance)
+    })? * f64::from(style.font_size)
         / f64::from(
             font.head()
                 .map_err(|_| Error::new(ErrorCode::FontLoadFailed, "metric font lacks head"))?

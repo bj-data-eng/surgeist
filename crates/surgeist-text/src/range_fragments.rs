@@ -689,7 +689,7 @@ impl Layout {
                 let mut alternative_owners = group_units
                     .iter()
                     .filter_map(|&i| match presentation.units[i].kind {
-                        PresentationUnitKind::Replacement { alternative } => Some(alternative),
+                        PresentationUnitKind::Replacement { alternative, .. } => Some(alternative),
                         _ => None,
                     })
                     .collect::<Vec<_>>();
@@ -866,7 +866,7 @@ impl Layout {
                     }
                 }
                 for &index in &group_units {
-                    if let PresentationUnitKind::Replacement { alternative } =
+                    if let PresentationUnitKind::Replacement { alternative, .. } =
                         presentation.units[index].kind
                         && let Some(rows) = alternatives.get(&alternative)
                     {

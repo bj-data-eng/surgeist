@@ -547,7 +547,8 @@ fn validate_context(
             field: ProtocolContextField::BaseDirection,
         }));
     }
-    if context.orientation == LineOrientation::Vertical {
+    if context.orientation == LineOrientation::Vertical && orientation != LineOrientation::Vertical
+    {
         return Err(protocol_error(ProtocolError::UnsupportedContext {
             field: ProtocolContextField::Orientation,
         }));

@@ -299,11 +299,13 @@ coverage, and `is_collapsed()` compares exact relation cuts. Removed components
 can have distinct cuts and source coverage at the same geometry, without creating
 glyphs or additional wrapping opportunities.
 
-Native composition uses horizontal shaping and logical line measurements.
-Explicit placement retains a Horizontal or clockwise Sideways basis;
-[sideways preparation and physical readback](reference.md#clockwise-sideways-placement)
-describe its feature settings, axis coordinates and capability limits. Tab
-origins and spacing requests remain in the local inline frame.
+Native composition retains the preparation's Horizontal, clockwise Sideways or
+matching whole-upright Vertical profile through selection, finalization and
+placement. See [sideways placement](reference.md#clockwise-sideways-placement)
+and [native upright paragraphs](reference.md#native-whole-upright-paragraphs)
+for admission and capability limits. Glyph outline axes remain distinct from the
+[logical cell frame](reference.md#borrowed-paint-readback). Tab origins and
+spacing requests remain in the local inline frame.
 `TabContext::FontAdvance` executes the
 retained-font U+0009 glyph advance, which can be the actual `.notdef` advance; it is
 not CSS tab stops. `NoTabs` requires actual selected absence. CSS preparation
@@ -313,10 +315,11 @@ original and replacement tab under the exact catalogue and scale. The line
 request supplies `TabContext::CssStops { origin }`: the physical block start
 relative to unaligned paragraph start, or `None` for a genuinely unknown phase.
 Nonzero tabs consume that phase; zero tabs retain custody without unused font
-probes. Hypothetical character metrics use the native isolated Common-to-Latin
-profile with actual settings, coordinates and locale: SPACE follows the captured
-block direction; ZERO retains its even/LTR level. This does not borrow a source
-run script or claim arbitrary script-sensitive metric conformance. The shared
+probes. Hypothetical character metrics retain actual settings, coordinates,
+locale and the preparation's authenticated shaping profile. The horizontal/sideways
+Common-to-Latin operation keeps SPACE's captured block direction and ZERO's
+even/LTR level; upright uses its actual vertical metric operation. This does not
+borrow a source run script or claim arbitrary script-sensitive metric conformance. The shared
 finalizer orders the mixed line, resolves glyph-free tab
 advances with actual spacing/atomic contributions, then builds prefix, metrics,
 paint and interaction rows. Re-finalization recomputes stops; alignment follows.
@@ -326,8 +329,8 @@ nonzero signs use the same forward grid with the interval's magnitude and exactl
 one threshold bump; this is an explicit native policy. Consumed unknown intrinsic
 phase remains a precise capability refusal. Native whitespace-edge measurements follow the captured
 terminal role and actual line ending; callers do not supply numeric hanging.
-Other whitespace modes, styled boundary barriers and upright/mixed typography remain
-outside this contribution.
+Mixed typography and downstream writing-mode adapters retain their separate
+capability boundaries.
 See the [owning contract](../../../docs/text-layout-contract.md) for phase ownership
 and coherent placement policy, and [reference](reference.md) for supported styles.
 

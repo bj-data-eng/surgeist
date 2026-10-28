@@ -285,6 +285,29 @@ pub surgeist_text::ErrorDetail::UnsupportedTextStyle::reason: surgeist_text::Uns
 pub surgeist_text::ErrorDetail::UnsupportedVerticalGlyphVariation
 pub surgeist_text::ErrorDetail::UnsupportedVerticalGlyphVariation::axis_count: usize
 pub surgeist_text::ErrorDetail::UnsupportedVerticalGlyphVariation::glyph: u32
+pub surgeist_text::ErrorDetail::UprightDecoration
+pub surgeist_text::ErrorDetail::UprightDecoration::kind: surgeist_text::DecorationKind
+pub surgeist_text::ErrorDetail::UprightDecoration::owner: surgeist_text::TextStyleOwner
+pub surgeist_text::ErrorDetail::UprightDecoration::role: surgeist_text::UprightDecorationRole
+pub surgeist_text::ErrorDetail::UprightScript
+pub surgeist_text::ErrorDetail::UprightScript::candidates: alloc::boxed::Box<[surgeist_text::TextScript]>
+pub surgeist_text::ErrorDetail::UprightScript::content: alloc::boxed::Box<surgeist_text::UprightContent>
+pub surgeist_text::ErrorDetail::UprightScript::contexts: alloc::boxed::Box<[surgeist_text::UprightScriptContext]>
+pub surgeist_text::ErrorDetail::UprightScript::reason: surgeist_text::UprightScriptFailure
+pub surgeist_text::ErrorDetail::VerticalMetricSupplier
+pub surgeist_text::ErrorDetail::VerticalMetricSupplier::content: surgeist_text::UprightContent
+pub surgeist_text::ErrorDetail::VerticalMetricSupplier::glyph_id: u32
+pub surgeist_text::ErrorDetail::VerticalOriginReference
+pub surgeist_text::ErrorDetail::VerticalOriginReference::content: surgeist_text::UprightContent
+pub surgeist_text::ErrorDetail::VerticalOriginReference::reason: surgeist_text::VerticalOriginReferenceReason
+pub surgeist_text::ErrorDetail::VerticalOriginReference::reference: surgeist_text::UprightMetricReference
+pub surgeist_text::ErrorDetail::VerticalOriginReference::value: f64
+pub surgeist_text::ErrorDetail::VerticalPositionRange
+pub surgeist_text::ErrorDetail::VerticalPositionRange::content: surgeist_text::UprightContent
+pub surgeist_text::ErrorDetail::VerticalPositionRange::stage: surgeist_text::VerticalPositionStage
+pub surgeist_text::ErrorDetail::VerticalShapingContext
+pub surgeist_text::ErrorDetail::VerticalShapingContext::content: surgeist_text::UprightContent
+pub surgeist_text::ErrorDetail::VerticalShapingContext::reason: surgeist_text::VerticalShapingContextReason
 pub enum surgeist_text::FinalizedFragmentOwner
 pub surgeist_text::FinalizedFragmentOwner::Alternative(surgeist_text::PreparedAlternative)
 pub surgeist_text::FinalizedFragmentOwner::Control(surgeist_text::PreparedControl)
@@ -462,6 +485,9 @@ pub surgeist_text::FontOutlineError::Unsupported
 pub surgeist_text::FontOutlineError::Unsupported::capability: surgeist_text::FontOutlineCapability
 pub enum surgeist_text::FontVariant
 pub surgeist_text::FontVariant::Normal
+pub enum surgeist_text::GlyphBasis
+pub surgeist_text::GlyphBasis::Clockwise
+pub surgeist_text::GlyphBasis::Unrotated
 pub enum surgeist_text::HangingPunctuationEnd
 pub surgeist_text::HangingPunctuationEnd::AllowEnd
 pub surgeist_text::HangingPunctuationEnd::ForceEnd
@@ -859,6 +885,8 @@ pub surgeist_text::ProtocolError::UnsupportedContext::field: surgeist_text::Prot
 pub surgeist_text::ProtocolError::UnsupportedSidewaysAtomic
 pub surgeist_text::ProtocolError::UnsupportedSidewaysAtomic::occurrence: usize
 pub surgeist_text::ProtocolError::UnsupportedStandaloneAnalysis
+pub surgeist_text::ProtocolError::UnsupportedUprightAtomic
+pub surgeist_text::ProtocolError::UnsupportedUprightAtomic::occurrence: usize
 pub surgeist_text::ProtocolError::UnsupportedWrappingAnalysis
 pub surgeist_text::ProtocolError::WrappingScopeQuery
 pub surgeist_text::ProtocolError::WrappingScopeQuery::reason: surgeist_text::WrappingScopeQueryError
@@ -1100,6 +1128,15 @@ pub surgeist_text::TextStyleFeature::WordSpacing
 impl surgeist_text::TextStyleFeature
 pub const surgeist_text::TextStyleFeature::ALL: &'static [Self]
 pub const fn surgeist_text::TextStyleFeature::support(self, phase: surgeist_text::TextStylePhase) -> surgeist_text::TextStyleSupport
+pub enum surgeist_text::TextStyleOwner
+pub surgeist_text::TextStyleOwner::Control
+pub surgeist_text::TextStyleOwner::Control::occurrence: usize
+pub surgeist_text::TextStyleOwner::Paragraph
+pub surgeist_text::TextStyleOwner::Scope
+pub surgeist_text::TextStyleOwner::Scope::scope: usize
+pub surgeist_text::TextStyleOwner::Source
+pub surgeist_text::TextStyleOwner::Source::range: surgeist_text::Range
+pub surgeist_text::TextStyleOwner::TabReference
 pub enum surgeist_text::TextStylePhase
 pub surgeist_text::TextStylePhase::ProcessedParagraph
 pub surgeist_text::TextStylePhase::Standalone
@@ -1154,6 +1191,22 @@ pub surgeist_text::UnsupportedTextStyleReason::RequiresParagraphBaseDirection
 pub surgeist_text::UnsupportedTextStyleReason::RequiresProcessedSourceLayout
 pub surgeist_text::UnsupportedTextStyleReason::RequiresStandaloneIndentPolicy
 pub surgeist_text::UnsupportedTextStyleReason::RequiresTextFlowPolicy
+pub enum surgeist_text::UprightContent
+pub surgeist_text::UprightContent::Presentation(surgeist_text::UprightPresentation)
+pub surgeist_text::UprightContent::TabMeasurement
+pub surgeist_text::UprightContent::TabMeasurement::owner: surgeist_text::TextStyleOwner
+pub surgeist_text::UprightContent::TabMeasurement::role: surgeist_text::UprightTabMeasurement
+pub enum surgeist_text::UprightContentPiece
+pub surgeist_text::UprightContentPiece::Indication
+pub surgeist_text::UprightContentPiece::Indication::alternative: usize
+pub surgeist_text::UprightContentPiece::Indication::insertion_anchor: usize
+pub surgeist_text::UprightContentPiece::Indication::range: surgeist_text::Range
+pub surgeist_text::UprightContentPiece::Source
+pub surgeist_text::UprightContentPiece::Source::range: surgeist_text::Range
+pub enum surgeist_text::UprightDecorationRole
+pub surgeist_text::UprightDecorationRole::Offset
+pub surgeist_text::UprightDecorationRole::OffsetAndThickness
+pub surgeist_text::UprightDecorationRole::Thickness
 pub enum surgeist_text::UprightMetricProvenance
 pub surgeist_text::UprightMetricProvenance::RawBaseline(surgeist_text::FontBaselineProvenance)
 pub surgeist_text::UprightMetricProvenance::SynthesizedUprightEmAtNominalPen
@@ -1161,6 +1214,19 @@ pub surgeist_text::UprightMetricProvenance::VheaTypographic
 pub enum surgeist_text::UprightMetricReference
 pub surgeist_text::UprightMetricReference::FontDesignX
 pub surgeist_text::UprightMetricReference::NominalVerticalPenX
+pub enum surgeist_text::UprightScriptContextFailure
+pub surgeist_text::UprightScriptContextFailure::ConflictingScripts
+pub surgeist_text::UprightScriptContextFailure::MissingExplicitScript
+pub surgeist_text::UprightScriptContextFailure::NonMember
+pub surgeist_text::UprightScriptContextFailure::UnqualifiedSingleScript
+pub enum surgeist_text::UprightScriptFailure
+pub surgeist_text::UprightScriptFailure::Intrinsic
+pub surgeist_text::UprightScriptFailure::Intrinsic::resolved: core::option::Option<surgeist_text::TextScript>
+pub surgeist_text::UprightScriptFailure::UnresolvedContext
+pub surgeist_text::UprightScriptFailure::UnresolvedContext::reason: surgeist_text::UprightScriptContextFailure
+pub enum surgeist_text::UprightTabMeasurement
+pub surgeist_text::UprightTabMeasurement::SpaceInterval
+pub surgeist_text::UprightTabMeasurement::ZeroThreshold
 pub enum surgeist_text::VerticalAlign
 pub surgeist_text::VerticalAlign::Baseline
 pub surgeist_text::VerticalAlign::Middle
@@ -1179,6 +1245,23 @@ pub surgeist_text::VerticalGlyphMetricProvenance::HorizontalAdvanceHalf
 pub surgeist_text::VerticalGlyphMetricProvenance::HorizontalMetricsAscent(surgeist_text::FontLineMetricSource)
 pub surgeist_text::VerticalGlyphMetricProvenance::HorizontalMetricsHeight(surgeist_text::FontLineMetricSource)
 pub surgeist_text::VerticalGlyphMetricProvenance::VmtxAdvance
+pub enum surgeist_text::VerticalOriginReferenceReason
+pub surgeist_text::VerticalOriginReferenceReason::NonFinite
+pub surgeist_text::VerticalOriginReferenceReason::NotHalfUnit
+pub surgeist_text::VerticalOriginReferenceReason::OutOfRange
+pub enum surgeist_text::VerticalPositionStage
+pub surgeist_text::VerticalPositionStage::Attachment
+pub surgeist_text::VerticalPositionStage::Fallback
+pub surgeist_text::VerticalPositionStage::Gpos
+pub surgeist_text::VerticalPositionStage::Nominal
+pub enum surgeist_text::VerticalShapingContextReason
+pub surgeist_text::VerticalShapingContextReason::Direction
+pub surgeist_text::VerticalShapingContextReason::Kern
+pub surgeist_text::VerticalShapingContextReason::Kerx
+pub surgeist_text::VerticalShapingContextReason::Morx
+pub surgeist_text::VerticalShapingContextReason::PlanDirection
+pub surgeist_text::VerticalShapingContextReason::PlanScript
+pub surgeist_text::VerticalShapingContextReason::Trak
 pub enum surgeist_text::Weight
 pub surgeist_text::Weight::Black
 pub surgeist_text::Weight::Bold
@@ -1603,6 +1686,7 @@ pub fn surgeist_text::FinalizedRunView<'_>::brush(&self) -> surgeist_text::Brush
 pub fn surgeist_text::FinalizedRunView<'_>::effective_instance(&self) -> surgeist_text::Result<surgeist_text::EffectiveFontInstance<'_>>
 pub fn surgeist_text::FinalizedRunView<'_>::face(&self) -> surgeist_text::FontFace<'_>
 pub const fn surgeist_text::FinalizedRunView<'_>::font_size(&self) -> f32
+pub fn surgeist_text::FinalizedRunView<'_>::glyph_basis(&self) -> surgeist_text::GlyphBasis
 pub fn surgeist_text::FinalizedRunView<'_>::glyphs(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::FinalizedGlyphView<'_>>
 pub fn surgeist_text::FinalizedRunView<'_>::origin(&self) -> surgeist_text::Point
 pub const fn surgeist_text::FinalizedRunView<'_>::range(&self) -> surgeist_text::Range
@@ -2643,6 +2727,7 @@ pub const fn surgeist_text::Run::baseline(&self) -> f64
 pub const fn surgeist_text::Run::brush(&self) -> surgeist_text::Brush
 pub fn surgeist_text::Run::font(&self) -> &surgeist_text::FontData
 pub const fn surgeist_text::Run::font_size(&self) -> f32
+pub const fn surgeist_text::Run::glyph_basis(&self) -> surgeist_text::GlyphBasis
 pub fn surgeist_text::Run::glyphs(&self) -> &[surgeist_text::Glyph]
 pub const fn surgeist_text::Run::line(&self) -> usize
 pub fn surgeist_text::Run::new(line: usize, range: surgeist_text::Range, font: surgeist_text::FontData, style: surgeist_text::Style, brush: surgeist_text::Brush, metrics: surgeist_text::RunMetrics, glyphs: alloc::vec::Vec<surgeist_text::Glyph>) -> Self
@@ -2676,6 +2761,7 @@ pub fn surgeist_text::RunView<'_>::brush(&self) -> surgeist_text::Brush
 pub fn surgeist_text::RunView<'_>::effective_instance(&self) -> surgeist_text::Result<surgeist_text::EffectiveFontInstance<'_>>
 pub fn surgeist_text::RunView<'_>::face(&self) -> surgeist_text::FontFace<'_>
 pub const fn surgeist_text::RunView<'_>::font_size(&self) -> f32
+pub const fn surgeist_text::RunView<'_>::glyph_basis(&self) -> surgeist_text::GlyphBasis
 pub fn surgeist_text::RunView<'_>::glyphs(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::GlyphPlacement> + '_
 pub const fn surgeist_text::RunView<'_>::line(&self) -> usize
 pub const fn surgeist_text::RunView<'_>::orientation(&self) -> surgeist_text::LineOrientation
@@ -2947,6 +3033,9 @@ pub fn surgeist_text::TextEdit::insert(source: &surgeist_text::Source, index: us
 pub fn surgeist_text::TextEdit::inserted_text(&self) -> &surgeist_text::Text
 pub const fn surgeist_text::TextEdit::range(&self) -> surgeist_text::Range
 pub fn surgeist_text::TextEdit::replace(source: &surgeist_text::Source, range: surgeist_text::Range, text: impl core::convert::Into<surgeist_text::Text>) -> surgeist_text::Result<Self>
+pub struct surgeist_text::TextScript
+impl surgeist_text::TextScript
+pub const fn surgeist_text::TextScript::iso15924(self) -> [u8; 4]
 pub struct surgeist_text::TextTransformSet
 impl surgeist_text::TextTransformSet
 pub const fn surgeist_text::TextTransformSet::case(self) -> surgeist_text::CaseTransform
@@ -2970,6 +3059,13 @@ pub const fn surgeist_text::UprightFontMetrics<'a>::script(&self) -> surgeist_te
 pub const fn surgeist_text::UprightFontMetrics<'a>::units_per_em(&self) -> u16
 pub const fn surgeist_text::UprightFontMetrics<'a>::used_over(&self) -> f64
 pub const fn surgeist_text::UprightFontMetrics<'a>::used_under(&self) -> f64
+pub struct surgeist_text::UprightPresentation
+impl surgeist_text::UprightPresentation
+pub fn surgeist_text::UprightPresentation::pieces(&self) -> &[surgeist_text::UprightContentPiece]
+pub struct surgeist_text::UprightScriptContext
+impl surgeist_text::UprightScriptContext
+pub fn surgeist_text::UprightScriptContext::locale(&self) -> core::option::Option<&str>
+pub const fn surgeist_text::UprightScriptContext::owner(&self) -> surgeist_text::TextStyleOwner
 pub struct surgeist_text::ValidatedOptions
 impl surgeist_text::ValidatedOptions
 pub const fn surgeist_text::ValidatedOptions::authored(self) -> surgeist_text::Options

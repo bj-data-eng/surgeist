@@ -5,7 +5,7 @@ use super::{
     Phase, Table, TableError, baseline, finite, table, table_error, variation,
 };
 use crate::{Error, ErrorCode, ErrorDetail, FontCatalogueIdentity, Result};
-use skrifa::FontRef;
+use skrifa::{FontRef, raw::FontData};
 
 /// Coordinate reference of the used upright em edges and Central value.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -46,6 +46,61 @@ pub struct UprightFontMetrics<'a> {
     provenance: UprightMetricProvenance,
     base_script: Option<[u8; 4]>,
     base_absence: Option<FontBaselineAbsence>,
+}
+
+/// Glyph-free resolved facts retaining their actual design-unit reference.
+#[derive(Debug)]
+pub(crate) struct UnscaledUprightMetrics<'a> {
+    instance: EffectiveFontInstance<'a>,
+    script: FontBaselineScript,
+    units_per_em: u16,
+    reference: UprightMetricReference,
+    central: f64,
+    under: f64,
+    over: f64,
+    used_under: f64,
+    used_over: f64,
+    provenance: UprightMetricProvenance,
+    base_script: Option<[u8; 4]>,
+    base_absence: Option<FontBaselineAbsence>,
+}
+impl<'a> UnscaledUprightMetrics<'a> {
+    pub(crate) const fn instance(&self) -> &EffectiveFontInstance<'a> {
+        &self.instance
+    }
+    pub(crate) const fn script(&self) -> FontBaselineScript {
+        self.script
+    }
+    pub(crate) const fn units_per_em(&self) -> u16 {
+        self.units_per_em
+    }
+    pub(crate) const fn reference(&self) -> UprightMetricReference {
+        self.reference
+    }
+    pub(crate) const fn central_coordinate_or_distance(&self) -> f64 {
+        self.central
+    }
+    pub(crate) const fn em_under(&self) -> f64 {
+        self.under
+    }
+    pub(crate) const fn em_over(&self) -> f64 {
+        self.over
+    }
+    pub(crate) const fn used_under(&self) -> f64 {
+        self.used_under
+    }
+    pub(crate) const fn used_over(&self) -> f64 {
+        self.used_over
+    }
+    pub(crate) const fn provenance(&self) -> UprightMetricProvenance {
+        self.provenance
+    }
+    pub(crate) const fn base_script(&self) -> Option<[u8; 4]> {
+        self.base_script
+    }
+    pub(crate) const fn base_absence(&self) -> Option<FontBaselineAbsence> {
+        self.base_absence
+    }
 }
 impl<'a> UprightFontMetrics<'a> {
     /// Actual retained face, canonical size and complete coordinate loan.
@@ -131,6 +186,41 @@ impl<'a> EffectiveFontInstance<'a> {
         expected_catalogue: &FontCatalogueIdentity,
         script: FontBaselineScript,
     ) -> Result<UprightFontMetrics<'a>> {
+        let raw = self.unscaled_upright_metrics(expected_catalogue, script)?;
+        let scale = f64::from(self.size) / f64::from(raw.units_per_em());
+        let values = [
+            raw.em_under(),
+            raw.em_over(),
+            raw.central_coordinate_or_distance(),
+            raw.used_under(),
+            raw.used_over(),
+        ]
+        .map(|value| value * scale);
+        for (field, value) in upright_fields().into_iter().zip(values) {
+            finite(field, Phase::Scaled, value)?;
+        }
+        let [under, over, central, used_under, used_over] = values;
+        Ok(UprightFontMetrics {
+            instance: *raw.instance(),
+            script: raw.script(),
+            units_per_em: raw.units_per_em(),
+            reference: raw.reference(),
+            central,
+            under,
+            over,
+            used_under,
+            used_over,
+            provenance: raw.provenance(),
+            base_script: raw.base_script(),
+            base_absence: raw.base_absence(),
+        })
+    }
+
+    pub(crate) fn unscaled_upright_metrics(
+        &self,
+        expected_catalogue: &FontCatalogueIdentity,
+        script: FontBaselineScript,
+    ) -> Result<UnscaledUprightMetrics<'a>> {
         if self.face.catalogue_identity() != expected_catalogue {
             return Err(Error::new(
                 ErrorCode::FontCatalogueMismatch,
@@ -189,23 +279,10 @@ impl<'a> EffectiveFontInstance<'a> {
         let used_under = under - central;
         let used_over = over - central;
         let values = [under, over, central, used_under, used_over];
-        let fields = [
-            Field::UprightEmUnder,
-            Field::UprightEmOver,
-            Field::UprightCentral,
-            Field::UprightUsedUnder,
-            Field::UprightUsedOver,
-        ];
-        for (field, value) in fields.into_iter().zip(values) {
+        for (field, value) in upright_fields().into_iter().zip(values) {
             finite(field, Phase::Unscaled, value)?;
         }
-        let scale = f64::from(self.size) / f64::from(upem);
-        let values = values.map(|value| value * scale);
-        for (field, value) in fields.into_iter().zip(values) {
-            finite(field, Phase::Scaled, value)?;
-        }
-        let [under, over, central, used_under, used_over] = values;
-        Ok(UprightFontMetrics {
+        Ok(UnscaledUprightMetrics {
             instance: *self,
             script,
             units_per_em: upem,
@@ -220,11 +297,69 @@ impl<'a> EffectiveFontInstance<'a> {
             base_absence,
         })
     }
+
+    /// Independently demanded signed upright line spacing in design units.
+    /// No glyph inventory, outline, vmtx, BASE or horizontal metric is needed.
+    pub(crate) fn upright_line_gap(&self, expected: &FontCatalogueIdentity) -> Result<f64> {
+        if self.face.catalogue_identity() != expected {
+            return Err(Error::new(
+                ErrorCode::FontCatalogueMismatch,
+                "associated font catalogue mismatch",
+            )
+            .with_detail(ErrorDetail::FontCatalogueMismatch {
+                expected: expected.clone(),
+                actual: self.face.catalogue_identity().clone(),
+            }));
+        }
+        let font = FontRef::from_index(self.face.bytes(), self.face.index()).map_err(|_| {
+            Error::new(ErrorCode::FontLoadFailed, "invalid font face").with_detail(
+                ErrorDetail::InvalidFontFace {
+                    index: self.face.index(),
+                },
+            )
+        })?;
+        let Some(data) = vhea_typographic(&font)? else {
+            return Ok(0.0);
+        };
+        let deltas = variation::resolve(table(&font, Table::Mvar, false)?, self, &[*b"vlgp"])?;
+        let gap = f64::from(
+            data.read_at::<i16>(8)
+                .map_err(|_| table_error(Table::Vhea, TableError::Malformed))?,
+        ) + deltas.get(b"vlgp");
+        finite(Field::Leading, Phase::Unscaled, gap)?;
+        Ok(gap)
+    }
+}
+
+const fn upright_fields() -> [Field; 5] {
+    [
+        Field::UprightEmUnder,
+        Field::UprightEmOver,
+        Field::UprightCentral,
+        Field::UprightUsedUnder,
+        Field::UprightUsedOver,
+    ]
 }
 
 // Font-wide em sides consume the vhea header, not a glyph's vmtx/outline path.
 // MVAR is demanded only when its actual vhea1.1 fields supply the result.
 fn vhea_em(font: &FontRef<'_>, instance: &EffectiveFontInstance<'_>) -> Result<Option<(f64, f64)>> {
+    let Some(data) = vhea_typographic(font)? else {
+        return Ok(None);
+    };
+    let malformed = || table_error(Table::Vhea, TableError::Malformed);
+    let deltas = variation::resolve(
+        table(font, Table::Mvar, false)?,
+        instance,
+        &[*b"vasc", *b"vdsc"],
+    )?;
+    let over = f64::from(data.read_at::<i16>(4).map_err(|_| malformed())?) + deltas.get(b"vasc");
+    let under = f64::from(data.read_at::<i16>(6).map_err(|_| malformed())?) + deltas.get(b"vdsc");
+    Ok(Some((under, over)))
+}
+
+// Share the exact existing header qualification without demanding glyph tables.
+fn vhea_typographic<'a>(font: &FontRef<'a>) -> Result<Option<FontData<'a>>> {
     let Some(data) = table(font, Table::Vhea, false)? else {
         return Ok(None);
     };
@@ -239,12 +374,5 @@ fn vhea_em(font: &FontRef<'_>, instance: &EffectiveFontInstance<'_>) -> Result<O
     if version == 0x0001_0000 {
         return Ok(None);
     }
-    let deltas = variation::resolve(
-        table(font, Table::Mvar, false)?,
-        instance,
-        &[*b"vasc", *b"vdsc"],
-    )?;
-    let over = f64::from(data.read_at::<i16>(4).map_err(|_| malformed())?) + deltas.get(b"vasc");
-    let under = f64::from(data.read_at::<i16>(6).map_err(|_| malformed())?) + deltas.get(b"vdsc");
-    Ok(Some((under, over)))
+    Ok(Some(data))
 }

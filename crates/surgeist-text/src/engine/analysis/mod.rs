@@ -12,6 +12,7 @@ pub(crate) mod line_units;
 pub(crate) mod phrase;
 pub(crate) mod scope;
 pub(crate) mod unit_properties;
+pub(crate) mod upright;
 pub(crate) mod wrapping;
 
 use std::ops::Range;
@@ -501,7 +502,10 @@ pub(crate) fn analyze(
 // Native whole-upright interpretation is shared by actual source characters
 // and participating semantic controls. B is retained as a structural delimiter;
 // L-class projection never changes the original character's rendering role.
-fn used_bidi_class(typography: crate::AnalysisTypography, original: BidiClass) -> BidiClass {
+pub(crate) fn used_bidi_class(
+    typography: crate::AnalysisTypography,
+    original: BidiClass,
+) -> BidiClass {
     if typography.is_upright() && original != BidiClass::ParagraphSeparator {
         BidiClass::LeftToRight
     } else {

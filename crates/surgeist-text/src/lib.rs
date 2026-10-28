@@ -48,7 +48,10 @@ pub use error::{
     DocumentSegmentBreakError, Error, ErrorCode, ErrorDetail, FontMetricField,
     FontMetricNumericError, FontMetricPhase, FontMetricTable, FontMetricTableError,
     NumericRequirement, ProcessingCapacityError, Result, ShapingBoundary, ShapingRefusalReason,
-    TextNumericError, TextNumericPhase, TextTransformError,
+    TextNumericError, TextNumericPhase, TextScript, TextStyleOwner, TextTransformError,
+    UprightContent, UprightContentPiece, UprightDecorationRole, UprightPresentation,
+    UprightScriptContext, UprightScriptContextFailure, UprightScriptFailure, UprightTabMeasurement,
+    VerticalOriginReferenceReason, VerticalPositionStage, VerticalShapingContextReason,
 };
 pub use font::{
     EffectiveFontInstance, FontBaseline, FontBaselineAbsence, FontBaselineAxis,
@@ -58,7 +61,7 @@ pub use font::{
     GlyphOutlineGeometry, StrikeoutMetrics, UprightFontMetrics, UprightMetricProvenance,
     UprightMetricReference, VerticalGlyphMetricProvenance, VerticalGlyphMetrics,
 };
-pub use geometry::{Point, Rect, Size};
+pub use geometry::{GlyphBasis, Point, Rect, Size};
 pub use id::Id;
 pub use layout::{
     Affinity, BaselineShiftFact, Cluster, Cursor, CursorGeometry, DecorationKind, DecorationRun,

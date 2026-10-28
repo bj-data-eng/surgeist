@@ -90,8 +90,9 @@ impl PreparationOptions {
             orientation: LineOrientation::Horizontal,
         })
     }
-    /// Requests a physical preparation basis. Actual preparation admits only
-    /// Horizontal and clockwise Sideways; unsupported requests refuse atomically.
+    /// Requests a physical preparation basis. Matching issued upright analysis
+    /// admits the native unrotated Vertical profile; Horizontal and clockwise
+    /// Sideways retain horizontal composition. Unsupported inputs refuse atomically.
     #[must_use]
     pub const fn with_orientation(mut self, orientation: LineOrientation) -> Self {
         self.orientation = orientation;
@@ -599,8 +600,8 @@ impl PartialEq for FinalizedFragment {
 impl Eq for FinalizedFragment {}
 
 /// Physical location of local x=0 on the line baseline, not its top-left.
-/// Horizontal uses (inline_origin, baseline); clockwise Sideways uses
-/// (baseline, inline_origin). The baseline is a cross-axis coordinate.
+/// Horizontal uses (inline_origin, baseline); Vertical and clockwise Sideways
+/// use (baseline, inline_origin). The baseline is a cross-axis coordinate.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LineAnchor {
     pub inline_origin: f64,
@@ -876,6 +877,11 @@ pub enum ProtocolError {
     },
     /// The bounded clockwise sideways profile cannot place independent boxes.
     UnsupportedSidewaysAtomic {
+        /// Actual original box occurrence in this paragraph, including out-of-flow.
+        occurrence: usize,
+    },
+    /// The unrotated upright profile cannot place independent boxes.
+    UnsupportedUprightAtomic {
         /// Actual original box occurrence in this paragraph, including out-of-flow.
         occurrence: usize,
     },

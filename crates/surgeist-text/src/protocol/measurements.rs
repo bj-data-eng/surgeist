@@ -189,7 +189,7 @@ impl LineEdgeUnitView<'_> {
             .iter()
             .filter(move |unit| unit.atoms.start < atoms.end && atoms.start < unit.atoms.end)
             .filter_map(|unit| {
-                if let super::prepared::PresentationUnitKind::Replacement { alternative } =
+                if let super::prepared::PresentationUnitKind::Replacement { alternative, .. } =
                     unit.kind
                 {
                     Some(LineEdgeOwner::Alternative(PreparedAlternative {

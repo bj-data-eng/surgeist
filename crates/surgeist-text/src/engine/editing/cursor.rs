@@ -428,10 +428,10 @@ fn line_rect(line: &PlacedLine, x: f64) -> Rect {
     )
 }
 
-// The new sideways profile uses actual physical metric rectangles, not an
-// assumed left/right paragraph stack. Source ordinal resolves exact ties.
+// Vertical inline axes use actual physical metric rectangles without assuming
+// a left/right paragraph stack. Source ordinal resolves exact ties.
 pub(super) fn line_at_point(layout: &PlacedLayout, point: Point) -> Option<usize> {
-    if layout.prepared.options.orientation() == crate::LineOrientation::Sideways {
+    if layout.prepared.options.orientation() != crate::LineOrientation::Horizontal {
         return layout
             .lines
             .iter()
@@ -660,7 +660,7 @@ pub(crate) fn move_cursor(
             target.map_or(value, |index| {
                 let line = &layout.lines[index];
                 let (current, rect) = geometry(layout, value);
-                let inline = if line.orientation == crate::LineOrientation::Sideways {
+                let inline = if line.orientation != crate::LineOrientation::Horizontal {
                     crate::layout::local_point(&layout.lines[current], rect.origin).x
                 } else {
                     rect.origin.x

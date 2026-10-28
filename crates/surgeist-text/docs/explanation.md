@@ -15,7 +15,11 @@ origin/connection/control facts, processes source once and issues preparation-bo
 capabilities. Selection validates the full mixed request; finalization retains its
 actual request and mapping. Explicit placement adds a physical baseline anchor to
 each finalized line. The standalone chooser and stacker lower to that same core,
-with their existing metric rounding policy. See [composed lines](composed-lines.md).
+with their existing metric rounding policy. The native composed path also retains
+a matching issued Upright analysis and Vertical preparation through actual
+vertical shaping, finalization and placement. Its [support profile](reference.md#native-whole-upright-paragraphs)
+keeps source-owned unit context, glyph axes and cell geometry distinct. See
+[composed lines](composed-lines.md).
 
 The resulting [Layout](../src/layout.rs) is an immutable snapshot containing
 authored source and the shaped layout. It exposes line metrics, resolved font
@@ -27,8 +31,9 @@ without making the text crate own widgets or application commands.
 identity, style resolution and application commands. Each consuming subsystem
 owns its direct adapter: Render consumes Text's borrowed actual run/face/instance
 readback under its optional `render-text` feature. Text has no Render dependency.
-The adapter borrows the original immutable Layout for paint/interaction association;
-it does not choose breaks or create future selected-line identities. The root
+Layout and Render retain separate vertical-adapter capability boundaries.
+The paint adapter borrows the original immutable Layout for paint/interaction
+association; it does not choose breaks or create future selected-line identities. The root
 facade provides optional composition and shared API auditing.
 
 ## Source coordinates remain authored coordinates

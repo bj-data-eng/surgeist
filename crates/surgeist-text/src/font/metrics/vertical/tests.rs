@@ -78,6 +78,45 @@ fn native_provenance(empty: bool) -> [P; 3] {
         },
     ]
 }
+
+#[test]
+fn unscaled_nominal_facts_retain_exact_integer_and_half_unit_geometry_at_every_size() {
+    for (bytes, expected) in [
+        (
+            fixture::with_native(&fixture::horizontal(800, -200, 0, 1001), 1200, 100, 281),
+            [1200.0, 500.5, 900.0],
+        ),
+        (
+            fixture::horizontal(800, -200, 0, 1001),
+            [1000.0, 500.5, 800.0],
+        ),
+    ] {
+        x_premises(&bytes, 1001);
+        let (system, data) = registered(bytes);
+        for size in [f32::from_bits(1), 10.0, 20.0, f32::MAX] {
+            let instance = data.unsynthesized_instance(size, &[]).unwrap();
+            let raw = instance
+                .unscaled_vertical_glyph_metrics(X, system.font_catalogue_identity())
+                .unwrap();
+            assert_eq!([raw.advance(), raw.origin_x(), raw.origin_y()], expected);
+            assert_eq!(raw.units_per_em(), 1000);
+            assert_eq!(raw.glyph_id(), X);
+            assert!(raw.instance().face().is_same_face(&data.face()));
+            assert_eq!(raw.instance().font_size(), size);
+            let scaled = instance
+                .vertical_glyph_metrics(X, system.font_catalogue_identity())
+                .unwrap();
+            for (actual, expected) in [scaled.advance(), scaled.origin_x(), scaled.origin_y()]
+                .into_iter()
+                .zip(expected.map(|v| v * (f64::from(size) / 1000.0)))
+            {
+                close(actual, expected);
+            }
+            assert_eq!(scaled.advance_provenance(), raw.advance_provenance());
+            assert_eq!(scaled.origin_y_provenance(), raw.origin_y_provenance());
+        }
+    }
+}
 fn synthesized(source: L) -> [P; 3] {
     [
         P::HorizontalMetricsHeight(source),

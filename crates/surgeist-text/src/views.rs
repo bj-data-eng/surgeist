@@ -80,11 +80,15 @@ impl RunView<'_> {
     pub const fn line(&self) -> usize {
         self.line
     }
-    /// Admitted physical basis. Raw glyph offsets and pens stay in the
-    /// horizontal provider frame and are transformed exactly once by consumers.
+    /// Admitted line basis. The inline pen axis is separate from glyph axes.
     #[must_use]
     pub const fn orientation(&self) -> crate::LineOrientation {
         self.placed.orientation
+    }
+    /// Actual outline axes, derived from the authenticated uniform orientation.
+    #[must_use]
+    pub const fn glyph_basis(&self) -> crate::GlyphBasis {
+        crate::GlyphBasis::for_orientation(self.orientation())
     }
     /// Actual shaped-run ordinal within this finalized line.
     #[must_use]
@@ -113,8 +117,11 @@ impl RunView<'_> {
     pub fn face(&self) -> FontFace<'_> {
         self.shaped.font.face()
     }
-    /// Physical origin of this run's baseline. Combine canonical glyph pen/x/y
-    /// in the local horizontal frame, then apply orientation about this origin.
+    /// Physical baseline origin, Central for a whole-upright run.
+    ///
+    /// With origin `(X,Y)`, pen `p` and raw offsets `(dx,dy)`, glyph origins are
+    /// `(X+p+dx,Y+dy)` for Horizontal, `(X-dy,Y+p+dx)` for Sideways and
+    /// `(X+dx,Y+p+dy)` for Vertical. The outline axes follow [`Self::glyph_basis`].
     #[must_use]
     pub fn origin(&self) -> Point {
         crate::layout::line_point(
@@ -135,7 +142,7 @@ impl RunView<'_> {
             })
     }
     /// Measures an unhinted named design baseline for this actual run's script
-    /// and retained instance. This does not enable vertical run placement.
+    /// and retained instance.
     pub fn baseline(
         &self,
         expected: &crate::FontCatalogueIdentity,
@@ -184,20 +191,20 @@ impl GlyphPlacement {
     pub const fn id(self) -> u32 {
         self.id
     }
-    /// Raw canonical horizontal provider offset. Add the logical pen locally,
-    /// then apply the actual RunView orientation at its physical origin.
+    /// Raw font-x offset, scaled once to layout units. The pen follows the
+    /// run's inline axis independently; see [`RunView::origin`].
     #[must_use]
     pub const fn x(self) -> f32 {
         self.x
     }
-    /// Raw canonical provider offset, positive downward in the local horizontal
-    /// frame. Physical coordinates also consume the RunView orientation.
+    /// Raw converted font-y offset, positive downward before applying the
+    /// run's glyph basis. See [`RunView::origin`] for physical positioning.
     #[must_use]
     pub const fn y(self) -> f32 {
         self.y
     }
-    /// Actual logical run-local pen, including line spacing allocation.
-    /// Add this and the canonical x-offset to the run origin without narrowing.
+    /// Actual logical run-local inline pen, including line spacing allocation.
+    /// It follows physical y for Vertical, independently of the raw x offset.
     #[must_use]
     pub const fn pen(self) -> f64 {
         self.pen
@@ -214,29 +221,35 @@ fn run_decorations(run: &RunView<'_>) -> [Option<DecorationRun>; 2] {
     let metrics = run.shaped.metrics;
     let origin = run.origin();
     [
-        (
-            style.underline,
-            DecorationKind::Underline,
-            metrics.underline_top,
-            metrics.underline_thickness,
-        ),
-        (
-            style.strikethrough,
-            DecorationKind::Strikethrough,
-            metrics.strike_center,
-            metrics.strike_thickness,
-        ),
+        (style.underline, DecorationKind::Underline),
+        (style.strikethrough, DecorationKind::Strikethrough),
     ]
-    .map(|(decoration, kind, default_offset, default_thickness)| {
+    .map(|(decoration, kind)| {
         if !decoration.enabled() {
             return None;
         }
         let offset = match decoration.offset() {
-            DecorationOffset::Auto => default_offset,
+            DecorationOffset::Auto => {
+                let horizontal = metrics
+                    .horizontal()
+                    .expect("automatic upright decoration offsets were refused during preparation");
+                match kind {
+                    DecorationKind::Underline => horizontal.underline_top,
+                    DecorationKind::Strikethrough => horizontal.strike_center,
+                }
+            }
             DecorationOffset::Absolute(value) => value.get(),
         };
         let thickness = match decoration.thickness() {
-            DecorationThickness::Auto => default_thickness,
+            DecorationThickness::Auto => {
+                let horizontal = metrics.horizontal().expect(
+                    "automatic upright decoration thickness was refused during preparation",
+                );
+                match kind {
+                    DecorationKind::Underline => horizontal.underline_thickness,
+                    DecorationKind::Strikethrough => horizontal.strike_thickness,
+                }
+            }
             DecorationThickness::Absolute(value) => value.get(),
         };
         let top = crate::layout::decoration_top(origin.y, offset)
@@ -277,3 +290,7 @@ fn run_decorations(run: &RunView<'_>) -> [Option<DecorationRun>; 2] {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "views/upright_tests.rs"]
+mod upright_tests;

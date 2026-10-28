@@ -31,6 +31,8 @@ mod separators;
 mod shared_unit_endpoints;
 mod sideways;
 mod tab_stops;
+mod upright;
+mod upright_shaping;
 mod vertical_metrics_orientation;
 mod wbr;
 mod whitespace_edges;

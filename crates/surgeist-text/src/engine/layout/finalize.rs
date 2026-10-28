@@ -585,8 +585,10 @@ pub(super) fn finalize(
                 };
                 add_owned_fragment_bounds(&owned_fragments, &mut data.fragments, owner, rect);
             }
-            if let crate::protocol::prepared::PresentationUnitKind::Replacement { alternative } =
-                unit.kind
+            if let crate::protocol::prepared::PresentationUnitKind::Replacement {
+                alternative,
+                ..
+            } = unit.kind
             {
                 add_owned_fragment_bounds(
                     &owned_fragments,
@@ -631,7 +633,7 @@ pub(super) fn finalize(
                 FragmentOwner::Control(occurrence),
                 rect,
             ),
-            PresentationUnitKind::Replacement { alternative } => add_owned_fragment_bounds(
+            PresentationUnitKind::Replacement { alternative, .. } => add_owned_fragment_bounds(
                 &owned_fragments,
                 &mut data.fragments,
                 FragmentOwner::Alternative(alternative),

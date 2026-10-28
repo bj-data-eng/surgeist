@@ -22,6 +22,7 @@ pub(crate) mod layout;
 mod lru_cache;
 pub(crate) mod resolve;
 pub(crate) mod shape;
+pub(crate) mod upright;
 
 #[cfg(test)]
 mod tests;
@@ -89,6 +90,7 @@ pub(crate) struct PreparedData {
 
 /// Inputs coupled to one shaping operation, without a mutable System escape.
 pub(crate) struct ShapingInput<'a> {
+    pub(crate) profile: upright::ShapingProfile<'a>,
     pub(crate) projection: &'a SourceProjection,
     pub(crate) analysis: &'a analysis::Analysis,
     pub(crate) styles: &'a [resolve::ResolvedStyleRun],
@@ -263,14 +265,14 @@ pub(crate) fn prepare(
         ));
     }
     match options.orientation() {
-        crate::LineOrientation::Vertical => {
+        crate::LineOrientation::Vertical if !analyzed.typography.is_upright() => {
             return Err(crate::protocol::protocol_error(
                 crate::ProtocolError::UnsupportedContext {
                     field: crate::ProtocolContextField::Orientation,
                 },
             ));
         }
-        crate::LineOrientation::Sideways => {
+        crate::LineOrientation::Sideways | crate::LineOrientation::Vertical => {
             if let Some(occurrence) = analyzed.paragraph.anchor_order.iter().find_map(|anchor| {
                 if let crate::protocol::paragraph::SemanticAnchorItem::Atomic(i) = anchor.item {
                     Some(i)
@@ -279,12 +281,23 @@ pub(crate) fn prepare(
                 }
             }) {
                 return Err(crate::protocol::protocol_error(
-                    crate::ProtocolError::UnsupportedSidewaysAtomic { occurrence },
+                    if options.orientation() == crate::LineOrientation::Vertical {
+                        crate::ProtocolError::UnsupportedUprightAtomic { occurrence }
+                    } else {
+                        crate::ProtocolError::UnsupportedSidewaysAtomic { occurrence }
+                    },
                 ));
             }
         }
         crate::LineOrientation::Horizontal => {}
     }
+    let upright_units = upright::units(
+        &analyzed,
+        &analyzed.projection,
+        &analyzed.analysis,
+        &upright::UprightProvenance::Original,
+        options.orientation(),
+    )?;
     let mut styles = resolve::resolve(
         catalogue.collection_mut(),
         &analyzed.styles,
@@ -317,6 +330,7 @@ pub(crate) fn prepare(
     let mut shaped = shape::shape(
         catalogue,
         ShapingInput {
+            profile: upright::original_profile(options.orientation(), &upright_units),
             projection: &analyzed.projection,
             analysis: &analyzed.analysis,
             styles: &styles,
@@ -337,6 +351,7 @@ pub(crate) fn prepare(
         shaped.empty_run = Some(shape::default_metrics(
             catalogue.query(),
             &ShapingInput {
+                profile: upright::original_profile(options.orientation(), &upright_units),
                 projection: &analyzed.projection,
                 analysis: &analyzed.analysis,
                 styles: &styles,
@@ -358,6 +373,7 @@ pub(crate) fn prepare(
         &tables,
         scratch,
         options.tabs() == crate::TabPreparation::CssStops,
+        options.orientation(),
     )?;
     let tab_metrics = crate::tabs::prepare(
         catalogue,

@@ -163,6 +163,7 @@ pub(crate) fn prepare(
             )?;
             let block_styles = [block_style];
             let input = crate::engine::ShapingInput {
+                profile: crate::engine::upright::original_profile(options.orientation(), &[]),
                 projection: &analyzed.projection,
                 analysis: &analyzed.analysis,
                 styles: &block_styles,
@@ -177,6 +178,10 @@ pub(crate) fn prepare(
                 0,
                 ' ',
                 reference.direction(),
+                crate::UprightContent::TabMeasurement {
+                    role: crate::UprightTabMeasurement::SpaceInterval,
+                    owner: crate::TextStyleOwner::TabReference,
+                },
                 scratch,
             )?
             .ok_or_else(|| capability(crate::ProtocolContextField::TabMetrics))?;
@@ -199,6 +204,7 @@ pub(crate) fn prepare(
         }
         if metric.period != 0.0 {
             let input = crate::engine::ShapingInput {
+                profile: crate::engine::upright::original_profile(options.orientation(), &[]),
                 projection: &analyzed.projection,
                 analysis: &analyzed.analysis,
                 styles,
@@ -213,6 +219,10 @@ pub(crate) fn prepare(
                 index,
                 '0',
                 crate::ParagraphBaseDirection::LeftToRight,
+                crate::UprightContent::TabMeasurement {
+                    role: crate::UprightTabMeasurement::ZeroThreshold,
+                    owner: crate::engine::upright::style_owner(analyzed.styles[index].owner),
+                },
                 scratch,
             )?;
             let ch = if let Some((advance, font)) = measured {
