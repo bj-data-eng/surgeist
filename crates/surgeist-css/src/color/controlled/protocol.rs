@@ -5,7 +5,7 @@
 
 use crate::color::grammar::GrammarRecord;
 use crate::numeric::bounded_decimal::DecimalDigit;
-use surgeist_css_parser::input::{InputCursor, InputError, InputKind, InputRequest, Scalar};
+use surgeist_css_parser::input::{InputCursor, InputKind, InputRequest, Scalar};
 use surgeist_css_parser::lexer::protocol::{RawToken, Record, TokenCursor, TokenRequest};
 
 /// A nonzero-sized allocation-free anchor, exclusively lent to one parse.
@@ -683,12 +683,13 @@ impl<'owner> ColorAction<'_, 'owner> {
         let Stage::Input(cursor) = &mut self.operation.stage else {
             return Err(ColorProtocolError::WrongAction);
         };
-        cursor.read(unit).map_err(|error| match error {
+        cursor.read(unit).map_err(|error| {
             // A UTF-8 unit beyond a byte, or a byte no UTF-8 sequence admits.
-            InputError::WrongUnit | InputError::InvalidUtf8 => {
+            if error.is_wrong_unit() || error.is_invalid_utf8() {
                 ColorProtocolError::Malformed { offset }
+            } else {
+                ColorProtocolError::Input
             }
-            _ => ColorProtocolError::Input,
         })
     }
 
@@ -806,12 +807,15 @@ impl<'owner> ColorAction<'_, 'owner> {
                     .process_held()
                     .map_err(|_| ColorProtocolError::Input)?,
                 InputRequest::End => {
-                    let ended = cursor.end().map_err(|error| match error {
-                        // The input ends inside a multi-unit UTF-8 sequence.
-                        InputError::InvalidUtf8 => ColorProtocolError::Malformed {
-                            offset: self.operation.length,
-                        },
-                        _ => ColorProtocolError::Input,
+                    let ended = cursor.end().map_err(|error| {
+                        if error.is_invalid_utf8() {
+                            // The input ends inside a multi-unit UTF-8 sequence.
+                            ColorProtocolError::Malformed {
+                                offset: self.operation.length,
+                            }
+                        } else {
+                            ColorProtocolError::Input
+                        }
                     })?;
                     if ended {
                         self.operation.stage = Stage::Tokens(TokenCursor::new(

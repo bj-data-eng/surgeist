@@ -3733,6 +3733,10 @@ dependencies = [
 [[package]]
 name = "surgeist-css-parser"
 version = "0.1.0"
+dependencies = [
+ "cssparser",
+ "surgeist-fuzz",
+]
 
 [[package]]
 name = "surgeist-cssom"

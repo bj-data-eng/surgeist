@@ -25,15 +25,16 @@
 //!
 //! The decision whether a scalar starts a name, a number or an escape uses the
 //! predicates of [`lexical`](crate::lexical), which describe preprocessed
-//! input: the cursor never sees U+0000, U+000D or U+000C, and treats a scalar
-//! that is one of them as an ordinary code point.
+//! input: the cursor never sees U+0000, U+000D or U+000C, and
+//! [`TokenCursor::read_scalar`] refuses a scalar that is one of them.
 
-mod name;
+mod error;
+pub(super) mod name;
 mod number;
 mod tokenizer;
 
+pub use error::ProtocolError;
 pub use number::{NumberCursor, NumberLayout, NumberOverflow, NumberPart, NumberStep};
 pub use tokenizer::{
-    NameKind, NumberKind, ProtocolError, RawToken, RawTokenKind, Record, Span, TokenCursor,
-    TokenRequest,
+    NameKind, NumberKind, RawToken, RawTokenKind, Record, Span, TokenCursor, TokenRequest,
 };
