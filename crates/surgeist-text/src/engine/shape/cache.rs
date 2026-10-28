@@ -19,7 +19,7 @@ impl PartialEq for ResourceKey {
 pub(super) struct InstanceKey {
     pub(super) resource: ResourceKey,
     pub(super) synthesis: crate::FontSynthesis,
-    pub(super) suggested_variations: Vec<(harfrust::Tag, f32)>,
+    pub(super) suggested_variations: Vec<(surgeist_shaper::Tag, f32)>,
     pub(super) variations: Vec<parlance::FontVariation>,
     pub(super) coords: Vec<i16>,
 }
@@ -27,9 +27,9 @@ pub(super) struct InstanceKey {
 #[derive(PartialEq)]
 pub(super) struct PlanKey {
     pub(super) instance: InstanceKey,
-    pub(super) direction: harfrust::Direction,
-    pub(super) script: harfrust::Script,
-    pub(super) language: Option<harfrust::Language>,
-    pub(super) features: Vec<harfrust::Feature>,
+    pub(super) direction: surgeist_shaper::Direction,
+    pub(super) script: surgeist_shaper::Script,
+    pub(super) language: Option<surgeist_shaper::Language>,
+    pub(super) features: Vec<surgeist_shaper::Feature>,
     pub(super) size_bits: u32,
 }

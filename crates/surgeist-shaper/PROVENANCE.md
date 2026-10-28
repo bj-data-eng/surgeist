@@ -1,9 +1,11 @@
-# Maintained Harfrust dependency
+# Shaper source provenance
 
-This directory supplies the pinned Harfrust 0.6.2 dependency through Text's direct
-[path dependency](../../crates/surgeist-text/Cargo.toml). It remains outside the
-product workspace.
-Text owns its consuming adapter; this directory owns the provider implementation.
+`surgeist-shaper` is the owned Surgeist workspace shaping crate, derived from
+Harfrust 0.6.2. Text consumes it through a direct
+[path dependency](../surgeist-text/Cargo.toml) and owns its adapter, paragraph
+interpretation, font selection and text/line composition. Shaper owns the provider
+implementation and the maintained extensions described below. The separate
+`surgeist-shape` crate owns geometry.
 
 ## Exact source
 
@@ -16,21 +18,25 @@ copying. Import baseline `5b6bf65cc368662dbd46fd1297961c215443a6dd`
 retains all 70 Rust source files at their exact package bytes. The maintained
 changes described below derive from that baseline. Equivalent `Option` early
 returns are also simplified in handwritten `src/hb/{glyph_metrics,unicode}.rs`.
-Ragel sources, generated Rust, Unicode companion data, upstream README, license
+Ragel sources, generated Rust, Unicode companion data, [upstream README](upstream/README.md), license
 and VCS metadata remain unchanged.
 
 The original [workspace manifest](upstream/Cargo.toml.orig) and
 [normalized registry manifest](upstream/Cargo.toml.registry) are preserved as
-provenance. The active standalone manifest expands the package metadata, retains
-the same production dependency versions, public features and lint tables, and omits
-benchmark-only dependencies and targets. The root lockfile retains the exact
-previously resolved production versions. Standalone feature qualification seeds
-an ignored local lockfile from that root resolution and checks that its retained
-package identities do not change.
+provenance. The [pre-migration maintained manifest](upstream/Cargo.toml.maintained) records
+the former package identity. The active workspace manifest names `surgeist-shaper`
+0.1.0 and library `surgeist_shaper`, while retaining edition 2021, MSRV 1.85,
+production dependency requirements and public features. Inherited lint settings
+remain except the explicitly scoped workspace-metadata adjustment documented in
+the [README](README.md#features-and-verification).
+Package-level `unsafe_code = "forbid"` also covers every compiled target.
+Benchmark-only dependencies and targets remain omitted. The root lockfile retains
+the previously resolved production versions. Qualification uses that shared
+resolution for both default `std` and `--no-default-features` alloc builds.
 The package's unrelated archived `src/hb/p` patch text, upstream lockfile and
 Cargo's extraction sentinel are omitted.
 
-The standalone manifest enables the existing `read-fonts/libm` feature: the
+The maintained manifest enables the existing `read-fonts/libm` feature: the
 already resolved Read Fonts 0.39.2 requires it for `no_std` VARC math. This uses
 the same already resolved `core_maths` and `libm` packages and introduces no
 package or version change. Standard builds retain their native float operations.
@@ -54,7 +60,7 @@ ot_layout_gpos_table,ot_shape_normalize,ot_shaper_arabic,kerning}.rs`, plus `src
 layout_kerx_table}.rs`, contain the maintained completion-status extension and
 owning test registrations. The adjacent `*completion_tests.rs` files and
 `src/hb/completion_fixture.rs` are repository-authored tests. They borrow the
-existing [Text Ahem fixture](../../crates/surgeist-text/tests/fixtures/fonts/ahem/PROVENANCE.md)
+existing [Text Ahem fixture](../surgeist-text/tests/fixtures/fonts/ahem/PROVENANCE.md)
 by a relative compile-time include; no new font copy or dependency is introduced.
 Original source notices are retained.
 

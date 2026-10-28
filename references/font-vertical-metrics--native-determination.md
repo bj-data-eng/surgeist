@@ -73,7 +73,7 @@ individual ink or infer BASE coordinates.
 The ascent origin is supported by the pinned
 [WebKit vertical-data implementation](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/platform/graphics/opentype/OpenTypeVerticalData.cpp#L499)
 and [Blink implementation](https://github.com/chromium/chromium/blob/daf70f9ddee4b45d4f8870f574fbde61c0db4ca7/third_party/blink/renderer/platform/fonts/opentype/open_type_vertical_data.cc#L265).
-The retained [Harfrust advance mechanism](../vendor/harfrust/src/hb/glyph_metrics.rs)
+The retained [Harfrust advance mechanism](../crates/surgeist-shaper/src/hb/glyph_metrics.rs)
 provides separate ascent-minus-descent precedent. Browser/provider integer
 rounding and permissive parsing are not adopted. Harfrust's ink-centering origin
 is not selected: an ascent origin remains stable across glyphs and requires no

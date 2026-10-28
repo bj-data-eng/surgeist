@@ -723,17 +723,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "harfrust"
-version = "0.6.2"
-dependencies = [
- "bitflags 2.13.0",
- "bytemuck",
- "core_maths",
- "read-fonts",
- "smallvec",
-]
-
-[[package]]
 name = "hashbrown"
 version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2265,6 +2254,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "surgeist-shaper"
+version = "0.1.0"
+dependencies = [
+ "bitflags 2.13.0",
+ "bytemuck",
+ "core_maths",
+ "read-fonts",
+ "smallvec",
+]
+
+[[package]]
 name = "surgeist-task"
 version = "0.1.0"
 dependencies = [
@@ -2284,7 +2284,6 @@ name = "surgeist-text"
 version = "0.1.0"
 dependencies = [
  "fontique",
- "harfrust",
  "hypher",
  "icu_casemap",
  "icu_locale",
@@ -2296,6 +2295,7 @@ dependencies = [
  "parlance",
  "parley_data",
  "skrifa",
+ "surgeist-shaper",
 ]
 
 [[package]]

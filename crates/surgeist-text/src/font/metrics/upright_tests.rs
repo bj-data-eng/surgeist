@@ -191,10 +191,10 @@ fn fractional_vertical_base_remains_observable_before_provider_precision_admissi
         close(raw.coordinate(), center);
         if size == 1000.0 {
             assert_eq!(
-                harfrust::VerticalOriginReference::try_font_design_x(
+                surgeist_shaper::VerticalOriginReference::try_font_design_x(
                     value.central_coordinate_or_distance()
                 ),
-                Err(harfrust::VerticalOriginReferenceError::NotHalfUnit)
+                Err(surgeist_shaper::VerticalOriginReferenceError::NotHalfUnit)
             );
         }
         let error = instance
