@@ -401,6 +401,110 @@ fn upright_explicit_decoration_is_already_physical_and_receives_outer_placement_
     let error = refuse(&input, outer, bounded(32, 1024, ROOM, 32, 32, 0));
     assert_limit(&error, TextLayoutResource::Decorations, 1, 0);
     let retry = prepare_text_layout(&input, outer, limits()).unwrap();
-    assert_eq!(retry.scene().commands, scene.scene().commands);
+    assert!(std::ptr::eq(retry.layout(), &input));
+    assert_eq!(retry.scene().commands.len(), 2);
+    let (retry_run, retry_transform) = outline(&retry.scene().commands[0]);
+    // Each invocation owns a fresh font copy. Its identity is independent;
+    // retained bytes, effective instance, glyph facts and executed paint agree.
+    assert_eq!(retry_run.font().bytes(), run.font().bytes());
+    assert_eq!(retry_run.font().index(), run.font().index());
+    assert_eq!(retry_run.instance(), run.instance());
+    assert_eq!(retry_run.glyphs(), run.glyphs());
+    assert_eq!(retry_run.path(), run.path());
+    assert_eq!(retry_transform, transform);
+    assert_eq!(
+        commanded_ink(retry_run, retry_transform),
+        kurbo::Rect::new(197.0, 75.0, 217.0, 111.0)
+    );
+    let Command::Layer {
+        layer: retry_layer,
+        children: retry_children,
+    } = &retry.scene().commands[1]
+    else {
+        panic!("retry retains physical decoration's single outer layer")
+    };
+    assert_eq!(retry_layer.transform(), outer);
+    assert_eq!(retry_children.len(), 1);
+    let Command::Fill {
+        shape: retry_shape,
+        paint: retry_paint,
+    } = &retry_children[0]
+    else {
+        panic!("retry retains the actual underline fill")
+    };
+    let Command::Fill { paint, .. } = &children[0] else {
+        unreachable!()
+    };
+    assert_eq!(retry_shape, shape);
+    assert_eq!(retry_paint, paint);
     assert_eq!(system.stats(), stats);
+}
+
+#[test]
+fn upright_native_synthesis_uses_original_font_axes_once_before_outer_scaling() {
+    for (font, italic, bold) in [
+        (
+            text::Font::new().family("Ahem").style(text::Slant::Italic),
+            true,
+            false,
+        ),
+        (
+            text::Font::new().family("Ahem").weight(text::Weight::Bold),
+            false,
+            true,
+        ),
+        (
+            text::Font::new()
+                .family("Ahem")
+                .weight(text::Weight::Bold)
+                .style(text::Slant::Italic),
+            true,
+            true,
+        ),
+    ] {
+        let (input, system, bytes) = upright(text::Style { font, ..style() });
+        let source_run = input.run_views().next().unwrap();
+        let instance = source_run.effective_instance().unwrap();
+        assert_eq!(instance.x_shear() > 0.0, italic);
+        assert_eq!(instance.embolden() > 0.0, bold);
+        let skew = f64::from(instance.x_shear());
+        let copy = f64::from(instance.embolden());
+        // Original chi points are x0..10 at font-up y4..6. Existing synthesis
+        // applies x+=skew*font_y, then an optional positive local-x contour
+        // copy. Raw offset(-5,+8) is separate from that operation. Each final
+        // local point narrows once to f32, before the outer affine transform.
+        let left = f64::from((-5.0 + 4.0 * skew) as f32);
+        let right = f64::from((5.0 + 6.0 * skew + copy) as f32);
+        let outer = Transform::try_new([2.0, 0.0, 0.0, 3.0, 7.0, 9.0]).unwrap();
+        let stats = system.stats();
+        let scene = prepare_text_layout(&input, outer, limits()).unwrap();
+        assert_eq!(system.stats(), stats);
+        assert!(std::ptr::eq(scene.layout(), &input));
+        assert_eq!(scene.scene().commands.len(), 1);
+        let (run, transform) = outline(&scene.scene().commands[0]);
+        assert_eq!(run.font().bytes(), bytes);
+        assert_eq!(run.font().index(), instance.face().index());
+        assert_eq!(run.instance().size(), instance.font_size());
+        assert!(run.instance().coordinates().is_empty());
+        assert_eq!(
+            run.instance().synthesis(),
+            GlyphSynthesis::try_new(instance.x_shear(), instance.embolden()).unwrap()
+        );
+        assert_eq!(
+            run.glyphs(),
+            [
+                TextGlyph::try_new(274, -5.0, 8.0, 10.0).unwrap(),
+                TextGlyph::try_new(274, -5.0, 18.0, 10.0).unwrap(),
+            ]
+        );
+        assert_eq!(transform.as_array(), [2.0, 0.0, 0.0, 3.0, 207.0, 69.0]);
+        assert_eq!(
+            run.bounds().ink_rect(),
+            Some(Rect::try_new(left, 2.0, right - left, 12.0).unwrap())
+        );
+        assert_eq!(
+            commanded_ink(run, transform),
+            kurbo::Rect::new(207.0 + 2.0 * left, 75.0, 207.0 + 2.0 * right, 111.0)
+        );
+    }
 }

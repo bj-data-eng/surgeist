@@ -2,7 +2,7 @@
 
 use std::mem::size_of;
 
-use surgeist_text::{Brush, Layout, LineOrientation, RunView};
+use surgeist_text::{Brush, GlyphBasis, Layout, LineOrientation, RunView};
 
 use crate::{
     Color, Error, GlyphRunLimits, GlyphSynthesis, Layer, NormalizedCoordinate, Paint, Result,
@@ -117,11 +117,6 @@ pub enum TextLayoutCause {
 /// Typed placed-layout adapter refusal; no prefix scene is published.
 #[derive(Debug)]
 pub enum TextLayoutError {
-    /// The actual Text run basis has no qualified Render adapter.
-    UnsupportedOrientation {
-        /// Retained orientation of the run.
-        orientation: LineOrientation,
-    },
     /// An aggregate requirement exceeds its caller-supplied bound.
     Limit {
         /// Bounded resource.
@@ -229,7 +224,7 @@ pub fn prepare_text_layout(
         };
         glyphs.clear();
         for glyph in run.glyphs() {
-            glyphs.push(text_glyph(glyph).map_err(|e| TextLayoutError::render(location, e))?);
+            glyphs.push(text_glyph(&run, glyph).map_err(|e| TextLayoutError::render(location, e))?);
         }
         let mut coordinates = budget.temporary::<NormalizedCoordinate>(instance.axis_count())?;
         let coordinate_bytes = bytes::<NormalizedCoordinate>(coordinates.capacity())?;
@@ -350,7 +345,7 @@ fn preflight(layout: &Layout, placement: Transform, limits: TextLayoutLimits) ->
             glyphs = add(glyphs, 1)?;
             run_glyphs = add(run_glyphs, 1)?;
             check(TextLayoutResource::Glyphs, glyphs, glyph_limit)?;
-            text_glyph(glyph).map_err(|e| TextLayoutError::render(location, e))?;
+            text_glyph(&run, glyph).map_err(|e| TextLayoutError::render(location, e))?;
         }
         max_glyphs = max_glyphs.max(run_glyphs);
         color(run.brush()).map_err(|e| TextLayoutError::render(location, e))?;
@@ -381,26 +376,30 @@ fn color(brush: Brush) -> Result<Color> {
     Color::try_rgba(brush.r, brush.g, brush.b, brush.a)
 }
 
-fn text_glyph(glyph: surgeist_text::GlyphPlacement) -> Result<TextGlyph> {
-    TextGlyph::try_new(
-        glyph.id(),
-        glyph.pen() + f64::from(glyph.x()),
-        f64::from(glyph.y()),
-        glyph.advance(),
-    )
+fn text_glyph(run: &RunView<'_>, glyph: surgeist_text::GlyphPlacement) -> Result<TextGlyph> {
+    let dx = f64::from(glyph.x());
+    let dy = f64::from(glyph.y());
+    let pen = glyph.pen();
+    // The pen follows the physical line's inline axis. Express that displacement
+    // in glyph coordinates before the run's outline basis is applied.
+    let (x, y) = match (run.orientation(), run.glyph_basis()) {
+        (LineOrientation::Horizontal, GlyphBasis::Unrotated)
+        | (LineOrientation::Sideways | LineOrientation::Vertical, GlyphBasis::Clockwise) => {
+            (pen + dx, dy)
+        }
+        (LineOrientation::Sideways | LineOrientation::Vertical, GlyphBasis::Unrotated) => {
+            (dx, pen + dy)
+        }
+        (LineOrientation::Horizontal, GlyphBasis::Clockwise) => (dx, dy - pen),
+    };
+    TextGlyph::try_new(glyph.id(), x, y, glyph.advance())
 }
 
 fn run_transform(run: &RunView<'_>, placement: Transform) -> Result<Transform> {
     let origin = run.origin();
-    let transform = match run.orientation() {
-        LineOrientation::Horizontal => Transform::translation(origin.x, origin.y)?,
-        LineOrientation::Sideways => Transform::try_new([0.0, 1.0, -1.0, 0.0, origin.x, origin.y])?,
-        LineOrientation::Vertical => {
-            return Err(TextLayoutError::UnsupportedOrientation {
-                orientation: run.orientation(),
-            }
-            .into());
-        }
+    let transform = match run.glyph_basis() {
+        GlyphBasis::Unrotated => Transform::translation(origin.x, origin.y)?,
+        GlyphBasis::Clockwise => Transform::try_new([0.0, 1.0, -1.0, 0.0, origin.x, origin.y])?,
     };
     transform.then(placement)
 }
