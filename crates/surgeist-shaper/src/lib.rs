@@ -1,10 +1,12 @@
 /*!
-A complete [harfbuzz](https://github.com/harfbuzz/harfbuzz) shaping algorithm port to Rust.
+Safe Rust shaping for Surgeist, derived from [Harfrust](https://github.com/harfbuzz/harfrust).
+
+This crate owns substitution, positioning, completion/refusal reporting, joining
+correspondence, ordinary-symbol presentation, default-ignorable custody and
+supplied vertical positioning. Consumers own font selection and text composition.
 */
 
 #![cfg_attr(not(feature = "std"), no_std)]
-// Forbidding unsafe code only applies to the lib
-// examples continue to use it, so this cannot be placed into Cargo.toml
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 

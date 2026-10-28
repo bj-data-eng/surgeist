@@ -24,6 +24,11 @@ MSRV, dependencies, and features.
 exposed directly as `surgeist::dom`. Native authoring and Template's concrete
 HTML adapter use its ordinary batch owner.
 
+[`surgeist-shaper`](../crates/surgeist-shaper/README.md) is the owned shaping
+provider consumed directly by Text. Its Harfrust 0.6.2 origins, retained edition
+2021/MSRV 1.85 and std/alloc features are recorded in its manifest and provenance.
+It is distinct from the facade's geometry crate `surgeist-shape`.
+
 ## Facade Modules
 
 The [public entry point](../src/lib.rs) reexports the production dependencies

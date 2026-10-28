@@ -37,10 +37,10 @@ use crate::{
 };
 
 pub(crate) struct ShapeContext {
-    data: LruCache<cache::ResourceKey, harfrust::ShaperData>,
-    instances: LruCache<cache::InstanceKey, harfrust::ShaperInstance>,
-    plans: LruCache<cache::PlanKey, harfrust::ShapePlan>,
-    buffer: Option<harfrust::UnicodeBuffer>,
+    data: LruCache<cache::ResourceKey, surgeist_shaper::ShaperData>,
+    instances: LruCache<cache::InstanceKey, surgeist_shaper::ShaperInstance>,
+    plans: LruCache<cache::PlanKey, surgeist_shaper::ShapePlan>,
+    buffer: Option<surgeist_shaper::UnicodeBuffer>,
     cluster: CharCluster,
 }
 
@@ -57,7 +57,7 @@ impl Default for ShapeContext {
             data: LruCache::new(16),
             instances: LruCache::new(16),
             plans: LruCache::new(16),
-            buffer: Some(harfrust::UnicodeBuffer::new()),
+            buffer: Some(surgeist_shaper::UnicodeBuffer::new()),
             cluster: CharCluster::default(),
         }
     }
@@ -107,7 +107,7 @@ pub(crate) struct JoiningDomain {
     atoms: IndexRange<usize>,
     script: Script,
     level: u8,
-    source: harfrust::JoiningSource,
+    source: surgeist_shaper::JoiningSource,
 }
 
 /// The original-only operation retains its actual captured scalar assignments;
@@ -313,35 +313,37 @@ fn symbol_positions(
         .filter(|(_, a)| crate::control::is_visible(a.code_point))
         .map(|(i, _)| {
             u32::try_from(i)
-                .map_err(|_| super::shaping_refused(harfrust::ShapingRefusal::GrowthLimit))
+                .map_err(|_| super::shaping_refused(surgeist_shaper::ShapingRefusal::GrowthLimit))
         })
         .collect()
 }
 
-fn provider_script(script: Script) -> harfrust::Script {
-    convert::script_to_harfrust(convert::script_to_fontique(script, &AnalysisDataSources))
+fn provider_script(script: Script) -> surgeist_shaper::Script {
+    convert::script_to_shaper(convert::script_to_fontique(script, &AnalysisDataSources))
 }
 
-fn provider_direction(level: u8) -> harfrust::Direction {
+fn provider_direction(level: u8) -> surgeist_shaper::Direction {
     if level & 1 == 0 {
-        harfrust::Direction::LeftToRight
+        surgeist_shaper::Direction::LeftToRight
     } else {
-        harfrust::Direction::RightToLeft
+        surgeist_shaper::Direction::RightToLeft
     }
 }
 
-fn joining_source_error(error: harfrust::JoiningSourceError) -> Error {
+fn joining_source_error(error: surgeist_shaper::JoiningSourceError) -> Error {
     super::shaping_refused(match error {
-        harfrust::JoiningSourceError::Refused(reason) => reason,
-        harfrust::JoiningSourceError::UnsupportedDirection => {
-            harfrust::ShapingRefusal::JoiningProfile
+        surgeist_shaper::JoiningSourceError::Refused(reason) => reason,
+        surgeist_shaper::JoiningSourceError::UnsupportedDirection => {
+            surgeist_shaper::ShapingRefusal::JoiningProfile
         }
-        harfrust::JoiningSourceError::OrdinarySymbol(error) => match error {
-            harfrust::OrdinarySymbolInputError::GrowthLimit => {
-                harfrust::ShapingRefusal::GrowthLimit
+        surgeist_shaper::JoiningSourceError::OrdinarySymbol(error) => match error {
+            surgeist_shaper::OrdinarySymbolInputError::GrowthLimit => {
+                surgeist_shaper::ShapingRefusal::GrowthLimit
             }
-            harfrust::OrdinarySymbolInputError::WorkLimit => harfrust::ShapingRefusal::WorkLimit,
-            _ => harfrust::ShapingRefusal::OrdinarySymbolInput,
+            surgeist_shaper::OrdinarySymbolInputError::WorkLimit => {
+                surgeist_shaper::ShapingRefusal::WorkLimit
+            }
+            _ => surgeist_shaper::ShapingRefusal::OrdinarySymbolInput,
         },
     })
 }
@@ -666,7 +668,7 @@ pub(crate) fn finalize(
                 } else {
                     let projection = &prepared.analyzed.projection;
                     let bytes = atom_bytes(projection, original_extent.clone());
-                    let source = harfrust::JoiningSource::analyze(
+                    let source = surgeist_shaper::JoiningSource::analyze(
                         &projection.text[bytes],
                         provider_script(run.script),
                         provider_direction(run.level),
@@ -688,7 +690,7 @@ pub(crate) fn finalize(
                     i
                 } else {
                     let bytes = atom_bytes(input.projection, extent.clone());
-                    let source = harfrust::JoiningSource::analyze(
+                    let source = surgeist_shaper::JoiningSource::analyze(
                         &input.projection.text[bytes],
                         provider_script(run.script),
                         provider_direction(run.level),
@@ -713,7 +715,7 @@ pub(crate) fn finalize(
                                     .filter(|_| original.atoms.contains(&i))
                                     .ok_or_else(|| {
                                         super::shaping_refused(
-                                            harfrust::ShapingRefusal::JoiningCorrespondence,
+                                            surgeist_shaper::ShapingRefusal::JoiningCorrespondence,
                                         )
                                     })
                             })
@@ -1020,9 +1022,9 @@ struct RunContext<'a> {
 }
 
 struct JoiningRun<'a> {
-    original: &'a harfrust::JoiningSource,
+    original: &'a surgeist_shaper::JoiningSource,
     original_map: Vec<Option<usize>>,
-    presentation: &'a harfrust::JoiningSource,
+    presentation: &'a surgeist_shaper::JoiningSource,
     presentation_map: Vec<usize>,
 }
 impl<'a> RunContext<'a> {
@@ -1050,7 +1052,7 @@ struct RunRequest<'a, 'input> {
     font: &'a FontData,
     attrs: Attributes,
     synthesis: FontSynthesis,
-    suggested_variations: Vec<(harfrust::Tag, f32)>,
+    suggested_variations: Vec<(surgeist_shaper::Tag, f32)>,
     retained_coords: Option<&'a [i16]>,
     context: RunContext<'a>,
 }
@@ -1145,7 +1147,7 @@ fn append_request(
 ) -> Result<()> {
     let style = &request.input.styles[request.style].style;
     let resource = cache::ResourceKey(request.font.clone());
-    let font_ref = harfrust::FontRef::from_index(request.font.bytes(), request.font.index())
+    let font_ref = surgeist_shaper::FontRef::from_index(request.font.bytes(), request.font.index())
         .map_err(|_| Error::new(ErrorCode::FontLoadFailed, "invalid selected font face"))?;
     let key = cache::InstanceKey {
         resource: resource.clone(),
@@ -1160,32 +1162,36 @@ fn append_request(
     };
     let instance = scratch.instances.entry(key.clone(), || {
         if let Some(coords) = request.retained_coords {
-            harfrust::ShaperInstance::from_coords(
+            surgeist_shaper::ShaperInstance::from_coords(
                 &font_ref,
                 coords
                     .iter()
                     .copied()
-                    .map(harfrust::NormalizedCoord::from_bits),
+                    .map(surgeist_shaper::NormalizedCoord::from_bits),
             )
         } else {
-            harfrust::ShaperInstance::from_variations(
+            surgeist_shaper::ShaperInstance::from_variations(
                 &font_ref,
                 key.suggested_variations
                     .iter()
-                    .map(|(tag, value)| harfrust::Variation {
+                    .map(|(tag, value)| surgeist_shaper::Variation {
                         tag: *tag,
                         value: *value,
                     })
-                    .chain(key.variations.iter().map(|value| harfrust::Variation {
-                        tag: harfrust::Tag::new(&value.tag.to_bytes()),
-                        value: value.value,
-                    })),
+                    .chain(
+                        key.variations
+                            .iter()
+                            .map(|value| surgeist_shaper::Variation {
+                                tag: surgeist_shaper::Tag::new(&value.tag.to_bytes()),
+                                value: value.value,
+                            }),
+                    ),
             )
         }
     });
     let data = scratch
         .data
-        .entry(resource, || harfrust::ShaperData::new(&font_ref));
+        .entry(resource, || surgeist_shaper::ShaperData::new(&font_ref));
     let shaper = data
         .shaper(&font_ref)
         .instance(Some(instance))
@@ -1197,11 +1203,11 @@ fn append_request(
         return Ok(());
     }
     let direction = if request.level & 1 == 0 {
-        harfrust::Direction::LeftToRight
+        surgeist_shaper::Direction::LeftToRight
     } else {
-        harfrust::Direction::RightToLeft
+        surgeist_shaper::Direction::RightToLeft
     };
-    let script = convert::script_to_harfrust(convert::script_to_fontique(
+    let script = convert::script_to_shaper(convert::script_to_fontique(
         request.script,
         &AnalysisDataSources,
     ));
@@ -1211,7 +1217,7 @@ fn append_request(
         .map(|locale| {
             locale
                 .language()
-                .parse::<harfrust::Language>()
+                .parse::<surgeist_shaper::Language>()
                 .map_err(|_| {
                     Error::new(
                         ErrorCode::InvalidStyle,
@@ -1224,8 +1230,8 @@ fn append_request(
         .font_features
         .iter()
         .map(|feature| {
-            harfrust::Feature::new(
-                harfrust::Tag::new(&feature.tag.to_bytes()),
+            surgeist_shaper::Feature::new(
+                surgeist_shaper::Tag::new(&feature.tag.to_bytes()),
                 u32::from(feature.value),
                 ..,
             )
@@ -1247,7 +1253,7 @@ fn append_request(
             size_bits: style.font_size.to_bits(),
         },
         || {
-            harfrust::ShapePlan::new(
+            surgeist_shaper::ShapePlan::new(
                 &shaper,
                 direction,
                 Some(script),
@@ -1287,11 +1293,13 @@ fn append_request(
     if let Err(error) = buffer.set_ordinary_symbol_positions(&ordinary_symbol_positions) {
         scratch.buffer = Some(buffer);
         return Err(super::shaping_refused(match error {
-            harfrust::OrdinarySymbolInputError::GrowthLimit => {
-                harfrust::ShapingRefusal::GrowthLimit
+            surgeist_shaper::OrdinarySymbolInputError::GrowthLimit => {
+                surgeist_shaper::ShapingRefusal::GrowthLimit
             }
-            harfrust::OrdinarySymbolInputError::WorkLimit => harfrust::ShapingRefusal::WorkLimit,
-            _ => harfrust::ShapingRefusal::OrdinarySymbolInput,
+            surgeist_shaper::OrdinarySymbolInputError::WorkLimit => {
+                surgeist_shaper::ShapingRefusal::WorkLimit
+            }
+            _ => surgeist_shaper::ShapingRefusal::OrdinarySymbolInput,
         }));
     }
     let continuation_mark = request
@@ -1301,9 +1309,9 @@ fn append_request(
         .iter()
         .any(|g| g.start < request.atoms.start && request.atoms.start < g.end);
     buffer.set_flags(if continuation_mark {
-        harfrust::BufferFlags::DO_NOT_INSERT_DOTTED_CIRCLE
+        surgeist_shaper::BufferFlags::DO_NOT_INSERT_DOTTED_CIRCLE
     } else {
-        harfrust::BufferFlags::empty()
+        surgeist_shaper::BufferFlags::empty()
     });
     buffer.set_pre_context(request.context.before);
     buffer.set_post_context(request.context.after);
@@ -1324,14 +1332,16 @@ fn append_request(
     {
         scratch.buffer = Some(buffer);
         return Err(super::shaping_refused(match error {
-            harfrust::JoiningInputError::GrowthLimit => harfrust::ShapingRefusal::GrowthLimit,
-            _ => harfrust::ShapingRefusal::JoiningInput,
+            surgeist_shaper::JoiningInputError::GrowthLimit => {
+                surgeist_shaper::ShapingRefusal::GrowthLimit
+            }
+            _ => surgeist_shaper::ShapingRefusal::JoiningInput,
         }));
     }
     let glyph_buffer = shaper.shape_with_plan(plan, buffer, &features);
     // This is the actual returned invocation's status. No glyph, position,
     // metric or immutable result row is observed before this fence.
-    if let harfrust::ShapingStatus::Refused(reason) = glyph_buffer.shaping_status() {
+    if let surgeist_shaper::ShapingStatus::Refused(reason) = glyph_buffer.shaping_status() {
         scratch.buffer = Some(glyph_buffer.clear());
         return Err(super::shaping_refused(reason));
     }
@@ -1387,7 +1397,7 @@ fn resolved_line_height(
 
 fn resolved_run(
     request: &RunRequest<'_, '_>,
-    coords: &[harfrust::NormalizedCoord],
+    coords: &[surgeist_shaper::NormalizedCoord],
 ) -> Result<(PreparedRun, f64, f64)> {
     let input = request.input;
     let style = &input.styles[request.style].style;
@@ -1465,8 +1475,8 @@ fn resolved_run(
 
 fn extract_run(
     request: &RunRequest<'_, '_>,
-    glyph_buffer: &harfrust::GlyphBuffer,
-    coords: &[harfrust::NormalizedCoord],
+    glyph_buffer: &surgeist_shaper::GlyphBuffer,
+    coords: &[surgeist_shaper::NormalizedCoord],
     output: &mut ShapedData,
 ) -> Result<()> {
     // Receipt admission is part of the same invocation fence, including empty
@@ -1788,16 +1798,16 @@ pub(crate) fn measure_character(
     let run = output
         .empty_run
         .expect("zero-atom metric operation retains its actual face");
-    let font = harfrust::FontRef::from_index(run.font.bytes(), run.font.index())
+    let font = surgeist_shaper::FontRef::from_index(run.font.bytes(), run.font.index())
         .map_err(|_| Error::new(ErrorCode::FontLoadFailed, "invalid metric face"))?;
-    let instance = harfrust::ShaperInstance::from_coords(
+    let instance = surgeist_shaper::ShaperInstance::from_coords(
         &font,
         run.coords
             .iter()
             .copied()
-            .map(harfrust::NormalizedCoord::from_bits),
+            .map(surgeist_shaper::NormalizedCoord::from_bits),
     );
-    let data = harfrust::ShaperData::new(&font);
+    let data = surgeist_shaper::ShaperData::new(&font);
     let shaper = data
         .shaper(&font)
         .instance(Some(&instance))
@@ -1807,8 +1817,8 @@ pub(crate) fn measure_character(
         .font_features
         .iter()
         .map(|f| {
-            harfrust::Feature::new(
-                harfrust::Tag::new(&f.tag.to_bytes()),
+            surgeist_shaper::Feature::new(
+                surgeist_shaper::Tag::new(&f.tag.to_bytes()),
                 u32::from(f.value),
                 ..,
             )
@@ -1817,17 +1827,17 @@ pub(crate) fn measure_character(
     let language = style
         .locale
         .as_ref()
-        .map(|locale| locale.language().parse::<harfrust::Language>())
+        .map(|locale| locale.language().parse::<surgeist_shaper::Language>())
         .transpose()
         .map_err(|_| Error::new(ErrorCode::InvalidStyle, "invalid metric language"))?;
-    let plan = harfrust::ShapePlan::new(
+    let plan = surgeist_shaper::ShapePlan::new(
         &shaper,
         direction,
         Some(provider_script(Script::Latin)),
         language.as_ref(),
         &features,
     );
-    let mut buffer = harfrust::UnicodeBuffer::new();
+    let mut buffer = surgeist_shaper::UnicodeBuffer::new();
     buffer.add(ch, 0);
     buffer.set_direction(direction);
     buffer.set_script(provider_script(Script::Latin));
@@ -1835,7 +1845,7 @@ pub(crate) fn measure_character(
         buffer.set_language(language);
     }
     let buffer = shaper.shape_with_plan(&plan, buffer, &features);
-    if let harfrust::ShapingStatus::Refused(reason) = buffer.shaping_status() {
+    if let surgeist_shaper::ShapingStatus::Refused(reason) = buffer.shaping_status() {
         return Err(super::shaping_refused(reason));
     }
     let advance = buffer

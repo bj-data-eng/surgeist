@@ -251,16 +251,19 @@ pub fn fixture(mapped_di: Option<char>, action: Action) -> Vec<u8> {
 /// Preserve leaves unresolved DI's actual nominal glyph observable for this
 /// control; product tests below still exercise Text's own required profile.
 pub fn native_glyphs(bytes: &[u8], source: &str) -> Vec<(u32, i32)> {
-    let font = harfrust::FontRef::new(bytes).unwrap();
-    let data = harfrust::ShaperData::new(&font);
+    let font = surgeist_shaper::FontRef::new(bytes).unwrap();
+    let data = surgeist_shaper::ShaperData::new(&font);
     let shaper = data.shaper(&font).build();
-    let mut input = harfrust::UnicodeBuffer::new();
+    let mut input = surgeist_shaper::UnicodeBuffer::new();
     input.push_str(source);
-    input.set_direction(harfrust::Direction::LeftToRight);
-    input.set_flags(harfrust::BufferFlags::PRESERVE_DEFAULT_IGNORABLES);
+    input.set_direction(surgeist_shaper::Direction::LeftToRight);
+    input.set_flags(surgeist_shaper::BufferFlags::PRESERVE_DEFAULT_IGNORABLES);
     input.guess_segment_properties();
     let shaped = shaper.shape(input, &[]);
-    assert_eq!(shaped.shaping_status(), harfrust::ShapingStatus::Complete);
+    assert_eq!(
+        shaped.shaping_status(),
+        surgeist_shaper::ShapingStatus::Complete
+    );
     shaped
         .glyph_infos()
         .iter()
