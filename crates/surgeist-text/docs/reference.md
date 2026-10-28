@@ -780,10 +780,15 @@ operations do not pretend to request a glyph.
 
 Disabled decorations and enabled decorations with explicit physical offset
 **and** thickness work. Automatic upright offset or thickness refuses with
-`UprightDecoration` owner/kind/missing-role detail before publication. Any actual
-in-flow or out-of-flow atomic refuses as `UnsupportedUprightAtomic` with its
-original occurrence. Requested nominal glyph metrics retain the static
-TrueType/glyf qualification: variable, CFF/CFF2 and VARC glyph profiles remain
+`UprightDecoration` owner/kind/missing-role detail before publication. Actual
+in-flow atomic occurrences retain their issued identities through selection,
+finalization and placement. Callers supply line-local inline/line-under flow and
+box allocations; placement validates the corresponding physical border/content
+rectangles and physical x baseline against the finalized cell. Child content is
+not rotated. Out-of-flow atomics still refuse as `UnsupportedUprightAtomic` with
+the first unsupported original occurrence in semantic order. Requested nominal
+glyph metrics retain the static TrueType/glyf qualification: variable, CFF/CFF2
+and VARC glyph profiles remain
 unsupported, even when a separate glyph-free metric observation can succeed.
 Selected native morx/kerx/kern/trak paths, a reference outside the provider's
 exact half-design-unit grid and actual positioning range/resource failures keep
