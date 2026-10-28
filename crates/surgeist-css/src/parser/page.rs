@@ -1,5 +1,3 @@
-use std::cell::Cell;
-
 use super::block_units::{
     DeclarationUnit, GrammarError, NativeError, drive_units, dropped_unit, grammar_error,
     location_at, native_error, offset_of, refused_declaration,
@@ -209,17 +207,13 @@ pub(super) fn drive_margin_body<'i>(
     Vec<crate::diagnostic::CssRecoveryDiagnostic>,
 ) {
     let snapshot = recovery.source_snapshot();
-    // Whether the grammar rejected the prelude of the at-rule it last refused.
-    let prelude_failed = Cell::new(false);
     let mut grammar = MarginBodyParser {
         source,
         recovery: recovery.clone(),
-        prelude_failed: &prelude_failed,
     };
-    let mut legacy = MarginBodyParser {
+    let mut readmit = MarginBodyParser {
         source,
         recovery: recovery.clone(),
-        prelude_failed: &prelude_failed,
     };
     let mut declarations = Vec::new();
     let mut diagnostics = Vec::new();
@@ -233,14 +227,15 @@ pub(super) fn drive_margin_body<'i>(
         };
         let mut dropped = dropped_unit(snapshot, source, &failed);
         if let Some((start, end)) = refused_declaration(&failed) {
-            // The native block parser read the value of a declaration that
-            // step 8 refuses, to its `;`, and reported its grammar's verdict.
+            // A declaration that step 8 refuses is read to its `;` all the
+            // same, and the grammar's verdict on it is reported (until the
+            // declaration paths follow step 8).
             let text = DeclarationText::read(start, end);
             let name = match start.token() {
                 Some(surgeist_css_parser::Token::Ident(name)) => name,
                 _ => "",
             };
-            match legacy.admit(name, &text) {
+            match readmit.admit(name, &text) {
                 Ok(declaration) => {
                     declarations.push(declaration);
                     return Some(end);
@@ -248,13 +243,13 @@ pub(super) fn drive_margin_body<'i>(
                 Err(error) => dropped.error = error,
             }
         }
-        // The native block parser left the block of a failed rule pending and
-        // skipped it with the next unit: the dropped unit ends after the
-        // block's opening token. An at-rule whose prelude it accepted had its
-        // block entered and consumed whole; one whose prelude it rejected is
-        // sliced before the `;` or `{` that ended it.
+        // The dropped unit of a failed rule ends after its block's opening
+        // token; the block is skipped with the unit. An at-rule whose prelude
+        // was accepted had its block entered and is dropped whole; one whose
+        // prelude was rejected (a stream failure, see `MarginBodyParser::at_rule`)
+        // ends before the `;` or `{` that ended it.
         let (text, end) = match dropped.kind {
-            UnitKind::AtRule if prelude_failed.replace(false) => {
+            UnitKind::AtRule if failed.error().is_stream_error() => {
                 (dropped.text_to_prelude_end(), dropped.text_to_block().1)
             }
             UnitKind::AtRule => (dropped.text(), dropped.end),
@@ -283,9 +278,6 @@ pub(super) fn drive_margin_body<'i>(
 struct MarginBodyParser<'s> {
     source: &'s str,
     recovery: RecoveryState,
-    /// Set when the prelude of an at-rule is rejected, which is a different
-    /// recovery from the rejection of its block.
-    prelude_failed: &'s Cell<bool>,
 }
 
 impl<'i> RuleGrammar<'i, Attached<'i>> for MarginBodyParser<'_> {
@@ -298,12 +290,11 @@ impl<'i> RuleGrammar<'i, Attached<'i>> for MarginBodyParser<'_> {
         let location = location_at(snapshot, offset_of(rule.prelude().start_site()));
         let fail = |error| grammar_error(rule.start(), error);
         // The prelude of a margin box's name has to be empty; any other is
-        // read to its end.
+        // read to its end. A rejected prelude is reported as the stream
+        // failure itself, which tells it from a rejected block: the block of
+        // the first was never entered, and the unit ends before it.
         if CssMarginBox::from_name(name).is_some() {
-            rule.prelude().require_empty().map_err(|error| {
-                self.prelude_failed.set(true);
-                fail(native_error(snapshot, &SyntaxError::from(error)))
-            })?;
+            rule.prelude().require_empty()?;
         }
         let Some(block) = rule.block() else {
             return Err(fail(unexpected_syntax_token(

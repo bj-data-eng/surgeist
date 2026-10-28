@@ -81,7 +81,8 @@ pub(super) fn native_error<'i>(
 /// driven by cssparser is made of.
 pub(super) struct DroppedUnit<'s, 'i> {
     pub(super) kind: UnitKind,
-    /// Why cssparser's block parser reports the unit as dropped.
+    /// Why the unit is reported as dropped: the declaration's error for a unit
+    /// that begins with an identifier, otherwise the rule's.
     pub(super) error: NativeError<'i>,
     /// The source the offsets belong to.
     source: &'s str,
@@ -128,10 +129,11 @@ pub(super) fn drive_units<'i, G>(
 
 /// A declaration that Syntax 3 §5.5.6 step 8 refused (a `{}`-block beside
 /// other values in the value of a property that is not custom), which the
-/// driver never shows to the grammar. The native block parser it replaces read
-/// its value, to the `;`, all the same, and reported what the grammar said of
-/// it. Returns the identifier the declaration starts at and the node of its
-/// list that ends its value.
+/// driver never shows to the grammar. A block's recovery reads the value of
+/// such a declaration to its `;` all the same, and reports what the grammar
+/// says of it (until the declaration paths follow step 8). Returns the
+/// identifier the declaration starts at and the node of its list that ends its
+/// value.
 pub(super) fn refused_declaration<'i>(failed: &Failure<'i>) -> Option<(Site<'i>, usize)> {
     if failed.kind() == UnitKind::AtRule {
         return None;
@@ -201,9 +203,9 @@ pub(super) fn dropped_unit<'s, 'i>(
         }
         Some(RuleEnd::Semicolon) if kind != UnitKind::AtRule => {
             // A declaration, or a rule a semicolon stopped, leaves its
-            // semicolon; cssparser consumes it with the unit. The remnants of
-            // a custom property look-alike end after theirs, which the
-            // driver has consumed.
+            // semicolon, which the dropped unit includes. The remnants of a
+            // custom property look-alike end after theirs, which the driver
+            // has consumed.
             let is_semicolon = |index: usize| {
                 nodes
                     .get(index)
@@ -227,8 +229,8 @@ pub(super) fn dropped_unit<'s, 'i>(
         // and the rule's when one was; the declaration's is the other.
         let declaration_error = failed.declaration_error().unwrap_or_else(|| failed.error());
         if matches!(declaration_error.unexpected_token(), Some(Token::Semicolon)) {
-            // The declaration's tokens end at its `;`, where the native
-            // block parser found the end of its input.
+            // The declaration's tokens end at its `;`, which is the end of
+            // its input.
             unexpected_syntax_end(location_at(snapshot, offset_of(declaration_error.at())))
         } else {
             native_error(snapshot, declaration_error)
@@ -265,15 +267,15 @@ impl<'s> DroppedUnit<'s, '_> {
         &self.source[self.start..self.end]
     }
 
-    /// The text of the unit up to the end of its prelude, which is where
-    /// cssparser slices an at-rule whose prelude it rejected: before the `;` or
-    /// `{` that ended it.
+    /// The text of the unit up to the end of its prelude, which is where an
+    /// at-rule whose prelude was rejected ends: before the `;` or `{` that
+    /// ended it.
     pub(super) fn text_to_prelude_end(&self) -> &'s str {
         &self.source[self.start..self.prelude_end]
     }
 
     /// The text of the unit up to the opening token of its block, for a unit
-    /// cssparser left with its block pending. The end of the unit for a unit
+    /// that ends there with its block skipped. The end of the unit for a unit
     /// without one.
     pub(super) fn text_to_block(&self) -> (&'s str, usize) {
         let end = self.block_contents.unwrap_or(self.end);
