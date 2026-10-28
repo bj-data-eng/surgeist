@@ -172,9 +172,20 @@ pub(crate) struct ShapedData {
     pub(crate) runs: Vec<PreparedRun>,
     pub(crate) clusters: Vec<PreparedCluster>,
     pub(crate) glyphs: Vec<GlyphData>,
+    /// Invocation-qualified provider observations, before component apportioning.
+    pub(crate) provider_groups: Vec<ProviderGroup>,
+    pub(crate) word_spacing: Vec<super::super::spacing::WordSpacingUnit>,
     pub(crate) items: Vec<ShapedItem>,
     /// An actual admitted default face with zero source/glyph extent, for empty metrics.
     pub(crate) empty_run: Option<PreparedRun>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ProviderGroup {
+    pub(crate) run: usize,
+    pub(crate) atoms: IndexRange<usize>,
+    pub(crate) glyphs: IndexRange<usize>,
+    pub(crate) advance: f64,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -219,6 +230,16 @@ pub(crate) struct FinalizedGlyph {
     pub(crate) glyph: GlyphData,
     /// Run-local logical pen. This includes actual finalized cluster spacing.
     pub(crate) pen: f64,
+    /// Independent pre-half operand, never reconstructed from a rounded pen.
+    pub(crate) pen_base: f64,
+    pub(crate) word_half: f64,
+}
+
+/// Pre-half unit origin retained even when its actual glyph inventory is empty.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct WordSpacingAnchor {
+    pub(crate) base: crate::Point,
+    pub(crate) half: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -305,6 +326,7 @@ pub(crate) struct FinalizedLineData {
     pub(crate) clusters: Vec<FinalizedCluster>,
     /// Paint-order canonical local glyphs, with original associations.
     pub(crate) glyphs: Vec<FinalizedGlyph>,
+    pub(crate) word_anchors: Vec<WordSpacingAnchor>,
     pub(crate) boxes: Vec<FinalizedBox>,
     pub(crate) visual_order: Vec<FinalizedVisualItem>,
     pub(crate) anchors: Vec<FinalizedAnchor>,

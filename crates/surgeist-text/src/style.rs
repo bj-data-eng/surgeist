@@ -274,6 +274,9 @@ pub struct Style {
     pub size: f32,
     pub line_height: LineHeight,
     pub letter_spacing: f64,
+    /// Additional spacing on the native declared word-separator repertoire.
+    /// Actual zero-intrinsic-advance units gain none; admitted spacing is split
+    /// equally around the complete unit without changing raw provider packets.
     pub word_spacing: f64,
     pub brush: Brush,
     pub underline: Decoration,

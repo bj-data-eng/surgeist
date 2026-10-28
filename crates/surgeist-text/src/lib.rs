@@ -52,6 +52,7 @@ pub use error::{
     UprightContent, UprightContentPiece, UprightDecorationRole, UprightPresentation,
     UprightScriptContext, UprightScriptContextFailure, UprightScriptFailure, UprightTabMeasurement,
     VerticalOriginReferenceReason, VerticalPositionStage, VerticalShapingContextReason,
+    WordSpacingOperation, WordSpacingPiece, WordSpacingStage,
 };
 pub use font::{
     EffectiveFontInstance, FontBaseline, FontBaselineAbsence, FontBaselineAxis,

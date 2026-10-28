@@ -117,13 +117,14 @@ fn signed_word_spacing_and_capacity_dependent_hanging_keep_real_cw_pens() {
             .finalize(SpacingAllocations::None)
             .unwrap();
         // The provider's SPACE advance remains10. Its actual signed spacing
-        // contribution−2 moves the following real A to pen8, not pen10.
+        // contribution−2 moves the following real A to pen8. Equal halves
+        // move SPACE paint from logical10 by−6 to4, without changing raw data.
         assert_eq!(line.feedback().advance, 18.0);
         assert_eq!(
             glyphs(&line),
             [
                 (35, 0.0, 0.0, 0.0, 10.0),
-                (3, 10.0, 0.0, 0.0, 10.0),
+                (3, 4.0, 0.0, 0.0, 10.0),
                 (35, 8.0, 0.0, 0.0, 10.0)
             ]
         );

@@ -285,6 +285,11 @@ pub surgeist_text::ErrorDetail::UnsupportedTextStyle::reason: surgeist_text::Uns
 pub surgeist_text::ErrorDetail::UnsupportedVerticalGlyphVariation
 pub surgeist_text::ErrorDetail::UnsupportedVerticalGlyphVariation::axis_count: usize
 pub surgeist_text::ErrorDetail::UnsupportedVerticalGlyphVariation::glyph: u32
+pub surgeist_text::ErrorDetail::UnsupportedWordSpacing
+pub surgeist_text::ErrorDetail::UnsupportedWordSpacing::operation: surgeist_text::WordSpacingOperation
+pub surgeist_text::ErrorDetail::UnsupportedWordSpacing::pieces: alloc::boxed::Box<[surgeist_text::WordSpacingPiece]>
+pub surgeist_text::ErrorDetail::UnsupportedWordSpacing::provider_atoms: core::ops::range::Range<usize>
+pub surgeist_text::ErrorDetail::UnsupportedWordSpacing::stage: surgeist_text::WordSpacingStage
 pub surgeist_text::ErrorDetail::UprightDecoration
 pub surgeist_text::ErrorDetail::UprightDecoration::kind: surgeist_text::DecorationKind
 pub surgeist_text::ErrorDetail::UprightDecoration::owner: surgeist_text::TextStyleOwner
@@ -1305,6 +1310,24 @@ pub surgeist_text::WordSpaceTransform::IdeographicSpaceAutoPhrase
 pub surgeist_text::WordSpaceTransform::None
 pub surgeist_text::WordSpaceTransform::Space
 pub surgeist_text::WordSpaceTransform::SpaceAutoPhrase
+pub enum surgeist_text::WordSpacingOperation
+pub surgeist_text::WordSpacingOperation::Authored
+pub enum surgeist_text::WordSpacingPiece
+pub surgeist_text::WordSpacingPiece::Alternative
+pub surgeist_text::WordSpacingPiece::Alternative::alternative: usize
+pub surgeist_text::WordSpacingPiece::Alternative::insertion_anchor: usize
+pub surgeist_text::WordSpacingPiece::Alternative::local: surgeist_text::Range
+pub surgeist_text::WordSpacingPiece::Control
+pub surgeist_text::WordSpacingPiece::Control::occurrence: usize
+pub surgeist_text::WordSpacingPiece::Source
+pub surgeist_text::WordSpacingPiece::Source::aggregate: surgeist_text::Range
+pub surgeist_text::WordSpacingPiece::Source::local: surgeist_text::Range
+pub surgeist_text::WordSpacingPiece::Source::origin: usize
+pub surgeist_text::WordSpacingPiece::VirtualSeparator
+pub surgeist_text::WordSpacingPiece::VirtualSeparator::occurrence: usize
+pub enum surgeist_text::WordSpacingStage
+pub surgeist_text::WordSpacingStage::Preparation
+pub surgeist_text::WordSpacingStage::SelectedShaping
 pub enum surgeist_text::Wrap
 pub surgeist_text::Wrap::None
 pub surgeist_text::Wrap::Word

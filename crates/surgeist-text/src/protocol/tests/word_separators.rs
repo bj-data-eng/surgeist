@@ -1,6 +1,8 @@
 //! Existing authored word spacing over actual independent provider units.
 //! Text4 §8.1 requires separator coverage, equal halves and intrinsic-zero suppression.
 use super::*;
+mod frames;
+mod qualification;
 use crate::{
     Affinity, Cursor, FontBaseline, FontBaselineScript, GlyphBasis, Id, LineHeight, Point, Range,
     Rect, Selection, test_fonts as sfnt, vertical_test_fonts as vertical,
@@ -22,7 +24,7 @@ const FRAMES: [LineOrientation; 3] = [
 ];
 
 fn mapped(separator: char, zero_horizontal: bool) -> Vec<u8> {
-    // Real format12 cmap over licensed Ahem squares. The optional82+82 lookup
+    // Real format12 cmap over licensed Ahem squares. The nonmatching ccmp82+82 lookup
     // cannot match A35/separator58/A35; no shaping result is supplied by a fake.
     let bytes = crate::shaping_test_fonts::range_ligature_ahem(
         &[82, 82],

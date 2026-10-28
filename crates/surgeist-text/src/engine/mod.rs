@@ -22,6 +22,7 @@ pub(crate) mod layout;
 mod lru_cache;
 pub(crate) mod resolve;
 pub(crate) mod shape;
+pub(crate) mod spacing;
 pub(crate) mod upright;
 
 #[cfg(test)]
@@ -344,6 +345,7 @@ pub(crate) fn prepare(
         },
         scratch,
     )?;
+    spacing::authored_original(&analyzed, &styles, &mut shaped)?;
     let metrics_index = default_style_index.or_else(|| {
         (profile == PreparationProfile::Standalone
             && analyzed.projection.atoms.is_empty()

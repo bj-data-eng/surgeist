@@ -29,7 +29,7 @@ pub(crate) fn first_non_format(atoms: &[OriginalAtom]) -> Option<&OriginalAtom> 
         .find(|atom| categories.get32(atom.code_point) != GeneralCategory::Format)
 }
 
-pub(super) fn base(atoms: &[OriginalAtom]) -> Option<&OriginalAtom> {
+pub(in crate::engine) fn base(atoms: &[OriginalAtom]) -> Option<&OriginalAtom> {
     let category = CodePointMapData::<GeneralCategory>::new();
     let grapheme = CodePointMapData::<GraphemeClusterBreak>::new();
     atoms
@@ -56,8 +56,8 @@ pub(super) fn is_typographic_letter(atoms: &[OriginalAtom]) -> bool {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct Properties {
-    pub(super) category: GeneralCategory,
+pub(in crate::engine) struct Properties {
+    pub(in crate::engine) category: GeneralCategory,
     pub(super) width: EastAsianWidth,
     pub(super) scripts: Vec<Script>,
 }
@@ -80,7 +80,7 @@ pub(super) fn scalar_properties(cp: u32) -> Result<Properties> {
     })
 }
 
-pub(super) fn properties(atoms: &[OriginalAtom]) -> Result<Properties> {
+pub(in crate::engine) fn properties(atoms: &[OriginalAtom]) -> Result<Properties> {
     let base = base(atoms).expect("a nonempty EGC has an actual scalar or opaque source unit");
     let base_index = atoms
         .iter()

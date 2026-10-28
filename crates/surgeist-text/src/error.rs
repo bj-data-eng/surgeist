@@ -13,6 +13,41 @@ pub use upright::{
 /// Text crate result alias.
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Executed shaping phase that demanded independent separator geometry.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WordSpacingStage {
+    Preparation,
+    SelectedShaping,
+}
+
+/// The material spacing contribution, independently of its source ownership.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WordSpacingOperation {
+    Authored,
+}
+
+/// Ordered actual content of an unsupported separator unit. Ordinals describe
+/// the executed phase's inventory and do not issue capabilities.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WordSpacingPiece {
+    Source {
+        origin: usize,
+        local: super::Range,
+        aggregate: super::Range,
+    },
+    Alternative {
+        alternative: usize,
+        local: super::Range,
+        insertion_anchor: usize,
+    },
+    Control {
+        occurrence: usize,
+    },
+    VirtualSeparator {
+        occurrence: usize,
+    },
+}
+
 /// Stable text diagnostic.
 #[derive(Debug)]
 pub struct Error {
@@ -101,6 +136,14 @@ pub enum ErrorCode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErrorDetail {
+    /// A material word-spacing operation needs unavailable independent unit geometry.
+    UnsupportedWordSpacing {
+        stage: WordSpacingStage,
+        operation: WordSpacingOperation,
+        pieces: Box<[WordSpacingPiece]>,
+        /// Atom range in the actual preparation or selected presentation.
+        provider_atoms: std::ops::Range<usize>,
+    },
     /// Executed pre-analysis transformation could not retain its operation.
     TextTransform {
         reason: TextTransformError,

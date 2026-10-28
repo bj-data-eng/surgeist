@@ -200,6 +200,42 @@ remain separate capabilities. See the [composed-line guide](composed-lines.md)
 for retained
 source, receipt and placement custody.
 
+## Authored word-separator spacing
+
+`Style::word_spacing` adds a resolved signed length to actual surviving separator
+TCUs. The declared native repertoire is U+0020, U+00A0, U+1361, U+10100, U+10101,
+U+1039F and U+1091F. This is the explicit minimum in the pinned CSS Text sources,
+not an exhaustive Unicode separator property. Fixed-width U+2000..U+200A/U+3000,
+generic punctuation, TAB/LF and U+200B gain no word spacing. Complete presentation
+EGCs use the shared Appendix-E property owner: Zs plus a combining mark and actual
+Common-Me replacement properties do not retain separator classification. Real
+hard/captured shaping boundaries are respected; storage and fallback alone do
+not divide a unit. Its actual base style owns the one authored word term.
+
+The intrinsic advance comes once from actual invocation-qualified provider groups
+wholly contained in the unit, before scalar apportioning or any spacing. A real
+zero-intrinsic separator receives no word spacing, regardless of ink. Intrinsic10
+plus authored-10 is still intrinsically nonzero. Material spacing on a provider
+group spanning another unit refuses with `UnsupportedWordSpacing`, retaining the
+executed stage and exact original/alternative/control/virtual content. Zero word
+spacing does not create that capability demand, and required/author-forced font
+features remain intact.
+
+One equal-half policy applies to blank and visible admitted separators: total
+advance gains the authored term and every glyph/attached mark gains half in the
+actual visual inline direction. Raw glyph offsets/advances remain unchanged;
+actual pens retain the shift. Placement checks both local arithmetic and loss
+at the actual physical anchor, including for glyph-free unit anchors. Original,
+selected and indication shaping share this owner. Existing hypothetical tab
+SPACE uses the same intrinsic-zero gate and adds its spacing once; font struts
+create no separator. Used Alphabetic/Central origins remain independent.
+
+Existing `SpacingPolicy::None` and `Spaces` retain their distinct native allocation
+semantics. In particular, allocated `Spaces` amounts keep their existing U+0020
+geometry and valid zero/cancellation/negative behavior; they are not silently
+given CSS InterWord half-side or zero-suppression semantics. A native InterWord
+allocation front is a separate contribution.
+
 ## Used named preparation references
 
 `PreparationOptions::with_baseline_reference(FontBaseline::Alphabetic)` requests

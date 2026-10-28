@@ -27,7 +27,7 @@ use super::{
     convert,
     layout::data::{
         ClusterContent, GlyphData, HorizontalRunMetrics, PreparedCluster, PreparedRun,
-        RunMetricBasis, RunMetrics, ShapedData, ShapedItem, Whitespace,
+        ProviderGroup, RunMetricBasis, RunMetrics, ShapedData, ShapedItem, Whitespace,
     },
     lru_cache::LruCache,
     resolve::ResolvedStyle,
@@ -842,6 +842,7 @@ pub(crate) fn finalize(
         }
         output.clusters.sort_by_key(|cluster| cluster.atoms.start);
     }
+    super::spacing::authored_selected(selected, &mut output)?;
     // Each real atom receives one extracted cluster; ligature components lend
     // their actual shared glyph association rather than duplicating glyphs.
     let mut clusters = output.clusters.iter().enumerate().peekable();
@@ -1801,6 +1802,12 @@ fn extract_output(
             });
         }
         let glyphs = first_glyph..output.glyphs.len();
+        output.provider_groups.push(ProviderGroup {
+            run: run_index,
+            atoms: atom_start..atom_end,
+            glyphs: glyphs.clone(),
+            advance,
+        });
         let components = end - start;
         let eligible_components = (start..end).filter(|local| !zero_input(*local)).count();
         let last_eligible = (start..end).rfind(|local| !zero_input(*local));
@@ -1832,17 +1839,11 @@ fn extract_output(
             distributed_base += base_advance;
             let style = &input.styles[style_index].style;
             let letter_spacing = if excluded { 0.0 } else { style.letter_spacing };
-            let word_spacing = if !excluded && whitespace.is_space_or_nbsp() {
-                style.word_spacing
-            } else {
-                0.0
-            };
             let with_letter_spacing = logical_add("letter spacing", base_advance, letter_spacing)?;
-            let cluster_advance = logical_add("word spacing", with_letter_spacing, word_spacing)?;
             output.clusters.push(PreparedCluster {
                 line_height: component_line_height(style, &run.metrics, normal_extent)?,
                 shaped_advance: base_advance,
-                logical_adjustments: [letter_spacing, word_spacing, 0.0],
+                logical_adjustments: [letter_spacing, 0.0, 0.0],
                 source: original.source,
                 atoms: atom..atom + 1,
                 provider_group: atom_start..atom_end,
@@ -1854,7 +1855,7 @@ fn extract_output(
                 content: ClusterContent::Provider(run_index),
                 style: style_index,
                 level: request.level,
-                advance: cluster_advance,
+                advance: with_letter_spacing,
                 boundary: info.boundary,
                 whitespace,
                 is_whitespace: whitespace != Whitespace::None,
@@ -2107,5 +2108,10 @@ pub(crate) fn measure_character(
             advance,
         ));
     }
+    let advance = if ch == ' ' {
+        super::spacing::hypothetical_space(advance, style.letter_spacing, style.word_spacing)?
+    } else {
+        advance
+    };
     Ok(Some((advance, run)))
 }

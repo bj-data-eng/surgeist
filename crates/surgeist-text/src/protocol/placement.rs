@@ -59,6 +59,26 @@ pub(crate) enum PlacementMetricPolicy {
     StandaloneStacked,
 }
 
+fn qualify_word_half(
+    placed: &PlacedLine,
+    before: crate::Point,
+    after: crate::Point,
+    half: f64,
+) -> Result<()> {
+    let before = crate::layout::inline_coordinate(placed.orientation, before);
+    let after = crate::layout::inline_coordinate(placed.orientation, after);
+    finite("placed word spacing half", after)?;
+    if half != 0.0 && before == after {
+        return Err(crate::error::text_numeric_error(
+            "placed word spacing half",
+            crate::TextNumericPhase::Placement,
+            crate::TextNumericError::NonZeroLost,
+            half,
+        ));
+    }
+    Ok(())
+}
+
 impl Layout {
     /// Places these exact finalized lines once; no wrapping, font query, pixel
     /// snapping, or independent paragraph layout occurs here.
@@ -308,7 +328,25 @@ pub(crate) fn place_request(
                 );
                 finite("placed glyph origin x", point.x)?;
                 finite("placed glyph origin y", point.y)?;
+                if glyph.word_half != 0.0 {
+                    let before = crate::layout::glyph_origin(
+                        placed.orientation,
+                        origin,
+                        glyph.pen_base,
+                        f64::from(glyph.glyph.x),
+                        f64::from(glyph.glyph.y),
+                    );
+                    qualify_word_half(&placed, before, point, glyph.word_half)?;
+                }
             }
+        }
+        for unit in &placed.finalized.data.word_anchors {
+            let before = crate::layout::line_point(&placed, unit.base);
+            let after = crate::layout::line_point(
+                &placed,
+                crate::Point::new(unit.base.x + unit.half, unit.base.y),
+            );
+            qualify_word_half(&placed, before, after, unit.half)?;
         }
         let metric_rect = crate::layout::line_rect(
             &placed,

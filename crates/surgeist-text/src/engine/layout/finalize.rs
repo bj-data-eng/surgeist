@@ -67,6 +67,7 @@ pub(super) fn finalize(
     let order = SuppliedLine::new(&participants)
         .composed_order(&ordered)
         .ok_or_else(|| invalid("composed line order is not a complete permutation"))?;
+    let word_halves = super::super::spacing::visual_authored(&mut shaped, &order, &dispositions)?;
     resolve_tabs(&selected, &mut shaped, &atomics, &order)?;
     let natural = phase_two::natural(&selected, &shaped, &atomics, &order, &dispositions)?;
     let mut spacing_slots = apply_spacing(&selected, &mut shaped, amounts, &dispositions)?;
@@ -319,6 +320,19 @@ pub(super) fn finalize(
                 }
                 let discarded =
                     dispositions[cluster_index] == SpacingSlotDisposition::DiscardedAtLineEdge;
+                let word_half = word_halves[cluster_index].half;
+                if !discarded && word_halves[cluster_index].unit_start && word_half != 0.0 {
+                    add(
+                        "word spacing unit half",
+                        TextNumericPhase::Finalization,
+                        cluster_x,
+                        word_half,
+                    )?;
+                    data.word_anchors.push(WordSpacingAnchor {
+                        base: Point::new(cluster_x, metrics.baseline),
+                        half: word_half,
+                    });
+                }
                 // RTL ligature/component shares are visited before their logical
                 // start. The one actual glyph belongs at the group's visual
                 // origin, not after those already-positioned component shares.
@@ -410,7 +424,14 @@ pub(super) fn finalize(
                         )?;
                         data.glyphs.push(FinalizedGlyph {
                             glyph: *glyph,
-                            pen: actual_pen,
+                            pen: add(
+                                "word spacing glyph half",
+                                TextNumericPhase::Finalization,
+                                actual_pen,
+                                word_half,
+                            )?,
+                            pen_base: actual_pen,
+                            word_half,
                         });
                         run.glyphs.end = data.glyphs.len();
                         run.source.start = run.source.start.min(glyph.source.start);

@@ -314,7 +314,9 @@ fn negative_preserved_space_contribution_is_not_absolute_hanging() {
             .x
     };
     assert_eq!((x(1) - x(0), x(2) - x(1)), (10.0, -2.0));
-    assert_eq!(observed, (0.0, vec![6.0, 16.0]));
+    // Natural8 centered in20 starts at6. SPACE starts logically at16,
+    // and authored−12 moves only its paint by half−6 to10.
+    assert_eq!(observed, (0.0, vec![6.0, 10.0]));
 }
 
 #[test]
@@ -680,7 +682,10 @@ fn fitting_zero_advance_conditional_space_keeps_preceding_separator_nonterminal(
     custody(&p, vec![line, next], &[88, 8195, 32, 10, 89]);
     // The actual preserved SPACE ends at20, inside40. It does not hang, so
     // the preceding EM SPACE is not terminal (CSS Text4 section9.2).
-    assert_eq!(observed, (0.0, vec![10.0, 20.0, 30.0]));
+    // Natural20 centered in40 starts at10. SPACE starts logically at30,
+    // and authored−10 moves only its paint by half−5 to25. Its contribution
+    // remains zero, so it still prevents the preceding EM SPACE from hanging.
+    assert_eq!(observed, (0.0, vec![10.0, 20.0, 25.0]));
 }
 
 #[test]
