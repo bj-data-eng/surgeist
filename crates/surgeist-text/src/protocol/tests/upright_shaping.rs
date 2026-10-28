@@ -693,3 +693,6 @@ mod arrangement;
 
 #[path = "upright_shaping/admission.rs"]
 mod admission;
+
+#[path = "upright_shaping/finite.rs"]
+mod finite;
