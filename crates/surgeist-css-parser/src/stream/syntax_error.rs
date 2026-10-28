@@ -11,6 +11,7 @@ enum Kind<'i, E, P> {
     UnknownAtRule { at: Site<'i, P>, name: &'i str },
     InvalidAtRuleBody { at: Site<'i, P> },
     InvalidQualifiedRule { at: Site<'i, P> },
+    DeniedBlock { at: Site<'i, P> },
 }
 
 /// A grammar failure: a stream-level failure, a rejection by the rule
@@ -91,6 +92,14 @@ impl<'i, E, P> SyntaxError<'i, E, P> {
         }
     }
 
+    /// Creates the failure of a rule whose `{}`-block the build denied for
+    /// nesting too deep: the block has no contents to give the grammar.
+    pub(crate) const fn denied_block_error(at: Site<'i, P>) -> Self {
+        Self {
+            kind: Kind::DeniedBlock { at },
+        }
+    }
+
     /// Returns the boundary the failure is about.
     #[must_use]
     pub const fn at(&self) -> Site<'i, P> {
@@ -99,7 +108,8 @@ impl<'i, E, P> SyntaxError<'i, E, P> {
             Kind::Custom { at, .. }
             | Kind::UnknownAtRule { at, .. }
             | Kind::InvalidAtRuleBody { at }
-            | Kind::InvalidQualifiedRule { at } => *at,
+            | Kind::InvalidQualifiedRule { at }
+            | Kind::DeniedBlock { at } => *at,
         }
     }
 
@@ -116,6 +126,10 @@ impl<'i, E, P> SyntaxError<'i, E, P> {
         is_invalid_at_rule_body => Kind::InvalidAtRuleBody { .. },
         /// Whether the rule protocol rejected a qualified rule.
         is_invalid_qualified_rule => Kind::InvalidQualifiedRule { .. },
+        /// Whether a rule driver could not give the grammar a rule because its
+        /// `{}`-block nested deeper than the limit of the build that denied it
+        /// (see [`DepthExcess::DenyBlock`](crate::limits::DepthExcess::DenyBlock)).
+        is_denied_block => Kind::DeniedBlock { .. },
     }
 
     /// Returns the grammar's own error, if the failure is one.
@@ -224,6 +238,10 @@ impl<E: fmt::Debug, P> fmt::Debug for SyntaxError<'_, E, P> {
                 .debug_struct("InvalidQualifiedRule")
                 .field("at", at)
                 .finish(),
+            Kind::DeniedBlock { at } => formatter
+                .debug_struct("DeniedBlock")
+                .field("at", at)
+                .finish(),
         }
     }
 }
@@ -236,6 +254,9 @@ impl<E: fmt::Display, P> fmt::Display for SyntaxError<'_, E, P> {
             Kind::UnknownAtRule { name, .. } => write!(formatter, "unknown at-rule @{name}"),
             Kind::InvalidAtRuleBody { .. } => formatter.write_str("invalid at-rule body"),
             Kind::InvalidQualifiedRule { .. } => formatter.write_str("invalid qualified rule"),
+            Kind::DeniedBlock { .. } => {
+                formatter.write_str("a block nested deeper than the limit was denied")
+            }
         }
     }
 }

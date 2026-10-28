@@ -143,6 +143,43 @@ pub fn generate(entropy: &[u8]) -> String {
     text
 }
 
+/// A text of arbitrary code points: every ASCII byte, so NULL, carriage
+/// return, form feed, quotes and backslashes meet each other, and a handful of
+/// non-ASCII code points around the edges of section 4.2's ranges.
+pub fn raw_text(entropy: &[u8]) -> String {
+    const WIDE: [char; 10] = [
+        '\u{e9}',
+        '\u{2603}',
+        '\u{1f600}',
+        '\u{a0}',
+        '\u{fffd}',
+        '\u{fffe}',
+        '\u{10ffff}',
+        '\u{d7ff}',
+        '\u{e000}',
+        '\u{b7}',
+    ];
+    entropy
+        .iter()
+        .take(96)
+        .map(|&byte| {
+            if byte < 0x80 {
+                char::from(byte)
+            } else {
+                WIDE[usize::from(byte) % WIDE.len()]
+            }
+        })
+        .collect()
+}
+
+/// The first entropy byte picks the family: authored pieces, or raw bytes.
+pub fn text_of(entropy: &[u8]) -> String {
+    match entropy.first() {
+        Some(first) if first % 2 == 1 => raw_text(&entropy[1..]),
+        _ => generate(entropy.get(1..).unwrap_or(&[])),
+    }
+}
+
 /// A deterministic byte source (SplitMix64), so the cases do not depend on any
 /// framework's random number generator.
 pub struct Entropy(u64);

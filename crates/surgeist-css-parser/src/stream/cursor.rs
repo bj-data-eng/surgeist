@@ -305,7 +305,7 @@ impl<'i, P> Stream<'i, P> {
 
     /// Whether only whitespace and comments are left, or the refusal that
     /// stopped the scan.
-    fn whitespace_left(&self) -> Result<bool, StreamError<'i, P>> {
+    pub(crate) fn whitespace_left(&self) -> Result<bool, StreamError<'i, P>> {
         let mut index = self.next;
         loop {
             self.step()?;
@@ -637,7 +637,7 @@ impl<'i, P> Stream<'i, P> {
     /// `a,` is two segments. This is **not** the algorithm of section 5.4.2
     /// ("parse a comma-separated list according to a CSS grammar"), which returns
     /// an empty list for a stream of whitespace and ignores a final comma; that
-    /// entry point is provided with the other parser entry points.
+    /// entry point is [`parse_comma_separated_list`](Self::parse_comma_separated_list).
     ///
     /// # Errors
     ///
@@ -666,14 +666,7 @@ impl<'i, P> Stream<'i, P> {
         let mut values = Vec::new();
         loop {
             let value = self.within_list_until(StopToken::Comma, &mut f)?;
-            if let Some(meter) = self.meter() {
-                let document: &'i Document<'i, P> = self.document;
-                if document.is_refused() || limits::grow(meter, &mut values, 1).is_err() {
-                    document.latch_refusal();
-                    return Err(StreamError::refused(self.site()).into());
-                }
-            }
-            values.push(value);
+            self.push_charged(&mut values, value)?;
             if self.whitespace_left()? {
                 return Ok(values);
             }
@@ -736,6 +729,89 @@ impl<'i, P> Stream<'i, P> {
     #[must_use]
     pub fn text_since(&self, from: Site<'i, P>) -> Option<&'i str> {
         self.text_between(from, self.site())
+    }
+
+    // ----- crate-internal primitives of the rule drivers (`grammar`)
+
+    /// Returns the document the stream reads.
+    pub(crate) const fn document(&self) -> &'i Document<'i, P> {
+        self.document
+    }
+
+    /// Returns the index of the next node.
+    pub(crate) const fn next_index(&self) -> usize {
+        self.next
+    }
+
+    /// Returns the index at which the stream ends.
+    pub(crate) const fn end_index(&self) -> usize {
+        self.end
+    }
+
+    /// Returns the boundary before the node at `index`.
+    pub(crate) const fn site_at(&self, index: usize) -> Site<'i, P> {
+        Site::new(self.document, self.list, index, false)
+    }
+
+    /// Moves the next node to `index`, which is within the stream, and drops
+    /// the group left unentered.
+    pub(crate) fn seek(&mut self, index: usize) {
+        debug_assert!(self.start <= index && index <= self.end);
+        self.next = index;
+        self.pending = None;
+    }
+
+    /// Returns a stream over the nodes `from` to `to` of this stream's list.
+    pub(crate) fn span(&self, from: usize, to: usize) -> Stream<'i, P> {
+        debug_assert!(self.start <= from && from <= to && to <= self.end);
+        Stream::bounded(self.document, self.list, from..to)
+    }
+
+    /// Examines the node at `index`: one meter step, whatever it finds,
+    /// including the end of the stream (`None`).
+    ///
+    /// # Errors
+    ///
+    /// Fails with `is_refused()` when the meter refuses the step.
+    pub(crate) fn peek_at(
+        &self,
+        index: usize,
+    ) -> Result<Option<Component<'i, P>>, StreamError<'i, P>> {
+        self.step()?;
+        Ok(self.component_unmetered(index))
+    }
+
+    /// The node at `index` as a component, or `None` at or past the end of the
+    /// stream, without a meter step: for a node that was already examined.
+    pub(crate) fn component_unmetered(&self, index: usize) -> Option<Component<'i, P>> {
+        if index >= self.end {
+            return None;
+        }
+        let document: &'i Document<'i, P> = self.document;
+        Some(document.component(self.node_at(index)))
+    }
+
+    /// Appends `value` to `values`, charging the growth of `values` to the
+    /// meter if there is one. A refusal is latched and reported, and `value` is
+    /// not appended: a result list never silently stops growing.
+    ///
+    /// # Errors
+    ///
+    /// Fails with `is_refused()` when the meter refuses.
+    pub(crate) fn push_charged<T>(
+        &self,
+        values: &mut Vec<T>,
+        value: T,
+    ) -> Result<(), StreamError<'i, P>> {
+        if let Some(meter) = self.meter() {
+            let document: &'i Document<'i, P> = self.document;
+            if document.is_refused() || limits::grow(meter, values, 1).is_err() {
+                document.latch_refusal();
+                return Err(StreamError::refused(self.site()));
+            }
+        }
+        values.push(value);
+        Ok(())
     }
 
     // ----- errors

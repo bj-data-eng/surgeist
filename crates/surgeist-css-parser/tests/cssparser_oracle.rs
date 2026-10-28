@@ -40,6 +40,7 @@ use std::ops::Range;
 use cssparser::{Parser, ParserInput, Token as Css};
 use surgeist_css_parser::Token;
 use surgeist_css_parser::lexer::{Lexer, Options};
+use surgeist_css_parser::serialize::{Adjacency, needs_separator};
 
 /// One token of a tree, in the notation of `tests/common/mod.rs`, with its
 /// source range and, for a block opener, what the block holds and where it
@@ -868,4 +869,557 @@ fn the_comparison_itself_sees_a_difference_in_kind_range_and_structure() {
         ),
         []
     );
+}
+
+// ============================================================ sections 6 and 9
+//
+// cssparser exposes three helpers with the same job as three parts of this
+// crate, and they are compared through their public API only:
+//
+// - `parse_nth` and `anb::parse` (section 6.2),
+// - `serialize_identifier` and `serialize_string`, and `serialize::identifier`
+//   and `serialize::string` (CSSOM 2.1 under the round-trip rule of section 9),
+// - `TokenSerializationType::needs_separator_when_before` and
+//   `serialize::needs_separator` (the table of section 9).
+//
+// The comparison is compatibility evidence only, like the lexer's. Every
+// difference is a row of `tests/oracle/syntax_differences.tsv` that cites the
+// section of the pinned edition that makes this crate's answer correct, and the
+// test fails on a difference no row lists, on a row that no longer occurs, and
+// on a row that cites nothing. A difference on the generated notations must
+// belong to a class the table demonstrates.
+
+const SYNTAX_TABLE: &str = include_str!("oracle/syntax_differences.tsv");
+
+/// One difference between the two implementations on one input.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct SyntaxDifference {
+    area: &'static str,
+    input: String,
+    cssparser: String,
+    surgeist: String,
+}
+
+struct SyntaxRow {
+    id: String,
+    difference: SyntaxDifference,
+    section: String,
+    class: String,
+}
+
+fn area_name(area: &str) -> Option<&'static str> {
+    ["anb", "adjacency", "escaping"]
+        .into_iter()
+        .find(|name| *name == area)
+}
+
+fn syntax_rows() -> Vec<SyntaxRow> {
+    let mut rows = Vec::new();
+    for (number, line) in SYNTAX_TABLE.lines().enumerate() {
+        if line.is_empty() || line.starts_with('#') || line.starts_with("id\t") {
+            continue;
+        }
+        let columns: Vec<&str> = line.split('\t').collect();
+        assert_eq!(
+            columns.len(),
+            7,
+            "line {}: seven tab-separated columns",
+            number + 1
+        );
+        let area = area_name(columns[1])
+            .unwrap_or_else(|| panic!("line {}: unknown area {:?}", number + 1, columns[1]));
+        rows.push(SyntaxRow {
+            id: columns[0].to_owned(),
+            difference: SyntaxDifference {
+                area,
+                input: unescape(columns[2]),
+                cssparser: unescape(columns[3]),
+                surgeist: unescape(columns[4]),
+            },
+            section: columns[5].to_owned(),
+            class: columns[6].to_owned(),
+        });
+    }
+    rows
+}
+
+fn syntax_row_text(id: &str, difference: &SyntaxDifference, section: &str, class: &str) -> String {
+    format!(
+        "{id}\t{}\t{}\t{}\t{}\t{section}\t{class}",
+        difference.area,
+        escape(&difference.input),
+        escape(&difference.cssparser),
+        escape(&difference.surgeist),
+    )
+}
+
+/// Whether `section` names a clause of the pinned edition that decides one of
+/// these areas: the `An+B` type (6.2), its serialization (9.1), the serialization
+/// chapter and its table (9), or the token rules the table is about (4.3.1).
+fn is_syntax_section(section: &str) -> bool {
+    section
+        .split(", ")
+        .all(|part| ["4.3.1", "6.2", "9", "9.1"].contains(&part))
+}
+
+// ------------------------------------------------------------------- An+B
+
+/// What cssparser's `parse_nth` makes of `text`, as a match of the whole input:
+/// it consumes eagerly and fails on a sign it cannot finish, so only a result
+/// with nothing left is a match.
+fn cssparser_nth(text: &str) -> String {
+    let mut input = ParserInput::new(text);
+    let mut parser = Parser::new(&mut input);
+    match cssparser::parse_nth(&mut parser) {
+        Ok((a, b)) if parser.is_exhausted() => format!("({a},{b})"),
+        _ => "error".to_owned(),
+    }
+}
+
+/// What `anb::parse` makes of `text`, as a match of the whole input. An
+/// overflow is reported as such: cssparser has no such answer.
+fn surgeist_nth(text: &str) -> String {
+    let document = common::tree::parse(text);
+    let mut stream = document.root();
+    match surgeist_css_parser::anb::parse(&mut stream) {
+        Ok(value) if stream.only_whitespace_remains() => format!("({},{})", value.a(), value.b()),
+        Ok(_) => "error".to_owned(),
+        Err(error) if error.is_overflow() => "overflow".to_owned(),
+        Err(_) => "error".to_owned(),
+    }
+}
+
+fn anb_differences(inputs: &[String]) -> std::collections::BTreeSet<SyntaxDifference> {
+    inputs
+        .iter()
+        .filter_map(|text| {
+            let (theirs, ours) = (cssparser_nth(text), surgeist_nth(text));
+            (theirs != ours).then(|| SyntaxDifference {
+                area: "anb",
+                input: text.clone(),
+                cssparser: theirs,
+                surgeist: ours,
+            })
+        })
+        .collect()
+}
+
+/// The notations of the specification's examples (sections 6 and 6.1) and the
+/// edges of `i32`, each written as the text a grammar would hand over.
+fn anb_spec_inputs() -> Vec<String> {
+    [
+        // Section 6.
+        "2n+0",
+        "even",
+        "odd",
+        "4n+1",
+        "-1n+6",
+        "-4n+10",
+        // Section 6.1.
+        "0n+5",
+        "5",
+        "1n+0",
+        "n+0",
+        "n",
+        "2n",
+        "3n-6",
+        "3n + -6",
+        "3n + 1",
+        "+3n - 2",
+        "-n+ 6",
+        "+6",
+        "3 n",
+        "+ 2n",
+        "+ 2",
+        // The clauses of 6.2.
+        "+n",
+        "-n",
+        "n-1",
+        "-n-1",
+        "2n-1",
+        "2n- 1",
+        "n- 1",
+        "-n- 1",
+        "2n +1",
+        "2n -1",
+        "n + 1",
+        "-n - 1",
+        // The edges of i32 (Q11: a typed overflow, not a saturated value).
+        "2147483647",
+        "-2147483648",
+        "2147483648",
+        "-2147483649",
+        "2147483648n",
+        "-2147483649n",
+        "n+2147483648",
+        "n-2147483648",
+        "n-2147483649",
+        "n- 2147483648",
+        "n- 2147483649",
+        "-n-2147483648",
+        "n -2147483649",
+        "99999999999999999999",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect()
+}
+
+/// Every concatenation of up to three pieces of notation.
+fn anb_generated_inputs() -> Vec<String> {
+    const PIECES: &[&str] = &[
+        "n",
+        "N",
+        "-n",
+        "+n",
+        "+",
+        "-",
+        "odd",
+        "even",
+        "ODD",
+        "1",
+        "2",
+        "23",
+        "-5",
+        "+7",
+        "0",
+        "2n",
+        "-3n",
+        "+4N",
+        "n-",
+        "n-1",
+        "-n-2",
+        "2n-",
+        "2n-3",
+        "n+",
+        " ",
+        "/**/",
+        "2147483647",
+        "2147483648",
+        "-2147483648",
+        "-2147483649",
+        "99999999999999999999",
+        ".5",
+        "1e1",
+        "a",
+        "%",
+        "x",
+        "n1",
+        "--n",
+        "1.5n",
+        "3n",
+        "n-3",
+    ];
+    let mut inputs = Vec::new();
+    for first in PIECES {
+        inputs.push((*first).to_owned());
+        for second in PIECES {
+            inputs.push(format!("{first}{second}"));
+            for third in PIECES {
+                inputs.push(format!("{first}{second}{third}"));
+            }
+        }
+    }
+    inputs
+}
+
+/// The class that explains a difference on an `An+B` notation, from the shape of
+/// the two answers.
+///
+/// - `V-7`: cssparser saturates a value outside `i32` where this crate reports
+///   an overflow (6.2 defines A and B as integers), including the negative
+///   `n- 2147483648`, where cssparser saturates the integer before it negates it
+///   and so answers -2147483647 for the integer 2147483648 that 6.2 negates to
+///   -2147483648.
+fn anb_class(difference: &SyntaxDifference) -> Option<&'static str> {
+    let saturated = |answer: &str| {
+        answer == "error"
+            || answer.contains(&i32::MAX.to_string())
+            || answer.contains(&i32::MIN.to_string())
+    };
+    if difference.surgeist == "overflow" && saturated(&difference.cssparser) {
+        return Some("V-7");
+    }
+    // `n- 2147483648`: the negation of 2147483648 is a value of i32.
+    let theirs = difference
+        .cssparser
+        .strip_suffix(&format!(",{})", i32::MIN + 1));
+    let ours = difference.surgeist.strip_suffix(&format!(",{})", i32::MIN));
+    (theirs.is_some() && theirs == ours).then_some("V-7")
+}
+
+// ------------------------------------------------------------------- escaping
+
+fn escaping_differences() -> std::collections::BTreeSet<SyntaxDifference> {
+    let mut values = vec![String::new()];
+    for code in 0_u32..=0x7f {
+        let point = char::from_u32(code).unwrap();
+        for value in [
+            format!("{point}"),
+            format!("a{point}"),
+            format!("{point}a"),
+            format!("-{point}"),
+            format!("{point}{point}"),
+        ] {
+            values.push(value);
+        }
+    }
+    for point in [
+        '\u{80}',
+        '\u{a0}',
+        '\u{b7}',
+        '\u{d7}',
+        '\u{e9}',
+        '\u{2603}',
+        '\u{fffd}',
+        '\u{fffe}',
+        '\u{1f600}',
+    ] {
+        values.push(format!("{point}"));
+        values.push(format!("a{point}"));
+    }
+    let mut found = std::collections::BTreeSet::new();
+    for value in values {
+        let mut theirs = String::new();
+        let mut ours = String::new();
+        cssparser::serialize_identifier(&value, &mut theirs).unwrap();
+        surgeist_css_parser::serialize::identifier(&value, &mut ours).unwrap();
+        if theirs != ours {
+            found.insert(SyntaxDifference {
+                area: "escaping",
+                input: format!("identifier:{value}"),
+                cssparser: theirs,
+                surgeist: ours,
+            });
+        }
+        let mut theirs = String::new();
+        let mut ours = String::new();
+        cssparser::serialize_string(&value, &mut theirs).unwrap();
+        surgeist_css_parser::serialize::string(&value, &mut ours).unwrap();
+        if theirs != ours {
+            found.insert(SyntaxDifference {
+                area: "escaping",
+                input: format!("string:{value}"),
+                cssparser: theirs,
+                surgeist: ours,
+            });
+        }
+    }
+    found
+}
+
+// ------------------------------------------------------------------- adjacency
+
+/// A token of cssparser and the adjacency of the same token here, for each
+/// class of token the table or either implementation distinguishes.
+fn adjacency_tokens() -> Vec<(&'static str, Adjacency, Css<'static>)> {
+    vec![
+        ("ident", Adjacency::Ident, Css::Ident("a".into())),
+        (
+            "at-keyword",
+            Adjacency::AtKeyword,
+            Css::AtKeyword("k".into()),
+        ),
+        ("hash", Adjacency::Hash, Css::IDHash("h".into())),
+        (
+            "dimension",
+            Adjacency::Dimension,
+            Css::Dimension {
+                has_sign: false,
+                value: 1.0,
+                int_value: Some(1),
+                unit: "px".into(),
+            },
+        ),
+        (
+            "number",
+            Adjacency::Number,
+            Css::Number {
+                has_sign: false,
+                value: 1.0,
+                int_value: Some(1),
+            },
+        ),
+        ("function", Adjacency::Function, Css::Function("f".into())),
+        ("url", Adjacency::Url, Css::UnquotedUrl("u".into())),
+        ("bad url", Adjacency::BadUrl, Css::BadUrl("x".into())),
+        (
+            "percentage",
+            Adjacency::Percentage,
+            Css::Percentage {
+                has_sign: false,
+                unit_value: 0.01,
+                int_value: Some(1),
+            },
+        ),
+        ("cdc", Adjacency::Cdc, Css::CDC),
+        ("(", Adjacency::OpenParen, Css::ParenthesisBlock),
+        ("#", Adjacency::Delim('#'), Css::Delim('#')),
+        ("-", Adjacency::Delim('-'), Css::Delim('-')),
+        ("@", Adjacency::Delim('@'), Css::Delim('@')),
+        (".", Adjacency::Delim('.'), Css::Delim('.')),
+        ("+", Adjacency::Delim('+'), Css::Delim('+')),
+        ("/", Adjacency::Delim('/'), Css::Delim('/')),
+        ("*", Adjacency::Delim('*'), Css::Delim('*')),
+        ("%", Adjacency::Delim('%'), Css::Delim('%')),
+        ("=", Adjacency::Delim('='), Css::Delim('=')),
+        ("|", Adjacency::Delim('|'), Css::Delim('|')),
+        ("<", Adjacency::Delim('<'), Css::Delim('<')),
+        ("string", Adjacency::Other, Css::QuotedString("s".into())),
+        ("comma", Adjacency::Other, Css::Comma),
+        ("cdo", Adjacency::Other, Css::CDO),
+    ]
+}
+
+fn adjacency_differences() -> std::collections::BTreeSet<SyntaxDifference> {
+    let tokens = adjacency_tokens();
+    let mut found = std::collections::BTreeSet::new();
+    for (first_name, first, first_css) in &tokens {
+        for (second_name, second, second_css) in &tokens {
+            let theirs = first_css
+                .serialization_type()
+                .needs_separator_when_before(second_css.serialization_type());
+            let ours = needs_separator(*first, *second);
+            if theirs != ours {
+                found.insert(SyntaxDifference {
+                    area: "adjacency",
+                    input: format!("{first_name} then {second_name}"),
+                    cssparser: theirs.to_string(),
+                    surgeist: ours.to_string(),
+                });
+            }
+        }
+    }
+    found
+}
+
+// ------------------------------------------------------------------- the tests
+
+fn committed(area: &str) -> Vec<SyntaxRow> {
+    syntax_rows()
+        .into_iter()
+        .filter(|row| row.difference.area == area)
+        .collect()
+}
+
+fn check_listed(area: &str, found: &std::collections::BTreeSet<SyntaxDifference>) {
+    let rows = committed(area);
+    let listed: std::collections::BTreeSet<SyntaxDifference> =
+        rows.iter().map(|row| row.difference.clone()).collect();
+    assert_eq!(listed.len(), rows.len(), "{area}: a row is listed twice");
+    let unlisted: Vec<String> = found
+        .difference(&listed)
+        .map(|difference| syntax_row_text("?", difference, "?", "?"))
+        .collect();
+    assert!(
+        unlisted.is_empty(),
+        "{area}: differences that no row lists:\n{}",
+        unlisted.join("\n")
+    );
+    let vanished: Vec<String> = listed
+        .difference(found)
+        .map(|difference| syntax_row_text("?", difference, "?", "?"))
+        .collect();
+    assert!(
+        vanished.is_empty(),
+        "{area}: listed differences that no longer occur:\n{}",
+        vanished.join("\n")
+    );
+    for row in rows {
+        assert!(
+            is_syntax_section(&row.section),
+            "{}: cites {:?}, which is not a clause that decides {area}",
+            row.id,
+            row.section
+        );
+        assert!(
+            !row.class.is_empty() && row.class != "?",
+            "{}: no class",
+            row.id
+        );
+    }
+}
+
+#[test]
+fn every_an_plus_b_difference_from_cssparser_is_listed_and_cites_the_pinned_edition() {
+    let found = anb_differences(&anb_spec_inputs());
+    if std::env::var_os("SURGEIST_ORACLE_DUMP").is_some() {
+        for (index, difference) in found.iter().enumerate() {
+            let class = anb_class(difference).unwrap_or("?");
+            eprintln!(
+                "{}",
+                syntax_row_text(&format!("S-{:03}", index + 1), difference, "6.2", class)
+            );
+        }
+        return;
+    }
+    check_listed("anb", &found);
+}
+
+#[test]
+fn every_an_plus_b_difference_on_a_generated_notation_belongs_to_a_listed_class() {
+    let found = anb_differences(&anb_generated_inputs());
+    let unexplained: Vec<String> = found
+        .iter()
+        .filter(|difference| anb_class(difference).is_none())
+        .map(|difference| syntax_row_text("?", difference, "?", "?"))
+        .take(20)
+        .collect();
+    assert!(
+        unexplained.is_empty(),
+        "differences on generated notations that no class explains:\n{}",
+        unexplained.join("\n")
+    );
+    let rows = committed("anb");
+    for difference in &found {
+        let class = anb_class(difference).expect("checked above");
+        assert!(
+            rows.iter().any(|row| row.class == class),
+            "class {class} explains {difference:?} but the table lists none"
+        );
+    }
+    // The generator reaches the class, so the property is not vacuous.
+    assert!(
+        found
+            .iter()
+            .any(|difference| anb_class(difference) == Some("V-7"))
+    );
+    assert!(found.len() > 100, "{} differences", found.len());
+}
+
+#[test]
+fn the_escaping_functions_agree_with_cssparsers_on_every_input() {
+    // Under the 2021 non-ASCII rule the two write the same text for every
+    // identifier and string of the corpus, so the table lists no row. The 2026
+    // ranges will add rows for the code points they exclude (CSSOM 2.1 writes
+    // those raw; the round-trip rule of section 9 escapes them).
+    check_listed("escaping", &escaping_differences());
+}
+
+#[test]
+fn every_difference_in_the_table_of_section_9_from_cssparsers_is_listed_and_cited() {
+    check_listed("adjacency", &adjacency_differences());
+}
+
+#[test]
+fn the_syntax_comparisons_themselves_see_a_difference() {
+    // The harness must be able to fail: the saturation of an overflow is a
+    // difference, and so is a pair the two tables disagree on.
+    assert_eq!(cssparser_nth("2147483648"), "(0,2147483647)");
+    assert_eq!(surgeist_nth("2147483648"), "overflow");
+    assert_eq!(cssparser_nth("n+"), surgeist_nth("n+"));
+    assert_eq!(cssparser_nth("2n+1"), "(2,1)");
+    assert!(anb_differences(&["2147483648".to_owned()]).len() == 1);
+    assert!(anb_differences(&["2n+1".to_owned()]).is_empty());
+    let number = Css::Number {
+        has_sign: false,
+        value: 1.0,
+        int_value: Some(1),
+    };
+    assert!(
+        number
+            .serialization_type()
+            .needs_separator_when_before(Css::Delim('-').serialization_type())
+    );
+    assert!(!needs_separator(Adjacency::Number, Adjacency::Delim('-')));
 }

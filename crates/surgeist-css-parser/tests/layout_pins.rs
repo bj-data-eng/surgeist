@@ -20,12 +20,15 @@
 
 use std::mem::{align_of, size_of};
 
+use surgeist_css_parser::anb::{AnPlusB, AnPlusBError};
 use surgeist_css_parser::document::{Component, ListId, Metrics, NodeId};
+use surgeist_css_parser::grammar::{AtRule, Declaration, Failed, QualifiedRule, RuleEnd, UnitKind};
 use surgeist_css_parser::input::{InputCursor, InputError, InputKind, InputRequest, Scalar};
 use surgeist_css_parser::lexer::protocol::{
     NameKind, NumberCursor, NumberKind, NumberLayout, NumberOverflow, NumberPart, NumberStep,
     ProtocolError, RawToken, RawTokenKind, Record, Span, TokenCursor, TokenRequest,
 };
+use surgeist_css_parser::serialize::Adjacency;
 use surgeist_css_parser::stream::{Mark, StreamError};
 use surgeist_css_parser::{Offset, Site, Stream, SyntaxError, Token};
 
@@ -80,4 +83,17 @@ fn the_document_handles_keep_their_measured_layouts() {
     pinned::<Component<'static>>("Component", 56, 8);
     pinned::<StreamError<'static>>("StreamError", 72, 8);
     pinned::<SyntaxError<'static, ()>>("SyntaxError", 72, 8);
+}
+
+#[test]
+fn the_parser_entry_point_types_keep_their_measured_layouts() {
+    pinned::<AnPlusB>("AnPlusB", 8, 4);
+    pinned::<AnPlusBError<'static>>("AnPlusBError", 72, 8);
+    pinned::<RuleEnd>("RuleEnd", 1, 1);
+    pinned::<UnitKind>("UnitKind", 1, 1);
+    pinned::<Failed<'static, ()>>("Failed", 8, 8);
+    pinned::<AtRule<'static>>("AtRule", 200, 8);
+    pinned::<QualifiedRule<'static>>("QualifiedRule", 176, 8);
+    pinned::<Declaration<'static>>("Declaration", 160, 8);
+    pinned::<Adjacency>("Adjacency", 4, 4);
 }

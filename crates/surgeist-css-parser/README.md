@@ -55,17 +55,38 @@ tests for the clauses it implements. It currently offers:
   of `within_list_until` for its stop token, takes a step of the document's
   meter per node examined; the first refusal is latched on the document
   (`Document::is_refused`, `Stream::is_refused`). `Stream::comma_segments`
-  (the segment helper for the `#` multiplier) and `Stream::parse_complete` are
-  primitives for grammars, not the entry points of section 5.4, which come
-  with the parser entry points. The errors are
-  `stream::StreamError` and `SyntaxError`, structs with `is_*` predicates.
+  (the segment helper for the `#` multiplier, which is not the algorithm of
+  section 5.4.2) and `Stream::parse_complete` (section 5.4.1) are primitives
+  for grammars. The errors are `stream::StreamError` and `SyntaxError`, structs
+  with `is_*` predicates.
+- `grammar`: the parser entry points of section 5.4 (`parse_rule`,
+  `parse_declaration`, `parse_component_value`, `parse_list_of_component_values`,
+  `parse_comma_separated_component_values` and the literal
+  `parse_comma_separated_list`) and the drivers of section 5.5 (a stylesheet's
+  contents, a block's contents, with the algorithms for an at-rule, a qualified
+  rule, a declaration and the rules about custom properties and `!important`).
+  A driver consumes a whole unit, prelude and block, and then asks the grammar
+  through the `RuleGrammar` and `BlockGrammar` traits whether it is valid, so a
+  rejection leaves nothing to recover; each unit reports how it ended
+  (`RuleEnd`), and a unit that was not accepted is a `Failed` record. The trait
+  shapes are provisional until the first grammars of `surgeist-css` prove them.
+- `anb`: the `An+B` microsyntax of section 6, recognized by `anb::parse` into
+  two `i32` and serialized by `AnPlusB`'s `Display` (section 9.1). A value
+  outside `i32` is a typed overflow, never a saturated number.
+- `unicode_range::consume_value`: section 5.5.11, which tokenizes the text of a
+  `unicode-range` descriptor with unicode ranges allowed.
+- `serialize`: section 9. `Token`'s `Display`, `serialize::identifier`,
+  `serialize::string` and `serialize::url` write tokens so they read back as the
+  same tokens (the round trip governs where it differs from the escaping in
+  CSSOM), `serialize::needs_separator` is the table of tokens that need a comment
+  between them, `serialize::Writer` writes a run of tokens with the comments
+  and `serialize::list` the component values of a document.
 - `match_ignore_ascii_case!`: ASCII case-insensitive matching of a string
   against lowercase literal arms.
 
-The parser entry points and rule algorithms of sections 5.4 and 5.5, the `An+B`
-microsyntax and serialization are not here yet. The
-[coverage map](docs/conformance-coverage.md) lists the clauses of the pinned
-edition with their tests and claims only what those tests establish.
+Sections 3.2 (decoding bytes) and 5.4.3 (the stylesheet object) are not here
+yet. The [coverage map](docs/conformance-coverage.md) lists the clauses of the
+pinned edition with their tests and claims only what those tests establish.
 
 ## Edition
 

@@ -1,0 +1,19 @@
+id	area	input	cssparser	surgeist	section	class
+N-001	anb	-2147483649	(0,-2147483648)	overflow	6.2	V-7
+N-002	anb	-2147483649n	(-2147483648,0)	overflow	6.2	V-7
+N-003	anb	2147483648	(0,2147483647)	overflow	6.2	V-7
+N-004	anb	2147483648n	(2147483647,0)	overflow	6.2	V-7
+N-005	anb	99999999999999999999	(0,2147483647)	overflow	6.2	V-7
+N-006	anb	n -2147483649	(1,-2147483648)	overflow	6.2	V-7
+N-007	anb	n+2147483648	(1,2147483647)	overflow	6.2	V-7
+N-008	anb	n- 2147483648	(1,-2147483647)	(1,-2147483648)	6.2	V-7
+N-009	anb	n- 2147483649	(1,-2147483647)	overflow	6.2	V-7
+N-010	anb	n-2147483649	(1,-2147483648)	overflow	6.2	V-7
+T-001	adjacency	number then cdc	false	true	9	table
+T-002	adjacency	number then -	true	false	9	table
+T-003	adjacency	# then cdc	false	true	9	table
+T-004	adjacency	- then cdc	false	true	9	table
+T-005	adjacency	@ then cdc	false	true	9	table
+T-006	adjacency	* then =	true	false	4.3.1	V-2
+T-007	adjacency	| then =	true	false	4.3.1	V-2
+T-008	adjacency	| then |	true	false	4.3.1	V-2
