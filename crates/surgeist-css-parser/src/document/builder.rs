@@ -235,6 +235,8 @@ impl<'d, P> TreeBuilder<'d, P> {
         Ok(Self {
             document: Document {
                 source: None,
+                owned_len: None,
+                payload: None,
                 origin: 0,
                 nodes: Vec::new(),
                 lists,
@@ -483,6 +485,50 @@ fn place<'s>(
     Ok(text)
 }
 
+/// Places `value` for a document that owns its source: a text found in the
+/// source, in the token's own `span` or where the lexer sliced it, is recorded
+/// as its place in the source (which the document's pool starts with), and any
+/// other text, decoded from an escape or a NUL, goes after the source, in the
+/// pool.
+///
+/// # Errors
+///
+/// Fails, with `at` as the offset, when the pool would outgrow the positions a
+/// text can address.
+fn place_owned<'s>(
+    source: &str,
+    pool: &mut String,
+    value: &str,
+    at: Offset,
+    span: Range<usize>,
+) -> Result<Text<'s>, BuildError> {
+    if value.is_empty() {
+        return Ok(Text::Borrowed(""));
+    }
+    let overflow = || BuildError::new(BuildErrorKind::CapacityOverflow, Some(at));
+    let base = source.as_ptr().addr();
+    let address = value.as_ptr().addr();
+    if let Some(from) = address.checked_sub(base)
+        && from
+            .checked_add(value.len())
+            .is_some_and(|to| to <= source.len())
+    {
+        return Text::pooled(from, value.len()).ok_or_else(overflow);
+    }
+    // The lexer reads some undecoded texts through its scratch; the text is
+    // still the token's own bytes.
+    if let Some(token) = source.get(span)
+        && let Some(found) = token.find(value)
+    {
+        let from = token.as_ptr().addr() - source.as_ptr().addr() + found;
+        return Text::pooled(from, value.len()).ok_or_else(overflow);
+    }
+    let text =
+        Text::pooled(source.len().saturating_add(pool.len()), value.len()).ok_or_else(overflow)?;
+    pool.push_str(value);
+    Ok(text)
+}
+
 impl<'s, P> Document<'s, P> {
     /// Tokenizes `source` and builds the document, without a meter.
     ///
@@ -530,6 +576,25 @@ impl<'s, P> Document<'s, P> {
         limits: Limits,
         depth_excess: DepthExcess,
     ) -> Result<Self, BuildError> {
+        let mut document = Self::build(
+            source,
+            options,
+            limits,
+            depth_excess,
+            |pool, value, at, _| place(source, pool, value, at),
+        )?;
+        document.source = Some(source);
+        Ok(document)
+    }
+
+    /// Builds the document of `source`, placing each text with `place`.
+    fn build(
+        source: &str,
+        options: &Options,
+        limits: Limits,
+        depth_excess: DepthExcess,
+        mut place: impl FnMut(&mut String, &str, Offset, Range<usize>) -> Result<Text<'s>, BuildError>,
+    ) -> Result<Self, BuildError> {
         let mut builder = TreeBuilder::new(limits, 0, None)?;
         let origin = options.origin_offset().value();
         let end = origin
@@ -538,6 +603,9 @@ impl<'s, P> Document<'s, P> {
             .ok_or_else(|| BuildError::new(BuildErrorKind::CapacityOverflow, None))?;
         builder.document.origin = origin;
         let mut lexer = Lexer::new(source, options);
+        let relative = |range: &Range<Offset>| {
+            range.start.value().saturating_sub(origin)..range.end.value().saturating_sub(origin)
+        };
         let mut frames: Vec<Frame> = Vec::new();
         let mut denial: Option<Denial> = None;
         while let Some(lexeme) = lexer.next_lexeme() {
@@ -566,7 +634,12 @@ impl<'s, P> Document<'s, P> {
                     continue;
                 }
                 let stored = Stored::of(token, |value| {
-                    place(source, &mut builder.document.pool, value, range.start)
+                    place(
+                        &mut builder.document.pool,
+                        value,
+                        range.start,
+                        relative(&range),
+                    )
                 })?;
                 let (node, list) = builder.add_group(parent, stored, kind, Some(range), None)?;
                 frames.push(Frame {
@@ -587,7 +660,12 @@ impl<'s, P> Document<'s, P> {
                 )?;
             } else {
                 let stored = Stored::of(token, |value| {
-                    place(source, &mut builder.document.pool, value, range.start)
+                    place(
+                        &mut builder.document.pool,
+                        value,
+                        range.start,
+                        relative(&range),
+                    )
                 })?;
                 builder.add_leaf(parent, stored, Some(range), None)?;
             }
@@ -600,7 +678,6 @@ impl<'s, P> Document<'s, P> {
             builder.close(frame.node, GroupEnd::Eof { at: Some(end) })?;
         }
         builder.document.errors = lexer.errors().to_vec();
-        builder.document.source = Some(source);
         builder.document.lists[0].set_root_end(Some(end));
         Ok(builder.document)
     }
@@ -622,5 +699,59 @@ impl<'s, P> Document<'s, P> {
         meter: Option<&'s dyn Meter>,
     ) -> Result<TreeBuilder<'s, P>, BuildError> {
         TreeBuilder::new(limits, base_depth, meter)
+    }
+}
+
+impl<P> Document<'static, P> {
+    /// Tokenizes `source` and builds the document, which keeps the text itself
+    /// so that it borrows nothing.
+    ///
+    /// Everything [`parse`](Self::parse) says holds, except that the document
+    /// owns `source`, so it can outlive the caller's text: a host that shares
+    /// one document among parts of a program with no common lifetime builds it
+    /// this way. The text is moved, not copied: a `String` keeps its allocation
+    /// unless a name or string needs decoding (an escape, a NUL), whose decoded
+    /// text is then appended after it.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`BuildError`] when a limit is exceeded or storage cannot be
+    /// provided.
+    ///
+    /// ```
+    /// use surgeist_css_parser::lexer::Options;
+    /// use surgeist_css_parser::limits::{DepthExcess, Limits};
+    /// use surgeist_css_parser::Document;
+    ///
+    /// fn tokens() -> Document<'static> {
+    ///     let text = String::from("a f(b)");
+    ///     Document::parse_owned(text, &Options::default(), Limits::default(), DepthExcess::Fail)
+    ///         .unwrap()
+    /// }
+    /// let document = tokens();
+    /// assert_eq!(document.source(), Some("a f(b)"));
+    /// assert_eq!(document.root().consume_ident().ok(), Some("a"));
+    /// ```
+    pub fn parse_owned(
+        source: impl Into<String>,
+        options: &Options,
+        limits: Limits,
+        depth_excess: DepthExcess,
+    ) -> Result<Self, BuildError> {
+        let mut source: String = source.into();
+        let length = source.len();
+        let mut document = Self::build(
+            &source,
+            options,
+            limits,
+            depth_excess,
+            |pool, value, at, span| place_owned(&source, pool, value, at, span),
+        )?;
+        // The decoded texts follow the source, where their places point.
+        let decoded = std::mem::take(&mut document.pool);
+        source.push_str(&decoded);
+        document.pool = source;
+        document.owned_len = Some(length);
+        Ok(document)
     }
 }

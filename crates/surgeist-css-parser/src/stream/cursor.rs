@@ -1,7 +1,6 @@
 //! The token stream.
 
 use std::fmt;
-use std::mem::size_of;
 use std::ops::Range;
 use std::ptr;
 
@@ -820,30 +819,20 @@ impl<'i, P> Stream<'i, P> {
     /// token, at the current site.
     #[must_use]
     pub fn end_of_stream<E>(&self) -> SyntaxError<'i, E, P> {
-        StreamError::end_of_stream(self.site()).into()
+        self.site().end_of_stream()
     }
 
     /// Returns the error for a token the grammar did not expect, at the current
     /// site.
     #[must_use]
     pub fn unexpected<E>(&self, token: Token<'i>) -> SyntaxError<'i, E, P> {
-        StreamError::unexpected(self.site(), token).into()
+        self.site().unexpected(token)
     }
 
     /// Returns the grammar's own error `error`, converted into the grammar's
-    /// error type `F`, at the current site.
-    ///
-    /// When the document is metered, the boxed error is charged to the meter
-    /// as the size of `F`, and a refusal (a latched one included) becomes an
-    /// error for which `is_refused()` holds instead. The charge is not returned: an error is a
-    /// result the host reports and then discards.
+    /// error type `F`, at the current site; see [`Site::grammar_error`].
     #[must_use]
     pub fn grammar_error<E, F: From<E>>(&self, error: E) -> SyntaxError<'i, F, P> {
-        let at = self.site();
-        let document: &'i Document<'i, P> = self.document;
-        if !document.admit_add(size_of::<F>()) {
-            return StreamError::refused(at).into();
-        }
-        SyntaxError::custom(at, F::from(error))
+        self.site().grammar_error(error)
     }
 }
