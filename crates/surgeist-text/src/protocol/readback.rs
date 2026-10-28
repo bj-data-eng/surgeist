@@ -1517,7 +1517,9 @@ impl FinalizedRunView<'_> {
         self.shaped.font.face()
     }
 
-    /// The run's line-local origin on the actual finalized baseline.
+    /// The run's actual line-local paint origin. For named Alphabetic H/Sideways
+    /// composition, this is font-design zero rather than the common alignment
+    /// reference retained in the line's feedback.
     ///
     /// Coordinates are `(inline, line-under)` before physical placement.
     /// Vertical and Sideways cells map `(u,v)` to
@@ -1526,7 +1528,7 @@ impl FinalizedRunView<'_> {
     /// the owning run's physical origin and its separate pen/offset axes.
     #[must_use]
     pub fn origin(&self) -> Point {
-        Point::new(self.run.x, self.line.inner.data.metrics.baseline)
+        Point::new(self.run.x, self.run.y)
     }
 
     /// Final logical advance, including the admitted spacing allocation.

@@ -173,6 +173,7 @@ pub(crate) fn assign_fonts(
     scopes: &[crate::protocol::prepared::presentation::DirectionalScope],
 ) -> Result<Vec<crate::protocol::prepared::RetainedAssignment>> {
     let input = ShapingInput {
+        baseline_reference: prepared.options.resolved_baseline_reference(),
         projection,
         analysis,
         styles: &prepared.styles,
@@ -637,6 +638,7 @@ pub(crate) fn finalize(
     let prepared = &selected.prepared;
     let presentation = &selected.presentation;
     let input = ShapingInput {
+        baseline_reference: prepared.options.resolved_baseline_reference(),
         projection: &presentation.projection,
         analysis: &presentation.analysis,
         styles: &prepared.styles,
@@ -1462,28 +1464,23 @@ fn shaping_barriers(input: &ShapingInput<'_>) -> BTreeSet<usize> {
 }
 
 /// Metric attribution does not split otherwise compatible joint shaping.
-fn resolved_line_height(
-    style: &ResolvedStyle,
-    ascent: f64,
-    descent: f64,
-    leading: f64,
-) -> Result<f64> {
+fn resolved_line_height(style: &ResolvedStyle, normal_extent: f64) -> Result<f64> {
     match style.line_height {
         LineHeight::Absolute(value) => Ok(value),
         LineHeight::FontSizeRelative(value) => {
             logical_multiply("line height", value, f64::from(style.font_size))
         }
-        LineHeight::MetricsRelative(value) => {
-            logical_multiply("line height", value, ascent + descent + leading)
-        }
+        LineHeight::MetricsRelative(value) => logical_multiply("line height", value, normal_extent),
     }
 }
 
-fn component_line_height(style: &ResolvedStyle, metrics: &RunMetrics, leading: f64) -> Result<f64> {
+fn component_line_height(
+    style: &ResolvedStyle,
+    metrics: &RunMetrics,
+    normal_extent: f64,
+) -> Result<f64> {
     match metrics.basis {
-        RunMetricBasis::Horizontal(_) => {
-            resolved_line_height(style, metrics.ascent, metrics.descent, leading)
-        }
+        RunMetricBasis::Horizontal(_) => resolved_line_height(style, normal_extent),
         RunMetricBasis::Upright {
             normal_extent_design,
             design_scale,
@@ -1515,25 +1512,77 @@ fn resolved_run(
         skrifa::prelude::Size::new(style.font_size),
         coords,
     );
-    let ascent = metrics.ascent();
-    let descent = -metrics.descent();
     let leading = metrics.leading();
-    let line_height = resolved_line_height(style, ascent, descent, leading)?;
+    // Normal extent is independent of the named reference. Retain the raw
+    // calculation for every component rather than canceling two rebased values.
+    let normal_extent = metrics.ascent() - metrics.descent() + leading;
+    let line_height = resolved_line_height(style, normal_extent)?;
+    let font_origin_offset = if input.baseline_reference == Some(crate::FontBaseline::Alphabetic) {
+        let script = crate::FontBaselineScript::from_script(request.script).ok_or_else(|| {
+            Error::new(
+                ErrorCode::InvalidFontMetrics,
+                "unavailable actual baseline script",
+            )
+            .with_detail(ErrorDetail::FontMetricTable {
+                table: crate::FontMetricTable::Base,
+                reason: crate::FontMetricTableError::BaselineScriptUnavailable,
+            })
+        })?;
+        let baseline = instance.baseline(
+            input.font_catalogue,
+            script,
+            crate::FontBaselineAxis::HorizontalY,
+            crate::FontBaseline::Alphabetic,
+        )?;
+        // The raw owner guarantees HorizontalY Alphabetic is available: only
+        // qualified absence synthesizes zero; malformed data returned above.
+        let crate::FontBaselineOutcome::Available(value) = baseline.outcome() else {
+            unreachable!("horizontal Alphabetic measurement always has a value")
+        };
+        value.coordinate()
+    } else {
+        0.0
+    };
+    let ascent = super::layout::add(
+        "used font ascent",
+        TextNumericPhase::Shaping,
+        metrics.ascent(),
+        -font_origin_offset,
+    )?;
+    let descent = super::layout::add(
+        "used font descent",
+        TextNumericPhase::Shaping,
+        -metrics.descent(),
+        font_origin_offset,
+    )?;
     let underline = raw_metrics.underline;
-    let underline_top = underline.map_or(f64::from(metrics.units_per_em()) / 18.0, |value| {
+    let raw_underline_top = underline.map_or(f64::from(metrics.units_per_em()) / 18.0, |value| {
         f64::from(value.offset)
     });
     let underline_thickness = underline.map_or(f64::from(metrics.units_per_em()) / 18.0, |value| {
         f64::from(value.thickness)
     });
+    let underline_top = super::layout::add(
+        "used underline top",
+        TextNumericPhase::Shaping,
+        raw_underline_top,
+        -font_origin_offset,
+    )?;
+    let strike_center = super::layout::add(
+        "used strike center",
+        TextNumericPhase::Shaping,
+        metrics.strikeout().center_offset(),
+        -font_origin_offset,
+    )?;
     let run_metrics = RunMetrics {
         ascent,
         descent,
         line_height,
         basis: RunMetricBasis::Horizontal(HorizontalRunMetrics {
+            font_origin_offset,
             underline_top,
             underline_thickness,
-            strike_center: metrics.strikeout().center_offset(),
+            strike_center,
             strike_thickness: metrics.strikeout().thickness(),
         }),
     };
@@ -1541,9 +1590,12 @@ fn resolved_run(
         ("ascent", ascent),
         ("descent", descent),
         ("leading", leading),
+        ("normal extent", normal_extent),
+        ("font origin offset", font_origin_offset),
         ("line height", line_height),
         ("underline top", underline_top),
         ("underline thickness", underline_thickness),
+        ("strike center", strike_center),
         ("x height", raw_metrics.x_height.map_or(0.0, f64::from)),
         ("cap height", raw_metrics.cap_height.map_or(0.0, f64::from)),
     ] {
@@ -1569,7 +1621,7 @@ fn resolved_run(
         atoms: request.atoms.clone(),
         metrics: run_metrics,
     };
-    Ok((run, scale, leading))
+    Ok((run, scale, normal_extent))
 }
 
 fn extract_run(
@@ -1645,7 +1697,7 @@ fn extract_output(
     output: &mut ShapedData,
 ) -> Result<()> {
     let input = request.input;
-    let (run, scale, leading) = resolved_run(request, coords)?;
+    let (run, scale, normal_extent) = resolved_run(request, coords)?;
     let font_ref = skrifa::FontRef::from_index(request.font.bytes(), request.font.index())
         .map_err(|_| Error::new(ErrorCode::FontLoadFailed, "invalid selected font face"))?;
     if request.atoms.is_empty() {
@@ -1788,7 +1840,7 @@ fn extract_output(
             let with_letter_spacing = logical_add("letter spacing", base_advance, letter_spacing)?;
             let cluster_advance = logical_add("word spacing", with_letter_spacing, word_spacing)?;
             output.clusters.push(PreparedCluster {
-                line_height: component_line_height(style, &run.metrics, leading)?,
+                line_height: component_line_height(style, &run.metrics, normal_extent)?,
                 shaped_advance: base_advance,
                 logical_adjustments: [letter_spacing, word_spacing, 0.0],
                 source: original.source,

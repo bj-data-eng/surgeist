@@ -1813,9 +1813,11 @@ pub(crate) fn prepare_indication_fonts(
     styles: &[ResolvedStyleRun],
     tables: &PreparedTables,
     scratch: &mut crate::engine::shape::ShapeContext,
-    css_tabs: bool,
-    orientation: crate::LineOrientation,
+    options: crate::PreparationOptions,
 ) -> crate::Result<Vec<PreparedIndicationFonts>> {
+    let css_tabs = options.tabs() == crate::TabPreparation::CssStops;
+    let orientation = options.orientation();
+    let baseline_reference = options.resolved_baseline_reference();
     let mut alternatives = Vec::with_capacity(tables.alternatives.len());
     for (alternative, row) in tables.alternatives.iter().enumerate() {
         if let IndicationResolution::Primary(font) = &row.resolution
@@ -1942,6 +1944,7 @@ pub(crate) fn prepare_indication_fonts(
                 catalogue,
                 crate::engine::ShapingInput {
                     profile: shaping_profile(),
+                    baseline_reference,
                     projection: &projection,
                     analysis: &analysis,
                     styles,
@@ -1964,6 +1967,7 @@ pub(crate) fn prepare_indication_fonts(
                     catalogue,
                     crate::engine::ShapingInput {
                         profile: shaping_profile(),
+                        baseline_reference,
                         projection: &projection,
                         analysis: &analysis,
                         styles,

@@ -213,13 +213,13 @@ impl Layout {
                     self.inner.prepared.styles[run.style].style.brush,
                     RunMetrics::new(
                         shaped.font_size,
-                        line_baseline(line),
+                        cross_coordinate(
+                            line.orientation,
+                            line_point(line, Point::new(run.x, run.y)),
+                        ),
                         inline_coordinate(
                             line.orientation,
-                            line_point(
-                                line,
-                                Point::new(run.x, line.finalized.data.metrics.baseline),
-                            ),
+                            line_point(line, Point::new(run.x, run.y)),
                         ),
                         run.advance,
                         line.orientation,
@@ -240,14 +240,8 @@ impl Layout {
                     index,
                     run.source,
                     shaped.font_size,
-                    line_baseline(line),
-                    inline_coordinate(
-                        line.orientation,
-                        line_point(
-                            line,
-                            Point::new(run.x, line.finalized.data.metrics.baseline),
-                        ),
-                    ),
+                    cross_coordinate(line.orientation, line_point(line, Point::new(run.x, run.y))),
+                    inline_coordinate(line.orientation, line_point(line, Point::new(run.x, run.y))),
                     run.advance,
                     line.orientation,
                 )
@@ -768,7 +762,9 @@ impl Run {
         self.metrics.advance()
     }
 
-    /// Physical baseline origin, Central for whole-upright runs.
+    /// Actual physical paint origin, Central for whole-upright runs. Named
+    /// Alphabetic H/Sideways uses the actual font-design-zero origin, which may
+    /// differ from the shared line alignment coordinate.
     ///
     /// With origin `(X,Y)`, pen `p` and raw offsets `(dx,dy)`, glyph origins are
     /// `(X+p+dx,Y+dy)` for Horizontal, `(X-dy,Y+p+dx)` for Sideways and
@@ -910,6 +906,8 @@ impl RunMetricFact {
         self.font_size
     }
 
+    /// Actual run-origin cross coordinate, not an assertion of a named line
+    /// alignment reference. Named Alphabetic paint uses font-design zero.
     #[must_use]
     pub const fn baseline(self) -> f64 {
         self.baseline
@@ -1045,7 +1043,8 @@ impl RunMetrics {
         self.font_size
     }
 
-    /// Physical cross-axis baseline coordinate: y for Horizontal, x otherwise.
+    /// Actual paint-origin cross coordinate: y for Horizontal, x otherwise.
+    /// Named Alphabetic H/Sideways may differ from the shared line baseline.
     #[must_use]
     pub const fn baseline(self) -> f64 {
         self.baseline

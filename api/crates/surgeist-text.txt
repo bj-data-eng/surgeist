@@ -729,6 +729,7 @@ pub surgeist_text::ProcessingCapacityError::Overflow
 pub enum surgeist_text::ProtocolContextField
 pub surgeist_text::ProtocolContextField::AlignmentInsets
 pub surgeist_text::ProtocolContextField::BaseDirection
+pub surgeist_text::ProtocolContextField::BaselineReference
 pub surgeist_text::ProtocolContextField::CssParagraphBoundary
 pub surgeist_text::ProtocolContextField::LineEnd
 pub surgeist_text::ProtocolContextField::LineStart
@@ -2203,9 +2204,11 @@ pub const fn surgeist_text::PositionedInlineBox::vertical_align(self) -> surgeis
 pub struct surgeist_text::PreparationOptions
 impl surgeist_text::PreparationOptions
 pub const fn surgeist_text::PreparationOptions::orientation(self) -> surgeist_text::LineOrientation
+pub const fn surgeist_text::PreparationOptions::requested_baseline_reference(self) -> core::option::Option<surgeist_text::FontBaseline>
 pub const fn surgeist_text::PreparationOptions::scale(self) -> f32
 pub const fn surgeist_text::PreparationOptions::tabs(self) -> surgeist_text::TabPreparation
 pub fn surgeist_text::PreparationOptions::try_new(scale: f32, tabs: surgeist_text::TabPreparation) -> surgeist_text::Result<Self>
+pub const fn surgeist_text::PreparationOptions::with_baseline_reference(self, reference: surgeist_text::FontBaseline) -> Self
 pub const fn surgeist_text::PreparationOptions::with_orientation(self, orientation: surgeist_text::LineOrientation) -> Self
 impl core::default::Default for surgeist_text::PreparationOptions
 pub fn surgeist_text::PreparationOptions::default() -> Self
@@ -2518,6 +2521,7 @@ pub fn surgeist_text::PreparedText::unit_views(&self) -> impl core::iter::traits
 pub fn surgeist_text::PreparedText::virtual_separators(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedVirtualSeparator> + '_
 impl surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::analyzed_source(&self) -> surgeist_text::AnalyzedSource
+pub fn surgeist_text::PreparedText::baseline_reference(&self) -> core::option::Option<surgeist_text::FontBaseline>
 pub fn surgeist_text::PreparedText::font_catalogue_identity(&self) -> &surgeist_text::FontCatalogueIdentity
 pub fn surgeist_text::PreparedText::orientation(&self) -> surgeist_text::LineOrientation
 pub fn surgeist_text::PreparedText::preparation_options(&self) -> surgeist_text::PreparationOptions

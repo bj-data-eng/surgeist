@@ -91,6 +91,7 @@ pub(crate) struct PreparedData {
 /// Inputs coupled to one shaping operation, without a mutable System escape.
 pub(crate) struct ShapingInput<'a> {
     pub(crate) profile: upright::ShapingProfile<'a>,
+    pub(crate) baseline_reference: Option<crate::FontBaseline>,
     pub(crate) projection: &'a SourceProjection,
     pub(crate) analysis: &'a analysis::Analysis,
     pub(crate) styles: &'a [resolve::ResolvedStyleRun],
@@ -273,6 +274,25 @@ pub(crate) fn prepare(
             },
         ));
     }
+    if !matches!(
+        (
+            options.orientation(),
+            options.requested_baseline_reference()
+        ),
+        (
+            crate::LineOrientation::Vertical,
+            None | Some(crate::FontBaseline::Central)
+        ) | (
+            crate::LineOrientation::Horizontal | crate::LineOrientation::Sideways,
+            None | Some(crate::FontBaseline::Alphabetic)
+        )
+    ) {
+        return Err(crate::protocol::protocol_error(
+            crate::ProtocolError::UnsupportedContext {
+                field: crate::ProtocolContextField::BaselineReference,
+            },
+        ));
+    }
     let upright_units = upright::units(
         &analyzed,
         &analyzed.projection,
@@ -313,6 +333,7 @@ pub(crate) fn prepare(
         catalogue,
         ShapingInput {
             profile: upright::original_profile(options.orientation(), &upright_units),
+            baseline_reference: options.resolved_baseline_reference(),
             projection: &analyzed.projection,
             analysis: &analyzed.analysis,
             styles: &styles,
@@ -334,6 +355,7 @@ pub(crate) fn prepare(
             catalogue.query(),
             &ShapingInput {
                 profile: upright::original_profile(options.orientation(), &upright_units),
+                baseline_reference: options.resolved_baseline_reference(),
                 projection: &analyzed.projection,
                 analysis: &analyzed.analysis,
                 styles: &styles,
@@ -349,13 +371,7 @@ pub(crate) fn prepare(
     let tables =
         crate::protocol::prepared::prepare_tables(catalogue, &styles, &analyzed, &shaped, profile)?;
     let indication_fonts = crate::protocol::prepared::prepare_indication_fonts(
-        catalogue,
-        &analyzed,
-        &styles,
-        &tables,
-        scratch,
-        options.tabs() == crate::TabPreparation::CssStops,
-        options.orientation(),
+        catalogue, &analyzed, &styles, &tables, scratch, options,
     )?;
     let tab_metrics = crate::tabs::prepare(
         catalogue,

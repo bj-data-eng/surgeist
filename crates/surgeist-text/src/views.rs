@@ -117,17 +117,16 @@ impl RunView<'_> {
     pub fn face(&self) -> FontFace<'_> {
         self.shaped.font.face()
     }
-    /// Physical baseline origin, Central for a whole-upright run.
+    /// Actual physical paint origin, Central for a whole-upright run.
+    /// For named Alphabetic H/Sideways composition this is font-design zero,
+    /// displaced from the shared line alignment reference by the actual font.
     ///
     /// With origin `(X,Y)`, pen `p` and raw offsets `(dx,dy)`, glyph origins are
     /// `(X+p+dx,Y+dy)` for Horizontal, `(X-dy,Y+p+dx)` for Sideways and
     /// `(X+dx,Y+p+dy)` for Vertical. The outline axes follow [`Self::glyph_basis`].
     #[must_use]
     pub fn origin(&self) -> Point {
-        crate::layout::line_point(
-            self.placed,
-            Point::new(self.run.x, self.placed.finalized.data.metrics.baseline),
-        )
+        crate::layout::line_point(self.placed, Point::new(self.run.x, self.run.y))
     }
     /// Raw canonical glyph offsets and advances with separate logical run-local pens.
     pub fn glyphs(&self) -> impl Iterator<Item = GlyphPlacement> + '_ {
@@ -143,6 +142,9 @@ impl RunView<'_> {
     }
     /// Measures an unhinted named design baseline for this actual run's script
     /// and retained instance.
+    /// The query uses the retained shaping run represented by this paint run;
+    /// coalesced glyphs may also originate in other shaping runs with the same
+    /// font and paint origin.
     pub fn baseline(
         &self,
         expected: &crate::FontCatalogueIdentity,
@@ -219,7 +221,6 @@ impl GlyphPlacement {
 fn run_decorations(run: &RunView<'_>) -> [Option<DecorationRun>; 2] {
     let style = &run.layout.inner.prepared.styles[run.run.style].style;
     let metrics = run.shaped.metrics;
-    let origin = run.origin();
     [
         (style.underline, DecorationKind::Underline),
         (style.strikethrough, DecorationKind::Strikethrough),
@@ -252,26 +253,34 @@ fn run_decorations(run: &RunView<'_>) -> [Option<DecorationRun>; 2] {
             }
             DecorationThickness::Absolute(value) => value.get(),
         };
-        let top = crate::layout::decoration_top(origin.y, offset)
-            - if kind == DecorationKind::Strikethrough {
-                thickness * 0.5
-            } else {
-                0.0
-            };
+        // Decoration offsets belong to the prepared alignment reference, not
+        // the displaced paint origin. Auto metrics were rebased during shaping;
+        // an authored Absolute remains literal in this same frame.
+        let half_thickness = if kind == DecorationKind::Strikethrough {
+            thickness * 0.5
+        } else {
+            0.0
+        };
         let rect = if run.orientation() == crate::LineOrientation::Horizontal {
-            Rect::new(origin.x, top, run.run.advance, thickness)
+            let alignment_origin = crate::layout::line_point(
+                run.placed,
+                Point::new(run.run.x, run.placed.finalized.data.metrics.baseline),
+            );
+            Rect::new(
+                alignment_origin.x,
+                crate::layout::decoration_top(alignment_origin.y, offset) - half_thickness,
+                run.run.advance,
+                thickness,
+            )
         } else {
             crate::layout::line_rect(
                 run.placed,
                 Rect::new(
                     run.run.x,
-                    run.placed.finalized.data.metrics.baseline
-                        - offset
-                        - if kind == DecorationKind::Strikethrough {
-                            thickness * 0.5
-                        } else {
-                            0.0
-                        },
+                    crate::layout::decoration_top(
+                        run.placed.finalized.data.metrics.baseline,
+                        offset,
+                    ) - half_thickness,
                     run.run.advance,
                     thickness,
                 ),

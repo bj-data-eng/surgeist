@@ -279,10 +279,9 @@ pub(crate) fn place_request(
         // Glyph-outline axes are independent from the line's cell frame.
         // Qualify every actual emitted origin before publishing placement.
         for run in &placed.finalized.data.runs {
-            let origin = crate::layout::line_point(
-                &placed,
-                crate::Point::new(run.x, placed.finalized.data.metrics.baseline),
-            );
+            let origin = crate::layout::line_point(&placed, crate::Point::new(run.x, run.y));
+            finite("placed run origin x", origin.x)?;
+            finite("placed run origin y", origin.y)?;
             for glyph in &placed.finalized.data.glyphs[run.glyphs.clone()] {
                 let point = crate::layout::glyph_origin(
                     placed.orientation,

@@ -200,6 +200,42 @@ remain separate capabilities. See the [composed-line guide](composed-lines.md)
 for retained
 source, receipt and placement custody.
 
+## Used named preparation references
+
+`PreparationOptions::with_baseline_reference(FontBaseline::Alphabetic)` requests
+used Alphabetic composition in Horizontal or clockwise Sideways. The options'
+`requested_baseline_reference()` retains that demand;
+`PreparedText::baseline_reference()` observes the successfully admitted reference.
+Default H/Sideways remains raw font-design-zero composition and observes `None`.
+Native Upright observes `Some(Central)` by default and also accepts an explicit
+Central request. Other name/profile pairs refuse with `UnsupportedContext` for
+`BaselineReference`, after the existing orientation checks. Selection and
+placement inherit the preparation rather than accepting another name.
+
+For each actual retained font instance and shaping script, raw ascent `A`, signed
+descent `D`, and scaled HorizontalY Alphabetic coordinate `b` give used before
+`A-b` and after `b-D`. The existing raw named-baseline owner supplies genuine
+absence zero and typed malformed-data errors. Gap and normal extent `A-D+gap`
+do not change. Native body/default font struts retain signed contributions and
+half-leading, including alignment references outside their metric bounds.
+Independent caller-allocated box/control struts keep their own validity rules.
+
+The common line reference remains in line feedback, line baselines and anchors.
+Each font-design-zero paint origin is displaced by local line-under `+b`: physical
+H `y=alignment+b`, clockwise `x=alignment-b`. Raw glyph offsets, advances and pens
+remain unchanged. Borrowed/owned run origins and per-run metric facts expose that
+actual paint origin; they do not independently assert a named line baseline.
+Actual default and hypothetical tab operations retain their own existing Latin
+script policy, style and selected instance; authored content and indications use
+their actual itemized scripts and retained fonts.
+
+Automatic underline/strike offsets convert from raw font-design position `o` to
+used offset `o-b`, preserving thickness and font geometry. Native
+`DecorationOffset::Absolute(v)` remains literal relative to the prepared common
+reference; it does not follow the displaced paint origin. These native parameters
+do not claim the CSS text-underline-offset grammar. Raw `FontMetrics` and named
+baseline observations keep their original coordinates and provenance.
+
 ## Borrowed paint readback
 
 `Layout::run_views` and `decoration_views` traverse actual positioned output
@@ -580,12 +616,14 @@ the retained provider branch and the separate owned qualification.
 `FontMetrics::line_metric_source` exposes the actual ascent/descent source as
 `FontLineMetricSource`; leading can have a different source.
 
-Metrics use f64 geometry at the actual f32 instance size: nonnegative ascent,
-signed nonpositive descent, and finite signed leading. Required signs are checked
+Metrics use f64 geometry at the actual f32 instance size: nonnegative ascent and
+signed nonpositive descent from raw font-design Y=0, and finite signed leading.
+This glyph-free query does not query BASE or assert an Alphabetic reference.
+Required signs are checked
 after applying actual-instance deltas. A usable resolved strike top and positive
 thickness become `center = top - thickness / 2`. Otherwise fallback uses the
-resolved `center = ascent / 2`, `thickness = size / 18`. At horizontal baseline
-`b`, strike top is `b - center - thickness / 2`. This query does not change the
+resolved `center = ascent / 2`, `thickness = size / 18`. At horizontal font-zero
+origin `y`, strike top is `y - center - thickness / 2`. This query does not change the
 paragraph decoration policy. The owned engine reads this same instance metric
 owner during shaping; the query itself adds no font matching, glyph coverage,
 outline metrics or complete text-engine guarantee.

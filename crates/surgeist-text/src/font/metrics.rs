@@ -56,12 +56,13 @@ impl<'a> FontMetrics<'a> {
     pub const fn line_metric_source(&self) -> FontLineMetricSource {
         self.line_metric_source
     }
-    /// Nonnegative distance above the alphabetic baseline.
+    /// Nonnegative ascent from raw font-design Y=0, positive upward.
+    /// This observation does not query BASE or normalize to an Alphabetic reference.
     #[must_use]
     pub const fn ascent(&self) -> f64 {
         self.ascent
     }
-    /// Signed nonpositive descent below the baseline.
+    /// Signed nonpositive descent from raw font-design Y=0.
     #[must_use]
     pub const fn descent(&self) -> f64 {
         self.descent
@@ -71,22 +72,22 @@ impl<'a> FontMetrics<'a> {
     pub const fn leading(&self) -> f64 {
         self.leading
     }
-    /// Normalized center and thickness for this actual instance.
+    /// Raw font-design center and thickness for this actual instance.
     #[must_use]
     pub const fn strikeout(&self) -> StrikeoutMetrics {
         self.strikeout
     }
 }
 
-/// Signed baseline-relative strike center and strictly positive thickness.
+/// Signed font-design-zero strike center and strictly positive thickness.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct StrikeoutMetrics {
     center_offset: f64,
     thickness: f64,
 }
 impl StrikeoutMetrics {
-    /// Signed center offset, positive above the alphabetic baseline.
-    /// At horizontal baseline b, top is b - center_offset - thickness/2.
+    /// Signed center offset from font-design Y=0, positive upward.
+    /// At horizontal font-zero origin y, top is y - center_offset - thickness/2.
     #[must_use]
     pub const fn center_offset(self) -> f64 {
         self.center_offset

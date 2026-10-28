@@ -659,7 +659,10 @@ impl Default for Decoration {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum DecorationOffset {
+    /// Actual font-design metric, converted once to the prepared reference.
     Auto,
+    /// Literal positive-up offset from the prepared alignment reference,
+    /// independently of a run's displaced font-design-zero paint origin.
     Absolute(DecorationOffsetValue),
 }
 

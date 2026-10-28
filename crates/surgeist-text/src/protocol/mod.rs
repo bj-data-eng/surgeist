@@ -66,6 +66,7 @@ pub struct PreparationOptions {
     scale: f32,
     tabs: crate::TabPreparation,
     orientation: LineOrientation,
+    baseline_reference: Option<crate::FontBaseline>,
 }
 
 impl PreparationOptions {
@@ -88,6 +89,7 @@ impl PreparationOptions {
             scale,
             tabs,
             orientation: LineOrientation::Horizontal,
+            baseline_reference: None,
         })
     }
     /// Requests a physical preparation basis. Matching issued upright analysis
@@ -97,6 +99,29 @@ impl PreparationOptions {
     pub const fn with_orientation(mut self, orientation: LineOrientation) -> Self {
         self.orientation = orientation;
         self
+    }
+    /// Requests a used named font reference for the complete preparation.
+    ///
+    /// Alphabetic is supported for Horizontal and clockwise Sideways; Central
+    /// is supported for native Upright. Unsupported combinations refuse during
+    /// preparation. Without a request, H/Sideways use raw font-design zero and
+    /// native Upright uses its existing Central reference.
+    #[must_use]
+    pub const fn with_baseline_reference(mut self, reference: crate::FontBaseline) -> Self {
+        self.baseline_reference = Some(reference);
+        self
+    }
+    /// Exact named-reference demand, independently of successful admission.
+    #[must_use]
+    pub const fn requested_baseline_reference(self) -> Option<crate::FontBaseline> {
+        self.baseline_reference
+    }
+    /// Only called after the owning preparation admits the profile/request pair.
+    pub(crate) const fn resolved_baseline_reference(self) -> Option<crate::FontBaseline> {
+        match self.orientation {
+            LineOrientation::Vertical => Some(crate::FontBaseline::Central),
+            LineOrientation::Horizontal | LineOrientation::Sideways => self.baseline_reference,
+        }
     }
     /// Requested basis, authenticated again by selection and placement.
     #[must_use]
@@ -118,6 +143,7 @@ impl Default for PreparationOptions {
             scale: 1.0,
             tabs: crate::TabPreparation::FontAdvance,
             orientation: LineOrientation::Horizontal,
+            baseline_reference: None,
         }
     }
 }
@@ -148,6 +174,15 @@ impl PreparedText {
     #[must_use]
     pub fn orientation(&self) -> LineOrientation {
         self.inner.options.orientation()
+    }
+    /// Actual shared named alignment reference of this successful preparation.
+    ///
+    /// None identifies raw font-design-zero H/Sideways composition. Native
+    /// Upright observes Central even when no explicit name was requested.
+    /// Per-run paint origins may differ from this shared alignment reference.
+    #[must_use]
+    pub fn baseline_reference(&self) -> Option<crate::FontBaseline> {
+        self.inner.options.resolved_baseline_reference()
     }
     /// Exact preparation demand retained with this immutable allocation.
     #[must_use]
@@ -714,9 +749,10 @@ pub struct LineFeedback {
     pub ascent: f64,
     pub descent: f64,
     pub line_height: f64,
-    /// Line-local distance from the line-over edge to the shared baseline.
+    /// Signed line-local coordinate from the line-over edge to the shared baseline.
     /// Native Vertical uses its resolved Central reference; Horizontal and
-    /// clockwise Sideways use their horizontal composition baseline.
+    /// clockwise Sideways use their preparation's raw or named reference. This
+    /// is distinct from any displaced per-font paint origin.
     pub baseline: f64,
 }
 #[derive(Clone, Debug, PartialEq)]
@@ -747,6 +783,7 @@ pub enum ProtocolHandleKind {
 pub enum ProtocolContextField {
     BaseDirection,
     Orientation,
+    BaselineReference,
     LineStart,
     LineEnd,
     TabStops,
