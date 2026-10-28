@@ -45,23 +45,43 @@
 //! - [`limits`]: the depth, node and byte limits of a build, the [`Meter`]
 //!   contract through which a host admits work and storage, and the growth
 //!   and copy helpers that charge it;
+//! - [`Document`], the token tree of section 5.2, built by
+//!   [`Document::parse`] from text or by a [`document::TreeBuilder`] from
+//!   components a caller holds, with its navigation (lists, parent groups,
+//!   locations, offsets) and an optional per-node payload;
+//! - [`Stream`], the token stream of section 5.3 over a document, with its
+//!   [`Site`] boundaries, [`stream::Mark`] restore points, the
+//!   [`stream::StopToken`]s of section 5.5.7, and the errors a grammar over it
+//!   reports, [`stream::StreamError`] and [`SyntaxError`];
 //! - [`match_ignore_ascii_case!`], ASCII case-insensitive matching of a string
 //!   against literal arms.
 //!
-//! No document or parser exists yet.
+//! The parser entry points and rule algorithms of sections 5.4 and 5.5, the
+//! `An+B` microsyntax and serialization are not here yet.
 //!
 //! ```
-//! use surgeist_css_parser::lexer::{Lexer, Options};
-//! use surgeist_css_parser::Token;
+//! use surgeist_css_parser::lexer::Options;
+//! use surgeist_css_parser::limits::{DepthExcess, Limits};
+//! use surgeist_css_parser::{Document, SyntaxError};
 //!
-//! let mut lexer = Lexer::new("a{b:1px}", &Options::default());
-//! let mut kinds = Vec::new();
-//! while let Some(lexeme) = lexer.next_lexeme() {
-//!     kinds.push(lexeme.token().kind());
-//! }
-//! assert_eq!(kinds.len(), 6);
-//! assert!(lexer.errors().is_empty());
-//! assert_eq!(Token::Colon.kind(), surgeist_css_parser::token::TokenKind::Colon);
+//! // Parse `a{b:1px}`: an ident, then a `{}`-block of three tokens.
+//! let document: Document =
+//!     Document::parse("a{b:1px}", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+//! let mut stream = document.root();
+//! assert_eq!(stream.consume_ident().ok(), Some("a"));
+//! stream.consume_token().unwrap(); // the `{`; its block is waiting to be entered
+//! let name = stream
+//!     .within_block(|block| {
+//!         let name = block.consume_ident()?;
+//!         block.consume_colon()?;
+//!         block.consume_token()?; // the dimension
+//!         Ok::<_, SyntaxError<'_, ()>>(name)
+//!     })
+//!     .unwrap();
+//! assert_eq!(name, "b");
+//! assert!(stream.is_empty());
+//! assert!(document.lexical_errors().is_empty());
+//! # Ok::<(), surgeist_css_parser::document::BuildError>(())
 //! ```
 //!
 //! [`Meter`]: limits::Meter
@@ -73,12 +93,18 @@ mod match_ascii;
 mod offset;
 mod syntax_token;
 
+pub mod document;
 pub mod input;
 pub mod lexer;
 pub mod lexical;
 pub mod limits;
+pub mod stream;
 pub mod token;
 pub mod unicode_range;
 
+pub use document::tree::Document;
 pub use offset::Offset;
+pub use stream::cursor::Stream;
+pub use stream::site::Site;
+pub use stream::syntax_error::SyntaxError;
 pub use syntax_token::Token;

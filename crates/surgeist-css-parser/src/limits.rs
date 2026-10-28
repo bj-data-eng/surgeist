@@ -148,6 +148,18 @@ impl std::error::Error for Refused {}
 /// build and every stream over it share one meter. The host enforces its own
 /// limits and keeps its own reason for a refusal.
 ///
+/// # Refusal
+///
+/// A refusal is final for whoever asked. A [`Document`](crate::Document) built
+/// with a meter latches the first refusal made to a stream over it: every later
+/// metered step through the document fails without asking the meter again, and
+/// [`Document::is_refused`](crate::Document::is_refused) says so. A host
+/// therefore need not remember that it refused, and a meter that would admit
+/// the next call (a host that refused once, for instance, to interrupt a
+/// grammar) cannot make a grammar see a half-refused document. Code that
+/// calls the meter directly, [`grow`] for example, is expected to stop at a
+/// refusal.
+///
 /// Implementations must be consistent with the charging model in the
 /// [module documentation](self#charging-model): [`released`](Self::released)
 /// is only ever called with bytes that were previously admitted through

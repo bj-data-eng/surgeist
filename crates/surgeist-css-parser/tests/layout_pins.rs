@@ -20,11 +20,14 @@
 
 use std::mem::{align_of, size_of};
 
+use surgeist_css_parser::document::{Component, ListId, Metrics, NodeId};
 use surgeist_css_parser::input::{InputCursor, InputError, InputKind, InputRequest, Scalar};
 use surgeist_css_parser::lexer::protocol::{
     NameKind, NumberCursor, NumberKind, NumberLayout, NumberOverflow, NumberPart, NumberStep,
     ProtocolError, RawToken, RawTokenKind, Record, Span, TokenCursor, TokenRequest,
 };
+use surgeist_css_parser::stream::{Mark, StreamError};
+use surgeist_css_parser::{Offset, Site, Stream, SyntaxError, Token};
 
 /// Asserts the size and alignment of `T`, naming the type on failure.
 fn pinned<T>(name: &str, size: usize, align: usize) {
@@ -62,4 +65,19 @@ fn the_number_cursor_and_its_steps_keep_their_measured_layouts() {
     pinned::<NumberStep>("NumberStep", 32, 8);
     pinned::<NumberPart>("NumberPart", 2, 1);
     pinned::<NumberOverflow>("NumberOverflow", 1, 1);
+}
+
+#[test]
+fn the_document_handles_keep_their_measured_layouts() {
+    pinned::<NodeId>("NodeId", 8, 8);
+    pinned::<ListId>("ListId", 8, 8);
+    pinned::<Offset>("Offset", 8, 8);
+    pinned::<Metrics>("Metrics", 24, 8);
+    pinned::<Token<'static>>("Token", 40, 8);
+    pinned::<Site<'static>>("Site", 32, 8);
+    pinned::<Mark<'static>>("Mark", 64, 8);
+    pinned::<Stream<'static>>("Stream", 56, 8);
+    pinned::<Component<'static>>("Component", 56, 8);
+    pinned::<StreamError<'static>>("StreamError", 72, 8);
+    pinned::<SyntaxError<'static, ()>>("SyntaxError", 72, 8);
 }

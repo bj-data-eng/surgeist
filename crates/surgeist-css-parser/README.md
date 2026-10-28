@@ -37,10 +37,33 @@ tests for the clauses it implements. It currently offers:
 - `limits`: `Limits`, `DepthExcess`, the `Meter` contract through which a host
   admits work and storage, and the charged helpers `grow`, `copy_str` and
   `copy_boxed`.
+- `Document`: the token tree of section 5.2, built once and iteratively by
+  `Document::parse` from text, or by a `document::TreeBuilder` from tokens and
+  groups a caller already holds (checked components, for example). A function
+  or simple block is one node that owns a list, so skipping a group costs
+  nothing. Each node may carry a payload of a type `P` the consumer chooses
+  (the default `()` means none). The document answers where a node is
+  (`location`, `parent_group`, `children`, `list_end`, `node_at_offset`) and
+  carries the `limits::Meter` of its build, if any. A `DepthExcess::DenyBlock`
+  build keeps a `{}`-block that nests too deep as one opaque node.
+- `Stream`: the token stream of section 5.3 over a document, with the
+  operations the section names (next token, empty, consume a token, discard
+  whitespace, `mark` and `restore`), consumers for one kind of token, entering
+  a function or block (`within_block`), splitting a list at a stop token
+  (`within_list_until`, `stream::StopToken`), and `Site` boundaries that give
+  offsets and the text between them. Every observation, including the scan
+  of `within_list_until` for its stop token, takes a step of the document's
+  meter per node examined; the first refusal is latched on the document
+  (`Document::is_refused`, `Stream::is_refused`). `Stream::comma_segments`
+  (the segment helper for the `#` multiplier) and `Stream::parse_complete` are
+  primitives for grammars, not the entry points of section 5.4, which come
+  with the parser entry points. The errors are
+  `stream::StreamError` and `SyntaxError`, structs with `is_*` predicates.
 - `match_ignore_ascii_case!`: ASCII case-insensitive matching of a string
   against lowercase literal arms.
 
-There is no document or parser yet. The
+The parser entry points and rule algorithms of sections 5.4 and 5.5, the `An+B`
+microsyntax and serialization are not here yet. The
 [coverage map](docs/conformance-coverage.md) lists the clauses of the pinned
 edition with their tests and claims only what those tests establish.
 

@@ -66,6 +66,39 @@ tokenizer's behavior; agreement with it is not evidence of conformance.
 against cssparser's tokenizer. It is a measurement, ignored by default; see the
 README for the command.
 
+## Document And Stream Facts
+
+[src/document/](src/document/) builds the token tree and
+[src/stream/](src/stream/) reads it. `Document::parse` runs the `Lexer` once and
+builds iteratively; a `TreeBuilder` adds tokens and groups one at a time and is
+the only place that charges a `Meter` while building (one step per token, growth
+through `limits::grow`, the storage returned when the document drops). Keep the
+charge order of `TreeBuilder` and the step count per observation of `Stream`
+(the metering section of the `Stream` docs and `tests/metering.rs`) unchanged: hosts
+compare receipts across versions.
+
+`Site`, `Mark` and `Stream` implement `Clone`, `Debug` and, for the first two,
+`Copy`, `PartialEq` and `Eq` by hand so that the payload type `P` needs no
+bounds; do not replace them with derives. The depth policy is applied by
+`Document::parse` alone (a `TreeBuilder` always fails a build that nests too
+deep, because only text lets it find the end of a denied block).
+`Stream::comma_segments` hands the grammar every segment, empty ones included; it is
+not the algorithm of section 5.4.2. The first meter refusal is latched on the
+`Document`: later metered steps fail without asking the meter again, and a method
+that cannot report a failure must never be the only check of an end condition (use
+the fallible form, as `comma_segments` does).
+
+The sizes of the public handles (`Site`, `Mark`, `Stream`, `Component`, the errors, `Token`) are pinned in
+[tests/layout_pins.rs](tests/layout_pins.rs), and those of the private per-node storage
+(`Node`, `List`; 168 and 64 bytes at step 6) in the unit test of
+[src/document/store.rs](src/document/store.rs); a change is a decision, not an accident.
+
+Tests: [tests/document.rs](tests/document.rs) (tree and navigation),
+[tests/stream.rs](tests/stream.rs), [tests/metering.rs](tests/metering.rs) and
+the tree properties of [tests/document_properties.rs](tests/document_properties.rs),
+whose oracle is a recursive reading of sections 5.5.7 to 5.5.10 written in the
+file, not the builder under test.
+
 ## Command Inventory
 
 Select affected checks under the root process/resource policy, from repository
