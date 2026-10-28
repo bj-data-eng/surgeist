@@ -177,6 +177,65 @@ and complete-unit spans independently from glyph behavior; a constructed
 Common-Me predicate case is rule qualification when bundled Unicode supplies
 no positive source witness.
 
+## Source-owned shaping context
+
+Transform capability and shaping-context boundaries are separate decisions.
+The admitted all-supported ScriptExtensions set still passes without requiring
+a selected script. Neither the provider's inherited script nor a chosen font
+can supply the source unit's context role.
+
+After effective-property resolution, F/W chooses normal vertical context and
+H chooses an isolated complete unit; no later ScriptExtensions lookup reverses
+that width precedence. Keep the intrinsic-transform admission gate above.
+A context fallback cannot admit an unsupported transform.
+
+For an admitted set without a width override, attempt the same qualified
+explicit single-script member resolver over all governing styles. A coherent
+explicit horizontal-only member chooses an isolated unit; a coherent supported
+vertical-script member chooses normal vertical context. Without qualifying
+explicit context, all-horizontal candidates choose isolation, all-supported
+vertical candidates choose normal context, and candidates spanning both roles
+choose isolation with the private decision reason `MixedRoleFallback`.
+
+Missing, bare-language, aggregate, nonmember or conflicting context therefore
+adds no new error for an all-supported set. This fallback chooses a context
+boundary only: it does not declare the text Latin, choose a ScriptExtensions
+member or change provider script. Script-specific isolated-form features still
+follow the actual qualified cursive shaping path. Retain a private typed role
+and decision reason with the source unit plan, rather than a bool copied from
+font or provider itemization.
+
+Isolation bounds both sides of the complete arrangement unit, including its
+marks and Tibetan tailoring. It prevents cross-boundary ligatures, joining,
+positioning and attachments, including from a neighboring normal-context unit.
+It does not split scalars within the unit, force one glyph, invent line breaks
+or alter source/editing custody. Normal context permits existing compatible
+vertical shaping; it bypasses no genuine shaping/font/style boundary. Provider
+batching is valid only if it preserves these semantics.
+
+This is an adopted native tie-break. [Writing Modes 4 §5.1](css-writing-modes-4--CR-css-writing-modes-4-20190730--30a59de49343.md#text-orientation)
+preserves normal vertical-script shaping and [§5.1.1](css-writing-modes-4--CR-css-writing-modes-4-20190730--30a59de49343.md#vertical-font-features)
+requires individual upright units and isolated horizontal cursives; neither
+specifies this exact all-supported mixed-role fallback. Isolation can forgo
+cross-unit contextual substitutions or positioning for ambiguous characters in
+vertical-script text lacking explicit context. Coherent explicit Hani avoids
+that limitation. Richer implied/contextual resolution remains under #781.
+No browser-equivalence claim follows.
+
+U+00B7 without qualifying locale is admitted with isolated mixed-role fallback,
+regardless of Latin/Han neighbors, fonts or cached provider script. Coherent
+`und-Latn` chooses explicit isolation; coherent `und-Hani` chooses explicit
+normal context. Different languages sharing the same explicit script agree.
+Dot plus a verified attached mark split across conflicting Latn/Hani styles,
+or Hani/missing context, remains admitted with fallback; two Hani styles permit
+normal context. Bare `fr`/`zh`, aggregates and nonmembers cannot select a role.
+Width-override cases retain precedence, and U+202F without qualified context
+still refuses at the separate transform gate. Qualify actual cross-unit
+substitution or positioning with an independently controlled font, complete-unit
+mark shaping, body/indication custody, warm/cold and changed-font behavior,
+transparent capture seams and legitimate selected-fragment rebuilding. A
+boundary-only assertion does not qualify provider enforcement.
+
 ## Explicit decoration capability
 
 The initial profile admits disabled decorations and enabled decorations with
