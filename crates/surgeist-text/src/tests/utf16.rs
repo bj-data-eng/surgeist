@@ -641,8 +641,12 @@ mod accessibility {
 
     #[test]
     fn absent_selected_font_does_not_erase_original_selectable_graphemes() {
-        let analyzed = AnalyzedSource::new(Source::new("ab"), Style::default())
-            .expect("original source analysis needs no font");
+        let analyzed = AnalyzedSource::new(
+            Source::new("ab"),
+            Style::default(),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .expect("original source analysis needs no font");
         let mut state = Accessibility::default();
         let parent = accesskit::NodeId(1000);
         let update = analyzed
@@ -691,7 +695,12 @@ mod accessibility {
 
     #[test]
     fn empty_analyzed_source_has_a_real_empty_host_value_without_geometry() {
-        let analyzed = AnalyzedSource::new(Source::new(""), ahem_style()).unwrap();
+        let analyzed = AnalyzedSource::new(
+            Source::new(""),
+            ahem_style(),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let mut state = Accessibility::default();
         let parent = accesskit::NodeId(1000);
         let update = analyzed
@@ -722,11 +731,19 @@ mod accessibility {
 
     #[test]
     fn analyzed_and_placed_accessibility_share_source_but_keep_exact_phase_bindings() {
-        let analyzed =
-            AnalyzedSource::new(Source::identified("AX", Id::from_u64(31), 7), ahem_style())
-                .unwrap();
+        let analyzed = AnalyzedSource::new(
+            Source::identified("AX", Id::from_u64(31), 7),
+            ahem_style(),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let same = analyzed.clone();
-        let foreign = AnalyzedSource::new(analyzed.source().clone(), ahem_style()).unwrap();
+        let foreign = AnalyzedSource::new(
+            analyzed.source().clone(),
+            ahem_style(),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let mut system = system();
         let mut state = Accessibility::new(10);
         let parent = accesskit::NodeId(1000);
@@ -843,10 +860,16 @@ mod accessibility {
 
     #[test]
     fn original_ill_formed_host_refusal_preserves_prior_phase_binding_and_ids() {
-        let original = AnalyzedSource::new(Source::new("A"), ahem_style()).unwrap();
+        let original = AnalyzedSource::new(
+            Source::new("A"),
+            ahem_style(),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let invalid = AnalyzedSource::new(
             Source::new(Text::from_code_units(vec![0x41, 0xd800])),
             ahem_style(),
+            crate::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let mut state = Accessibility::new(10);
@@ -902,11 +925,13 @@ mod accessibility {
         let allowed = AnalyzedSource::new(
             Source::new(format!("a{}", "\u{301}".repeat(127))),
             ahem_style(),
+            crate::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let refused = AnalyzedSource::new(
             Source::new(format!("é{}", "\u{301}".repeat(127))),
             ahem_style(),
+            crate::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let mut state = Accessibility::default();

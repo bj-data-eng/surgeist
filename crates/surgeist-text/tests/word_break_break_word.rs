@@ -95,7 +95,11 @@ fn prepare_analyzed(analyzed: t::AnalyzedSource, wrap: t::Wrap) -> t::PreparedTe
 fn prepare(request: t::ParagraphInput) -> t::PreparedText {
     let wrap = request.base_style.wrap;
     let source = request.source.clone();
-    let p = prepare_analyzed(t::AnalyzedSource::from_paragraph(request).unwrap(), wrap);
+    let p = prepare_analyzed(
+        t::AnalyzedSource::from_paragraph(request, t::AnalysisTypography::HorizontalComposition)
+            .unwrap(),
+        wrap,
+    );
     assert_eq!(p.analyzed_source().source(), &source);
     p
 }
@@ -593,9 +597,11 @@ fn declared_tuple_survives_validation_source_spans_and_contextual_capture() {
                 })
                 .unwrap(),
             );
-            let analyzed =
-                t::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-                    .unwrap();
+            let analyzed = t::AnalyzedSource::from_processed_paragraph(
+                processed.paragraphs().next().unwrap(),
+                t::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap();
             let captured = prepare_analyzed(analyzed, t::Wrap::Word);
             assert_eq!(
                 captured.captured_paragraph().unwrap().domain().style(),

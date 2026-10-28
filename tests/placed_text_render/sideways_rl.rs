@@ -60,9 +60,11 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
         })
         .unwrap(),
     );
-    let analyzed =
-        text::AnalyzedSource::from_processed_paragraph(capture.paragraphs().next().unwrap())
-            .unwrap();
+    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+        capture.paragraphs().next().unwrap(),
+        text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let wrapping = analyzed
         .wrapping_relations()
         .filter(|row| row.ancestor_wrap().is_none())

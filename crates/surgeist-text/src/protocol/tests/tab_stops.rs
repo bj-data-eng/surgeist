@@ -98,7 +98,11 @@ fn css(
     system
         .prepare(
             &crate::test_wrapping::bind_missing(
-                &AnalyzedSource::from_paragraph(input).unwrap(),
+                &AnalyzedSource::from_paragraph(
+                    input,
+                    crate::AnalysisTypography::HorizontalComposition,
+                )
+                .unwrap(),
                 crate::Wrap::Word,
             ),
             PreparationOptions::try_new(1.0, crate::TabPreparation::CssStops).unwrap(),
@@ -572,7 +576,7 @@ fn css_capture(
     scale: f32,
 ) -> crate::Result<PreparedText> {
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(input)?,
+        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)?,
         crate::Wrap::Word,
     );
     system.prepare(
@@ -1400,7 +1404,11 @@ fn huge_atomic_after_first_unit(
     system
         .prepare(
             &crate::test_wrapping::bind_missing(
-                &AnalyzedSource::from_paragraph(input).unwrap(),
+                &AnalyzedSource::from_paragraph(
+                    input,
+                    crate::AnalysisTypography::HorizontalComposition,
+                )
+                .unwrap(),
                 crate::Wrap::Word,
             ),
             PreparationOptions::try_new(1.0, demand).unwrap(),
@@ -1722,7 +1730,11 @@ fn block_space_metric_uses_actual_used_direction_and_zero_keeps_even_level() {
             direction,
         );
         let analyzed = crate::test_wrapping::bind_missing(
-            &AnalyzedSource::from_paragraph(input).unwrap(),
+            &AnalyzedSource::from_paragraph(
+                input,
+                crate::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap(),
             crate::Wrap::Word,
         );
         let p = system
@@ -1806,7 +1818,8 @@ fn absent_tabs_do_not_consume_a_temporary_signed_pen() {
     let mut system = system();
     let input = captured("A", style(), None, ParagraphBaseDirection::RightToLeft);
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(input).unwrap(),
+        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap(),
         crate::Wrap::Word,
     );
     // Genuine ordinary control: huge indent cancels the same available width in
@@ -1857,7 +1870,11 @@ fn zero_tabs_do_not_consume_a_temporary_signed_pen() {
     let mut system = system();
     let ordinary_input = captured("AB", style(), None, ParagraphBaseDirection::RightToLeft);
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(ordinary_input).unwrap(),
+        &AnalyzedSource::from_paragraph(
+            ordinary_input,
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap(),
         crate::Wrap::Word,
     );
     let ordinary = system

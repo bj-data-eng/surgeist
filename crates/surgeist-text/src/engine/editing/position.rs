@@ -1017,21 +1017,24 @@ mod tests {
                 affinity: Affinity::After,
             })
             .collect();
-        let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-            tab_reference: None,
-            source,
-            base_style: style,
-            segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
-            base_direction,
-            paragraph_strut: crate::ParagraphStrut::DefaultFont,
-            origins,
-            connections,
-            controls,
-            boundary_policies,
-            replacements: vec![],
-            anchor_order,
-        })
+        let analyzed = AnalyzedSource::from_paragraph(
+            ParagraphInput {
+                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                tab_reference: None,
+                source,
+                base_style: style,
+                segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+                base_direction,
+                paragraph_strut: crate::ParagraphStrut::DefaultFont,
+                origins,
+                connections,
+                controls,
+                boundary_policies,
+                replacements: vec![],
+                anchor_order,
+            },
+            crate::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap();
         let mut system = System::new(SystemOptions {
             font_catalogue: FontCatalogueMode::RegisteredOnly,
@@ -1532,77 +1535,80 @@ mod tests {
             .unwrap();
         let source = Source::new(text);
         let source_end = source.text().len();
-        let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-            tab_reference: None,
-            source: source.clone(),
-            base_style: Style {
-                font: Font::new().family("Ahem"),
-                size: 20.0,
-                line_height: LineHeight::FontSizeRelative(1.0),
-                ..Style::default()
-            },
-            segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: crate::protocol::paragraph::ParagraphStrut::DefaultFont,
-            origins: if disconnected {
-                assert_eq!(text, "AB");
-                vec![
-                    crate::ParagraphOrigin {
+        let analyzed = AnalyzedSource::from_paragraph(
+            ParagraphInput {
+                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                tab_reference: None,
+                source: source.clone(),
+                base_style: Style {
+                    font: Font::new().family("Ahem"),
+                    size: 20.0,
+                    line_height: LineHeight::FontSizeRelative(1.0),
+                    ..Style::default()
+                },
+                segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+                base_direction: ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: crate::protocol::paragraph::ParagraphStrut::DefaultFont,
+                origins: if disconnected {
+                    assert_eq!(text, "AB");
+                    vec![
+                        crate::ParagraphOrigin {
+                            text_node: None,
+                            source: Source::new("A"),
+                            local: Range::new(0, 1),
+                            aggregate: Range::new(0, 1),
+                            kind: crate::ParagraphOriginKind::Authored,
+                        },
+                        crate::ParagraphOrigin {
+                            text_node: None,
+                            source: Source::new("B"),
+                            local: Range::new(0, 1),
+                            aggregate: Range::new(1, 2),
+                            kind: crate::ParagraphOriginKind::Authored,
+                        },
+                    ]
+                } else if source_end != 0 {
+                    vec![crate::ParagraphOrigin {
                         text_node: None,
-                        source: Source::new("A"),
-                        local: Range::new(0, 1),
-                        aggregate: Range::new(0, 1),
+                        source,
+                        local: Range::new(0, source_end),
+                        aggregate: Range::new(0, source_end),
                         kind: crate::ParagraphOriginKind::Authored,
-                    },
-                    crate::ParagraphOrigin {
-                        text_node: None,
-                        source: Source::new("B"),
-                        local: Range::new(0, 1),
-                        aggregate: Range::new(1, 2),
-                        kind: crate::ParagraphOriginKind::Authored,
-                    },
-                ]
-            } else if source_end != 0 {
-                vec![crate::ParagraphOrigin {
-                    text_node: None,
-                    source,
-                    local: Range::new(0, source_end),
-                    aggregate: Range::new(0, source_end),
-                    kind: crate::ParagraphOriginKind::Authored,
-                }]
-            } else {
-                Vec::new()
+                    }]
+                } else {
+                    Vec::new()
+                },
+                connections: if disconnected {
+                    vec![crate::ParagraphConnection {
+                        at: 1,
+                        kind: crate::ParagraphConnectionKind::Disconnected,
+                    }]
+                } else {
+                    Vec::new()
+                },
+                controls: vec![
+                    ParagraphControl {
+                        at,
+                        kind: ParagraphControlKind::ForcedBreak
+                    };
+                    breaks
+                ],
+                boundary_policies: Vec::new(),
+                replacements: Vec::new(),
+                anchor_order: (if breaks == 3 {
+                    vec![2, 0, 1]
+                } else {
+                    (0..breaks).collect()
+                })
+                .into_iter()
+                .map(|index| ParagraphAnchor {
+                    item: ParagraphAnchorItem::Control(index),
+                    affinity: Affinity::After,
+                })
+                .collect(),
             },
-            connections: if disconnected {
-                vec![crate::ParagraphConnection {
-                    at: 1,
-                    kind: crate::ParagraphConnectionKind::Disconnected,
-                }]
-            } else {
-                Vec::new()
-            },
-            controls: vec![
-                ParagraphControl {
-                    at,
-                    kind: ParagraphControlKind::ForcedBreak
-                };
-                breaks
-            ],
-            boundary_policies: Vec::new(),
-            replacements: Vec::new(),
-            anchor_order: (if breaks == 3 {
-                vec![2, 0, 1]
-            } else {
-                (0..breaks).collect()
-            })
-            .into_iter()
-            .map(|index| ParagraphAnchor {
-                item: ParagraphAnchorItem::Control(index),
-                affinity: Affinity::After,
-            })
-            .collect(),
-        })
+            crate::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap();
         let prepared = system
             .prepare(&analyzed, PreparationOptions::default())
@@ -1799,40 +1805,43 @@ mod tests {
             .register_fonts(include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
             .unwrap();
         let source = Source::new("abcdef");
-        let analysis = AnalyzedSource::from_paragraph(ParagraphInput {
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-            tab_reference: None,
-            source: source.clone(),
-            base_style: Style {
-                font: Font::new().family("Ahem"),
-                size: 20.0,
-                line_height: LineHeight::FontSizeRelative(1.0),
-                ..Style::default()
-            },
-            segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: crate::ParagraphStrut::DefaultFont,
-            origins: vec![crate::ParagraphOrigin {
-                text_node: None,
-                source,
-                local: Range::new(0, 6),
-                aggregate: Range::new(0, 6),
-                kind: crate::ParagraphOriginKind::Authored,
-            }],
-            connections: vec![],
-            controls: vec![ParagraphControl {
-                at: 4,
-                kind: ParagraphControlKind::OptionalBreak {
-                    wrap: crate::Wrap::Word,
+        let analysis = AnalyzedSource::from_paragraph(
+            ParagraphInput {
+                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                tab_reference: None,
+                source: source.clone(),
+                base_style: Style {
+                    font: Font::new().family("Ahem"),
+                    size: 20.0,
+                    line_height: LineHeight::FontSizeRelative(1.0),
+                    ..Style::default()
                 },
-            }],
-            boundary_policies: vec![],
-            replacements: vec![],
-            anchor_order: vec![ParagraphAnchor {
-                item: ParagraphAnchorItem::Control(0),
-                affinity: Affinity::After,
-            }],
-        })
+                segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+                base_direction: ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: crate::ParagraphStrut::DefaultFont,
+                origins: vec![crate::ParagraphOrigin {
+                    text_node: None,
+                    source,
+                    local: Range::new(0, 6),
+                    aggregate: Range::new(0, 6),
+                    kind: crate::ParagraphOriginKind::Authored,
+                }],
+                connections: vec![],
+                controls: vec![ParagraphControl {
+                    at: 4,
+                    kind: ParagraphControlKind::OptionalBreak {
+                        wrap: crate::Wrap::Word,
+                    },
+                }],
+                boundary_policies: vec![],
+                replacements: vec![],
+                anchor_order: vec![ParagraphAnchor {
+                    item: ParagraphAnchorItem::Control(0),
+                    affinity: Affinity::After,
+                }],
+            },
+            crate::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap();
         let prepared = system
             .prepare(&analysis, PreparationOptions::default())
@@ -2074,33 +2083,36 @@ mod tests {
             .unwrap();
         let source = Source::new(text);
         let end = text.encode_utf16().count();
-        let analysis = AnalyzedSource::from_paragraph(ParagraphInput {
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-            tab_reference: None,
-            source: source.clone(),
-            base_style: Style {
-                font: Font::new().family("Ahem"),
-                size: 20.0,
-                white_space,
-                line_height: LineHeight::FontSizeRelative(1.0),
-                ..Style::default()
+        let analysis = AnalyzedSource::from_paragraph(
+            ParagraphInput {
+                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                tab_reference: None,
+                source: source.clone(),
+                base_style: Style {
+                    font: Font::new().family("Ahem"),
+                    size: 20.0,
+                    white_space,
+                    line_height: LineHeight::FontSizeRelative(1.0),
+                    ..Style::default()
+                },
+                segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+                base_direction,
+                paragraph_strut: crate::ParagraphStrut::DefaultFont,
+                origins: vec![crate::ParagraphOrigin {
+                    text_node: None,
+                    source,
+                    local: Range::new(0, end),
+                    aggregate: Range::new(0, end),
+                    kind: crate::ParagraphOriginKind::Authored,
+                }],
+                connections: vec![],
+                controls: vec![],
+                boundary_policies: vec![],
+                replacements: vec![],
+                anchor_order: vec![],
             },
-            segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
-            base_direction,
-            paragraph_strut: crate::ParagraphStrut::DefaultFont,
-            origins: vec![crate::ParagraphOrigin {
-                text_node: None,
-                source,
-                local: Range::new(0, end),
-                aggregate: Range::new(0, end),
-                kind: crate::ParagraphOriginKind::Authored,
-            }],
-            connections: vec![],
-            controls: vec![],
-            boundary_policies: vec![],
-            replacements: vec![],
-            anchor_order: vec![],
-        })
+            crate::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap();
         let analysis = crate::test_wrapping::bind_missing(&analysis, crate::Wrap::Word);
         system

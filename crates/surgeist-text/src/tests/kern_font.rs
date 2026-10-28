@@ -81,7 +81,9 @@ fn prepare(kerning: bool) -> PreparedText {
         replacements: vec![],
         anchor_order: vec![],
     };
-    let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+    let analyzed =
+        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::None);
     let mut system = System::new(SystemOptions {
         font_catalogue: FontCatalogueMode::RegisteredOnly,

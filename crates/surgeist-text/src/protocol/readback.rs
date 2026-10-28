@@ -1830,47 +1830,50 @@ mod tests {
         .unwrap();
         system.register_fonts(AHEM.to_vec()).unwrap();
         let source = Source::new("A");
-        let analysis = crate::AnalyzedSource::from_paragraph(ParagraphInput {
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-            tab_reference: None,
-            source: source.clone(),
-            base_style: Style {
-                font: Font::new().family("Ahem"),
-                size: 20.0,
-                line_height: LineHeight::FontSizeRelative(2.0),
-                ..Style::default()
+        let analysis = crate::AnalyzedSource::from_paragraph(
+            ParagraphInput {
+                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                tab_reference: None,
+                source: source.clone(),
+                base_style: Style {
+                    font: Font::new().family("Ahem"),
+                    size: 20.0,
+                    line_height: LineHeight::FontSizeRelative(2.0),
+                    ..Style::default()
+                },
+                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                base_direction: ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: ParagraphStrut::DefaultFont,
+                origins: vec![
+                    ParagraphOrigin {
+                        text_node: None,
+                        source,
+                        local: Range::new(0, 1),
+                        aggregate: Range::new(0, 1),
+                        kind: ParagraphOriginKind::Authored,
+                    },
+                    ParagraphOrigin {
+                        text_node: None,
+                        source: Source::new(""),
+                        local: Range::new(0, 0),
+                        aggregate: Range::new(1, 1),
+                        kind: ParagraphOriginKind::Authored,
+                    },
+                ],
+                connections: vec![ParagraphConnection {
+                    at: 1,
+                    kind: ParagraphConnectionKind::Disconnected,
+                }],
+                controls: vec![],
+                boundary_policies: vec![],
+                replacements: vec![],
+                anchor_order: vec![ParagraphAnchor {
+                    item: ParagraphAnchorItem::EmptyOrigin(1),
+                    affinity: crate::Affinity::After,
+                }],
             },
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: ParagraphStrut::DefaultFont,
-            origins: vec![
-                ParagraphOrigin {
-                    text_node: None,
-                    source,
-                    local: Range::new(0, 1),
-                    aggregate: Range::new(0, 1),
-                    kind: ParagraphOriginKind::Authored,
-                },
-                ParagraphOrigin {
-                    text_node: None,
-                    source: Source::new(""),
-                    local: Range::new(0, 0),
-                    aggregate: Range::new(1, 1),
-                    kind: ParagraphOriginKind::Authored,
-                },
-            ],
-            connections: vec![ParagraphConnection {
-                at: 1,
-                kind: ParagraphConnectionKind::Disconnected,
-            }],
-            controls: vec![],
-            boundary_policies: vec![],
-            replacements: vec![],
-            anchor_order: vec![ParagraphAnchor {
-                item: ParagraphAnchorItem::EmptyOrigin(1),
-                affinity: crate::Affinity::After,
-            }],
-        })
+            crate::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap();
         let prepared = system
             .prepare(&analysis, PreparationOptions::default())

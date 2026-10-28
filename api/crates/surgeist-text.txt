@@ -12,6 +12,10 @@ pub surgeist_text::Alignment::Justify
 pub surgeist_text::Alignment::Left
 pub surgeist_text::Alignment::Right
 pub surgeist_text::Alignment::Start
+pub enum surgeist_text::AnalysisTypography
+pub surgeist_text::AnalysisTypography::HorizontalComposition
+pub surgeist_text::AnalysisTypography::Upright
+pub surgeist_text::AnalysisTypography::Upright::computed_direction: surgeist_text::ParagraphBaseDirection
 pub enum surgeist_text::AtomicLineAllocation
 pub surgeist_text::AtomicLineAllocation::InFlow
 pub surgeist_text::AtomicLineAllocation::InFlow::alignment: surgeist_text::LineBoxAlignment
@@ -1249,15 +1253,16 @@ impl surgeist_text::AnalyzedSource
 pub fn surgeist_text::AnalyzedSource::direction(&self) -> surgeist_text::Direction
 pub fn surgeist_text::AnalyzedSource::graphemes(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::Range> + '_
 pub fn surgeist_text::AnalyzedSource::identity(&self) -> surgeist_text::AnalysisIdentity
-pub fn surgeist_text::AnalyzedSource::new(source: surgeist_text::Source, style: surgeist_text::Style) -> surgeist_text::Result<Self>
+pub fn surgeist_text::AnalyzedSource::new(source: surgeist_text::Source, style: surgeist_text::Style, typography: surgeist_text::AnalysisTypography) -> surgeist_text::Result<Self>
 pub fn surgeist_text::AnalyzedSource::paragraph_strut(&self) -> surgeist_text::ParagraphStrut
 pub fn surgeist_text::AnalyzedSource::processed_source(&self) -> &surgeist_text::ProcessedSource
 pub fn surgeist_text::AnalyzedSource::source(&self) -> &surgeist_text::Source
 pub fn surgeist_text::AnalyzedSource::style(&self) -> &surgeist_text::Style
+pub fn surgeist_text::AnalyzedSource::typography(&self) -> surgeist_text::AnalysisTypography
 impl surgeist_text::AnalyzedSource
-pub fn surgeist_text::AnalyzedSource::from_paragraph(input: surgeist_text::ParagraphInput) -> surgeist_text::Result<Self>
+pub fn surgeist_text::AnalyzedSource::from_paragraph(input: surgeist_text::ParagraphInput, typography: surgeist_text::AnalysisTypography) -> surgeist_text::Result<Self>
 impl surgeist_text::AnalyzedSource
-pub fn surgeist_text::AnalyzedSource::from_processed_paragraph(paragraph: surgeist_text::ProcessedParagraph) -> surgeist_text::Result<Self>
+pub fn surgeist_text::AnalyzedSource::from_processed_paragraph(paragraph: surgeist_text::ProcessedParagraph, typography: surgeist_text::AnalysisTypography) -> surgeist_text::Result<Self>
 impl surgeist_text::AnalyzedSource
 pub fn surgeist_text::AnalyzedSource::with_wrapping_policies(&self, policies: alloc::vec::Vec<surgeist_text::WrappingPolicy>) -> surgeist_text::Result<Self>
 pub fn surgeist_text::AnalyzedSource::wrapping_relations(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::AnalyzedWrappingRelationView<'_>>

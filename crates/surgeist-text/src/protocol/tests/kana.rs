@@ -59,7 +59,9 @@ fn capture_input(mut input: ParagraphInput, bytes: Vec<u8>) -> PreparedText {
             ancestor_wrap: crate::Wrap::Word,
         })
         .collect();
-    let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+    let analyzed =
+        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     system
         .prepare(
             &crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word),

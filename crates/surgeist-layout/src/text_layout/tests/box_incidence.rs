@@ -98,9 +98,11 @@ impl EmptyBox {
             .unwrap(),
         );
         let scope = processed.captured_scope(1).unwrap();
-        let analyzed =
-            text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-                .unwrap();
+        let analyzed = text::AnalyzedSource::from_processed_paragraph(
+            processed.paragraphs().next().unwrap(),
+            text::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let analyzed =
             crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::Word);
         let mut system = text::System::new(text::SystemOptions {

@@ -67,8 +67,11 @@ fn fixture<S: LayoutScalar>(
         captured.captured_scope(1).unwrap(),
         captured.captured_scope(2).unwrap(),
     ];
-    let analyzed =
-        t::AnalyzedSource::from_processed_paragraph(captured.paragraphs().next().unwrap()).unwrap();
+    let analyzed = t::AnalyzedSource::from_processed_paragraph(
+        captured.paragraphs().next().unwrap(),
+        t::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|r| r.ancestor_wrap().is_none())

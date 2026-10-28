@@ -42,7 +42,8 @@ fn prepare(bytes: &[u8], text: &str) -> PreparedText {
         anchor_order: vec![],
     };
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(value).unwrap(),
+        &AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap(),
         crate::Wrap::Word,
     );
     let mut system = System::new(SystemOptions {

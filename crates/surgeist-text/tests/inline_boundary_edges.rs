@@ -126,7 +126,11 @@ fn prepare_capture(
     );
     assert_eq!(processed.source().text(), source.text());
     let paragraph = processed.paragraphs().next().unwrap();
-    let analyzed = t::AnalyzedSource::from_processed_paragraph(paragraph).unwrap();
+    let analyzed = t::AnalyzedSource::from_processed_paragraph(
+        paragraph,
+        t::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     // Every relation here has the same genuinely captured enclosing block's
     // computed Word wrapping policy; no permission is inferred from width.
     let policies = analyzed

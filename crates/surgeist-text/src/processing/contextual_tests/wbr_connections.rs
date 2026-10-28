@@ -59,7 +59,11 @@ fn split(text: &str, at: usize, before: bool) -> ContextualSourceInput {
 }
 fn analyze(p: ContextualSourceInput) -> AnalyzedSource {
     let p = Arc::new(process_contextual_source(p).unwrap());
-    AnalyzedSource::from_processed_paragraph(p.paragraphs().next().unwrap()).unwrap()
+    AnalyzedSource::from_processed_paragraph(
+        p.paragraphs().next().unwrap(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap()
 }
 #[test]
 fn actual_connection_order_determines_generated_space_and_mark_grapheme() {
@@ -114,8 +118,11 @@ fn direct(operation: WordSpaceTransform, text: &str, at: usize) -> ParagraphInpu
 #[test]
 fn direct_positive_missing_side_refuses_even_with_a_nearest_lf_but_none_does_not() {
     for (text, at) in [("A\u{3099}", 1), ("A\nB", 2)] {
-        let none =
-            AnalyzedSource::from_paragraph(direct(WordSpaceTransform::None, text, at)).unwrap();
+        let none = AnalyzedSource::from_paragraph(
+            direct(WordSpaceTransform::None, text, at),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         assert_eq!(
             none.source().text().code_units(),
             text.encode_utf16().collect::<Vec<_>>()
@@ -124,7 +131,11 @@ fn direct_positive_missing_side_refuses_even_with_a_nearest_lf_but_none_does_not
             WordSpaceTransform::Space,
             WordSpaceTransform::IdeographicSpace,
         ] {
-            let error = AnalyzedSource::from_paragraph(direct(operation, text, at)).unwrap_err();
+            let error = AnalyzedSource::from_paragraph(
+                direct(operation, text, at),
+                crate::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap_err();
             assert_eq!(error.code, ErrorCode::UnsupportedFeature);
             assert_eq!(
                 error.detail(),
@@ -141,7 +152,7 @@ fn direct_positive_missing_side_refuses_even_with_a_nearest_lf_but_none_does_not
     let mut p = direct(WordSpaceTransform::Space, "ABCD", 2);
     p.controls[0].at = 3;
     assert_eq!(
-        AnalyzedSource::from_paragraph(p)
+        AnalyzedSource::from_paragraph(p, crate::AnalysisTypography::HorizontalComposition)
             .unwrap()
             .inner
             .projection

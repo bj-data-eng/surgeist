@@ -74,7 +74,8 @@ fn prepare(input: ParagraphInput) -> PreparedText {
     .unwrap();
     system.register_fonts(fixture()).unwrap();
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(input).unwrap(),
+        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap(),
         crate::Wrap::Word,
     );
     system
@@ -820,7 +821,11 @@ fn transparent_child_holes_keep_automatic_source_anchor_separate_from_mixed_cut_
     };
     let processed = Arc::new(process_contextual_source(capture).unwrap());
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap()).unwrap(),
+        &AnalyzedSource::from_processed_paragraph(
+            processed.paragraphs().next().unwrap(),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap(),
         crate::Wrap::Word,
     );
     let mut system = System::new(SystemOptions {
@@ -1112,7 +1117,8 @@ fn automatic_indication_uses_cut_primary_and_retains_resources_after_catalogue_r
     let mut value = input(source, &[0, 4, 9]);
     value.base_style = own;
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(value).unwrap(),
+        &AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap(),
         crate::Wrap::Word,
     );
     let mut system = System::new(SystemOptions {
@@ -1361,7 +1367,8 @@ fn automatic_range_units_keep_optional_ligature_shares_distinct() {
     let mut value = input(Source::new("extensive"), &[0, 9]);
     value.base_style.hyphenate_character = HyphenateCharacter::String(Text::from("AA"));
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(value).unwrap(),
+        &AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap(),
         crate::Wrap::Word,
     );
     let mut system = System::new(SystemOptions {
@@ -1777,7 +1784,8 @@ fn before_auto_uses_the_actual_lri_occurrence_in_an_rtl_paragraph() {
     .unwrap();
     system.register_fonts(bytes.clone()).unwrap();
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(value).unwrap(),
+        &AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap(),
         crate::Wrap::Word,
     );
     let p = system

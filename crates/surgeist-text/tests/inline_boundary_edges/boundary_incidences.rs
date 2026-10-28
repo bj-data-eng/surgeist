@@ -77,7 +77,11 @@ fn prepare_processed(processed: &Arc<t::ProcessedSource>, bytes: &[u8]) -> Vec<t
     processed
         .paragraphs()
         .map(|paragraph| {
-            let analyzed = t::AnalyzedSource::from_processed_paragraph(paragraph).unwrap();
+            let analyzed = t::AnalyzedSource::from_processed_paragraph(
+                paragraph,
+                t::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap();
             let policies = analyzed
                 .wrapping_relations()
                 .filter(|r| r.ancestor_wrap().is_none())
@@ -744,8 +748,12 @@ fn incidence_capabilities_keep_preparation_capture_role_and_domain_errors_distin
             .unwrap_err(),
         t::WrappingScopeQueryError::WrongDomain,
     );
-    let flat =
-        t::AnalyzedSource::new(t::Source::new("AB"), style(t::WhiteSpace::Preserve)).unwrap();
+    let flat = t::AnalyzedSource::new(
+        t::Source::new("AB"),
+        style(t::WhiteSpace::Preserve),
+        t::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let mut system = t::System::new(t::SystemOptions {
         font_catalogue: t::FontCatalogueMode::RegisteredOnly,
     })

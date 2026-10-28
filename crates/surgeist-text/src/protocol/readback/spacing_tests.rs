@@ -41,7 +41,9 @@ fn input(text: &str, mode: WhiteSpace) -> ParagraphInput {
 }
 
 fn prepare(input: ParagraphInput) -> PreparedText {
-    let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+    let analyzed =
+        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word);
     let mut system = System::new(SystemOptions {
         font_catalogue: FontCatalogueMode::RegisteredOnly,

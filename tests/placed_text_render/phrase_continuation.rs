@@ -159,7 +159,11 @@ fn capture() -> (
     let prepared: Vec<_> = processed
         .paragraphs()
         .map(|paragraph| {
-            let analyzed = text::AnalyzedSource::from_processed_paragraph(paragraph).unwrap();
+            let analyzed = text::AnalyzedSource::from_processed_paragraph(
+                paragraph,
+                text::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap();
             let policies = analyzed
                 .wrapping_relations()
                 .filter(|row| row.ancestor_wrap().is_none())

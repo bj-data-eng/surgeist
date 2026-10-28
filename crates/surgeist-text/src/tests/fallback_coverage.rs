@@ -121,7 +121,12 @@ fn analysis(text: &str, id: u64) -> AnalyzedSource {
     );
     assert_eq!(CodePointMapData::<Script>::new().get32(0x58), Script::Latin);
     let source = Source::identified(text, Id::from_u64(id), 17);
-    let analyzed = AnalyzedSource::new(source.clone(), style()).unwrap();
+    let analyzed = AnalyzedSource::new(
+        source.clone(),
+        style(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(analyzed.direction(), Direction::LeftToRight);
     assert_eq!(analyzed.source(), &source);
     assert_eq!(analyzed.source().id(), Some(Id::from_u64(id)));

@@ -8,7 +8,12 @@ mod fonts;
 
 fn finalized(source: text::Source) -> (text::PreparedText, text::FinalizedLine) {
     let mut system = system(AHEM.to_vec());
-    let analyzed = text::AnalyzedSource::new(source, style()).unwrap();
+    let analyzed = text::AnalyzedSource::new(
+        source,
+        style(),
+        text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let prepared = system
         .prepare(&analyzed, text::PreparationOptions::default())
         .unwrap();
@@ -171,6 +176,7 @@ fn hanging_punctuation_reaches_paint_with_its_original_advance_and_source() {
             ),
             ..style()
         },
+        text::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let prepared = system
@@ -283,6 +289,7 @@ fn actual_gpos_mark_placement_reaches_admitted_outline_ink_without_advance_subst
             line_height: text::LineHeight::Absolute(16.0),
             ..style()
         },
+        text::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let prepared = system

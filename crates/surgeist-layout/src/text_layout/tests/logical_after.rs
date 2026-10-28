@@ -21,27 +21,30 @@ fn analyzed(placement: text::HyphenationPlacement) -> text::AnalyzedSource {
         ..ahem_style(10.0, 10.0)
     };
     let source = Source::identified("AB\u{ad}CDE", text::Id::from_u64(66077), 7);
-    let value = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-        source: source.clone(),
-        base_style: style,
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: text::ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: text::ParagraphStrut::DefaultFont,
-        terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        origins: vec![text::ParagraphOrigin {
-            text_node: None,
-            source,
-            local: text::Range::new(0, 6),
-            aggregate: text::Range::new(0, 6),
-            kind: text::ParagraphOriginKind::Authored,
-        }],
-        connections: vec![],
-        controls: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-        anchor_order: vec![],
-    })
+    let value = text::AnalyzedSource::from_paragraph(
+        text::ParagraphInput {
+            source: source.clone(),
+            base_style: style,
+            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            origins: vec![text::ParagraphOrigin {
+                text_node: None,
+                source,
+                local: text::Range::new(0, 6),
+                aggregate: text::Range::new(0, 6),
+                kind: text::ParagraphOriginKind::Authored,
+            }],
+            connections: vec![],
+            controls: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: vec![],
+        },
+        text::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let value = crate::test_support::text::in_flat_wrapping_context(value, text::Wrap::Word);
     assert_eq!(value.source().text().code_units(), ORIGINAL);

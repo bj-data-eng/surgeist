@@ -133,8 +133,11 @@ fn font_system() -> System {
 }
 
 fn prepare(system: &mut System, processed: &Arc<crate::ProcessedSource>) -> PreparedText {
-    let analysis =
-        AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap()).unwrap();
+    let analysis = AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     system
         .prepare(
             &crate::test_wrapping::bind_missing(&analysis, Wrap::Word),
@@ -1152,8 +1155,11 @@ fn out_of_flow_atomic_is_not_an_outer_edge_but_its_own_inline_domain_can_force()
             .opportunity_views()
             .any(|o| o.kind() == PreparedBreakKind::Forced)
     );
-    let child_analysis =
-        AnalyzedSource::from_processed_paragraph(processed.paragraphs().nth(1).unwrap()).unwrap();
+    let child_analysis = AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().nth(1).unwrap(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let child = system
         .prepare(
             &crate::test_wrapping::bind_missing(&child_analysis, Wrap::Word),
@@ -1522,11 +1528,11 @@ fn later_expanded_wbr_preserves_an_earlier_computed_hard_base_mark_boundary() {
             processed.processed_text().code_units(),
             [0x41, 0x307, 0x41, 0x41]
         );
-        let analysis =
-            AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-                .unwrap_or_else(|error| {
-                    panic!("forced={forced}, operation={operation:?}: {error:?}")
-                });
+        let analysis = AnalyzedSource::from_processed_paragraph(
+            processed.paragraphs().next().unwrap(),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap_or_else(|error| panic!("forced={forced}, operation={operation:?}: {error:?}"));
         let p = font_system()
             .prepare(
                 &crate::test_wrapping::bind_missing(&analysis, Wrap::Word),

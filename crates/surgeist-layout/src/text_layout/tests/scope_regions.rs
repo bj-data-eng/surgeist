@@ -38,7 +38,11 @@ fn prepare(input: text::ContextualSourceInput) -> Vec<text::PreparedText> {
     processed
         .paragraphs()
         .map(|paragraph| {
-            let analyzed = text::AnalyzedSource::from_processed_paragraph(paragraph).unwrap();
+            let analyzed = text::AnalyzedSource::from_processed_paragraph(
+                paragraph,
+                text::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap();
             let analyzed =
                 crate::test_support::text::in_flat_wrapping_context(analyzed, Wrap::Word);
             system

@@ -314,7 +314,11 @@ fn actual_computed_scope_mandatory_keeps_cause_and_source_without_a_control_prox
     assert_eq!(cause.paragraph(), processed.captured_paragraph(0).unwrap());
     assert_eq!(cause.source_position().get(), 1);
     let a = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap()).unwrap(),
+        &AnalyzedSource::from_processed_paragraph(
+            processed.paragraphs().next().unwrap(),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap(),
         crate::Wrap::Word,
     );
     let mut s = system_with(crate::shaping_test_fonts::sideways_ahem());

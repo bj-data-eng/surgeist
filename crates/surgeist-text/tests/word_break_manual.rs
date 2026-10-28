@@ -85,7 +85,9 @@ fn prepare(request: t::ParagraphInput) -> t::PreparedText {
     let ancestor = request.base_style.wrap;
     let source = request.source.clone();
     let base = request.base_style.clone();
-    let analyzed = t::AnalyzedSource::from_paragraph(request).unwrap();
+    let analyzed =
+        t::AnalyzedSource::from_paragraph(request, t::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())

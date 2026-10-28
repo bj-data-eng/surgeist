@@ -62,7 +62,9 @@ fn input(value: &str, base: t::Style) -> t::ParagraphInput {
 fn prepare(value: t::ParagraphInput, bytes: &[u8]) -> t::PreparedText {
     let wrap = value.base_style.wrap;
     let source = value.source.clone();
-    let analyzed = t::AnalyzedSource::from_paragraph(value).unwrap();
+    let analyzed =
+        t::AnalyzedSource::from_paragraph(value, t::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|r| r.ancestor_wrap().is_none())
@@ -1208,9 +1210,11 @@ fn captured_enclosing_inline_continues_without_its_later_end_decoration() {
         })
         .unwrap(),
     );
-    let analyzed =
-        t::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-            .unwrap();
+    let analyzed = t::AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        t::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|r| r.ancestor_wrap().is_none())

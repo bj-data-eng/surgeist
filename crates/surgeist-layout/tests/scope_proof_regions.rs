@@ -334,7 +334,11 @@ fn fixture_with_child_topology(
     let prepared: Vec<_> = processed
         .paragraphs()
         .map(|paragraph| {
-            let analyzed = text::AnalyzedSource::from_processed_paragraph(paragraph).unwrap();
+            let analyzed = text::AnalyzedSource::from_processed_paragraph(
+                paragraph,
+                text::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap();
             let policies = analyzed
                 .wrapping_relations()
                 .filter(|row| row.ancestor_wrap().is_none())
@@ -859,7 +863,11 @@ fn nonempty_domain_with_terminal_empty_paragraph() -> IncidenceFixture {
     let prepared: Vec<_> = processed
         .paragraphs()
         .map(|paragraph| {
-            let analyzed = text::AnalyzedSource::from_processed_paragraph(paragraph).unwrap();
+            let analyzed = text::AnalyzedSource::from_processed_paragraph(
+                paragraph,
+                text::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap();
             let policies = analyzed
                 .wrapping_relations()
                 .filter(|row| row.ancestor_wrap().is_none())
@@ -1073,27 +1081,30 @@ fn unknown_child_inline_topology_does_not_waive_a_demanded_block_association() {
 
 #[test]
 fn flat_empty_preparation_without_canonical_paragraph_identity_cannot_associate_a_domain() {
-    let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-        source: text::Source::new(""),
-        base_style: text::Style {
-            font: text::Font::new().family("Ahem"),
-            size: 10.0,
-            line_height: text::LineHeight::Absolute(10.0),
-            word_space_transform: text::WordSpaceTransform::None,
-            ..text::Style::default()
+    let analyzed = text::AnalyzedSource::from_paragraph(
+        text::ParagraphInput {
+            source: text::Source::new(""),
+            base_style: text::Style {
+                font: text::Font::new().family("Ahem"),
+                size: 10.0,
+                line_height: text::LineHeight::Absolute(10.0),
+                word_space_transform: text::WordSpaceTransform::None,
+                ..text::Style::default()
+            },
+            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            origins: vec![],
+            connections: vec![],
+            controls: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: vec![],
         },
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: text::ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: text::ParagraphStrut::DefaultFont,
-        terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        origins: vec![],
-        connections: vec![],
-        controls: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-        anchor_order: vec![],
-    })
+        text::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let mut system = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,

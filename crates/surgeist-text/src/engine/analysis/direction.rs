@@ -23,6 +23,8 @@ pub(crate) struct DirectionBody {
 }
 
 impl DirectionBody {
+    // Classes come from the actual used stream, after source/semantic-control
+    // interpretation and with genuine structural B delimiters still present.
     pub(super) fn new(
         classes: impl ExactSizeIterator<Item = BidiClass>,
         owners: Vec<BidiOwner>,

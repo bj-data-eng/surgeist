@@ -65,7 +65,11 @@ fn prepare(input: ParagraphInput, bytes: Vec<u8>) -> PreparedText {
     system(bytes)
         .prepare(
             &crate::test_wrapping::bind_missing(
-                &AnalyzedSource::from_paragraph(input).unwrap(),
+                &AnalyzedSource::from_paragraph(
+                    input,
+                    crate::AnalysisTypography::HorizontalComposition,
+                )
+                .unwrap(),
                 crate::Wrap::Word,
             ),
             PreparationOptions::default(),
@@ -661,12 +665,15 @@ fn rtl_pdi_keeps_post_l1_l2_x_and_original_local_origin_offsets() {
 fn own_formatting_font_survives_catalogue_replacement_and_system_drop() {
     let mut source = Source::new("A\u{2069}B");
     source.span(Range::new(1, 2), style(20.0));
-    let a = AnalyzedSource::from_paragraph(input(
-        source,
-        style(10.0),
-        &[0, 3],
-        ParagraphBaseDirection::LeftToRight,
-    ))
+    let a = AnalyzedSource::from_paragraph(
+        input(
+            source,
+            style(10.0),
+            &[0, 3],
+            ParagraphBaseDirection::LeftToRight,
+        ),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let mut fonts = system(AHEM.to_vec());
     let p = fonts.prepare(&a, PreparationOptions::default()).unwrap();
@@ -704,7 +711,11 @@ fn wholly_removed_original_needs_no_fabricated_font_and_newline_modes_stay_disti
     .unwrap();
     let p = no_fonts
         .prepare(
-            &AnalyzedSource::from_paragraph(capture).unwrap(),
+            &AnalyzedSource::from_paragraph(
+                capture,
+                crate::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap(),
             PreparationOptions::default(),
         )
         .unwrap();
@@ -1056,8 +1067,11 @@ fn contextual_holes_remain_real_pieces_of_shared_units_and_generated_origins_are
     let mut fonts = system(crate::shaping_test_fonts::ligature_ahem());
     let p = fonts
         .prepare(
-            &AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-                .unwrap(),
+            &AnalyzedSource::from_processed_paragraph(
+                processed.paragraphs().next().unwrap(),
+                crate::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap(),
             PreparationOptions::default(),
         )
         .unwrap();
@@ -1084,8 +1098,11 @@ fn contextual_holes_remain_real_pieces_of_shared_units_and_generated_origins_are
     );
     let child = fonts
         .prepare(
-            &AnalyzedSource::from_processed_paragraph(processed.paragraphs().nth(1).unwrap())
-                .unwrap(),
+            &AnalyzedSource::from_processed_paragraph(
+                processed.paragraphs().nth(1).unwrap(),
+                crate::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap(),
             PreparationOptions::default(),
         )
         .unwrap();

@@ -35,7 +35,11 @@ fn prepare(system: &mut System, input: ParagraphInput) -> PreparedText {
     system
         .prepare(
             &crate::test_wrapping::bind_missing(
-                &AnalyzedSource::from_paragraph(input).unwrap(),
+                &AnalyzedSource::from_paragraph(
+                    input,
+                    crate::AnalysisTypography::HorizontalComposition,
+                )
+                .unwrap(),
                 crate::Wrap::Word,
             ),
             PreparationOptions::default(),
@@ -594,7 +598,11 @@ fn selected_replacement_space_and_css_tab_keep_alternative_custody_and_geometry(
             .unwrap(),
         );
         let analyzed = crate::test_wrapping::bind_missing(
-            &AnalyzedSource::from_paragraph(native).unwrap(),
+            &AnalyzedSource::from_paragraph(
+                native,
+                crate::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap(),
             crate::Wrap::Word,
         );
         let p = system

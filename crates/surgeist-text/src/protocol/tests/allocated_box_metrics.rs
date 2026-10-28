@@ -19,33 +19,36 @@ fn allocated_empty_paragraph_uses_only_real_box_metric_groups() {
     // paragraph explicitly requests allocated contributions rather than font
     // metrics, so these literal used boxes are the only metric suppliers.
     let source = Source::new("");
-    let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
-        source: source.clone(),
-        base_style: Style {
-            line_height: LineHeight::Absolute(100.0),
-            ..style()
+    let analyzed = AnalyzedSource::from_paragraph(
+        ParagraphInput {
+            source: source.clone(),
+            base_style: Style {
+                line_height: LineHeight::Absolute(100.0),
+                ..style()
+            },
+            paragraph_strut: ParagraphStrut::AllocatedContributions,
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: ParagraphBaseDirection::LeftToRight,
+            origins: vec![crate::ParagraphOrigin {
+                text_node: None,
+                source,
+                local: Range::new(0, 0),
+                aggregate: Range::new(0, 0),
+                kind: crate::ParagraphOriginKind::Authored,
+            }],
+            anchor_order: vec![crate::ParagraphAnchor {
+                item: crate::ParagraphAnchorItem::EmptyOrigin(0),
+                affinity: crate::Affinity::After,
+            }],
+            connections: vec![],
+            controls: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
         },
-        paragraph_strut: ParagraphStrut::AllocatedContributions,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: ParagraphBaseDirection::LeftToRight,
-        origins: vec![crate::ParagraphOrigin {
-            text_node: None,
-            source,
-            local: Range::new(0, 0),
-            aggregate: Range::new(0, 0),
-            kind: crate::ParagraphOriginKind::Authored,
-        }],
-        anchor_order: vec![crate::ParagraphAnchor {
-            item: crate::ParagraphAnchorItem::EmptyOrigin(0),
-            affinity: crate::Affinity::After,
-        }],
-        connections: vec![],
-        controls: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-    })
+        crate::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let p = system()
         .prepare(&analyzed, PreparationOptions::default())

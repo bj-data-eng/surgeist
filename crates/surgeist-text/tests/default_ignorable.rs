@@ -44,35 +44,38 @@ fn observe(
 ) -> Observation {
     let source = text::Source::new(value);
     let end = source.text().len();
-    let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-        source: source.clone(),
-        base_style: text::Style {
-            font: text::Font::new().family("Ahem"),
-            size: 10.0,
-            line_height: text::LineHeight::Absolute(10.0),
-            white_space: text::WhiteSpace::Preserve,
-            wrap: text::Wrap::None,
-            letter_spacing: spacing,
-            ..text::Style::default()
+    let analyzed = text::AnalyzedSource::from_paragraph(
+        text::ParagraphInput {
+            source: source.clone(),
+            base_style: text::Style {
+                font: text::Font::new().family("Ahem"),
+                size: 10.0,
+                line_height: text::LineHeight::Absolute(10.0),
+                white_space: text::WhiteSpace::Preserve,
+                wrap: text::Wrap::None,
+                letter_spacing: spacing,
+                ..text::Style::default()
+            },
+            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: direction,
+            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            origins: vec![text::ParagraphOrigin {
+                text_node: None,
+                source,
+                local: text::Range::new(0, end),
+                aggregate: text::Range::new(0, end),
+                kind: text::ParagraphOriginKind::Authored,
+            }],
+            connections: vec![],
+            controls: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: vec![],
         },
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: direction,
-        paragraph_strut: text::ParagraphStrut::DefaultFont,
-        terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        origins: vec![text::ParagraphOrigin {
-            text_node: None,
-            source,
-            local: text::Range::new(0, end),
-            aggregate: text::Range::new(0, end),
-            kind: text::ParagraphOriginKind::Authored,
-        }],
-        connections: vec![],
-        controls: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-        anchor_order: vec![],
-    })
+        text::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let mut system = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,

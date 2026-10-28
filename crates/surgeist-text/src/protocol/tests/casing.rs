@@ -21,27 +21,30 @@ fn case_style(case: CaseTransform, locale: Option<&str>) -> Style {
 
 fn capture_source(source: Source, base_style: Style, font: Vec<u8>) -> PreparedText {
     let len = source.text().len();
-    let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
-        source: source.clone(),
-        base_style,
-        paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: ParagraphBaseDirection::LeftToRight,
-        origins: vec![paragraph::ParagraphOrigin {
-            text_node: None,
-            source,
-            local: Range::new(0, len),
-            aggregate: Range::new(0, len),
-            kind: paragraph::ParagraphOriginKind::Authored,
-        }],
-        connections: vec![],
-        controls: vec![],
-        replacements: vec![],
-        boundary_policies: vec![],
-        anchor_order: vec![],
-    })
+    let analyzed = AnalyzedSource::from_paragraph(
+        ParagraphInput {
+            source: source.clone(),
+            base_style,
+            paragraph_strut: ParagraphStrut::DefaultFont,
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: ParagraphBaseDirection::LeftToRight,
+            origins: vec![paragraph::ParagraphOrigin {
+                text_node: None,
+                source,
+                local: Range::new(0, len),
+                aggregate: Range::new(0, len),
+                kind: paragraph::ParagraphOriginKind::Authored,
+            }],
+            connections: vec![],
+            controls: vec![],
+            replacements: vec![],
+            boundary_policies: vec![],
+            anchor_order: vec![],
+        },
+        crate::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let mut system = System::new(SystemOptions {
         font_catalogue: FontCatalogueMode::RegisteredOnly,
@@ -235,9 +238,11 @@ fn authored_forced_origin_seam_stops_lithuanian_dot_removal_and_unit_context() {
             .unwrap(),
         );
         assert_eq!(processed.processed_text().code_units(), [0x69, 0x307]);
-        let analyzed =
-            AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-                .unwrap();
+        let analyzed = AnalyzedSource::from_processed_paragraph(
+            processed.paragraphs().next().unwrap(),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         assert_eq!(analyzed.source().text().code_units(), [0x69, 0x307]);
         assert_eq!(
             analyzed.inner.projection.text,

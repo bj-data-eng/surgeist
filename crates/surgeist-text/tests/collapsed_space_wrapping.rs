@@ -75,21 +75,24 @@ fn prepare(
             });
         }
     }
-    let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-        source,
-        base_style: style(ancestor),
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: text::ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: text::ParagraphStrut::DefaultFont,
-        terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        origins,
-        connections,
-        controls: vec![],
-        boundary_policies,
-        replacements: vec![],
-        anchor_order,
-    })
+    let analyzed = text::AnalyzedSource::from_paragraph(
+        text::ParagraphInput {
+            source,
+            base_style: style(ancestor),
+            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            origins,
+            connections,
+            controls: vec![],
+            boundary_policies,
+            replacements: vec![],
+            anchor_order,
+        },
+        text::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let mut system = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,
@@ -161,21 +164,24 @@ fn one_origin_collapsed_followers_keep_distinct_style_span_gates() {
                 aggregate: text::Range::new(0, 5),
                 kind: text::ParagraphOriginKind::Authored,
             };
-            let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-                source,
-                base_style: style(ancestor),
-                segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: text::ParagraphStrut::DefaultFont,
-                terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-                tab_reference: None,
-                origins: vec![origin],
-                connections: vec![],
-                controls: vec![],
-                boundary_policies: vec![],
-                replacements: vec![],
-                anchor_order: vec![],
-            })
+            let analyzed = text::AnalyzedSource::from_paragraph(
+                text::ParagraphInput {
+                    source,
+                    base_style: style(ancestor),
+                    segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+                    base_direction: text::ParagraphBaseDirection::LeftToRight,
+                    paragraph_strut: text::ParagraphStrut::DefaultFont,
+                    terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+                    tab_reference: None,
+                    origins: vec![origin],
+                    connections: vec![],
+                    controls: vec![],
+                    boundary_policies: vec![],
+                    replacements: vec![],
+                    anchor_order: vec![],
+                },
+                text::AnalysisTypography::HorizontalComposition,
+            )
             .unwrap();
             assert_eq!(analyzed.source().text(), &text::Text::from("A   B"));
             assert_eq!(
@@ -286,9 +292,11 @@ fn contextual_style_span_gate_survives_casing_and_genuine_wbr_expansion() {
         })
         .unwrap(),
     );
-    let analyzed =
-        text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-            .unwrap();
+    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(analyzed.source().text(), &text::Text::from("a   b"));
     assert_eq!(
         analyzed.processed_source().processed_text(),

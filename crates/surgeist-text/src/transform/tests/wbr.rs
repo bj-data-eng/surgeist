@@ -92,7 +92,9 @@ fn wbr_inserts_at_the_scalar_cut_inside_an_original_grapheme() {
     ] {
         let value = input("A\u{3099}", WhiteSpace::Preserve, vec![wbr(1, operation)]);
         let source = value.source.clone();
-        let a = AnalyzedSource::from_paragraph(value).unwrap();
+        let a =
+            AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
+                .unwrap();
         assert_eq!(a.source(), &source);
         assert_eq!(
             a.processed_source().processed_text().code_units(),
@@ -102,14 +104,17 @@ fn wbr_inserts_at_the_scalar_cut_inside_an_original_grapheme() {
         assert_eq!(a.inner.projection.text, expected);
         assert_eq!(a.inner.projection.graphemes, graphemes);
     }
-    let a = AnalyzedSource::from_paragraph(input(
-        "A\u{3099}",
-        WhiteSpace::Preserve,
-        vec![
-            wbr(1, WordSpaceTransform::Space),
-            wbr(1, WordSpaceTransform::IdeographicSpace),
-        ],
-    ))
+    let a = AnalyzedSource::from_paragraph(
+        input(
+            "A\u{3099}",
+            WhiteSpace::Preserve,
+            vec![
+                wbr(1, WordSpaceTransform::Space),
+                wbr(1, WordSpaceTransform::IdeographicSpace),
+            ],
+        ),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     assert_eq!(a.inner.projection.text, "A \u{3000}\u{3099}");
     assert_eq!(a.inner.projection.graphemes, [0, 1, 2, 4]);
@@ -129,7 +134,9 @@ fn wbr_generation_uses_its_own_style_and_does_not_replay_phase_i() {
             style.text_transform =
                 TextTransform::Set(TextTransformSet::none().with_full_width(true));
         }
-        let a = AnalyzedSource::from_paragraph(value).unwrap();
+        let a =
+            AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
+                .unwrap();
         assert_eq!(
             a.processed_source().processed_text().code_units(),
             [0x41, 0x41]
@@ -143,7 +150,7 @@ fn wbr_generation_uses_its_own_style_and_does_not_replay_phase_i() {
     );
     value.base_style.word_space_transform = WordSpaceTransform::IdeographicSpace;
     assert_eq!(
-        AnalyzedSource::from_paragraph(value)
+        AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
             .unwrap()
             .inner
             .projection
@@ -159,11 +166,10 @@ fn wbr_inside_deleted_source_inserts_without_resurrecting_authored_spaces() {
         (WordSpaceTransform::Space, "A A"),
         (WordSpaceTransform::IdeographicSpace, "A\u{3000}A"),
     ] {
-        let a = AnalyzedSource::from_paragraph(input(
-            "A  A",
-            WhiteSpace::Discard,
-            vec![wbr(2, operation)],
-        ))
+        let a = AnalyzedSource::from_paragraph(
+            input("A  A", WhiteSpace::Discard, vec![wbr(2, operation)]),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap();
         assert_eq!(a.source().text().code_units(), [0x41, 0x20, 0x20, 0x41]);
         assert_eq!(
@@ -188,7 +194,9 @@ fn positive_wbr_refuses_actual_phase_i_replacement_seams() {
     );
     none.segment_breaks = breaks.clone();
     let original = none.source.clone();
-    let baseline = AnalyzedSource::from_paragraph(none).unwrap();
+    let baseline =
+        AnalyzedSource::from_paragraph(none, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     assert_eq!(baseline.source(), &original);
     assert_eq!(
         baseline
@@ -206,7 +214,11 @@ fn positive_wbr_refuses_actual_phase_i_replacement_seams() {
     ] {
         let mut positive = input(text, WhiteSpace::PreserveSpaces, vec![wbr(at, operation)]);
         positive.segment_breaks = breaks.clone();
-        let error = AnalyzedSource::from_paragraph(positive).unwrap_err();
+        let error = AnalyzedSource::from_paragraph(
+            positive,
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap_err();
         assert_eq!(error.code, ErrorCode::UnsupportedFeature);
         assert_eq!(
             error.detail(),
@@ -233,7 +245,9 @@ fn retained_hard_replacement_suppresses_an_otherwise_unrepresentable_positive_wb
     ] {
         let mut value = input("A\r\nA", WhiteSpace::Preserve, vec![wbr(2, operation)]);
         value.segment_breaks = DocumentSegmentBreaks::Defined(vec![Range::new(1, 3)]);
-        let a = AnalyzedSource::from_paragraph(value).unwrap();
+        let a =
+            AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
+                .unwrap();
         assert_eq!(
             a.processed_source().processed_text().code_units(),
             [0x41, 0xa, 0x41]
@@ -277,8 +291,11 @@ fn actual_forced_control_suppression_crosses_neutral_controls_but_not_an_optiona
                 .map(|kind| ParagraphControl { at: 1, kind }),
         );
         controls.push(wbr(1, WordSpaceTransform::Space));
-        let a =
-            AnalyzedSource::from_paragraph(input("AA", WhiteSpace::Preserve, controls)).unwrap();
+        let a = AnalyzedSource::from_paragraph(
+            input("AA", WhiteSpace::Preserve, controls),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         assert_eq!(a.inner.projection.text, expected);
         assert_eq!(a.source().text().code_units(), [0x41, 0x41]);
     }
@@ -287,11 +304,10 @@ fn actual_forced_control_suppression_crosses_neutral_controls_but_not_an_optiona
         (WhiteSpace::Preserve, "A\nA"),
         (WhiteSpace::PreserveSpaces, "A  A"),
     ] {
-        let a = AnalyzedSource::from_paragraph(input(
-            "A\nA",
-            mode,
-            vec![wbr(1, WordSpaceTransform::Space)],
-        ))
+        let a = AnalyzedSource::from_paragraph(
+            input("A\nA", mode, vec![wbr(1, WordSpaceTransform::Space)]),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap();
         assert_eq!(a.inner.projection.text, expected);
     }
@@ -362,8 +378,11 @@ fn contextual_event_order_retains_the_same_genuine_wbr_cut() {
         .unwrap(),
     );
     assert_eq!(processed.processed_text().code_units(), [0x41, 0x41]);
-    let a =
-        AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap()).unwrap();
+    let a = AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(a.source(), &source);
     assert_eq!(a.inner.projection.text, "A A");
     assert_eq!(plaintext(&a), [0x41, 0x41]);

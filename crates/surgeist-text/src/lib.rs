@@ -39,7 +39,7 @@ mod wrapping;
 
 #[cfg(feature = "text-accessibility")]
 pub use accessibility::Accessibility;
-pub use analyzed::{AnalysisIdentity, AnalyzedSource};
+pub use analyzed::{AnalysisIdentity, AnalysisTypography, AnalyzedSource};
 pub use cache::{FontGeneration, Key, OptionsKey, SourceKey, Stats, StyleKey};
 pub use catalogue::{FontCatalogueIdentity, FontCatalogueMode};
 pub use composer::{Composer, Mark, compose, source};

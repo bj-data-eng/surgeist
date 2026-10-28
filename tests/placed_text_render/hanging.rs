@@ -18,27 +18,30 @@ fn terminal_hanging_replay_reaches_paint_and_source_geometry_without_rewrapping(
         hanging_punctuation: text::HangingPunctuation::new(false, None, true),
         ..text::Style::default()
     };
-    let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-        source: source.clone(),
-        base_style: style.clone(),
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: text::ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: text::ParagraphStrut::DefaultFont,
-        terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        origins: vec![text::ParagraphOrigin {
+    let analyzed = text::AnalyzedSource::from_paragraph(
+        text::ParagraphInput {
             source: source.clone(),
-            local: text::Range::new(0, 5),
-            aggregate: text::Range::new(0, 5),
-            kind: text::ParagraphOriginKind::Authored,
-            text_node: None,
-        }],
-        connections: vec![],
-        controls: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-        anchor_order: vec![],
-    })
+            base_style: style.clone(),
+            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            origins: vec![text::ParagraphOrigin {
+                source: source.clone(),
+                local: text::Range::new(0, 5),
+                aggregate: text::Range::new(0, 5),
+                kind: text::ParagraphOriginKind::Authored,
+                text_node: None,
+            }],
+            connections: vec![],
+            controls: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: vec![],
+        },
+        text::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let policies = analyzed
         .wrapping_relations()

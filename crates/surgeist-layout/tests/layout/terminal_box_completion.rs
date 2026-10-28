@@ -168,9 +168,11 @@ impl<S: l::LayoutScalar> Fixture<S> {
             assert!(scope.entry_control().is_none());
             assert!(scope.exit_control().is_none());
         }
-        let analyzed =
-            t::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-                .unwrap();
+        let analyzed = t::AnalyzedSource::from_processed_paragraph(
+            processed.paragraphs().next().unwrap(),
+            t::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let policies = analyzed
             .wrapping_relations()
             .filter(|r| r.ancestor_wrap().is_none())

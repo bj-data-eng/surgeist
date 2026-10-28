@@ -53,6 +53,6 @@ assert!(!layout.glyph_runs().is_empty());
 
 `build()` validates inputs before shaping or looking up a cached layout. Keep the
 `System` when creating subsequent layouts to reuse its resource/plan scratch and cache. To analyze without fonts, construct
-`AnalyzedSource::new(source, style)` and retain it; a later
+`AnalyzedSource::new(source, style, AnalysisTypography::HorizontalComposition)` and retain it; a later
 `System::layout_analyzed(&analyzed, options)` uses that same analysis identity.
 Continue with [How-to](how-to.md) to add styles, inspect geometry, or edit text.

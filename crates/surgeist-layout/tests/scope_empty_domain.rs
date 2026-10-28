@@ -151,7 +151,11 @@ fn prepare() -> Vec<text::PreparedText> {
     processed
         .paragraphs()
         .map(|paragraph| {
-            let analyzed = text::AnalyzedSource::from_processed_paragraph(paragraph).unwrap();
+            let analyzed = text::AnalyzedSource::from_processed_paragraph(
+                paragraph,
+                text::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap();
             let policies = analyzed
                 .wrapping_relations()
                 .filter(|row| row.ancestor_wrap().is_none())
@@ -434,9 +438,11 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
         .unwrap(),
     );
     assert_eq!(processed.processed_text().len(), 0);
-    let analyzed =
-        text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-            .unwrap();
+    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let mut system = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,
     })

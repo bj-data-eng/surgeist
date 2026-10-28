@@ -283,9 +283,11 @@ fn prepare(input: text::ContextualSourceInput) -> Fixture {
         .map(|origin| origin.source.clone())
         .collect();
     let processed = Arc::new(text::process_contextual_source(input).unwrap());
-    let analyzed =
-        text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-            .unwrap();
+    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, Wrap::None);
     let mut system = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,

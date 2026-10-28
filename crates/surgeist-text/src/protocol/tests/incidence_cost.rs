@@ -118,7 +118,11 @@ fn prepare(
         .take(count)
         .map(|p| {
             assert!(Arc::ptr_eq(p.processed_source(), capture));
-            let a = AnalyzedSource::from_processed_paragraph(p).unwrap();
+            let a = AnalyzedSource::from_processed_paragraph(
+                p,
+                crate::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap();
             let policies = a
                 .wrapping_relations()
                 .filter(|r| r.ancestor_wrap().is_none())

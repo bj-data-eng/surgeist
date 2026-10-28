@@ -4,8 +4,11 @@
 use super::*;
 
 fn prepare_direct(processed: &Arc<t::ProcessedSource>) -> t::PreparedText {
-    let a = t::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-        .unwrap();
+    let a = t::AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        t::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let policies = a
         .wrapping_relations()
         .filter(|r| r.ancestor_wrap().is_none())

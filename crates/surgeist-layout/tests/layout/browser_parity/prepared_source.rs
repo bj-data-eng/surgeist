@@ -422,21 +422,24 @@ impl Capture {
             return Err(fail("incomplete original sequence"));
         }
         let base = style(&value["baseStyle"])?;
-        let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-            tab_reference: None,
-            source,
-            base_style: base,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: direction,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
-            origins,
-            connections,
-            controls,
-            boundary_policies: policies,
-            replacements: Vec::new(),
-            anchor_order: anchors,
-        })
+        let analyzed = text::AnalyzedSource::from_paragraph(
+            text::ParagraphInput {
+                terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+                tab_reference: None,
+                source,
+                base_style: base,
+                segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+                base_direction: direction,
+                paragraph_strut: text::ParagraphStrut::DefaultFont,
+                origins,
+                connections,
+                controls,
+                boundary_policies: policies,
+                replacements: Vec::new(),
+                anchor_order: anchors,
+            },
+            text::AnalysisTypography::HorizontalComposition,
+        )
         .map_err(|error| fail(error.to_string()))?;
         // Each origin captures one actual DOM text node's containing style.
         // It owns NCA permission only for a pair inside that same origin;

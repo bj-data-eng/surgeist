@@ -249,47 +249,53 @@ fn fixture(case: Case<'_>) -> Fixture {
             })
             .unwrap(),
         );
-        text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-            .unwrap()
+        text::AnalyzedSource::from_processed_paragraph(
+            processed.paragraphs().next().unwrap(),
+            text::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap()
     } else {
-        text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-            source,
-            base_style: style,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: direction,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
-            tab_reference: None,
-            origins,
-            connections: case
-                .forced_at
-                .map(|at| text::ParagraphConnection {
-                    at,
-                    kind: text::ParagraphConnectionKind::Continuous,
-                })
-                .into_iter()
-                .collect(),
-            controls,
-            boundary_policies: case
-                .forced_at
-                .map(|_| text::ParagraphBoundaryPolicy {
-                    definition: text::ParagraphBoundaryDefinition::Connection(0),
-                    preceding_wrap: case.wrap,
-                    following_wrap: case.wrap,
-                    ancestor_wrap: case.wrap,
-                })
-                .into_iter()
-                .collect(),
-            replacements: vec![],
-            anchor_order: case
-                .forced_at
-                .map(|_| text::ParagraphAnchor {
-                    item: text::ParagraphAnchorItem::Control(0),
-                    affinity: text::Affinity::Before,
-                })
-                .into_iter()
-                .collect(),
-        })
+        text::AnalyzedSource::from_paragraph(
+            text::ParagraphInput {
+                terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+                source,
+                base_style: style,
+                segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+                base_direction: direction,
+                paragraph_strut: text::ParagraphStrut::DefaultFont,
+                tab_reference: None,
+                origins,
+                connections: case
+                    .forced_at
+                    .map(|at| text::ParagraphConnection {
+                        at,
+                        kind: text::ParagraphConnectionKind::Continuous,
+                    })
+                    .into_iter()
+                    .collect(),
+                controls,
+                boundary_policies: case
+                    .forced_at
+                    .map(|_| text::ParagraphBoundaryPolicy {
+                        definition: text::ParagraphBoundaryDefinition::Connection(0),
+                        preceding_wrap: case.wrap,
+                        following_wrap: case.wrap,
+                        ancestor_wrap: case.wrap,
+                    })
+                    .into_iter()
+                    .collect(),
+                replacements: vec![],
+                anchor_order: case
+                    .forced_at
+                    .map(|_| text::ParagraphAnchor {
+                        item: text::ParagraphAnchorItem::Control(0),
+                        affinity: text::Affinity::Before,
+                    })
+                    .into_iter()
+                    .collect(),
+            },
+            text::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap()
     };
     let policies = analyzed
@@ -836,6 +842,7 @@ fn collapsed_sibling_space_permission_controls_actual_narrow_layout() {
             assert_eq!(processed.processed_text().code_units(), [88, 32, 89]);
             let analyzed = text::AnalyzedSource::from_processed_paragraph(
                 processed.paragraphs().next().unwrap(),
+                text::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             let bytes = font();

@@ -36,7 +36,11 @@ fn input(source: Source, white_space: WhiteSpace) -> crate::ParagraphInput {
 }
 
 fn paragraph(source: Source, white_space: WhiteSpace) -> AnalyzedSource {
-    AnalyzedSource::from_paragraph(input(source, white_space)).unwrap()
+    AnalyzedSource::from_paragraph(
+        input(source, white_space),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap()
 }
 
 #[test]
@@ -85,7 +89,9 @@ fn width_and_neutral_component_styles_preserve_connected_origin_mark_and_oof_cus
             affinity: crate::Affinity::After,
         },
     ];
-    let analyzed = AnalyzedSource::from_paragraph(i).unwrap();
+    let analyzed =
+        AnalyzedSource::from_paragraph(i, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     assert_eq!(analyzed.inner.projection.text, "Ａカ\u{3099}A");
     assert_eq!(analyzed.inner.analysis.graphemes, [0..1, 1..3, 3..4]);
     let map = &analyzed.inner.transform;
@@ -123,7 +129,12 @@ fn every_raw_wide_narrow_record_executes_once_in_its_declared_direction() {
         records.push((input, output));
         assert_eq!(super::super::width::map(input), Some(output));
         let source = Source::new(char::from_u32(input).unwrap().to_string());
-        let result = AnalyzedSource::new(source.clone(), style()).unwrap();
+        let result = AnalyzedSource::new(
+            source.clone(),
+            style(),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         assert_eq!(result.inner.projection.atoms[0].code_point, output);
         assert_eq!(
             result.inner.projection.atoms[0].source,
@@ -146,12 +157,22 @@ fn raw_width_is_not_recursive_compatibility_or_canonical_normalization() {
         ("\u{ff76}\u{ff9e}", "\u{30ab}\u{3099}"),
         ("Ａ\u{3000}²ﬀⅣÅ\u{1100}", "Ａ\u{3000}²ﬀⅣÅ\u{1100}"),
     ] {
-        let analyzed = AnalyzedSource::new(Source::new(input), style()).unwrap();
+        let analyzed = AnalyzedSource::new(
+            Source::new(input),
+            style(),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         assert_eq!(analyzed.inner.projection.text, expected);
         assert_eq!(analyzed.inner.projection.atoms.len(), input.chars().count());
     }
     let opaque = Source::new(Text::from_code_units(vec![0xd800, 0xfffd, 0xdc00, 0x41]));
-    let analyzed = AnalyzedSource::new(opaque.clone(), style()).unwrap();
+    let analyzed = AnalyzedSource::new(
+        opaque.clone(),
+        style(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(
         analyzed
             .inner
@@ -187,6 +208,7 @@ fn actual_case_then_width_then_kana_keep_each_original_emission_owner() {
                 ),
                 ..Style::default()
             },
+            crate::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(analyzed.inner.projection.text, expected);
@@ -213,11 +235,15 @@ fn actual_case_then_width_then_kana_keep_each_original_emission_owner() {
     let mut source = Source::new("ABC");
     source.span(Range::new(1, 2), Style::default());
     assert_eq!(
-        AnalyzedSource::new(source, style())
-            .unwrap()
-            .inner
-            .projection
-            .text,
+        AnalyzedSource::new(
+            source,
+            style(),
+            crate::AnalysisTypography::HorizontalComposition
+        )
+        .unwrap()
+        .inner
+        .projection
+        .text,
         "ＡBＣ"
     );
     for phase in [
@@ -262,7 +288,12 @@ fn only_executed_preserved_space_maps_and_raw_identity_remains_a_distinct_profil
         assert_eq!(result.inner.projection.text, expected);
         assert_eq!(result.source(), &source);
     }
-    let raw = AnalyzedSource::new(Source::new(" A "), style()).unwrap();
+    let raw = AnalyzedSource::new(
+        Source::new(" A "),
+        style(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(raw.processed_source().processed_text(), &Text::from(" A "));
     assert_eq!(raw.inner.projection.text, "\u{3000}Ａ\u{3000}");
     // Same original/processed text and Style width request, different actual

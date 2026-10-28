@@ -12,7 +12,7 @@ use crate::protocol::{
     prepared::{PreparedIndicationFonts, PreparedTables, SelectedMapping},
     selection::SelectedData,
 };
-use crate::{FontCatalogueIdentity, InlineBox, Point, Range};
+use crate::{AnalysisTypography, FontCatalogueIdentity, InlineBox, Point, Range};
 
 pub(crate) mod analysis;
 pub(crate) mod bidi;
@@ -54,6 +54,7 @@ impl std::ops::Deref for AnalyzedData {
 
 /// Executed source/Unicode data shared by distinct immutable wrapping contexts.
 pub(crate) struct AnalyzedCore {
+    pub(crate) typography: AnalysisTypography,
     pub(crate) scope_cuts: std::sync::OnceLock<
         std::result::Result<analysis::scope::ScopeCutIndex, analysis::scope::ScopeIndexCapacity>,
     >,
@@ -116,17 +117,31 @@ pub(crate) struct PlacedLine {
 pub(crate) fn analyze(
     source: crate::ValidatedSource,
     default_style: crate::ValidatedStyle,
+    typography: AnalysisTypography,
 ) -> crate::Result<Arc<AnalyzedData>> {
     let paragraph = ParagraphData::standalone(source.source());
     let processed =
         crate::processing::identity(source.source().clone(), default_style.authored().clone())?;
-    analyze_paragraph(Arc::new(processed), paragraph)
+    analyze_paragraph(Arc::new(processed), paragraph, typography)
 }
 
 pub(crate) fn analyze_paragraph(
     processed: Arc<crate::ProcessedSource>,
     paragraph: ParagraphData,
+    typography: AnalysisTypography,
 ) -> crate::Result<Arc<AnalyzedData>> {
+    // The captured paragraph base is already a used authority. Computed RTL
+    // belongs only to the separately retained typography input. The nearest
+    // block's tab reference is independent of paragraph bidi.
+    if typography.is_upright()
+        && paragraph.base_direction == Some(crate::ParagraphBaseDirection::RightToLeft)
+    {
+        return Err(crate::protocol::protocol_error(
+            crate::ProtocolError::MismatchedContext {
+                field: crate::ProtocolContextField::BaseDirection,
+            },
+        ));
+    }
     let (span_styles, default_style) = if paragraph.base_direction.is_some() {
         (
             crate::source_model::processed_span_styles(
@@ -184,8 +199,13 @@ pub(crate) fn analyze_paragraph(
     }
     let (projection, transform) =
         crate::transform::apply(projection, &mut styles, &processed, &paragraph)?;
-    let (analysis, words, direction) =
-        analysis::analyze(&projection, &styles, processed.source().boxes(), &paragraph)?;
+    let (analysis, words, direction) = analysis::analyze(
+        &projection,
+        &styles,
+        processed.source().boxes(),
+        &paragraph,
+        typography,
+    )?;
     let words = analysis::hyphenation::Words::new(&projection, &analysis.graphemes, words);
     let logical = analysis::wrapping::LogicalParagraph::new(
         &processed,
@@ -202,6 +222,7 @@ pub(crate) fn analyze_paragraph(
         .collect();
     Ok(Arc::new(AnalyzedData {
         core: Arc::new(AnalyzedCore {
+            typography,
             scope_cuts: std::sync::OnceLock::new(),
             processed,
             paragraph,
@@ -233,6 +254,14 @@ pub(crate) fn prepare(
     profile: PreparationProfile,
     scratch: &mut shape::ShapeContext,
 ) -> crate::Result<Arc<PreparedData>> {
+    if analyzed.typography.is_upright() && options.orientation() != crate::LineOrientation::Vertical
+    {
+        return Err(crate::protocol::protocol_error(
+            crate::ProtocolError::MismatchedContext {
+                field: crate::ProtocolContextField::Orientation,
+            },
+        ));
+    }
     match options.orientation() {
         crate::LineOrientation::Vertical => {
             return Err(crate::protocol::protocol_error(

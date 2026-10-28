@@ -166,7 +166,11 @@ fn fixture_empty<S: l::LayoutScalar>()
                     t::Range::new(2, 2)
                 }
             );
-            let a = t::AnalyzedSource::from_processed_paragraph(p).unwrap();
+            let a = t::AnalyzedSource::from_processed_paragraph(
+                p,
+                t::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap();
             let missing = a
                 .wrapping_relations()
                 .filter(|r| r.ancestor_wrap().is_none())

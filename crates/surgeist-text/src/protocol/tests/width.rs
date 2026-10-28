@@ -23,27 +23,30 @@ fn capture_with_breaks(
     segment_breaks: crate::DocumentSegmentBreaks,
 ) -> PreparedText {
     let len = source.text().len();
-    let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
-        source: source.clone(),
-        base_style: style,
-        paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        segment_breaks,
-        base_direction: ParagraphBaseDirection::LeftToRight,
-        origins: vec![paragraph::ParagraphOrigin {
-            text_node: None,
-            source,
-            local: Range::new(0, len),
-            aggregate: Range::new(0, len),
-            kind: paragraph::ParagraphOriginKind::Authored,
-        }],
-        connections: vec![],
-        controls: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-        anchor_order: vec![],
-    })
+    let analyzed = AnalyzedSource::from_paragraph(
+        ParagraphInput {
+            source: source.clone(),
+            base_style: style,
+            paragraph_strut: ParagraphStrut::DefaultFont,
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            segment_breaks,
+            base_direction: ParagraphBaseDirection::LeftToRight,
+            origins: vec![paragraph::ParagraphOrigin {
+                text_node: None,
+                source,
+                local: Range::new(0, len),
+                aggregate: Range::new(0, len),
+                kind: paragraph::ParagraphOriginKind::Authored,
+            }],
+            connections: vec![],
+            controls: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: vec![],
+        },
+        crate::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let mut system = System::new(SystemOptions {
         font_catalogue: FontCatalogueMode::RegisteredOnly,

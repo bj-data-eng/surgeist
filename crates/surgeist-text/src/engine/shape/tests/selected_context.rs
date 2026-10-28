@@ -23,37 +23,40 @@ fn selected_computed_beh(separate_instance: bool) -> Vec<(Range, u32, f32)> {
             },
         );
     }
-    let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        source: source.clone(),
-        base_style: style,
-        segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: ParagraphBaseDirection::RightToLeft,
-        paragraph_strut: ParagraphStrut::DefaultFont,
-        origins: vec![ParagraphOrigin {
-            text_node: None,
-            source,
-            local: Range::new(0, 6),
-            aggregate: Range::new(0, 6),
-            kind: ParagraphOriginKind::Authored,
-        }],
-        connections: vec![],
-        controls: vec![],
-        boundary_policies: vec![],
-        replacements: vec![
-            ParagraphReplacement::resolved_native_logical_before(
-                ParagraphReplacementDefinition::Source {
-                    origin: 0,
-                    source: Range::new(3, 4),
-                },
-                4,
-                vec!["\u{628}".into()],
-            )
-            .unwrap(),
-        ],
-        anchor_order: vec![],
-    })
+    let analyzed = AnalyzedSource::from_paragraph(
+        ParagraphInput {
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            source: source.clone(),
+            base_style: style,
+            segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: ParagraphBaseDirection::RightToLeft,
+            paragraph_strut: ParagraphStrut::DefaultFont,
+            origins: vec![ParagraphOrigin {
+                text_node: None,
+                source,
+                local: Range::new(0, 6),
+                aggregate: Range::new(0, 6),
+                kind: ParagraphOriginKind::Authored,
+            }],
+            connections: vec![],
+            controls: vec![],
+            boundary_policies: vec![],
+            replacements: vec![
+                ParagraphReplacement::resolved_native_logical_before(
+                    ParagraphReplacementDefinition::Source {
+                        origin: 0,
+                        source: Range::new(3, 4),
+                    },
+                    4,
+                    vec!["\u{628}".into()],
+                )
+                .unwrap(),
+            ],
+            anchor_order: vec![],
+        },
+        crate::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::Word);
     let fixture = crate::shaping_test_fonts::arabic_nonjoining_ahem();

@@ -131,7 +131,11 @@ fn native_prepare(system: &mut System, input: ParagraphInput) -> PreparedText {
     system
         .prepare(
             &crate::test_wrapping::bind_missing(
-                &AnalyzedSource::from_paragraph(input).unwrap(),
+                &AnalyzedSource::from_paragraph(
+                    input,
+                    crate::AnalysisTypography::HorizontalComposition,
+                )
+                .unwrap(),
                 crate::Wrap::Word,
             ),
             PreparationOptions::default(),
@@ -573,8 +577,11 @@ fn child_domain_hole_is_excluded_from_parent_joining_context() {
         ],
     };
     let processed = std::sync::Arc::new(process_contextual_source(capture).unwrap());
-    let parent =
-        AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap()).unwrap();
+    let parent = AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let mut system = arabic_system();
     let prepared = system
         .prepare(&parent, PreparationOptions::default())

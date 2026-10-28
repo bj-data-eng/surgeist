@@ -92,25 +92,28 @@ fn prepare(
         });
         offset += len;
     }
-    let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-        source: Source::identified(
-            original(definition, consecutive),
-            text::Id::from_u64(66199),
-            7,
-        ),
-        base_style: style,
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: text::ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: text::ParagraphStrut::DefaultFont,
-        terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        origins,
-        connections,
-        controls,
-        boundary_policies,
-        replacements: Vec::new(),
-        anchor_order: anchors,
-    })?;
+    let analyzed = text::AnalyzedSource::from_paragraph(
+        text::ParagraphInput {
+            source: Source::identified(
+                original(definition, consecutive),
+                text::Id::from_u64(66199),
+                7,
+            ),
+            base_style: style,
+            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            origins,
+            connections,
+            controls,
+            boundary_policies,
+            replacements: Vec::new(),
+            anchor_order: anchors,
+        },
+        text::AnalysisTypography::HorizontalComposition,
+    )?;
     let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::Word);
     let mut system = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,

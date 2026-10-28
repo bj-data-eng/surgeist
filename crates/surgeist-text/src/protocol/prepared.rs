@@ -1839,6 +1839,7 @@ pub(crate) fn prepare_indication_fonts(
             &analyzed.styles,
             analyzed.processed.source().boxes(),
             &analyzed.paragraph,
+            analyzed.typography,
         )?;
         for (atom, original) in original_atoms.iter().enumerate() {
             if let Some(original) = *original {

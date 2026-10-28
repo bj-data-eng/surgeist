@@ -24,7 +24,13 @@ See [contextual processing](docs/reference.md#contextual-source-processing).
 
 `Text` retains exact UTF-16 code units, and public source positions and ranges
 count those units. Edits can split or join surrogate pairs. `AnalyzedSource`
-retains original source and pre-font semantic analysis. `Style::word_space_transform`
+retains original source and pre-font semantic analysis. Its constructors take
+`AnalysisTypography::HorizontalComposition` for existing horizontal/sideways
+interpretation, or `Upright { computed_direction }` for [font-independent upright
+source analysis](docs/reference.md#source-typography-and-upright-analysis).
+Upright executes used-LTR bidi while retaining computed direction and genuine
+body/control custody; font preparation still has its own capability boundary.
+`Style::word_space_transform`
 replaces eligible original U+200B with SPACE or IDEOGRAPHIC SPACE using
 `WordSpaceTransform::{Space, IdeographicSpace}`; None is neutral. This runs after
 Phase I, followed by contextual casing, full-width and full-size-kana, before

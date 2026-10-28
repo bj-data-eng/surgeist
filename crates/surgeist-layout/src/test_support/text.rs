@@ -353,27 +353,30 @@ impl PreparedParagraph {
                 }
             }
         }
-        let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
-            terminal_edge: facts.terminal,
-            source: aggregate,
-            base_style,
-            segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: direction,
-            paragraph_strut: facts.strut,
-            tab_reference,
-            origins,
-            connections,
-            controls,
-            boundary_policies: boundaries,
-            replacements,
-            anchor_order: anchors
-                .into_iter()
-                .map(|item| ParagraphAnchor {
-                    item,
-                    affinity: Affinity::Before,
-                })
-                .collect(),
-        })
+        let analyzed = AnalyzedSource::from_paragraph(
+            ParagraphInput {
+                terminal_edge: facts.terminal,
+                source: aggregate,
+                base_style,
+                segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+                base_direction: direction,
+                paragraph_strut: facts.strut,
+                tab_reference,
+                origins,
+                connections,
+                controls,
+                boundary_policies: boundaries,
+                replacements,
+                anchor_order: anchors
+                    .into_iter()
+                    .map(|item| ParagraphAnchor {
+                        item,
+                        affinity: Affinity::Before,
+                    })
+                    .collect(),
+            },
+            surgeist_text::AnalysisTypography::HorizontalComposition,
+        )
         .expect("test supplies complete original paragraph facts");
         let analyzed = in_flat_wrapping_context(analyzed, ancestor_wrap);
         let mut system = System::new(SystemOptions {

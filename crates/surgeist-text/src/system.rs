@@ -238,7 +238,11 @@ impl Builder<'_> {
             return Ok(layout.clone());
         }
 
-        let analyzed = engine::analyze(validated_source, default_style)?;
+        let analyzed = engine::analyze(
+            validated_source,
+            default_style,
+            crate::AnalysisTypography::HorizontalComposition,
+        )?;
         self.system.place_analyzed(analyzed, key, validated_options)
     }
 }

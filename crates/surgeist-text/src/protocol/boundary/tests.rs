@@ -23,37 +23,40 @@ fn fixture_controls(controls: Vec<ParagraphControl>) -> PreparedText {
         .register_fonts(include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
         .unwrap();
     let source = Source::new("AB");
-    let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
-        source: source.clone(),
-        base_style: Style {
-            font: Font::new().family("Ahem"),
-            size: 10.0,
-            word_break: WordBreak::BreakAll,
-            ..Style::default()
+    let analyzed = AnalyzedSource::from_paragraph(
+        ParagraphInput {
+            source: source.clone(),
+            base_style: Style {
+                font: Font::new().family("Ahem"),
+                size: 10.0,
+                word_break: WordBreak::BreakAll,
+                ..Style::default()
+            },
+            segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: ParagraphStrut::DefaultFont,
+            terminal_edge: ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            origins: vec![ParagraphOrigin {
+                source,
+                local: crate::Range::new(0, 2),
+                aggregate: crate::Range::new(0, 2),
+                kind: ParagraphOriginKind::Authored,
+                text_node: None,
+            }],
+            connections: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: (0..controls.len())
+                .map(|control| ParagraphAnchor {
+                    item: ParagraphAnchorItem::Control(control),
+                    affinity: Affinity::Before,
+                })
+                .collect(),
+            controls,
         },
-        segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        origins: vec![ParagraphOrigin {
-            source,
-            local: crate::Range::new(0, 2),
-            aggregate: crate::Range::new(0, 2),
-            kind: ParagraphOriginKind::Authored,
-            text_node: None,
-        }],
-        connections: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-        anchor_order: (0..controls.len())
-            .map(|control| ParagraphAnchor {
-                item: ParagraphAnchorItem::Control(control),
-                affinity: Affinity::Before,
-            })
-            .collect(),
-        controls,
-    })
+        crate::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     system
         .prepare(

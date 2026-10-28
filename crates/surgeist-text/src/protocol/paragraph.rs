@@ -665,7 +665,12 @@ pub(crate) struct OriginIntersection {
 impl AnalyzedSource {
     /// Executes the captured source processing and analyzes its actual semantic
     /// input with the supplied paragraph base before font matching or shaping.
-    pub fn from_paragraph(input: ParagraphInput) -> Result<Self> {
+    /// Upright requires that already-resolved used base to be LTR; its separate
+    /// computed direction does not replace contradictory capture authority.
+    pub fn from_paragraph(
+        input: ParagraphInput,
+        typography: crate::AnalysisTypography,
+    ) -> Result<Self> {
         validate(&input)?;
         let ParagraphInput {
             terminal_edge,
@@ -717,7 +722,7 @@ impl AnalyzedSource {
             &paragraph,
         )?);
         Ok(Self::from_inner(crate::engine::analyze_paragraph(
-            processed, paragraph,
+            processed, paragraph, typography,
         )?))
     }
 }

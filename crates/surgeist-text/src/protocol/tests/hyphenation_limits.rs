@@ -49,7 +49,7 @@ fn input(source: Source, base_style: Style) -> ParagraphInput {
 }
 fn capture(system: &mut System, input: ParagraphInput) -> crate::Result<PreparedText> {
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(input)?,
+        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)?,
         crate::Wrap::Word,
     );
     system.prepare(&analyzed, PreparationOptions::default())
@@ -536,7 +536,12 @@ fn native_direct_analysis_consumes_custom_limits_while_raw_remains_unconstrained
         (limits(usize::MAX, usize::MAX, usize::MAX), false),
     ] {
         let style = own(minimum);
-        let analyzed = AnalyzedSource::new(source.clone(), style.clone()).unwrap();
+        let analyzed = AnalyzedSource::new(
+            source.clone(),
+            style.clone(),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let native = system
             .prepare(&analyzed, PreparationOptions::default())
             .unwrap();

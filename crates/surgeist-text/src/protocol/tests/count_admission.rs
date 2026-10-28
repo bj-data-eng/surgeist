@@ -54,7 +54,9 @@ fn prepare(mut input: ParagraphInput) -> PreparedText {
             ancestor_wrap: Wrap::Word,
         })
         .collect();
-    let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+    let analyzed =
+        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::Word);
     system()
         .prepare(&analyzed, PreparationOptions::default())
@@ -337,9 +339,11 @@ fn child_domain_hole_cannot_supply_or_remove_the_parent_words_counting_units() {
             ],
         };
         let processed = Arc::new(process_contextual_source(capture).unwrap());
-        let parent =
-            AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-                .unwrap();
+        let parent = AnalyzedSource::from_processed_paragraph(
+            processed.paragraphs().next().unwrap(),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let p = system()
             .prepare(&parent, PreparationOptions::default())
             .unwrap();
@@ -405,7 +409,9 @@ fn one_lexical_word_survives_a_real_registered_face_change() {
         },
     );
     value.origins[0].source = value.source.clone();
-    let analyzed = AnalyzedSource::from_paragraph(value).unwrap();
+    let analyzed =
+        AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::Word);
     let mut owner = system();
     owner.register_fonts(secondary.clone()).unwrap();

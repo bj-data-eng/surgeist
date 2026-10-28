@@ -175,9 +175,11 @@ fn computed_scope_before_keeps_original_receiving_caret_and_two_painted_lines() 
             side: text::SourceBoxSide::Before,
         }
     );
-    let analyzed =
-        text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-            .unwrap();
+    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())

@@ -22,31 +22,34 @@ fn native_visible_control(separator: u16, class: LineBreak, white_space: WhiteSp
         class
     );
     let source = original(separator);
-    let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        source: source.clone(),
-        base_style: Style {
-            white_space,
-            wrap: Wrap::Word,
-            ..style()
-        },
-        segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: ParagraphStrut::DefaultFont,
-        origins: vec![ParagraphOrigin {
-            text_node: None,
+    let analyzed = AnalyzedSource::from_paragraph(
+        ParagraphInput {
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
             source: source.clone(),
-            local: Range::new(0, 3),
-            aggregate: Range::new(0, 3),
-            kind: ParagraphOriginKind::Authored,
-        }],
-        connections: Vec::new(),
-        controls: Vec::new(),
-        boundary_policies: Vec::new(),
-        replacements: Vec::new(),
-        anchor_order: Vec::new(),
-    })
+            base_style: Style {
+                white_space,
+                wrap: Wrap::Word,
+                ..style()
+            },
+            segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: ParagraphStrut::DefaultFont,
+            origins: vec![ParagraphOrigin {
+                text_node: None,
+                source: source.clone(),
+                local: Range::new(0, 3),
+                aggregate: Range::new(0, 3),
+                kind: ParagraphOriginKind::Authored,
+            }],
+            connections: Vec::new(),
+            controls: Vec::new(),
+            boundary_policies: Vec::new(),
+            replacements: Vec::new(),
+            anchor_order: Vec::new(),
+        },
+        surgeist_text::AnalysisTypography::HorizontalComposition,
+    )
     .expect("the original control source is admitted");
     assert_eq!(analyzed.source(), &source);
     assert_eq!(

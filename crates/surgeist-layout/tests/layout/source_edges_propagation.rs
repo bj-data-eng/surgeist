@@ -569,9 +569,11 @@ fn run<S: l::LayoutScalar>(case: Case) {
     );
     assert_eq!(cause.source_position().get(), cut);
     assert!(processed.captured_computed_line_boundary(1).is_none());
-    let analyzed =
-        t::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-            .unwrap();
+    let analyzed = t::AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        t::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let missing = analyzed
         .wrapping_relations()
         .filter(|r| r.ancestor_wrap().is_none())

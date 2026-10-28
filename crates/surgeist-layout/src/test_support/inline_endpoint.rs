@@ -205,9 +205,11 @@ impl Fixture {
             })
             .unwrap(),
         );
-        let analyzed =
-            text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-                .unwrap();
+        let analyzed = text::AnalyzedSource::from_processed_paragraph(
+            processed.paragraphs().next().unwrap(),
+            text::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, Wrap::Word);
         let mut system = text::System::new(text::SystemOptions {
             font_catalogue: text::FontCatalogueMode::RegisteredOnly,

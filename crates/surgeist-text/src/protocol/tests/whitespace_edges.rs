@@ -43,7 +43,11 @@ fn prepare(system: &mut System, text: &str, whitespace: WhiteSpace) -> PreparedT
     system
         .prepare(
             &crate::test_wrapping::bind_missing(
-                &AnalyzedSource::from_paragraph(input).unwrap(),
+                &AnalyzedSource::from_paragraph(
+                    input,
+                    crate::AnalysisTypography::HorizontalComposition,
+                )
+                .unwrap(),
                 crate::Wrap::Word,
             ),
             PreparationOptions::default(),

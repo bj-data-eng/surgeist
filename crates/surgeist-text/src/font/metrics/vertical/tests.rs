@@ -805,6 +805,7 @@ fn querying_actual_run_instance_leaves_source_glyphs_carets_and_cache_unchanged(
             size: 10.0,
             ..Style::default()
         },
+        crate::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let options = Options {

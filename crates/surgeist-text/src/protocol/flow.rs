@@ -518,6 +518,7 @@ mod tests {
                 hanging_punctuation: crate::HangingPunctuation::new(true, None, true),
                 ..crate::Style::default()
             },
+            crate::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         system
@@ -692,6 +693,7 @@ mod tests {
                 word_break: crate::WordBreak::AutoPhrase,
                 ..crate::Style::default()
             },
+            crate::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let prepared = system
