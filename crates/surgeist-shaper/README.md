@@ -39,14 +39,21 @@ cargo doc --offline --locked -j 1 -p surgeist-shaper --no-deps
 cargo fmt -p surgeist-shaper -- --check
 ```
 
-The inherited lint settings remain in [Cargo.toml](Cargo.toml) and source;
-retaining them does not establish a newly classified Clippy baseline. The inherited
-`clippy::cargo` group checks metadata for the owning workspace, so strict provider
-Clippy also reports missing keywords/categories in other workspace packages. Public API
-audits are generated and checked by the [root audit owner](../../docs/how-to.md#check-public-api-audits).
+The inherited lint settings remain in [Cargo.toml](Cargo.toml) and source, with
+one workspace-scope adjustment below. All other settings and the unsafe
+prohibition remain unchanged; this does not establish a newly classified full
+Clippy baseline. Public API audits belong to the
+[root audit owner](../../docs/how-to.md#check-public-api-audits).
+
+| Lint | Scope | Class | Rationale |
+| --- | --- | --- | --- |
+| `cargo_common_metadata` | Shaper compilation | Disabled | This lint sweeps every workspace package without an own-package filter. Shaper does not own other crates' publication metadata. Its own description, license, repository, README, keywords and categories are present; each package retains ownership of its metadata. |
 
 The adjacent handwritten tests qualify maintained extensions using the existing
 [Text Ahem fixture](../surgeist-text/tests/fixtures/fonts/ahem/PROVENANCE.md).
 They do not establish comprehensive shaping coverage. Generated tables,
 machines and Unicode companion data retain their original identities and
 notices; source and generation commands are recorded in their headers.
+
+See the [coverage and qualification map](docs/coverage.md) for exercised behavior
+and current evidence limits.

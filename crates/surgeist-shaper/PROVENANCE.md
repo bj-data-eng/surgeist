@@ -26,7 +26,9 @@ The original [workspace manifest](upstream/Cargo.toml.orig) and
 provenance. The [pre-migration maintained manifest](upstream/Cargo.toml.maintained) records
 the former package identity. The active workspace manifest names `surgeist-shaper`
 0.1.0 and library `surgeist_shaper`, while retaining edition 2021, MSRV 1.85,
-production dependency requirements, public features and inherited lint settings.
+production dependency requirements and public features. Inherited lint settings
+remain except the explicitly scoped workspace-metadata adjustment documented in
+the [README](README.md#features-and-verification).
 Package-level `unsafe_code = "forbid"` also covers every compiled target.
 Benchmark-only dependencies and targets remain omitted. The root lockfile retains
 the previously resolved production versions. Qualification uses that shared

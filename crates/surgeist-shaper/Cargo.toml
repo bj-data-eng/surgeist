@@ -35,6 +35,7 @@ read-fonts = { version = "0.39.0", default-features = false, features = ["libm"]
 smallvec = "1.14"
 
 [lints.clippy]
+cargo_common_metadata = "allow"
 cast_lossless = "allow"
 cast_possible_truncation = "allow"
 cast_possible_wrap = "allow"
