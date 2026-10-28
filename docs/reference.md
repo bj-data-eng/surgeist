@@ -116,9 +116,11 @@ Every package keeps its existing artifact using its manifest-defined default
 features. The configured `surgeist-generator` CSS profile adds
 `api/crates/surgeist-generator.css-corpus.txt`, built with
 `--no-default-features --features css-corpus` and without `browser-corpus`.
-`--crate surgeist-generator` and `--all` select both generator artifacts; other
-packages keep their default profile. The CSS profile appears as
-`surgeist-generator [css-corpus]` in listings, headers, and stale diagnostics.
+Render's named profile adds `api/crates/surgeist-render.render-text.txt` with
+`--no-default-features --features render-text`. `--crate` selects the named
+package's default and configured companion profiles; `--all` includes both.
+Listings, headers and stale diagnostics identify the companions as
+`surgeist-generator [css-corpus]` and `surgeist-render [render-text]`.
 
 ## Verification Scope
 

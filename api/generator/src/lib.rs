@@ -84,6 +84,7 @@ pub struct ApiTarget {
 enum ApiProfile {
     Default,
     CssCorpus,
+    RenderText,
 }
 
 impl ApiTarget {
@@ -109,10 +110,20 @@ impl ApiTarget {
         }
     }
 
+    fn render_text(root: PathBuf, artifact: PathBuf) -> Self {
+        Self {
+            name: "surgeist-render".to_owned(),
+            root,
+            artifact,
+            profile: ApiProfile::RenderText,
+        }
+    }
+
     fn audit_name(&self) -> String {
         match self.profile {
             ApiProfile::Default => self.name.clone(),
             ApiProfile::CssCorpus => format!("{} [css-corpus]", self.name),
+            ApiProfile::RenderText => format!("{} [render-text]", self.name),
         }
     }
 
@@ -176,6 +187,12 @@ pub fn discover_targets(root: &Path) -> Result<Vec<ApiTarget>, String> {
                 crate_targets.push(ApiTarget::css_corpus(
                     path.clone(),
                     root.join("api/crates/surgeist-generator.css-corpus.txt"),
+                ));
+            }
+            if name == "surgeist-render" {
+                crate_targets.push(ApiTarget::render_text(
+                    path.clone(),
+                    root.join("api/crates/surgeist-render.render-text.txt"),
                 ));
             }
             crate_targets.push(ApiTarget::new(name, path, artifact));
@@ -285,6 +302,7 @@ pub fn generate_target_artifact(target: &ApiTarget) -> Result<String, String> {
     let builder = match target.profile {
         ApiProfile::Default => builder,
         ApiProfile::CssCorpus => builder.no_default_features(true).features(["css-corpus"]),
+        ApiProfile::RenderText => builder.no_default_features(true).features(["render-text"]),
     };
     let rustdoc_json = builder
         .build()
