@@ -50,6 +50,14 @@ pub(crate) struct RunMetrics {
 }
 
 impl RunMetrics {
+    /// Font-design-zero origin relative to the shared line reference, toward
+    /// line-under. Upright glyphs already use their separate Central basis.
+    pub(crate) const fn font_origin_offset(&self) -> f64 {
+        match self.basis {
+            RunMetricBasis::Horizontal(metrics) => metrics.font_origin_offset,
+            RunMetricBasis::Upright { .. } => 0.0,
+        }
+    }
     pub(crate) const fn horizontal(&self) -> Option<&HorizontalRunMetrics> {
         match &self.basis {
             RunMetricBasis::Horizontal(metrics) => Some(metrics),
@@ -77,10 +85,13 @@ impl Default for RunMetricBasis {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct HorizontalRunMetrics {
-    /// Distance from baseline to the underline's top, positive upward.
+    /// Signed local line-under displacement from the shared reference to the
+    /// actual font-design-zero paint origin.
+    pub(crate) font_origin_offset: f64,
+    /// Distance from the prepared reference to the underline's top, positive upward.
     pub(crate) underline_top: f64,
     pub(crate) underline_thickness: f64,
-    /// Distance from baseline to the strike center, positive upward.
+    /// Distance from the prepared reference to the strike center, positive upward.
     pub(crate) strike_center: f64,
     pub(crate) strike_thickness: f64,
 }
@@ -196,6 +207,9 @@ pub(crate) struct FinalizedRun {
     pub(crate) source: Range,
     pub(crate) glyphs: IndexRange<usize>,
     pub(crate) x: f64,
+    /// Checked font origin in local line-under coordinates; the common
+    /// alignment reference remains in LineMetrics::baseline.
+    pub(crate) y: f64,
     pub(crate) advance: f64,
 }
 

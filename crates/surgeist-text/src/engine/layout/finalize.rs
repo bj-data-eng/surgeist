@@ -380,6 +380,17 @@ pub(super) fn finalize(
                                     glyph_x,
                                     glyph_pen,
                                 )?,
+                                y: add(
+                                    "paint font origin",
+                                    TextNumericPhase::Finalization,
+                                    metrics.baseline,
+                                    shaped.runs[cluster
+                                        .content
+                                        .font_run()
+                                        .expect("provider glyph owns its font")]
+                                    .metrics
+                                    .font_origin_offset(),
+                                )?,
                                 advance: 0.0,
                             });
                             last_run = Some(index);
@@ -487,6 +498,12 @@ pub(super) fn finalize(
                 source,
                 glyphs: 0..0,
                 x: metrics.offset,
+                y: add(
+                    "empty paint font origin",
+                    TextNumericPhase::Finalization,
+                    metrics.baseline,
+                    shaped.runs[run_index].metrics.font_origin_offset(),
+                )?,
                 advance: 0.0,
             });
         }
@@ -2112,6 +2129,7 @@ fn same_paint_font(a: &PreparedRun, b: &PreparedRun) -> bool {
         && a.font_attrs == b.font_attrs
         && a.synthesis == b.synthesis
         && a.coords == b.coords
+        && a.metrics.font_origin_offset() == b.metrics.font_origin_offset()
 }
 
 #[cfg(test)]

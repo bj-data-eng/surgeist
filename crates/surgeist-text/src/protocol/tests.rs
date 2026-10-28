@@ -33,6 +33,7 @@ mod sideways;
 mod tab_stops;
 mod upright;
 mod upright_shaping;
+mod used_baselines;
 mod vertical_metrics_orientation;
 mod wbr;
 mod whitespace_edges;

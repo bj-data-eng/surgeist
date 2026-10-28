@@ -493,10 +493,12 @@ where
         })
         .transpose()?;
     if let Some(binding) = text_binding {
-        let central = constants.inline_baseline_context
-            == crate::InlineBaselineContext::Named(crate::BaselineName::Central)
-            && crate::text_layout::run::native_upright(&binding.prepared, constants.flow_axes);
-        if constants.inline_baseline_context != crate::InlineBaselineContext::Physical && !central {
+        let named = crate::text_layout::run::named_baseline(
+            &binding.prepared,
+            constants.flow_axes,
+            constants.inline_baseline_context,
+        );
+        if constants.inline_baseline_context != crate::InlineBaselineContext::Physical && !named {
             return Err(LayoutErrorOf::new(
                 LayoutErrorSiteOf::Node(container),
                 LayoutOperation::TextCapture,

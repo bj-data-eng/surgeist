@@ -475,16 +475,42 @@ pub(crate) fn text_orientation(
     }
 }
 
-/// Authority comes from this actual producer profile and its consuming frame.
-pub(crate) fn native_upright(prepared: &surgeist_text::PreparedText, axes: FlowAxes) -> bool {
-    matches!(
-        axes.writing_mode(),
-        crate::WritingMode::VerticalRl | crate::WritingMode::VerticalLr
-    ) && prepared.orientation() == LineOrientation::Vertical
-        && matches!(
-            prepared.analyzed_source().typography(),
-            surgeist_text::AnalysisTypography::Upright { .. }
-        )
+/// One authority rule for admission and named output. Physical consumption
+/// never asserts a name, even when the actual preparation uses one.
+pub(crate) fn named_baseline(
+    prepared: &surgeist_text::PreparedText,
+    axes: FlowAxes,
+    context: crate::InlineBaselineContext,
+) -> bool {
+    match (context, prepared.baseline_reference()) {
+        (
+            crate::InlineBaselineContext::Named(crate::BaselineName::Central),
+            Some(surgeist_text::FontBaseline::Central),
+        ) => {
+            matches!(
+                axes.writing_mode(),
+                crate::WritingMode::VerticalRl | crate::WritingMode::VerticalLr
+            ) && prepared.orientation() == LineOrientation::Vertical
+                && matches!(
+                    prepared.analyzed_source().typography(),
+                    surgeist_text::AnalysisTypography::Upright { .. }
+                )
+        }
+        (
+            crate::InlineBaselineContext::Named(crate::BaselineName::Alphabetic),
+            Some(surgeist_text::FontBaseline::Alphabetic),
+        ) => {
+            matches!(
+                prepared.analyzed_source().typography(),
+                surgeist_text::AnalysisTypography::HorizontalComposition
+            ) && matches!(
+                prepared.orientation(),
+                LineOrientation::Horizontal | LineOrientation::Sideways
+            ) && text_orientation(axes.writing_mode(), prepared)
+                .is_ok_and(|orientation| orientation == prepared.orientation())
+        }
+        _ => false,
+    }
 }
 
 /// Adapter-local coordinates belong to the fitter; these anchors and rectangles
@@ -1446,9 +1472,11 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
 ) -> Result<Output<Node, S>, FitError> {
     let frame = context.line_frame(origin);
     let orientation = frame.orientation();
-    let named_central = native_upright(&binding.prepared, context.axes)
-        && context.inline_baseline_context
-            == crate::InlineBaselineContext::Named(crate::BaselineName::Central);
+    let named = named_baseline(
+        &binding.prepared,
+        context.axes,
+        context.inline_baseline_context,
+    );
     let mut report = MixedInlineRunReportOf {
         inline_baseline_context: context.inline_baseline_context,
         first_named_baseline: false,
@@ -1676,8 +1704,8 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         });
         report.first_baseline.get_or_insert(number(local_baseline)?);
         report.last_baseline = Some(number(local_baseline)?);
-        report.first_named_baseline |= named_central;
-        report.last_named_baseline = named_central;
+        report.first_named_baseline |= named;
+        report.last_named_baseline = named;
         report.block_extent = report.block_extent.max(number(line.flow.next)?);
         report.inline_extent = report.inline_extent.max(number(
             line.inline_start

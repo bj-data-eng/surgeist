@@ -8,6 +8,9 @@ use std::convert::Infallible;
 
 use surgeist::{layout, render, text};
 
+#[path = "placed_text_render/used_alphabetic.rs"]
+mod used_alphabetic;
+
 #[path = "placed_text_render/casing.rs"]
 mod casing_transform;
 

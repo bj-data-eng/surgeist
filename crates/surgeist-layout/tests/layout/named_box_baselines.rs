@@ -3,6 +3,7 @@ mod atomic_margin_edges;
 mod atomic_receivers;
 mod sideways_atomics;
 mod upright;
+mod used_alphabetic;
 
 use std::{cell::Cell, convert::Infallible, slice, sync::Arc};
 use surgeist_layout as l;
