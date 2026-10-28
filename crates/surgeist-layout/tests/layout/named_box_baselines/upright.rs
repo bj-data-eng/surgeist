@@ -2,6 +2,7 @@
 //! Font sides2/2 are genuine. The separately supplied line strut8/2 establishes
 //! finalized B8/H10, distinguishing line-over from vertical block progression.
 use super::*;
+mod constraints;
 mod supplemental;
 
 const AHEM: &[u8] = include_bytes!(concat!(

@@ -248,7 +248,7 @@ fn intrinsic_and_auto<S: l::LayoutScalar>() {
             let binding = attach(&mut host, 0, &fixture);
             let batch = solve(
                 &host,
-                &[binding.clone()],
+                std::slice::from_ref(&binding),
                 l::Size::new(l::AvailableOf::MAX_CONTENT, inline),
                 &[],
             )
@@ -281,7 +281,7 @@ fn intrinsic_and_auto<S: l::LayoutScalar>() {
             let binding = attach(&mut host, 0, &fixture);
             let batch = solve(
                 &host,
-                &[binding.clone()],
+                std::slice::from_ref(&binding),
                 l::Size::new(
                     if finite {
                         l::AvailableOf::definite(n(40.0))
@@ -343,7 +343,13 @@ fn insets_and_direction<S: l::LayoutScalar>() {
             };
             let mut host = Host::<S>::new(input);
             let binding = attach(&mut host, 0, &fixture);
-            let batch = solve(&host, &[binding.clone()], available(50.0, 17.0), &[]).unwrap();
+            let batch = solve(
+                &host,
+                std::slice::from_ref(&binding),
+                available(50.0, 17.0),
+                &[],
+            )
+            .unwrap();
             assert_eq!(
                 node(batch.unrounded_entries(), 0).size,
                 l::Size::new(n(50.0), n(17.0))
@@ -382,7 +388,13 @@ fn fractional_translation<S: l::LayoutScalar>() {
         child.size = l::Size::new(px(40.0), px(4.0));
         let container = host.push(Some(0), l::LayoutInputOf::box_input(child));
         let binding = attach(&mut host, container, &fixture);
-        let batch = solve(&host, &[binding.clone()], available(100.0, 100.0), &[]).unwrap();
+        let batch = solve(
+            &host,
+            std::slice::from_ref(&binding),
+            available(100.0, 100.0),
+            &[],
+        )
+        .unwrap();
         assert_eq!(
             node(batch.unrounded_entries(), container).location,
             l::Point::new(n(7.25), n(9.5))
@@ -491,7 +503,13 @@ fn cache_and_frame_change<S: l::LayoutScalar>() {
             },
             0.0,
         );
-        let cold = solve(&host, &[binding.clone()], available(40.0, 4.0), &[]).unwrap();
+        let cold = solve(
+            &host,
+            std::slice::from_ref(&binding),
+            available(40.0, 4.0),
+            &[],
+        )
+        .unwrap();
         assert_frame(
             &cold,
             &binding,
@@ -509,7 +527,13 @@ fn cache_and_frame_change<S: l::LayoutScalar>() {
         cold.apply_to(&mut host).unwrap();
         assert_eq!((host.prepares.get(), host.commits), (1, 1));
         let hits = host.hits[leaf as usize].get();
-        let warm = solve(&host, &[binding.clone()], available(40.0, 4.0), &[]).unwrap();
+        let warm = solve(
+            &host,
+            std::slice::from_ref(&binding),
+            available(40.0, 4.0),
+            &[],
+        )
+        .unwrap();
         assert!(
             host.hits[leaf as usize].get() > hits,
             "eligible numeric sibling actually reuses its geometry cache"
@@ -526,7 +550,13 @@ fn cache_and_frame_change<S: l::LayoutScalar>() {
         assert_eq!(semantic(&cold), semantic(&warm));
         warm.apply_to(&mut host).unwrap();
         host.change(0, |input| input.size.height = px(8.0));
-        let changed = solve(&host, &[binding.clone()], available(40.0, 8.0), &[0]).unwrap();
+        let changed = solve(
+            &host,
+            std::slice::from_ref(&binding),
+            available(40.0, 8.0),
+            &[0],
+        )
+        .unwrap();
         let c = centers[0];
         assert_frame(
             &changed,
@@ -543,8 +573,13 @@ fn cache_and_frame_change<S: l::LayoutScalar>() {
         );
         assert_named(&changed, binding.container, [2.0, 2.0]);
         let (fresh, fresh_binding, fresh_leaf) = replay_host::<S>(mode, 8.0, &fixture);
-        let fresh_batch =
-            solve(&fresh, &[fresh_binding.clone()], available(40.0, 8.0), &[]).unwrap();
+        let fresh_batch = solve(
+            &fresh,
+            std::slice::from_ref(&fresh_binding),
+            available(40.0, 8.0),
+            &[],
+        )
+        .unwrap();
         assert_frame(
             &fresh_batch,
             &fresh_binding,
@@ -596,13 +631,25 @@ fn refusals_preserve_publication<S: l::LayoutScalar>() {
     input.size = l::Size::new(px(40.0), px(4.0));
     let mut host = Host::<S>::new(input);
     let binding = attach(&mut host, 0, &fixture);
-    let old = solve(&host, &[binding.clone()], available(40.0, 4.0), &[]).unwrap();
+    let old = solve(
+        &host,
+        std::slice::from_ref(&binding),
+        available(40.0, 4.0),
+        &[],
+    )
+    .unwrap();
     old.apply_to(&mut host).unwrap();
     let published_nodes = semantic(host.published.batch.as_ref().unwrap());
     host.change(0, |input| {
         input.inline_baseline_context = l::InlineBaselineContext::Named(l::BaselineName::Alphabetic)
     });
-    let error = solve(&host, &[binding.clone()], available(40.0, 4.0), &[0]).unwrap_err();
+    let error = solve(
+        &host,
+        std::slice::from_ref(&binding),
+        available(40.0, 4.0),
+        &[0],
+    )
+    .unwrap_err();
     assert_eq!(error.site(), l::LayoutErrorSiteOf::Node(0));
     assert_eq!(error.operation(), l::LayoutOperation::TextCapture);
     assert!(matches!(
@@ -620,7 +667,13 @@ fn refusals_preserve_publication<S: l::LayoutScalar>() {
             input.inline_baseline_context = l::InlineBaselineContext::Physical;
             input.writing_mode = mode;
         });
-        let error = solve(&host, &[binding.clone()], available(40.0, 4.0), &[0]).unwrap_err();
+        let error = solve(
+            &host,
+            std::slice::from_ref(&binding),
+            available(40.0, 4.0),
+            &[0],
+        )
+        .unwrap_err();
         assert_eq!(error.site(), l::LayoutErrorSiteOf::Node(0));
         if mode == l::WritingMode::SidewaysLr {
             assert_eq!(error.operation(), l::LayoutOperation::TextCapture);
@@ -742,7 +795,13 @@ fn interaction_and_scroll<S: l::LayoutScalar>() {
             l::ComputedOverflow::try_new(l::Overflow::Auto, l::Overflow::Auto).unwrap();
         let mut host = Host::<S>::new(input);
         let binding = attach(&mut host, 0, &fixture);
-        let narrow = solve(&host, &[binding.clone()], available(12.0, 4.0), &[]).unwrap();
+        let narrow = solve(
+            &host,
+            std::slice::from_ref(&binding),
+            available(12.0, 4.0),
+            &[],
+        )
+        .unwrap();
         let expected_centers = if mode == l::WritingMode::VerticalRl {
             [4.0, -6.0]
         } else {
