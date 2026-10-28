@@ -13,7 +13,7 @@ subset; it does not establish complete support for all CSS syntax.
 | --- | --- | --- |
 | `CssParser::new(context, component_limits)` | Default features | The configuration every source-text front takes first: a grammar context and the component limits |
 | `CssParser::parse_sheet(source)` | Default features | `CssParseReport<CssSheet>` |
-| `CssDecodedStylesheetInput::decode(bytes, hints, limits)` | Default features | `Result<CssDecodedStylesheetInput, CssInputDecodeError>`, atomic bounded byte decoding |
+| `CssDecodedStylesheetInput::decode(bytes, hints, limits)` | Default features | `Result<CssDecodedStylesheetInput, CssInputDecodeError>`, atomic bounded byte decoding; `hints` and `limits` are `surgeist_css_parser::input::{DecodeHints, DecodeLimits}` |
 | `CssParser::parse_sheet_bytes(&input)` | Default features | `CssParseReport<CssSheet>` using the exact decoded snapshot |
 | `CssParseReport<CssSheet>::with_location(location)` | Default features | The same report with an optional symbolic location |
 | `CssParser::parse_block_contents(source)` | Default features | `CssParseReport<CssDeclarationList>`: Syntax 3 2026 block contents for style attributes, `cssText` and raw lists |
@@ -38,9 +38,10 @@ subset; it does not establish complete support for all CSS syntax.
 The [manifest](../Cargo.toml) declares package `surgeist-css`, library
 `surgeist_css`, version `0.1.0`, Rust edition 2024, and no default features.
 Clean-report validation is always available. Production dependencies are pinned to
-`cssparser = 0.37.0`, `encoding_rs = 0.8.35` (default `alloc`) and
-`unicode-segmentation = 1.13.3`; test-only JSON support uses
-`serde = 1.0.228` and `serde_json = 1.0.145`.
+`cssparser = 0.37.0` and `unicode-segmentation = 1.13.3`, beside the path
+dependencies on `surgeist-color` and `surgeist-css-parser` (which decodes style
+sheet bytes); test-only JSON support uses `serde = 1.0.228` and
+`serde_json = 1.0.145`.
 
 `CssParser::parse_sheet` receives decoded Unicode text. A leading U+FEFF is preserved as
 identifier content, just like an interior U+FEFF. For byte streams, first use
@@ -66,7 +67,7 @@ CR, FF, CRLF and NUL remain in the snapshot for the existing tokenizer to filter
 An inferred charset prefix remains in decoded text and passes through the current
 string sheet grammar; decoding does not strip it or certify charset admission.
 
-`CssStylesheetDecodeLimits` bounds original bytes and decoded UTF-8 bytes
+`surgeist_css_parser::input::DecodeLimits` bounds original bytes and decoded UTF-8 bytes
 independently. Defaults follow component-input length policy, with no extra
 finite cap. Limit and checked-capacity failures return no partial input.
 `CssSheet::location()` is null by default. `CssStylesheetLocation` preserves

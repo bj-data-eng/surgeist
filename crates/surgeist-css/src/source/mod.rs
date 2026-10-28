@@ -26,10 +26,7 @@ pub use source_retention::{
     CssSourceRetentionError, CssSourceRetentionResource,
 };
 #[doc(inline)]
-pub use stylesheet_input::{
-    CssDecodedStylesheetInput, CssEncoding, CssEncodingSelection, CssInputDecodeError,
-    CssStylesheetDecodeHints, CssStylesheetDecodeLimits, CssStylesheetLocation,
-};
+pub use stylesheet_input::{CssDecodedStylesheetInput, CssInputDecodeError, CssStylesheetLocation};
 #[doc(inline)]
 pub use utf16_declaration_block::CssDeclarationBlockParseReport;
 #[doc(inline)]

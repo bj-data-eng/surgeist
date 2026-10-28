@@ -6063,12 +6063,6 @@ pub fn surgeist_css::serialization::serialize_css_identifier(value: &str, limits
 pub fn surgeist_css::serialization::serialize_css_string(value: &str, limits: surgeist_css::serialization::CssSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::serialization::CssSerializationError>
 pub fn surgeist_css::serialization::serialize_css_whitespace_separated_list(items: &[&str], limits: surgeist_css::serialization::CssSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::serialization::CssSerializationError>
 pub mod surgeist_css::source
-#[non_exhaustive] pub enum surgeist_css::source::CssEncodingSelection
-pub surgeist_css::source::CssEncodingSelection::ByteOrderMark
-pub surgeist_css::source::CssEncodingSelection::CharsetPrefix
-pub surgeist_css::source::CssEncodingSelection::DefaultUtf8
-pub surgeist_css::source::CssEncodingSelection::Environment
-pub surgeist_css::source::CssEncodingSelection::Protocol
 pub enum surgeist_css::source::CssSourceRetentionAction
 pub surgeist_css::source::CssSourceRetentionAction::Scratch
 pub surgeist_css::source::CssSourceRetentionAction::Scratch::live_bytes: usize
@@ -6111,18 +6105,14 @@ impl surgeist_css::source::CssRetainedSources for surgeist_css::source::CssDecla
 pub fn surgeist_css::source::CssDeclarationBlockParseReport::visit_retained_sources(&self, sources: &mut surgeist_css::source::CssSourceRetention<'_>) -> core::result::Result<(), surgeist_css::source::CssSourceRetentionError>
 pub struct surgeist_css::source::CssDecodedStylesheetInput(_)
 impl surgeist_css::source::CssDecodedStylesheetInput
-pub fn surgeist_css::source::CssDecodedStylesheetInput::decode(bytes: &[u8], hints: surgeist_css::source::CssStylesheetDecodeHints<'_>, limits: surgeist_css::source::CssStylesheetDecodeLimits) -> core::result::Result<Self, surgeist_css::source::CssInputDecodeError>
+pub fn surgeist_css::source::CssDecodedStylesheetInput::decode(bytes: &[u8], hints: surgeist_css_parser::input::decode::DecodeHints<'_>, limits: surgeist_css_parser::input::decode::DecodeLimits) -> core::result::Result<Self, surgeist_css::source::CssInputDecodeError>
 impl surgeist_css::source::CssDecodedStylesheetInput
-pub fn surgeist_css::source::CssDecodedStylesheetInput::encoding(&self) -> surgeist_css::source::CssEncoding
+pub fn surgeist_css::source::CssDecodedStylesheetInput::encoding(&self) -> surgeist_css_parser::input::decode::Encoding
 pub fn surgeist_css::source::CssDecodedStylesheetInput::had_replacements(&self) -> bool
 pub fn surgeist_css::source::CssDecodedStylesheetInput::original_bytes(&self) -> &[u8]
 pub fn surgeist_css::source::CssDecodedStylesheetInput::same_input(&self, other: &Self) -> bool
-pub fn surgeist_css::source::CssDecodedStylesheetInput::selection(&self) -> surgeist_css::source::CssEncodingSelection
+pub fn surgeist_css::source::CssDecodedStylesheetInput::selection(&self) -> surgeist_css_parser::input::decode::EncodingSelection
 pub fn surgeist_css::source::CssDecodedStylesheetInput::source(&self) -> &surgeist_css::source::CssSourceSnapshot
-pub struct surgeist_css::source::CssEncoding(_)
-impl surgeist_css::source::CssEncoding
-pub fn surgeist_css::source::CssEncoding::for_label(label: &str) -> core::option::Option<Self>
-pub fn surgeist_css::source::CssEncoding::name(self) -> &'static str
 pub struct surgeist_css::source::CssInputDecodeError
 impl surgeist_css::source::CssInputDecodeError
 pub const fn surgeist_css::source::CssInputDecodeError::is_allocation_failure(&self) -> bool
@@ -6208,16 +6198,6 @@ impl surgeist_css::source::CssSourceStorageUsage
 pub fn surgeist_css::source::CssSourceStorageUsage::checked_add(self, other: Self) -> core::option::Option<Self>
 pub const fn surgeist_css::source::CssSourceStorageUsage::retained_bytes(self) -> usize
 pub fn surgeist_css::source::CssSourceStorageUsage::validate(self, maximum: usize) -> bool
-pub struct surgeist_css::source::CssStylesheetDecodeHints<'a>
-pub surgeist_css::source::CssStylesheetDecodeHints::environment_encoding: core::option::Option<surgeist_css::source::CssEncoding>
-pub surgeist_css::source::CssStylesheetDecodeHints::protocol_label: core::option::Option<&'a str>
-pub struct surgeist_css::source::CssStylesheetDecodeLimits
-impl surgeist_css::source::CssStylesheetDecodeLimits
-pub const fn surgeist_css::source::CssStylesheetDecodeLimits::max_decoded_utf8_bytes(self) -> usize
-pub const fn surgeist_css::source::CssStylesheetDecodeLimits::max_original_bytes(self) -> usize
-pub const fn surgeist_css::source::CssStylesheetDecodeLimits::new(original_bytes: usize, decoded_utf8_bytes: usize) -> Self
-impl core::default::Default for surgeist_css::source::CssStylesheetDecodeLimits
-pub fn surgeist_css::source::CssStylesheetDecodeLimits::default() -> Self
 pub struct surgeist_css::source::CssStylesheetLocation(_)
 impl surgeist_css::source::CssStylesheetLocation
 pub fn surgeist_css::source::CssStylesheetLocation::as_str(&self) -> &str

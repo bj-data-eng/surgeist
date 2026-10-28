@@ -1,9 +1,8 @@
 use std::sync::Arc;
 use surgeist_css::rule::CssSheet;
-use surgeist_css::source::{
-    CssDecodedStylesheetInput, CssStylesheetDecodeHints, CssUtf16InputLimits, CssUtf16Resource,
-};
+use surgeist_css::source::{CssDecodedStylesheetInput, CssUtf16InputLimits, CssUtf16Resource};
 use surgeist_css::{CssParseReport, CssParser, CssParserContext, CssParserMode};
+use surgeist_css_parser::input::DecodeHints;
 
 fn parse(units: Vec<u16>) -> CssParseReport<CssSheet> {
     CssParser::default()
@@ -77,7 +76,7 @@ fn real_utf8_parses_are_qualified_and_equality_ignores_qualification() {
     assert!(CssSheet::new().parse_source().is_none());
     let decoded = CssDecodedStylesheetInput::decode(
         b"/* decoded */",
-        CssStylesheetDecodeHints::default(),
+        DecodeHints::default(),
         Default::default(),
     )
     .unwrap();

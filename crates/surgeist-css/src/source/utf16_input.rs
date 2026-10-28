@@ -1,8 +1,13 @@
 //! General UTF16 CSS input, CSS Syntax preprocessing and provenance.
 use crate::CssParserContext;
 use crate::source::CssSourceSnapshot;
+use std::cell::{Cell, RefCell};
 use std::sync::Arc;
-use surgeist_css_parser::input::{InputCursor, InputKind, InputRequest};
+use surgeist_css_parser::input::{
+    PreprocessError, PreprocessLimits, PreprocessResource, Preprocessed, SourceMap,
+    preprocess_utf16,
+};
+use surgeist_css_parser::limits::{Failure, Meter, Refused};
 
 /// Owner-issued complete CSS parse input and its actual parser context.
 #[derive(Clone, Debug)]
@@ -28,7 +33,7 @@ impl CssParseSource {
 
 pub(crate) struct Utf16Source {
     pub(crate) original: Arc<Vec<u16>>,
-    pub(crate) map: Vec<(usize, usize)>,
+    pub(crate) map: SourceMap,
 }
 
 /// Independent finite preparation limits. Grammar execution retains its existing
@@ -380,47 +385,6 @@ impl<E> Preparation<'_, E> {
         self.released(old + header);
         Ok(())
     }
-    fn grow_string(
-        &mut self,
-        value: &mut String,
-        capacity: usize,
-    ) -> Result<(), CssUtf16InputError<E>> {
-        if capacity <= value.capacity() {
-            return Ok(());
-        }
-        let header = std::mem::size_of::<String>();
-        let prospective = capacity
-            .checked_add(header)
-            .ok_or_else(CssUtf16InputError::capacity_overflow)?;
-        self.add(prospective)?;
-        let mut next = String::new();
-        if next.try_reserve_exact(capacity).is_err() {
-            drop(next);
-            self.released(prospective);
-            return Err(CssUtf16InputError::allocation());
-        }
-        let actual = next.capacity();
-        if actual > capacity
-            && let Err(error) = self.add(actual - capacity)
-        {
-            drop(next);
-            self.released(prospective);
-            return Err(error);
-        }
-        for point in value.chars() {
-            if let Err(error) = self.step() {
-                drop(next);
-                self.released(actual + header);
-                return Err(error);
-            }
-            next.push(point);
-        }
-        let old = std::mem::replace(value, next);
-        let old_capacity = old.capacity();
-        drop(old);
-        self.released(old_capacity + header);
-        Ok(())
-    }
 }
 
 fn with_prepared<E, T>(
@@ -472,18 +436,25 @@ fn with_prepared<E, T>(
     result
 }
 
-fn prepare_owned<E>(
-    original: Arc<Vec<u16>>,
+/// Splits the host's limits into the ones the parser crate's preprocessing
+/// enforces, checking first what only the host can see.
+///
+/// The original units are the host's, not the function's: refusing them with
+/// [`CssUtf16Resource::RetainedBytes`] when twice the original capacity alone
+/// exceeds the retained limit, and leaving the function the rest of that limit,
+/// keeps every later check equal to a check of the sum. The function's scratch
+/// is the cursor; the host's is the source position it holds beside it.
+fn preprocess_limits<E>(
+    original: &[u16],
+    capacity: usize,
     limits: CssUtf16InputLimits,
-    control: &mut Preparation<'_, E>,
-) -> Result<CssSourceSnapshot, CssUtf16InputError<E>> {
+) -> Result<(PreprocessLimits, usize), CssUtf16InputError<E>> {
     check(
         original.len(),
         limits.max_input_units,
         CssUtf16Resource::InputUnits,
     )?;
-    let original_bytes = original
-        .capacity()
+    let original_bytes = capacity
         .checked_mul(2)
         .ok_or_else(CssUtf16InputError::capacity_overflow)?;
     check(
@@ -491,121 +462,195 @@ fn prepare_owned<E>(
         limits.max_retained_bytes,
         CssUtf16Resource::RetainedBytes,
     )?;
+    let position = std::mem::size_of::<crate::source::CssSourcePosition>();
     check(
-        std::mem::size_of::<InputCursor>()
-            + std::mem::size_of::<crate::source::CssSourcePosition>(),
+        PreprocessLimits::SCRATCH_BYTES + position,
         limits.max_scratch_bytes,
         CssUtf16Resource::ScratchBytes,
     )?;
-    let mut cursor = InputCursor::new(InputKind::Utf16, original.len());
-    let mut text = String::new();
-    let mut map = Vec::new();
-    let checkpoints = Vec::new();
-    let position = crate::source::CssSourcePosition::from_byte_offset_in("", 0);
-    let headers = std::mem::size_of::<InputCursor>()
-        + std::mem::size_of::<String>()
-        + std::mem::size_of::<Vec<(usize, usize)>>()
-        + std::mem::size_of::<Vec<crate::source::CssSourcePosition>>()
-        + std::mem::size_of::<crate::source::CssSourcePosition>()
-        + std::mem::size_of::<Vec<u16>>()
-        + std::mem::size_of::<Arc<Vec<u16>>>()
-        + std::mem::size_of::<Preparation<'_, E>>();
-    control.set_live(
-        original_bytes
-            .checked_add(headers)
-            .ok_or_else(CssUtf16InputError::capacity_overflow)?,
-    )?;
-    loop {
-        control.step()?;
-        match cursor.request() {
-            InputRequest::Read { index } => {
-                cursor.read(original[index]).expect("UTF16 cursor protocol")
+    Ok((
+        PreprocessLimits::default()
+            .with_max_input_units(limits.max_input_units)
+            .with_max_output_bytes(limits.max_output_bytes)
+            .with_max_map_entries(limits.max_map_entries)
+            .with_max_scratch_bytes(limits.max_scratch_bytes - position)
+            .with_max_retained_bytes(limits.max_retained_bytes - original_bytes)
+            .with_max_work(limits.max_work),
+        original_bytes,
+    ))
+}
+
+fn resource(resource: PreprocessResource) -> CssUtf16Resource {
+    match resource {
+        PreprocessResource::InputUnits => CssUtf16Resource::InputUnits,
+        PreprocessResource::OutputBytes => CssUtf16Resource::OutputBytes,
+        PreprocessResource::MapEntries => CssUtf16Resource::MapEntries,
+        PreprocessResource::ScratchBytes => CssUtf16Resource::ScratchBytes,
+        PreprocessResource::RetainedBytes => CssUtf16Resource::RetainedBytes,
+        PreprocessResource::Work => CssUtf16Resource::Work,
+        // A resource the parser crate names later still refuses the input as a
+        // limit. This crate has no finer name for it, so the aggregate retained
+        // bytes stands in.
+        _ => CssUtf16Resource::RetainedBytes,
+    }
+}
+
+/// A [`Preparation`] seen as the parser crate's [`Meter`], for the one call to
+/// `preprocess_utf16`.
+///
+/// The parser crate charges the preprocessing exactly as this file's loop
+/// charged it. Three things differ and are bridged here, so that the poll, live
+/// and release callbacks of the host see the same extents in the same order as
+/// before:
+///
+/// - the first admitted storage also carries the registers only the host holds
+///   (`registers`, which include the original backing), folded into the first
+///   [`Meter::add`] so that no callback of its own exists for them;
+/// - the function returns the cursor's bytes when its loop ends, and the host
+///   kept them until the preparation settled; the last release of a successful
+///   call is withheld (every release is held until the next call, so the last
+///   one never reaches the host); and
+/// - the function returns everything it still holds when it fails, and the host
+///   settles a failure with one release of nothing; the release that brings the
+///   function's charge to zero is withheld.
+///
+/// A refusal carries no reason, so the preparation's own error is kept here and
+/// returned in place of the function's.
+struct PreprocessMeter<'p, 'a, E> {
+    control: RefCell<&'p mut Preparation<'a, E>>,
+    failure: RefCell<Option<CssUtf16InputError<E>>>,
+    registers: Cell<usize>,
+    charged: Cell<usize>,
+    pending: Cell<Option<usize>>,
+}
+
+impl<'p, 'a, E> PreprocessMeter<'p, 'a, E> {
+    fn new(control: &'p mut Preparation<'a, E>, registers: usize) -> Self {
+        Self {
+            control: RefCell::new(control),
+            failure: RefCell::new(None),
+            registers: Cell::new(registers),
+            charged: Cell::new(0),
+            pending: Cell::new(None),
+        }
+    }
+
+    /// Tells the preparation of the release that was held back.
+    fn flush(&self) {
+        if let Some(bytes) = self.pending.take() {
+            self.control.borrow_mut().released(bytes);
+        }
+    }
+
+    fn refuse(&self, error: CssUtf16InputError<E>) -> Refused {
+        self.failure.borrow_mut().get_or_insert(error);
+        Refused
+    }
+
+    /// Ends the metering with the function's `result`.
+    fn finish(
+        self,
+        result: Result<Preprocessed, PreprocessError>,
+    ) -> Result<Preprocessed, CssUtf16InputError<E>> {
+        match result {
+            Ok(preprocessed) => {
+                // The release of the cursor, the last the function made.
+                debug_assert_eq!(
+                    self.pending.take(),
+                    Some(PreprocessLimits::SCRATCH_BYTES),
+                    "a successful preprocessing ends by releasing its cursor"
+                );
+                Ok(preprocessed)
             }
-            InputRequest::HeldUnit => cursor.process_held().expect("UTF16 held-unit protocol"),
-            InputRequest::Emit(scalar) => {
-                let end = text
-                    .len()
-                    .checked_add(scalar.value.len_utf8())
-                    .ok_or_else(CssUtf16InputError::capacity_overflow)?;
-                check(end, limits.max_output_bytes, CssUtf16Resource::OutputBytes)?;
-                check(
-                    map.len()
-                        .checked_add(1)
-                        .ok_or_else(CssUtf16InputError::capacity_overflow)?,
-                    limits.max_map_entries,
-                    CssUtf16Resource::MapEntries,
-                )?;
-                let text_capacity = if end > text.capacity() {
-                    text.capacity()
-                        .saturating_mul(2)
-                        .max(end)
-                        .min(limits.max_output_bytes)
+            Err(error) => {
+                self.flush();
+                Err(if error.is_refused() {
+                    self.failure
+                        .take()
+                        .expect("a refused preprocessing recorded its cause")
+                } else if let Some(exhausted) = error.exhausted_limit() {
+                    CssUtf16InputError::limit(resource(exhausted))
+                } else if error.is_allocation_failure() {
+                    CssUtf16InputError::allocation()
                 } else {
-                    text.capacity()
-                };
-                let map_capacity = if map.len() == map.capacity() {
-                    map.capacity()
-                        .saturating_mul(2)
-                        .max(1)
-                        .min(limits.max_map_entries)
-                } else {
-                    map.capacity()
-                };
-                let backing = original_bytes
-                    .checked_add(text_capacity)
-                    .and_then(|v| {
-                        map_capacity
-                            .checked_mul(std::mem::size_of::<(usize, usize)>())
-                            .and_then(|m| v.checked_add(m))
-                    })
-                    .ok_or_else(CssUtf16InputError::capacity_overflow)?;
-                check(
-                    backing,
-                    limits.max_retained_bytes,
-                    CssUtf16Resource::RetainedBytes,
-                )?;
-                control.grow_string(&mut text, text_capacity)?;
-                control.grow_vec(&mut map, map_capacity)?;
-                check(
-                    text.capacity(),
-                    limits.max_output_bytes,
-                    CssUtf16Resource::OutputBytes,
-                )?;
-                check(
-                    map.capacity(),
-                    limits.max_map_entries,
-                    CssUtf16Resource::MapEntries,
-                )?;
-                let backing = original_bytes
-                    .checked_add(text.capacity())
-                    .and_then(|v| {
-                        map.capacity()
-                            .checked_mul(std::mem::size_of::<(usize, usize)>())
-                            .and_then(|m| v.checked_add(m))
-                    })
-                    .ok_or_else(CssUtf16InputError::capacity_overflow)?;
-                check(
-                    backing,
-                    limits.max_retained_bytes,
-                    CssUtf16Resource::RetainedBytes,
-                )?;
-                map.push((text.len(), scalar.start));
-                text.push(scalar.value);
-                cursor.emitted().expect("UTF16 emit protocol");
-            }
-            InputRequest::End => {
-                if cursor.end().expect("UTF16 EOF protocol") {
-                    break;
-                }
+                    debug_assert!(error.is_capacity_overflow());
+                    CssUtf16InputError::capacity_overflow()
+                })
             }
         }
     }
+}
+
+impl<E> Meter for PreprocessMeter<'_, '_, E> {
+    fn step(&self) -> Result<(), Refused> {
+        self.flush();
+        let outcome = self.control.borrow_mut().step();
+        outcome.map_err(|error| self.refuse(error))
+    }
+
+    fn add(&self, bytes: usize) -> Result<(), Refused> {
+        self.flush();
+        let Some(total) = bytes.checked_add(self.registers.take()) else {
+            return Err(self.refuse(CssUtf16InputError::capacity_overflow()));
+        };
+        let outcome = self.control.borrow_mut().add(total);
+        outcome.map_err(|error| self.refuse(error))?;
+        self.charged.set(self.charged.get() + bytes);
+        Ok(())
+    }
+
+    fn released(&self, bytes: usize) {
+        self.flush();
+        let remaining = self
+            .charged
+            .get()
+            .checked_sub(bytes)
+            .expect("the preprocessing releases only what it charged");
+        self.charged.set(remaining);
+        if remaining > 0 {
+            self.pending.set(Some(bytes));
+        }
+    }
+
+    fn note(&self, _: Failure) -> Refused {
+        Refused
+    }
+}
+
+fn prepare_owned<E>(
+    original: Arc<Vec<u16>>,
+    limits: CssUtf16InputLimits,
+    control: &mut Preparation<'_, E>,
+) -> Result<CssSourceSnapshot, CssUtf16InputError<E>> {
+    let (preprocess, original_bytes) = preprocess_limits(&original, original.capacity(), limits)?;
+    // The registers only the host holds beside the function's own: the original
+    // backing, a checkpoint vector and position, the original owner and its
+    // pointer, and this preparation.
+    let registers = original_bytes
+        .checked_add(std::mem::size_of::<Vec<crate::source::CssSourcePosition>>())
+        .and_then(|bytes| {
+            bytes.checked_add(std::mem::size_of::<crate::source::CssSourcePosition>())
+        })
+        .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Vec<u16>>()))
+        .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Arc<Vec<u16>>>()))
+        .and_then(|bytes| bytes.checked_add(std::mem::size_of::<Preparation<'_, E>>()))
+        .ok_or_else(CssUtf16InputError::capacity_overflow)?;
+    let meter = PreprocessMeter::new(control, registers);
+    let result = preprocess_utf16(&original, &preprocess, &meter);
+    let preprocessed = meter.finish(result)?;
+    debug_assert_eq!(
+        preprocessed.charged_bytes(),
+        preprocessed.text_capacity()
+            + std::mem::size_of::<String>()
+            + preprocessed.map().capacity_bytes()
+            + std::mem::size_of::<Vec<()>>(),
+        "the map and the text are all that the parser crate charges beside two headers"
+    );
+    let (text, map) = preprocessed.into_parts();
+    let checkpoints = Vec::new();
+    let position = crate::source::CssSourcePosition::from_byte_offset_in("", 0);
     let other_bytes = original_bytes
-        .checked_add(
-            map.capacity()
-                .checked_mul(std::mem::size_of::<(usize, usize)>())
-                .ok_or_else(CssUtf16InputError::capacity_overflow)?,
-        )
+        .checked_add(map.capacity_bytes())
         .ok_or_else(CssUtf16InputError::capacity_overflow)?;
     let source = CssSourceSnapshot::try_from_preprocessed(
         text,
@@ -864,5 +909,250 @@ mod preparation_tests {
         assert!(matches!(result, Err(error) if error.interruption() == Some(&())));
         assert_eq!(observations.get(), 2);
         assert_eq!(released.get(), Some((0, 0)));
+    }
+
+    /// What the host's three callbacks were told, in order.
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum Callback {
+        Poll,
+        Live(usize, usize),
+        Release(usize, usize),
+    }
+
+    /// Where a run stops: the host refuses its nth poll or its nth live callback.
+    #[derive(Clone, Copy)]
+    enum Stop {
+        Never,
+        Poll(usize),
+        Live(usize),
+    }
+
+    fn callbacks(
+        units: &[u16],
+        spare: usize,
+        limits: CssUtf16InputLimits,
+        stop: Stop,
+    ) -> (Vec<Callback>, Result<(), CssUtf16InputError<usize>>) {
+        let mut raw = Vec::with_capacity(units.len() + spare);
+        raw.extend_from_slice(units);
+        assert_eq!(raw.capacity(), units.len() + spare);
+        let raw = Arc::new(raw);
+        let events = RefCell::new(Vec::new());
+        let (polls, lives) = (Cell::new(0), Cell::new(0));
+        let result = prepare_utf16(
+            raw.clone(),
+            limits,
+            || {
+                polls.set(polls.get() + 1);
+                events.borrow_mut().push(Callback::Poll);
+                match stop {
+                    Stop::Poll(nth) if nth == polls.get() => Err(nth),
+                    _ => Ok(()),
+                }
+            },
+            |bytes, units| {
+                lives.set(lives.get() + 1);
+                events.borrow_mut().push(Callback::Live(bytes, units));
+                match stop {
+                    Stop::Live(nth) if nth == lives.get() => Err(nth),
+                    _ => Ok(()),
+                }
+            },
+            |bytes, units| events.borrow_mut().push(Callback::Release(bytes, units)),
+        );
+        let outcome = result.map(drop);
+        assert_eq!(Arc::strong_count(&raw), 1, "no source or custody remains");
+        (events.into_inner(), outcome)
+    }
+
+    /// The callbacks of the preparation loop that `preprocess_utf16` replaced, as
+    /// that loop made them (recorded by running it on the repository state before
+    /// the replacement, with the spare capacity of each test). `P` is a poll, `L`
+    /// a live extent and `R` a release, each with its bytes and original units.
+    fn recorded(trace: &str) -> Vec<Callback> {
+        let mut callbacks = Vec::new();
+        let mut rest = trace;
+        while let Some(first) = rest.chars().next() {
+            if first == ' ' || first == 'P' {
+                if first == 'P' {
+                    callbacks.push(Callback::Poll);
+                }
+                rest = &rest[1..];
+                continue;
+            }
+            let end = rest.find([' ', 'P']).unwrap_or(rest.len());
+            let (bytes, units) = rest[1..end].split_once(',').expect("bytes and units");
+            let (bytes, units) = (bytes.parse().expect("bytes"), units.parse().expect("units"));
+            rest = &rest[end..];
+            callbacks.push(match first {
+                'L' => Callback::Live(bytes, units),
+                'R' => Callback::Release(bytes, units),
+                other => panic!("callback {other}"),
+            });
+        }
+        callbacks
+    }
+
+    const MIXED: [u16; 9] = [13, 10, 12, 0, 0xd83d, 0xde00, 0xd800, 97, 0xdc00];
+
+    #[test]
+    fn the_snapshot_payload_header_keeps_the_size_the_recorded_callbacks_assume() {
+        // The recorded callbacks and the characterization golden charge 88 bytes
+        // for a snapshot's fixed fields; the parser crate's source map is no
+        // larger than the vector it replaced, so the layout still has that size.
+        assert_eq!(size_of::<crate::source::position::SourceSnapshotData>(), 88);
+    }
+
+    #[test]
+    fn an_empty_input_makes_the_callbacks_of_the_replaced_preparation_loop() {
+        let limits = CssUtf16InputLimits::default();
+        let (events, result) = callbacks(&[], 0, limits, Stop::Never);
+        assert_eq!(result, Ok(()));
+        assert_eq!(
+            events,
+            recorded("P L392,0 P L464,0 R408,0 L496,0 R448,0 R416,0 R256,0 R128,0")
+        );
+        for (stop, trace) in [
+            (Stop::Poll(2), "P L392,0 P R0,0"),
+            (Stop::Live(1), "P L392,0 R0,0"),
+            (Stop::Live(2), "P L392,0 P L464,0 R0,0"),
+            (Stop::Live(3), "P L392,0 P L464,0 R408,0 L496,0 R0,0"),
+        ] {
+            let (events, result) = callbacks(&[], 0, limits, stop);
+            assert!(result.is_err());
+            assert_eq!(events, recorded(trace), "{trace}");
+        }
+        let (events, result) = callbacks(&[], 0, limits, Stop::Poll(1));
+        assert!(result.is_err());
+        assert_eq!(events, recorded("P"), "nothing charged, nothing released");
+    }
+
+    #[test]
+    fn a_mixed_input_makes_the_callbacks_of_the_replaced_preparation_loop() {
+        let limits = CssUtf16InputLimits::default();
+        // The first live extent is the original backing, twice its capacity of
+        // 9 units, and the 392 bytes of registers the old loop held.
+        let (events, result) = callbacks(&MIXED, 0, limits, Stop::Never);
+        assert_eq!(result, Ok(()));
+        assert_eq!(
+            events,
+            recorded(
+                "P L410,9 PPP L435,9 R411,9 L483,9 R427,9 PP L453,9 P R428,9 L516,9 P R444,9 \
+                 PP L473,9 PP R447,9 L567,9 PP R479,9 PPP L513,9 PPP R484,9 PPP L528,9 \
+                 PPPP R494,9 L678,9 PPPP R558,9 PPPPP L630,9 R574,9 PPPPPPP L662,9 \
+                 R614,9 R582,9 R422,9 R294,9"
+            )
+        );
+        for (stop, trace) in [
+            (Stop::Poll(3), "P L410,9 PP R0,0"),
+            (
+                Stop::Live(4),
+                "P L410,9 PPP L435,9 R411,9 L483,9 R427,9 PP L453,9 R0,0",
+            ),
+        ] {
+            let (events, result) = callbacks(&MIXED, 0, limits, stop);
+            assert!(result.is_err());
+            assert_eq!(events, recorded(trace), "{trace}");
+        }
+        // The refusal of the payload header's live extent, the last before the
+        // result exists, returns everything with one release of nothing.
+        let (events, result) = callbacks(&MIXED, 0, limits, Stop::Live(12));
+        assert_eq!(result.unwrap_err().interruption(), Some(&12));
+        assert_eq!(events.last(), Some(&Callback::Release(0, 0)));
+        assert_eq!(events[events.len() - 2], recorded("L662,9")[0]);
+    }
+
+    #[test]
+    fn a_refused_limit_returns_nothing_even_when_nothing_was_charged() {
+        let limits = CssUtf16InputLimits::default();
+        for (limits, resource, trace) in [
+            (
+                CssUtf16InputLimits {
+                    max_input_units: 0,
+                    ..limits
+                },
+                CssUtf16Resource::InputUnits,
+                "P R0,0",
+            ),
+            (
+                // One byte under the cursor and the source position it sits beside.
+                CssUtf16InputLimits {
+                    max_scratch_bytes: 159,
+                    ..limits
+                },
+                CssUtf16Resource::ScratchBytes,
+                "P R0,0",
+            ),
+            (
+                // Twice the original capacity alone is over the limit.
+                CssUtf16InputLimits {
+                    max_retained_bytes: 17,
+                    ..limits
+                },
+                CssUtf16Resource::RetainedBytes,
+                "P R0,0",
+            ),
+            (
+                CssUtf16InputLimits {
+                    max_work: 1,
+                    ..limits
+                },
+                CssUtf16Resource::Work,
+                "P L410,9 PP R0,0",
+            ),
+            (
+                CssUtf16InputLimits {
+                    max_output_bytes: 1,
+                    ..limits
+                },
+                CssUtf16Resource::OutputBytes,
+                "P L410,9 PPP L435,9 R411,9 L483,9 R427,9 PP R0,0",
+            ),
+            (
+                CssUtf16InputLimits {
+                    max_map_entries: 1,
+                    ..limits
+                },
+                CssUtf16Resource::MapEntries,
+                "P L410,9 PPP L435,9 R411,9 L483,9 R427,9 PP R0,0",
+            ),
+        ] {
+            let (events, result) = callbacks(&MIXED, 0, limits, Stop::Never);
+            assert_eq!(
+                result.unwrap_err().exhausted_limit(),
+                Some(resource),
+                "{trace}"
+            );
+            assert_eq!(events, recorded(trace), "{resource:?}");
+        }
+    }
+
+    #[test]
+    fn the_source_map_entry_is_the_size_the_parser_crate_charges() {
+        struct Free;
+        impl Meter for Free {
+            fn step(&self) -> Result<(), Refused> {
+                Ok(())
+            }
+            fn add(&self, _: usize) -> Result<(), Refused> {
+                Ok(())
+            }
+            fn released(&self, _: usize) {}
+            fn note(&self, _: Failure) -> Refused {
+                Refused
+            }
+        }
+        for text in ["", "a", "abc\r\ndef", &"é😀".repeat(40)] {
+            let units: Vec<u16> = text.encode_utf16().collect();
+            let preprocessed =
+                preprocess_utf16(&units, &PreprocessLimits::default(), &Free).unwrap();
+            assert_eq!(
+                preprocessed.charged_bytes(),
+                preprocessed.text_capacity()
+                    + size_of::<String>()
+                    + preprocessed.map().capacity_bytes()
+                    + size_of::<Vec<()>>()
+            );
+        }
     }
 }

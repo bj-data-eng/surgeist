@@ -18,7 +18,6 @@ default = []
 surgeist-color = { path = "../surgeist-color", version = "=0.1.0" }
 surgeist-css-parser = { path = "../surgeist-css-parser", version = "=0.1.0" }
 cssparser = "=0.37.0"
-encoding_rs = "=0.8.35"
 unicode-segmentation = "=1.13.3"
 
 [dev-dependencies]
