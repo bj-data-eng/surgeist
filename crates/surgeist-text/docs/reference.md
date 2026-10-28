@@ -785,8 +785,12 @@ in-flow atomic occurrences retain their issued identities through selection,
 finalization and placement. Callers supply line-local inline/line-under flow and
 box allocations; placement validates the corresponding physical border/content
 rectangles and physical x baseline against the finalized cell. Child content is
-not rotated. Out-of-flow atomics still refuse as `UnsupportedUprightAtomic` with
-the first unsupported original occurrence in semantic order. Requested nominal
+not rotated. Out-of-flow occurrences retain their original semantic anchor and
+affinity without contributing advance, line metrics or a bidi placeholder.
+Their owning positioned-box operation supplies actual physical border/content
+rectangles and the physical x baseline at placement; these need not coincide
+with the static flow slot. Occurrence custody and finite geometry remain
+mandatory. Requested nominal
 glyph metrics retain the static TrueType/glyf qualification: variable, CFF/CFF2
 and VARC glyph profiles remain
 unsupported, even when a separate glyph-free metric observation can succeed.

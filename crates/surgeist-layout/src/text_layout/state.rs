@@ -699,7 +699,14 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                         content.size().width.to_f64(),
                         content.size().height.to_f64(),
                     );
-                    let baseline = placement_add(node, frame.origin.y, baseline)?;
+                    // Absolute layout records an already-physical block-axis
+                    // coordinate within the child; translate without reflection.
+                    let cross_origin = match paragraph.prepared.orientation() {
+                        surgeist_text::LineOrientation::Horizontal => frame.origin.y,
+                        surgeist_text::LineOrientation::Vertical
+                        | surgeist_text::LineOrientation::Sideways => frame.origin.x,
+                    };
+                    let baseline = placement_add(node, cross_origin, baseline)?;
                     let baseline = (baseline + 0.5).floor();
                     let atomics = match &mut paragraph.entries[line_index] {
                         PlacementEntry::Formatted(line) => &mut line.atomics,

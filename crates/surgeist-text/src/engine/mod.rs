@@ -272,28 +272,20 @@ pub(crate) fn prepare(
                 },
             ));
         }
-        crate::LineOrientation::Sideways | crate::LineOrientation::Vertical => {
+        crate::LineOrientation::Sideways => {
             if let Some(occurrence) = analyzed.paragraph.anchor_order.iter().find_map(|anchor| {
-                if let crate::protocol::paragraph::SemanticAnchorItem::Atomic(i) = anchor.item
-                    && (options.orientation() == crate::LineOrientation::Sideways
-                        || analyzed.processed.source().boxes()[i].kind()
-                            == crate::InlineBoxKind::OutOfFlow)
-                {
+                if let crate::protocol::paragraph::SemanticAnchorItem::Atomic(i) = anchor.item {
                     Some(i)
                 } else {
                     None
                 }
             }) {
                 return Err(crate::protocol::protocol_error(
-                    if options.orientation() == crate::LineOrientation::Vertical {
-                        crate::ProtocolError::UnsupportedUprightAtomic { occurrence }
-                    } else {
-                        crate::ProtocolError::UnsupportedSidewaysAtomic { occurrence }
-                    },
+                    crate::ProtocolError::UnsupportedSidewaysAtomic { occurrence },
                 ));
             }
         }
-        crate::LineOrientation::Horizontal => {}
+        crate::LineOrientation::Horizontal | crate::LineOrientation::Vertical => {}
     }
     let upright_units = upright::units(
         &analyzed,

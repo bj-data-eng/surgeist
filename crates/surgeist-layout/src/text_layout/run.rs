@@ -681,6 +681,23 @@ impl LineFrame {
         }
     }
 
+    /// Absolute layout consumes the flow block-start edge, while native Text
+    /// cells progress from line-over to line-under in both vertical modes.
+    fn static_position<S: LayoutScalar>(
+        self,
+        anchor: LineAnchor,
+        baseline: f64,
+        height: f64,
+        inline: f64,
+    ) -> Result<Point<S>, FitError> {
+        let cross = if self.vertical_cell() && !self.decreasing_block() {
+            height
+        } else {
+            0.0
+        };
+        self.relative_point(self.point(anchor, baseline, inline, cross)?)
+    }
+
     fn physical_rect(
         self,
         anchor: LineAnchor,
@@ -1578,7 +1595,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 }
                 static_positions.push((
                     actual.node,
-                    frame.relative_point(frame.point(used, 0.0, slot.origin.x, 0.0)?)?,
+                    frame.static_position(used, 0.0, 0.0, slot.origin.x)?,
                 ));
                 outflows.push((entry_index, slot.occurrence, actual.node));
             }
@@ -1733,10 +1750,12 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             let AtomicLineAllocation::InFlow { box_geometry, .. } = slot.allocation else {
                 static_positions.push((
                     binding.node,
-                    Point::new(
-                        number(add(anchor.inline_origin, slot.origin.x)? - origin.x)?,
-                        number(anchor.baseline - feedback.baseline - origin.y)?,
-                    ),
+                    frame.static_position(
+                        anchor,
+                        feedback.baseline,
+                        feedback.line_height,
+                        slot.origin.x,
+                    )?,
                 ));
                 outflows.push((entry_index, slot.occurrence, binding.node));
                 continue;
