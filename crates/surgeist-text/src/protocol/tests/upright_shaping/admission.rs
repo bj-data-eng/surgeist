@@ -107,79 +107,85 @@ fn assert_decoration(
 }
 
 #[test]
-fn actual_atomic_kinds_refuse_with_first_supplied_occurrence_not_storage_index() {
+fn actual_out_of_flow_refusal_skips_in_flow_and_follows_supplied_occurrence_order() {
     let bytes = vert_font();
     qualify(&bytes, &[(0x58, 58)]);
-    for first_kind in [InlineBoxKind::InFlow, InlineBoxKind::OutOfFlow] {
-        let mut source = Source::identified("XX", Id::from_u64(1544010), 4);
-        source.inline_box(InlineBox::new(
-            Id::from_u64(1544011),
-            InlineBoxKind::InFlow,
-            1,
-            crate::Size::new(9.0, 7.0),
-        ));
-        source.inline_box(InlineBox::new(
-            Id::from_u64(1544012),
-            first_kind,
-            1,
-            crate::Size::new(11.0, 13.0),
-        ));
-        assert_eq!(source.boxes()[1].id(), Id::from_u64(1544012));
-        assert_eq!(source.boxes()[1].kind(), first_kind);
-        let mut input = paragraph(source, style());
-        // Both boxes are actual same-seam source occurrences. The supplied
-        // order places storage occurrence1 before0; no index is fabricated.
-        input.anchor_order = [1, 0]
-            .into_iter()
-            .map(|index| ParagraphAnchor {
-                item: ParagraphAnchorItem::Atomic(index),
-                affinity: Affinity::After,
-            })
-            .collect();
-        input.boundary_policies = (0..2)
-            .flat_map(|index| {
-                [
-                    ParagraphBoundaryDefinition::AtomicBefore(index),
-                    ParagraphBoundaryDefinition::AtomicAfter(index),
-                ]
-            })
-            .map(|definition| ParagraphBoundaryPolicy {
-                definition,
-                preceding_wrap: crate::Wrap::Word,
-                following_wrap: crate::Wrap::Word,
-                ancestor_wrap: crate::Wrap::Word,
-            })
-            .collect();
-        let h_analysis = analyze(input.clone(), AnalysisTypography::HorizontalComposition);
-        let horizontal = system_with(&bytes)
-            .prepare(&h_analysis, PreparationOptions::default())
-            .unwrap();
-        assert_eq!(
-            horizontal
-                .participants()
-                .filter_map(|item| match item {
-                    PreparedParticipant::Atomic(atomic) => Some((
-                        atomic.view().original_box().id(),
-                        atomic.view().original_box().kind()
-                    )),
-                    _ => None,
-                })
-                .collect::<Vec<_>>(),
+    let mut source = Source::identified("XX", Id::from_u64(1544010), 4);
+    source.inline_box(InlineBox::new(
+        Id::from_u64(1544011),
+        InlineBoxKind::OutOfFlow,
+        1,
+        crate::Size::new(9.0, 7.0),
+    ));
+    source.inline_box(InlineBox::new(
+        Id::from_u64(1544012),
+        InlineBoxKind::InFlow,
+        1,
+        crate::Size::new(11.0, 13.0),
+    ));
+    source.inline_box(InlineBox::new(
+        Id::from_u64(1544013),
+        InlineBoxKind::OutOfFlow,
+        1,
+        crate::Size::new(13.0, 15.0),
+    ));
+    assert_eq!(source.boxes()[1].id(), Id::from_u64(1544012));
+    assert_eq!(source.boxes()[1].kind(), InlineBoxKind::InFlow);
+    assert_eq!(source.boxes()[2].kind(), InlineBoxKind::OutOfFlow);
+    let mut input = paragraph(source, style());
+    // All three boxes are actual same-seam occurrences. Admission must skip
+    // supplied InFlow1 and refuse OutOfFlow2 before storage-earlier OutOfFlow0.
+    input.anchor_order = [1, 2, 0]
+        .into_iter()
+        .map(|index| ParagraphAnchor {
+            item: ParagraphAnchorItem::Atomic(index),
+            affinity: Affinity::After,
+        })
+        .collect();
+    input.boundary_policies = (0..3)
+        .flat_map(|index| {
             [
-                (Id::from_u64(1544012), first_kind),
-                (Id::from_u64(1544011), InlineBoxKind::InFlow),
+                ParagraphBoundaryDefinition::AtomicBefore(index),
+                ParagraphBoundaryDefinition::AtomicAfter(index),
             ]
-        );
-        let error = prepare(&bytes, input)
-            .expect_err("actual upright atomic must refuse before packet publication");
-        assert_eq!(error.code, ErrorCode::InvalidTextProtocol);
-        assert_eq!(
-            error.detail(),
-            Some(&ErrorDetail::InvalidTextProtocol {
-                reason: ProtocolError::UnsupportedUprightAtomic { occurrence: 1 },
+        })
+        .map(|definition| ParagraphBoundaryPolicy {
+            definition,
+            preceding_wrap: crate::Wrap::Word,
+            following_wrap: crate::Wrap::Word,
+            ancestor_wrap: crate::Wrap::Word,
+        })
+        .collect();
+    let h_analysis = analyze(input.clone(), AnalysisTypography::HorizontalComposition);
+    let horizontal = system_with(&bytes)
+        .prepare(&h_analysis, PreparationOptions::default())
+        .unwrap();
+    assert_eq!(
+        horizontal
+            .participants()
+            .filter_map(|item| match item {
+                PreparedParticipant::Atomic(atomic) => Some((
+                    atomic.view().original_box().id(),
+                    atomic.view().original_box().kind()
+                )),
+                _ => None,
             })
-        );
-    }
+            .collect::<Vec<_>>(),
+        [
+            (Id::from_u64(1544012), InlineBoxKind::InFlow),
+            (Id::from_u64(1544013), InlineBoxKind::OutOfFlow),
+            (Id::from_u64(1544011), InlineBoxKind::OutOfFlow),
+        ]
+    );
+    let error = prepare(&bytes, input)
+        .expect_err("actual upright out-of-flow atomic must refuse before packet publication");
+    assert_eq!(error.code, ErrorCode::InvalidTextProtocol);
+    assert_eq!(
+        error.detail(),
+        Some(&ErrorDetail::InvalidTextProtocol {
+            reason: ProtocolError::UnsupportedUprightAtomic { occurrence: 2 },
+        })
+    );
 }
 
 #[test]
