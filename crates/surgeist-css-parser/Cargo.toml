@@ -11,3 +11,7 @@ readme = "README.md"
 [lib]
 name = "surgeist_css_parser"
 path = "src/lib.rs"
+
+[dev-dependencies]
+cssparser = "=0.37.0"
+surgeist-fuzz = { path = "../surgeist-fuzz", features = ["property"] }

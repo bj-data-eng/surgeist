@@ -3,12 +3,6 @@
 
 pub mod surgeist_css_parser
 pub mod surgeist_css_parser::input
-pub enum surgeist_css_parser::input::InputError
-pub surgeist_css_parser::input::InputError::BoundaryOverflow
-pub surgeist_css_parser::input::InputError::Complete
-pub surgeist_css_parser::input::InputError::InvalidUtf8
-pub surgeist_css_parser::input::InputError::WrongReply
-pub surgeist_css_parser::input::InputError::WrongUnit
 pub enum surgeist_css_parser::input::InputKind
 pub surgeist_css_parser::input::InputKind::Utf16
 pub surgeist_css_parser::input::InputKind::Utf8
@@ -26,6 +20,16 @@ pub const fn surgeist_css_parser::input::InputCursor::new(kind: surgeist_css_par
 pub fn surgeist_css_parser::input::InputCursor::process_held(&mut self) -> core::result::Result<(), surgeist_css_parser::input::InputError>
 pub fn surgeist_css_parser::input::InputCursor::read(&mut self, unit: u16) -> core::result::Result<(), surgeist_css_parser::input::InputError>
 pub fn surgeist_css_parser::input::InputCursor::request(&self) -> surgeist_css_parser::input::InputRequest
+pub struct surgeist_css_parser::input::InputError
+impl surgeist_css_parser::input::InputError
+pub const fn surgeist_css_parser::input::InputError::is_boundary_overflow(&self) -> bool
+pub const fn surgeist_css_parser::input::InputError::is_complete(&self) -> bool
+pub const fn surgeist_css_parser::input::InputError::is_invalid_utf8(&self) -> bool
+pub const fn surgeist_css_parser::input::InputError::is_wrong_reply(&self) -> bool
+pub const fn surgeist_css_parser::input::InputError::is_wrong_unit(&self) -> bool
+impl core::error::Error for surgeist_css_parser::input::InputError
+impl core::fmt::Display for surgeist_css_parser::input::InputError
+pub fn surgeist_css_parser::input::InputError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css_parser::input::Scalar
 pub surgeist_css_parser::input::Scalar::end: usize
 pub surgeist_css_parser::input::Scalar::start: usize
@@ -53,12 +57,6 @@ pub enum surgeist_css_parser::lexer::protocol::NumberStep
 pub surgeist_css_parser::lexer::protocol::NumberStep::Consume(surgeist_css_parser::lexer::protocol::NumberPart)
 pub surgeist_css_parser::lexer::protocol::NumberStep::Done(surgeist_css_parser::lexer::protocol::NumberLayout)
 pub surgeist_css_parser::lexer::protocol::NumberStep::Transition
-pub enum surgeist_css_parser::lexer::protocol::ProtocolError
-pub surgeist_css_parser::lexer::protocol::ProtocolError::Boundary
-pub surgeist_css_parser::lexer::protocol::ProtocolError::Complete
-pub surgeist_css_parser::lexer::protocol::ProtocolError::Overflow
-pub surgeist_css_parser::lexer::protocol::ProtocolError::WrongIndex
-pub surgeist_css_parser::lexer::protocol::ProtocolError::WrongReply
 pub enum surgeist_css_parser::lexer::protocol::RawTokenKind
 pub surgeist_css_parser::lexer::protocol::RawTokenKind::BadString
 pub surgeist_css_parser::lexer::protocol::RawTokenKind::BadUrl
@@ -110,6 +108,23 @@ pub surgeist_css_parser::lexer::protocol::NumberLayout::fraction_digits: usize
 pub surgeist_css_parser::lexer::protocol::NumberLayout::mantissa_digits: usize
 pub surgeist_css_parser::lexer::protocol::NumberLayout::negative: bool
 pub struct surgeist_css_parser::lexer::protocol::NumberOverflow
+impl surgeist_css_parser::lexer::protocol::NumberOverflow
+pub const fn surgeist_css_parser::lexer::protocol::NumberOverflow::is_exponent_digits(&self) -> bool
+pub const fn surgeist_css_parser::lexer::protocol::NumberOverflow::is_mantissa_digits(&self) -> bool
+impl core::error::Error for surgeist_css_parser::lexer::protocol::NumberOverflow
+impl core::fmt::Display for surgeist_css_parser::lexer::protocol::NumberOverflow
+pub fn surgeist_css_parser::lexer::protocol::NumberOverflow::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_css_parser::lexer::protocol::ProtocolError
+impl surgeist_css_parser::lexer::protocol::ProtocolError
+pub const fn surgeist_css_parser::lexer::protocol::ProtocolError::is_boundary(&self) -> bool
+pub const fn surgeist_css_parser::lexer::protocol::ProtocolError::is_complete(&self) -> bool
+pub const fn surgeist_css_parser::lexer::protocol::ProtocolError::is_overflow(&self) -> bool
+pub const fn surgeist_css_parser::lexer::protocol::ProtocolError::is_unpreprocessed_scalar(&self) -> bool
+pub const fn surgeist_css_parser::lexer::protocol::ProtocolError::is_wrong_index(&self) -> bool
+pub const fn surgeist_css_parser::lexer::protocol::ProtocolError::is_wrong_reply(&self) -> bool
+impl core::error::Error for surgeist_css_parser::lexer::protocol::ProtocolError
+impl core::fmt::Display for surgeist_css_parser::lexer::protocol::ProtocolError
+pub fn surgeist_css_parser::lexer::protocol::ProtocolError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css_parser::lexer::protocol::RawToken
 pub surgeist_css_parser::lexer::protocol::RawToken::kind: surgeist_css_parser::lexer::protocol::RawTokenKind
 pub surgeist_css_parser::lexer::protocol::RawToken::source: surgeist_css_parser::lexer::protocol::Span
@@ -123,6 +138,35 @@ pub fn surgeist_css_parser::lexer::protocol::TokenCursor::compute(&mut self) -> 
 pub const fn surgeist_css_parser::lexer::protocol::TokenCursor::new(scalar_length: usize, first_slot: usize) -> Self
 pub fn surgeist_css_parser::lexer::protocol::TokenCursor::read_scalar(&mut self, index: usize, scalar: surgeist_css_parser::input::Scalar) -> core::result::Result<(), surgeist_css_parser::lexer::protocol::ProtocolError>
 pub fn surgeist_css_parser::lexer::protocol::TokenCursor::request(&self) -> surgeist_css_parser::lexer::protocol::TokenRequest
+pub struct surgeist_css_parser::lexer::Lexeme<'a>
+impl<'a> surgeist_css_parser::lexer::Lexeme<'a>
+pub const fn surgeist_css_parser::lexer::Lexeme<'a>::is_unterminated(&self) -> bool
+pub fn surgeist_css_parser::lexer::Lexeme<'a>::range(&self) -> core::ops::range::Range<surgeist_css_parser::Offset>
+pub const fn surgeist_css_parser::lexer::Lexeme<'a>::token(&self) -> surgeist_css_parser::Token<'a>
+pub struct surgeist_css_parser::lexer::Lexer<'s>
+impl<'s> surgeist_css_parser::lexer::Lexer<'s>
+pub fn surgeist_css_parser::lexer::Lexer<'s>::errors(&self) -> &[surgeist_css_parser::lexer::LexicalError]
+pub fn surgeist_css_parser::lexer::Lexer<'s>::new(text: &'s str, options: &surgeist_css_parser::lexer::Options) -> Self
+pub fn surgeist_css_parser::lexer::Lexer<'s>::next_lexeme(&mut self) -> core::option::Option<surgeist_css_parser::lexer::Lexeme<'_>>
+pub struct surgeist_css_parser::lexer::LexicalError
+impl surgeist_css_parser::lexer::LexicalError
+pub const fn surgeist_css_parser::lexer::LexicalError::is_bad_string(&self) -> bool
+pub const fn surgeist_css_parser::lexer::LexicalError::is_bad_url(&self) -> bool
+pub const fn surgeist_css_parser::lexer::LexicalError::is_escaped_eof(&self) -> bool
+pub const fn surgeist_css_parser::lexer::LexicalError::is_escaped_newline(&self) -> bool
+pub const fn surgeist_css_parser::lexer::LexicalError::is_unterminated_comment(&self) -> bool
+pub const fn surgeist_css_parser::lexer::LexicalError::is_unterminated_string(&self) -> bool
+pub const fn surgeist_css_parser::lexer::LexicalError::is_unterminated_url(&self) -> bool
+pub fn surgeist_css_parser::lexer::LexicalError::range(&self) -> core::ops::range::Range<surgeist_css_parser::Offset>
+impl core::error::Error for surgeist_css_parser::lexer::LexicalError
+impl core::fmt::Display for surgeist_css_parser::lexer::LexicalError
+pub fn surgeist_css_parser::lexer::LexicalError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_css_parser::lexer::Options
+impl surgeist_css_parser::lexer::Options
+pub const fn surgeist_css_parser::lexer::Options::allows_unicode_ranges(&self) -> bool
+pub const fn surgeist_css_parser::lexer::Options::origin(self, origin: surgeist_css_parser::Offset) -> Self
+pub const fn surgeist_css_parser::lexer::Options::origin_offset(&self) -> surgeist_css_parser::Offset
+pub const fn surgeist_css_parser::lexer::Options::unicode_ranges(self, allowed: bool) -> Self
 pub mod surgeist_css_parser::lexical
 pub const fn surgeist_css_parser::lexical::is_digit(code_point: char) -> bool
 pub const fn surgeist_css_parser::lexical::is_hex_digit(code_point: char) -> bool
@@ -166,7 +210,92 @@ pub fn surgeist_css_parser::limits::Meter::step(&self) -> core::result::Result<(
 pub fn surgeist_css_parser::limits::copy_boxed(meter: &dyn surgeist_css_parser::limits::Meter, value: &str) -> core::result::Result<alloc::boxed::Box<str>, surgeist_css_parser::limits::Refused>
 pub fn surgeist_css_parser::limits::copy_str(meter: &dyn surgeist_css_parser::limits::Meter, value: &str) -> core::result::Result<alloc::string::String, surgeist_css_parser::limits::Refused>
 pub fn surgeist_css_parser::limits::grow<T>(meter: &dyn surgeist_css_parser::limits::Meter, values: &mut alloc::vec::Vec<T>, additional: usize) -> core::result::Result<(), surgeist_css_parser::limits::Refused>
+pub mod surgeist_css_parser::token
+pub enum surgeist_css_parser::token::HashKind
+pub surgeist_css_parser::token::HashKind::Id
+pub surgeist_css_parser::token::HashKind::Unrestricted
+pub enum surgeist_css_parser::token::NumberKind
+pub surgeist_css_parser::token::NumberKind::Integer
+pub surgeist_css_parser::token::NumberKind::Number
+pub enum surgeist_css_parser::token::Sign
+pub surgeist_css_parser::token::Sign::Minus
+pub surgeist_css_parser::token::Sign::Plus
+pub enum surgeist_css_parser::token::TokenKind
+pub surgeist_css_parser::token::TokenKind::AtKeyword
+pub surgeist_css_parser::token::TokenKind::BadString
+pub surgeist_css_parser::token::TokenKind::BadUrl
+pub surgeist_css_parser::token::TokenKind::Cdc
+pub surgeist_css_parser::token::TokenKind::Cdo
+pub surgeist_css_parser::token::TokenKind::CloseCurly
+pub surgeist_css_parser::token::TokenKind::CloseParen
+pub surgeist_css_parser::token::TokenKind::CloseSquare
+pub surgeist_css_parser::token::TokenKind::Colon
+pub surgeist_css_parser::token::TokenKind::Comma
+pub surgeist_css_parser::token::TokenKind::Comment
+pub surgeist_css_parser::token::TokenKind::Delim
+pub surgeist_css_parser::token::TokenKind::Dimension
+pub surgeist_css_parser::token::TokenKind::Function
+pub surgeist_css_parser::token::TokenKind::Hash
+pub surgeist_css_parser::token::TokenKind::Ident
+pub surgeist_css_parser::token::TokenKind::Number
+pub surgeist_css_parser::token::TokenKind::OpenCurly
+pub surgeist_css_parser::token::TokenKind::OpenParen
+pub surgeist_css_parser::token::TokenKind::OpenSquare
+pub surgeist_css_parser::token::TokenKind::Percentage
+pub surgeist_css_parser::token::TokenKind::Semicolon
+pub surgeist_css_parser::token::TokenKind::String
+pub surgeist_css_parser::token::TokenKind::UnicodeRange
+pub surgeist_css_parser::token::TokenKind::Url
+pub surgeist_css_parser::token::TokenKind::Whitespace
+pub struct surgeist_css_parser::token::Number<'i>
+impl<'i> surgeist_css_parser::token::Number<'i>
+pub fn surgeist_css_parser::token::Number<'i>::integer(self) -> core::option::Option<i64>
+pub const fn surgeist_css_parser::token::Number<'i>::kind(self) -> surgeist_css_parser::token::NumberKind
+pub const fn surgeist_css_parser::token::Number<'i>::representation(self) -> &'i str
+pub fn surgeist_css_parser::token::Number<'i>::sign(self) -> core::option::Option<surgeist_css_parser::token::Sign>
+pub fn surgeist_css_parser::token::Number<'i>::to_f64(self) -> f64
+pub mod surgeist_css_parser::unicode_range
+pub struct surgeist_css_parser::unicode_range::CodePointRange
+impl surgeist_css_parser::unicode_range::CodePointRange
+pub const fn surgeist_css_parser::unicode_range::CodePointRange::end(self) -> u32
+pub const fn surgeist_css_parser::unicode_range::CodePointRange::is_empty(self) -> bool
+pub const fn surgeist_css_parser::unicode_range::CodePointRange::new(start: u32, end: u32) -> Self
+pub const fn surgeist_css_parser::unicode_range::CodePointRange::start(self) -> u32
 pub macro surgeist_css_parser::match_ignore_ascii_case!
+pub enum surgeist_css_parser::Token<'i>
+pub surgeist_css_parser::Token::AtKeyword(&'i str)
+pub surgeist_css_parser::Token::BadString
+pub surgeist_css_parser::Token::BadUrl
+pub surgeist_css_parser::Token::Cdc
+pub surgeist_css_parser::Token::Cdo
+pub surgeist_css_parser::Token::CloseCurly
+pub surgeist_css_parser::Token::CloseParen
+pub surgeist_css_parser::Token::CloseSquare
+pub surgeist_css_parser::Token::Colon
+pub surgeist_css_parser::Token::Comma
+pub surgeist_css_parser::Token::Comment
+pub surgeist_css_parser::Token::Delim(char)
+pub surgeist_css_parser::Token::Dimension
+pub surgeist_css_parser::Token::Dimension::number: surgeist_css_parser::token::Number<'i>
+pub surgeist_css_parser::Token::Dimension::unit: &'i str
+pub surgeist_css_parser::Token::Function(&'i str)
+pub surgeist_css_parser::Token::Hash
+pub surgeist_css_parser::Token::Hash::kind: surgeist_css_parser::token::HashKind
+pub surgeist_css_parser::Token::Hash::value: &'i str
+pub surgeist_css_parser::Token::Ident(&'i str)
+pub surgeist_css_parser::Token::Number(surgeist_css_parser::token::Number<'i>)
+pub surgeist_css_parser::Token::OpenCurly
+pub surgeist_css_parser::Token::OpenParen
+pub surgeist_css_parser::Token::OpenSquare
+pub surgeist_css_parser::Token::Percentage(surgeist_css_parser::token::Number<'i>)
+pub surgeist_css_parser::Token::Semicolon
+pub surgeist_css_parser::Token::String(&'i str)
+pub surgeist_css_parser::Token::UnicodeRange(surgeist_css_parser::unicode_range::CodePointRange)
+pub surgeist_css_parser::Token::Url(&'i str)
+pub surgeist_css_parser::Token::Whitespace
+impl surgeist_css_parser::Token<'_>
+pub const fn surgeist_css_parser::Token<'_>::is_trivia(&self) -> bool
+pub const fn surgeist_css_parser::Token<'_>::kind(&self) -> surgeist_css_parser::token::TokenKind
 pub struct surgeist_css_parser::Offset(_)
 impl surgeist_css_parser::Offset
 pub const fn surgeist_css_parser::Offset::new(value: usize) -> Self

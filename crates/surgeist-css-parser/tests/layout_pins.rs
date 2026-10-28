@@ -22,8 +22,8 @@ use std::mem::{align_of, size_of};
 
 use surgeist_css_parser::input::{InputCursor, InputError, InputKind, InputRequest, Scalar};
 use surgeist_css_parser::lexer::protocol::{
-    NameKind, NumberCursor, NumberKind, NumberLayout, NumberPart, NumberStep, ProtocolError,
-    RawToken, RawTokenKind, Record, Span, TokenCursor, TokenRequest,
+    NameKind, NumberCursor, NumberKind, NumberLayout, NumberOverflow, NumberPart, NumberStep,
+    ProtocolError, RawToken, RawTokenKind, Record, Span, TokenCursor, TokenRequest,
 };
 
 /// Asserts the size and alignment of `T`, naming the type on failure.
@@ -61,4 +61,5 @@ fn the_number_cursor_and_its_steps_keep_their_measured_layouts() {
     pinned::<NumberLayout>("NumberLayout", 32, 8);
     pinned::<NumberStep>("NumberStep", 32, 8);
     pinned::<NumberPart>("NumberPart", 2, 1);
+    pinned::<NumberOverflow>("NumberOverflow", 1, 1);
 }

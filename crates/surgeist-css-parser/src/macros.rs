@@ -6,11 +6,6 @@
 /// `field` names the kind field; `*field` names a boxed one. Every predicate is
 /// documented, because the invocation is part of the public surface of the
 /// type it appears in.
-///
-/// The macro has no production caller until the first error type with a
-/// private kind arrives; the expectation below then becomes unfulfilled, which
-/// the crate denies, so whoever adds that caller removes it.
-#[cfg_attr(not(test), expect(unused_macros))]
 macro_rules! kind_predicates {
     ($field:ident; $($(#[doc = $doc:expr])+ $name:ident => $pattern:pat,)+) => {
         $(

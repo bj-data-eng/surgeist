@@ -9,8 +9,8 @@
 
 use surgeist_css_parser::input::{InputCursor, InputKind, InputRequest, Scalar};
 use surgeist_css_parser::lexer::protocol::{
-    NameKind, NumberKind, NumberLayout, ProtocolError, RawToken, RawTokenKind, Record, Span,
-    TokenCursor, TokenRequest,
+    NameKind, NumberKind, NumberLayout, RawToken, RawTokenKind, Record, Span, TokenCursor,
+    TokenRequest,
 };
 
 /// Preprocesses `units` the way a host must before tokenizing.
@@ -183,13 +183,96 @@ fn an_unacknowledged_append_stays_pending_and_blocks_further_work() {
         cursor.compute().unwrap();
     }
     let pending = cursor.request();
-    assert_eq!(cursor.compute(), Err(ProtocolError::WrongReply));
+    assert!(cursor.compute().unwrap_err().is_wrong_reply());
     assert_eq!(cursor.request(), pending);
     let TokenRequest::Append { index, .. } = pending else {
         unreachable!("the loop above stops at an append");
     };
-    assert_eq!(cursor.appended(index + 1), Err(ProtocolError::WrongIndex));
+    assert!(cursor.appended(index + 1).unwrap_err().is_wrong_index());
     assert_eq!(cursor.request(), pending);
     cursor.appended(index).unwrap();
     assert_ne!(cursor.request(), pending);
+}
+
+/// Section 3.3 replaces U+0000, U+000D and U+000C before tokenizing, so the
+/// tokenizer's input never holds them. A host that passes one has skipped the
+/// preprocessing; the cursor refuses it and stays exactly where it was.
+#[test]
+fn a_scalar_that_preprocessing_would_have_replaced_is_refused_and_changes_nothing() {
+    for value in ['\0', '\r', '\u{c}'] {
+        let mut cursor = TokenCursor::new(2, 0);
+        let rejected = Scalar {
+            value,
+            start: 0,
+            end: 1,
+        };
+        let error = cursor.read_scalar(0, rejected).unwrap_err();
+        assert!(error.is_unpreprocessed_scalar(), "{value:?}");
+        assert_eq!(
+            cursor.request(),
+            TokenRequest::ReadScalar { index: 0 },
+            "{value:?}"
+        );
+        // The refusal left the cursor usable: the replacement is accepted
+        // and the stream tokenizes as if the bad scalar had never been offered.
+        let replacement = match value {
+            '\0' => '\u{fffd}',
+            _ => '\n',
+        };
+        cursor
+            .read_scalar(
+                0,
+                Scalar {
+                    value: replacement,
+                    start: 0,
+                    end: 1,
+                },
+            )
+            .unwrap();
+        assert_eq!(cursor.request(), TokenRequest::ReadScalar { index: 1 });
+    }
+}
+
+#[test]
+fn a_wrong_reply_is_reported_before_an_unpreprocessed_scalar() {
+    let mut cursor = TokenCursor::new(1, 0);
+    let nul = Scalar {
+        value: '\0',
+        start: 0,
+        end: 1,
+    };
+    // Index 1 is not the pending read, so the call is the wrong reply whatever
+    // scalar it carries.
+    let error = cursor.read_scalar(1, nul).unwrap_err();
+    assert!(error.is_wrong_reply());
+    assert!(!error.is_unpreprocessed_scalar());
+}
+
+#[test]
+fn protocol_errors_name_their_cause_and_describe_it() {
+    let mut cursor = TokenCursor::new(1, 0);
+    let error = cursor
+        .read_scalar(
+            0,
+            Scalar {
+                value: '\r',
+                start: 0,
+                end: 1,
+            },
+        )
+        .unwrap_err();
+    // Exactly one predicate holds.
+    let holds = [
+        error.is_wrong_reply(),
+        error.is_wrong_index(),
+        error.is_boundary(),
+        error.is_overflow(),
+        error.is_complete(),
+        error.is_unpreprocessed_scalar(),
+    ];
+    assert_eq!(holds.iter().filter(|held| **held).count(), 1);
+    assert!(!error.to_string().is_empty());
+    let as_error: &dyn std::error::Error = &error;
+    assert_eq!(as_error.to_string(), error.to_string());
+    assert_eq!(error, error.clone());
 }

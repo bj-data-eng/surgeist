@@ -13,14 +13,21 @@ interpretation on this crate.
 The crate is being built module by module, each with the specification-derived
 tests for the clauses it implements. It currently offers:
 
+- `lexer`: the free-running `Lexer`, which reads text as authored (section 3.3
+  is applied as it reads, offsets are original bytes) and returns one `Lexeme`
+  at a time, a `Token` with its source interval, and the lexical errors the
+  specification calls parse errors. `Options` allows `unicode-range` tokens
+  (section 4.3.14) and rebases offsets for a sub-range of a larger text.
+  `lexer::protocol` is the same state machine in its stepwise form, for hosts
+  that admit each scalar, decision and stored record: a narrow host-only
+  contract, not a general lexer API. The sizes of its cursors and records are
+  pinned because hosts charge them (`tests/layout_pins.rs`).
+- `Token`, with `token::TokenKind`, `token::HashKind`, `token::Number` (exact
+  spelling, sign and type flag, converted only on request) and
+  `unicode_range::CodePointRange`.
 - `input`: the stepwise `InputCursor` for section 3.3. It decodes UTF-8 bytes
   or UTF-16 units, applies the preprocessing, and reports each scalar with the
   interval of original units it came from.
-- `lexer::protocol`: the stepwise tokenizer of section 4.3 as a sans-IO state
-  machine, `TokenCursor`, for hosts that admit each scalar, decision and stored
-  record. It is a narrow host-only contract, not a general lexer API. The sizes
-  of its cursors and records are pinned because hosts charge them
-  (`tests/layout_pins.rs`).
 - `lexical`: the code-point classes of Syntax 3 section 4.2 and the checks of
   sections 4.3.8 to 4.3.11 (valid escape, would start an ident sequence, a
   number or a unicode-range) as `const fn`s. The non-ASCII ident code point
@@ -33,7 +40,7 @@ tests for the clauses it implements. It currently offers:
 - `match_ignore_ascii_case!`: ASCII case-insensitive matching of a string
   against lowercase literal arms.
 
-There is no free-running lexer, document or parser yet. The
+There is no document or parser yet. The
 [coverage map](docs/conformance-coverage.md) lists the clauses of the pinned
 edition with their tests and claims only what those tests establish.
 
@@ -63,4 +70,15 @@ cargo check --offline --locked -j 1 -p surgeist-css-parser
 cargo test --offline --locked -j 1 -p surgeist-css-parser
 cargo clippy --offline --locked -j 1 -p surgeist-css-parser --all-targets -- -F unsafe-code -D warnings
 cargo fmt -p surgeist-css-parser -- --check
+```
+
+## Performance gate
+
+The lexer must match or beat cssparser's tokenizer on the
+CSSTree corpus sources and on a 1 MiB synthetic style sheet, in a release build
+and unmetered. `tests/lexer_performance.rs` measures it; it is ignored and runs
+only when `SURGEIST_CSS_PARSER_PERF=1` is set:
+
+```sh
+SURGEIST_CSS_PARSER_PERF=1 cargo test --release --offline --locked -j 1 -p surgeist-css-parser --test lexer_performance -- --ignored --nocapture
 ```

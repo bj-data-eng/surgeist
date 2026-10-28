@@ -49,6 +49,17 @@ impl NameCursor {
         Self { state: State::Name }
     }
 
+    /// Whether a backslash was consumed and its escaped code point is next.
+    pub(crate) const fn is_in_escape(&self) -> bool {
+        matches!(self.state, State::Escape)
+    }
+
+    /// Whether the cursor is between code points of the name, with no escape
+    /// in progress.
+    pub(crate) const fn is_plain(&self) -> bool {
+        matches!(self.state, State::Name)
+    }
+
     /// A fixed two-code-point decision. It neither consumes input nor stores output.
     pub(crate) fn action(&mut self, [a, b]: [Option<char>; 2]) -> NameAction<'_> {
         let (step, next) = match self.state {

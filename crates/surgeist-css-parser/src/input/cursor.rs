@@ -4,6 +4,8 @@
 //! No request scans a token, allocates storage, or substitutes decoded offsets
 //! for original input positions. The grammar owner supplies admitted storage.
 
+use std::fmt;
+
 /// The original input's unit vocabulary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InputKind {
@@ -49,21 +51,85 @@ pub enum InputRequest {
 /// A protocol violation by the host of an [`InputCursor`].
 ///
 /// Every error leaves the cursor unchanged, so the pending request remains
-/// valid and the host may retry.
+/// valid and the host may retry. Ask what happened with the `is_*`
+/// predicates; the cause is private so that a new one is not a breaking
+/// change.
+///
+/// ```
+/// use surgeist_css_parser::input::{InputCursor, InputKind};
+///
+/// let mut cursor = InputCursor::new(InputKind::Utf8, 1);
+/// // A UTF-8 unit is a byte, so 256 is not one.
+/// let error = cursor.read(256).unwrap_err();
+/// assert!(error.is_wrong_unit());
+/// assert_eq!(
+///     error.to_string(),
+///     "the unit is not in the vocabulary of the input kind or cannot continue the sequence"
+/// );
+/// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum InputError {
-    /// The call does not answer the pending [`InputRequest`].
+pub struct InputError {
+    kind: InputErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum InputErrorKind {
     WrongReply,
-    /// A unit outside the input kind's vocabulary, or one that cannot
-    /// continue the decoder's current sequence.
     WrongUnit,
-    /// The UTF-8 input is malformed.
     InvalidUtf8,
-    /// An original position does not fit `usize`.
     BoundaryOverflow,
-    /// The cursor already completed.
     Complete,
 }
+
+impl InputError {
+    pub(crate) const WRONG_REPLY: Self = Self {
+        kind: InputErrorKind::WrongReply,
+    };
+    pub(crate) const WRONG_UNIT: Self = Self {
+        kind: InputErrorKind::WrongUnit,
+    };
+    pub(crate) const INVALID_UTF8: Self = Self {
+        kind: InputErrorKind::InvalidUtf8,
+    };
+    pub(crate) const BOUNDARY_OVERFLOW: Self = Self {
+        kind: InputErrorKind::BoundaryOverflow,
+    };
+    pub(crate) const COMPLETE: Self = Self {
+        kind: InputErrorKind::Complete,
+    };
+
+    kind_predicates! { kind;
+        /// Whether the call does not answer the pending [`InputRequest`].
+        is_wrong_reply => InputErrorKind::WrongReply,
+        /// Whether the unit lies outside the input kind's vocabulary (a UTF-8
+        /// unit above 255), or cannot continue the decoder's current
+        /// sequence.
+        is_wrong_unit => InputErrorKind::WrongUnit,
+        /// Whether the UTF-8 input is malformed: a byte that cannot start or
+        /// continue a well-formed sequence, or input that ends inside one.
+        is_invalid_utf8 => InputErrorKind::InvalidUtf8,
+        /// Whether an original position does not fit `usize`.
+        is_boundary_overflow => InputErrorKind::BoundaryOverflow,
+        /// Whether the cursor already completed.
+        is_complete => InputErrorKind::Complete,
+    }
+}
+
+impl fmt::Display for InputError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self.kind {
+            InputErrorKind::WrongReply => "the call does not answer the pending input request",
+            InputErrorKind::WrongUnit => {
+                "the unit is not in the vocabulary of the input kind or cannot continue the sequence"
+            }
+            InputErrorKind::InvalidUtf8 => "the UTF-8 input is malformed",
+            InputErrorKind::BoundaryOverflow => "an original input position does not fit usize",
+            InputErrorKind::Complete => "the input cursor already completed",
+        })
+    }
+}
+
+impl std::error::Error for InputError {}
 
 #[derive(Clone, Copy, Debug)]
 enum Decoder {
@@ -144,25 +210,26 @@ impl InputCursor {
     ///
     /// # Errors
     ///
-    /// [`InputError::WrongReply`] unless the pending request is
-    /// [`InputRequest::Read`]; [`InputError::WrongUnit`] for a UTF-8 unit
-    /// above 255; [`InputError::InvalidUtf8`] for a byte that cannot continue
-    /// a well-formed sequence; [`InputError::Complete`] after the end.
+    /// An error for which [`InputError::is_wrong_reply`] holds unless the
+    /// pending request is [`InputRequest::Read`]; one for which
+    /// [`InputError::is_wrong_unit`] holds for a UTF-8 unit above 255;
+    /// [`InputError::is_invalid_utf8`] for a byte that cannot continue a
+    /// well-formed sequence; [`InputError::is_complete`] after the end.
     pub fn read(&mut self, unit: u16) -> Result<(), InputError> {
         if self.ended {
-            return Err(InputError::Complete);
+            return Err(InputError::COMPLETE);
         }
         if !matches!(self.request(), InputRequest::Read { .. }) {
-            return Err(InputError::WrongReply);
+            return Err(InputError::WRONG_REPLY);
         }
         if self.kind == InputKind::Utf8 {
             if unit > 255 {
-                return Err(InputError::WrongUnit);
+                return Err(InputError::WRONG_UNIT);
             }
             self.validate_utf8(unit as u8)?;
         }
         let index = self.position;
-        let next = index.checked_add(1).ok_or(InputError::BoundaryOverflow)?;
+        let next = index.checked_add(1).ok_or(InputError::BOUNDARY_OVERFLOW)?;
         self.position = next;
         self.decode(index, unit)
     }
@@ -171,16 +238,17 @@ impl InputCursor {
     ///
     /// # Errors
     ///
-    /// [`InputError::WrongReply`] unless the pending request is
-    /// [`InputRequest::HeldUnit`]; [`InputError::Complete`] after the end.
+    /// An error for which [`InputError::is_wrong_reply`] holds unless the
+    /// pending request is [`InputRequest::HeldUnit`];
+    /// [`InputError::is_complete`] after the end.
     pub fn process_held(&mut self) -> Result<(), InputError> {
         if self.ended {
-            return Err(InputError::Complete);
+            return Err(InputError::COMPLETE);
         }
         if !matches!(self.request(), InputRequest::HeldUnit) {
-            return Err(InputError::WrongReply);
+            return Err(InputError::WRONG_REPLY);
         }
-        let (index, unit) = self.held_unit.take().ok_or(InputError::WrongReply)?;
+        let (index, unit) = self.held_unit.take().ok_or(InputError::WRONG_REPLY)?;
         self.decode(index, unit)
     }
 
@@ -188,14 +256,15 @@ impl InputCursor {
     ///
     /// # Errors
     ///
-    /// [`InputError::WrongReply`] unless the pending request is
-    /// [`InputRequest::Emit`]; [`InputError::Complete`] after the end.
+    /// An error for which [`InputError::is_wrong_reply`] holds unless the
+    /// pending request is [`InputRequest::Emit`]; [`InputError::is_complete`]
+    /// after the end.
     pub fn emitted(&mut self) -> Result<(), InputError> {
         if self.ended {
-            return Err(InputError::Complete);
+            return Err(InputError::COMPLETE);
         }
         if self.output.is_none() {
-            return Err(InputError::WrongReply);
+            return Err(InputError::WRONG_REPLY);
         }
         self.output = self.held_scalar.take();
         Ok(())
@@ -209,18 +278,19 @@ impl InputCursor {
     ///
     /// # Errors
     ///
-    /// [`InputError::WrongReply`] unless the pending request is
-    /// [`InputRequest::End`]; [`InputError::InvalidUtf8`] when the input ends
-    /// inside a UTF-8 sequence; [`InputError::Complete`] after the end.
+    /// An error for which [`InputError::is_wrong_reply`] holds unless the
+    /// pending request is [`InputRequest::End`]; one for which
+    /// [`InputError::is_invalid_utf8`] holds when the input ends inside a UTF-8
+    /// sequence; [`InputError::is_complete`] after the end.
     pub fn end(&mut self) -> Result<bool, InputError> {
         if self.ended {
-            return Err(InputError::Complete);
+            return Err(InputError::COMPLETE);
         }
         if self.request() != InputRequest::End {
-            return Err(InputError::WrongReply);
+            return Err(InputError::WRONG_REPLY);
         }
         match self.decoder {
-            Decoder::Utf8 { .. } => return Err(InputError::InvalidUtf8),
+            Decoder::Utf8 { .. } => return Err(InputError::INVALID_UTF8),
             Decoder::High { start, .. } => {
                 self.decoder = Decoder::Ready;
                 self.scalar(Scalar {
@@ -269,15 +339,15 @@ impl InputCursor {
                 if (lower..=upper).contains(&byte) {
                     Ok(())
                 } else {
-                    Err(InputError::InvalidUtf8)
+                    Err(InputError::INVALID_UTF8)
                 }
             }
-            _ => Err(InputError::InvalidUtf8),
+            _ => Err(InputError::INVALID_UTF8),
         }
     }
 
     fn decode(&mut self, index: usize, unit: u16) -> Result<(), InputError> {
-        let end = index.checked_add(1).ok_or(InputError::BoundaryOverflow)?;
+        let end = index.checked_add(1).ok_or(InputError::BOUNDARY_OVERFLOW)?;
         if self.kind == InputKind::Utf8 {
             let byte = unit as u8;
             match self.decoder {
@@ -311,7 +381,7 @@ impl InputCursor {
                     if left == 1 {
                         self.decoder = Decoder::Ready;
                         self.scalar(Scalar {
-                            value: char::from_u32(value).ok_or(InputError::InvalidUtf8)?,
+                            value: char::from_u32(value).ok_or(InputError::INVALID_UTF8)?,
                             start,
                             end,
                         });
@@ -324,7 +394,7 @@ impl InputCursor {
                         };
                     }
                 }
-                Decoder::High { .. } => return Err(InputError::WrongUnit),
+                Decoder::High { .. } => return Err(InputError::WRONG_UNIT),
             }
         } else {
             match self.decoder {
@@ -334,7 +404,7 @@ impl InputCursor {
                         let value = 0x10000 + ((u32::from(value) - 0xd800) << 10) + u32::from(unit)
                             - 0xdc00;
                         self.scalar(Scalar {
-                            value: char::from_u32(value).ok_or(InputError::WrongUnit)?,
+                            value: char::from_u32(value).ok_or(InputError::WRONG_UNIT)?,
                             start,
                             end,
                         });
@@ -358,7 +428,7 @@ impl InputCursor {
                     start: index,
                     end,
                 }),
-                Decoder::Utf8 { .. } => return Err(InputError::WrongUnit),
+                Decoder::Utf8 { .. } => return Err(InputError::WRONG_UNIT),
             }
         }
         Ok(())
@@ -537,26 +607,26 @@ mod tests {
         let mut cursor = InputCursor::new(InputKind::Utf16, 2);
         cursor.read(65).unwrap();
         let pending = cursor.request();
-        assert_eq!(cursor.read(66), Err(InputError::WrongReply));
+        assert!(cursor.read(66).unwrap_err().is_wrong_reply());
         assert_eq!(cursor.request(), pending);
         // No storage acknowledgement means no next read or successful EOF.
-        assert_eq!(cursor.end(), Err(InputError::WrongReply));
+        assert!(cursor.end().unwrap_err().is_wrong_reply());
         assert_eq!(cursor.request(), pending);
         cursor.emitted().unwrap();
         assert_eq!(cursor.request(), InputRequest::Read { index: 1 });
         cursor.read(66).unwrap();
         cursor.emitted().unwrap();
         assert!(cursor.end().unwrap());
-        assert_eq!(cursor.end(), Err(InputError::Complete));
+        assert!(cursor.end().unwrap_err().is_complete());
     }
 
     #[test]
     fn invalid_utf8_protocol_unit_is_atomic_and_retryable() {
         let mut cursor = InputCursor::new(InputKind::Utf8, 2);
-        assert_eq!(cursor.read(256), Err(InputError::WrongUnit));
+        assert!(cursor.read(256).unwrap_err().is_wrong_unit());
         assert_eq!(cursor.request(), InputRequest::Read { index: 0 });
         cursor.read(0xc3).unwrap();
-        assert_eq!(cursor.read(0), Err(InputError::InvalidUtf8));
+        assert!(cursor.read(0).unwrap_err().is_invalid_utf8());
         assert_eq!(cursor.request(), InputRequest::Read { index: 1 });
         cursor.read(0xa9).unwrap();
         assert_eq!(
