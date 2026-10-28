@@ -1,6 +1,7 @@
 //! A real native Text child supplies Central2 inside its physical6x14 border.
 //! Parent flow progression and Text's right-to-left cell map stay distinct.
 use super::*;
+mod supplemental;
 
 fn central() -> l::InlineBaselineContext {
     l::InlineBaselineContext::Named(l::BaselineName::Central)
@@ -127,6 +128,13 @@ struct Parent {
 }
 
 fn parent(bytes: &[u8]) -> Parent {
+    let parent = captured_parent(bytes, t::Size::new(6.0, 14.0), false, t::Id::from_u64(2));
+    let atomic = parent.prepared.atomic_views().next().unwrap().handle();
+    qualify_parent_text(&parent.prepared, atomic);
+    parent
+}
+
+fn captured_parent(bytes: &[u8], size: t::Size, atomic_only: bool, id: t::Id) -> Parent {
     let style = t::Style {
         font: t::Font::new().family("Ahem"),
         size: 4.0,
@@ -135,14 +143,18 @@ fn parent(bytes: &[u8]) -> Parent {
         wrap: t::Wrap::Word,
         ..t::Style::default()
     };
-    let mut source = t::Source::identified("\u{4e00}\u{4e00}", t::Id::from_u64(1_552_100), 1);
-    // This is the authored fixture identity of the actual node2 below. All
+    let mut source = t::Source::identified(
+        if atomic_only { "" } else { "\u{4e00}\u{4e00}" },
+        t::Id::from_u64(1_552_100 + u64::from(atomic_only)),
+        1,
+    );
+    // This is the authored fixture identity of the actual bound node. All
     // capture/preparation capabilities are issued by Text, never synthesized.
     source.inline_box(t::InlineBox::new(
-        t::Id::from_u64(2),
+        id,
         t::InlineBoxKind::InFlow,
-        1,
-        t::Size::new(6.0, 14.0),
+        usize::from(!atomic_only),
+        size,
     ));
     use t::SourceProcessingEvent as E;
     let capture = Arc::new(
@@ -150,27 +162,42 @@ fn parent(bytes: &[u8]) -> Parent {
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
             envelope: t::SourceProcessingEnvelope::Complete,
-            origins: [t::Range::new(0, 1), t::Range::new(1, 2)]
-                .into_iter()
-                .map(|range| t::ParagraphOrigin {
-                    text_node: None,
-                    source: source.clone(),
-                    local: range,
-                    aggregate: range,
-                    kind: t::ParagraphOriginKind::Authored,
-                })
-                .collect(),
+            origins: if atomic_only {
+                vec![]
+            } else {
+                [t::Range::new(0, 1), t::Range::new(1, 2)]
+                    .into_iter()
+                    .map(|range| t::ParagraphOrigin {
+                        text_node: None,
+                        source: source.clone(),
+                        local: range,
+                        aggregate: range,
+                        kind: t::ParagraphOriginKind::Authored,
+                    })
+                    .collect()
+            },
             controls: vec![],
-            connections: vec![t::SourceProcessingConnection {
-                before_origin: 0,
-                after_origin: 1,
-                kind: t::ParagraphConnectionKind::Continuous,
-            }],
-            boundary_policies: [
-                t::ParagraphBoundaryDefinition::AtomicBefore(0),
-                t::ParagraphBoundaryDefinition::AtomicAfter(0),
-                t::ParagraphBoundaryDefinition::Connection(0),
-            ]
+            connections: if atomic_only {
+                vec![]
+            } else {
+                vec![t::SourceProcessingConnection {
+                    before_origin: 0,
+                    after_origin: 1,
+                    kind: t::ParagraphConnectionKind::Continuous,
+                }]
+            },
+            boundary_policies: if atomic_only {
+                vec![
+                    t::ParagraphBoundaryDefinition::AtomicBefore(0),
+                    t::ParagraphBoundaryDefinition::AtomicAfter(0),
+                ]
+            } else {
+                vec![
+                    t::ParagraphBoundaryDefinition::AtomicBefore(0),
+                    t::ParagraphBoundaryDefinition::AtomicAfter(0),
+                    t::ParagraphBoundaryDefinition::Connection(0),
+                ]
+            }
             .into_iter()
             .map(|definition| t::ParagraphBoundaryPolicy {
                 definition,
@@ -191,25 +218,38 @@ fn parent(bytes: &[u8]) -> Parent {
                 base_direction: t::ParagraphBaseDirection::LeftToRight,
                 paragraph_strut: t::ParagraphStrut::DefaultFont,
             }],
-            events: vec![
-                E::EnterScope(0),
-                E::EnterParagraph(0),
-                E::Origin {
-                    origin: 0,
-                    affinity: t::Affinity::After,
-                },
-                E::Atomic {
-                    atomic: 0,
-                    affinity: t::Affinity::After,
-                },
-                E::Connection(0),
-                E::Origin {
-                    origin: 1,
-                    affinity: t::Affinity::After,
-                },
-                E::ExitParagraph(0),
-                E::ExitScope(0),
-            ],
+            events: if atomic_only {
+                vec![
+                    E::EnterScope(0),
+                    E::EnterParagraph(0),
+                    E::Atomic {
+                        atomic: 0,
+                        affinity: t::Affinity::After,
+                    },
+                    E::ExitParagraph(0),
+                    E::ExitScope(0),
+                ]
+            } else {
+                vec![
+                    E::EnterScope(0),
+                    E::EnterParagraph(0),
+                    E::Origin {
+                        origin: 0,
+                        affinity: t::Affinity::After,
+                    },
+                    E::Atomic {
+                        atomic: 0,
+                        affinity: t::Affinity::After,
+                    },
+                    E::Connection(0),
+                    E::Origin {
+                        origin: 1,
+                        affinity: t::Affinity::After,
+                    },
+                    E::ExitParagraph(0),
+                    E::ExitScope(0),
+                ]
+            },
         })
         .unwrap(),
     );
@@ -247,23 +287,33 @@ fn parent(bytes: &[u8]) -> Parent {
         );
     assert_eq!(prepared.captured_paragraph(), capture.captured_paragraph(0));
     assert_eq!(prepared.analyzed_source().identity(), analysis.identity());
-    assert_eq!(prepared.origin_views().count(), 2);
+    assert_eq!(
+        prepared.origin_views().count(),
+        if atomic_only { 0 } else { 2 }
+    );
     assert_eq!(prepared.atomic_views().count(), 1);
     let participants = prepared.participants().collect::<Vec<_>>();
-    let [
-        t::PreparedParticipant::Text(before),
-        t::PreparedParticipant::Atomic(atomic),
-        t::PreparedParticipant::Text(after),
-    ] = participants.as_slice()
-    else {
-        panic!("actual processed participant order must be Hani, atomic, Hani");
+    let atomic = if atomic_only {
+        let [t::PreparedParticipant::Atomic(atomic)] = participants.as_slice() else {
+            panic!("source-free input must retain exactly its actual atomic occurrence");
+        };
+        atomic
+    } else {
+        let [
+            t::PreparedParticipant::Text(before),
+            t::PreparedParticipant::Atomic(atomic),
+            t::PreparedParticipant::Text(after),
+        ] = participants.as_slice()
+        else {
+            panic!("actual processed participant order must be Hani, atomic, Hani");
+        };
+        assert_eq!(before.view().source_range(), t::Range::new(0, 1));
+        assert_eq!(after.view().source_range(), t::Range::new(1, 2));
+        atomic
     };
-    assert_eq!(before.view().source_range(), t::Range::new(0, 1));
-    assert_eq!(after.view().source_range(), t::Range::new(1, 2));
     let atomic_view = atomic.view();
-    assert_eq!(atomic_view.original_box().id(), t::Id::from_u64(2));
-    assert_eq!(atomic_view.original_box().size(), t::Size::new(6.0, 14.0));
-    qualify_parent_text(&prepared, atomic.clone());
+    assert_eq!(atomic_view.original_box().id(), id);
+    assert_eq!(atomic_view.original_box().size(), size);
     Parent { prepared, source }
 }
 
