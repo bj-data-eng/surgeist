@@ -37,7 +37,7 @@ private implementation organization.
 | Original analysis and layout | `AnalyzedSource`, `AnalysisIdentity`, `System`, `Builder`, `SystemOptions` | [analyzed.rs](../src/analyzed.rs), [system.rs](../src/system.rs) |
 | Font catalogue | `FontCatalogueMode`, issued `FontCatalogueIdentity`, `System::register_fonts` and `refresh_fonts` | [catalogue.rs](../src/catalogue.rs) |
 | Font resources and metrics | `FontData`, `FontFace`, `EffectiveFontInstance`, `FontMetrics`, `StrikeoutMetrics`, `VerticalGlyphMetrics`, `FontBaselineMeasurement`, `UprightFontMetrics` | [font.rs](../src/font.rs), [font/metrics.rs](../src/font/metrics.rs), [vertical glyph metrics](../src/font/metrics/vertical.rs), [named baselines](../src/font/metrics/baseline.rs) |
-| Borrowed readback | `RunView`, positioned `GlyphPlacement`, actual decorations | [views.rs](../src/views.rs) |
+| Borrowed readback | `RunView`, `FinalizedRunView`, `GlyphBasis`, positioned `GlyphPlacement`, actual decorations | [views.rs](../src/views.rs) |
 | Prepared hyphenation | `PreparedWord`, `PreparedHyphenationCut`, borrowed views, `PreparedWordPortion`, `HyphenationResource`, `HyphenationProvenance` | [hyphenation.rs](../src/protocol/hyphenation.rs), [resource support](hyphenation-resources.md) |
 | Finalized logical prefixes | `TextSeam`, `FinalizedPrefixView`, `FinalizedSharedUnitView`, `FinalizedLine::prefix_at` | [prefix.rs](../src/protocol/prefix.rs), [composition guide](composed-lines.md) |
 | Placed original-source fragments | `SourceRangeFragments`, `SourceRangeUnit`, `SourceRangePiece`, `SourceRangeFragmentError`, `Layout::source_range_fragments` | [range_fragments.rs](../src/range_fragments.rs), [composition guide](composed-lines.md) |
@@ -160,8 +160,9 @@ Native preparation accepts `PreparationOptions::with_orientation(LineOrientation
 for a whole paragraph composed horizontally and placed 90 degrees clockwise.
 The default remains Horizontal. Retain that same orientation in line selection
 and placement: a supported-profile mismatch returns `MismatchedContext` for
-Orientation. Vertical preparation remains unsupported. Standalone stacked layout
-uses Horizontal; CSS writing-mode interpretation belongs to its caller.
+Orientation. Matching Upright analysis uses the separate
+[native whole-upright profile](#native-whole-upright-paragraphs). Standalone
+stacked layout uses Horizontal; CSS writing-mode interpretation belongs to its caller.
 
 Sideways preparation enables the font's `vrtr` feature below authored settings.
 Explicit settings retain last-same-tag precedence, including `vrtr=0`; authored
@@ -190,9 +191,9 @@ placement frame.
 
 The profile supports text, controls, line breaks, replacements, spacing and tabs.
 Any actual Atomic occurrence, including out-of-flow content, returns
-`UnsupportedSidewaysAtomic` during preparation. Upright/mixed typography,
-sideways-lr progression, combined upright content and independent child-content
-rotation remain separate capabilities. Nominal vertical font metrics do not
+`UnsupportedSidewaysAtomic` during preparation. Mixed typography, sideways-lr
+progression, combined upright content and independent child-content rotation
+remain separate capabilities. Nominal vertical font metrics do not
 enable them. See the [composed-line guide](composed-lines.md) for retained
 source, receipt and placement custody.
 
@@ -206,9 +207,23 @@ validated all-zero default axes omitted by the provider. Malformed instance
 metadata and unresolved faux-bold/skew return typed failures. These views retain
 no independent layout or preparation identity; their lifetime comes from the
 original immutable Layout.
-`RunView::origin()` is physical; its raw glyph pens and x/y offsets remain in
-the horizontal provider frame. Consumers apply `RunView::orientation()` once
-about that origin. Decoration rectangles are already physical.
+`RunView::origin()` is physical; `FinalizedRunView::origin()` is line-local
+`(inline, line-under)`. Both views expose `glyph_basis()`: `GlyphBasis::Unrotated`
+for Horizontal and whole-upright Vertical, `Clockwise` for Sideways. The logical
+pen advances along the line's inline axis independently of raw font-x and
+converted font-y offsets. With physical run origin `(X,Y)`, pen `p` and raw
+scaled offsets `(dx,dy)`, glyph origins are:
+
+| Orientation | Physical glyph origin |
+| --- | --- |
+| Horizontal | `(X+p+dx, Y+dy)` |
+| Sideways | `(X-dy, Y+p+dx)` |
+| Vertical | `(X+dx, Y+p+dy)` |
+
+Vertical and Sideways line **cells** share a physical mapping from inline and
+line-under coordinates; that map does not rotate upright outlines. Raw glyph
+offsets are never rotated in storage. Logical spacing changes the pen without
+rewriting the provider advance. Decoration rectangles are already physical.
 
 ## Source-local whitespace processing
 
@@ -482,8 +497,8 @@ occurrences; endpoint width is never added to every incident source Range.
 The [endpoint contract](../../../docs/text-layout-contract.md#native-inline-endpoint-geometry)
 defines soft-cut attachment, exact event-side positions, reuse and rollback.
 This bounded native operation consumes explicit used facts; it does not provide
-a live Style producer, authored percentage resolution, vertical Text or complete
-inline-decoration envelopes/painting. Raw standalone whitespace, six-mode
+a live Style producer, authored percentage resolution, Layout's vertical adapter
+or complete inline-decoration envelopes/painting. Raw standalone whitespace, six-mode
 processing and the separate #74/Cc/default-ignorable contracts retain their rules.
 
 ## Font catalogue publications
@@ -676,8 +691,9 @@ the nominal metric carrier. Equal references produce equal geometry. Checked
 provider constructors accept only exact half-design-unit values in their declared
 range. A valid fractional BASE observation can therefore succeed while a
 provider reference conversion precisely refuses `NotHalfUnit`; it is not rounded
-or treated as malformed. Whole-upright analysis, shaping, placement and consumer
-adapters retain their separate capability boundaries.
+or treated as malformed. The [native paragraph profile](#native-whole-upright-paragraphs)
+consumes this observation with its own glyph/provider qualification; the query
+itself grants no paragraph or consumer-adapter admission.
 
 ## Source typography and upright analysis
 
@@ -710,10 +726,78 @@ core and typography; their existing allocation/foreign-handle rules remain.
 Logical source accessibility keeps actual original text/cursor/selection custody
 without claiming placed geometry. Upright analysis cannot prepare horizontal or
 sideways text: those new combinations return an Orientation context mismatch.
-Matching Vertical preparation remains precisely unsupported; old horizontal
-analysis with Vertical retains its original unsupported-context diagnostic.
-Generated indication bidi, upright shaping/metrics, placement, interaction and
-Layout/Render consumers remain separate capabilities.
+Matching Vertical preparation admits the [native whole-upright
+profile](#native-whole-upright-paragraphs). HorizontalComposition with Vertical
+retains its original unsupported-context diagnostic. Layout/Render adapters
+remain separate consumers.
+
+## Native whole-upright paragraphs
+
+An issued `AnalysisTypography::Upright { computed_direction }` pairs with
+`PreparationOptions::with_orientation(LineOrientation::Vertical)`. The complete
+native path is `System::prepare` → `PreparedText::select` → line finalization →
+`Layout::from_finalized_lines`, including finite/intrinsic measurements, legal
+optional/mandatory cuts, indications, spacing, source-range readback, hit testing,
+carets, selections, movement and optional positioned Text accessibility. Retain
+Vertical in each selected and placed line context. The original analysis and its
+computed-direction/used-LTR distinction remain bound throughout; original and
+processed paragraph fronts share this operation.
+
+Shaping uses actual top-to-bottom provider plans, vertical features and supplied
+post-substitution nominal metrics under the used Central reference. Horizontal
+cursives use isolated forms; this does not transplant horizontal metrics or rotate
+their outlines. Source-owned arrangement units determine isolation versus normal
+vertical context before font selection. Font fallback and style/resource
+intersections retain the complete unit's context rather than choosing its role.
+Joint glyph-stream positioning still follows the existing shaping compatibility:
+locale/font changes can split provider invocations without splitting the editing
+EGC. Brush, decoration and line-height-only changes preserve compatible shaping.
+Selected fragments rebuild their actual arrangement units at legitimate cuts,
+without changing editing EGCs, source endpoints or offered break identities.
+
+The [native paragraph policy](../../../references/text-upright-paragraph--native-determination.md)
+owns Tibetan arrangement, effective property/width precedence, script admission
+and context fallback. All-supported script candidates admit without an arbitrary
+script selection. Coherent explicit member script context can choose isolation
+or normal vertical context; otherwise all-supported candidates spanning both
+roles use the native isolated-unit fallback. That choice affects shaping context,
+not Unicode Script or font choice. Effective intrinsically transformed scripts
+`Mong`, `Phag`, `Ogam` and `Orkh` remain unsupported after the policy's width
+precedence. A mixed supported/intrinsic set requires coherent explicit member
+script context from every actual governing style; missing, unqualified,
+nonmember or conflicting context refuses precisely. This bounded resolver does
+not infer script from bare language, neighboring content or a provider plan.
+
+Original and actual generated indication domains use the same upright bidi
+interpretation before local resolution and line reset, preserving attachment,
+alternative and source custody. CSS tabs use their real captured reference style
+and distinct hypothetical SPACE/ZERO roles. DefaultFont and allocated
+contributions, empty/removed/nonformatted receipts and glyph-free struts retain
+their own metric demands. Metrics-relative height uses the used em extent plus
+the conditionally demanded vertical gap before applying its factor. Absolute and
+font-size-relative heights do not independently query that gap; glyph-free
+operations do not pretend to request a glyph.
+
+Disabled decorations and enabled decorations with explicit physical offset
+**and** thickness work. Automatic upright offset or thickness refuses with
+`UprightDecoration` owner/kind/missing-role detail before publication. Any actual
+in-flow or out-of-flow atomic refuses as `UnsupportedUprightAtomic` with its
+original occurrence. Requested nominal glyph metrics retain the static
+TrueType/glyf qualification: variable, CFF/CFF2 and VARC glyph profiles remain
+unsupported, even when a separate glyph-free metric observation can succeed.
+Selected native morx/kerx/kern/trak paths, a reference outside the provider's
+exact half-design-unit grid and actual positioning range/resource failures keep
+their specific errors. A metric-supplier failure retains its original Text error
+in `Error.source`, with actual requested glyph and content provenance on the
+outer diagnostic. No refused path publishes an admitted partial paragraph.
+
+`UprightContent` distinguishes actual ordered source/indication pieces from
+source-free tab measurements; script diagnostics retain canonical `TextScript`
+candidates and actual style/locale contexts. These readbacks grant no new source
+or phase capability. Physical geometry uses the separate [glyph and cell
+frames](#borrowed-paint-readback). Layout's composition adapter and Render's paint
+adapter still refuse Vertical; broader mixed/intrinsic typography and downstream
+adoption remain outside this native Text profile.
 
 ## Defaults and validation
 

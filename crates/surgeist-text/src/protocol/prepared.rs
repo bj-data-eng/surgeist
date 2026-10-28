@@ -233,6 +233,7 @@ pub(crate) struct SelectedMapping {
 /// One validated selection's actual provider-independent presentation. It is
 /// built once, then shared by spacing admission and retained-face shaping.
 pub(crate) struct SelectedPresentation {
+    pub(crate) upright_units: Vec<crate::engine::analysis::upright::UprightUnit>,
     pub(crate) source: Range,
     pub(crate) selected_relation: SelectedRelation,
     pub(crate) units: Vec<PresentationUnit>,
@@ -285,7 +286,7 @@ pub(crate) enum PresentationUnitKind {
     Atomic { occurrence: usize },
     Control { occurrence: usize },
     ComputedLineBoundary { boundary: usize },
-    Replacement { alternative: usize },
+    Replacement { alternative: usize, local: Range },
     GeneratedSeparator { owner: GeneratedSeparatorOwner },
 }
 
@@ -1813,9 +1814,10 @@ pub(crate) fn prepare_indication_fonts(
     tables: &PreparedTables,
     scratch: &mut crate::engine::shape::ShapeContext,
     css_tabs: bool,
+    orientation: crate::LineOrientation,
 ) -> crate::Result<Vec<PreparedIndicationFonts>> {
     let mut alternatives = Vec::with_capacity(tables.alternatives.len());
-    for row in &tables.alternatives {
+    for (alternative, row) in tables.alternatives.iter().enumerate() {
         if let IndicationResolution::Primary(font) = &row.resolution
             && catalogue.identity() != font.catalogue_identity()
         {
@@ -1848,7 +1850,13 @@ pub(crate) fn prepare_indication_fonts(
         }
         let base = presentation::before_attachment(analyzed, tables, row)?
             .original_level(analyzed, tables)?;
-        presentation::local_levels(&projection, &mut analysis, inserted_atoms.clone(), base & 1)?;
+        presentation::local_levels(
+            &projection,
+            &mut analysis,
+            inserted_atoms.clone(),
+            base & 1,
+            analyzed.typography,
+        )?;
         // Capture only the genuine selected side. Unselected original text
         // cannot change an indication's query EGC or script inheritance.
         let mut capture_side = |after: bool| -> crate::Result<PreparedIndicationFonts> {
@@ -1886,7 +1894,7 @@ pub(crate) fn prepare_indication_fonts(
                 line_candidates: Vec::new(),
                 phrases: crate::engine::analysis::phrase::PhraseCatalog::default(),
                 infos: analysis.infos[side.clone()].to_vec(),
-                levels: analysis.levels[side].to_vec(),
+                levels: analysis.levels[side.clone()].to_vec(),
                 base_level: analysis.base_level,
                 box_levels: analysis.box_levels.clone(),
                 control_levels: analysis.control_levels.clone(),
@@ -1896,9 +1904,44 @@ pub(crate) fn prepare_indication_fonts(
             };
             let inserted_atoms = inserted_atoms.start - offset..inserted_atoms.end - offset;
             let catalogue_identity = catalogue.identity().clone();
+            let provenance = crate::engine::upright::UprightProvenance::Alternative {
+                original: &analyzed.projection,
+                originals: &original_atoms[side.clone()],
+                inserted: inserted_atoms.clone(),
+                alternative,
+                insertion_anchor: row.insertion_anchor,
+            };
+            let upright_units = crate::engine::upright::units(
+                analyzed,
+                &projection,
+                &analysis,
+                &provenance,
+                orientation,
+            )?;
+            let shaping_profile = || match orientation {
+                crate::LineOrientation::Horizontal => {
+                    crate::engine::upright::ShapingProfile::Horizontal
+                }
+                crate::LineOrientation::Sideways => {
+                    crate::engine::upright::ShapingProfile::Sideways
+                }
+                crate::LineOrientation::Vertical => {
+                    crate::engine::upright::ShapingProfile::Upright {
+                        units: &upright_units,
+                        provenance: crate::engine::upright::UprightProvenance::Alternative {
+                            original: &analyzed.projection,
+                            originals: &original_atoms[side.clone()],
+                            inserted: inserted_atoms.clone(),
+                            alternative,
+                            insertion_anchor: row.insertion_anchor,
+                        },
+                    }
+                }
+            };
             let mut font_queries = crate::engine::shape::capture_fonts(
                 catalogue,
                 crate::engine::ShapingInput {
+                    profile: shaping_profile(),
                     projection: &projection,
                     analysis: &analysis,
                     styles,
@@ -1915,10 +1958,12 @@ pub(crate) fn prepare_indication_fonts(
                     &mut analysis,
                     inserted_atoms.clone(),
                     (base & 1) ^ 1,
+                    analyzed.typography,
                 )?;
                 font_queries.extend(crate::engine::shape::capture_fonts(
                     catalogue,
                     crate::engine::ShapingInput {
+                        profile: shaping_profile(),
                         projection: &projection,
                         analysis: &analysis,
                         styles,
@@ -1934,6 +1979,7 @@ pub(crate) fn prepare_indication_fonts(
                     &mut analysis,
                     inserted_atoms.clone(),
                     base & 1,
+                    analyzed.typography,
                 )?;
             }
             Ok(PreparedIndicationFonts {
@@ -2199,10 +2245,12 @@ fn push_presentation_unit(
             PresentationUnitKind::GeneratedSeparator { owner } => {
                 SelectedMappingKind::GeneratedSeparator { owner }
             }
-            PresentationUnitKind::Replacement { alternative } => SelectedMappingKind::Replacement {
-                alternative,
-                anchor: source.start,
-            },
+            PresentationUnitKind::Replacement { alternative, .. } => {
+                SelectedMappingKind::Replacement {
+                    alternative,
+                    anchor: source.start,
+                }
+            }
             _ => SelectedMappingKind::Source,
         },
     });
@@ -2234,7 +2282,7 @@ pub(crate) fn selected_origin_intersections(
                 owner: FragmentOwner::VirtualSeparator(index),
                 source: None,
             }),
-            PresentationUnitKind::Replacement { alternative } => {
+            PresentationUnitKind::Replacement { alternative, .. } => {
                 let row = &selected.prepared.tables.alternatives[alternative];
                 let origin = match row.definition {
                     AlternativeDefinition::Source { origin, .. } => Some(origin),

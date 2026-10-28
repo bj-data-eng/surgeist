@@ -282,24 +282,24 @@ pub(super) fn deleted_position(layout: &PlacedLayout, value: Cursor) -> Option<u
 }
 pub(crate) fn hit(layout: &PlacedLayout, point: Point) -> Option<usize> {
     let source = super::cursor::from_point(layout, point);
-    let sideways_line = if layout.prepared.options.orientation() == crate::LineOrientation::Sideways
-    {
-        super::cursor::line_at_point(layout, point)
-    } else {
-        None
-    };
-    let matching = layout
-        .interaction
-        .positions
-        .iter()
-        .any(|row| row.source == source && sideways_line.is_none_or(|line| row.line == line));
+    let vertical_axis_line =
+        if layout.prepared.options.orientation() != crate::LineOrientation::Horizontal {
+            super::cursor::line_at_point(layout, point)
+        } else {
+            None
+        };
+    let matching =
+        layout.interaction.positions.iter().any(|row| {
+            row.source == source && vertical_axis_line.is_none_or(|line| row.line == line)
+        });
     layout
         .interaction
         .positions
         .iter()
         .enumerate()
         .filter(|(_, row)| {
-            sideways_line.is_none_or(|line| row.line == line) && (!matching || row.source == source)
+            vertical_axis_line.is_none_or(|line| row.line == line)
+                && (!matching || row.source == source)
         })
         .min_by(|(a, _), (b, _)| {
             distance(
@@ -316,7 +316,7 @@ pub(crate) fn hit(layout: &PlacedLayout, point: Point) -> Option<usize> {
         .map(|(index, _)| index)
 }
 fn distance(rect: Rect, point: Point, orientation: crate::LineOrientation) -> f64 {
-    if orientation == crate::LineOrientation::Sideways {
+    if orientation != crate::LineOrientation::Horizontal {
         let dx = if point.x < rect.origin.x {
             rect.origin.x - point.x
         } else if point.x > rect.origin.x + rect.size.width {
@@ -340,10 +340,10 @@ fn distance(rect: Rect, point: Point, orientation: crate::LineOrientation) -> f6
 /// Selects an actual eligible interaction row on the requested formatted line.
 /// Anchors and genuine struts participate alongside cluster edges; this does
 /// not reconstruct a caret from a source offset or a guessed rectangle.
-/// Horizontal proximity uses physical x; Sideways uses local inline distance.
+/// Horizontal proximity uses physical x; vertical axes use local inline distance.
 pub(super) fn nearest_on_line(layout: &PlacedLayout, line: usize, inline: f64) -> Option<usize> {
     let coordinate = |index: usize| {
-        if layout.lines[line].orientation == crate::LineOrientation::Sideways {
+        if layout.lines[line].orientation != crate::LineOrientation::Horizontal {
             local_x(
                 &layout.lines[line],
                 layout.interaction.positions[index].target,
@@ -395,9 +395,9 @@ pub(crate) fn movement(layout: &PlacedLayout, index: usize, movement: Movement) 
             match target {
                 None => index,
                 Some(target) => {
-                    let sideways =
-                        layout.prepared.options.orientation() == crate::LineOrientation::Sideways;
-                    let inline = if sideways {
+                    let vertical_axis =
+                        layout.prepared.options.orientation() != crate::LineOrientation::Horizontal;
+                    let inline = if vertical_axis {
                         local_x(&layout.lines[current.line], current.target)
                     } else {
                         geometry(layout, index)?.rect().origin.x
@@ -492,6 +492,7 @@ pub(crate) fn selection(
                     }
                     let crate::protocol::prepared::PresentationUnitKind::Replacement {
                         alternative,
+                        ..
                     } = selected.presentation.units[unit].kind
                     else {
                         return Err(protocol_error(ProtocolError::InvalidPlacedPosition {
@@ -755,7 +756,7 @@ pub(crate) fn validate_source(layout: &PlacedLayout, value: Cursor) -> Result<()
                 }
                 use crate::protocol::prepared::PresentationUnitKind;
                 match unit.kind {
-                    PresentationUnitKind::Replacement { alternative } => {
+                    PresentationUnitKind::Replacement { alternative, .. } => {
                         (position.line, 1, alternative)
                     }
                     PresentationUnitKind::EmptyOrigin { origin } => (position.line, 2, origin),
@@ -777,6 +778,7 @@ pub(crate) fn validate_source(layout: &PlacedLayout, value: Cursor) -> Result<()
                             && cluster.presentation.start < unit.presentation.end
                             && let crate::protocol::prepared::PresentationUnitKind::Replacement {
                                 alternative,
+                                ..
                             } = unit.kind
                         {
                             return Some(alternative);

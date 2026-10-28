@@ -710,7 +710,7 @@ fn wrapping_derivation_preserves_actual_typography_body_and_source_with_new_pair
 }
 
 #[test]
-fn orientation_refusals_precede_font_matching_and_leave_original_analysis_usable() {
+fn orientation_mismatches_precede_fonts_and_matching_upright_demands_a_font() {
     let mut s = System::new(SystemOptions {
         font_catalogue: FontCatalogueMode::RegisteredOnly,
     })
@@ -732,15 +732,16 @@ fn orientation_refusals_precede_font_matching_and_leave_original_analysis_usable
             },
         );
     }
-    protocol(
+    // Matching issued upright typography now reaches real font admission.
+    // The intentionally empty registered-only catalogue cannot provide a face.
+    assert_eq!(
         s.prepare(
             &a,
-            PreparationOptions::default().with_orientation(LineOrientation::Vertical),
+            PreparationOptions::default().with_orientation(LineOrientation::Vertical)
         )
-        .unwrap_err(),
-        ProtocolError::UnsupportedContext {
-            field: ProtocolContextField::Orientation,
-        },
+        .unwrap_err()
+        .code,
+        ErrorCode::NoUsableFontFace,
     );
     assert_eq!(a.identity(), identity);
     assert_eq!(a.typography(), upright(RTL));

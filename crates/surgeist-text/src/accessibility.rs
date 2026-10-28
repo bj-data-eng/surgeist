@@ -619,8 +619,13 @@ fn update(
             let one_line = pieces.iter().all(|fragment| fragment.line == first.line);
             if direction {
                 node.set_text_direction(match (first.orientation, first.rtl) {
-                    (crate::LineOrientation::Sideways, false) => TextDirection::TopToBottom,
-                    (crate::LineOrientation::Sideways, true) => TextDirection::BottomToTop,
+                    (
+                        crate::LineOrientation::Sideways | crate::LineOrientation::Vertical,
+                        false,
+                    ) => TextDirection::TopToBottom,
+                    (crate::LineOrientation::Sideways | crate::LineOrientation::Vertical, true) => {
+                        TextDirection::BottomToTop
+                    }
                     (_, true) => TextDirection::RightToLeft,
                     (_, false) => TextDirection::LeftToRight,
                 });
@@ -636,7 +641,7 @@ fn update(
             // pieces remain exact internally; omit optional fields rather than invent precision.
             if pieces.len() == 1 {
                 node.set_character_positions(vec![0.0]);
-                let inline_span = if first.orientation == crate::LineOrientation::Sideways {
+                let inline_span = if first.orientation != crate::LineOrientation::Horizontal {
                     bounds.size.height
                 } else {
                     bounds.size.width

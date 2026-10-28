@@ -43,7 +43,7 @@ impl SpacingSlot {
         let row = &self.selected.spacing_slots[self.index];
         let unit = &self.selected.presentation.units[row.unit];
         match unit.kind {
-            super::prepared::PresentationUnitKind::Replacement { alternative } => {
+            super::prepared::PresentationUnitKind::Replacement { alternative, .. } => {
                 SpacingSlotOwner::Alternative(PreparedAlternative {
                     prepared: Arc::clone(&self.selected.prepared),
                     index: alternative,
@@ -1479,6 +1479,15 @@ pub struct FinalizedRunView<'a> {
 }
 
 impl FinalizedRunView<'_> {
+    /// Actual outline axes from the authenticated uniform preparation.
+    ///
+    /// Horizontal and Vertical outlines are unrotated; Sideways is clockwise.
+    /// The finalized pen follows the inline axis separately from raw offsets.
+    #[must_use]
+    pub fn glyph_basis(&self) -> crate::GlyphBasis {
+        crate::GlyphBasis::for_orientation(self.line.inner.selected.prepared.options.orientation())
+    }
+
     /// The aggregate original UTF-16 association of this run.
     ///
     /// This is source correspondence, not an origin-occurrence identity or a
@@ -1510,8 +1519,11 @@ impl FinalizedRunView<'_> {
 
     /// The run's line-local origin on the actual finalized baseline.
     ///
-    /// Physical placement adds one common translation to this point and every
-    /// other point in the same finalized line.
+    /// Coordinates are `(inline, line-under)` before physical placement.
+    /// Vertical and Sideways cells map `(u,v)` to
+    /// `(cross_anchor-(v-local_baseline), inline_origin+u)`; this cell map does
+    /// not rotate whole-upright glyph outlines. Once placed, glyph origins use
+    /// the owning run's physical origin and its separate pen/offset axes.
     #[must_use]
     pub fn origin(&self) -> Point {
         Point::new(self.run.x, self.line.inner.data.metrics.baseline)
@@ -1523,7 +1535,13 @@ impl FinalizedRunView<'_> {
         self.run.advance
     }
 
-    /// Borrows raw provider glyph facts and their separate finalized pens.
+    /// Borrows raw provider glyph facts and their separate finalized inline pens.
+    ///
+    /// After placement at physical run origin `(X,Y)`, pen `p` and raw offsets
+    /// `(dx,dy)` give glyph origin `(X+p+dx,Y+dy)` for Horizontal,
+    /// `(X-dy,Y+p+dx)` for Sideways and `(X+dx,Y+p+dy)` for Vertical.
+    /// The outline axes follow [`Self::glyph_basis`]; raw offsets are not cell
+    /// coordinates and are never rotated in storage.
     pub fn glyphs(&self) -> impl ExactSizeIterator<Item = FinalizedGlyphView<'_>> {
         self.line.inner.data.glyphs[self.run.glyphs.clone()]
             .iter()

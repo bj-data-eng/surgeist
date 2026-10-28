@@ -2,6 +2,14 @@ use std::{error, fmt};
 
 use super::{FontCatalogueIdentity, TextStyleFeature, UnsupportedTextStyleReason, WhiteSpace};
 
+mod upright;
+pub use upright::{
+    TextScript, TextStyleOwner, UprightContent, UprightContentPiece, UprightDecorationRole,
+    UprightPresentation, UprightScriptContext, UprightScriptContextFailure, UprightScriptFailure,
+    UprightTabMeasurement, VerticalOriginReferenceReason, VerticalPositionStage,
+    VerticalShapingContextReason,
+};
+
 /// Text crate result alias.
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -137,6 +145,43 @@ pub enum ErrorDetail {
     /// The actual shaping invocation returned incomplete output.
     ShapingRefused {
         reason: ShapingRefusalReason,
+    },
+    /// Effective script candidates cannot use the unrotated upright profile.
+    UprightScript {
+        content: Box<UprightContent>,
+        candidates: Vec<TextScript>,
+        contexts: Vec<UprightScriptContext>,
+        reason: UprightScriptFailure,
+    },
+    /// An enabled decoration needs an unavailable automatic upright metric.
+    UprightDecoration {
+        owner: TextStyleOwner,
+        kind: super::DecorationKind,
+        role: UprightDecorationRole,
+    },
+    /// Actual selected provider context cannot use supplied vertical positioning.
+    VerticalShapingContext {
+        content: UprightContent,
+        reason: VerticalShapingContextReason,
+    },
+    /// Actual unscaled origin reference cannot enter the provider input grid.
+    VerticalOriginReference {
+        content: UprightContent,
+        reference: super::UprightMetricReference,
+        value: f64,
+        reason: VerticalOriginReferenceReason,
+    },
+    /// Actual positioning exceeded the provider's half-design-unit range.
+    VerticalPositionRange {
+        content: UprightContent,
+        stage: VerticalPositionStage,
+    },
+    /// The actual post-substitution glyph's metric supplier failed.
+    ///
+    /// The unchanged original Text error is retained in [`Error::source`].
+    VerticalMetricSupplier {
+        content: UprightContent,
+        glyph_id: u32,
     },
     /// Logical or canonical geometry could not be represented truthfully.
     InvalidTextNumeric {

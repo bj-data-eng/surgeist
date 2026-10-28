@@ -240,7 +240,9 @@ pub(crate) fn place_request(
             }));
         }
         next = selected.request.end.clone();
-        if placement.orientation == LineOrientation::Vertical {
+        if placement.orientation == LineOrientation::Vertical
+            && prepared.options.orientation() != LineOrientation::Vertical
+        {
             return Err(protocol_error(ProtocolError::UnsupportedContext {
                 field: ProtocolContextField::Orientation,
             }));
@@ -274,6 +276,25 @@ pub(crate) fn place_request(
         }
         line_cuts.push(cut);
         let metrics = placed.finalized.data.metrics;
+        // Glyph-outline axes are independent from the line's cell frame.
+        // Qualify every actual emitted origin before publishing placement.
+        for run in &placed.finalized.data.runs {
+            let origin = crate::layout::line_point(
+                &placed,
+                crate::Point::new(run.x, placed.finalized.data.metrics.baseline),
+            );
+            for glyph in &placed.finalized.data.glyphs[run.glyphs.clone()] {
+                let point = crate::layout::glyph_origin(
+                    placed.orientation,
+                    origin,
+                    glyph.pen,
+                    f64::from(glyph.glyph.x),
+                    f64::from(glyph.glyph.y),
+                );
+                finite("placed glyph origin x", point.x)?;
+                finite("placed glyph origin y", point.y)?;
+            }
+        }
         let metric_rect = crate::layout::line_rect(
             &placed,
             Rect::new(

@@ -452,7 +452,7 @@ impl Layout {
 }
 
 /// Scalar axis projections are total even for caller-constructed value records.
-/// They do not admit typography: only Horizontal/Sideways can own PlacedLine.
+/// They do not independently admit typography or a placed line.
 pub(crate) const fn inline_coordinate(orientation: LineOrientation, point: Point) -> f64 {
     match orientation {
         LineOrientation::Horizontal => point.x,
@@ -485,13 +485,12 @@ pub(crate) fn line_baseline(line: &PlacedLine) -> f64 {
 pub(crate) fn line_vector(line: &PlacedLine, local: Point) -> Point {
     match line.orientation {
         LineOrientation::Horizontal => local,
-        LineOrientation::Sideways => Point::new(-local.y, local.x),
-        LineOrientation::Vertical => unreachable!("upright placement was not admitted"),
+        LineOrientation::Sideways | LineOrientation::Vertical => Point::new(-local.y, local.x),
     }
 }
 
-/// The sole physical mapping of immutable local line geometry. The raw glyph
-/// provider frame and local baseline are never rotated or rewritten in storage.
+/// The physical mapping of immutable local line geometry, including cells,
+/// carets and decorations. Glyph origins use their separate outline frame.
 pub(crate) fn line_point(line: &PlacedLine, local: Point) -> Point {
     let vector = line_vector(
         line,
@@ -506,11 +505,10 @@ pub(crate) fn local_point(line: &PlacedLine, physical: Point) -> Point {
             physical.x - line.anchor.x,
             physical.y - line.anchor.y + line.finalized.data.metrics.baseline,
         ),
-        LineOrientation::Sideways => Point::new(
+        LineOrientation::Sideways | LineOrientation::Vertical => Point::new(
             physical.y - line.anchor.y,
             line.finalized.data.metrics.baseline - (physical.x - line.anchor.x),
         ),
-        LineOrientation::Vertical => unreachable!("upright placement was not admitted"),
     }
 }
 pub(crate) fn line_rect(line: &PlacedLine, local: Rect) -> Rect {
@@ -519,7 +517,7 @@ pub(crate) fn line_rect(line: &PlacedLine, local: Rect) -> Rect {
             let origin = line_point(line, local.origin);
             Rect::new(origin.x, origin.y, local.size.width, local.size.height)
         }
-        LineOrientation::Sideways => {
+        LineOrientation::Sideways | LineOrientation::Vertical => {
             let origin = line_point(line, local.origin);
             // Signed local spans retain their endpoints; the physical result is
             // their actual axis-aligned hull, not a fabricated negative height.
@@ -532,7 +530,23 @@ pub(crate) fn line_rect(line: &PlacedLine, local: Rect) -> Rect {
                 local.size.width.abs(),
             )
         }
-        LineOrientation::Vertical => unreachable!("upright placement was not admitted"),
+    }
+}
+
+/// Places raw glyph offsets and the separately allocated inline pen without
+/// treating an upright outline as a rotated line rectangle.
+pub(crate) fn glyph_origin(
+    orientation: LineOrientation,
+    physical_run_origin: Point,
+    pen: f64,
+    dx: f64,
+    dy: f64,
+) -> Point {
+    let Point { x, y } = physical_run_origin;
+    match orientation {
+        LineOrientation::Horizontal => Point::new(x + pen + dx, y + dy),
+        LineOrientation::Sideways => Point::new(x - dy, y + pen + dx),
+        LineOrientation::Vertical => Point::new(x + dx, y + pen + dy),
     }
 }
 
@@ -676,10 +690,16 @@ pub struct Run {
 }
 
 impl Run {
-    /// Actual physical basis; raw glyph offsets remain in horizontal provider coordinates.
+    /// Actual line basis. The inline pen and raw glyph offset axes are separate.
     #[must_use]
     pub const fn orientation(&self) -> LineOrientation {
         self.metrics.orientation()
+    }
+
+    /// Actual outline axes, derived from this run's uniform line orientation.
+    #[must_use]
+    pub const fn glyph_basis(&self) -> crate::GlyphBasis {
+        crate::GlyphBasis::for_orientation(self.orientation())
     }
 
     #[must_use]
@@ -748,6 +768,11 @@ impl Run {
         self.metrics.advance()
     }
 
+    /// Physical baseline origin, Central for whole-upright runs.
+    ///
+    /// With origin `(X,Y)`, pen `p` and raw offsets `(dx,dy)`, glyph origins are
+    /// `(X+p+dx,Y+dy)` for Horizontal, `(X-dy,Y+p+dx)` for Sideways and
+    /// `(X+dx,Y+p+dy)` for Vertical. Outline axes follow [`Self::glyph_basis`].
     #[must_use]
     pub const fn origin(&self) -> Point {
         physical_origin(
@@ -976,6 +1001,11 @@ pub enum BaselineShiftFact {
     Requested(BaselineShift),
 }
 
+/// Physical run origin and logical inline advance.
+///
+/// Horizontal uses `(offset, baseline)` as physical `(x,y)`; Sideways and
+/// Vertical use `(baseline, offset)`. Advance and glyph pens follow the inline
+/// axis, independently of the raw glyph offset axes documented by [`Run::origin`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RunMetrics {
     font_size: f32,
@@ -986,7 +1016,8 @@ pub struct RunMetrics {
 }
 
 impl RunMetrics {
-    /// Physical basis for interpreting inline offsets and cross-axis baselines.
+    /// Line basis: inline is physical x for Horizontal and y otherwise;
+    /// baseline is physical y for Horizontal and x otherwise.
     #[must_use]
     pub const fn orientation(self) -> LineOrientation {
         self.orientation
@@ -1014,16 +1045,19 @@ impl RunMetrics {
         self.font_size
     }
 
+    /// Physical cross-axis baseline coordinate: y for Horizontal, x otherwise.
     #[must_use]
     pub const fn baseline(self) -> f64 {
         self.baseline
     }
 
+    /// Physical inline-axis origin coordinate: x for Horizontal, y otherwise.
     #[must_use]
     pub const fn offset(self) -> f64 {
         self.offset
     }
 
+    /// Logical inline advance, including admitted line spacing allocation.
     #[must_use]
     pub const fn advance(self) -> f64 {
         self.advance
@@ -1058,13 +1092,15 @@ impl Glyph {
         self.id
     }
 
-    /// Raw canonical horizontal provider offset, added to the logical pen and run origin.
+    /// Raw font-x offset, scaled once to layout units. The glyph basis and
+    /// inline pen axis are supplied by the owning run; see [`Run::origin`].
     #[must_use]
     pub const fn x(self) -> f32 {
         self.x
     }
 
-    /// Raw canonical vertical provider offset, positive downward from the run baseline.
+    /// Raw converted font-y offset, positive downward before applying the
+    /// owning run's glyph basis. See [`Run::origin`] for physical positioning.
     #[must_use]
     pub const fn y(self) -> f32 {
         self.y
@@ -1076,7 +1112,8 @@ impl Glyph {
         self.advance
     }
 
-    /// Actual logical run-local pen, including line spacing allocation.
+    /// Actual logical run-local inline pen, including line spacing allocation.
+    /// It follows physical y for Vertical, independently of the raw x offset.
     #[must_use]
     pub const fn pen(self) -> f64 {
         self.pen
@@ -1521,4 +1558,28 @@ pub enum Movement {
     NextLine,
     DocumentStart,
     DocumentEnd,
+}
+
+#[cfg(test)]
+mod glyph_frame_tests {
+    use super::*;
+
+    #[test]
+    fn upright_glyph_origin_keeps_raw_offsets_separate_from_inline_pen() {
+        let origin = Point::new(100.0, 20.0);
+        // A nonzero inline pen plus unequal signed offsets distinguishes all
+        // three physical maps, including the clockwise cell-map alternative.
+        assert_eq!(
+            glyph_origin(LineOrientation::Vertical, origin, 10.0, -7.0, -4.0),
+            Point::new(93.0, 26.0)
+        );
+        assert_eq!(
+            glyph_origin(LineOrientation::Horizontal, origin, 10.0, -7.0, -4.0),
+            Point::new(103.0, 16.0)
+        );
+        assert_eq!(
+            glyph_origin(LineOrientation::Sideways, origin, 10.0, -7.0, -4.0),
+            Point::new(104.0, 23.0)
+        );
+    }
 }

@@ -38,21 +38,51 @@ impl Whitespace {
     }
 }
 
-/// Same-instance logical font metrics. Descent is a nonnegative distance below baseline.
+/// Same-instance logical cross-axis metrics. The signed distances are from the
+/// line reference toward line-over and line-under respectively.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct RunMetrics {
     pub(crate) ascent: f64,
     pub(crate) descent: f64,
     /// Initial run-style/default strut height; actual components retain their own.
     pub(crate) line_height: f64,
+    pub(crate) basis: RunMetricBasis,
+}
+
+impl RunMetrics {
+    pub(crate) const fn horizontal(&self) -> Option<&HorizontalRunMetrics> {
+        match &self.basis {
+            RunMetricBasis::Horizontal(metrics) => Some(metrics),
+            RunMetricBasis::Upright { .. } => None,
+        }
+    }
+}
+
+/// Horizontal-only font facts cannot masquerade as upright cross geometry.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum RunMetricBasis {
+    Horizontal(HorizontalRunMetrics),
+    Upright {
+        /// Present only when an actual component demands MetricsRelative.
+        normal_extent_design: Option<f64>,
+        design_scale: f64,
+    },
+}
+
+impl Default for RunMetricBasis {
+    fn default() -> Self {
+        Self::Horizontal(HorizontalRunMetrics::default())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct HorizontalRunMetrics {
     /// Distance from baseline to the underline's top, positive upward.
     pub(crate) underline_top: f64,
     pub(crate) underline_thickness: f64,
     /// Distance from baseline to the strike center, positive upward.
     pub(crate) strike_center: f64,
     pub(crate) strike_thickness: f64,
-    pub(crate) x_height: f64,
-    pub(crate) cap_height: f64,
 }
 
 /// One resolved and actually shaped face/instance. Resources remain strong, not copied bytes.

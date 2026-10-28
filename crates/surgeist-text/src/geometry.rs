@@ -1,4 +1,27 @@
-/// Logical point in text layout coordinates.
+/// Outline axes of the glyphs in an admitted uniform run.
+///
+/// Glyph offsets use font x to the right and converted font y downward. The
+/// logical glyph pen follows the run's inline axis independently of these axes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GlyphBasis {
+    /// Horizontal and whole-upright glyph outlines keep their original axes.
+    Unrotated,
+    /// Whole-sideways glyph outlines rotate clockwise by ninety degrees.
+    Clockwise,
+}
+
+impl GlyphBasis {
+    pub(crate) const fn for_orientation(orientation: crate::LineOrientation) -> Self {
+        match orientation {
+            crate::LineOrientation::Horizontal | crate::LineOrientation::Vertical => {
+                Self::Unrotated
+            }
+            crate::LineOrientation::Sideways => Self::Clockwise,
+        }
+    }
+}
+
+/// Point in the coordinate frame documented by its owning operation.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Point {
     pub x: f64,
@@ -22,7 +45,7 @@ impl Point {
     }
 }
 
-/// Logical size in text layout coordinates.
+/// Size in the coordinate frame documented by its owning operation.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Size {
     pub width: f64,
@@ -46,7 +69,7 @@ impl Size {
     }
 }
 
-/// Logical rectangle in text layout coordinates.
+/// Rectangle in the coordinate frame documented by its owning operation.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Rect {
     pub origin: Point,

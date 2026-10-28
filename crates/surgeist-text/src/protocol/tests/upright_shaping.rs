@@ -682,3 +682,11 @@ fn upright_arabic_keeps_mark_and_joiner_context_inside_the_complete_cell() {
         }
     }
 }
+
+#[path = "upright_shaping/failures.rs"]
+mod failures;
+#[path = "upright_shaping/policy.rs"]
+mod policy;
+
+#[path = "upright_shaping/arrangement.rs"]
+mod arrangement;

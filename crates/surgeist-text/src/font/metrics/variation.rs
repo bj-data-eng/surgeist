@@ -20,11 +20,12 @@ use super::{
     EffectiveFontInstance, Error, ErrorCode, ErrorDetail, Result, Table, TableError, table_error,
 };
 
-const TAGS: [[u8; 4]; 9] = [
+const TAGS: [[u8; 4]; 10] = [
     *b"hasc", *b"hdsc", *b"hlgp", *b"hcla", *b"hcld", *b"stro", *b"strs", *b"vasc", *b"vdsc",
+    *b"vlgp",
 ];
 
-pub(super) struct Deltas([f64; 9]);
+pub(super) struct Deltas([f64; 10]);
 impl Deltas {
     pub(super) fn get(&self, tag: &[u8; 4]) -> f64 {
         TAGS.iter()
@@ -49,7 +50,7 @@ pub(super) fn resolve(
     instance: &EffectiveFontInstance<'_>,
     used: &[[u8; 4]],
 ) -> Result<Deltas> {
-    let mut result = Deltas([0.0; 9]);
+    let mut result = Deltas([0.0; 10]);
     let Some(data) = data else { return Ok(result) };
     if instance.axis_count() == 0 {
         return Err(refuse(TableError::VariationWithoutAxes));

@@ -1,7 +1,7 @@
 //! Independent used-reference observations from real registered font tables.
 use crate::*;
 use crate::{baseline_test_fonts as base, test_fonts as sfnt, vertical_test_fonts as vertical};
-use skrifa::raw::TableProvider;
+use skrifa::{MetadataProvider, raw::TableProvider};
 
 #[path = "upright_fixture.rs"]
 mod fixture;
@@ -45,6 +45,248 @@ fn table_error(error: Error, table: FontMetricTable, reason: FontMetricTableErro
     assert_eq!(
         error.detail(),
         Some(&ErrorDetail::FontMetricTable { table, reason })
+    );
+}
+
+#[test]
+fn unscaled_upright_facts_keep_actual_reference_instance_and_fractional_coordinates() {
+    for (bytes, coordinates, expected, reference) in [
+        (
+            fixture::native(0x0001_1000, 700, -300, 200),
+            vec![],
+            [-300.0, 700.0, 200.0, -500.0, 500.0],
+            UprightMetricReference::NominalVerticalPenX,
+        ),
+        (
+            fixture::absolute(&vertical::native()),
+            vec![],
+            [0.0, 1200.0, 600.0, -600.0, 600.0],
+            UprightMetricReference::FontDesignX,
+        ),
+        (
+            fixture::fractional_vertical(),
+            vec![8192, 8192],
+            [0.0, 1000.75, 500.375, -500.375, 500.375],
+            UprightMetricReference::FontDesignX,
+        ),
+    ] {
+        let font = skrifa::FontRef::new(&bytes).unwrap();
+        assert_eq!(font.head().unwrap().units_per_em(), 1000);
+        let (system, data) = registered(bytes);
+        for size in [f32::from_bits(1), 10.0, 20.0, f32::MAX] {
+            let instance = data.unsynthesized_instance(size, &coordinates).unwrap();
+            let raw = instance
+                .unscaled_upright_metrics(system.font_catalogue_identity(), script())
+                .unwrap();
+            assert_eq!(
+                [
+                    raw.em_under(),
+                    raw.em_over(),
+                    raw.central_coordinate_or_distance(),
+                    raw.used_under(),
+                    raw.used_over()
+                ],
+                expected
+            );
+            assert_eq!(raw.reference(), reference);
+            assert_eq!(raw.units_per_em(), 1000);
+            assert_eq!(raw.script(), script());
+            assert!(raw.instance().face().is_same_face(&data.face()));
+            assert_eq!(raw.instance().font_size(), size);
+            assert_eq!(
+                raw.instance().normalized_coords().collect::<Vec<_>>(),
+                coordinates
+            );
+            let public = instance
+                .upright_metrics(system.font_catalogue_identity(), script())
+                .unwrap();
+            geometry(&public, expected.map(|v| v * (f64::from(size) / 1000.0)));
+            assert_eq!(raw.provenance(), public.provenance());
+            assert_eq!(raw.base_script(), public.base_script());
+            assert_eq!(raw.base_absence(), public.base_absence());
+        }
+    }
+}
+
+#[test]
+fn upright_gap_is_signed_glyph_free_and_independently_demanded_even_with_base() {
+    for gap in [200i16, -200, -1200] {
+        let bytes = fixture::absolute(&fixture::native(0x0001_1000, 700, -300, gap));
+        assert_eq!(
+            i16::from_be_bytes(sfnt::table(&bytes, *b"vhea")[8..10].try_into().unwrap()),
+            gap
+        );
+        // Font admission needs its real cmap. Actual nominal glyph access still
+        // fails for both glyph zero and SPACE, independently of gap demand.
+        let bytes = sfnt::remove_tables(&bytes, &[*b"vmtx", *b"glyf"]);
+        let font = skrifa::FontRef::new(&bytes).unwrap();
+        assert_eq!(font.charmap().map(0x20_u32).unwrap().to_u32(), 3);
+        let (system, data) = registered(bytes);
+        let stats = system.stats();
+        for size in [10.0, 20.0] {
+            let instance = data.unsynthesized_instance(size, &[]).unwrap();
+            assert_eq!(
+                instance
+                    .upright_line_gap(system.font_catalogue_identity())
+                    .unwrap(),
+                f64::from(gap)
+            );
+            let raw = instance
+                .unscaled_upright_metrics(system.font_catalogue_identity(), script())
+                .unwrap();
+            assert_eq!([raw.used_under(), raw.used_over()], [-600.0, 600.0]);
+            for glyph in [0, 3] {
+                assert_eq!(
+                    instance
+                        .vertical_glyph_metrics(glyph, system.font_catalogue_identity())
+                        .unwrap_err()
+                        .detail(),
+                    Some(&ErrorDetail::FontOutline {
+                        glyph,
+                        reason: FontOutlineError::UnavailableOutline,
+                    }),
+                );
+            }
+        }
+        assert_eq!(system.stats(), stats);
+    }
+    let good = fixture::absolute(&fixture::native(0x0001_1000, 700, -300, 200));
+    assert_eq!(
+        u32::from_be_bytes(sfnt::table(&good, *b"vhea")[..4].try_into().unwrap()),
+        0x0001_1000,
+    );
+    for (tag, which, reason) in [
+        (
+            *b"vhea",
+            FontMetricTable::Vhea,
+            FontMetricTableError::Malformed,
+        ),
+        (
+            *b"MVAR",
+            FontMetricTable::Mvar,
+            FontMetricTableError::VariationWithoutAxes,
+        ),
+    ] {
+        let (system, data) = registered(sfnt::replace_tables(&good, vec![(tag, vec![0])]));
+        let instance = data.unsynthesized_instance(10.0, &[]).unwrap();
+        // An edge-only demand models the explicit-height boundary: BASE wins.
+        assert!(
+            instance
+                .unscaled_upright_metrics(system.font_catalogue_identity(), script())
+                .is_ok()
+        );
+        table_error(
+            instance
+                .upright_line_gap(system.font_catalogue_identity())
+                .unwrap_err(),
+            which,
+            reason,
+        );
+    }
+}
+
+#[test]
+fn absent_and_qualified_vhea_one_gap_ignore_reserved_values_and_undemanded_mvar() {
+    for bytes in [
+        vertical::absent(),
+        fixture::native(0x0001_0000, 1200, -300, 900),
+    ] {
+        let bytes = sfnt::replace_tables(&bytes, vec![(*b"MVAR", vec![0])]);
+        let (system, data) = registered(bytes);
+        let instance = data.unsynthesized_instance(10.0, &[]).unwrap();
+        assert_eq!(
+            instance
+                .upright_line_gap(system.font_catalogue_identity())
+                .unwrap(),
+            0.0
+        );
+    }
+}
+
+#[test]
+fn upright_gap_resolves_actual_instance_vlgp_with_existing_whole_unit_rounding() {
+    for (records, expected) in [
+        (vec![], [42.0, 42.0, 42.0]),
+        (vec![(*b"vlgp", 100)], [42.0, 92.0, 142.0]),
+        (vec![(*b"vlgp", 3)], [42.0, 44.0, 45.0]),
+        (vec![(*b"vlgp", -3)], [42.0, 41.0, 39.0]),
+    ] {
+        let bytes = fixture::variable(&records);
+        let font = skrifa::FontRef::new(&bytes).unwrap();
+        assert_eq!(font.fvar().unwrap().axis_count(), 1);
+        assert_eq!(
+            font.mvar().unwrap().value_record_count(),
+            u16::try_from(records.len()).unwrap()
+        );
+        let (system, data) = registered(bytes);
+        for (coord, expected) in [0, 8192, 16384].into_iter().zip(expected) {
+            let coordinates = [coord];
+            let instance = data.unsynthesized_instance(10.0, &coordinates).unwrap();
+            assert_eq!(
+                instance
+                    .upright_line_gap(system.font_catalogue_identity())
+                    .unwrap(),
+                expected
+            );
+            let raw = instance
+                .unscaled_upright_metrics(system.font_catalogue_identity(), script())
+                .unwrap();
+            assert_eq!([raw.used_under(), raw.used_over()], [-500.0, 500.0]);
+        }
+    }
+}
+
+#[test]
+fn demanded_gap_keeps_strict_header_and_whole_record_mvar_failures() {
+    let good = fixture::absolute(&fixture::native(0x0001_1000, 700, -300, 200));
+    let header = sfnt::table(&good, *b"vhea").to_vec();
+    let mut bad_version = header.clone();
+    bad_version[..4].copy_from_slice(&0x0002_0000u32.to_be_bytes());
+    let mut bad_format = header.clone();
+    bad_format[32..34].copy_from_slice(&1i16.to_be_bytes());
+    for (vhea, reason) in [
+        (header[..35].to_vec(), FontMetricTableError::Malformed),
+        (bad_version, FontMetricTableError::UnsupportedVersion),
+        (bad_format, FontMetricTableError::Malformed),
+    ] {
+        let (system, data) = registered(sfnt::replace_tables(&good, vec![(*b"vhea", vhea)]));
+        let instance = data.unsynthesized_instance(10.0, &[]).unwrap();
+        assert!(
+            instance
+                .unscaled_upright_metrics(system.font_catalogue_identity(), script())
+                .is_ok()
+        );
+        table_error(
+            instance
+                .upright_line_gap(system.font_catalogue_identity())
+                .unwrap_err(),
+            FontMetricTable::Vhea,
+            reason,
+        );
+    }
+    let mut bad_row = fixture::mvar(&[(*b"stro", 100)]);
+    bad_row[18..20].copy_from_slice(&99u16.to_be_bytes());
+    let bytes = fixture::absolute(&sfnt::replace_tables(
+        &fixture::variable(&[]),
+        vec![(*b"MVAR", bad_row)],
+    ));
+    let (system, data) = registered(bytes);
+    let instance = data.unsynthesized_instance(10.0, &[0]).unwrap();
+    assert!(
+        instance
+            .unscaled_upright_metrics(system.font_catalogue_identity(), script())
+            .is_ok()
+    );
+    table_error(
+        instance
+            .upright_line_gap(system.font_catalogue_identity())
+            .unwrap_err(),
+        FontMetricTable::Mvar,
+        FontMetricTableError::VariationDeltaIndex {
+            record: 0,
+            outer: 0,
+            inner: 99,
+        },
     );
 }
 

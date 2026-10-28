@@ -155,6 +155,7 @@ pub(super) fn local_levels(
     analysis: &mut Analysis,
     atoms: IndexRange<usize>,
     base: u8,
+    typography: crate::AnalysisTypography,
 ) -> crate::Result<()> {
     if atoms.clone().any(|i| {
         projection.atoms[i].code_point != 9
@@ -172,7 +173,13 @@ pub(super) fn local_levels(
         atoms.clone().map(|i| {
             (
                 projection.atoms[i].glyph,
-                (analysis.infos[i].0.bidi_class, analysis.infos[i].0.bracket),
+                (
+                    crate::engine::analysis::used_bidi_class(
+                        typography,
+                        analysis.infos[i].0.bidi_class,
+                    ),
+                    analysis.infos[i].0.bracket,
+                ),
             )
         }),
         Some(base),
@@ -180,7 +187,12 @@ pub(super) fn local_levels(
     analysis.levels[atoms.clone()].copy_from_slice(bidi.levels());
     let roles = atoms
         .clone()
-        .map(|i| LineReset::from_class(analysis.infos[i].0.bidi_class))
+        .map(|i| {
+            LineReset::from_class(crate::engine::analysis::used_bidi_class(
+                typography,
+                analysis.infos[i].0.bidi_class,
+            ))
+        })
         .collect::<Vec<_>>();
     reset_line_levels(&mut analysis.levels[atoms], &roles, base);
     Ok(())
@@ -237,17 +249,18 @@ impl Output {
             &mut analysis,
             variant.inserted_atoms.clone(),
             outer & 1,
+            prepared.analyzed.typography,
         )?;
         let first = self.output.units.len();
         let processed = prepared
             .analyzed
             .processed
             .project(row.insertion_anchor, crate::Affinity::After);
-        let capture = |level, bidi_class| UnitCapture {
+        let capture = |level, bidi_class, local| UnitCapture {
             source: Range::new(row.insertion_anchor, row.insertion_anchor),
             processed: Range::new(processed, processed),
             participant: None,
-            kind: PresentationUnitKind::Replacement { alternative },
+            kind: PresentationUnitKind::Replacement { alternative, local },
             level,
             bidi_class,
         };
@@ -256,7 +269,7 @@ impl Output {
                 &variant.projection,
                 &analysis,
                 &[],
-                capture(outer, None),
+                capture(outer, None, Range::new(0, 0)),
                 false,
             )?;
         } else {
@@ -265,7 +278,13 @@ impl Output {
                     &variant.projection,
                     &analysis,
                     &[i],
-                    capture(analysis.levels[i], Some(analysis.infos[i].0.bidi_class)),
+                    capture(analysis.levels[i], Some(analysis.infos[i].0.bidi_class), {
+                        let start = variant.projection.atoms[variant.inserted_atoms.start]
+                            .presentation
+                            .start;
+                        let range = variant.projection.atoms[i].presentation;
+                        Range::new(range.start - start, range.end - start)
+                    }),
                     false,
                 )?;
             }
@@ -634,10 +653,36 @@ pub(super) fn select(
             return Err(composition_error());
         }
     }
+    let provenance = crate::engine::upright::UprightProvenance::Selected {
+        original: &prepared.analyzed.projection,
+        originals: &output.originals,
+        units: &output.output.units,
+    };
+    let upright_units = crate::engine::upright::units(
+        &prepared.analyzed,
+        &projection,
+        &selected_analysis,
+        &provenance,
+        prepared.options.orientation(),
+    )?;
+    let profile = match prepared.options.orientation() {
+        crate::LineOrientation::Horizontal => crate::engine::upright::ShapingProfile::Horizontal,
+        crate::LineOrientation::Sideways => crate::engine::upright::ShapingProfile::Sideways,
+        crate::LineOrientation::Vertical => crate::engine::upright::ShapingProfile::Upright {
+            units: &upright_units,
+            provenance,
+        },
+    };
     let assignments = if output.domains.is_empty() {
         crate::engine::shape::retain_original_fonts(prepared, &projection, &output.originals)?
     } else {
-        crate::engine::shape::assign_fonts(prepared, &projection, &selected_analysis, &scopes)?
+        crate::engine::shape::assign_fonts(
+            prepared,
+            &projection,
+            &selected_analysis,
+            profile,
+            &scopes,
+        )?
     };
     let relation_end = if end.participant == tables.participants.len()
         && request.context.end == crate::LineEnd::Paragraph
@@ -669,6 +714,7 @@ pub(super) fn select(
         .reduce(|a, b| Range::new(a.start.min(b.start), a.end.max(b.end)))
         .unwrap_or(Range::new(start.source_after, end.source_before));
     Ok(SelectedPresentation {
+        upright_units,
         source,
         selected_relation,
         units: output.output.units,

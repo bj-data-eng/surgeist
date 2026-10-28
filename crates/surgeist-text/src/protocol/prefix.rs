@@ -112,7 +112,7 @@ impl FinalizedSharedUnitView<'_> {
         self.line.inner.selected.presentation.units[row.units.clone()]
             .iter()
             .filter_map(move |unit| {
-                if let PresentationUnitKind::Replacement { alternative } = unit.kind
+                if let PresentationUnitKind::Replacement { alternative, .. } = unit.kind
                     && seen.insert(alternative)
                 {
                     Some(super::PreparedAlternative {
@@ -344,7 +344,9 @@ impl PrefixData {
             }
             result.unit_cuts[index] = begin..item;
             let participant = unit.participant.or_else(|| match unit.kind {
-                PresentationUnitKind::Replacement { alternative } => replacement_owner(alternative),
+                PresentationUnitKind::Replacement { alternative, .. } => {
+                    replacement_owner(alternative)
+                }
                 _ => None,
             });
             if let Some(participant) = participant {
