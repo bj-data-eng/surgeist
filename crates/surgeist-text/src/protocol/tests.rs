@@ -38,6 +38,7 @@ mod vertical_metrics_orientation;
 mod wbr;
 mod whitespace_edges;
 mod width;
+mod word_separators;
 
 use super::*;
 use crate::{
