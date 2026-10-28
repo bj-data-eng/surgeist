@@ -99,6 +99,42 @@ the tree properties of [tests/document_properties.rs](tests/document_properties.
 whose oracle is a recursive reading of sections 5.5.7 to 5.5.10 written in the
 file, not the builder under test.
 
+## Rule Driver, An+B And Serialization Facts
+
+[src/grammar/](src/grammar/) holds the section 5.4 entry points
+(`entry.rs`, methods of `Stream`), the section 5.5 algorithms (`algorithm.rs`:
+`consume_at_rule`, `consume_qualified_rule`, `consume_declaration`, each over
+the nodes of one list) and the two iterators of units (`iterator.rs`). The
+drivers reach nodes only through `Stream::peek_at`, which takes a meter step and
+returns the refusal as an error: never read a driver's end condition from
+`next_token`, `is_empty` or `discard_whitespace`, which turn a refusal into the
+end of the stream. A refusal ends an iterator with one `Failed` for which
+`is_refused()` holds, and `tests/grammar.rs` refuses every call of a run in turn
+to keep that. Keep a driver's consumption independent of what the grammar says
+about a unit (`verdicts-do-not-change-extents` in
+[tests/syntax_properties.rs](tests/syntax_properties.rs)). `RuleGrammar` and
+`BlockGrammar` are provisional until `surgeist-css` has ported implementors; do
+not widen them for a test.
+
+[src/serialize.rs](src/serialize.rs) writes tokens so that they read back as
+themselves. Its escaping asks `lexical::is_ident_code_point`, so it follows the
+non-ASCII rule of the lexer and changes with it. `Writer` adds two separators
+that the table of section 9 lacks (a `<!` before two hyphens, and the ident `--`
+before `>`), found by the round-trip properties of
+[tests/properties.rs](tests/properties.rs), which must keep passing for any
+change to the lexer or the serializer.
+
+[tests/cssparser_oracle.rs](tests/cssparser_oracle.rs) also compares `parse_nth`,
+`serialize_identifier`, `serialize_string` and the separator table of cssparser
+with `anb::parse`, `serialize::identifier`, `serialize::string` and
+`serialize::needs_separator`; the differences are the rows of
+[tests/oracle/syntax_differences.tsv](tests/oracle/syntax_differences.tsv), each
+citing the clause that makes this crate's answer correct.
+
+The sizes of `AnPlusB`, `AnPlusBError`, `RuleEnd`, `UnitKind`, `Failed`,
+`AtRule`, `QualifiedRule`, `Declaration` and `Adjacency` are pinned in
+[tests/layout_pins.rs](tests/layout_pins.rs).
+
 ## Command Inventory
 
 Select affected checks under the root process/resource policy, from repository

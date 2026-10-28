@@ -178,3 +178,82 @@ impl Meter for Recording {
         Refused
     }
 }
+
+/// A document built under `meter` from a list of the tokens named by a small
+/// notation, separated by spaces: `_` whitespace, `/` a comment, `;`, `:`, `,`,
+/// `!` (a delim), `{` and `(` and `[` and `f(` opening a group, `}`, `)` and `]`
+/// closing the innermost one (a closing token with none open is a token of the
+/// root list), `@x` an at-keyword, and anything else an ident.
+/// The meter admits everything and its record is emptied afterwards, so a test
+/// sees only what a stream does.
+pub fn metered_document<'m>(meter: &'m Recording, notation: &str) -> Document<'m> {
+    use surgeist_css_parser::Token;
+    use surgeist_css_parser::document::{NodeId, TreeBuilder};
+
+    fn leak(text: &str) -> &'static str {
+        Box::leak(text.to_owned().into_boxed_str())
+    }
+
+    meter.admit_all();
+    let mut builder: TreeBuilder<'m, ()> = Document::builder(Limits::default(), 0, Some(meter))
+        .expect("the builder admits its first allocation");
+    let mut open: Vec<(NodeId, ListId)> = Vec::new();
+    for word in notation.split_whitespace() {
+        let parent = open
+            .last()
+            .map_or_else(|| builder.root(), |(_, list)| *list);
+        match word {
+            "{" => open.push(builder.open(parent, Token::OpenCurly, None, None).unwrap()),
+            "(" => open.push(builder.open(parent, Token::OpenParen, None, None).unwrap()),
+            "[" => open.push(builder.open(parent, Token::OpenSquare, None, None).unwrap()),
+            "}" | ")" | "]" if open.is_empty() => {
+                // A closing token that closes nothing is a token of the list.
+                let token = match word {
+                    "}" => Token::CloseCurly,
+                    ")" => Token::CloseParen,
+                    _ => Token::CloseSquare,
+                };
+                builder.leaf(parent, token, None, None).unwrap();
+            }
+            "}" | ")" | "]" => {
+                let (group, _) = open.pop().expect("a group is open");
+                builder
+                    .close(
+                        group,
+                        GroupEnd::Closed {
+                            range: None,
+                            payload: None,
+                        },
+                    )
+                    .unwrap();
+            }
+            word if word.len() > 1 && word.ends_with('(') => {
+                let name = leak(&word[..word.len() - 1]);
+                open.push(
+                    builder
+                        .open(parent, Token::Function(name), None, None)
+                        .unwrap(),
+                );
+            }
+            _ => {
+                let token = match word {
+                    "_" => Token::Whitespace,
+                    "/" => Token::Comment,
+                    ";" => Token::Semicolon,
+                    ":" => Token::Colon,
+                    "," => Token::Comma,
+                    "!" => Token::Delim('!'),
+                    word if word.starts_with('@') => Token::AtKeyword(leak(&word[1..])),
+                    word => Token::Ident(leak(word)),
+                };
+                builder.leaf(parent, token, None, None).unwrap();
+            }
+        }
+    }
+    while let Some((group, _)) = open.pop() {
+        builder.close(group, GroupEnd::Eof { at: None }).unwrap();
+    }
+    let document = builder.finish(None);
+    meter.forget();
+    document
+}

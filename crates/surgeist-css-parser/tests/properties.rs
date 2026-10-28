@@ -13,10 +13,11 @@
 //! - P3, protocol against lexer: a host that refuses an append once, asks again,
 //!   and answers wrongly in between gets the same tokens as the lexer, and the
 //!   lexical errors that the stepwise tokenizer's flags show are the lexer's.
-//! - P4, round trip (section 9): serializing the tokens, with a comment where
-//!   the section's table asks for one, and lexing the result gives the same
-//!   tokens, modulo whitespace. The serializer is this file's own reading of
-//!   section 9 and the escaping of CSSOM 2.1; the crate has none yet.
+//! - P4, round trip (section 9): serializing the tokens with the crate's
+//!   `serialize::Writer`, and the component values with `serialize::list`, and
+//!   reading the result again gives the same tokens and the same tree, modulo
+//!   comments and the way a group ended. The comparison reads the output with
+//!   the lexer and the document builder; the serializer is the crate's own.
 //!
 //! Section 3.2 and the UTF-16 source map are not involved: the stepwise
 //! tokenizer reads the units through `InputCursor`, which reports each scalar's
@@ -28,14 +29,17 @@ use std::fmt::Write as _;
 use std::ops::Range;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-use common::generate::generate;
-use surgeist_css_parser::Token;
+use common::generate::text_of;
+use surgeist_css_parser::document::{Component, ListId};
 use surgeist_css_parser::input::{InputCursor, InputKind, InputRequest, Scalar};
 use surgeist_css_parser::lexer::protocol::{
     NameKind, NumberKind as RawNumberKind, RawTokenKind, Record, TokenCursor, TokenRequest,
 };
 use surgeist_css_parser::lexer::{Lexer, Options};
+use surgeist_css_parser::limits::{DepthExcess, Limits};
+use surgeist_css_parser::serialize::{self, Adjacency, Writer, needs_separator};
 use surgeist_css_parser::token::{HashKind, NumberKind, Sign};
+use surgeist_css_parser::{Document, Token};
 use surgeist_fuzz::engine::{PropertyConfig, run_property};
 use surgeist_fuzz::generation::property::bytes;
 use surgeist_fuzz::{
@@ -50,43 +54,6 @@ const ENTROPY_BYTES: usize = 97;
 const SEED: u64 = 0x1508_0005;
 
 // ----------------------------------------------------------------- generators
-
-/// A text of arbitrary code points: every ASCII byte, so NULL, carriage
-/// return, form feed, quotes and backslashes meet each other, and a handful of
-/// non-ASCII code points around the edges of section 4.2's ranges.
-fn raw_text(entropy: &[u8]) -> String {
-    const WIDE: [char; 10] = [
-        '\u{e9}',
-        '\u{2603}',
-        '\u{1f600}',
-        '\u{a0}',
-        '\u{fffd}',
-        '\u{fffe}',
-        '\u{10ffff}',
-        '\u{d7ff}',
-        '\u{e000}',
-        '\u{b7}',
-    ];
-    entropy
-        .iter()
-        .take(96)
-        .map(|&byte| {
-            if byte < 0x80 {
-                char::from(byte)
-            } else {
-                WIDE[usize::from(byte) % WIDE.len()]
-            }
-        })
-        .collect()
-}
-
-/// The first entropy byte picks the family: authored pieces, or raw bytes.
-fn text_of(entropy: &[u8]) -> String {
-    match entropy.first() {
-        Some(first) if first % 2 == 1 => raw_text(&entropy[1..]),
-        _ => generate(entropy.get(1..).unwrap_or(&[])),
-    }
-}
 
 // ----------------------------------------------------------------- the lexer's side
 
@@ -339,262 +306,96 @@ fn lexer_flagged_errors(text: &str) -> Vec<(&'static str, Range<usize>)> {
 
 // ----------------------------------------------------------------- the round trip (section 9)
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Edge {
-    Ident,
-    AtKeyword,
-    Hash,
-    Dimension,
-    Number,
-    Function,
-    Url,
-    BadUrl,
-    Percentage,
-    Cdc,
-    OpenParen,
-    Delim(char),
-    Other,
-}
-
-fn edge(token: &Token<'_>) -> Edge {
-    match token {
-        Token::Ident(_) => Edge::Ident,
-        Token::AtKeyword(_) => Edge::AtKeyword,
-        Token::Hash { .. } => Edge::Hash,
-        Token::Dimension { .. } => Edge::Dimension,
-        Token::Number(_) => Edge::Number,
-        Token::Function(_) => Edge::Function,
-        Token::Url(_) => Edge::Url,
-        Token::BadUrl => Edge::BadUrl,
-        Token::Percentage(_) => Edge::Percentage,
-        Token::Cdc => Edge::Cdc,
-        Token::OpenParen => Edge::OpenParen,
-        Token::Delim(point) => Edge::Delim(*point),
-        _ => Edge::Other,
-    }
-}
-
-/// Section 9's table: whether a comment must separate `first` from `second`.
-fn needs_comment(first: Edge, second: Edge) -> bool {
-    use Edge::{
-        AtKeyword, BadUrl, Cdc, Delim, Dimension, Function, Hash, Ident, Number, OpenParen,
-        Percentage, Url,
-    };
-    let name_like = |edge| {
-        matches!(
-            edge,
-            Ident | Function | Url | BadUrl | Delim('-') | Number | Percentage | Dimension | Cdc
-        )
-    };
-    match first {
-        Ident => name_like(second) || second == OpenParen,
-        AtKeyword | Hash | Dimension | Delim('#') | Delim('-') => name_like(second),
-        Number => {
-            matches!(
-                second,
-                Ident | Function | Url | BadUrl | Number | Percentage | Dimension | Cdc
-            ) || second == Delim('%')
-        }
-        Delim('@') => matches!(second, Ident | Function | Url | BadUrl | Delim('-') | Cdc),
-        Delim('.') | Delim('+') => matches!(second, Number | Percentage | Dimension),
-        Delim('/') => second == Delim('*'),
-        _ => false,
-    }
-}
-
-fn hex_escape(point: char) -> String {
-    format!("\\{:x} ", u32::from(point))
-}
-
-/// CSSOM 2.1, serialize an identifier.
-fn identifier(value: &str) -> String {
-    let mut out = String::new();
-    let points: Vec<char> = value.chars().collect();
-    for (index, &point) in points.iter().enumerate() {
-        let first = index == 0;
-        let after_hyphen = index == 1 && points[0] == '-';
-        if point == '\0' {
-            out.push('\u{fffd}');
-        } else if ('\u{1}'..='\u{1f}').contains(&point)
-            || point == '\u{7f}'
-            || ((first || after_hyphen) && point.is_ascii_digit())
-        {
-            out.push_str(&hex_escape(point));
-        } else if first && point == '-' && points.len() == 1 {
-            out.push_str("\\-");
-        } else if !point.is_ascii() || point == '-' || point == '_' || point.is_ascii_alphanumeric()
-        {
-            out.push(point);
-        } else {
-            out.push('\\');
-            out.push(point);
-        }
-    }
-    out
-}
-
-/// The name part of a hash: every ident code point is itself.
-fn name(value: &str) -> String {
-    let mut out = String::new();
-    for point in value.chars() {
-        if point == '\0' {
-            out.push('\u{fffd}');
-        } else if ('\u{1}'..='\u{1f}').contains(&point) || point == '\u{7f}' {
-            out.push_str(&hex_escape(point));
-        } else if !point.is_ascii() || point == '-' || point == '_' || point.is_ascii_alphanumeric()
-        {
-            out.push(point);
-        } else {
-            out.push('\\');
-            out.push(point);
-        }
-    }
-    out
-}
-
-fn string(value: &str) -> String {
-    let mut out = String::from("\"");
-    for point in value.chars() {
-        match point {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            point if point == '\n' || point.is_control() => out.push_str(&hex_escape(point)),
-            point => out.push(point),
-        }
-    }
-    out.push('"');
-    out
-}
-
-fn url(value: &str) -> String {
-    let mut out = String::from("url(");
-    for point in value.chars() {
-        match point {
-            '"' | '\'' | '(' | ')' | '\\' | ' ' => {
-                out.push('\\');
-                out.push(point);
-            }
-            point if point.is_control() => out.push_str(&hex_escape(point)),
-            point => out.push(point),
-        }
-    }
-    out.push(')');
-    out
-}
-
-/// A dimension's unit may read as the exponent of the number before it.
-fn unit(value: &str) -> String {
-    let escaped = identifier(value);
-    let mut points = value.chars();
-    match (points.next(), points.next()) {
-        (Some(first @ ('e' | 'E')), Some(second))
-            if second.is_ascii_digit() || second == '-' || second == '+' =>
-        {
-            format!("{}{}", hex_escape(first), name(&value[1..]))
-        }
-        _ => escaped,
-    }
-}
-
-/// Writes one token so that it lexes back to itself. Bad tokens have no value to
-/// write, so they are not written.
-fn write_token(token: &Token<'_>) -> Option<String> {
-    Some(match token {
-        Token::Ident(value) => identifier(value),
-        Token::Function(value) => format!("{}(", identifier(value)),
-        Token::AtKeyword(value) => format!("@{}", identifier(value)),
-        Token::Hash { value, kind } => format!(
-            "#{}",
-            if *kind == HashKind::Id {
-                identifier(value)
-            } else {
-                name(value)
-            }
-        ),
-        Token::String(value) => string(value),
-        Token::Url(value) => url(value),
-        Token::Delim('\\') => "\\\n".to_owned(),
-        Token::Delim(point) => point.to_string(),
-        Token::Number(number) => number.representation().to_owned(),
-        Token::Percentage(number) => format!("{}%", number.representation()),
-        Token::Dimension {
-            number,
-            unit: value,
-        } => {
-            format!("{}{}", number.representation(), unit(value))
-        }
-        Token::Colon => ":".to_owned(),
-        Token::Semicolon => ";".to_owned(),
-        Token::Comma => ",".to_owned(),
-        Token::OpenSquare => "[".to_owned(),
-        Token::OpenParen => "(".to_owned(),
-        Token::OpenCurly => "{".to_owned(),
-        Token::CloseSquare => "]".to_owned(),
-        Token::CloseParen => ")".to_owned(),
-        Token::CloseCurly => "}".to_owned(),
-        Token::Cdo => "<!--".to_owned(),
-        Token::Cdc => "-->".to_owned(),
-        Token::UnicodeRange(_)
-        | Token::BadString
-        | Token::BadUrl
-        | Token::Whitespace
-        | Token::Comment => return None,
-    })
-}
-
-/// The tokens of `text` as owned renderings with whitespace and comments
-/// removed, which is what the round trip preserves.
+/// The tokens of `text` as owned renderings with comments left out: what
+/// section 9 says survives a round trip, consecutive whitespace being one
+/// token already.
 fn tokens_of(text: &str) -> Vec<String> {
     let mut lexer = Lexer::new(text, &Options::default());
     let mut out = Vec::new();
     while let Some(lexeme) = lexer.next_lexeme() {
-        if !lexeme.token().is_trivia() {
+        if lexeme.token() != Token::Comment {
             out.push(common::render(lexeme.token()));
         }
     }
     out
 }
 
-/// Serializes the tokens of `text`, then lexes the result and compares. The
-/// lexer lends each token only until the next call, so each is written out
-/// before the next is asked for. Text with a bad string or a bad url is not
-/// serialized: they have no value to write.
+/// The component values of a list as a string: tokens, and groups with their
+/// contents between `<` and `>`, comments left out and the way a group ended
+/// not shown, because the specification's data structure has neither.
+fn shape(document: &Document<'_>, list: ListId) -> String {
+    let mut parts = Vec::new();
+    for &node in document.list(list) {
+        match document.component(node) {
+            Component::Token { token, .. } => {
+                if token != Token::Comment {
+                    parts.push(common::render(token));
+                }
+            }
+            Component::Function { children, .. } | Component::Block { children, .. } => {
+                parts.push(format!(
+                    "{}<{}>",
+                    common::render(document.token(node)),
+                    shape(document, children)
+                ))
+            }
+            Component::Denied { .. } => parts.push("Denied".to_owned()),
+            _ => unreachable!("the components of the specification and the denied block"),
+        }
+    }
+    parts.join(" ")
+}
+
+/// P4. Serializes the tokens of `text` with the crate's `Writer` and lexes the
+/// result: the same tokens, comments aside. Then does the same for the
+/// component values with `serialize::list`: the same tree.
 fn round_trip(text: &str) -> std::result::Result<(), String> {
     let mut lexer = Lexer::new(text, &Options::default());
-    let mut out = String::new();
-    let mut previous: Option<Edge> = None;
+    let mut writer = Writer::new(String::new());
     while let Some(lexeme) = lexer.next_lexeme() {
-        let token = lexeme.token();
-        match token {
-            Token::BadString | Token::BadUrl => return Ok(()),
-            Token::Comment => continue,
-            Token::Whitespace => {
-                if !out.is_empty() && !out.ends_with(' ') {
-                    out.push(' ');
-                }
-                previous = None;
-                continue;
-            }
-            _ => {}
-        }
-        let current = edge(&token);
-        if previous.is_some_and(|before| needs_comment(before, current)) {
-            out.push_str("/**/");
-        }
-        let Some(written) = write_token(&token) else {
-            return Ok(());
-        };
-        out.push_str(&written);
-        previous = Some(current);
+        writer
+            .token(lexeme.token())
+            .map_err(|_| "a string cannot fail to take a write".to_owned())?;
     }
+    let out = writer.into_inner();
     let (before, after) = (tokens_of(text), tokens_of(&out));
+    if before != after {
+        let mut detail = String::new();
+        let _ = write!(
+            detail,
+            "{text:?} serialized as {out:?}: {before:?} against {after:?}"
+        );
+        return Err(detail);
+    }
+    fn parse(
+        text: &str,
+    ) -> std::result::Result<Document<'_>, surgeist_css_parser::document::BuildError> {
+        Document::<()>::parse(
+            text,
+            &Options::default(),
+            Limits::default(),
+            DepthExcess::Fail,
+        )
+    }
+    let Ok(document) = parse(text) else {
+        // Nested deeper than the default limit: nothing to compare.
+        return Ok(());
+    };
+    let mut written = String::new();
+    serialize::list(&document, document.root_list(), &mut written)
+        .map_err(|_| "a string cannot fail to take a write".to_owned())?;
+    let again = parse(&written).map_err(|error| format!("{written:?}: {error}"))?;
+    let (before, after) = (
+        shape(&document, document.root_list()),
+        shape(&again, again.root_list()),
+    );
     if before == after {
         Ok(())
     } else {
         let mut detail = String::new();
         let _ = write!(
             detail,
-            "{text:?} serialized as {out:?}: {before:?} against {after:?}"
+            "{text:?} serialized as {written:?}: {before:?} against {after:?}"
         );
         Err(detail)
     }
@@ -816,8 +617,27 @@ fn the_properties_detect_a_wrong_lexer_result() {
     assert_eq!(tokens_of("1/**/px").len(), 2);
     assert_eq!(tokens_of("1px").len(), 1);
     assert!(round_trip("1/**/px").is_ok());
-    assert!(needs_comment(Edge::Number, Edge::Ident));
-    assert!(!needs_comment(Edge::Ident, Edge::Delim('.')));
+    assert!(needs_separator(Adjacency::Number, Adjacency::Ident));
+    assert!(!needs_separator(Adjacency::Ident, Adjacency::Delim('.')));
+    // And the comparison is able to see a tree that differs.
+    let flat = Document::<()>::parse(
+        "(a b)",
+        &Options::default(),
+        Limits::default(),
+        DepthExcess::Fail,
+    )
+    .unwrap();
+    let nested = Document::<()>::parse(
+        "(a) b",
+        &Options::default(),
+        Limits::default(),
+        DepthExcess::Fail,
+    )
+    .unwrap();
+    assert_ne!(
+        shape(&flat, flat.root_list()),
+        shape(&nested, nested.root_list())
+    );
 }
 
 #[test]
@@ -842,6 +662,27 @@ fn raw_and_authored_families_both_reach_hard_inputs() {
     assert!(seen_escape);
 }
 
+/// Calls `visit` with every text of `length` symbols of `alphabet`.
+fn texts(alphabet: &[&str], length: usize, mut visit: impl FnMut(&str)) {
+    let mut indexes = vec![0_usize; length];
+    loop {
+        let text: String = indexes.iter().map(|&index| alphabet[index]).collect();
+        visit(&text);
+        let mut place = 0;
+        while place < length {
+            indexes[place] += 1;
+            if indexes[place] < alphabet.len() {
+                break;
+            }
+            indexes[place] = 0;
+            place += 1;
+        }
+        if place == length {
+            return;
+        }
+    }
+}
+
 /// Every text of up to three symbols over an alphabet that holds one code point
 /// of each class section 4.3.1 distinguishes, of four over a subset, and of up
 /// to five over a small set of multi-code-point symbols (`url(`, an escape with
@@ -862,25 +703,6 @@ fn every_short_text_is_lexed_as_the_stepwise_tokenizer_reads_it() {
     const SYMBOLS: [&str; 10] = [
         "url(", "\\31 ", "\\)", "/*", "U+", "a", "1", " ", "\"", "\n",
     ];
-    fn texts(alphabet: &[&str], length: usize, mut visit: impl FnMut(&str)) {
-        let mut indexes = vec![0_usize; length];
-        loop {
-            let text: String = indexes.iter().map(|&index| alphabet[index]).collect();
-            visit(&text);
-            let mut place = 0;
-            while place < length {
-                indexes[place] += 1;
-                if indexes[place] < alphabet.len() {
-                    break;
-                }
-                indexes[place] = 0;
-                place += 1;
-            }
-            if place == length {
-                return;
-            }
-        }
-    }
     let mut checked = 0_usize;
     let mut check = |text: &str| {
         checked += 1;
@@ -896,4 +718,38 @@ fn every_short_text_is_lexed_as_the_stepwise_tokenizer_reads_it() {
         texts(&SYMBOLS, length, &mut check);
     }
     assert!(checked > 150_000, "{checked} texts checked");
+}
+
+/// Every text of up to three symbols over an alphabet of the pieces that make
+/// the serializer's work hard (idents of hyphens, the tokens of the table of
+/// section 9 and the ones that begin a CDO or end in a CDC, a backslash and its
+/// newline, a bad string, a bad url, the openers and closers of every group, an
+/// escape that is a digit, a comment), of four over a subset and of five over
+/// a smaller one, serializes with the crate's writer and reads back as the same
+/// tokens and the same tree. Every pair of those pieces meets every other, so no
+/// adjacency the table or the writer's two extra rules should cover is missed.
+#[test]
+fn every_short_text_round_trips_through_the_serializer() {
+    const PIECES: [&str; 35] = [
+        "a", "--", "-", "1", "e", ".", "+", "%", "-->", "<", "!", ">", "\\\n", "\"", "\"\n",
+        "url(a b)", "url(", "(", ")", "{", "}", "[", "]", "f(", "@", "#", " ", "/*", "*/", "\\31 ",
+        "*", "/", "px", "/**/", "\\-",
+    ];
+    const SUBSET: [&str; 16] = [
+        "a", "--", "-", "1", "<", "!", ">", "-->", "(", ")", "f(", " ", "@", "#", "/**/", "\\-",
+    ];
+    const SMALL: [&str; 11] = ["a", "--", "-", "<", "!", ">", "(", " ", "/**/", "\\-", "f("];
+    let mut checked = 0_usize;
+    let mut check = |text: &str| {
+        checked += 1;
+        if let Err(detail) = round_trip(text) {
+            panic!("{detail}");
+        }
+    };
+    for length in 1..=3 {
+        texts(&PIECES, length, &mut check);
+    }
+    texts(&SUBSET, 4, &mut check);
+    texts(&SMALL, 5, &mut check);
+    assert!(checked > 90_000, "{checked} texts checked");
 }

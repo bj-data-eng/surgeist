@@ -53,11 +53,19 @@
 //!   [`Site`] boundaries, [`stream::Mark`] restore points, the
 //!   [`stream::StopToken`]s of section 5.5.7, and the errors a grammar over it
 //!   reports, [`stream::StreamError`] and [`SyntaxError`];
+//! - [`grammar`]: the parser entry points of section 5.4 and the rule
+//!   algorithms of section 5.5, as methods of [`Stream`] and iterators of
+//!   units that hand each consumed rule or declaration to a
+//!   [`RuleGrammar`](grammar::RuleGrammar) or
+//!   [`BlockGrammar`](grammar::BlockGrammar);
+//! - [`anb`]: the `An+B` microsyntax of section 6 and its serialization;
+//! - [`unicode_range`]: besides the token's value, the algorithm of section
+//!   5.5.11 that tokenizes a `unicode-range` descriptor's text;
+//! - [`serialize`]: the serialization of section 9, so that tokens written
+//!   out read as the same tokens again: escaping, the comment between tokens
+//!   that would run together, and a writer that applies both;
 //! - [`match_ignore_ascii_case!`], ASCII case-insensitive matching of a string
 //!   against literal arms.
-//!
-//! The parser entry points and rule algorithms of sections 5.4 and 5.5, the
-//! `An+B` microsyntax and serialization are not here yet.
 //!
 //! ```
 //! use surgeist_css_parser::lexer::Options;
@@ -93,11 +101,14 @@ mod match_ascii;
 mod offset;
 mod syntax_token;
 
+pub mod anb;
 pub mod document;
+pub mod grammar;
 pub mod input;
 pub mod lexer;
 pub mod lexical;
 pub mod limits;
+pub mod serialize;
 pub mod stream;
 pub mod token;
 pub mod unicode_range;

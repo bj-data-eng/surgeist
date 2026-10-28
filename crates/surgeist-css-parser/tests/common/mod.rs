@@ -6,6 +6,7 @@
 #![allow(dead_code)]
 
 pub mod generate;
+pub mod grammar;
 pub mod tree;
 
 use std::ops::Range;
