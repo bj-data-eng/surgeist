@@ -6,8 +6,8 @@
 //! Complete candidates rank by occupied count, D/W/P/T occupancy, then earlier
 //! source starts in that order. Grouped wrap/pack productions never interleave.
 
-use super::property_input::{Parser, ParserState};
-use crate::diagnostic::error::property::ParseError;
+use super::property_input::{Mark, Stream};
+use crate::diagnostic::error::property::SyntaxError;
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::grid::parse_flow_tolerance;
@@ -18,13 +18,13 @@ use crate::values::layout::{
     CssItemDirection, CssItemFlow, CssItemPack, CssItemWrap, CssItemWrapMode, CssItemWrapOrder,
 };
 
-type ParseResult<'i, T> = Result<T, ParseError<'i, Error>>;
+type ParseResult<'i, T> = Result<T, SyntaxError<'i, Error>>;
 
-pub(super) fn parse_item_direction<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_item_direction<'i>(
+    input: &mut Stream<'i>,
 ) -> ParseResult<'i, CssItemDirection> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssItemDirection::Auto),
         "row" => Ok(CssItemDirection::Row),
@@ -35,17 +35,17 @@ pub(super) fn parse_item_direction<'i, 't>(
     }
 }
 
-pub(super) fn parse_item_wrap<'i, 't>(input: &mut Parser<'i, 't>) -> ParseResult<'i, CssItemWrap> {
+pub(super) fn parse_item_wrap<'i>(input: &mut Stream<'i>) -> ParseResult<'i, CssItemWrap> {
     // The longhand prefers its valid two-facet production. Shorthand search
     // visits both widths independently because its neighboring slots overlap.
     input
-        .try_parse(|input| parse_wrap_width(input, 2))
+        .attempt(|input| parse_wrap_width(input, 2))
         .or_else(|_| parse_wrap_width(input, 1))
 }
 
-fn wrap_keyword<'i, 't>(input: &mut Parser<'i, 't>) -> ParseResult<'i, CssItemWrap> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+fn wrap_keyword<'i>(input: &mut Stream<'i>) -> ParseResult<'i, CssItemWrap> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssItemWrap::Mode(CssItemWrapMode::Auto)),
         "nowrap" => Ok(CssItemWrap::Mode(CssItemWrapMode::NoWrap)),
@@ -57,16 +57,13 @@ fn wrap_keyword<'i, 't>(input: &mut Parser<'i, 't>) -> ParseResult<'i, CssItemWr
     }
 }
 
-fn parse_wrap_width<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    width: usize,
-) -> ParseResult<'i, CssItemWrap> {
+fn parse_wrap_width<'i>(input: &mut Stream<'i>, width: usize) -> ParseResult<'i, CssItemWrap> {
     let first = wrap_keyword(input)?;
     if width == 1 {
         return Ok(first);
     }
     // A second keyword of the same kind is itself responsible.
-    let second_location = input.current_source_location();
+    let second_location = input.site();
     let second = wrap_keyword(input)?;
     match (first, second) {
         (CssItemWrap::Mode(mode), CssItemWrap::Order(order))
@@ -77,15 +74,15 @@ fn parse_wrap_width<'i, 't>(
     }
 }
 
-pub(super) fn parse_item_pack<'i, 't>(input: &mut Parser<'i, 't>) -> ParseResult<'i, CssItemPack> {
+pub(super) fn parse_item_pack<'i>(input: &mut Stream<'i>) -> ParseResult<'i, CssItemPack> {
     input
-        .try_parse(|input| parse_pack_width(input, 2))
+        .attempt(|input| parse_pack_width(input, 2))
         .or_else(|_| parse_pack_width(input, 1))
 }
 
-fn pack_keyword<'i, 't>(input: &mut Parser<'i, 't>) -> ParseResult<'i, CssItemPack> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+fn pack_keyword<'i>(input: &mut Stream<'i>) -> ParseResult<'i, CssItemPack> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "normal" => Ok(CssItemPack::Normal),
         "dense" => Ok(CssItemPack::Dense),
@@ -94,16 +91,13 @@ fn pack_keyword<'i, 't>(input: &mut Parser<'i, 't>) -> ParseResult<'i, CssItemPa
     }
 }
 
-fn parse_pack_width<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    width: usize,
-) -> ParseResult<'i, CssItemPack> {
+fn parse_pack_width<'i>(input: &mut Stream<'i>, width: usize) -> ParseResult<'i, CssItemPack> {
     let first = pack_keyword(input)?;
     if width == 1 {
         return Ok(first);
     }
     // A second keyword that cannot pair with the first is itself responsible.
-    let second_location = input.current_source_location();
+    let second_location = input.site();
     let second = pack_keyword(input)?;
     match (first, second) {
         (CssItemPack::Dense, CssItemPack::Balance) | (CssItemPack::Balance, CssItemPack::Dense) => {
@@ -155,18 +149,18 @@ impl Candidate {
 
 struct Complete<'i> {
     candidate: Candidate,
-    end: ParserState<'i>,
+    end: Mark<'i>,
 }
 
 struct Selection<'i> {
     best: Option<Complete<'i>>,
-    failure: ParseError<'i, Error>,
+    failure: SyntaxError<'i, Error>,
     failure_offset: usize,
 }
 
 impl<'i> Selection<'i> {
-    fn failed(&mut self, input: &Parser<'i, '_>, error: ParseError<'i, Error>) {
-        let offset = input.position().ordinal();
+    fn failed(&mut self, input: &Stream<'i>, error: SyntaxError<'i, Error>) {
+        let offset = input.site().ordinal();
         if offset >= self.failure_offset {
             self.failure = error;
             self.failure_offset = offset;
@@ -174,33 +168,33 @@ impl<'i> Selection<'i> {
     }
 }
 
-pub(super) fn parse_item_flow<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_item_flow<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
 ) -> ParseResult<'i, CssItemFlow> {
     let mut selection = Selection {
         best: None,
-        failure: unexpected_at(input.current_source_location()),
-        failure_offset: input.position().ordinal(),
+        failure: unexpected_at(input.site()),
+        failure_offset: input.site().ordinal(),
     };
     search(input, numeric, &Candidate::empty(), &mut selection);
     if let Some(complete) = selection.best {
-        input.reset(&complete.end);
+        input.restore(complete.end);
         Ok(complete.candidate.into_flow())
     } else {
         Err(selection.failure)
     }
 }
 
-fn search<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn search<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
     candidate: &Candidate,
     selection: &mut Selection<'i>,
 ) {
-    input.skip_whitespace();
-    let start = input.state();
-    if input.is_exhausted() {
+    input.discard_whitespace();
+    let start = input.mark();
+    if input.only_whitespace_remains() {
         if candidate.occupied != 0
             && selection
                 .best
@@ -215,7 +209,7 @@ fn search<'i, 't>(
         return;
     }
     if candidate.occupied == 15 {
-        let error = unexpected_at(input.current_source_location());
+        let error = unexpected_at(input.site());
         selection.failed(input, error);
         return;
     }
@@ -226,7 +220,7 @@ fn search<'i, 't>(
         }
         let maximum_width = if slot == 1 || slot == 2 { 2 } else { 1 };
         for width in 1..=maximum_width {
-            input.reset(&start);
+            input.restore(start);
             let mut next = candidate.clone();
             let result = match slot {
                 0 => parse_item_direction(input).map(|value| next.direction = Some(value)),
@@ -238,12 +232,12 @@ fn search<'i, 't>(
             match result {
                 Ok(()) => {
                     next.occupied |= bit;
-                    next.starts[slot] = start.position().ordinal();
+                    next.starts[slot] = start.site().ordinal();
                     search(input, numeric, &next, selection);
                 }
                 Err(error) => selection.failed(input, error),
             }
         }
     }
-    input.reset(&start);
+    input.restore(start);
 }

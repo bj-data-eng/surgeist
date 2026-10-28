@@ -1,9 +1,9 @@
 //! Shared exact line-width and unordered width/style/color grammar for borders and column rules.
 
 use super::combinators::{Combinator, Tail, fill, parse_group};
-use super::property_input::Parser;
+use super::property_input::Stream;
 use super::side_shapes::{parse_four_sides, parse_side_pair};
-use crate::diagnostic::error::property::{Error, ParseError, unexpected_at};
+use crate::diagnostic::error::property::{Error, SyntaxError, unexpected_at};
 
 use super::border_style::parse_border_style;
 use crate::numeric::expression::NumericInputContext;
@@ -17,31 +17,28 @@ type ParsedLineTriple = (
     Option<crate::color::CssColor>,
 );
 
-pub(super) fn parse_exact_border_width<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_exact_border_width<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssLineWidth, ParseError<'i, Error>> {
+) -> Result<CssLineWidth, SyntaxError<'i, Error>> {
     parse_exact_line_width(input, numeric)
 }
 
-pub(super) fn parse_exact_line_width<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_exact_line_width<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssLineWidth, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("thin"))
-        .is_ok()
-    {
+) -> Result<CssLineWidth, SyntaxError<'i, Error>> {
+    if input.attempt(|input| input.consume_keyword("thin")).is_ok() {
         return Ok(CssLineWidth::Thin);
     }
     if input
-        .try_parse(|input| input.expect_ident_matching("medium"))
+        .attempt(|input| input.consume_keyword("medium"))
         .is_ok()
     {
         return Ok(CssLineWidth::Medium);
     }
     if input
-        .try_parse(|input| input.expect_ident_matching("thick"))
+        .attempt(|input| input.consume_keyword("thick"))
         .is_ok()
     {
         return Ok(CssLineWidth::Thick);
@@ -49,33 +46,33 @@ pub(super) fn parse_exact_line_width<'i, 't>(
     super::values::parse_nonnegative_length(input, numeric).map(CssLineWidth::Length)
 }
 
-pub(super) fn parse_exact_border_width_pair<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_exact_border_width_pair<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssSidePair<CssLineWidth>, ParseError<'i, Error>> {
+) -> Result<CssSidePair<CssLineWidth>, SyntaxError<'i, Error>> {
     parse_side_pair(input, |input| parse_exact_border_width(input, numeric))
 }
 
-pub(super) fn parse_exact_border_width_shorthand<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_exact_border_width_shorthand<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssFourSides<CssLineWidth>, ParseError<'i, Error>> {
+) -> Result<CssFourSides<CssLineWidth>, SyntaxError<'i, Error>> {
     parse_four_sides(input, |input| parse_exact_border_width(input, numeric))
 }
 
-pub(super) fn parse_border<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_border<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<crate::values::border::CssBorder, ParseError<'i, Error>> {
+) -> Result<crate::values::border::CssBorder, SyntaxError<'i, Error>> {
     let (width, style, color) = parse_exact_line_triple(input, numeric)?;
     crate::values::border::CssBorder::try_new(width, style, color)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }
 
-pub(super) fn parse_exact_line_triple<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_exact_line_triple<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<ParsedLineTriple, ParseError<'i, Error>> {
+) -> Result<ParsedLineTriple, SyntaxError<'i, Error>> {
     // `<line-width> || <line-style> || <color>`.
     let (mut width, mut style, mut color) = (None, None, None);
     parse_group::<3>(

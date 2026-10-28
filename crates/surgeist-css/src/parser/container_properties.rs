@@ -1,14 +1,14 @@
-use super::property_input::Parser;
-use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use super::property_input::Stream;
+use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
 use crate::query::container::{
     CssContainer, CssContainerName, CssContainerNameList, CssContainerNames, CssContainerType,
 };
 
-pub(super) fn parse_container_type<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssContainerType, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let first = input.expect_ident_cloned().map_err(basic)?;
+pub(super) fn parse_container_type<'i>(
+    input: &mut Stream<'i>,
+) -> Result<CssContainerType, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let first = input.consume_ident().map_err(basic)?;
     let initial = match first.to_ascii_lowercase().as_str() {
         "normal" => CssContainerType::Normal,
         "size" => CssContainerType::Size,
@@ -18,11 +18,11 @@ pub(super) fn parse_container_type<'i, 't>(
             return Err(unexpected_at(keyword_location));
         }
     };
-    if input.is_exhausted() {
+    if input.only_whitespace_remains() {
         return Ok(initial);
     }
-    let keyword_location = input.current_source_location();
-    let second = input.expect_ident_cloned().map_err(basic)?;
+    let keyword_location = input.site();
+    let second = input.consume_ident().map_err(basic)?;
     let combined = match (initial, second.to_ascii_lowercase().as_str()) {
         (CssContainerType::Size, "scroll-state") | (CssContainerType::ScrollState, "size") => {
             CssContainerType::SizeScrollState
@@ -33,27 +33,27 @@ pub(super) fn parse_container_type<'i, 't>(
             return Err(unexpected_at(keyword_location));
         }
     };
-    input.expect_exhausted().map_err(basic)?;
+    input.require_empty().map_err(basic)?;
     Ok(combined)
 }
 
-fn names<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn names<'i>(
+    input: &mut Stream<'i>,
     slash_ends: bool,
-) -> Result<CssContainerNames, ParseError<'i, Error>> {
+) -> Result<CssContainerNames, SyntaxError<'i, Error>> {
     let mut names = Vec::new();
     let mut none = false;
-    while !input.is_exhausted() {
+    while !input.only_whitespace_remains() {
         if slash_ends {
-            let state = input.state();
-            let slash = input.try_parse(|input| input.expect_delim('/')).is_ok();
-            input.reset(&state);
+            let state = input.mark();
+            let slash = input.attempt(|input| input.consume_delim('/')).is_ok();
+            input.restore(state);
             if slash {
                 break;
             }
         }
-        let keyword_location = input.current_source_location();
-        let ident = input.expect_ident_cloned().map_err(basic)?;
+        let keyword_location = input.site();
+        let ident = input.consume_ident().map_err(basic)?;
         if none {
             return Err(unexpected_at(keyword_location));
         }
@@ -70,21 +70,21 @@ fn names<'i, 't>(
     }
     CssContainerNameList::try_new(names)
         .map(CssContainerNames::Names)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }
-pub(super) fn parse_container_names<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssContainerNames, ParseError<'i, Error>> {
+pub(super) fn parse_container_names<'i>(
+    input: &mut Stream<'i>,
+) -> Result<CssContainerNames, SyntaxError<'i, Error>> {
     names(input, false)
 }
-pub(super) fn parse_container<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssContainer, ParseError<'i, Error>> {
+pub(super) fn parse_container<'i>(
+    input: &mut Stream<'i>,
+) -> Result<CssContainer, SyntaxError<'i, Error>> {
     let names = names(input, true)?;
-    let kind = if input.is_exhausted() {
+    let kind = if input.only_whitespace_remains() {
         CssContainerType::Normal
     } else {
-        input.expect_delim('/').map_err(basic)?;
+        input.consume_delim('/').map_err(basic)?;
         parse_container_type(input)?
     };
     Ok(CssContainer::new(names, kind))

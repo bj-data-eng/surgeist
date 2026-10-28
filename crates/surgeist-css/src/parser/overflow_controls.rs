@@ -1,8 +1,8 @@
 //! CSS Overflow 3 terminal controls.
 
 use super::combinators::{Combinator, Tail, commit, parse_group};
-use super::property_input::Parser;
-use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use super::property_input::Stream;
+use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
 use cssparser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 
@@ -11,16 +11,16 @@ use crate::numeric::expression::NumericInputContext;
 use crate::values::box_model::{CssOverflowClipMargin, CssScrollBehavior, CssScrollbarGutter};
 use crate::values::common::CssBoxEdgeKeyword;
 
-pub(super) fn parse_overflow_clip_margin<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_overflow_clip_margin<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssOverflowClipMargin, ParseError<'i, Error>> {
+) -> Result<CssOverflowClipMargin, SyntaxError<'i, Error>> {
     // `<visual-box> || <length [0,∞]>`: an identifier commits the box and a
     // numeric token or function commits the length.
-    fn next_token_is<'i>(input: &mut Parser<'i, '_>, admit: fn(&Token<'i>) -> bool) -> bool {
-        let state = input.state();
-        let starts = input.next().is_ok_and(admit);
-        input.reset(&state);
+    fn next_token_is<'i>(input: &mut Stream<'i>, admit: fn(&Token<'i>) -> bool) -> bool {
+        let state = input.mark();
+        let starts = input.consume_after_whitespace().is_ok_and(admit);
+        input.restore(state);
         starts
     }
     let (mut box_edge, mut offset) = (None, None);
@@ -35,10 +35,10 @@ pub(super) fn parse_overflow_clip_margin<'i, 't>(
                 input,
                 |input| next_token_is(input, |token| matches!(token, Token::Ident(_))),
                 |input| {
-                    input.skip_whitespace();
-                    let location = input.current_source_location();
-                    let ident = input.expect_ident().map_err(basic)?;
-                    CssBoxEdgeKeyword::from_keyword(ident).ok_or_else(|| unexpected_at(location))
+                    input.discard_whitespace();
+                    let location = input.site();
+                    let ident = input.consume_ident().map_err(basic)?;
+                    CssBoxEdgeKeyword::from_keyword(&ident).ok_or_else(|| unexpected_at(location))
                 },
             ),
             1 => commit(
@@ -60,15 +60,14 @@ pub(super) fn parse_overflow_clip_margin<'i, 't>(
             _ => unreachable!("two overflow-clip-margin operands"),
         },
     )?;
-    CssOverflowClipMargin::try_new(box_edge, offset)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+    CssOverflowClipMargin::try_new(box_edge, offset).ok_or_else(|| unexpected_at(input.site()))
 }
 
-pub(super) fn parse_scroll_behavior<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssScrollBehavior, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(super) fn parse_scroll_behavior<'i>(
+    input: &mut Stream<'i>,
+) -> Result<CssScrollBehavior, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssScrollBehavior::Auto),
         "smooth" => Ok(CssScrollBehavior::Smooth),
@@ -76,17 +75,17 @@ pub(super) fn parse_scroll_behavior<'i, 't>(
     }
 }
 
-pub(super) fn parse_scrollbar_gutter<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssScrollbarGutter, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let first = input.expect_ident_cloned().map_err(basic)?;
+pub(super) fn parse_scrollbar_gutter<'i>(
+    input: &mut Stream<'i>,
+) -> Result<CssScrollbarGutter, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let first = input.consume_ident().map_err(basic)?;
     if first.eq_ignore_ascii_case("auto") {
         return Ok(CssScrollbarGutter::Auto);
     }
     if first.eq_ignore_ascii_case("stable") {
         if input
-            .try_parse(|input| input.expect_ident_matching("both-edges"))
+            .attempt(|input| input.consume_keyword("both-edges"))
             .is_ok()
         {
             return Ok(CssScrollbarGutter::StableBothEdges);
@@ -94,18 +93,18 @@ pub(super) fn parse_scrollbar_gutter<'i, 't>(
         return Ok(CssScrollbarGutter::Stable);
     }
     if first.eq_ignore_ascii_case("both-edges") {
-        input.expect_ident_matching("stable").map_err(basic)?;
+        input.consume_keyword("stable").map_err(basic)?;
         return Ok(CssScrollbarGutter::StableBothEdges);
     }
     // The unknown keyword itself cannot start the value.
     Err(unexpected_at(keyword_location))
 }
 
-pub(super) fn parse_overflow_anchor<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<crate::values::box_model::CssOverflowAnchor, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(super) fn parse_overflow_anchor<'i>(
+    input: &mut Stream<'i>,
+) -> Result<crate::values::box_model::CssOverflowAnchor, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(crate::values::box_model::CssOverflowAnchor::Auto),
         "none" => Ok(crate::values::box_model::CssOverflowAnchor::None),

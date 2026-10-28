@@ -1,7 +1,7 @@
 use super::combinators::{Combinator, Tail, keyword, parse_group};
-use super::property_input::Parser;
+use super::property_input::Stream;
 use super::values::parse_nonnegative_length;
-use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
 use cssparser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 
@@ -33,11 +33,11 @@ pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::diagnostic::CssFeatureId] 
         "ext.value.grid-lanes-display",
     )];
 
-pub(crate) fn parse_resize<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssResize, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_resize<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssResize, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "none" => Ok(CssResize::None),
         "both" => Ok(CssResize::Both),
@@ -49,11 +49,11 @@ pub(crate) fn parse_resize<'i, 't>(
     }
 }
 
-pub(crate) fn parse_contain<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssContain, ParseError<'i, Error>> {
-    let state = input.state();
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+pub(crate) fn parse_contain<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssContain, SyntaxError<'i, Error>> {
+    let state = input.mark();
+    if let Ok(ident) = input.attempt(Stream::consume_ident) {
         let standalone = match_ignore_ascii_case! { &ident,
             "none" => Some(CssContain::None),
             "strict" => Some(CssContain::Strict),
@@ -64,7 +64,7 @@ pub(crate) fn parse_contain<'i, 't>(
             return Ok(value);
         }
     }
-    input.reset(&state);
+    input.restore(state);
 
     // `size || layout || style || paint`, retaining authored order.
     const KEYWORDS: [(&str, CssContainComponent); 4] = [
@@ -88,14 +88,14 @@ pub(crate) fn parse_contain<'i, 't>(
     )?;
     CssContainComponentList::try_new(components)
         .map(CssContain::Components)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }
 
-pub(crate) fn parse_border_collapse<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssBorderCollapse, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_border_collapse<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssBorderCollapse, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "collapse" => Ok(CssBorderCollapse::Collapse),
         "separate" => Ok(CssBorderCollapse::Separate),
@@ -103,12 +103,12 @@ pub(crate) fn parse_border_collapse<'i, 't>(
     }
 }
 
-pub(crate) fn parse_border_spacing<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_border_spacing<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssSidePair<BorderSpacingLength>, ParseError<'i, Error>> {
+) -> std::result::Result<CssSidePair<BorderSpacingLength>, SyntaxError<'i, Error>> {
     let horizontal = parse_nonnegative_length(input, numeric)?;
-    let vertical = if input.is_exhausted() {
+    let vertical = if input.only_whitespace_remains() {
         None
     } else {
         Some(parse_nonnegative_length(input, numeric)?)
@@ -116,11 +116,11 @@ pub(crate) fn parse_border_spacing<'i, 't>(
     Ok(CssSidePair::new(horizontal, vertical))
 }
 
-pub(crate) fn parse_caption_side<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssCaptionSide, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_caption_side<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssCaptionSide, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "top" => Ok(CssCaptionSide::Top),
         "bottom" => Ok(CssCaptionSide::Bottom),
@@ -128,11 +128,11 @@ pub(crate) fn parse_caption_side<'i, 't>(
     }
 }
 
-pub(crate) fn parse_empty_cells<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssEmptyCells, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_empty_cells<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssEmptyCells, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "show" => Ok(CssEmptyCells::Show),
         "hide" => Ok(CssEmptyCells::Hide),
@@ -140,10 +140,10 @@ pub(crate) fn parse_empty_cells<'i, 't>(
     }
 }
 
-pub(crate) fn parse_page_line_minimum<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_page_line_minimum<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssNumeric<CssInteger, CssPositive>, ParseError<'i, Error>> {
+) -> std::result::Result<CssNumeric<CssInteger, CssPositive>, SyntaxError<'i, Error>> {
     /// Fragmentation 3 `<integer [1,∞]>`.
     const PAGE_LINE_MINIMUM: NumericType<CssNumeric<CssInteger, CssPositive>> = NumericType {
         root: CalculationRoot::Integer,
@@ -162,11 +162,11 @@ pub(crate) fn parse_page_line_minimum<'i, 't>(
     parse_numeric_type(input, numeric, &PAGE_LINE_MINIMUM)
 }
 
-pub(crate) fn parse_break_between<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssBreakBetween, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_break_between<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssBreakBetween, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssBreakBetween::Auto),
         "avoid" => Ok(CssBreakBetween::Avoid),
@@ -184,11 +184,11 @@ pub(crate) fn parse_break_between<'i, 't>(
     }
 }
 
-pub(crate) fn parse_break_inside<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssBreakInside, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_break_inside<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssBreakInside, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssBreakInside::Auto),
         "avoid" => Ok(CssBreakInside::Avoid),
@@ -199,11 +199,11 @@ pub(crate) fn parse_break_inside<'i, 't>(
     }
 }
 
-pub(super) fn parse_page_break_between<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssBreakBetween, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(super) fn parse_page_break_between<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssBreakBetween, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssBreakBetween::Auto),
         "always" => Ok(CssBreakBetween::Page),
@@ -216,11 +216,11 @@ pub(super) fn parse_page_break_between<'i, 't>(
     }
 }
 
-pub(super) fn parse_page_break_inside<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssBreakInside, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(super) fn parse_page_break_inside<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssBreakInside, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssBreakInside::Auto),
         "avoid" => Ok(CssBreakInside::Avoid),
@@ -228,11 +228,11 @@ pub(super) fn parse_page_break_inside<'i, 't>(
     }
 }
 
-pub(crate) fn parse_table_layout<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssTableLayout, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_table_layout<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssTableLayout, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssTableLayout::Auto),
         "fixed" => Ok(CssTableLayout::Fixed),
@@ -240,9 +240,9 @@ pub(crate) fn parse_table_layout<'i, 't>(
     }
 }
 
-pub(crate) fn parse_display<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssDisplayValue, ParseError<'i, Error>> {
+pub(crate) fn parse_display<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssDisplayValue, SyntaxError<'i, Error>> {
     enum Component {
         Outside(CssDisplayOutside),
         Inside(CssDisplayInside),
@@ -253,13 +253,13 @@ pub(crate) fn parse_display<'i, 't>(
     let mut inside = None;
     let mut list_item = false;
     let mut count = 0;
-    while !input.is_exhausted() {
+    while !input.only_whitespace_remains() {
         if count == 3 {
-            return Err(unexpected_at(input.current_source_location()));
+            return Err(unexpected_at(input.site()));
         }
         count += 1;
-        let location = input.current_source_location();
-        let ident = input.expect_ident_cloned().map_err(basic)?;
+        let location = input.site();
+        let ident = input.consume_ident().map_err(basic)?;
         let component = match_ignore_ascii_case! { &ident,
             "block" => Component::Outside(CssDisplayOutside::Block),
             "inline" => Component::Outside(CssDisplayOutside::Inline),
@@ -298,7 +298,7 @@ pub(crate) fn parse_display<'i, 't>(
             Component::Inside(value) => inside.replace(value).is_some(),
             Component::ListItem => std::mem::replace(&mut list_item, true),
             Component::Exclusive(value) => {
-                if count == 1 && input.is_exhausted() {
+                if count == 1 && input.only_whitespace_remains() {
                     return Ok(value);
                 }
                 return Err(unexpected_at(location));
@@ -309,14 +309,14 @@ pub(crate) fn parse_display<'i, 't>(
         }
     }
     if count == 0 {
-        return Err(unexpected_at(input.current_source_location()));
+        return Err(unexpected_at(input.site()));
     }
     if list_item {
         let inside = match inside {
             None | Some(CssDisplayInside::Flow) => CssDisplayListItemInside::Flow,
             Some(CssDisplayInside::FlowRoot) => CssDisplayListItemInside::FlowRoot,
             Some(_) => {
-                return Err(unexpected_at(input.current_source_location()));
+                return Err(unexpected_at(input.site()));
             }
         };
         return Ok(CssDisplayValue::ListItem {
@@ -335,11 +335,11 @@ pub(crate) fn parse_display<'i, 't>(
     })
 }
 
-pub(crate) fn parse_box_sizing<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssBoxSizing, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_box_sizing<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssBoxSizing, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "content-box" => Ok(CssBoxSizing::ContentBox),
         "border-box" => Ok(CssBoxSizing::BorderBox),
@@ -347,11 +347,11 @@ pub(crate) fn parse_box_sizing<'i, 't>(
     }
 }
 
-pub(crate) fn parse_position<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssLayoutPosition, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_position<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssLayoutPosition, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "static" => Ok(CssLayoutPosition::Static),
         "relative" => Ok(CssLayoutPosition::Relative),
@@ -362,11 +362,11 @@ pub(crate) fn parse_position<'i, 't>(
     }
 }
 
-pub(crate) fn parse_direction<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssDirection, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_direction<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssDirection, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "ltr" => Ok(CssDirection::Ltr),
         "rtl" => Ok(CssDirection::Rtl),
@@ -374,11 +374,11 @@ pub(crate) fn parse_direction<'i, 't>(
     }
 }
 
-pub(crate) fn parse_overflow<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssOverflow, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_overflow<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssOverflow, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "visible" => Ok(CssOverflow::Visible),
         "clip" => Ok(CssOverflow::Clip),
@@ -389,11 +389,11 @@ pub(crate) fn parse_overflow<'i, 't>(
     }
 }
 
-pub(crate) fn parse_overflow_value<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssOverflowValue, ParseError<'i, Error>> {
+pub(crate) fn parse_overflow_value<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssOverflowValue, SyntaxError<'i, Error>> {
     let x = parse_overflow(input)?;
-    let y = if input.is_exhausted() {
+    let y = if input.only_whitespace_remains() {
         None
     } else {
         Some(parse_overflow(input)?)
@@ -401,11 +401,11 @@ pub(crate) fn parse_overflow_value<'i, 't>(
     Ok(CssOverflowValue::new(x, y))
 }
 
-pub(crate) fn parse_float<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFloat, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_float<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssFloat, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "left" => Ok(CssFloat::Left),
         "right" => Ok(CssFloat::Right),
@@ -416,11 +416,11 @@ pub(crate) fn parse_float<'i, 't>(
     }
 }
 
-pub(crate) fn parse_clear<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssClear, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_clear<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssClear, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "left" => Ok(CssClear::Left),
         "right" => Ok(CssClear::Right),
@@ -432,11 +432,11 @@ pub(crate) fn parse_clear<'i, 't>(
     }
 }
 
-pub(crate) fn parse_visibility<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssVisibility, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_visibility<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssVisibility, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "visible" => Ok(CssVisibility::Visible),
         "hidden" => Ok(CssVisibility::Hidden),
@@ -445,11 +445,11 @@ pub(crate) fn parse_visibility<'i, 't>(
     }
 }
 
-pub(crate) fn parse_content_visibility<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssContentVisibility, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_content_visibility<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssContentVisibility, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "visible" => Ok(CssContentVisibility::Visible),
         "hidden" => Ok(CssContentVisibility::Hidden),
@@ -458,17 +458,17 @@ pub(crate) fn parse_content_visibility<'i, 't>(
     }
 }
 
-pub(crate) fn parse_opacity<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_opacity<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssOpacityValue, ParseError<'i, Error>> {
-    let numeric_start = input.state();
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
+) -> std::result::Result<CssOpacityValue, SyntaxError<'i, Error>> {
+    let numeric_start = input.mark();
+    let location = input.site();
+    match input.consume_after_whitespace().map_err(basic)? {
         Token::Number { .. } | Token::Percentage { .. } => {
-            input.reset(&numeric_start);
-            input.skip_whitespace();
-            let offset = input.position();
+            input.restore(numeric_start);
+            input.discard_whitespace();
+            let offset = input.site();
             let component = input.collect_numeric_component(numeric).map_err(|error| {
                 unexpected_at(numeric.property_error_location(&error, location, offset))
             })?;
@@ -501,44 +501,38 @@ pub(crate) fn parse_opacity<'i, 't>(
                 _ => unreachable!("checked opacity Number or Percentage"),
             })
         }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
+        token => Err(location.unexpected::<Error>(token.clone())),
     }
 }
 
-pub(crate) fn parse_aspect_ratio<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_aspect_ratio<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssAspectRatioValue, ParseError<'i, Error>> {
-    let auto_first = input
-        .try_parse(|input| input.expect_ident_matching("auto"))
-        .is_ok();
-    if auto_first && input.is_exhausted() {
+) -> std::result::Result<CssAspectRatioValue, SyntaxError<'i, Error>> {
+    let auto_first = input.attempt(|input| input.consume_keyword("auto")).is_ok();
+    if auto_first && input.only_whitespace_remains() {
         return Ok(CssAspectRatioValue::Auto);
     }
     let numerator = parse_ratio_operand(input, numeric)?;
-    let denominator = if input.try_parse(|input| input.expect_delim('/')).is_ok() {
+    let denominator = if input.attempt(|input| input.consume_delim('/')).is_ok() {
         Some(parse_ratio_operand(input, numeric)?)
     } else {
         None
     };
     let ratio = crate::numeric::CssSpecifiedRatio::new(numerator, denominator);
-    if auto_first
-        || input
-            .try_parse(|input| input.expect_ident_matching("auto"))
-            .is_ok()
-    {
+    if auto_first || input.attempt(|input| input.consume_keyword("auto")).is_ok() {
         Ok(CssAspectRatioValue::AutoRatio(ratio))
     } else {
         Ok(CssAspectRatioValue::Ratio(ratio))
     }
 }
 
-fn parse_ratio_operand<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_ratio_operand<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<
     crate::numeric::CssNumeric<crate::numeric::CssNumber, crate::numeric::CssNonNegative>,
-    ParseError<'i, Error>,
+    SyntaxError<'i, Error>,
 > {
     /// Values 4 `<ratio>` operand: `<number [0,∞]>`.
     const RATIO_OPERAND: NumericType<
@@ -560,11 +554,11 @@ fn parse_ratio_operand<'i, 't>(
     parse_numeric_type(input, numeric, &RATIO_OPERAND)
 }
 
-pub(crate) fn parse_scrollbar_width<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssScrollbarWidth, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
+pub(crate) fn parse_scrollbar_width<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssScrollbarWidth, SyntaxError<'i, Error>> {
+    let location = input.site();
+    match input.consume_after_whitespace().map_err(basic)? {
         Token::Ident(ident) => match_ignore_ascii_case! { ident,
             "auto" => Ok(CssScrollbarWidth::Auto),
             "thin" => Ok(CssScrollbarWidth::Thin),
@@ -575,24 +569,24 @@ pub(crate) fn parse_scrollbar_width<'i, 't>(
     }
 }
 
-pub(crate) fn parse_order<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_order<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssNumeric<CssInteger>, ParseError<'i, Error>> {
+) -> std::result::Result<CssNumeric<CssInteger>, SyntaxError<'i, Error>> {
     parse_integer_value(input, numeric)
 }
 
-pub(crate) fn parse_z_index<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_z_index<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssZIndexValue, ParseError<'i, Error>> {
-    let numeric_start = input.state();
-    let location = input.current_source_location();
-    match input.next().map_err(basic)? {
+) -> std::result::Result<CssZIndexValue, SyntaxError<'i, Error>> {
+    let numeric_start = input.mark();
+    let location = input.site();
+    match input.consume_after_whitespace().map_err(basic)? {
         Token::Ident(ident) if ident.eq_ignore_ascii_case("auto") => Ok(CssZIndexValue::Auto),
         Token::Ident(_) => Err(unexpected_at(location)),
         Token::Number { .. } => {
-            input.reset(&numeric_start);
+            input.restore(numeric_start);
             parse_integer_literal(input, numeric)
                 .map(CssNumeric::from_literal)
                 .map(CssZIndexValue::Integer)
@@ -605,6 +599,6 @@ pub(crate) fn parse_z_index<'i, 't>(
                 .map(CssZIndexValue::Integer)
                 .map_err(|_| unexpected_at(location))
         }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
+        token => Err(location.unexpected::<Error>(token.clone())),
     }
 }

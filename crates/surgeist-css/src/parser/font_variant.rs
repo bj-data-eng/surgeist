@@ -5,8 +5,8 @@
 //! are significant, so a group's values stay contiguous in the shorthand while
 //! their internal order stays free.
 use super::combinators::{Combinator, Operand, Tail, group_operand, keyword, parse_group};
-use super::property_input::Parser;
-use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use super::property_input::Stream;
+use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
 use crate::rule::font_feature_values::CssFontFeatureValueName;
 use crate::values::font::font_variant::*;
 use cssparser::Token;
@@ -98,7 +98,7 @@ const EAST_ASIAN_WIDTHS: [(&str, CssFontVariantEastAsianWidth); 2] = [
 struct Ligatures([Option<CssFontVariantLigatureState>; 4]);
 
 impl Ligatures {
-    fn operand<'i>(&mut self, index: usize, input: &mut Parser<'i, '_>) -> Operand<'i> {
+    fn operand<'i>(&mut self, index: usize, input: &mut Stream<'i>) -> Operand<'i> {
         keyword(&mut self.0[index], input, &LIGATURES[index])
     }
 
@@ -120,7 +120,7 @@ struct Numeric {
 }
 
 impl Numeric {
-    fn operand<'i>(&mut self, index: usize, input: &mut Parser<'i, '_>) -> Operand<'i> {
+    fn operand<'i>(&mut self, index: usize, input: &mut Stream<'i>) -> Operand<'i> {
         match index {
             0 => keyword(&mut self.figure, input, &FIGURES),
             1 => keyword(&mut self.spacing, input, &SPACINGS),
@@ -151,7 +151,7 @@ struct EastAsian {
 }
 
 impl EastAsian {
-    fn operand<'i>(&mut self, index: usize, input: &mut Parser<'i, '_>) -> Operand<'i> {
+    fn operand<'i>(&mut self, index: usize, input: &mut Stream<'i>) -> Operand<'i> {
         match index {
             0 => keyword(&mut self.variant, input, &EAST_ASIAN_VARIANTS),
             1 => keyword(&mut self.width, input, &EAST_ASIAN_WIDTHS),
@@ -179,7 +179,7 @@ struct Alternates {
 }
 
 impl Alternates {
-    fn operand<'i>(&mut self, index: usize, input: &mut Parser<'i, '_>) -> Operand<'i> {
+    fn operand<'i>(&mut self, index: usize, input: &mut Stream<'i>) -> Operand<'i> {
         match index {
             0 => single_name(&mut self.stylistic, input, "stylistic"),
             1 => keyword(
@@ -211,33 +211,34 @@ impl Alternates {
 
 /// A feature-value function commits once its name matches; malformed
 /// arguments are the value's failure.
-fn feature_names<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn feature_names<'i>(
+    input: &mut Stream<'i>,
     function: &str,
     multiple: bool,
-) -> std::result::Result<Option<Vec<CssFontFeatureValueName>>, ParseError<'i, Error>> {
-    if !matches!(input.next(), Ok(Token::Function(name)) if name.eq_ignore_ascii_case(function)) {
+) -> std::result::Result<Option<Vec<CssFontFeatureValueName>>, SyntaxError<'i, Error>> {
+    if !matches!(input.consume_after_whitespace(), Ok(Token::Function(name)) if name.eq_ignore_ascii_case(function))
+    {
         return Ok(None);
     }
     input
-        .parse_nested_block(|nested| {
+        .within_block(|nested| {
             let mut names = Vec::new();
             loop {
-                nested.skip_whitespace();
-                let location = nested.current_source_location();
-                let ident = nested.expect_ident_cloned().map_err(basic)?;
+                nested.discard_whitespace();
+                let location = nested.site();
+                let ident = nested.consume_ident().map_err(basic)?;
                 let name = CssFontFeatureValueName::try_new(ident.as_ref())
                     .map_err(|_| unexpected_at(location))?;
                 names.push(name);
-                if nested.is_exhausted() {
+                if nested.only_whitespace_remains() {
                     break;
                 }
                 // Fonts 4: a single-name function ends after its name, so the
                 // token after it is responsible.
                 if !multiple {
-                    return Err(unexpected_at(nested.current_source_location()));
+                    return Err(unexpected_at(nested.site()));
                 }
-                nested.expect_comma().map_err(basic)?;
+                nested.consume_comma().map_err(basic)?;
             }
             Ok(names)
         })
@@ -246,7 +247,7 @@ fn feature_names<'i, 't>(
 
 fn single_name<'i>(
     slot: &mut Option<CssFontFeatureValueName>,
-    input: &mut Parser<'i, '_>,
+    input: &mut Stream<'i>,
     function: &str,
 ) -> Operand<'i> {
     let Some(names) = feature_names(input, function, false)? else {
@@ -258,7 +259,7 @@ fn single_name<'i>(
 
 fn name_list<'i>(
     slot: &mut Option<CssFontVariantAlternateNames>,
-    input: &mut Parser<'i, '_>,
+    input: &mut Stream<'i>,
     function: &str,
 ) -> Operand<'i> {
     let Some(names) = feature_names(input, function, true)? else {
@@ -268,26 +269,26 @@ fn name_list<'i>(
     Ok(true)
 }
 
-fn next_font_variant_ident<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<(super::property_input::Site<'i>, String), ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+fn next_font_variant_ident<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<(super::property_input::Site<'i>, String), SyntaxError<'i, Error>> {
+    let location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     Ok((location, ident.as_ref().to_owned()))
 }
 
 fn invalid_font_variant_keyword<'i>(
     location: super::property_input::Site<'i>,
     ident: String,
-) -> ParseError<'i, Error> {
-    location.new_unexpected_token_error::<Error>(Token::Ident(ident.into()))
+) -> SyntaxError<'i, Error> {
+    location.unexpected::<Error>(Token::Ident(ident.into()))
 }
 
 fn keyword_or_normal<'i, T: Copy>(
-    input: &mut Parser<'i, '_>,
+    input: &mut Stream<'i>,
     normal: T,
     table: &[(&str, T)],
-) -> std::result::Result<T, ParseError<'i, Error>> {
+) -> std::result::Result<T, SyntaxError<'i, Error>> {
     let (location, ident) = next_font_variant_ident(input)?;
     if ident.eq_ignore_ascii_case("normal") {
         return Ok(normal);
@@ -299,33 +300,33 @@ fn keyword_or_normal<'i, T: Copy>(
         .ok_or_else(|| invalid_font_variant_keyword(location, ident))
 }
 
-pub(crate) fn parse_font_variant_caps<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFontVariantCaps, ParseError<'i, Error>> {
+pub(crate) fn parse_font_variant_caps<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssFontVariantCaps, SyntaxError<'i, Error>> {
     keyword_or_normal(input, CssFontVariantCaps::Normal, &CAPS)
 }
 
-pub(crate) fn parse_font_variant_position<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFontVariantPosition, ParseError<'i, Error>> {
+pub(crate) fn parse_font_variant_position<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssFontVariantPosition, SyntaxError<'i, Error>> {
     keyword_or_normal(input, CssFontVariantPosition::Normal, &POSITIONS)
 }
 
-pub(crate) fn parse_font_variant_emoji<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFontVariantEmoji, ParseError<'i, Error>> {
+pub(crate) fn parse_font_variant_emoji<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssFontVariantEmoji, SyntaxError<'i, Error>> {
     keyword_or_normal(input, CssFontVariantEmoji::Normal, &EMOJI)
 }
 
-fn next_is_keyword<'i>(input: &mut Parser<'i, '_>, keyword: &str) -> bool {
+fn next_is_keyword<'i>(input: &mut Stream<'i>, keyword: &str) -> bool {
     input
-        .try_parse(|input| input.expect_ident_matching(keyword))
+        .attempt(|input| input.consume_keyword(keyword))
         .is_ok()
 }
 
-pub(crate) fn parse_font_variant_ligatures<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFontVariantLigatures, ParseError<'i, Error>> {
+pub(crate) fn parse_font_variant_ligatures<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssFontVariantLigatures, SyntaxError<'i, Error>> {
     if next_is_keyword(input, "normal") {
         return Ok(CssFontVariantLigatures::Normal);
     }
@@ -343,12 +344,12 @@ pub(crate) fn parse_font_variant_ligatures<'i, 't>(
     ligatures
         .finish()
         .map(CssFontVariantLigatures::Values)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }
 
-pub(crate) fn parse_font_variant_numeric<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFontVariantNumeric, ParseError<'i, Error>> {
+pub(crate) fn parse_font_variant_numeric<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssFontVariantNumeric, SyntaxError<'i, Error>> {
     if next_is_keyword(input, "normal") {
         return Ok(CssFontVariantNumeric::Normal);
     }
@@ -363,12 +364,12 @@ pub(crate) fn parse_font_variant_numeric<'i, 't>(
     numeric
         .finish()
         .map(CssFontVariantNumeric::Values)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }
 
-pub(crate) fn parse_font_variant_east_asian<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFontVariantEastAsian, ParseError<'i, Error>> {
+pub(crate) fn parse_font_variant_east_asian<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssFontVariantEastAsian, SyntaxError<'i, Error>> {
     if next_is_keyword(input, "normal") {
         return Ok(CssFontVariantEastAsian::Normal);
     }
@@ -383,12 +384,12 @@ pub(crate) fn parse_font_variant_east_asian<'i, 't>(
     east_asian
         .finish()
         .map(CssFontVariantEastAsian::Values)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }
 
-pub(crate) fn parse_font_variant_alternates<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFontVariantAlternates, ParseError<'i, Error>> {
+pub(crate) fn parse_font_variant_alternates<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssFontVariantAlternates, SyntaxError<'i, Error>> {
     if next_is_keyword(input, "normal") {
         return Ok(CssFontVariantAlternates::Normal);
     }
@@ -403,14 +404,14 @@ pub(crate) fn parse_font_variant_alternates<'i, 't>(
     alternates
         .finish()
         .map(CssFontVariantAlternates::Values)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }
 
 /// `normal | none | [ <ligatures> || <caps> || <alternates> || <numeric> ||
 /// <east-asian> || <position> || <emoji> ]`, each bracketed group whole.
-pub(crate) fn parse_font_variant<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFontVariantValue, ParseError<'i, Error>> {
+pub(crate) fn parse_font_variant<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssFontVariantValue, SyntaxError<'i, Error>> {
     if next_is_keyword(input, "normal") {
         return Ok(CssFontVariantValue::Normal);
     }
@@ -464,5 +465,5 @@ pub(crate) fn parse_font_variant<'i, 't>(
         emoji,
     )
     .map(CssFontVariantValue::Values)
-    .ok_or_else(|| unexpected_at(input.current_source_location()))
+    .ok_or_else(|| unexpected_at(input.site()))
 }

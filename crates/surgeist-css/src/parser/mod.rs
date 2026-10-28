@@ -585,12 +585,12 @@ macro_rules! define_property_dispatch {
         $value:ty, $parser:ident, $dispatch:block
         $(, expansion = $expansion:ident { $($metadata:tt)* })?;
     )*) => {
-        fn parse_known_property_value<'i, 't>(
+        fn parse_known_property_value<'i>(
             property: crate::property::CssKnownProperty,
             authored: CssAuthoredDeclarationValue,
-            $input: &mut property_input::Parser<'i, 't>,
+            $input: &mut property_input::Stream<'i>,
             $numeric: &crate::numeric::expression::NumericInputContext<'_>,
-        ) -> std::result::Result<CssKnownDeclaration, crate::diagnostic::error::property::ParseError<'i, crate::diagnostic::error::property::Error>> {
+        ) -> std::result::Result<CssKnownDeclaration, crate::diagnostic::error::property::SyntaxError<'i, crate::diagnostic::error::property::Error>> {
             match property {
                 crate::property::CssKnownProperty::All => {
                     let _authored_value_type = std::marker::PhantomData::<$all_value>;
@@ -603,11 +603,11 @@ macro_rules! define_property_dispatch {
                     // Keep each property's parsed value and wrapper construction in its own
                     // frame: one generated dispatch frame exhausts deep rule-parsing stacks.
                     #[inline(never)]
-                    fn parse_variant<'i, 't>(
+                    fn parse_variant<'i>(
                         authored: CssAuthoredDeclarationValue,
-                        $input: &mut property_input::Parser<'i, 't>,
+                        $input: &mut property_input::Stream<'i>,
                         $numeric: &crate::numeric::expression::NumericInputContext<'_>,
-                    ) -> std::result::Result<CssKnownDeclaration, crate::diagnostic::error::property::ParseError<'i, crate::diagnostic::error::property::Error>> {
+                    ) -> std::result::Result<CssKnownDeclaration, crate::diagnostic::error::property::SyntaxError<'i, crate::diagnostic::error::property::Error>> {
                         let _ = $numeric;
                         let _authored_value_type = std::marker::PhantomData::<$value>;
 
@@ -627,14 +627,14 @@ macro_rules! define_property_dispatch {
 
 property_schema!(define_property_dispatch, input, numeric);
 
-fn parse_all_property<'i, 't>(
-    input: &mut property_input::Parser<'i, 't>,
+fn parse_all_property<'i>(
+    input: &mut property_input::Stream<'i>,
 ) -> std::result::Result<
     CssGlobalKeyword,
-    crate::diagnostic::error::property::ParseError<'i, crate::diagnostic::error::property::Error>,
+    crate::diagnostic::error::property::SyntaxError<'i, crate::diagnostic::error::property::Error>,
 > {
     Err(crate::diagnostic::error::property::unexpected_at(
-        input.current_source_location(),
+        input.site(),
     ))
 }
 
@@ -1627,7 +1627,7 @@ pub(crate) fn parse_color_scheme_value_controlled(
             .map(Err);
         }
     }
-    let mut parser = property_input::Parser::new(&document);
+    let mut parser = property_input::Stream::new(&document);
     let result = parse_property_value_from_parser(
         PropertyValueGrammar::Known(CssKnownProperty::ColorScheme.grammar()),
         &mut parser,
@@ -1710,7 +1710,7 @@ fn parse_property_value_slice_selected(
             0,
         )
         .map_err(crate::property::CssPropertyValueError::from_component)?;
-        let mut parser = property_input::Parser::new(&document);
+        let mut parser = property_input::Stream::new(&document);
         parse_property_value_from_parser(
             grammar,
             &mut parser,
@@ -1726,25 +1726,25 @@ fn parse_property_value_slice_selected(
 
 fn parse_property_value_from_parser<'i>(
     grammar: PropertyValueGrammar<'_>,
-    parser: &mut property_input::Parser<'i, '_>,
+    parser: &mut property_input::Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
     parser_context: crate::CssParserContext,
 ) -> Result<
     CssDeclarationBody,
-    crate::diagnostic::error::property::ParseError<'i, crate::diagnostic::error::property::Error>,
+    crate::diagnostic::error::property::SyntaxError<'i, crate::diagnostic::error::property::Error>,
 > {
     // Root delimiters precede lexical and symbolic-value admission. Each next
     // skips a complete nested component without promoting or validating it.
-    let start = parser.state();
+    let start = parser.mark();
     loop {
-        let location = parser.current_source_location();
+        let location = parser.site();
         let kind = if parser.control().is_some() {
             let Ok(kind) = parser.next_kind(true) else {
                 break;
             };
             kind
         } else {
-            let Ok(token) = parser.next_including_whitespace_and_comments().cloned() else {
+            let Ok(token) = parser.consume_token_with_comments().cloned() else {
                 break;
             };
             match token {
@@ -1771,28 +1771,28 @@ fn parse_property_value_from_parser<'i>(
             let Some(token) = location.token() else {
                 unreachable!("actual fixed delimiter")
             };
-            return Err(location.new_unexpected_token_error(token));
+            return Err(location.unexpected(token));
         }
     }
-    parser.reset(&start);
+    parser.restore(start);
     let body = parse_property_declaration_body_from_property_input(
         grammar,
         parser,
         numeric,
         parser_context,
     )?;
-    parser.expect_exhausted()?;
+    parser.require_empty()?;
     Ok(body)
 }
 
 fn parse_property_declaration_body_from_property_input<'i>(
     grammar: PropertyValueGrammar<'_>,
-    parser: &mut property_input::Parser<'i, '_>,
+    parser: &mut property_input::Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
     parser_context: crate::CssParserContext,
 ) -> Result<
     CssDeclarationBody,
-    crate::diagnostic::error::property::ParseError<'i, crate::diagnostic::error::property::Error>,
+    crate::diagnostic::error::property::SyntaxError<'i, crate::diagnostic::error::property::Error>,
 > {
     match grammar {
         PropertyValueGrammar::Known(grammar) => parse_known_declaration_body_from_property_input(
@@ -1842,7 +1842,7 @@ fn parse_property_declaration_source<'i>(
     .map_err(|error| {
         crate::diagnostic::error::invalid_component_value(input.current_source_location(), error)
     })?;
-    let mut property_input = property_input::Parser::new(&document);
+    let mut property_input = property_input::Stream::new(&document);
     parse_property_declaration_body_from_property_input(
         grammar,
         &mut property_input,
@@ -1887,18 +1887,18 @@ fn parse_svg_glyph_declaration_body<'i, 't>(
     )
 }
 
-fn parse_known_declaration_body_from_property_input<'i, 't>(
+fn parse_known_declaration_body_from_property_input<'i>(
     resolved_property: CssResolvedPropertyName,
-    input: &mut property_input::Parser<'i, 't>,
+    input: &mut property_input::Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
     parser_context: crate::CssParserContext,
 ) -> std::result::Result<
     CssDeclarationBody,
-    crate::diagnostic::error::property::ParseError<'i, crate::diagnostic::error::property::Error>,
+    crate::diagnostic::error::property::SyntaxError<'i, crate::diagnostic::error::property::Error>,
 > {
     let known_property = resolved_property.property();
     let context_name = known_property.canonical_name();
-    let state = input.state();
+    let state = input.mark();
     let (authored, has_substitution) = collect_authored_declaration_value(
         input,
         numeric,
@@ -1916,16 +1916,14 @@ fn parse_known_declaration_body_from_property_input<'i, 't>(
             .with_grammar(CssPropertyGrammar::from_resolved(resolved_property)),
         ));
     }
-    input.reset(&state);
+    input.restore(state);
 
-    let state = input.state();
-    if let Ok(ident) = input.expect_ident_cloned() {
+    let state = input.mark();
+    if let Ok(ident) = input.consume_ident() {
         if let Some(keyword) = parse_global_keyword(&ident) {
-            if !input.is_exhausted() {
+            if !input.only_whitespace_remains() {
                 return Err(crate::diagnostic::error::property::with_property_context(
-                    crate::diagnostic::error::property::invalid_syntax(
-                        input.current_source_location(),
-                    ),
+                    crate::diagnostic::error::property::invalid_syntax(input.site()),
                     context_name,
                 ));
             }
@@ -1939,9 +1937,9 @@ fn parse_known_declaration_body_from_property_input<'i, 't>(
                     .with_grammar(CssPropertyGrammar::from_resolved(resolved_property)),
             ));
         }
-        input.reset(&state);
+        input.restore(state);
     } else {
-        input.reset(&state);
+        input.restore(state);
     }
 
     let length_scope = quirky_length::property_context(known_property, parser_context, numeric);
@@ -1965,7 +1963,7 @@ fn parse_known_declaration_body_from_property_input<'i, 't>(
         }
         crate::diagnostic::error::property::with_property_context(error, context_name)
     })?;
-    input.expect_exhausted().map_err(|error| {
+    input.require_empty().map_err(|error| {
         crate::diagnostic::error::property::with_property_context(error.into(), context_name)
     })?;
     Ok(CssDeclarationBody::Known(declaration.with_grammar(
@@ -1973,17 +1971,17 @@ fn parse_known_declaration_body_from_property_input<'i, 't>(
     )))
 }
 
-fn parse_svg_glyph_declaration_body_from_property_input<'i, 't>(
-    input: &mut property_input::Parser<'i, 't>,
+fn parse_svg_glyph_declaration_body_from_property_input<'i>(
+    input: &mut property_input::Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
     admission: crate::property::svg_glyph::SvgGlyphAdmission,
 ) -> Result<
     CssDeclarationBody,
-    crate::diagnostic::error::property::ParseError<'i, crate::diagnostic::error::property::Error>,
+    crate::diagnostic::error::property::SyntaxError<'i, crate::diagnostic::error::property::Error>,
 > {
     let name = "glyph-orientation-vertical";
-    let parse = |input: &mut property_input::Parser<'i, 't>| {
-        let state = input.state();
+    let parse = |input: &mut property_input::Stream<'i>| {
+        let state = input.mark();
         let (authored, substitution) = collect_authored_declaration_value(
             input,
             numeric,
@@ -1992,41 +1990,41 @@ fn parse_svg_glyph_declaration_body_from_property_input<'i, 't>(
         let declared = if substitution {
             CssDeclaredValue::SubstitutionDependent(CssSubstitutionDependentValue::new(authored))
         } else {
-            input.reset(&state);
+            input.restore(state);
             let first_state = loop {
-                let candidate = input.state();
-                match input.next_including_whitespace_and_comments() {
+                let candidate = input.mark();
+                match input.consume_token_with_comments() {
                     Ok(Token::WhiteSpace(_) | Token::Comment(_)) => {}
                     _ => break candidate,
                 }
             };
-            input.reset(&first_state);
-            let first_location = input.current_source_location();
-            if let Ok(ident) = input.try_parse(|input| input.expect_ident_cloned()) {
+            input.restore(first_state);
+            let first_location = input.site();
+            if let Ok(ident) = input.attempt(|input| input.consume_ident()) {
                 if let Some(global) = parse_global_keyword(&ident) {
-                    input.expect_exhausted()?;
+                    input.require_empty()?;
                     CssDeclaredValue::Global(global)
                 } else if ident.eq_ignore_ascii_case("auto") {
-                    input.expect_exhausted()?;
+                    input.require_empty()?;
                     CssDeclaredValue::Value(
                         crate::property::CssSvgGlyphOrientationVerticalValue::auto(),
                     )
                 } else {
                     return Err(first_location
-                        .new_unexpected_token_error::<crate::diagnostic::error::property::Error>(
-                            Token::Ident(ident),
-                        ));
+                        .unexpected::<crate::diagnostic::error::property::Error>(Token::Ident(
+                            ident,
+                        )));
                 }
             } else {
-                input.reset(&first_state);
-                input.skip_whitespace();
-                let location = input.current_source_location();
-                let offset = input.position();
+                input.restore(first_state);
+                input.discard_whitespace();
+                let location = input.site();
+                let offset = input.site();
                 // SVG has no canonical-property error target. Retain the real
                 // root cursor/token for a present-token grammar rejection.
-                let literal_start = input.state();
-                let root_token = input.next().ok().cloned();
-                input.reset(&literal_start);
+                let literal_start = input.mark();
+                let root_token = input.consume_after_whitespace().ok().cloned();
+                input.restore(literal_start);
                 let component = input
                     .collect_component()
                     .map_err(crate::numeric::CssNumericConstructionError::component)
@@ -2073,7 +2071,7 @@ fn parse_svg_glyph_declaration_body_from_property_input<'i, 't>(
                             ) && error.path() == Some(&[0][..])
                                 && error.origin() == Some(&root_origin)))
                     {
-                        location.new_unexpected_token_error::<crate::diagnostic::error::property::Error>(
+                        location.unexpected::<crate::diagnostic::error::property::Error>(
                             token.clone(),
                         )
                     } else {
@@ -2087,7 +2085,7 @@ fn parse_svg_glyph_declaration_body_from_property_input<'i, 't>(
                             && error.origin().is_some()
                         {
                             // The numeric owner returns the actual responsible input site.
-                            if let Some(token) = mapped.location.token()
+                            if let Some(token) = mapped.at().token()
                                 && !matches!(token, Token::WhiteSpace(_) | Token::Comment(_))
                                 && (!matches!(
                                     error.kind(),
@@ -2095,8 +2093,8 @@ fn parse_svg_glyph_declaration_body_from_property_input<'i, 't>(
                                 ) || svg_glyph_numeric_present_rejection(&component, &error))
                             {
                                 return mapped
-                                    .location
-                                    .new_unexpected_token_error::<crate::diagnostic::error::property::Error>(
+                                    .at()
+                                    .unexpected::<crate::diagnostic::error::property::Error>(
                                         token,
                                     );
                             }
@@ -2105,12 +2103,13 @@ fn parse_svg_glyph_declaration_body_from_property_input<'i, 't>(
                     }
                 })?;
                 if !value.admitted(admission) {
-                    return Err(location
-                        .new_unexpected_token_error::<crate::diagnostic::error::property::Error>(
+                    return Err(
+                        location.unexpected::<crate::diagnostic::error::property::Error>(
                             root_token.expect("only a direct Number has mode-dependent admission"),
-                        ));
+                        ),
+                    );
                 }
-                input.expect_exhausted()?;
+                input.require_empty()?;
                 CssDeclaredValue::Value(value)
             }
         };
@@ -2207,14 +2206,14 @@ pub(crate) fn parse_svg_glyph_value_body(
     )
 }
 
-fn parse_legacy_property_alias_value<'i, 't>(
+fn parse_legacy_property_alias_value<'i>(
     alias: CssLegacyPropertyAlias,
     authored: CssAuthoredDeclarationValue,
-    input: &mut property_input::Parser<'i, 't>,
+    input: &mut property_input::Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<
     CssKnownDeclaration,
-    crate::diagnostic::error::property::ParseError<'i, crate::diagnostic::error::property::Error>,
+    crate::diagnostic::error::property::SyntaxError<'i, crate::diagnostic::error::property::Error>,
 > {
     match alias {
         CssLegacyPropertyAlias::GlyphOrientationVertical => {

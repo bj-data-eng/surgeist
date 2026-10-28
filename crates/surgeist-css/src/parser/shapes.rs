@@ -1,8 +1,8 @@
 //! Authored shape command parsing over shared exact scalar and position owners.
 use super::position::parse_full_position_bounded;
-use super::property_input::Parser;
+use super::property_input::Stream;
 use super::values::{next_is_ident, parse_angle_value, parse_length_percentage};
-use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
 use crate::numeric::expression::NumericInputContext;
 use crate::values::position::{CssHorizontalPositionKeyword, CssVerticalPositionKeyword};
 use crate::values::shape::{
@@ -12,7 +12,7 @@ use crate::values::shape::{
     CssShapeHorizontalLine, CssShapeRelativeControlPoint, CssShapeSmooth, CssShapeVerticalLine,
 };
 
-type Result<'i, T> = std::result::Result<T, ParseError<'i, Error>>;
+type Result<'i, T> = std::result::Result<T, SyntaxError<'i, Error>>;
 const COMMANDS: &[&str] = &[
     "move", "line", "hline", "vline", "curve", "smooth", "arc", "close",
 ];
@@ -24,30 +24,24 @@ const CONTROL: &[&str] = &[
     "from", "move", "line", "hline", "vline", "curve", "smooth", "arc", "close",
 ];
 
-pub(super) fn parse_shape<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_shape<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<'i, CssShapeFunction> {
-    let fill = if input
-        .try_parse(|p| p.expect_ident_matching("nonzero"))
-        .is_ok()
-    {
+    let fill = if input.attempt(|p| p.consume_keyword("nonzero")).is_ok() {
         Some(CssFillRule::Nonzero)
-    } else if input
-        .try_parse(|p| p.expect_ident_matching("evenodd"))
-        .is_ok()
-    {
+    } else if input.attempt(|p| p.consume_keyword("evenodd")).is_ok() {
         Some(CssFillRule::Evenodd)
     } else {
         None
     };
-    input.expect_ident_matching("from").map_err(basic)?;
+    input.consume_keyword("from").map_err(basic)?;
     let start = parse_full_position_bounded(input, numeric, COMMANDS)?;
     // The individually adopted pinned-source editorial disposition requires this comma.
-    input.expect_comma().map_err(basic)?;
+    input.consume_comma().map_err(basic)?;
     let mut commands = vec![parse_command(input, numeric)?];
-    while !input.is_exhausted() {
-        input.expect_comma().map_err(basic)?;
+    while !input.only_whitespace_remains() {
+        input.consume_comma().map_err(basic)?;
         commands.push(parse_command(input, numeric)?);
     }
     Ok(CssShapeFunction::new(
@@ -56,8 +50,8 @@ pub(super) fn parse_shape<'i, 't>(
         CssShapeCommandList::try_new(commands).expect("first command is required"),
     ))
 }
-fn pair<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn pair<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<'i, CssShapeCoordinatePair> {
     Ok(CssShapeCoordinatePair::new(
@@ -65,9 +59,9 @@ fn pair<'i, 't>(
         parse_length_percentage(input, numeric)?,
     ))
 }
-fn affinity<'i, 't>(input: &mut Parser<'i, 't>) -> Result<'i, bool> {
-    let location = input.current_source_location();
-    let word = input.expect_ident_cloned().map_err(basic)?;
+fn affinity<'i>(input: &mut Stream<'i>) -> Result<'i, bool> {
+    let location = input.site();
+    let word = input.consume_ident().map_err(basic)?;
     if word.eq_ignore_ascii_case("to") {
         Ok(true)
     } else if word.eq_ignore_ascii_case("by") {
@@ -76,8 +70,8 @@ fn affinity<'i, 't>(input: &mut Parser<'i, 't>) -> Result<'i, bool> {
         Err(crate::diagnostic::error::property::unexpected_at(location))
     }
 }
-fn endpoint<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn endpoint<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<'i, CssShapeEndpoint> {
     if affinity(input)? {
@@ -86,9 +80,9 @@ fn endpoint<'i, 't>(
         pair(input, numeric).map(CssShapeEndpoint::By)
     }
 }
-fn anchor<'i, 't>(input: &mut Parser<'i, 't>) -> Result<'i, CssShapeControlAnchor> {
-    let location = input.current_source_location();
-    let word = input.expect_ident_cloned().map_err(basic)?;
+fn anchor<'i>(input: &mut Stream<'i>) -> Result<'i, CssShapeControlAnchor> {
+    let location = input.site();
+    let word = input.consume_ident().map_err(basic)?;
     match word.to_ascii_lowercase().as_str() {
         "start" => Ok(CssShapeControlAnchor::Start),
         "end" => Ok(CssShapeControlAnchor::End),
@@ -96,28 +90,28 @@ fn anchor<'i, 't>(input: &mut Parser<'i, 't>) -> Result<'i, CssShapeControlAncho
         _ => Err(crate::diagnostic::error::property::unexpected_at(location)),
     }
 }
-fn relative_control<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn relative_control<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<'i, CssShapeRelativeControlPoint> {
     let offset = pair(input, numeric)?;
     let anchor = if next_is_ident(input, "from") {
-        input.expect_ident_matching("from").map_err(basic)?;
+        input.consume_keyword("from").map_err(basic)?;
         Some(anchor(input)?)
     } else {
         None
     };
     Ok(CssShapeRelativeControlPoint::new(offset, anchor))
 }
-fn absolute_control<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn absolute_control<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<'i, CssShapeAbsoluteControlPoint> {
     // Explicit anchors admit exactly a coordinate pair, never arbitrary position families.
-    if let Ok(offset) = input.try_parse(|p| {
+    if let Ok(offset) = input.attempt(|p| {
         let offset = pair(p, numeric)?;
-        p.expect_ident_matching("from").map_err(basic)?;
-        Ok::<_, ParseError<'i, Error>>(offset)
+        p.consume_keyword("from").map_err(basic)?;
+        Ok::<_, SyntaxError<'i, Error>>(offset)
     }) {
         return Ok(CssShapeAbsoluteControlPoint::from_coordinates(
             offset,
@@ -127,15 +121,12 @@ fn absolute_control<'i, 't>(
     parse_full_position_bounded(input, numeric, CONTROL)
         .map(CssShapeAbsoluteControlPoint::from_position)
 }
-fn parse_command<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_command<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<'i, CssShapeCommand> {
-    let location = input.current_source_location();
-    let command = input
-        .expect_ident_cloned()
-        .map_err(basic)?
-        .to_ascii_lowercase();
+    let location = input.site();
+    let command = input.consume_ident().map_err(basic)?.to_ascii_lowercase();
     match command.as_str() {
         "close" => Ok(CssShapeCommand::Close),
         "move" => endpoint(input, numeric).map(CssShapeCommand::Move),
@@ -143,15 +134,15 @@ fn parse_command<'i, 't>(
         "hline" => {
             let to = affinity(input)?;
             if to {
-                let keyword = input.try_parse(|p| {
-                    let word = p.expect_ident_cloned().map_err(basic)?;
+                let keyword = input.attempt(|p| {
+                    let word = p.consume_ident().map_err(basic)?;
                     match word.to_ascii_lowercase().as_str() {
                         "left" => Ok(CssHorizontalPositionKeyword::Left),
                         "center" => Ok(CssHorizontalPositionKeyword::Center),
                         "right" => Ok(CssHorizontalPositionKeyword::Right),
                         "x-start" => Ok(CssHorizontalPositionKeyword::XStart),
                         "x-end" => Ok(CssHorizontalPositionKeyword::XEnd),
-                        _ => Err(unexpected_at(p.current_source_location())),
+                        _ => Err(unexpected_at(p.site())),
                     }
                 });
                 if let Ok(keyword) = keyword {
@@ -170,15 +161,15 @@ fn parse_command<'i, 't>(
         "vline" => {
             let to = affinity(input)?;
             if to {
-                let keyword = input.try_parse(|p| {
-                    let word = p.expect_ident_cloned().map_err(basic)?;
+                let keyword = input.attempt(|p| {
+                    let word = p.consume_ident().map_err(basic)?;
                     match word.to_ascii_lowercase().as_str() {
                         "top" => Ok(CssVerticalPositionKeyword::Top),
                         "center" => Ok(CssVerticalPositionKeyword::Center),
                         "bottom" => Ok(CssVerticalPositionKeyword::Bottom),
                         "y-start" => Ok(CssVerticalPositionKeyword::YStart),
                         "y-end" => Ok(CssVerticalPositionKeyword::YEnd),
-                        _ => Err(unexpected_at(p.current_source_location())),
+                        _ => Err(unexpected_at(p.site())),
                     }
                 });
                 if let Ok(keyword) = keyword {
@@ -196,11 +187,11 @@ fn parse_command<'i, 't>(
         }
         "curve" => {
             let end = endpoint(input, numeric)?;
-            input.expect_ident_matching("with").map_err(basic)?;
+            input.consume_keyword("with").map_err(basic)?;
             Ok(CssShapeCommand::Curve(match end {
                 CssShapeEndpoint::To(end) => {
                     let first = absolute_control(input, numeric)?;
-                    let second = if input.try_parse(|p| p.expect_delim('/')).is_ok() {
+                    let second = if input.attempt(|p| p.consume_delim('/')).is_ok() {
                         Some(absolute_control(input, numeric)?)
                     } else {
                         None
@@ -209,7 +200,7 @@ fn parse_command<'i, 't>(
                 }
                 CssShapeEndpoint::By(end) => {
                     let first = relative_control(input, numeric)?;
-                    let second = if input.try_parse(|p| p.expect_delim('/')).is_ok() {
+                    let second = if input.attempt(|p| p.consume_delim('/')).is_ok() {
                         Some(relative_control(input, numeric)?)
                     } else {
                         None
@@ -220,7 +211,7 @@ fn parse_command<'i, 't>(
         }
         "smooth" => {
             let end = endpoint(input, numeric)?;
-            let with = input.try_parse(|p| p.expect_ident_matching("with")).is_ok();
+            let with = input.attempt(|p| p.consume_keyword("with")).is_ok();
             Ok(CssShapeCommand::Smooth(match end {
                 CssShapeEndpoint::To(end) => CssShapeSmooth::to(
                     end,
@@ -244,23 +235,20 @@ fn parse_command<'i, 't>(
         _ => Err(crate::diagnostic::error::property::unexpected_at(location)),
     }
 }
-fn parse_arc<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_arc<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<'i, CssShapeArc> {
     let end = endpoint(input, numeric)?;
     let (mut radii, mut sweep, mut size, mut rotation) = (None, None, None, None);
-    while !input.is_exhausted() && !super::values::next_is_comma(input) {
-        let location = input.current_source_location();
-        let option = input
-            .expect_ident_cloned()
-            .map_err(basic)?
-            .to_ascii_lowercase();
+    while !input.only_whitespace_remains() && !super::values::next_is_comma(input) {
+        let location = input.site();
+        let option = input.consume_ident().map_err(basic)?.to_ascii_lowercase();
         match option.as_str() {
             "of" if radii.is_none() => {
                 let horizontal = parse_length_percentage(input, numeric)?;
                 radii = Some(
-                    if let Ok(vertical) = input.try_parse(|p| parse_length_percentage(p, numeric)) {
+                    if let Ok(vertical) = input.attempt(|p| parse_length_percentage(p, numeric)) {
                         CssShapeArcRadii::Two {
                             horizontal,
                             vertical,
@@ -290,6 +278,6 @@ fn parse_arc<'i, 't>(
             }
         }
     }
-    let radii = radii.ok_or_else(|| unexpected_at(input.current_source_location()))?;
+    let radii = radii.ok_or_else(|| unexpected_at(input.site()))?;
     Ok(CssShapeArc::new(end, radii, sweep, size, rotation))
 }

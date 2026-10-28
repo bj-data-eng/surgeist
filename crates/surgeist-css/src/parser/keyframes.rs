@@ -314,7 +314,7 @@ fn parse_keyframe_selector<'i, 't>(
                 numeric,
                 NativeValueRange::Component,
                 |input, numeric| {
-                    let start = input.state();
+                    let start = input.mark();
                     parse_numeric_function(input, &start, numeric, CalculationRoot::Percentage)
                 },
             )?;

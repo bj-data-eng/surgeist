@@ -1,23 +1,20 @@
 //! CSS Will Change 1 §2 authored grammar.
 
-use super::property_input::Parser;
-use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use super::property_input::Stream;
+use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
 use crate::values::ui::{
     CssWillChange, CssWillChangeFeature, CssWillChangeFeatures, CssWillChangePropertyName,
 };
 
-pub(super) fn parse_will_change<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssWillChange, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("auto"))
-        .is_ok()
-    {
+pub(super) fn parse_will_change<'i>(
+    input: &mut Stream<'i>,
+) -> Result<CssWillChange, SyntaxError<'i, Error>> {
+    if input.attempt(|input| input.consume_keyword("auto")).is_ok() {
         return Ok(CssWillChange::Auto);
     }
-    let features = input.parse_comma_separated(|input| {
-        let location = input.current_source_location();
-        let ident = input.expect_ident_cloned().map_err(basic)?;
+    let features = input.comma_segments(|input| {
+        let location = input.site();
+        let ident = input.consume_ident().map_err(basic)?;
         if ident.eq_ignore_ascii_case("scroll-position") {
             return Ok(CssWillChangeFeature::ScrollPosition);
         }

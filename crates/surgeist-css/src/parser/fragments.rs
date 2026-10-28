@@ -1187,7 +1187,7 @@ fn property_value_text(
                     error,
                 )
             })?;
-            let mut property_input = property_input::Parser::new(&document);
+            let mut property_input = property_input::Stream::new(&document);
             let body = parse_property_value_from_parser(
                 grammar,
                 &mut property_input,

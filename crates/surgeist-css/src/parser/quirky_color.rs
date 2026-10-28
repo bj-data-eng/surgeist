@@ -1,6 +1,6 @@
 //! Selected Color4 Appendix B fallback, confined to direct property color slots.
 use super::color::parse_color;
-use super::property_input::Parser;
+use super::property_input::Stream;
 use super::side_shapes::parse_four_sides;
 use crate::color::{CssColor, CssHexColor};
 use crate::component::{
@@ -11,7 +11,7 @@ use crate::declaration::CssAuthoredDeclarationValue;
 use crate::declaration::syntax::CssDeclaredValue;
 use crate::diagnostic::CssFeatureId;
 use crate::diagnostic::error::ErrorKind;
-use crate::diagnostic::error::property::{Error, ParseError, unexpected_at};
+use crate::diagnostic::error::property::{Error, SyntaxError, unexpected_at};
 use crate::numeric::expression::NumericInputContext;
 use crate::property::properties::CssKnownDeclarationValue;
 use crate::property::{CssKnownDeclaration, CssKnownProperty, CssPropertyValue};
@@ -20,13 +20,13 @@ use crate::{CssParserContext, CssParserMode};
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] =
     &[CssFeatureId::new("official.value.quirky-color")];
 
-pub(super) fn parse_property_value<'i, 't>(
+pub(super) fn parse_property_value<'i>(
     property: CssKnownProperty,
     authored: CssAuthoredDeclarationValue,
-    input: &mut Parser<'i, 't>,
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
     context: CssParserContext,
-) -> Result<CssKnownDeclaration, ParseError<'i, Error>> {
+) -> Result<CssKnownDeclaration, SyntaxError<'i, Error>> {
     if context.mode() != CssParserMode::Quirks {
         return super::parse_known_property_value(property, authored, input, numeric);
     }
@@ -57,11 +57,11 @@ pub(super) fn parse_property_value<'i, 't>(
         }
         CssKnownProperty::BorderColor => {
             // Preserve ordinary logical-prefixed grammar; its targets do not grant a quirk.
-            let state = input.state();
+            let state = input.mark();
             let logical = input
-                .try_parse(|input| input.expect_ident_matching("logical"))
+                .attempt(|input| input.consume_keyword("logical"))
                 .is_ok();
-            input.reset(&state);
+            input.restore(state);
             if logical {
                 return super::parse_known_property_value(property, authored, input, numeric);
             }
@@ -76,17 +76,17 @@ pub(super) fn parse_property_value<'i, 't>(
     }
 }
 
-fn direct_color<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn direct_color<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssColor, ParseError<'i, Error>> {
+) -> Result<CssColor, SyntaxError<'i, Error>> {
     // Ordinary grammar wins, including escaped named colors and complete functions.
     // This fallback never enters a function or a referencing shorthand.
-    let ordinary = match input.try_parse(|input| parse_color(input, numeric)) {
+    let ordinary = match input.attempt(|input| parse_color(input, numeric)) {
         Ok(color) => return Ok(color),
         Err(error) => error,
     };
-    if let crate::diagnostic::error::property::ParseErrorKind::Custom(error) = &ordinary.kind {
+    if let Some(error) = ordinary.custom_value() {
         match &error.kind {
             ErrorKind::InvalidComponentValue(component)
                 if crate::diagnostic::error::is_component_resource_error(component) =>
@@ -97,16 +97,16 @@ fn direct_color<'i, 't>(
             _ => {}
         }
     }
-    input.skip_whitespace();
-    let location = input.current_source_location();
-    let offset = input.position();
+    input.discard_whitespace();
+    let location = input.site();
+    let offset = input.site();
     let component = input
         .collect_component()
         .map_err(crate::numeric::CssNumericConstructionError::component)
         .map_err(|error| {
             let at = numeric.property_error_location(&error, location, offset);
             error.component_error().map_or_else(
-                || unexpected_at(input.current_source_location()),
+                || unexpected_at(input.site()),
                 |component| {
                     crate::diagnostic::error::property::invalid_component_value(
                         at,

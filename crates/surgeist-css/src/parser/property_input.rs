@@ -5,16 +5,15 @@ use crate::component::{
     CssComponentValueRef, CssHashFlag, CssNumericTokenKind, CssNumericTokenRef,
     CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
 };
-use crate::diagnostic::error::property::{BasicParseError, ParseError, ParseErrorKind};
+use crate::diagnostic::error::property::{StreamError, SyntaxError};
 use crate::source::CssSourcePosition;
 use crate::syntax_consumption::{
     CheckedLexeme, GroupEnd, ListId, SyntaxDocument, SyntaxNode, SyntaxToken, TokenKind,
     TokenPayload,
 };
 use crate::values::color_adjust::utf16_value::Control;
-use cssparser::BasicParseErrorKind;
-use cssparser::{CowRcStr, Delimiter, Delimiters, Token};
-use std::{borrow::Cow, marker::PhantomData, ops::Range};
+use cssparser::{CowRcStr, Token};
+use std::{borrow::Cow, ops::Range};
 
 /// A real component boundary; never a byte offset in serialized checked input.
 #[derive(Clone, Copy)]
@@ -389,51 +388,72 @@ impl<'i> Site<'i> {
             None => node.token().origin.clone().into_owned(),
         }))
     }
-    pub(crate) fn new_custom_error<E, E2: From<E>>(self, error: E) -> ParseError<'i, E2> {
+    /// The grammar's own error, charged to the meter like any retained value.
+    pub(crate) fn grammar_error<E, E2: From<E>>(self, error: E) -> SyntaxError<'i, E2> {
         if self
             .control()
             .is_some_and(|control| control.add(std::mem::size_of::<E2>()).is_err())
         {
-            return self.new_error(BasicParseErrorKind::EndOfInput);
+            return self.end_of_stream();
         }
-        ParseError {
-            kind: ParseErrorKind::Custom(Box::new(error.into())),
-            location: self,
-        }
+        SyntaxError::custom(self, error.into())
     }
-    pub(crate) fn new_unexpected_token_error<E>(self, token: Token<'i>) -> ParseError<'i, E> {
-        self.new_basic_unexpected_token_error(token).into()
+    pub(crate) fn unexpected<E>(self, token: Token<'i>) -> SyntaxError<'i, E> {
+        StreamError::unexpected(self, token).into()
     }
-    pub(crate) fn new_basic_unexpected_token_error(self, token: Token<'i>) -> BasicParseError<'i> {
-        BasicParseError {
-            kind: BasicParseErrorKind::UnexpectedToken(token),
-            location: self,
-        }
-    }
-    pub(crate) fn new_error<E>(self, kind: BasicParseErrorKind<'i>) -> ParseError<'i, E> {
-        BasicParseError {
-            kind,
-            location: self,
-        }
-        .into()
+    pub(crate) fn end_of_stream<E>(self) -> SyntaxError<'i, E> {
+        StreamError::end_of_stream(self).into()
     }
 }
 
+/// Spec 5.5.7: a stop token a list of component values can end at.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum StopToken {
+    Comma,
+    Semicolon,
+    ExclamationMark,
+    OpenCurly,
+}
+/// A set of stop tokens.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct StopTokens(u8);
+impl StopToken {
+    const fn bit(self) -> u8 {
+        match self {
+            Self::Comma => 1,
+            Self::Semicolon => 2,
+            Self::ExclamationMark => 4,
+            Self::OpenCurly => 8,
+        }
+    }
+}
+impl StopTokens {
+    const fn contains(self, stop: StopToken) -> bool {
+        self.0 & stop.bit() != 0
+    }
+}
+impl From<StopToken> for StopTokens {
+    fn from(stop: StopToken) -> Self {
+        Self(stop.bit())
+    }
+}
+
+/// A restore point of a stream (spec 5.3, "mark").
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ParserState<'i> {
-    position: Site<'i>,
+pub(crate) struct Mark<'i> {
+    site: Site<'i>,
     pending: Option<usize>,
     start: usize,
     end: usize,
 }
-impl<'i> ParserState<'i> {
-    pub(crate) fn position(&self) -> Site<'i> {
-        self.position
+impl<'i> Mark<'i> {
+    pub(crate) fn site(&self) -> Site<'i> {
+        self.site
     }
 }
 
-pub(crate) type Parser<'i, 't> = PropertyParser<'i, 't>;
-pub(crate) struct PropertyParser<'i, 't> {
+/// One bounded cursor over a list of the syntax arena (spec 5.3, "token stream").
+pub(crate) struct Stream<'i> {
     document: &'i SyntaxDocument<'i>,
     list: ListId,
     start: usize,
@@ -441,21 +461,17 @@ pub(crate) struct PropertyParser<'i, 't> {
     end: usize,
     pending: Option<usize>,
     token: Option<Token<'i>>,
-    lifetime: PhantomData<&'t mut ()>,
 }
-impl<'i, 't> PropertyParser<'i, 't> {
+impl<'i> Stream<'i> {
     pub(crate) fn control(&self) -> Option<&'i Control<'i>> {
         self.document.control
     }
-    pub(crate) fn controlled_step(&self) -> Result<(), BasicParseError<'i>> {
+    pub(crate) fn controlled_step(&self) -> Result<(), StreamError<'i>> {
         if self
             .control()
             .is_some_and(|control| control.step().is_err())
         {
-            return Err(BasicParseError {
-                kind: BasicParseErrorKind::EndOfInput,
-                location: self.position(),
-            });
+            return Err(StreamError::end_of_stream(self.site()));
         }
         Ok(())
     }
@@ -463,20 +479,16 @@ impl<'i, 't> PropertyParser<'i, 't> {
         &self,
         values: &mut Vec<T>,
         additional: usize,
-    ) -> Result<(), BasicParseError<'i>> {
+    ) -> Result<(), StreamError<'i>> {
         self.controlled_step()?;
         if let Some(control) = self.control() {
             control
                 .reserve(values, additional)
-                .map_err(|_| BasicParseError {
-                    kind: BasicParseErrorKind::EndOfInput,
-                    location: self.position(),
-                })
+                .map_err(|_| StreamError::end_of_stream(self.site()))
         } else {
-            values.try_reserve(additional).map_err(|_| BasicParseError {
-                kind: BasicParseErrorKind::EndOfInput,
-                location: self.position(),
-            })
+            values
+                .try_reserve(additional)
+                .map_err(|_| StreamError::end_of_stream(self.site()))
         }
     }
 
@@ -501,10 +513,9 @@ impl<'i, 't> PropertyParser<'i, 't> {
             end: range.end,
             pending: None,
             token: None,
-            lifetime: PhantomData,
         }
     }
-    pub(crate) fn position(&self) -> Site<'i> {
+    pub(crate) fn site(&self) -> Site<'i> {
         Site {
             document: self.document,
             list: self.list,
@@ -512,41 +523,38 @@ impl<'i, 't> PropertyParser<'i, 't> {
             closing: false,
         }
     }
-    pub(crate) fn current_source_location(&self) -> Site<'i> {
-        self.position()
-    }
-    pub(crate) fn state(&self) -> ParserState<'i> {
-        ParserState {
-            position: self.position(),
+    pub(crate) fn mark(&self) -> Mark<'i> {
+        Mark {
+            site: self.site(),
             pending: self.pending,
             start: self.start,
             end: self.end,
         }
     }
-    pub(crate) fn reset(&mut self, state: &ParserState<'i>) {
+    pub(crate) fn restore(&mut self, mark: Mark<'i>) {
         assert!(
-            std::ptr::eq(self.document, state.position.document)
-                && self.list == state.position.list
-                && self.start == state.start
-                && self.end == state.end
-                && (self.start..=self.end).contains(&state.position.index)
+            std::ptr::eq(self.document, mark.site.document)
+                && self.list == mark.site.list
+                && self.start == mark.start
+                && self.end == mark.end
+                && (self.start..=self.end).contains(&mark.site.index)
         );
-        self.next = state.position.index;
-        self.pending = state.pending;
+        self.next = mark.site.index;
+        self.pending = mark.pending;
         self.token = None;
     }
-    pub(crate) fn try_parse<F, T, E>(&mut self, parse: F) -> Result<T, E>
+    pub(crate) fn attempt<F, T, E>(&mut self, parse: F) -> Result<T, E>
     where
         F: FnOnce(&mut Self) -> Result<T, E>,
     {
-        let state = self.state();
+        let mark = self.mark();
         let result = parse(self);
         if result.is_err() {
-            self.reset(&state);
+            self.restore(mark);
         }
         result
     }
-    pub(crate) fn skip_whitespace(&mut self) {
+    pub(crate) fn discard_whitespace(&mut self) {
         while self.next < self.end {
             if self.controlled_step().is_err() {
                 break;
@@ -558,29 +566,26 @@ impl<'i, 't> PropertyParser<'i, 't> {
         }
         self.pending = None;
     }
-    pub(crate) fn is_exhausted(&mut self) -> bool {
+    pub(crate) fn only_whitespace_remains(&mut self) -> bool {
         if self.controlled_step().is_err() {
             return true;
         }
-        let state = self.state();
-        self.skip_whitespace();
+        let state = self.mark();
+        self.discard_whitespace();
         let result = self.next == self.end;
-        self.reset(&state);
+        self.restore(state);
         result
     }
     pub(crate) fn next_kind(
         &mut self,
         include_trivia: bool,
-    ) -> Result<TokenKind<'i>, BasicParseError<'i>> {
+    ) -> Result<TokenKind<'i>, StreamError<'i>> {
         if !include_trivia {
-            self.skip_whitespace();
+            self.discard_whitespace();
         }
         self.controlled_step()?;
         if self.next == self.end {
-            return Err(BasicParseError {
-                kind: BasicParseErrorKind::EndOfInput,
-                location: self.position(),
-            });
+            return Err(StreamError::end_of_stream(self.site()));
         }
         let id = self.document.lists[self.list][self.next];
         self.next += 1;
@@ -588,20 +593,15 @@ impl<'i, 't> PropertyParser<'i, 't> {
         self.pending = node.children().map(|_| id);
         Ok(node.token().kind())
     }
-    pub(crate) fn next(&mut self) -> Result<&Token<'i>, BasicParseError<'i>> {
-        self.skip_whitespace();
-        self.next_including_whitespace_and_comments()
+    pub(crate) fn consume_after_whitespace(&mut self) -> Result<&Token<'i>, StreamError<'i>> {
+        self.discard_whitespace();
+        self.consume_token_with_comments()
     }
-    pub(crate) fn next_including_whitespace_and_comments(
-        &mut self,
-    ) -> Result<&Token<'i>, BasicParseError<'i>> {
+    pub(crate) fn consume_token_with_comments(&mut self) -> Result<&Token<'i>, StreamError<'i>> {
         self.controlled_step()?;
-        let location = self.position();
+        let location = self.site();
         if self.next == self.end {
-            return Err(BasicParseError {
-                kind: BasicParseErrorKind::EndOfInput,
-                location,
-            });
+            return Err(StreamError::end_of_stream(location));
         }
         let id = self.document.lists[self.list][self.next];
         self.next += 1;
@@ -610,16 +610,13 @@ impl<'i, 't> PropertyParser<'i, 't> {
         self.token = Some(native_token(node.token()));
         Ok(self.token.as_ref().expect("selected token"))
     }
-    pub(crate) fn expect_exhausted(&mut self) -> Result<(), BasicParseError<'i>> {
+    pub(crate) fn require_empty(&mut self) -> Result<(), StreamError<'i>> {
         if self.control().is_some() {
-            let state = self.state();
-            self.skip_whitespace();
-            let location = self.position();
+            let state = self.mark();
+            self.discard_whitespace();
+            let location = self.site();
             let result = match self.next_kind(false) {
-                Ok(_) => Err(BasicParseError {
-                    kind: BasicParseErrorKind::EndOfInput,
-                    location,
-                }),
+                Ok(_) => Err(StreamError::end_of_stream(location)),
                 Err(error)
                     if self
                         .control()
@@ -629,51 +626,48 @@ impl<'i, 't> PropertyParser<'i, 't> {
                 }
                 Err(_) => Ok(()),
             };
-            self.reset(&state);
+            self.restore(state);
             return result;
         }
-        let state = self.state();
-        self.skip_whitespace();
-        let site = self.position();
-        let result = match self.next() {
-            Ok(token) => Err(site.new_basic_unexpected_token_error(token.clone())),
+        let state = self.mark();
+        self.discard_whitespace();
+        let site = self.site();
+        let result = match self.consume_after_whitespace() {
+            Ok(token) => Err(StreamError::unexpected(site, token.clone())),
             Err(_) => Ok(()),
         };
-        self.reset(&state);
+        self.restore(state);
         result
     }
-    pub(crate) fn new_unexpected_token_error<E>(&self, token: Token<'i>) -> ParseError<'i, E> {
-        self.position().new_unexpected_token_error(token)
+    pub(crate) fn unexpected<E>(&self, token: Token<'i>) -> SyntaxError<'i, E> {
+        self.site().unexpected(token)
     }
-    pub(crate) fn new_error<E>(&self, kind: BasicParseErrorKind<'i>) -> ParseError<'i, E> {
-        self.position().new_error(kind)
+    pub(crate) fn end_of_stream<E>(&self) -> SyntaxError<'i, E> {
+        self.site().end_of_stream()
     }
-    fn expect_token(
+    fn consume_matching(
         &mut self,
         predicate: impl FnOnce(&Token<'i>) -> bool,
-    ) -> Result<(), BasicParseError<'i>> {
-        self.skip_whitespace();
-        let site = self.position();
-        let token = self.next()?;
+    ) -> Result<(), StreamError<'i>> {
+        self.discard_whitespace();
+        let site = self.site();
+        let token = self.consume_after_whitespace()?;
         if predicate(token) {
             Ok(())
         } else {
-            Err(site.new_basic_unexpected_token_error(token.clone()))
+            Err(StreamError::unexpected(site, token.clone()))
         }
     }
-    pub(crate) fn expect_ident(&mut self) -> Result<&CowRcStr<'i>, BasicParseError<'i>> {
-        self.skip_whitespace();
-        let site = self.position();
+    fn ident(&mut self) -> Result<&CowRcStr<'i>, StreamError<'i>> {
+        self.discard_whitespace();
+        let site = self.site();
         if self.control().is_some() {
             match self.next_kind(false)? {
                 TokenKind::Ident(name) => {
                     self.token = Some(Token::Ident(name.into()));
                 }
                 _ => {
-                    return Err(BasicParseError {
-                        kind: BasicParseErrorKind::EndOfInput,
-                        location: site,
-                    });
+                    return Err(StreamError::end_of_stream(site));
                 }
             }
             let Some(Token::Ident(name)) = self.token.as_ref() else {
@@ -681,109 +675,104 @@ impl<'i, 't> PropertyParser<'i, 't> {
             };
             return Ok(name);
         }
-        match self.next()? {
+        match self.consume_after_whitespace()? {
             Token::Ident(name) => Ok(name),
-            token => Err(site.new_basic_unexpected_token_error(token.clone())),
+            token => Err(StreamError::unexpected(site, token.clone())),
         }
     }
-    pub(crate) fn expect_ident_cloned(&mut self) -> Result<CowRcStr<'i>, BasicParseError<'i>> {
-        self.expect_ident().cloned()
+    pub(crate) fn consume_ident(&mut self) -> Result<CowRcStr<'i>, StreamError<'i>> {
+        self.ident().cloned()
     }
-    pub(crate) fn expect_ident_matching(
-        &mut self,
-        expected: &str,
-    ) -> Result<(), BasicParseError<'i>> {
-        self.skip_whitespace();
-        let site = self.position();
-        let ident = self.expect_ident()?;
+    pub(crate) fn consume_keyword(&mut self, expected: &str) -> Result<(), StreamError<'i>> {
+        self.discard_whitespace();
+        let site = self.site();
+        let ident = self.ident()?;
         if ident.eq_ignore_ascii_case(expected) {
             Ok(())
         } else {
-            Err(site.new_basic_unexpected_token_error(Token::Ident(ident.clone())))
+            Err(StreamError::unexpected(site, Token::Ident(ident.clone())))
         }
     }
-    pub(crate) fn expect_function(&mut self) -> Result<&CowRcStr<'i>, BasicParseError<'i>> {
-        self.skip_whitespace();
-        let site = self.position();
-        match self.next()? {
+    pub(crate) fn consume_function_name(&mut self) -> Result<&CowRcStr<'i>, StreamError<'i>> {
+        self.discard_whitespace();
+        let site = self.site();
+        match self.consume_after_whitespace()? {
             Token::Function(name) => Ok(name),
-            token => Err(site.new_basic_unexpected_token_error(token.clone())),
+            token => Err(StreamError::unexpected(site, token.clone())),
         }
     }
-    pub(crate) fn expect_function_matching(
-        &mut self,
-        expected: &str,
-    ) -> Result<(), BasicParseError<'i>> {
-        self.expect_token(
+    pub(crate) fn consume_function_named(&mut self, expected: &str) -> Result<(), StreamError<'i>> {
+        self.consume_matching(
             |token| matches!(token, Token::Function(name) if name.eq_ignore_ascii_case(expected)),
         )
     }
-    pub(crate) fn expect_string_cloned(&mut self) -> Result<CowRcStr<'i>, BasicParseError<'i>> {
-        self.skip_whitespace();
-        let site = self.position();
-        match self.next()? {
+    pub(crate) fn consume_string(&mut self) -> Result<CowRcStr<'i>, StreamError<'i>> {
+        self.discard_whitespace();
+        let site = self.site();
+        match self.consume_after_whitespace()? {
             Token::QuotedString(value) => Ok(value.clone()),
-            token => Err(site.new_basic_unexpected_token_error(token.clone())),
+            token => Err(StreamError::unexpected(site, token.clone())),
         }
     }
-    pub(crate) fn expect_delim(&mut self, expected: char) -> Result<(), BasicParseError<'i>> {
-        self.expect_token(|token| matches!(token, Token::Delim(value) if *value == expected))
+    pub(crate) fn consume_delim(&mut self, expected: char) -> Result<(), StreamError<'i>> {
+        self.consume_matching(|token| matches!(token, Token::Delim(value) if *value == expected))
     }
-    pub(crate) fn expect_comma(&mut self) -> Result<(), BasicParseError<'i>> {
-        self.expect_token(|token| matches!(token, Token::Comma))
+    pub(crate) fn consume_comma(&mut self) -> Result<(), StreamError<'i>> {
+        self.consume_matching(|token| matches!(token, Token::Comma))
     }
     #[cfg(test)]
-    pub(crate) fn expect_semicolon(&mut self) -> Result<(), BasicParseError<'i>> {
-        self.expect_token(|token| matches!(token, Token::Semicolon))
+    pub(crate) fn consume_semicolon(&mut self) -> Result<(), StreamError<'i>> {
+        self.consume_matching(|token| matches!(token, Token::Semicolon))
     }
-    pub(crate) fn parse_entirely<F, T, E>(&mut self, parse: F) -> Result<T, ParseError<'i, E>>
+    pub(crate) fn parse_complete<F, T, E>(&mut self, parse: F) -> Result<T, SyntaxError<'i, E>>
     where
-        F: FnOnce(&mut Self) -> Result<T, ParseError<'i, E>>,
+        F: FnOnce(&mut Self) -> Result<T, SyntaxError<'i, E>>,
     {
         let value = parse(self)?;
-        self.expect_exhausted()?;
+        self.require_empty()?;
         Ok(value)
     }
-    pub(crate) fn parse_nested_block<F, T, E>(&mut self, parse: F) -> Result<T, ParseError<'i, E>>
+    pub(crate) fn within_block<F, T, E>(&mut self, parse: F) -> Result<T, SyntaxError<'i, E>>
     where
-        F: FnOnce(&mut Parser<'i, '_>) -> Result<T, ParseError<'i, E>>,
+        F: FnOnce(&mut Stream<'i>) -> Result<T, SyntaxError<'i, E>>,
     {
         let Some(id) = self.pending.take() else {
-            return Err(self.new_error(BasicParseErrorKind::EndOfInput));
+            return Err(self.end_of_stream());
         };
         let children = self.document.nodes[id].children().expect("pending group");
-        let mut nested = Parser::bounded(
+        let mut nested = Stream::bounded(
             self.document,
             children,
             0..self.document.lists[children].len(),
         );
         let result = parse(&mut nested);
         result.and_then(|value| {
-            nested.expect_exhausted()?;
+            nested.require_empty()?;
             Ok(value)
         })
     }
-    pub(crate) fn parse_until_before<F, T, E>(
+    pub(crate) fn within_list_until<F, T, E>(
         &mut self,
-        delimiters: Delimiters,
+        stops: impl Into<StopTokens>,
         parse: F,
-    ) -> Result<T, ParseError<'i, E>>
+    ) -> Result<T, SyntaxError<'i, E>>
     where
-        F: FnOnce(&mut Parser<'i, '_>) -> Result<T, ParseError<'i, E>>,
+        F: FnOnce(&mut Stream<'i>) -> Result<T, SyntaxError<'i, E>>,
     {
+        let stops = stops.into();
         let end = (self.next..self.end)
             .find(|index| {
-                matches_delimiter(
+                is_stop_token(
                     self.document.nodes[self.document.lists[self.list][*index]]
                         .token()
                         .kind(),
-                    delimiters,
+                    stops,
                 )
             })
             .unwrap_or(self.end);
-        let mut nested = Parser::bounded(self.document, self.list, self.next..end);
+        let mut nested = Stream::bounded(self.document, self.list, self.next..end);
         let result = parse(&mut nested).and_then(|value| {
-            nested.expect_exhausted()?;
+            nested.require_empty()?;
             Ok(value)
         });
         self.next = end;
@@ -793,22 +782,22 @@ impl<'i, 't> PropertyParser<'i, 't> {
     /// The shared Values 4 §2.3 `#` multiplier: one or more items separated by
     /// commas. Each item parser is bounded at its comma and must consume its
     /// whole item; whole-list rules stay with the caller as post-conditions.
-    pub(crate) fn parse_comma_separated<F, T, E>(
+    pub(crate) fn comma_segments<F, T, E>(
         &mut self,
         mut parse: F,
-    ) -> Result<Vec<T>, ParseError<'i, E>>
+    ) -> Result<Vec<T>, SyntaxError<'i, E>>
     where
-        F: FnMut(&mut Parser<'i, '_>) -> Result<T, ParseError<'i, E>>,
+        F: FnMut(&mut Stream<'i>) -> Result<T, SyntaxError<'i, E>>,
     {
         let mut values = Vec::new();
         loop {
-            let value = self.parse_until_before(Delimiter::Comma, &mut parse)?;
+            let value = self.within_list_until(StopToken::Comma, &mut parse)?;
             self.reserve_controlled(&mut values, 1)?;
             values.push(value);
-            if self.is_exhausted() {
+            if self.only_whitespace_remains() {
                 return Ok(values);
             }
-            self.expect_comma()?;
+            self.consume_comma()?;
         }
     }
     pub(crate) fn collect_component(
@@ -820,9 +809,9 @@ impl<'i, 't> PropertyParser<'i, 't> {
                 CssValueOrigin::Programmatic,
             )
         })?;
-        self.skip_whitespace();
+        self.discard_whitespace();
         if self.next == self.end {
-            let origin = match self.position().origin() {
+            let origin = match self.site().origin() {
                 CssSerializedOrigin::End(Some(origin)) | CssSerializedOrigin::Token(origin) => {
                     origin
                 }
@@ -860,23 +849,23 @@ impl<'i, 't> PropertyParser<'i, 't> {
             .map_err(crate::numeric::CssNumericConstructionError::component)
     }
     /// Owned text for retained output only. Grammar never consumes this string.
-    pub(crate) fn slice(&self, range: Range<Site<'i>>) -> String {
+    pub(crate) fn text_between(&self, from: Site<'i>, to: Site<'i>) -> String {
         assert!(
-            std::ptr::eq(range.start.document, self.document)
-                && std::ptr::eq(range.end.document, self.document)
-                && range.start.list == self.list
-                && range.end.list == self.list
+            std::ptr::eq(from.document, self.document)
+                && std::ptr::eq(to.document, self.document)
+                && from.list == self.list
+                && to.list == self.list
         );
         if let Some(source) = &self.document.source {
             let start = self
                 .document
-                .boundary(self.list, range.start.index)
+                .boundary(self.list, from.index)
                 .source
                 .expect("source boundary")
                 .offset;
             let end = self
                 .document
-                .boundary(self.list, range.end.index)
+                .boundary(self.list, to.index)
                 .source
                 .expect("source boundary")
                 .offset;
@@ -891,7 +880,7 @@ impl<'i, 't> PropertyParser<'i, 't> {
             "controlled property slices retain their actual source"
         );
         let mut output = crate::component::values::serialize::CssCanonicalBuilder::new(usize::MAX);
-        for id in &self.document.lists[self.list][range.start.index..range.end.index] {
+        for id in &self.document.lists[self.list][from.index..to.index] {
             let TokenPayload::Checked { component, .. } = &self.document.nodes[*id].token().payload
             else {
                 unreachable!("checked property output borrows checked components");
@@ -905,8 +894,8 @@ impl<'i, 't> PropertyParser<'i, 't> {
             .expect("checked output boundaries")
             .into_css()
     }
-    pub(crate) fn slice_from(&self, start: Site<'i>) -> String {
-        self.slice(start..self.position())
+    pub(crate) fn text_since(&self, start: Site<'i>) -> String {
+        self.text_between(start, self.site())
     }
 }
 fn implicit_end_origin(
@@ -929,15 +918,15 @@ fn implicit_end_origin(
     };
     CssSerializedOrigin::End(Some(origin))
 }
-fn matches_delimiter(kind: TokenKind<'_>, delimiters: Delimiters) -> bool {
+fn is_stop_token(kind: TokenKind<'_>, stops: StopTokens) -> bool {
     let wanted = match kind {
-        TokenKind::Semicolon => Delimiter::Semicolon,
-        TokenKind::Comma => Delimiter::Comma,
-        TokenKind::Delim('!') => Delimiter::Bang,
-        TokenKind::Opening(CssBlockKind::CurlyBracket) => Delimiter::CurlyBracketBlock,
+        TokenKind::Semicolon => StopToken::Semicolon,
+        TokenKind::Comma => StopToken::Comma,
+        TokenKind::Delim('!') => StopToken::ExclamationMark,
+        TokenKind::Opening(CssBlockKind::CurlyBracket) => StopToken::OpenCurly,
         _ => return false,
     };
-    delimiters | wanted == delimiters
+    stops.contains(wanted)
 }
 /// Numeric fields mirror lexical dispatch only. Exact numerical grammar uses
 /// `collect_component` and the CSS numerical owner, never these rounded fields.
@@ -1041,10 +1030,10 @@ mod tests {
             0,
         )
         .unwrap();
-        let mut input = Parser::new(&document);
-        assert_eq!(input.expect_ident_cloned().unwrap().as_ref(), "a");
-        assert_eq!(input.expect_ident_cloned().unwrap().as_ref(), "b");
-        assert!(input.is_exhausted());
+        let mut input = Stream::new(&document);
+        assert_eq!(input.consume_ident().unwrap().as_ref(), "a");
+        assert_eq!(input.consume_ident().unwrap().as_ref(), "b");
+        assert!(input.only_whitespace_remains());
     }
 
     #[test]
@@ -1056,46 +1045,52 @@ mod tests {
             0,
         )
         .unwrap();
-        let mut input = Parser::new(&document);
+        let mut input = Stream::new(&document);
         let value = input.collect_component().unwrap();
         assert!(matches!(value, Cow::Borrowed(_)));
         assert!(std::ptr::eq(value.as_ref(), &values.items()[0]));
     }
 
     #[test]
-    fn failed_nested_parse_advances_outer_and_reset_restores_the_pending_group() {
+    fn failed_nested_parse_advances_outer_and_restore_returns_the_pending_group() {
         let snapshot = CssSourceSnapshot::new("f(a b) tail");
         let document = source_document(snapshot.as_str(), &snapshot, 0).unwrap();
-        let mut input = Parser::new(&document);
-        input.expect_function_matching("f").unwrap();
-        let checkpoint = input.state();
+        let mut input = Stream::new(&document);
+        input.consume_function_named("f").unwrap();
+        let checkpoint = input.mark();
         let error = input
-            .parse_nested_block(|nested| {
-                nested.expect_ident_matching("a")?;
-                nested.expect_ident_matching("wrong")?;
-                Ok::<_, ParseError<'_, ()>>(())
+            .within_block(|nested| {
+                nested.consume_keyword("a")?;
+                nested.consume_keyword("wrong")?;
+                Ok::<_, SyntaxError<'_, ()>>(())
             })
             .unwrap_err();
-        assert_eq!(error.location.lexeme(), Some("b"));
-        assert_eq!(input.expect_ident_cloned().unwrap().as_ref(), "tail");
-        input.reset(&checkpoint);
+        assert_eq!(error.at().lexeme(), Some("b"));
+        assert_eq!(input.consume_ident().unwrap().as_ref(), "tail");
+        input.restore(checkpoint);
         input
-            .parse_nested_block(|nested| {
-                nested.expect_ident_matching("a")?;
-                nested.expect_ident_matching("b")?;
-                Ok::<_, ParseError<'_, ()>>(())
+            .within_block(|nested| {
+                nested.consume_keyword("a")?;
+                nested.consume_keyword("b")?;
+                Ok::<_, SyntaxError<'_, ()>>(())
             })
             .unwrap();
-        assert_eq!(input.expect_ident_cloned().unwrap().as_ref(), "tail");
+        assert_eq!(input.consume_ident().unwrap().as_ref(), "tail");
     }
 
     #[test]
     fn lexical_error_leaves_remain_visible_until_grammar_visits_them() {
         let snapshot = CssSourceSnapshot::new("url(a b)!");
         let document = source_document(snapshot.as_str(), &snapshot, 0).unwrap();
-        let mut input = Parser::new(&document);
-        assert!(matches!(input.next().unwrap(), Token::BadUrl(_)));
-        assert_eq!(input.next().unwrap(), &Token::Delim('!'));
+        let mut input = Stream::new(&document);
+        assert!(matches!(
+            input.consume_after_whitespace().unwrap(),
+            Token::BadUrl(_)
+        ));
+        assert_eq!(
+            input.consume_after_whitespace().unwrap(),
+            &Token::Delim('!')
+        );
     }
 
     #[test]
@@ -1110,11 +1105,11 @@ mod tests {
             0,
         )
         .unwrap();
-        let input = Parser::new(&document);
-        let child = input.position().descendant(&[0, 1], false).unwrap();
+        let input = Stream::new(&document);
+        let child = input.site().descendant(&[0, 1], false).unwrap();
         assert_eq!(child.value_origin(), Some(origin));
         assert!(matches!(child.token(), Some(Token::Dimension { .. })));
-        let closing = input.position().descendant(&[0], true).unwrap();
+        let closing = input.site().descendant(&[0], true).unwrap();
         assert_eq!(closing.value_origin(), Some(CssValueOrigin::Programmatic));
         assert_eq!(closing.token(), Some(Token::CloseParenthesis));
     }
@@ -1132,12 +1127,12 @@ mod tests {
             0,
         )
         .unwrap();
-        let mut input = Parser::new(&document);
-        input.expect_function_matching("f").unwrap();
+        let mut input = Stream::new(&document);
+        input.consume_function_named("f").unwrap();
         let nested = input
-            .parse_nested_block(|nested| {
+            .within_block(|nested| {
                 nested
-                    .expect_ident_cloned()
+                    .consume_ident()
                     .map_err(crate::diagnostic::error::property::basic)
             })
             .unwrap_err();
@@ -1148,7 +1143,7 @@ mod tests {
         ));
         assert_eq!(origin, CssSerializedOrigin::Token(closing.clone()));
         let (kind, origin) =
-            crate::diagnostic::error::property::basic(input.expect_ident_cloned().unwrap_err())
+            crate::diagnostic::error::property::basic(input.consume_ident().unwrap_err())
                 .into_parts();
         assert!(matches!(
             kind,
@@ -1161,17 +1156,17 @@ mod tests {
     fn bounded_delimiter_parse_keeps_the_real_outer_delimiter() {
         let snapshot = CssSourceSnapshot::new("a f(b;c);tail");
         let document = source_document(snapshot.as_str(), &snapshot, 0).unwrap();
-        let mut input = Parser::new(&document);
+        let mut input = Stream::new(&document);
         input
-            .parse_until_before(Delimiter::Semicolon, |nested| {
-                nested.expect_ident_matching("a")?;
-                nested.expect_function_matching("f")?;
-                Ok::<_, ParseError<'_, ()>>(())
+            .within_list_until(StopToken::Semicolon, |nested| {
+                nested.consume_keyword("a")?;
+                nested.consume_function_named("f")?;
+                Ok::<_, SyntaxError<'_, ()>>(())
             })
             .unwrap();
-        assert_eq!(input.position().lexeme(), Some(";"));
-        input.expect_semicolon().unwrap();
-        assert_eq!(input.expect_ident_cloned().unwrap().as_ref(), "tail");
+        assert_eq!(input.site().lexeme(), Some(";"));
+        input.consume_semicolon().unwrap();
+        assert_eq!(input.consume_ident().unwrap().as_ref(), "tail");
     }
 }
 
@@ -1191,11 +1186,10 @@ pub(crate) fn adapt_native<'s, 'n, T, F>(
     parse: F,
 ) -> Result<T, cssparser::ParseError<'s, crate::diagnostic::CssError>>
 where
-    F: for<'i, 't> FnOnce(
-        &mut Parser<'i, 't>,
+    F: for<'i> FnOnce(
+        &mut Stream<'i>,
         &crate::numeric::expression::NumericInputContext<'n>,
-    )
-        -> Result<T, ParseError<'i, crate::diagnostic::error::property::Error>>,
+    ) -> Result<T, SyntaxError<'i, crate::diagnostic::error::property::Error>>,
 {
     use crate::numeric::expression::NumericInputContext;
     use crate::syntax_consumption::{SourceWindow, SyntaxInput, SyntaxInputLimits, normalize};
@@ -1227,15 +1221,15 @@ where
                     detail,
                 )
             })?;
-            let mut parser = Parser::new(&document);
+            let mut parser = Stream::new(&document);
             let result = parse(&mut parser, numeric);
             let consumed = document
-                .boundary(document.root, parser.position().ordinal())
+                .boundary(document.root, parser.site().ordinal())
                 .source
                 .expect("source cursor boundary")
                 .offset;
             advance_native_to(input, consumed);
-            result.map_err(ParseError::into_native_source)
+            result.map_err(SyntaxError::into_native_source)
         }
         NumericInputContext::Components(values, serialized) => {
             let paths = serialized
@@ -1269,9 +1263,9 @@ where
                     detail,
                 )
             })?;
-            let mut parser = Parser::new(&document);
+            let mut parser = Stream::new(&document);
             let result = parse(&mut parser, numeric);
-            let ordinal = parser.position().ordinal();
+            let ordinal = parser.site().ordinal();
             let consumed = paths
                 .get(ordinal)
                 .and_then(|path| serialized.component_offset_for_path(path))
@@ -1279,7 +1273,7 @@ where
             advance_native_to(input, consumed);
             result.map_err(|error| {
                 let error = error.qualify();
-                let site = error.location;
+                let site = error.at();
                 let relative = site.component_path();
                 let offset = if relative
                     .first()
@@ -1399,10 +1393,10 @@ mod native_adapter_tests {
             &NumericInputContext::Parsed(&source),
             NativeValueRange::Component,
             |input, _| {
-                input.expect_function_matching("f")?;
-                input.parse_nested_block(|nested| {
-                    nested.expect_ident_matching("a")?;
-                    Ok::<_, ParseError<'_, crate::diagnostic::error::property::Error>>(42)
+                input.consume_function_named("f")?;
+                input.within_block(|nested| {
+                    nested.consume_keyword("a")?;
+                    Ok::<_, SyntaxError<'_, crate::diagnostic::error::property::Error>>(42)
                 })
             },
         )
@@ -1431,10 +1425,7 @@ mod native_adapter_tests {
             NativeValueRange::Component,
             |input, _| {
                 let component = input.collect_component().map_err(|error| {
-                    crate::diagnostic::error::property::invalid_component_value(
-                        input.position(),
-                        error,
-                    )
+                    crate::diagnostic::error::property::invalid_component_value(input.site(), error)
                 })?;
                 assert!(matches!(component, Cow::Borrowed(_)));
                 Ok(component.as_ref() as *const CssComponentValue as usize)
@@ -1459,11 +1450,11 @@ mod native_adapter_tests {
             &NumericInputContext::Components(&values, &serialized),
             NativeValueRange::Component,
             |input, _| {
-                input.expect_function_matching("f")?;
-                input.parse_nested_block(|nested| {
-                    nested.expect_ident_matching("a")?;
-                    nested.expect_ident_matching("other")?;
-                    Ok::<_, ParseError<'_, crate::diagnostic::error::property::Error>>(())
+                input.consume_function_named("f")?;
+                input.within_block(|nested| {
+                    nested.consume_keyword("a")?;
+                    nested.consume_keyword("other")?;
+                    Ok::<_, SyntaxError<'_, crate::diagnostic::error::property::Error>>(())
                 })
             },
         )

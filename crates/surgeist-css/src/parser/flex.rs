@@ -1,8 +1,8 @@
 //! Flexbox 1 authored factor, basis, and shorthand grammar.
 
 use super::combinators::{Combinator, Tail, fill, parse_group};
-use super::property_input::Parser;
-use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use super::property_input::Stream;
+use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
 use cssparser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 
@@ -15,11 +15,11 @@ use crate::values::layout::{
     CssFlexBasisValue, CssFlexComponents, CssFlexDirection, CssFlexFlow, CssFlexValue, CssFlexWrap,
 };
 
-pub(super) fn parse_flex_direction<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFlexDirection, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(super) fn parse_flex_direction<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssFlexDirection, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "row" => Ok(CssFlexDirection::Row),
         "column" => Ok(CssFlexDirection::Column),
@@ -29,9 +29,9 @@ pub(super) fn parse_flex_direction<'i, 't>(
     }
 }
 
-pub(super) fn parse_flex_flow<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFlexFlow, ParseError<'i, Error>> {
+pub(super) fn parse_flex_flow<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssFlexFlow, SyntaxError<'i, Error>> {
     // `<'flex-direction'> || <'flex-wrap'>`.
     let (mut direction, mut wrap) = (None, None);
     parse_group::<2>(
@@ -51,11 +51,11 @@ pub(super) fn parse_flex_flow<'i, 't>(
     ))
 }
 
-pub(super) fn parse_flex_wrap<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFlexWrap, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(super) fn parse_flex_wrap<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssFlexWrap, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "nowrap" => Ok(CssFlexWrap::NoWrap),
         "wrap" => Ok(CssFlexWrap::Wrap),
@@ -64,27 +64,27 @@ pub(super) fn parse_flex_wrap<'i, 't>(
     }
 }
 
-pub(super) fn parse_flex_factor<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_flex_factor<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssNumeric<CssNumber, CssNonNegative>, ParseError<'i, Error>> {
+) -> Result<CssNumeric<CssNumber, CssNonNegative>, SyntaxError<'i, Error>> {
     super::values::parse_nonnegative_number(input, numeric)
 }
 
-pub(super) fn parse_flex_basis<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_flex_basis<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssFlexBasisValue, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let state = input.state();
-    let location = input.current_source_location();
-    let root_site = input.position();
-    match input.next().map_err(basic)? {
+) -> Result<CssFlexBasisValue, SyntaxError<'i, Error>> {
+    input.discard_whitespace();
+    let state = input.mark();
+    let location = input.site();
+    let root_site = input.site();
+    match input.consume_after_whitespace().map_err(basic)? {
         Token::Ident(value) if value.eq_ignore_ascii_case("content") => {
             Ok(CssFlexBasisValue::content())
         }
         Token::Function(value) if value.eq_ignore_ascii_case("calc-size") => {
-            input.reset(&state);
+            input.restore(state);
             let component = input
                 .collect_numeric_component(numeric)
                 .map_err(|_| unexpected_at(location))?;
@@ -99,44 +99,39 @@ pub(super) fn parse_flex_basis<'i, 't>(
             })
         }
         _ => {
-            input.reset(&state);
+            input.restore(state);
             parse_size_value(input, numeric).map(CssFlexBasisValue::from)
         }
     }
 }
 
-pub(super) fn parse_flex<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_flex<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssFlexValue, ParseError<'i, Error>> {
-    let start = input.state();
-    if input
-        .try_parse(|input| input.expect_ident_matching("none"))
-        .is_ok()
-    {
+) -> Result<CssFlexValue, SyntaxError<'i, Error>> {
+    let start = input.mark();
+    if input.attempt(|input| input.consume_keyword("none")).is_ok() {
         return Ok(CssFlexValue::None);
     }
-    if input
-        .try_parse(|input| input.expect_ident_matching("auto"))
-        .is_ok()
-        && input.is_exhausted()
+    if input.attempt(|input| input.consume_keyword("auto")).is_ok()
+        && input.only_whitespace_remains()
     {
         return Ok(CssFlexValue::Auto);
     }
-    input.reset(&start);
+    input.restore(start);
 
     let grow = input
-        .try_parse(|input| parse_flex_factor(input, numeric))
+        .attempt(|input| parse_flex_factor(input, numeric))
         .ok();
     let (shrink, basis) = if grow.is_some() {
-        let shrink = if input.is_exhausted() {
+        let shrink = if input.only_whitespace_remains() {
             None
         } else {
             input
-                .try_parse(|input| parse_flex_factor(input, numeric))
+                .attempt(|input| parse_flex_factor(input, numeric))
                 .ok()
         };
-        let basis = if input.is_exhausted() {
+        let basis = if input.only_whitespace_remains() {
             None
         } else {
             Some(parse_flex_basis(input, numeric)?)
@@ -144,16 +139,16 @@ pub(super) fn parse_flex<'i, 't>(
         (shrink, basis)
     } else {
         let basis = Some(parse_flex_basis(input, numeric)?);
-        let grow = if input.is_exhausted() {
+        let grow = if input.only_whitespace_remains() {
             None
         } else {
             input
-                .try_parse(|input| parse_flex_factor(input, numeric))
+                .attempt(|input| parse_flex_factor(input, numeric))
                 .ok()
         };
-        let shrink = if grow.is_some() && !input.is_exhausted() {
+        let shrink = if grow.is_some() && !input.only_whitespace_remains() {
             input
-                .try_parse(|input| parse_flex_factor(input, numeric))
+                .attempt(|input| parse_flex_factor(input, numeric))
                 .ok()
         } else {
             None

@@ -641,7 +641,7 @@ fn parsed_admitted(
         crate::syntax_consumption::SyntaxInputLimits::default(),
         0,
     )?;
-    let mut input = super::property_input::Parser::new(&document);
+    let mut input = super::property_input::Stream::new(&document);
     let numeric = crate::numeric::expression::NumericInputContext::parsed(first.source());
     let parsed = if parser_context.selects_svg_glyph(name) {
         super::parse_svg_glyph_declaration_body_from_property_input(
@@ -661,7 +661,7 @@ fn parsed_admitted(
         Ok(
             body @ (CssDeclarationBody::Known(_)
             | CssDeclarationBody::SvgGlyphOrientationVertical(_)),
-        ) if input.is_exhausted() => Ok(Some(body)),
+        ) if input.only_whitespace_remains() => Ok(Some(body)),
         Err(error) if crate::diagnostic::error::property::is_resource_parse_error(&error) => {
             let (kind, origin) = error.into_parts();
             if let ErrorKind::InvalidComponentValue(component) = kind {

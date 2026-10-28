@@ -1,7 +1,7 @@
 //! Selected Color Adjustment 1 property grammars.
 
-use super::property_input::Parser;
-use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use super::property_input::Stream;
+use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use crate::values::color_adjust::{
@@ -37,18 +37,18 @@ impl Drop for SchemeBank<'_> {
         }
     }
 }
-fn rejected<'i>(location: super::property_input::Site<'i>) -> ParseError<'i, Error> {
+fn rejected<'i>(location: super::property_input::Site<'i>) -> SyntaxError<'i, Error> {
     if location.control().is_some() {
-        location.new_error(cssparser::BasicParseErrorKind::EndOfInput)
+        location.end_of_stream()
     } else {
         unexpected_at(location)
     }
 }
-pub(super) fn parse_color_scheme<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssColorScheme, ParseError<'i, Error>> {
+pub(super) fn parse_color_scheme<'i>(
+    input: &mut Stream<'i>,
+) -> Result<CssColorScheme, SyntaxError<'i, Error>> {
     if input
-        .try_parse(|input| input.expect_ident_matching("normal"))
+        .attempt(|input| input.consume_keyword("normal"))
         .is_ok()
     {
         return Ok(CssColorScheme::normal());
@@ -59,18 +59,18 @@ pub(super) fn parse_color_scheme<'i, 't>(
         control: input.control(),
     };
     let mut only = false;
-    while !input.is_exhausted() {
-        input.skip_whitespace();
-        let location = input.current_source_location();
-        let ident = input.expect_ident_cloned().map_err(basic)?;
+    while !input.only_whitespace_remains() {
+        input.discard_whitespace();
+        let location = input.site();
+        let ident = input.consume_ident().map_err(basic)?;
         input.controlled_step().map_err(basic)?;
         if ident.eq_ignore_ascii_case("only") {
-            if only || schemes.values.is_empty() && input.is_exhausted() {
+            if only || schemes.values.is_empty() && input.only_whitespace_remains() {
                 return Err(rejected(location));
             }
             only = true;
             if !schemes.values.is_empty() {
-                input.expect_exhausted().map_err(basic)?;
+                input.require_empty().map_err(basic)?;
                 break;
             }
         } else {
@@ -102,16 +102,15 @@ pub(super) fn parse_color_scheme<'i, 't>(
             schemes.values.push(scheme);
         }
     }
-    CssColorScheme::try_new(schemes.finish(), only)
-        .map_err(|_| rejected(input.current_source_location()))
+    CssColorScheme::try_new(schemes.finish(), only).map_err(|_| rejected(input.site()))
 }
 
-pub(super) fn parse_forced_color_adjust<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssForcedColorAdjust, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(super) fn parse_forced_color_adjust<'i>(
+    input: &mut Stream<'i>,
+) -> Result<CssForcedColorAdjust, SyntaxError<'i, Error>> {
+    input.discard_whitespace();
+    let location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssForcedColorAdjust::Auto),
         "none" => Ok(CssForcedColorAdjust::None),
@@ -120,12 +119,12 @@ pub(super) fn parse_forced_color_adjust<'i, 't>(
     }
 }
 
-pub(super) fn parse_print_color_adjust<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssPrintColorAdjust, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(super) fn parse_print_color_adjust<'i>(
+    input: &mut Stream<'i>,
+) -> Result<CssPrintColorAdjust, SyntaxError<'i, Error>> {
+    input.discard_whitespace();
+    let location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "economy" => Ok(CssPrintColorAdjust::Economy),
         "exact" => Ok(CssPrintColorAdjust::Exact),

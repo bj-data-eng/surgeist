@@ -1,5 +1,5 @@
-use super::property_input::Parser;
-use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use super::property_input::Stream;
+use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
 use cssparser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 
@@ -12,47 +12,47 @@ use crate::values::font::{
     CssOpenTypeTag,
 };
 
-fn tag<'i, 't>(input: &mut Parser<'i, 't>) -> Result<CssOpenTypeTag, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let value = input.expect_string_cloned().map_err(basic)?;
+fn tag<'i>(input: &mut Stream<'i>) -> Result<CssOpenTypeTag, SyntaxError<'i, Error>> {
+    let location = input.site();
+    let value = input.consume_string().map_err(basic)?;
     CssOpenTypeTag::try_new(value.to_string()).ok_or_else(|| unexpected_at(location))
 }
 
-pub(super) fn parse_font_feature_settings<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_font_feature_settings<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<CssAuthoredFontFeatureSettings, ParseError<'i, Error>> {
-    let state = input.state();
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+) -> Result<CssAuthoredFontFeatureSettings, SyntaxError<'i, Error>> {
+    let state = input.mark();
+    if let Ok(ident) = input.attempt(Stream::consume_ident) {
         if ident.eq_ignore_ascii_case("normal") {
-            if input.is_exhausted() {
+            if input.only_whitespace_remains() {
                 return Ok(CssAuthoredFontFeatureSettings::Normal);
             }
             // Fonts 4: `normal` is a whole value, so the token after it is
             // responsible.
-            return Err(unexpected_at(input.current_source_location()));
+            return Err(unexpected_at(input.site()));
         }
-        input.reset(&state);
+        input.restore(state);
     }
-    let features = input.parse_comma_separated(|input| parse_font_feature(input, numeric))?;
+    let features = input.comma_segments(|input| parse_font_feature(input, numeric))?;
     CssAuthoredFontFeatureList::try_new(features)
         .map(CssAuthoredFontFeatureSettings::Features)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }
 
-fn parse_font_feature<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_font_feature<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<CssAuthoredFontFeature, ParseError<'i, Error>> {
+) -> Result<CssAuthoredFontFeature, SyntaxError<'i, Error>> {
     let tag = tag(input)?;
     // A `#` item is bounded at its comma, so exhaustion ends the item.
-    let value = if input.is_exhausted() {
+    let value = if input.only_whitespace_remains() {
         CssAuthoredFontFeatureValue::Omitted
-    } else if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+    } else if let Ok(ident) = input.attempt(Stream::consume_ident) {
         match_ignore_ascii_case! { &ident,
             "on" => CssAuthoredFontFeatureValue::On,
             "off" => CssAuthoredFontFeatureValue::Off,
-            _ => return Err(unexpected_at(input.current_source_location())),
+            _ => return Err(unexpected_at(input.site())),
         }
     } else {
         CssAuthoredFontFeatureValue::Index(parse_feature_index(input, numeric)?)
@@ -60,17 +60,17 @@ fn parse_font_feature<'i, 't>(
     Ok(CssAuthoredFontFeature::new(tag, value))
 }
 
-fn parse_feature_index<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_feature_index<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<CssNumeric<CssInteger, CssNonNegative>, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let start = input.state();
-    let location = input.current_source_location();
-    let root_site = input.position();
-    let value = match input.next().map_err(basic)? {
+) -> Result<CssNumeric<CssInteger, CssNonNegative>, SyntaxError<'i, Error>> {
+    input.discard_whitespace();
+    let start = input.mark();
+    let location = input.site();
+    let root_site = input.site();
+    let value = match input.consume_after_whitespace().map_err(basic)? {
         Token::Number { .. } => {
-            input.reset(&start);
+            input.restore(start);
             let component = input
                 .collect_numeric_component(numeric)
                 .map_err(|_| unexpected_at(location))?;
@@ -85,35 +85,35 @@ fn parse_feature_index<'i, 't>(
                 expression
             ))
         }
-        token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
+        token => return Err(location.unexpected::<Error>(token.clone())),
     };
     value.map_err(|error| {
         unexpected_at(numeric.property_error_location(&error, location, root_site))
     })
 }
 
-pub(super) fn parse_font_variation_settings<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_font_variation_settings<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<CssFontVariationSettings, ParseError<'i, Error>> {
-    let state = input.state();
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+) -> Result<CssFontVariationSettings, SyntaxError<'i, Error>> {
+    let state = input.mark();
+    if let Ok(ident) = input.attempt(Stream::consume_ident) {
         if ident.eq_ignore_ascii_case("normal") {
-            if input.is_exhausted() {
+            if input.only_whitespace_remains() {
                 return Ok(CssFontVariationSettings::Normal);
             }
             // Fonts 4: `normal` is a whole value, so the token after it is
             // responsible.
-            return Err(unexpected_at(input.current_source_location()));
+            return Err(unexpected_at(input.site()));
         }
-        input.reset(&state);
+        input.restore(state);
     }
-    let variations = input.parse_comma_separated(|input| {
+    let variations = input.comma_segments(|input| {
         let tag = tag(input)?;
         let value = super::values::parse_specified_number(input, numeric)?;
         Ok(CssFontVariation::new(tag, value))
     })?;
     CssFontVariationList::try_new(variations)
         .map(CssFontVariationSettings::Variations)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }
