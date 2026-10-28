@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "source_revision": "ddcca5943fd41232d42149aaa19d9a04c5651b18",
+  "assertion_kind": "unclosed-groups-share-their-contents",
+  "cases": [
+    {
+      "id": "unclosed-constructs-001",
+      "source": {
+        "path": "css/css-syntax/unclosed-constructs.html",
+        "sha256": "c723813cc24a16220ac06632f076bf779fea06687ec67c91ac9ff42fe19e0426",
+        "line": 32,
+        "case": "shouldBeValid(\"[foo\");"
+      },
+      "closed": "[foo]",
+      "unclosed": "[foo",
+      "closed_outline": "OpenSquare<Ident(\"foo\")>",
+      "unclosed_outline": "OpenSquare<Ident(\"foo\")\u2026>",
+      "remainder": "Selector validity (querySelector) is not claimed."
+    },
+    {
+      "id": "unclosed-constructs-002",
+      "source": {
+        "path": "css/css-syntax/unclosed-constructs.html",
+        "sha256": "c723813cc24a16220ac06632f076bf779fea06687ec67c91ac9ff42fe19e0426",
+        "line": 34,
+        "case": "shouldBeValid(\":nth-child(1\");"
+      },
+      "closed": ":nth-child(1)",
+      "unclosed": ":nth-child(1",
+      "closed_outline": "Colon Function(\"nth-child\")<Number(\"1\",int)>",
+      "unclosed_outline": "Colon Function(\"nth-child\")<Number(\"1\",int)\u2026>",
+      "remainder": "Selector validity (querySelector) is not claimed."
+    }
+  ]
+}

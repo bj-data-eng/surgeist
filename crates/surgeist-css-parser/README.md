@@ -116,6 +116,10 @@ cargo clippy --offline --locked -j 1 -p surgeist-css-parser --all-targets -- -F 
 cargo fmt -p surgeist-css-parser -- --check
 ```
 
+The WPT `css/css-syntax` tests that the edition cites are kept as test fixtures
+with reviewed vectors adapted from them ([corpus](tests/corpus/wpt/README.md));
+their license is in the [notice](NOTICE.md).
+
 ## Performance gate
 
 The lexer must match or beat cssparser's tokenizer on the

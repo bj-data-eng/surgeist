@@ -1,0 +1,722 @@
+{
+  "schema_version": 1,
+  "source_revision": "ddcca5943fd41232d42149aaa19d9a04c5651b18",
+  "assertion_kind": "consecutive-tokens-need-a-comment",
+  "cases": [
+    {
+      "id": "serialize-consecutive-001",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 31,
+        "case": "testTokenPairs(\"foo\", \"bar\");"
+      },
+      "first": "foo",
+      "second": "bar"
+    },
+    {
+      "id": "serialize-consecutive-002",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 32,
+        "case": "testTokenPairs(\"foo\", \"bar()\");"
+      },
+      "first": "foo",
+      "second": "bar()"
+    },
+    {
+      "id": "serialize-consecutive-003",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 33,
+        "case": "testTokenPairs(\"foo\", \"url(bar)\");"
+      },
+      "first": "foo",
+      "second": "url(bar)"
+    },
+    {
+      "id": "serialize-consecutive-004",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 34,
+        "case": "testTokenPairs(\"foo\", \"-\");"
+      },
+      "first": "foo",
+      "second": "-"
+    },
+    {
+      "id": "serialize-consecutive-005",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 35,
+        "case": "testTokenPairs(\"foo\", \"123\");"
+      },
+      "first": "foo",
+      "second": "123"
+    },
+    {
+      "id": "serialize-consecutive-006",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 36,
+        "case": "testTokenPairs(\"foo\", \"123%\");"
+      },
+      "first": "foo",
+      "second": "123%"
+    },
+    {
+      "id": "serialize-consecutive-007",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 37,
+        "case": "testTokenPairs(\"foo\", \"123em\");"
+      },
+      "first": "foo",
+      "second": "123em"
+    },
+    {
+      "id": "serialize-consecutive-008",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 38,
+        "case": "testTokenPairs(\"foo\", \"-->\");"
+      },
+      "first": "foo",
+      "second": "-->"
+    },
+    {
+      "id": "serialize-consecutive-009",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 39,
+        "case": "testTokenPairs(\"foo\", \"()\");"
+      },
+      "first": "foo",
+      "second": "()"
+    },
+    {
+      "id": "serialize-consecutive-010",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 41,
+        "case": "testTokenPairs(\"@foo\", \"bar\");"
+      },
+      "first": "@foo",
+      "second": "bar"
+    },
+    {
+      "id": "serialize-consecutive-011",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 42,
+        "case": "testTokenPairs(\"@foo\", \"bar()\");"
+      },
+      "first": "@foo",
+      "second": "bar()"
+    },
+    {
+      "id": "serialize-consecutive-012",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 43,
+        "case": "testTokenPairs(\"@foo\", \"url(bar)\");"
+      },
+      "first": "@foo",
+      "second": "url(bar)"
+    },
+    {
+      "id": "serialize-consecutive-013",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 44,
+        "case": "testTokenPairs(\"@foo\", \"-\");"
+      },
+      "first": "@foo",
+      "second": "-"
+    },
+    {
+      "id": "serialize-consecutive-014",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 45,
+        "case": "testTokenPairs(\"@foo\", \"123\");"
+      },
+      "first": "@foo",
+      "second": "123"
+    },
+    {
+      "id": "serialize-consecutive-015",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 46,
+        "case": "testTokenPairs(\"@foo\", \"123%\");"
+      },
+      "first": "@foo",
+      "second": "123%"
+    },
+    {
+      "id": "serialize-consecutive-016",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 47,
+        "case": "testTokenPairs(\"@foo\", \"123em\");"
+      },
+      "first": "@foo",
+      "second": "123em"
+    },
+    {
+      "id": "serialize-consecutive-017",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 48,
+        "case": "testTokenPairs(\"@foo\", \"-->\");"
+      },
+      "first": "@foo",
+      "second": "-->"
+    },
+    {
+      "id": "serialize-consecutive-018",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 50,
+        "case": "testTokenPairs(\"#foo\", \"bar\");"
+      },
+      "first": "#foo",
+      "second": "bar"
+    },
+    {
+      "id": "serialize-consecutive-019",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 51,
+        "case": "testTokenPairs(\"#foo\", \"bar()\");"
+      },
+      "first": "#foo",
+      "second": "bar()"
+    },
+    {
+      "id": "serialize-consecutive-020",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 52,
+        "case": "testTokenPairs(\"#foo\", \"url(bar)\");"
+      },
+      "first": "#foo",
+      "second": "url(bar)"
+    },
+    {
+      "id": "serialize-consecutive-021",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 53,
+        "case": "testTokenPairs(\"#foo\", \"-\");"
+      },
+      "first": "#foo",
+      "second": "-"
+    },
+    {
+      "id": "serialize-consecutive-022",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 54,
+        "case": "testTokenPairs(\"#foo\", \"123\");"
+      },
+      "first": "#foo",
+      "second": "123"
+    },
+    {
+      "id": "serialize-consecutive-023",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 55,
+        "case": "testTokenPairs(\"#foo\", \"123%\");"
+      },
+      "first": "#foo",
+      "second": "123%"
+    },
+    {
+      "id": "serialize-consecutive-024",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 56,
+        "case": "testTokenPairs(\"#foo\", \"123em\");"
+      },
+      "first": "#foo",
+      "second": "123em"
+    },
+    {
+      "id": "serialize-consecutive-025",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 57,
+        "case": "testTokenPairs(\"#foo\", \"-->\");"
+      },
+      "first": "#foo",
+      "second": "-->"
+    },
+    {
+      "id": "serialize-consecutive-026",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 59,
+        "case": "testTokenPairs(\"123foo\", \"bar\");"
+      },
+      "first": "123foo",
+      "second": "bar"
+    },
+    {
+      "id": "serialize-consecutive-027",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 60,
+        "case": "testTokenPairs(\"123foo\", \"bar()\");"
+      },
+      "first": "123foo",
+      "second": "bar()"
+    },
+    {
+      "id": "serialize-consecutive-028",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 61,
+        "case": "testTokenPairs(\"123foo\", \"url(bar)\");"
+      },
+      "first": "123foo",
+      "second": "url(bar)"
+    },
+    {
+      "id": "serialize-consecutive-029",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 62,
+        "case": "testTokenPairs(\"123foo\", \"-\");"
+      },
+      "first": "123foo",
+      "second": "-"
+    },
+    {
+      "id": "serialize-consecutive-030",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 63,
+        "case": "testTokenPairs(\"123foo\", \"123\");"
+      },
+      "first": "123foo",
+      "second": "123"
+    },
+    {
+      "id": "serialize-consecutive-031",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 64,
+        "case": "testTokenPairs(\"123foo\", \"123%\");"
+      },
+      "first": "123foo",
+      "second": "123%"
+    },
+    {
+      "id": "serialize-consecutive-032",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 65,
+        "case": "testTokenPairs(\"123foo\", \"123em\");"
+      },
+      "first": "123foo",
+      "second": "123em"
+    },
+    {
+      "id": "serialize-consecutive-033",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 66,
+        "case": "testTokenPairs(\"123foo\", \"-->\");"
+      },
+      "first": "123foo",
+      "second": "-->"
+    },
+    {
+      "id": "serialize-consecutive-034",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 68,
+        "case": "testTokenPairs(\"#\", \"bar\");"
+      },
+      "first": "#",
+      "second": "bar"
+    },
+    {
+      "id": "serialize-consecutive-035",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 69,
+        "case": "testTokenPairs(\"#\", \"bar()\");"
+      },
+      "first": "#",
+      "second": "bar()"
+    },
+    {
+      "id": "serialize-consecutive-036",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 70,
+        "case": "testTokenPairs(\"#\", \"url(bar)\");"
+      },
+      "first": "#",
+      "second": "url(bar)"
+    },
+    {
+      "id": "serialize-consecutive-037",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 71,
+        "case": "testTokenPairs(\"#\", \"-\");"
+      },
+      "first": "#",
+      "second": "-"
+    },
+    {
+      "id": "serialize-consecutive-038",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 72,
+        "case": "testTokenPairs(\"#\", \"123\");"
+      },
+      "first": "#",
+      "second": "123"
+    },
+    {
+      "id": "serialize-consecutive-039",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 73,
+        "case": "testTokenPairs(\"#\", \"123%\");"
+      },
+      "first": "#",
+      "second": "123%"
+    },
+    {
+      "id": "serialize-consecutive-040",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 74,
+        "case": "testTokenPairs(\"#\", \"123em\");"
+      },
+      "first": "#",
+      "second": "123em"
+    },
+    {
+      "id": "serialize-consecutive-041",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 76,
+        "case": "testTokenPairs(\"-\", \"bar\");"
+      },
+      "first": "-",
+      "second": "bar"
+    },
+    {
+      "id": "serialize-consecutive-042",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 77,
+        "case": "testTokenPairs(\"-\", \"bar()\");"
+      },
+      "first": "-",
+      "second": "bar()"
+    },
+    {
+      "id": "serialize-consecutive-043",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 78,
+        "case": "testTokenPairs(\"-\", \"url(bar)\");"
+      },
+      "first": "-",
+      "second": "url(bar)"
+    },
+    {
+      "id": "serialize-consecutive-044",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 79,
+        "case": "testTokenPairs(\"-\", \"-\");"
+      },
+      "first": "-",
+      "second": "-"
+    },
+    {
+      "id": "serialize-consecutive-045",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 80,
+        "case": "testTokenPairs(\"-\", \"123\");"
+      },
+      "first": "-",
+      "second": "123"
+    },
+    {
+      "id": "serialize-consecutive-046",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 81,
+        "case": "testTokenPairs(\"-\", \"123%\");"
+      },
+      "first": "-",
+      "second": "123%"
+    },
+    {
+      "id": "serialize-consecutive-047",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 82,
+        "case": "testTokenPairs(\"-\", \"123em\");"
+      },
+      "first": "-",
+      "second": "123em"
+    },
+    {
+      "id": "serialize-consecutive-048",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 84,
+        "case": "testTokenPairs(\"123\", \"bar\");"
+      },
+      "first": "123",
+      "second": "bar"
+    },
+    {
+      "id": "serialize-consecutive-049",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 85,
+        "case": "testTokenPairs(\"123\", \"bar()\");"
+      },
+      "first": "123",
+      "second": "bar()"
+    },
+    {
+      "id": "serialize-consecutive-050",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 86,
+        "case": "testTokenPairs(\"123\", \"url(bar)\");"
+      },
+      "first": "123",
+      "second": "url(bar)"
+    },
+    {
+      "id": "serialize-consecutive-051",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 87,
+        "case": "testTokenPairs(\"123\", \"123\");"
+      },
+      "first": "123",
+      "second": "123"
+    },
+    {
+      "id": "serialize-consecutive-052",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 88,
+        "case": "testTokenPairs(\"123\", \"123%\");"
+      },
+      "first": "123",
+      "second": "123%"
+    },
+    {
+      "id": "serialize-consecutive-053",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 89,
+        "case": "testTokenPairs(\"123\", \"123em\");"
+      },
+      "first": "123",
+      "second": "123em"
+    },
+    {
+      "id": "serialize-consecutive-054",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 90,
+        "case": "testTokenPairs(\"123\", \"%\");"
+      },
+      "first": "123",
+      "second": "%"
+    },
+    {
+      "id": "serialize-consecutive-055",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 92,
+        "case": "testTokenPairs(\"@\", \"bar\");"
+      },
+      "first": "@",
+      "second": "bar"
+    },
+    {
+      "id": "serialize-consecutive-056",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 93,
+        "case": "testTokenPairs(\"@\", \"bar()\");"
+      },
+      "first": "@",
+      "second": "bar()"
+    },
+    {
+      "id": "serialize-consecutive-057",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 94,
+        "case": "testTokenPairs(\"@\", \"url(bar)\");"
+      },
+      "first": "@",
+      "second": "url(bar)"
+    },
+    {
+      "id": "serialize-consecutive-058",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 95,
+        "case": "testTokenPairs(\"@\", \"-\");"
+      },
+      "first": "@",
+      "second": "-"
+    },
+    {
+      "id": "serialize-consecutive-059",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 97,
+        "case": "testTokenPairs(\".\", \"123\");"
+      },
+      "first": ".",
+      "second": "123"
+    },
+    {
+      "id": "serialize-consecutive-060",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 98,
+        "case": "testTokenPairs(\".\", \"123%\");"
+      },
+      "first": ".",
+      "second": "123%"
+    },
+    {
+      "id": "serialize-consecutive-061",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 99,
+        "case": "testTokenPairs(\".\", \"123em\");"
+      },
+      "first": ".",
+      "second": "123em"
+    },
+    {
+      "id": "serialize-consecutive-062",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 101,
+        "case": "testTokenPairs(\"+\", \"123\");"
+      },
+      "first": "+",
+      "second": "123"
+    },
+    {
+      "id": "serialize-consecutive-063",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 102,
+        "case": "testTokenPairs(\"+\", \"123%\");"
+      },
+      "first": "+",
+      "second": "123%"
+    },
+    {
+      "id": "serialize-consecutive-064",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 103,
+        "case": "testTokenPairs(\"+\", \"123em\");"
+      },
+      "first": "+",
+      "second": "123em"
+    },
+    {
+      "id": "serialize-consecutive-065",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 105,
+        "case": "testTokenPairs(\"/\", \"*\");"
+      },
+      "first": "/",
+      "second": "*"
+    }
+  ]
+}

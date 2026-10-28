@@ -1,0 +1,195 @@
+{
+  "schema_version": 1,
+  "source_revision": "ddcca5943fd41232d42149aaa19d9a04c5651b18",
+  "assertion_kind": "token-serialization-round-trip",
+  "cases": [
+    {
+      "id": "serialize-escape-identifiers-001",
+      "source": {
+        "path": "css/css-syntax/serialize-escape-identifiers.html",
+        "sha256": "8dc1a23f3b52255ac0749c25b3bb269660165c00be5dd0f20c9762cafad8f498",
+        "line": 9,
+        "case": "@import 'abc' layer(\\{\\});"
+      },
+      "input": "@import 'abc' layer(\\{\\});",
+      "tokens": [
+        "AtKeyword(\"import\")",
+        "String(\"abc\")",
+        "Function(\"layer\")",
+        "Ident(\"{}\")",
+        "CloseParen",
+        "Semicolon"
+      ],
+      "remainder": "That the CSSOM rule text is equal after the round trip is a CSSOM serialization result."
+    },
+    {
+      "id": "serialize-escape-identifiers-002",
+      "source": {
+        "path": "css/css-syntax/serialize-escape-identifiers.html",
+        "sha256": "8dc1a23f3b52255ac0749c25b3bb269660165c00be5dd0f20c9762cafad8f498",
+        "line": 10,
+        "case": "@counter-style abc\\{\\}oops {}"
+      },
+      "input": "@counter-style abc\\{\\}oops {}",
+      "tokens": [
+        "AtKeyword(\"counter-style\")",
+        "Ident(\"abc{}oops\")",
+        "OpenCurly",
+        "CloseCurly"
+      ],
+      "remainder": "That the CSSOM rule text is equal after the round trip is a CSSOM serialization result."
+    },
+    {
+      "id": "serialize-escape-identifiers-003",
+      "source": {
+        "path": "css/css-syntax/serialize-escape-identifiers.html",
+        "sha256": "8dc1a23f3b52255ac0749c25b3bb269660165c00be5dd0f20c9762cafad8f498",
+        "line": 11,
+        "case": "@font-feature-values abc\\{\\}oops {}"
+      },
+      "input": "@font-feature-values abc\\{\\}oops {}",
+      "tokens": [
+        "AtKeyword(\"font-feature-values\")",
+        "Ident(\"abc{}oops\")",
+        "OpenCurly",
+        "CloseCurly"
+      ],
+      "remainder": "That the CSSOM rule text is equal after the round trip is a CSSOM serialization result."
+    },
+    {
+      "id": "serialize-escape-identifiers-004",
+      "source": {
+        "path": "css/css-syntax/serialize-escape-identifiers.html",
+        "sha256": "8dc1a23f3b52255ac0749c25b3bb269660165c00be5dd0f20c9762cafad8f498",
+        "line": 12,
+        "case": "@font-palette-values --abc\\{\\}oops {}"
+      },
+      "input": "@font-palette-values --abc\\{\\}oops {}",
+      "tokens": [
+        "AtKeyword(\"font-palette-values\")",
+        "Ident(\"--abc{}oops\")",
+        "OpenCurly",
+        "CloseCurly"
+      ],
+      "remainder": "That the CSSOM rule text is equal after the round trip is a CSSOM serialization result."
+    },
+    {
+      "id": "serialize-escape-identifiers-005",
+      "source": {
+        "path": "css/css-syntax/serialize-escape-identifiers.html",
+        "sha256": "8dc1a23f3b52255ac0749c25b3bb269660165c00be5dd0f20c9762cafad8f498",
+        "line": 13,
+        "case": "@keyframes abc\\{\\}oops {}"
+      },
+      "input": "@keyframes abc\\{\\}oops {}",
+      "tokens": [
+        "AtKeyword(\"keyframes\")",
+        "Ident(\"abc{}oops\")",
+        "OpenCurly",
+        "CloseCurly"
+      ],
+      "remainder": "That the CSSOM rule text is equal after the round trip is a CSSOM serialization result."
+    },
+    {
+      "id": "serialize-escape-identifiers-006",
+      "source": {
+        "path": "css/css-syntax/serialize-escape-identifiers.html",
+        "sha256": "8dc1a23f3b52255ac0749c25b3bb269660165c00be5dd0f20c9762cafad8f498",
+        "line": 14,
+        "case": "@layer abc\\;oops\\!;"
+      },
+      "input": "@layer abc\\;oops\\!;",
+      "tokens": [
+        "AtKeyword(\"layer\")",
+        "Ident(\"abc;oops!\")",
+        "Semicolon"
+      ],
+      "remainder": "That the CSSOM rule text is equal after the round trip is a CSSOM serialization result."
+    },
+    {
+      "id": "serialize-escape-identifiers-007",
+      "source": {
+        "path": "css/css-syntax/serialize-escape-identifiers.html",
+        "sha256": "8dc1a23f3b52255ac0749c25b3bb269660165c00be5dd0f20c9762cafad8f498",
+        "line": 15,
+        "case": "@media \\( {}"
+      },
+      "input": "@media \\( {}",
+      "tokens": [
+        "AtKeyword(\"media\")",
+        "Ident(\"(\")",
+        "OpenCurly",
+        "CloseCurly"
+      ],
+      "remainder": "That the CSSOM rule text is equal after the round trip is a CSSOM serialization result."
+    },
+    {
+      "id": "serialize-escape-identifiers-008",
+      "source": {
+        "path": "css/css-syntax/serialize-escape-identifiers.html",
+        "sha256": "8dc1a23f3b52255ac0749c25b3bb269660165c00be5dd0f20c9762cafad8f498",
+        "line": 16,
+        "case": "@position-try abc\\{\\}oops {}"
+      },
+      "input": "@position-try abc\\{\\}oops {}",
+      "tokens": [
+        "AtKeyword(\"position-try\")",
+        "Ident(\"abc{}oops\")",
+        "OpenCurly",
+        "CloseCurly"
+      ],
+      "remainder": "That the CSSOM rule text is equal after the round trip is a CSSOM serialization result."
+    },
+    {
+      "id": "serialize-escape-identifiers-009",
+      "source": {
+        "path": "css/css-syntax/serialize-escape-identifiers.html",
+        "sha256": "8dc1a23f3b52255ac0749c25b3bb269660165c00be5dd0f20c9762cafad8f498",
+        "line": 17,
+        "case": "@counter-style abc\\{\\}oops {}"
+      },
+      "input": "@counter-style abc\\{\\}oops {}",
+      "tokens": [
+        "AtKeyword(\"counter-style\")",
+        "Ident(\"abc{}oops\")",
+        "OpenCurly",
+        "CloseCurly"
+      ],
+      "remainder": "That the CSSOM rule text is equal after the round trip is a CSSOM serialization result."
+    },
+    {
+      "id": "serialize-escape-identifiers-010",
+      "source": {
+        "path": "css/css-syntax/serialize-escape-identifiers.html",
+        "sha256": "8dc1a23f3b52255ac0749c25b3bb269660165c00be5dd0f20c9762cafad8f498",
+        "line": 18,
+        "case": "@namespace abc\\{\\}oops \"test\";"
+      },
+      "input": "@namespace abc\\{\\}oops \"test\";",
+      "tokens": [
+        "AtKeyword(\"namespace\")",
+        "Ident(\"abc{}oops\")",
+        "String(\"test\")",
+        "Semicolon"
+      ],
+      "remainder": "That the CSSOM rule text is equal after the round trip is a CSSOM serialization result."
+    },
+    {
+      "id": "serialize-escape-identifiers-011",
+      "source": {
+        "path": "css/css-syntax/serialize-escape-identifiers.html",
+        "sha256": "8dc1a23f3b52255ac0749c25b3bb269660165c00be5dd0f20c9762cafad8f498",
+        "line": 19,
+        "case": "@page abc\\{\\}def {}"
+      },
+      "input": "@page abc\\{\\}def {}",
+      "tokens": [
+        "AtKeyword(\"page\")",
+        "Ident(\"abc{}def\")",
+        "OpenCurly",
+        "CloseCurly"
+      ],
+      "remainder": "That the CSSOM rule text is equal after the round trip is a CSSOM serialization result."
+    }
+  ]
+}

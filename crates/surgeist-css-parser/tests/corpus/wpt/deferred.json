@@ -1,0 +1,527 @@
+{
+  "schema_version": 1,
+  "source_revision": "ddcca5943fd41232d42149aaa19d9a04c5651b18",
+  "assertion_kind": "deferred-dispositions",
+  "cases": [
+    {
+      "id": "input-preprocessing-001",
+      "source": {
+        "path": "css/css-syntax/input-preprocessing.html",
+        "sha256": "8792806053c83b90517e2c4b64fec98ba8b6146e15f19e1fa1078694aace6aa0",
+        "line": 33,
+        "case": "testParsing(\"foo\\x00\", \"foo\\ufffd\");"
+      },
+      "disposition": "adapted-at-step-8a",
+      "input": "\"foo\\x00\"",
+      "expectation": "\"foo\\ufffd\"",
+      "reason": "Observable through the preprocessing of section 3.3 (filter code points; lone surrogates need UTF-16 input), which the crate's input module adds at step 8a."
+    },
+    {
+      "id": "input-preprocessing-002",
+      "source": {
+        "path": "css/css-syntax/input-preprocessing.html",
+        "sha256": "8792806053c83b90517e2c4b64fec98ba8b6146e15f19e1fa1078694aace6aa0",
+        "line": 34,
+        "case": "testParsing(\"f\\x00oo\", \"f\\ufffdoo\");"
+      },
+      "disposition": "adapted-at-step-8a",
+      "input": "\"f\\x00oo\"",
+      "expectation": "\"f\\ufffdoo\"",
+      "reason": "Observable through the preprocessing of section 3.3 (filter code points; lone surrogates need UTF-16 input), which the crate's input module adds at step 8a."
+    },
+    {
+      "id": "input-preprocessing-003",
+      "source": {
+        "path": "css/css-syntax/input-preprocessing.html",
+        "sha256": "8792806053c83b90517e2c4b64fec98ba8b6146e15f19e1fa1078694aace6aa0",
+        "line": 35,
+        "case": "testParsing(\"\\x00foo\", \"\\ufffdfoo\");"
+      },
+      "disposition": "adapted-at-step-8a",
+      "input": "\"\\x00foo\"",
+      "expectation": "\"\\ufffdfoo\"",
+      "reason": "Observable through the preprocessing of section 3.3 (filter code points; lone surrogates need UTF-16 input), which the crate's input module adds at step 8a."
+    },
+    {
+      "id": "input-preprocessing-004",
+      "source": {
+        "path": "css/css-syntax/input-preprocessing.html",
+        "sha256": "8792806053c83b90517e2c4b64fec98ba8b6146e15f19e1fa1078694aace6aa0",
+        "line": 36,
+        "case": "testParsing(\"\\x00\", \"\\ufffd\");"
+      },
+      "disposition": "adapted-at-step-8a",
+      "input": "\"\\x00\"",
+      "expectation": "\"\\ufffd\"",
+      "reason": "Observable through the preprocessing of section 3.3 (filter code points; lone surrogates need UTF-16 input), which the crate's input module adds at step 8a."
+    },
+    {
+      "id": "input-preprocessing-005",
+      "source": {
+        "path": "css/css-syntax/input-preprocessing.html",
+        "sha256": "8792806053c83b90517e2c4b64fec98ba8b6146e15f19e1fa1078694aace6aa0",
+        "line": 37,
+        "case": "testParsing(\"\\x00\\x00\\x00\", \"\\ufffd\\ufffd\\ufffd\");"
+      },
+      "disposition": "adapted-at-step-8a",
+      "input": "\"\\x00\\x00\\x00\"",
+      "expectation": "\"\\ufffd\\ufffd\\ufffd\"",
+      "reason": "Observable through the preprocessing of section 3.3 (filter code points; lone surrogates need UTF-16 input), which the crate's input module adds at step 8a."
+    },
+    {
+      "id": "input-preprocessing-006",
+      "source": {
+        "path": "css/css-syntax/input-preprocessing.html",
+        "sha256": "8792806053c83b90517e2c4b64fec98ba8b6146e15f19e1fa1078694aace6aa0",
+        "line": 40,
+        "case": "testParsing(\"foo\\ud800\", \"foo\\ufffd\");"
+      },
+      "disposition": "adapted-at-step-8a",
+      "input": "\"foo\\ud800\"",
+      "expectation": "\"foo\\ufffd\"",
+      "reason": "Observable through the preprocessing of section 3.3 (filter code points; lone surrogates need UTF-16 input), which the crate's input module adds at step 8a."
+    },
+    {
+      "id": "input-preprocessing-007",
+      "source": {
+        "path": "css/css-syntax/input-preprocessing.html",
+        "sha256": "8792806053c83b90517e2c4b64fec98ba8b6146e15f19e1fa1078694aace6aa0",
+        "line": 41,
+        "case": "testParsing(\"f\\ud800oo\", \"f\\ufffdoo\");"
+      },
+      "disposition": "adapted-at-step-8a",
+      "input": "\"f\\ud800oo\"",
+      "expectation": "\"f\\ufffdoo\"",
+      "reason": "Observable through the preprocessing of section 3.3 (filter code points; lone surrogates need UTF-16 input), which the crate's input module adds at step 8a."
+    },
+    {
+      "id": "input-preprocessing-008",
+      "source": {
+        "path": "css/css-syntax/input-preprocessing.html",
+        "sha256": "8792806053c83b90517e2c4b64fec98ba8b6146e15f19e1fa1078694aace6aa0",
+        "line": 42,
+        "case": "testParsing(\"\\ud800foo\", \"\\ufffdfoo\");"
+      },
+      "disposition": "adapted-at-step-8a",
+      "input": "\"\\ud800foo\"",
+      "expectation": "\"\\ufffdfoo\"",
+      "reason": "Observable through the preprocessing of section 3.3 (filter code points; lone surrogates need UTF-16 input), which the crate's input module adds at step 8a."
+    },
+    {
+      "id": "input-preprocessing-009",
+      "source": {
+        "path": "css/css-syntax/input-preprocessing.html",
+        "sha256": "8792806053c83b90517e2c4b64fec98ba8b6146e15f19e1fa1078694aace6aa0",
+        "line": 43,
+        "case": "testParsing(\"\\ud800\", \"\\ufffd\");"
+      },
+      "disposition": "adapted-at-step-8a",
+      "input": "\"\\ud800\"",
+      "expectation": "\"\\ufffd\"",
+      "reason": "Observable through the preprocessing of section 3.3 (filter code points; lone surrogates need UTF-16 input), which the crate's input module adds at step 8a."
+    },
+    {
+      "id": "input-preprocessing-010",
+      "source": {
+        "path": "css/css-syntax/input-preprocessing.html",
+        "sha256": "8792806053c83b90517e2c4b64fec98ba8b6146e15f19e1fa1078694aace6aa0",
+        "line": 44,
+        "case": "testParsing(\"\\ud800\\ud800\\ud800\", \"\\ufffd\\ufffd\\ufffd\");"
+      },
+      "disposition": "adapted-at-step-8a",
+      "input": "\"\\ud800\\ud800\\ud800\"",
+      "expectation": "\"\\ufffd\\ufffd\\ufffd\"",
+      "reason": "Observable through the preprocessing of section 3.3 (filter code points; lone surrogates need UTF-16 input), which the crate's input module adds at step 8a."
+    },
+    {
+      "id": "non-ascii-invalid-00080",
+      "source": {
+        "path": "css/css-syntax/non-ascii-codepoints.html",
+        "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+        "line": 50,
+        "case": "testInvalid(0x80);"
+      },
+      "disposition": "pending-step-15",
+      "input": "f\u0080oo",
+      "expectation": "Ident(\"f\") Delim(U+0080) Ident(\"oo\")",
+      "reason": "U+0080 is not a non-ASCII ident code point in section 4.2 of the pinned edition. The lexer applies the 2021 rule (every code point from U+0080) until the 2026 ranges replace it at step 15, so the case is claimed nowhere until then."
+    },
+    {
+      "id": "non-ascii-invalid-000b6",
+      "source": {
+        "path": "css/css-syntax/non-ascii-codepoints.html",
+        "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+        "line": 67,
+        "case": "0xb7,"
+      },
+      "disposition": "pending-step-15",
+      "input": "f\u00b6oo",
+      "expectation": "Ident(\"f\") Delim(U+00B6) Ident(\"oo\")",
+      "reason": "U+00B6 is not a non-ASCII ident code point in section 4.2 of the pinned edition. The lexer applies the 2021 rule (every code point from U+0080) until the 2026 ranges replace it at step 15, so the case is claimed nowhere until then."
+    },
+    {
+      "id": "non-ascii-invalid-000b8",
+      "source": {
+        "path": "css/css-syntax/non-ascii-codepoints.html",
+        "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+        "line": 67,
+        "case": "0xb7,"
+      },
+      "disposition": "pending-step-15",
+      "input": "f\u00b8oo",
+      "expectation": "Ident(\"f\") Delim(U+00B8) Ident(\"oo\")",
+      "reason": "U+00B8 is not a non-ASCII ident code point in section 4.2 of the pinned edition. The lexer applies the 2021 rule (every code point from U+0080) until the 2026 ranges replace it at step 15, so the case is claimed nowhere until then."
+    },
+    {
+      "id": "non-ascii-invalid-000bf",
+      "source": {
+        "path": "css/css-syntax/non-ascii-codepoints.html",
+        "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+        "line": 68,
+        "case": "[0xc0, 0xd6],"
+      },
+      "disposition": "pending-step-15",
+      "input": "f\u00bfoo",
+      "expectation": "Ident(\"f\") Delim(U+00BF) Ident(\"oo\")",
+      "reason": "U+00BF is not a non-ASCII ident code point in section 4.2 of the pinned edition. The lexer applies the 2021 rule (every code point from U+0080) until the 2026 ranges replace it at step 15, so the case is claimed nowhere until then."
+    },
+    {
+      "id": "non-ascii-invalid-000d7",
+      "source": {
+        "path": "css/css-syntax/non-ascii-codepoints.html",
+        "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+        "line": 68,
+        "case": "[0xc0, 0xd6],"
+      },
+      "disposition": "pending-step-15",
+      "input": "f\u00d7oo",
+      "expectation": "Ident(\"f\") Delim(U+00D7) Ident(\"oo\")",
+      "reason": "U+00D7 is not a non-ASCII ident code point in section 4.2 of the pinned edition. The lexer applies the 2021 rule (every code point from U+0080) until the 2026 ranges replace it at step 15, so the case is claimed nowhere until then."
+    },
+    {
+      "id": "non-ascii-invalid-000f7",
+      "source": {
+        "path": "css/css-syntax/non-ascii-codepoints.html",
+        "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+        "line": 69,
+        "case": "[0xd8, 0xf6],"
+      },
+      "disposition": "pending-step-15",
+      "input": "f\u00f7oo",
+      "expectation": "Ident(\"f\") Delim(U+00F7) Ident(\"oo\")",
+      "reason": "U+00F7 is not a non-ASCII ident code point in section 4.2 of the pinned edition. The lexer applies the 2021 rule (every code point from U+0080) until the 2026 ranges replace it at step 15, so the case is claimed nowhere until then."
+    },
+    {
+      "id": "non-ascii-invalid-0037e",
+      "source": {
+        "path": "css/css-syntax/non-ascii-codepoints.html",
+        "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+        "line": 70,
+        "case": "[0xf8, 0x37d],"
+      },
+      "disposition": "pending-step-15",
+      "input": "f\u037eoo",
+      "expectation": "Ident(\"f\") Delim(U+037E) Ident(\"oo\")",
+      "reason": "U+037E is not a non-ASCII ident code point in section 4.2 of the pinned edition. The lexer applies the 2021 rule (every code point from U+0080) until the 2026 ranges replace it at step 15, so the case is claimed nowhere until then."
+    },
+    {
+      "id": "non-ascii-invalid-02000",
+      "source": {
+        "path": "css/css-syntax/non-ascii-codepoints.html",
+        "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+        "line": 71,
+        "case": "[0x37f, 0x1fff],"
+      },
+      "disposition": "pending-step-15",
+      "input": "f\u2000oo",
+      "expectation": "Ident(\"f\") Delim(U+2000) Ident(\"oo\")",
+      "reason": "U+2000 is not a non-ASCII ident code point in section 4.2 of the pinned edition. The lexer applies the 2021 rule (every code point from U+0080) until the 2026 ranges replace it at step 15, so the case is claimed nowhere until then."
+    },
+    {
+      "id": "non-ascii-invalid-0200b",
+      "source": {
+        "path": "css/css-syntax/non-ascii-codepoints.html",
+        "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+        "line": 72,
+        "case": "[0x200c, 0x200d],"
+      },
+      "disposition": "pending-step-15",
+      "input": "f\u200boo",
+      "expectation": "Ident(\"f\") Delim(U+200B) Ident(\"oo\")",
+      "reason": "U+200B is not a non-ASCII ident code point in section 4.2 of the pinned edition. The lexer applies the 2021 rule (every code point from U+0080) until the 2026 ranges replace it at step 15, so the case is claimed nowhere until then."
+    },
+    {
+      "id": "non-ascii-invalid-0200e",
+      "source": {
+        "path": "css/css-syntax/non-ascii-codepoints.html",
+        "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+        "line": 72,
+        "case": "[0x200c, 0x200d],"
+      },
+      "disposition": "pending-step-15",
+      "input": "f\u200eoo",
+      "expectation": "Ident(\"f\") Delim(U+200E) Ident(\"oo\")",
+      "reason": "U+200E is not a non-ASCII ident code point in section 4.2 of the pinned edition. The lexer applies the 2021 rule (every code point from U+0080) until the 2026 ranges replace it at step 15, so the case is claimed nowhere until then."
+    },
+    {
+      "id": "non-ascii-invalid-0203e",
+      "source": {
+        "path": "css/css-syntax/non-ascii-codepoints.html",
+        "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+        "line": 73,
+        "case": "[0x203f, 0x2040]"
+      },
+      "disposition": "pending-step-15",
+      "input": "f\u203eoo",
+      "expectation": "Ident(\"f\") Delim(U+203E) Ident(\"oo\")",
+      "reason": "U+203E is not a non-ASCII ident code point in section 4.2 of the pinned edition. The lexer applies the 2021 rule (every code point from U+0080) until the 2026 ranges replace it at step 15, so the case is claimed nowhere until then."
+    },
+    {
+      "id": "non-ascii-invalid-02041",
+      "source": {
+        "path": "css/css-syntax/non-ascii-codepoints.html",
+        "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+        "line": 73,
+        "case": "[0x203f, 0x2040]"
+      },
+      "disposition": "pending-step-15",
+      "input": "f\u2041oo",
+      "expectation": "Ident(\"f\") Delim(U+2041) Ident(\"oo\")",
+      "reason": "U+2041 is not a non-ASCII ident code point in section 4.2 of the pinned edition. The lexer applies the 2021 rule (every code point from U+0080) until the 2026 ranges replace it at step 15, so the case is claimed nowhere until then."
+    },
+    {
+      "id": "non-ascii-invalid-0206f",
+      "source": {
+        "path": "css/css-syntax/non-ascii-codepoints.html",
+        "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+        "line": 74,
+        "case": "[0x2070, 0x218f],"
+      },
+      "disposition": "pending-step-15",
+      "input": "f\u206foo",
+      "expectation": "Ident(\"f\") Delim(U+206F) Ident(\"oo\")",
+      "reason": "U+206F is not a non-ASCII ident code point in section 4.2 of the pinned edition. The lexer applies the 2021 rule (every code point from U+0080) until the 2026 ranges replace it at step 15, so the case is claimed nowhere until then."
+    },
+    {
+      "id": "non-ascii-invalid-02190",
+      "source": {
+        "path": "css/css-syntax/non-ascii-codepoints.html",
+        "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+        "line": 74,
+        "case": "[0x2070, 0x218f],"
+      },
+      "disposition": "pending-step-15",
+      "input": "f\u2190oo",
+      "expectation": "Ident(\"f\") Delim(U+2190) Ident(\"oo\")",
+      "reason": "U+2190 is not a non-ASCII ident code point in section 4.2 of the pinned edition. The lexer applies the 2021 rule (every code point from U+0080) until the 2026 ranges replace it at step 15, so the case is claimed nowhere until then."
+    },
+    {
+      "id": "non-ascii-invalid-02bff",
+      "source": {
+        "path": "css/css-syntax/non-ascii-codepoints.html",
+        "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+        "line": 75,
+        "case": "[0x2c00, 0x2fef],"
+      },
+      "disposition": "pending-step-15",
+      "input": "f\u2bffoo",
+      "expectation": "Ident(\"f\") Delim(U+2BFF) Ident(\"oo\")",
+      "reason": "U+2BFF is not a non-ASCII ident code point in section 4.2 of the pinned edition. The lexer applies the 2021 rule (every code point from U+0080) until the 2026 ranges replace it at step 15, so the case is claimed nowhere until then."
+    },
+    {
+      "id": "non-ascii-invalid-02ff0",
+      "source": {
+        "path": "css/css-syntax/non-ascii-codepoints.html",
+        "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+        "line": 75,
+        "case": "[0x2c00, 0x2fef],"
+      },
+      "disposition": "pending-step-15",
+      "input": "f\u2ff0oo",
+      "expectation": "Ident(\"f\") Delim(U+2FF0) Ident(\"oo\")",
+      "reason": "U+2FF0 is not a non-ASCII ident code point in section 4.2 of the pinned edition. The lexer applies the 2021 rule (every code point from U+0080) until the 2026 ranges replace it at step 15, so the case is claimed nowhere until then."
+    },
+    {
+      "id": "non-ascii-invalid-03000",
+      "source": {
+        "path": "css/css-syntax/non-ascii-codepoints.html",
+        "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+        "line": 76,
+        "case": "[0x3001, 0xd7ff],"
+      },
+      "disposition": "pending-step-15",
+      "input": "f\u3000oo",
+      "expectation": "Ident(\"f\") Delim(U+3000) Ident(\"oo\")",
+      "reason": "U+3000 is not a non-ASCII ident code point in section 4.2 of the pinned edition. The lexer applies the 2021 rule (every code point from U+0080) until the 2026 ranges replace it at step 15, so the case is claimed nowhere until then."
+    },
+    {
+      "id": "non-ascii-invalid-0d800",
+      "source": {
+        "path": "css/css-syntax/non-ascii-codepoints.html",
+        "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+        "line": 76,
+        "case": "[0x3001, 0xd7ff],"
+      },
+      "disposition": "adapted-at-step-8a",
+      "input": "f\\ud800oo (a JavaScript string holding a lone surrogate)",
+      "expectation": "upstream: not a valid ident code point (the value is rejected); upstream never reaches this call at the pin",
+      "reason": "U+D800 is a surrogate: the input is UTF-16 with a lone surrogate, which text cannot hold. Section 3.3 turns a surrogate into U+FFFD, and U+FFFD is listed as an ident code point in section 4.2, so the preprocessed input appears to read as an ident and to differ from the upstream expectation; the case is adapted, and any upstream-versus-edition profile entry decided, at step 8a with the preprocessing function."
+    },
+    {
+      "id": "non-ascii-invalid-0f8ff",
+      "source": {
+        "path": "css/css-syntax/non-ascii-codepoints.html",
+        "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+        "line": 77,
+        "case": "[0xf900, 0xfdcf],"
+      },
+      "disposition": "pending-step-15",
+      "input": "f\uf8ffoo",
+      "expectation": "Ident(\"f\") Delim(U+F8FF) Ident(\"oo\")",
+      "reason": "U+F8FF is not a non-ASCII ident code point in section 4.2 of the pinned edition. The lexer applies the 2021 rule (every code point from U+0080) until the 2026 ranges replace it at step 15, so the case is claimed nowhere until then."
+    },
+    {
+      "id": "non-ascii-invalid-0fdd0",
+      "source": {
+        "path": "css/css-syntax/non-ascii-codepoints.html",
+        "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+        "line": 77,
+        "case": "[0xf900, 0xfdcf],"
+      },
+      "disposition": "pending-step-15",
+      "input": "f\ufdd0oo",
+      "expectation": "Ident(\"f\") Delim(U+FDD0) Ident(\"oo\")",
+      "reason": "U+FDD0 is not a non-ASCII ident code point in section 4.2 of the pinned edition. The lexer applies the 2021 rule (every code point from U+0080) until the 2026 ranges replace it at step 15, so the case is claimed nowhere until then."
+    },
+    {
+      "id": "non-ascii-invalid-0fdef",
+      "source": {
+        "path": "css/css-syntax/non-ascii-codepoints.html",
+        "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+        "line": 78,
+        "case": "[0xfdf0, 0xfffd],"
+      },
+      "disposition": "pending-step-15",
+      "input": "f\ufdefoo",
+      "expectation": "Ident(\"f\") Delim(U+FDEF) Ident(\"oo\")",
+      "reason": "U+FDEF is not a non-ASCII ident code point in section 4.2 of the pinned edition. The lexer applies the 2021 rule (every code point from U+0080) until the 2026 ranges replace it at step 15, so the case is claimed nowhere until then."
+    },
+    {
+      "id": "non-ascii-invalid-0fffe",
+      "source": {
+        "path": "css/css-syntax/non-ascii-codepoints.html",
+        "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+        "line": 78,
+        "case": "[0xfdf0, 0xfffd],"
+      },
+      "disposition": "pending-step-15",
+      "input": "f\ufffeoo",
+      "expectation": "Ident(\"f\") Delim(U+FFFE) Ident(\"oo\")",
+      "reason": "U+FFFE is not a non-ASCII ident code point in section 4.2 of the pinned edition. The lexer applies the 2021 rule (every code point from U+0080) until the 2026 ranges replace it at step 15, so the case is claimed nowhere until then."
+    },
+    {
+      "id": "non-ascii-invalid-0ffff",
+      "source": {
+        "path": "css/css-syntax/non-ascii-codepoints.html",
+        "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+        "line": 79,
+        "case": "[0x10000, 0x1ffff],"
+      },
+      "disposition": "pending-step-15",
+      "input": "f\uffffoo",
+      "expectation": "Ident(\"f\") Delim(U+FFFF) Ident(\"oo\")",
+      "reason": "U+FFFF is not a non-ASCII ident code point in section 4.2 of the pinned edition. The lexer applies the 2021 rule (every code point from U+0080) until the 2026 ranges replace it at step 15, so the case is claimed nowhere until then."
+    },
+    {
+      "id": "serialize-consecutive-comments-001",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 117,
+        "case": "testComments(\"a/* comment */b\", \"\", \"a/* comment */b\");"
+      },
+      "disposition": "computed-value-substitution",
+      "input": "testComments(\"a/* comment */b\", \"\", \"a/* comment */b\");",
+      "expectation": "see the assertion at the bound line",
+      "reason": "The observable is the computed value of a custom property after var() substitution, a CSS Variables result outside Syntax 3."
+    },
+    {
+      "id": "serialize-consecutive-comments-002",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 118,
+        "case": "testComments(\"a/* comment */var(--t1)\", \"b\", \"a/**/b\");"
+      },
+      "disposition": "computed-value-substitution",
+      "input": "testComments(\"a/* comment */var(--t1)\", \"b\", \"a/**/b\");",
+      "expectation": "see the assertion at the bound line",
+      "reason": "The observable is the computed value of a custom property after var() substitution, a CSS Variables result outside Syntax 3."
+    },
+    {
+      "id": "serialize-consecutive-comments-003",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 119,
+        "case": "testComments(\"var(--t1)b\", \"a/* comment */\", \"a/**/b\");"
+      },
+      "disposition": "computed-value-substitution",
+      "input": "testComments(\"var(--t1)b\", \"a/* comment */\", \"a/**/b\");",
+      "expectation": "see the assertion at the bound line",
+      "reason": "The observable is the computed value of a custom property after var() substitution, a CSS Variables result outside Syntax 3."
+    },
+    {
+      "id": "serialize-consecutive-comments-004",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 122,
+        "case": "testComments(\"var(--t1)b\", \"'a/* unfinished '\", \"'a/* unfinished 'b\");"
+      },
+      "disposition": "computed-value-substitution",
+      "input": "testComments(\"var(--t1)b\", \"'a/* unfinished '\", \"'a/* unfinished 'b\");",
+      "expectation": "see the assertion at the bound line",
+      "reason": "The observable is the computed value of a custom property after var() substitution, a CSS Variables result outside Syntax 3."
+    },
+    {
+      "id": "serialize-consecutive-comments-005",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 123,
+        "case": "testComments(\"var(--t1)b\", \"\\\"a/* unfinished \\\"\", \"\\\"a/* unfinished \\\"b\");"
+      },
+      "disposition": "computed-value-substitution",
+      "input": "testComments(\"var(--t1)b\", \"\\\"a/* unfinished \\\"\", \"\\\"a/* unfinished \\\"b\");",
+      "expectation": "see the assertion at the bound line",
+      "reason": "The observable is the computed value of a custom property after var() substitution, a CSS Variables result outside Syntax 3."
+    },
+    {
+      "id": "serialize-consecutive-comments-006",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 124,
+        "case": "testComments(\"var(--t1)b\", \"'a \\\" '/* comment */\", \"'a \\\" 'b\");"
+      },
+      "disposition": "computed-value-substitution",
+      "input": "testComments(\"var(--t1)b\", \"'a \\\" '/* comment */\", \"'a \\\" 'b\");",
+      "expectation": "see the assertion at the bound line",
+      "reason": "The observable is the computed value of a custom property after var() substitution, a CSS Variables result outside Syntax 3."
+    },
+    {
+      "id": "serialize-consecutive-comments-007",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 135,
+        "case": "}, 'Empty fallback between tokens must not disturb comment insertion');"
+      },
+      "disposition": "computed-value-substitution",
+      "input": "var(--t1)var(--does-not-exist,)var(--t2)",
+      "expectation": "the result starts with a, ends with b and differs from ab",
+      "reason": "The observable is the computed value after var() substitution with an empty fallback, a CSS Variables result outside Syntax 3."
+    }
+  ]
+}

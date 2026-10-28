@@ -5,6 +5,7 @@
 
 #![allow(dead_code)]
 
+pub mod digest;
 pub mod generate;
 pub mod grammar;
 pub mod tree;

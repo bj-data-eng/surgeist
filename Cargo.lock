@@ -4025,6 +4025,8 @@ name = "surgeist-css-parser"
 version = "0.1.0"
 dependencies = [
  "cssparser",
+ "serde",
+ "serde_json",
  "surgeist-fuzz",
 ]
 
