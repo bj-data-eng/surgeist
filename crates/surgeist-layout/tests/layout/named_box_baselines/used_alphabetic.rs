@@ -983,7 +983,7 @@ fn core<S: l::LayoutScalar>() {
     for size in [5.0, 10.0] {
         raw_instance(
             face.unsynthesized_instance(size, &[]).unwrap(),
-            &system.font_catalogue_identity(),
+            system.font_catalogue_identity(),
             size,
         );
     }

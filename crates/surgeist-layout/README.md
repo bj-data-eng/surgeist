@@ -7,7 +7,9 @@ composition supports `HorizontalTb`, clockwise `SidewaysRl`, and native upright
 or clockwise Sideways preparation in `VerticalRl`/`VerticalLr`, normal and
 last-line alignment, signed indentation and
 explicit U+0020 space expansion; see the [Text input contract](docs/reference.md#node-input).
-Native upright paragraphs support explicit Central baseline matching. Native
+Native upright paragraphs support explicit Central baseline matching. Horizontal
+and clockwise Sideways paragraphs support explicit Alphabetic matching when
+their Text preparation uses that named reference. Native
 upright and clockwise Sideways flow retain physical in-flow and positioned
 atomic boxes with independently oriented contents. Numeric atomic-box flow also
 supports alphabetic and central

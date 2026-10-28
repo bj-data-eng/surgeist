@@ -223,6 +223,13 @@ Numeric atomic-box flow supports both names. Native upright Text in
 prepared paragraph has matching Upright analysis and Vertical orientation.
 Its first/last formatted lines establish Central facts on the physical x axis;
 absent or nonformatted lines do not acquire authority from the requested name.
+HorizontalComposition Text admits `Named(Alphabetic)` when its actual preparation
+observes `Some(FontBaseline::Alphabetic)` and its Horizontal or clockwise Sideways
+orientation matches the consuming frame. This includes clockwise preparation in
+`VerticalRl` and `VerticalLr`. Text owns each actual font/script's conversion to
+the shared reference; Layout uses the common line anchor for matching and
+first/last export, independently of displaced per-font paint origins. Raw
+preparations cannot establish Alphabetic authority from their orientation alone.
 `Physical` remains a separate operation and leaves named Text facts Unknown.
 Other named Text contexts retain `MissingContext(NamedInlineBaseline)`.
 Generic Flex/Grid projections and font-design zero coordinates do not establish
@@ -594,7 +601,9 @@ Actual Text-backed `SidewaysLr` reports
 container; box-only flow retains its own support. Clockwise Sideways Physical
 composition admits in-flow and positioned atomic boxes with their actual
 physical geometry and independently owned content orientation. Text glyphs
-retain Clockwise; named Text contexts keep their existing refusal. Genuine
+retain Clockwise. Explicit used Alphabetic preparation also supports
+[`Named(Alphabetic)` matching](#numeric-inline-baseline-references); raw
+preparation retains its named-reference refusal. Genuine
 incoming native floats outside the paragraph binding remain Layout constraints.
 Physical Text baseline
 coordinates alone do not satisfy a named font-baseline request.
