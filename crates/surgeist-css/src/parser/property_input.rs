@@ -519,6 +519,11 @@ pub(crate) enum NativeValueRange {
     Component,
     /// Family names and settings lists consume a sequence of sibling values.
     Remaining,
+    /// The whole scope the native callback was handed, to its end: the
+    /// contents of a rule block or the value of a declaration. Only the native
+    /// `AtRuleParser`, `QualifiedRuleParser` and `DeclarationParser` methods
+    /// whose grammar has not been ported enter a ported grammar this way.
+    Scope,
 }
 
 pub(crate) fn adapt_native<'s, 'n, T, F>(
@@ -543,7 +548,9 @@ where
             input.skip_whitespace();
             let _ = advance_native_component(input);
         }
-        NativeValueRange::Remaining => while advance_native_component(input).is_ok() {},
+        NativeValueRange::Remaining | NativeValueRange::Scope => {
+            while advance_native_component(input).is_ok() {}
+        }
     }
     let end = input.position().byte_index();
     input.reset(&checkpoint);

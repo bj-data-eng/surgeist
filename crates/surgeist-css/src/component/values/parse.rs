@@ -41,6 +41,17 @@ pub(super) fn parse(
     Ok(values)
 }
 
+/// The components of a document of source text, as `collect` reads them from
+/// a cursor over the same text, under the default limits.
+pub(crate) fn promote_window(
+    document: &crate::parser::syntax_types::Document<'_>,
+) -> Result<CssComponentValues, CssComponentValueError> {
+    let limits = CssComponentValueLimits::default();
+    let values = promote_nodes(document, document.list(document.root_list()), limits)?;
+    serialize::validate(&values, limits.max_css_bytes)?;
+    Ok(values)
+}
+
 /// The tokens are consumed in order: a lexical fault before the token that
 /// exhausted a limit is the failure, and the limit only a failure when
 /// nothing before the token is faulty. The tree is built whole before its

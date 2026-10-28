@@ -173,7 +173,7 @@ impl CssRuleSyntax {
                 self.origin.source().clone(),
             )
             .with_parser_context(parser_context);
-            crate::parser::page::admit_margin_rule(source, state, &self.envelope)
+            crate::parser::page::admit_margin_rule(source, state)
         });
         let (margin, diagnostics) = recovery::finish_report(source, report).into_parts();
         let margin = margin.map(|margin| margin.with_detached_origin(self.origin.clone()));

@@ -6,11 +6,13 @@ use crate::diagnostic::error::property::SyntaxErrorExt;
 use crate::diagnostic::error::{
     basic, from_parse_error, from_rule_parse_error, with_media_query_context,
 };
+use crate::parser::block_units::{location_at, native_error, offset_of};
 use crate::parser::nesting::parse_style_contents;
 use crate::parser::reconstruction::{BoundedParseContext, BoundedParseSyntax, parse_bounded};
 use crate::parser::recovery::{RecoveryState, StyleContextCaptures, recovery_action_for_error};
 use crate::parser::rule_list::{AtRulePrelude, RuleListItem, RuleParser};
 use crate::parser::selectors::SelectorRecovery;
+use crate::parser::syntax_types::{Stream, SyntaxError};
 use crate::parser::{
     DeclarationMode, PropertyValueGrammar, ScopedBodyKind, collect_declaration_value,
     color_profile, conditional_chains, counter_style, font_face, font_feature_values,
@@ -177,6 +179,82 @@ fn real_brace_block_inner<T>(
             )],
         ),
     }
+}
+
+/// [`real_brace_block`] for the bodies whose grammar the parser crate's block
+/// driver runs: the source is built into a token tree once, its one `{}`-block
+/// is entered there, and the driver reads the contents in place.
+fn document_brace_block<T: Send>(
+    source: &str,
+    production: &'static str,
+    parser_context: crate::CssParserContext,
+    drive: impl for<'i> FnOnce(
+        &mut Stream<'i>,
+        &RecoveryState,
+    ) -> (T, Vec<crate::diagnostic::CssRecoveryDiagnostic>)
+    + Send,
+) -> crate::CssParseReport<Option<crate::rule::CssBlockFragment<T>>> {
+    bounded(source, || {
+        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default())
+            .with_parser_context(parser_context);
+        let snapshot = state.source_snapshot().clone();
+        let rejected = |error: ParseError<'_, CssError>| {
+            crate::CssParseReport::new(
+                None,
+                vec![reject(
+                    source,
+                    error,
+                    crate::diagnostic::CssRecoveryAction::RejectInput,
+                )],
+            )
+        };
+        let document = match state.syntax_document(source) {
+            Ok(document) => document,
+            Err(error) => {
+                return rejected(crate::diagnostic::error::invalid_component_value(
+                    location_at(&snapshot, 0),
+                    error,
+                ));
+            }
+        };
+        let mut root = document.root();
+        let result = (|| {
+            root.discard_whitespace();
+            let start = offset_of(root.site());
+            let opening = root
+                .consume_token()
+                .map_err(|error| native_error(&snapshot, &SyntaxError::from(error)))?;
+            if opening != surgeist_css_parser::Token::OpenCurly {
+                return Err(crate::diagnostic::error::unexpected_syntax_token(
+                    location_at(&snapshot, start),
+                    opening,
+                ));
+            }
+            let mut depth = state.enter_rule_block_at(source, start, production)?;
+            let (body, mut found) = root
+                .within_block(|contents| Ok(drive(contents, &state)))
+                .map_err(|error: crate::parser::block_units::GrammarError<'_>| {
+                    native_error(&snapshot, &error)
+                })?;
+            let end = offset_of(root.site());
+            root.require_empty()
+                .map_err(|error| native_error(&snapshot, &SyntaxError::from(error)))?;
+            depth.retain();
+            let origin = CssParsedOrigin::from_range(&snapshot, start..end)
+                .expect("consumed block boundaries belong to the original source");
+            Ok((
+                crate::rule::CssBlockFragment::from_parsed(body, origin),
+                std::mem::take(&mut found),
+            ))
+        })();
+        match result {
+            Ok((fragment, mut diagnostics)) => {
+                diagnostics.extend(state.take_implicit_closure_diagnostics(source));
+                crate::CssParseReport::new(Some(fragment), diagnostics)
+            }
+            Err(error) => rejected(error),
+        }
+    })
 }
 
 pub(crate) fn parse_group_block_with_context(
@@ -476,11 +554,11 @@ pub(crate) fn parse_keyframe_declaration_block_with_context(
 ) -> crate::CssParseReport<
     Option<crate::rule::CssBlockFragment<crate::rule::keyframes::CssKeyframeDeclarationList>>,
 > {
-    real_brace_block(
+    document_brace_block(
         source,
         "baseline.keyframes.block",
         parser_context,
-        keyframes::parse_declarations,
+        |contents, recovery| keyframes::drive_declarations(contents, source, recovery),
     )
 }
 
@@ -905,14 +983,9 @@ pub(crate) fn parse_margin_block_with_context(
 ) -> crate::CssParseReport<
     Option<crate::rule::CssBlockFragment<crate::rule::page::CssMarginDeclarationBlock>>,
 > {
-    real_brace_block(
-        source,
-        "later.rule.page",
-        context,
-        |source, input, diagnostics, state| {
-            Ok(page::parse_margin_body(source, input, diagnostics, state))
-        },
-    )
+    document_brace_block(source, "later.rule.page", context, |contents, recovery| {
+        page::drive_margin_body(contents, source, recovery)
+    })
 }
 
 // These name-free fronts share whole-source rejection, descriptor annotation

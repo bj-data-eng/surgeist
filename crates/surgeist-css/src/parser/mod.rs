@@ -10,6 +10,9 @@
 
 pub(crate) mod alignment;
 pub(crate) mod background;
+#[cfg(test)]
+pub(crate) mod block_grammar_tests;
+pub(crate) mod block_units;
 pub(crate) mod boolean_condition;
 pub(crate) mod border_color;
 pub(crate) mod border_radius;
@@ -31,6 +34,7 @@ pub(crate) mod container_style;
 pub(crate) mod content_values;
 pub(crate) mod counter_style;
 pub(crate) mod declaration_block;
+pub(crate) mod declaration_unit;
 pub(crate) mod descriptor_body;
 pub(crate) mod descriptor_values;
 pub(crate) mod domain_declaration_contents;
@@ -1478,12 +1482,82 @@ pub(crate) fn parse_declaration_core<'i, 't>(
     .expect("parser name boundaries belong to the original source");
     input.reset(&value_start);
 
-    let (body, importance, components, value_origin) = if name.starts_with("--") {
-        let Some(custom_name) = parse_custom_property_name(name.as_ref()) else {
-            return Err(property_name_error(
-                declaration_start.source_location(),
-                name.as_ref(),
-            ));
+    let plan = declaration_plan(
+        mode,
+        name.as_ref(),
+        declaration_start.source_location(),
+        parser_context,
+    )?;
+    let numeric = crate::numeric::expression::NumericInputContext::parsed(source_snapshot);
+    let ((body, components, value_origin), importance) =
+        parse_declaration_boundary(input, &plan.context, |input| {
+            collect_declaration_value(input, source_snapshot, |input| {
+                parse_property_declaration_source(
+                    plan.grammar(),
+                    input,
+                    &numeric,
+                    plan.value_context,
+                )
+                .map_err(|error| plan.contextualize(error))
+            })
+        })?;
+    Ok(ParsedDeclaration {
+        body,
+        importance,
+        components,
+        name: name_origin,
+        value_origin,
+        parser_context,
+    })
+}
+
+/// What the name of a declaration selects: the context its importance
+/// annotation is judged in and the grammar its value is read with. Both the
+/// native declaration callbacks and the ported declaration grammars choose
+/// them here, in this order: custom property, SVG glyph property, known
+/// property.
+struct DeclarationPlan {
+    context: DeclarationBoundaryContext<'static>,
+    grammar: PlannedGrammar,
+    /// The parser context the value grammar reads with.
+    value_context: crate::CssParserContext,
+    /// The property a failure of the value is attributed to, for a custom
+    /// property (the others name themselves).
+    custom_name: Option<Box<str>>,
+}
+
+enum PlannedGrammar {
+    Known(CssPropertyGrammar),
+    Custom(CssCustomPropertyName),
+    SvgGlyph(crate::property::svg_glyph::SvgGlyphAdmission),
+}
+
+impl DeclarationPlan {
+    fn grammar(&self) -> PropertyValueGrammar<'_> {
+        match &self.grammar {
+            PlannedGrammar::Known(grammar) => PropertyValueGrammar::Known(*grammar),
+            PlannedGrammar::Custom(name) => PropertyValueGrammar::Custom(name),
+            PlannedGrammar::SvgGlyph(admission) => PropertyValueGrammar::SvgGlyph(*admission),
+        }
+    }
+
+    fn contextualize<'i>(&self, error: ParseError<'i, CssError>) -> ParseError<'i, CssError> {
+        match &self.custom_name {
+            Some(name) => with_property_context(error, name),
+            None => error,
+        }
+    }
+}
+
+fn declaration_plan<'i>(
+    mode: DeclarationMode,
+    name: &str,
+    location: cssparser::SourceLocation,
+    parser_context: crate::CssParserContext,
+) -> std::result::Result<DeclarationPlan, ParseError<'i, CssError>> {
+    if name.starts_with("--") {
+        let Some(custom_name) = parse_custom_property_name(name) else {
+            return Err(property_name_error(location, name));
         };
         let context = match mode {
             DeclarationMode::Ordinary => {
@@ -1493,44 +1567,33 @@ pub(crate) fn parse_declaration_core<'i, 't>(
                 DeclarationBoundaryContext::KeyframeCustom(custom_name.clone())
             }
         };
-        let ((value, components, origin), importance) =
-            parse_declaration_boundary(input, &context, |input| {
-                collect_declaration_value(input, source_snapshot, |input| {
-                    parse_property_declaration_source(
-                        PropertyValueGrammar::Custom(&custom_name),
-                        input,
-                        &crate::numeric::expression::NumericInputContext::parsed(source_snapshot),
-                        parser_context,
-                    )
-                    .map_err(|error| with_property_context(error, name.as_ref()))
-                })
-            })?;
-        (value, importance, components, origin)
-    } else if parser_context.selects_svg_glyph(name.as_ref()) {
+        Ok(DeclarationPlan {
+            context,
+            grammar: PlannedGrammar::Custom(custom_name),
+            value_context: parser_context,
+            custom_name: Some(name.into()),
+        })
+    } else if parser_context.selects_svg_glyph(name) {
         let context = match mode {
             DeclarationMode::Ordinary => DeclarationBoundaryContext::OrdinarySvgGlyph,
             DeclarationMode::Keyframe => DeclarationBoundaryContext::KeyframeSvgGlyph,
         };
-        let ((body, components, origin), importance) =
-            parse_declaration_boundary(input, &context, |input| {
-                collect_declaration_value(input, source_snapshot, |input| {
-                    parse_svg_glyph_declaration_body(
-                        input,
-                        &crate::numeric::expression::NumericInputContext::parsed(source_snapshot),
-                        crate::property::svg_glyph::SvgGlyphAdmission::css(parser_context),
-                    )
-                })
-            })?;
-        (body, importance, components, origin)
+        Ok(DeclarationPlan {
+            context,
+            grammar: PlannedGrammar::SvgGlyph(crate::property::svg_glyph::SvgGlyphAdmission::css(
+                parser_context,
+            )),
+            value_context: crate::CssParserContext::default(),
+            custom_name: None,
+        })
     } else {
-        let resolved_property = resolve_property_name(name.as_ref()).ok_or_else(|| {
-            property_name_error(declaration_start.source_location(), name.as_ref())
-        })?;
+        let resolved_property =
+            resolve_property_name(name).ok_or_else(|| property_name_error(location, name))?;
         let known_property = resolved_property.property();
         if matches!(mode, DeclarationMode::Keyframe) && !keyframe_property_admitted(known_property)
         {
             return Err(with_property_context(
-                crate::diagnostic::error::unexpected_at(declaration_start.source_location()),
+                crate::diagnostic::error::unexpected_at(location),
                 known_property.canonical_name(),
             ));
         }
@@ -1538,27 +1601,13 @@ pub(crate) fn parse_declaration_core<'i, 't>(
             DeclarationMode::Ordinary => DeclarationBoundaryContext::OrdinaryKnown(known_property),
             DeclarationMode::Keyframe => DeclarationBoundaryContext::KeyframeKnown(known_property),
         };
-        let ((body, components, origin), importance) =
-            parse_declaration_boundary(input, &context, |input| {
-                collect_declaration_value(input, source_snapshot, |input| {
-                    parse_known_declaration_body(
-                        resolved_property,
-                        input,
-                        &crate::numeric::expression::NumericInputContext::parsed(source_snapshot),
-                        parser_context,
-                    )
-                })
-            })?;
-        (body, importance, components, origin)
-    };
-    Ok(ParsedDeclaration {
-        body,
-        importance,
-        components,
-        name: name_origin,
-        value_origin,
-        parser_context,
-    })
+        Ok(DeclarationPlan {
+            context,
+            grammar: PlannedGrammar::Known(CssPropertyGrammar::from_resolved(resolved_property)),
+            value_context: parser_context,
+            custom_name: None,
+        })
+    }
 }
 
 pub(crate) fn collect_declaration_value<'i, 't, T>(
@@ -1837,33 +1886,6 @@ fn parse_property_declaration_source<'i>(
         }
         .new_custom_error(error)
     })
-}
-
-fn parse_known_declaration_body<'i, 't>(
-    resolved_property: CssResolvedPropertyName,
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::expression::NumericInputContext<'_>,
-    parser_context: crate::CssParserContext,
-) -> Result<CssDeclarationBody, ParseError<'i, CssError>> {
-    parse_property_declaration_source(
-        PropertyValueGrammar::Known(CssPropertyGrammar::from_resolved(resolved_property)),
-        input,
-        numeric,
-        parser_context,
-    )
-}
-
-fn parse_svg_glyph_declaration_body<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::expression::NumericInputContext<'_>,
-    admission: crate::property::svg_glyph::SvgGlyphAdmission,
-) -> Result<CssDeclarationBody, ParseError<'i, CssError>> {
-    parse_property_declaration_source(
-        PropertyValueGrammar::SvgGlyph(admission),
-        input,
-        numeric,
-        crate::CssParserContext::default(),
-    )
 }
 
 fn parse_known_declaration_body_from_property_input<'i>(
