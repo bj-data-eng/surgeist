@@ -1,6 +1,7 @@
 //! Independent whole-paragraph clockwise composition witnesses.
 //! Literal geometry uses horizontal Ahem10 metrics8/2 and the exact CW map;
 //! the qualified GSUB fixture supplies real distinct retained outlines.
+mod atomics;
 mod constraints;
 mod movement;
 mod source_ranges;
@@ -820,7 +821,7 @@ fn profile_and_feature_switches_reuse_real_system_without_changing_retained_pack
 }
 
 #[test]
-fn real_in_flow_and_out_of_flow_atomics_refuse_before_sideways_preparation_publication() {
+fn real_in_flow_and_out_of_flow_atomics_prepare_with_retained_sideways_occurrences() {
     let mut s = system_with(crate::shaping_test_fonts::sideways_ahem());
     for kind in [
         crate::InlineBoxKind::InFlow,
@@ -857,13 +858,16 @@ fn real_in_flow_and_out_of_flow_atomics_refuse_before_sideways_preparation_publi
             h.atomic_views().next().unwrap().original_box().id(),
             Id::from_u64(1515003)
         );
-        assert_eq!(
-            reason(
-                &s.prepare(&a, PreparationOptions::default().with_orientation(CW))
-                    .unwrap_err()
-            ),
-            &ProtocolError::UnsupportedSidewaysAtomic { occurrence: 0 }
-        );
+        let sideways = s
+            .prepare(&a, PreparationOptions::default().with_orientation(CW))
+            .expect("actual native clockwise atomic occurrence must prepare");
+        assert_eq!(sideways.orientation(), CW);
+        assert_eq!(sideways.analyzed_source().identity(), a.identity());
+        assert_eq!(sideways.atomic_views().count(), 1);
+        let actual = sideways.atomic_views().next().unwrap();
+        assert_eq!(actual.original_box().id(), Id::from_u64(1515003));
+        assert_eq!(actual.original_box().kind(), kind);
+        assert_eq!(actual.source_position().get(), 1);
         assert_eq!(h.analyzed_source().source().text().code_units(), [65, 66]);
     }
 }
