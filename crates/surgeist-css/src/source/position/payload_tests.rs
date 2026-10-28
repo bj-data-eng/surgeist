@@ -15,9 +15,10 @@ fn observed_snapshot(source: &CssSourceSnapshot) -> usize {
     std::mem::size_of::<SourceSnapshotData>()
         + data.text.capacity()
         + data.checkpoints.capacity() * std::mem::size_of::<CssSourcePosition>()
-        + data.utf16.as_ref().map_or(0, |value| {
-            value.map.capacity() * std::mem::size_of::<(usize, usize)>()
-        })
+        + data
+            .utf16
+            .as_ref()
+            .map_or(0, |value| value.map.capacity_bytes())
 }
 #[test]
 fn complete_utf8_payload_keeps_existing_backing_quota_and_identity_policy() {

@@ -171,11 +171,11 @@ distributed by Xidorn Quan:
 * License: [MPL-2.0](../surgeist-css/licenses/dtoa-short/LICENSE)
 * Homepage: [dtoa-short](https://github.com/upsuper/dtoa-short)
 
-This product depends on `encoding_rs` 0.8.35 through surgeist-css stylesheet byte
+This product depends on `encoding_rs` 0.8.35 through surgeist-css-parser stylesheet byte
 decoding, copyright Mozilla Foundation, authored by Henri Sivonen. Its included
 WHATWG Encoding Standard data carries the additional BSD license:
 
-* License: ([Apache-2.0](../surgeist-css/licenses/encoding-rs/LICENSE-APACHE) OR [MIT](../surgeist-css/licenses/encoding-rs/LICENSE-MIT)) AND [BSD-3-Clause](../surgeist-css/licenses/encoding-rs/LICENSE-WHATWG); [upstream copyright and declaration](../surgeist-css/licenses/encoding-rs/COPYRIGHT)
+* License: ([Apache-2.0](../surgeist-css-parser/licenses/encoding-rs/LICENSE-APACHE) OR [MIT](../surgeist-css-parser/licenses/encoding-rs/LICENSE-MIT)) AND [BSD-3-Clause](../surgeist-css-parser/licenses/encoding-rs/LICENSE-WHATWG); [upstream copyright and declaration](../surgeist-css-parser/licenses/encoding-rs/COPYRIGHT)
 * Homepage: [encoding_rs](https://github.com/hsivonen/encoding_rs)
 
 This product depends on `fastrand` 2.4.1 for PHF macro generation at build time,

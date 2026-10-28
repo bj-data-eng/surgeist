@@ -53,11 +53,9 @@
 //! ```
 //! use std::sync::Arc;
 //! use surgeist_css::diagnostic::CssRecoveryAction;
-//! use surgeist_css::source::{
-//!     CssDecodedStylesheetInput, CssStylesheetDecodeHints, CssStylesheetDecodeLimits,
-//!     CssUtf16InputLimits,
-//! };
+//! use surgeist_css::source::{CssDecodedStylesheetInput, CssUtf16InputLimits};
 //! use surgeist_css::CssParser;
+//! use surgeist_css_parser::input::{DecodeHints, DecodeLimits};
 //!
 //! let parser = CssParser::default();
 //! let report = parser.parse_sheet(".a { color: red } @unknown x; .b {}");
@@ -65,11 +63,11 @@
 //! assert_eq!(report.diagnostics()[0].action(), CssRecoveryAction::DropAtRule);
 //!
 //! // Bytes: select the encoding, decode, then parse the decoded input.
-//! let hints = CssStylesheetDecodeHints { environment_encoding: None, protocol_label: None };
+//! let hints = DecodeHints { environment_encoding: None, protocol_label: None };
 //! let input = CssDecodedStylesheetInput::decode(
 //!     b".a { color: red }",
 //!     hints,
-//!     CssStylesheetDecodeLimits::default(),
+//!     DecodeLimits::default(),
 //! )
 //! .expect("decodable input");
 //! assert!(parser.parse_sheet_bytes(&input).is_clean());

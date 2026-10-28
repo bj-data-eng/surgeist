@@ -644,12 +644,7 @@ impl CssSourceSnapshot {
                     .checked_mul(std::mem::size_of::<CssSourcePosition>())?,
             )?;
         if let Some(input) = &self.0.utf16 {
-            bytes = bytes.checked_add(
-                input
-                    .map
-                    .capacity()
-                    .checked_mul(std::mem::size_of::<(usize, usize)>())?,
-            )?;
+            bytes = bytes.checked_add(input.map.capacity_bytes())?;
             if include_original {
                 bytes = bytes
                     .checked_add(std::mem::size_of::<Vec<u16>>())?
@@ -671,40 +666,25 @@ impl CssSourceSnapshot {
     }
 
     pub(crate) fn preprocessed_scalar_count(&self) -> Option<usize> {
-        self.0.utf16.as_ref().map(|value| value.map.len())
+        self.0.utf16.as_ref().map(|value| value.map.scalar_count())
     }
 
     /// Maps complete normalized scalar boundaries to original half-open units.
     /// Interior UTF8 byte offsets and out-of-range intervals are rejected.
     #[must_use]
     pub fn original_utf16_range(&self, range: Range<usize>) -> Option<Range<usize>> {
-        let input = self.0.utf16.as_ref()?;
-        if range.start > range.end {
-            return None;
-        }
-        let boundary = |byte| {
-            if byte == self.as_str().len() {
-                return Some(input.original.len());
-            }
-            input
-                .map
-                .binary_search_by_key(&byte, |entry| entry.0)
-                .ok()
-                .map(|index| input.map[index].1)
-        };
-        Some(boundary(range.start)?..boundary(range.end)?)
+        self.0.utf16.as_ref()?.map.original_utf16(range)
     }
 
     pub(crate) fn attach_utf16(
         mut self,
         input: crate::source::utf16_input::Utf16Source,
     ) -> Option<Self> {
-        let extra = input.original.capacity().checked_mul(2)?.checked_add(
-            input
-                .map
-                .capacity()
-                .checked_mul(std::mem::size_of::<(usize, usize)>())?,
-        )?;
+        let extra = input
+            .original
+            .capacity()
+            .checked_mul(2)?
+            .checked_add(input.map.capacity_bytes())?;
         let data = Arc::get_mut(&mut self.0)?;
         data.storage = data.storage.checked_add(CssSourceStorageUsage(extra))?;
         data.utf16 = Some(input);
@@ -915,7 +895,7 @@ mod utf16_admission_tests {
             max_work: calls - 1,
         };
         assert_eq!(source.as_str().len(), exact.max_output_bytes);
-        assert_eq!(raw.map.len(), exact.max_map_entries);
+        assert_eq!(raw.map.scalar_count(), exact.max_map_entries);
         assert_eq!(source.0.checkpoints.len(), exact.max_checkpoints);
         crate::CssParser::default()
             .parse_sheet_utf16(original.clone(), exact, || Ok::<_, ()>(()))

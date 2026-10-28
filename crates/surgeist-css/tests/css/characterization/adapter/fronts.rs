@@ -66,13 +66,14 @@ use surgeist_css::serialization::{
     serialize_css_whitespace_separated_list,
 };
 use surgeist_css::source::{
-    CssDecodedStylesheetInput, CssStylesheetDecodeHints, CssStylesheetLocation, CssUtf16InputError,
-    CssUtf16InputLimits, CssUtf16PropertyValueLimits,
+    CssDecodedStylesheetInput, CssStylesheetLocation, CssUtf16InputError, CssUtf16InputLimits,
+    CssUtf16PropertyValueLimits,
 };
 use surgeist_css::values::color_adjust::CssColorScheme;
 use surgeist_css::{
     CssParseReport, CssParser, CssParserContext, CssParserMode, CssValidationFailure,
 };
+use surgeist_css_parser::input::DecodeHints;
 
 use super::report::{Retained, property_id};
 use super::{Limited, Observation, Stop, nonempty, parse_charge, serialization, utf16_charge};
@@ -1093,7 +1094,7 @@ fn rule_serializations_into(observation: &mut Observation, label: &str, rules: &
 }
 
 fn sheet_bytes(argument: &str, input: &str) -> Observation {
-    let hints = CssStylesheetDecodeHints {
+    let hints = DecodeHints {
         protocol_label: (argument != "-").then_some(argument),
         environment_encoding: None,
     };

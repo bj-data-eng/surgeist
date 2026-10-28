@@ -5,6 +5,7 @@ use std::mem::{size_of, size_of_val};
 use std::{cell::RefCell, sync::Arc};
 
 use crate::component::CssComponentValueLimits;
+use surgeist_css_parser::limits::{self, Meter, Refused};
 
 /// One complete original UTF16 input and its checked authored color-scheme
 /// declaration. Global and substitution-dependent values remain symbolic.
@@ -516,99 +517,18 @@ impl<'a> Control<'a> {
         self.live.set(usage);
         (self.release)(usage);
     }
+    /// Makes room for `additional` elements under the parser crate's growth model.
     pub(crate) fn reserve<T>(&self, values: &mut Vec<T>, additional: usize) -> Result<(), ()> {
-        self.step()?;
-        let Some(required) = values.len().checked_add(additional) else {
-            return self.fail(Failure::CapacityOverflow);
-        };
-        if required <= values.capacity() {
-            return Ok(());
-        }
-        let Some(old) = values.capacity().checked_mul(size_of::<T>()) else {
-            return self.fail(Failure::CapacityOverflow);
-        };
-        let target = required.max(values.capacity().saturating_mul(2)).max(4);
-        let Some(planned) = target.checked_mul(size_of::<T>()) else {
-            return self.fail(Failure::CapacityOverflow);
-        };
-        struct Growth<T> {
-            next: Vec<T>,
-            previous: std::vec::IntoIter<T>,
-        }
-        let header = size_of::<Growth<T>>();
-        let Some(prospective) = planned.checked_add(header) else {
-            return self.fail(Failure::CapacityOverflow);
-        };
-        // The actual old bank stays live while a distinct new bank is formed.
-        // No opaque allocator reallocation hides the simultaneous old/new cost
-        // or the cancellable movement of retained elements.
-        self.add(prospective)?;
-        let mut next = Vec::new();
-        if next.try_reserve_exact(target).is_err() {
-            self.released(prospective);
-            return self.fail(Failure::Allocation);
-        }
-        let Some(actual) = next.capacity().checked_mul(size_of::<T>()) else {
-            return self.fail(Failure::CapacityOverflow);
-        };
-        if actual > planned && self.add(actual - planned).is_err() {
-            drop(next);
-            self.released(prospective);
-            return Err(());
-        }
-        let mut growth = Growth {
-            next,
-            previous: std::mem::take(values).into_iter(),
-        };
-        while let Some(value) = growth.previous.next() {
-            if self.step().is_err() {
-                drop(value);
-                drop(growth);
-                self.released(old + actual + header);
-                return Err(());
-            }
-            growth.next.push(value);
-        }
-        let Growth { next, previous } = growth;
-        drop(previous);
-        *values = next;
-        self.released(old + header);
-        Ok(())
+        limits::grow(self, values, additional).map_err(|Refused| ())
     }
+    /// Copies `value` into a new `String` of exactly its length under the parser
+    /// crate's copy model.
     pub(crate) fn string(&self, value: &str) -> Result<String, ()> {
-        self.step()?;
-        self.add(value.len())?;
-        let mut out = String::new();
-        if out.try_reserve_exact(value.len()).is_err() {
-            self.released(value.len());
-            return self.fail(Failure::Allocation);
-        }
-        if out.capacity() > value.len() {
-            self.add(out.capacity() - value.len())?;
-        }
-        for point in value.chars() {
-            if self.step().is_err() {
-                let capacity = out.capacity();
-                drop(out);
-                self.released(capacity);
-                return Err(());
-            }
-            out.push(point);
-        }
-        Ok(out)
+        limits::copy_str(self, value).map_err(|Refused| ())
     }
+    /// Copies `value` into a new `Box<str>` under the parser crate's copy model.
     pub(crate) fn boxed(&self, value: &str) -> Result<Box<str>, ()> {
-        let out = self.string(value)?;
-        let capacity = out.capacity();
-        // The old String may coexist with the shrink destination allocation.
-        if capacity != out.len() {
-            self.add(out.len())?;
-        }
-        let result = out.into_boxed_str();
-        if capacity != result.len() {
-            self.released(capacity);
-        }
-        Ok(result)
+        limits::copy_boxed(self, value).map_err(|Refused| ())
     }
     pub(crate) fn transfer(&self, storage: CssUtf16ValueStorage) -> Result<(), ()> {
         self.step()?;
@@ -626,6 +546,29 @@ impl<'a> Control<'a> {
         Ok(())
     }
 }
+/// The charged-work and live-storage contract of the parser crate, backed by this
+/// admission. The parser crate's growth and copy helpers charge it exactly as
+/// `reserve`, `string` and `boxed` charged this control before they moved there.
+impl Meter for Control<'_> {
+    fn step(&self) -> Result<(), Refused> {
+        Control::step(self).map_err(|()| Refused)
+    }
+    fn add(&self, bytes: usize) -> Result<(), Refused> {
+        Control::add(self, bytes).map_err(|()| Refused)
+    }
+    fn released(&self, bytes: usize) {
+        Control::released(self, bytes);
+    }
+    fn note(&self, failure: limits::Failure) -> Refused {
+        let failure = match failure {
+            limits::Failure::Allocation => Failure::Allocation,
+            limits::Failure::CapacityOverflow => Failure::CapacityOverflow,
+            _ => unreachable!("the parser crate reports only allocation and overflow failures"),
+        };
+        let _ = self.fail::<()>(failure);
+        Refused
+    }
+}
 impl Drop for Control<'_> {
     fn drop(&mut self) {
         if !self.transferred.get() {
@@ -635,3 +578,6 @@ impl Drop for Control<'_> {
         }
     }
 }
+
+#[cfg(test)]
+mod frozen_meter_tests;

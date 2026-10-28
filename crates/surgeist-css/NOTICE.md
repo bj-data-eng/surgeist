@@ -45,13 +45,6 @@ distributed by Xidorn Quan:
 * License: [MPL-2.0](licenses/dtoa-short/LICENSE)
 * Homepage: [dtoa-short](https://github.com/upsuper/dtoa-short)
 
-This product depends on `encoding_rs` 0.8.35 for CSS stylesheet byte decoding,
-copyright Mozilla Foundation, authored by Henri Sivonen. Its included WHATWG
-Encoding Standard data carries the additional BSD license:
-
-* License: ([Apache-2.0](licenses/encoding-rs/LICENSE-APACHE) OR [MIT](licenses/encoding-rs/LICENSE-MIT)) AND [BSD-3-Clause](licenses/encoding-rs/LICENSE-WHATWG); [upstream copyright and declaration](licenses/encoding-rs/COPYRIGHT)
-* Homepage: [encoding_rs](https://github.com/hsivonen/encoding_rs)
-
 This product depends on `fastrand` 2.4.1 for PHF macro generation at build time,
 distributed by Stjepan Glavina:
 
