@@ -634,8 +634,8 @@ and overflow geometry. The adapter converts those boxes to Text's local
 inline/line-under cells before finalization, then maps the accepted geometry
 back once. A physical 6×14 child therefore uses a local 14×6 cell without
 rotating its content. Signed margins and flow advance remain separate from
-occupied bounds; relative positioning moves the physical box without changing
-its normal-flow contribution.
+occupied bounds. Relative offsets place the physical box without being added
+to its signed flow advance; changed canonical box edges still reenter fitting.
 
 Named Central alignment uses the existing child first/last resolver and its
 Absent synthesis, Unknown refusal and axis checks. Numeric participants retain
