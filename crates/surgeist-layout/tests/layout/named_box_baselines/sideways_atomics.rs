@@ -1,6 +1,7 @@
 //! Physical clockwise Text keeps the actual child's physical content unrotated.
 use super::*;
 mod supplemental;
+mod vertical_writing_modes;
 
 const AHEM: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
