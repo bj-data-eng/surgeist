@@ -1387,3 +1387,96 @@ fn a_closed_group_does_not_stop_its_siblings_from_growing() {
     let document = builder.finish(None);
     assert_eq!(document.list(document.root_list()).len(), 2);
 }
+
+/// The interval of a group and the end of its list are what the caller said
+/// about the group's end, and only that: a closing token with an interval ends
+/// both at its start and end, one the caller holds without a position ends
+/// neither, a group the input ended is ended at the position given, and a group
+/// that was never ended keeps the interval of its opening token and has no end.
+#[test]
+fn a_builder_group_ends_its_interval_and_its_list_where_the_caller_says() {
+    let range = |from, to| Some(Offset::new(from)..Offset::new(to));
+    let mut builder = Document::<()>::builder(Limits::default(), 0, None).unwrap();
+    let root = builder.root();
+    let (positioned, positioned_list) = builder
+        .open(root, Token::OpenParen, range(0, 1), None)
+        .unwrap();
+    builder
+        .leaf(positioned_list, Token::Comma, range(1, 2), None)
+        .unwrap();
+    builder
+        .close(
+            positioned,
+            GroupEnd::Closed {
+                range: range(2, 3),
+                payload: None,
+            },
+        )
+        .unwrap();
+    let (by_eof, by_eof_list) = builder
+        .open(root, Token::OpenSquare, range(4, 5), None)
+        .unwrap();
+    builder
+        .close(
+            by_eof,
+            GroupEnd::Eof {
+                at: Some(Offset::new(9)),
+            },
+        )
+        .unwrap();
+    let (unpositioned, unpositioned_list) = builder
+        .open(root, Token::OpenCurly, range(10, 11), None)
+        .unwrap();
+    builder
+        .close(
+            unpositioned,
+            GroupEnd::Closed {
+                range: None,
+                payload: None,
+            },
+        )
+        .unwrap();
+    let (without_interval, without_interval_list) =
+        builder.open(root, Token::OpenParen, None, None).unwrap();
+    builder
+        .close(
+            without_interval,
+            GroupEnd::Closed {
+                range: range(20, 21),
+                payload: None,
+            },
+        )
+        .unwrap();
+    let (never_ended, never_ended_list) = builder
+        .open(root, Token::OpenParen, range(30, 31), None)
+        .unwrap();
+    let document = builder.finish(None);
+
+    assert_eq!(document.range(positioned), range(0, 3));
+    assert_eq!(
+        document.list_end(positioned_list),
+        Some(Offset::new(2)),
+        "a list ends where its closing token starts"
+    );
+    assert_eq!(document.range(by_eof), range(4, 9));
+    assert_eq!(document.list_end(by_eof_list), Some(Offset::new(9)));
+    assert_eq!(document.range(unpositioned), range(10, 11));
+    assert_eq!(document.list_end(unpositioned_list), None);
+    assert_eq!(document.range(without_interval), None);
+    assert_eq!(
+        document.list_end(without_interval_list),
+        Some(Offset::new(20))
+    );
+    assert_eq!(document.range(never_ended), range(30, 31));
+    assert_eq!(document.list_end(never_ended_list), None);
+    assert!(matches!(
+        document.group_end(never_ended),
+        Some(GroupEnd::Eof { at: None })
+    ));
+    assert_eq!(document.parent_group(never_ended_list), Some(never_ended));
+    assert_eq!(document.parent_group(document.root_list()), None);
+    assert_eq!(
+        document.group_kind(by_eof),
+        Some(GroupKind::Block(BlockKind::Square))
+    );
+}

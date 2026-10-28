@@ -4,6 +4,11 @@
 //! from the text the document was built over or from the document's decode
 //! pool. A [`Stored`] resolves to a [`Token`] on demand, borrowing the
 //! document, so a token stays `Copy` and nothing is decoded twice.
+//!
+//! A node holds what every node has and nothing else. What only a function or
+//! a simple block has (its kind, how it ended, where its opening token ends)
+//! lives in the [`List`] the group owns, which exists once per group, so a leaf
+//! pays nothing for it.
 
 use std::ops::Range;
 
@@ -12,6 +17,7 @@ use super::{ListId, NodeId};
 use crate::Offset;
 use crate::Token;
 use crate::token::{HashKind, Number, NumberKind};
+use crate::unicode_range::CodePointRange;
 
 /// A text of a stored token.
 #[derive(Clone, Copy, Debug)]
@@ -19,28 +25,89 @@ pub(super) enum Text<'s> {
     /// Text that outlives the document's own storage: a slice of the source or
     /// of a string a builder was given.
     Borrowed(&'s str),
-    /// Text in the document's decode pool.
-    Pooled { start: usize, end: usize },
+    /// Text in the document's decode pool, as byte positions in it.
+    Pooled { start: u32, end: u32 },
 }
 
 impl<'s> Text<'s> {
+    /// The text that `length` bytes make at the end of a pool that holds
+    /// `pooled` bytes, or `None` when the pool would then hold more than
+    /// `u32::MAX` bytes, the greatest position a pooled text can address.
+    pub(super) fn pooled(pooled: usize, length: usize) -> Option<Self> {
+        let start = u32::try_from(pooled).ok()?;
+        let end = u32::try_from(pooled.checked_add(length)?).ok()?;
+        Some(Self::Pooled { start, end })
+    }
+
     fn resolve<'a>(self, pool: &'a str) -> &'a str
     where
         's: 'a,
     {
         match self {
             Self::Borrowed(text) => text,
-            Self::Pooled { start, end } => pool.get(start..end).unwrap_or(""),
+            Self::Pooled { start, end } => pool.get(start as usize..end as usize).unwrap_or(""),
+        }
+    }
+}
+
+/// A token that carries no text, as a node stores it.
+///
+/// It mirrors the variants of [`Token`] that hold nothing but, at most, a code
+/// point or a range of code points, in the least room.
+#[derive(Clone, Copy, Debug)]
+pub(super) enum Bare {
+    BadString,
+    BadUrl,
+    Delim(char),
+    UnicodeRange(CodePointRange),
+    Whitespace,
+    Comment,
+    Colon,
+    Semicolon,
+    Comma,
+    OpenSquare,
+    OpenParen,
+    OpenCurly,
+    CloseSquare,
+    CloseParen,
+    CloseCurly,
+    Cdo,
+    Cdc,
+}
+
+impl Bare {
+    const fn token(self) -> Token<'static> {
+        match self {
+            Self::BadString => Token::BadString,
+            Self::BadUrl => Token::BadUrl,
+            Self::Delim(point) => Token::Delim(point),
+            Self::UnicodeRange(range) => Token::UnicodeRange(range),
+            Self::Whitespace => Token::Whitespace,
+            Self::Comment => Token::Comment,
+            Self::Colon => Token::Colon,
+            Self::Semicolon => Token::Semicolon,
+            Self::Comma => Token::Comma,
+            Self::OpenSquare => Token::OpenSquare,
+            Self::OpenParen => Token::OpenParen,
+            Self::OpenCurly => Token::OpenCurly,
+            Self::CloseSquare => Token::CloseSquare,
+            Self::CloseParen => Token::CloseParen,
+            Self::CloseCurly => Token::CloseCurly,
+            Self::Cdo => Token::Cdo,
+            Self::Cdc => Token::Cdc,
         }
     }
 }
 
 /// A token as a node stores it.
 ///
-/// The tokens that carry no text are held as themselves.
+/// The tokens that carry no text are held in the room of a [`Bare`].
 #[derive(Clone, Copy, Debug)]
 pub(super) enum Stored<'s> {
-    Plain(Token<'static>),
+    Bare(Bare),
+    /// A `{}`-block denied for nesting too deep. Its token is the `<{-token>`
+    /// that opened it.
+    Denied,
     Ident(Text<'s>),
     Function(Text<'s>),
     AtKeyword(Text<'s>),
@@ -57,47 +124,63 @@ pub(super) enum Stored<'s> {
 }
 
 impl<'s> Stored<'s> {
-    /// Stores `token`, asking `text` to place each text it carries.
-    pub(super) fn of<'a>(token: Token<'a>, text: &mut dyn FnMut(&'a str) -> Text<'s>) -> Self {
-        match token {
-            Token::Ident(value) => Self::Ident(text(value)),
-            Token::Function(value) => Self::Function(text(value)),
-            Token::AtKeyword(value) => Self::AtKeyword(text(value)),
-            Token::Hash { value, kind } => Self::Hash(text(value), kind),
-            Token::String(value) => Self::String(text(value)),
-            Token::Url(value) => Self::Url(text(value)),
-            Token::Number(number) => Self::Number(text(number.representation()), number.kind()),
+    /// Stores `token`, asking `place` to place each text it carries.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first error `place` returns.
+    pub(super) fn of<'a, E>(
+        token: Token<'a>,
+        mut place: impl FnMut(&'a str) -> Result<Text<'s>, E>,
+    ) -> Result<Self, E> {
+        Ok(match token {
+            Token::Ident(value) => Self::Ident(place(value)?),
+            Token::Function(value) => Self::Function(place(value)?),
+            Token::AtKeyword(value) => Self::AtKeyword(place(value)?),
+            Token::Hash { value, kind } => Self::Hash(place(value)?, kind),
+            Token::String(value) => Self::String(place(value)?),
+            Token::Url(value) => Self::Url(place(value)?),
+            Token::Number(number) => Self::Number(place(number.representation())?, number.kind()),
             Token::Percentage(number) => {
-                Self::Percentage(text(number.representation()), number.kind())
+                Self::Percentage(place(number.representation())?, number.kind())
             }
             Token::Dimension { number, unit } => Self::Dimension {
-                number: text(number.representation()),
+                number: place(number.representation())?,
                 kind: number.kind(),
-                unit: text(unit),
+                unit: place(unit)?,
             },
-            Token::BadString => Self::Plain(Token::BadString),
-            Token::BadUrl => Self::Plain(Token::BadUrl),
-            Token::Delim(point) => Self::Plain(Token::Delim(point)),
-            Token::UnicodeRange(range) => Self::Plain(Token::UnicodeRange(range)),
-            Token::Whitespace => Self::Plain(Token::Whitespace),
-            Token::Comment => Self::Plain(Token::Comment),
-            Token::Colon => Self::Plain(Token::Colon),
-            Token::Semicolon => Self::Plain(Token::Semicolon),
-            Token::Comma => Self::Plain(Token::Comma),
-            Token::OpenSquare => Self::Plain(Token::OpenSquare),
-            Token::OpenParen => Self::Plain(Token::OpenParen),
-            Token::OpenCurly => Self::Plain(Token::OpenCurly),
-            Token::CloseSquare => Self::Plain(Token::CloseSquare),
-            Token::CloseParen => Self::Plain(Token::CloseParen),
-            Token::CloseCurly => Self::Plain(Token::CloseCurly),
-            Token::Cdo => Self::Plain(Token::Cdo),
-            Token::Cdc => Self::Plain(Token::Cdc),
-        }
+            Token::BadString => Self::Bare(Bare::BadString),
+            Token::BadUrl => Self::Bare(Bare::BadUrl),
+            Token::Delim(point) => Self::Bare(Bare::Delim(point)),
+            Token::UnicodeRange(range) => Self::Bare(Bare::UnicodeRange(range)),
+            Token::Whitespace => Self::Bare(Bare::Whitespace),
+            Token::Comment => Self::Bare(Bare::Comment),
+            Token::Colon => Self::Bare(Bare::Colon),
+            Token::Semicolon => Self::Bare(Bare::Semicolon),
+            Token::Comma => Self::Bare(Bare::Comma),
+            Token::OpenSquare => Self::Bare(Bare::OpenSquare),
+            Token::OpenParen => Self::Bare(Bare::OpenParen),
+            Token::OpenCurly => Self::Bare(Bare::OpenCurly),
+            Token::CloseSquare => Self::Bare(Bare::CloseSquare),
+            Token::CloseParen => Self::Bare(Bare::CloseParen),
+            Token::CloseCurly => Self::Bare(Bare::CloseCurly),
+            Token::Cdo => Self::Bare(Bare::Cdo),
+            Token::Cdc => Self::Bare(Bare::Cdc),
+        })
     }
 
     /// Stores a token whose texts outlive the document.
     pub(super) fn borrowed(token: Token<'s>) -> Self {
-        Self::of(token, &mut |value| Text::Borrowed(value))
+        match Self::of(token, |value| {
+            Ok::<_, std::convert::Infallible>(Text::Borrowed(value))
+        }) {
+            Ok(stored) => stored,
+        }
+    }
+
+    /// Whether this is the token of a denied block.
+    pub(super) const fn is_denied(&self) -> bool {
+        matches!(self, Self::Denied)
     }
 
     /// Resolves the token, reading pooled texts from `pool`.
@@ -106,7 +189,8 @@ impl<'s> Stored<'s> {
         's: 'a,
     {
         match *self {
-            Self::Plain(token) => token,
+            Self::Bare(bare) => bare.token(),
+            Self::Denied => Token::OpenCurly,
             Self::Ident(text) => Token::Ident(text.resolve(pool)),
             Self::Function(text) => Token::Function(text.resolve(pool)),
             Self::AtKeyword(text) => Token::AtKeyword(text.resolve(pool)),
@@ -128,66 +212,163 @@ impl<'s> Stored<'s> {
     }
 }
 
-/// What a node is besides its token.
-#[derive(Debug)]
-pub(super) enum Shape<P> {
-    /// A token that owns nothing.
-    Leaf,
-    /// A function or a simple block.
-    Group {
-        kind: GroupKind,
-        children: ListId,
-        end: GroupEnd<P>,
-        /// Where the opening token ends, when its interval is known.
-        opening_end: Option<Offset>,
-        /// Whether the group has ended; nothing is added to it afterwards.
-        closed: bool,
-    },
-    /// A `{}`-block denied for nesting too deep.
-    Denied,
-}
-
 /// One node of a document.
+///
+/// A node that owns a list (a function or a simple block) names it in
+/// `children`; everything about the group itself is in that [`List`].
 #[derive(Debug)]
 pub(super) struct Node<'s, P> {
     pub(super) token: Stored<'s>,
-    pub(super) shape: Shape<P>,
-    /// The interval of the token, or of the whole group once it is closed.
-    pub(super) range: Option<Range<Offset>>,
-    pub(super) payload: Option<P>,
+    /// Where the token starts, when `ranged`.
+    start: Offset,
+    /// Where the token ends, or the whole group once it is closed, when
+    /// `ranged`.
+    end: Offset,
+    ranged: bool,
     /// The list that holds the node, and the node's place in it.
     pub(super) list: ListId,
-    pub(super) index: usize,
+    pub(super) index: u32,
+    /// The list the node owns, for a function or a simple block.
+    pub(super) children: Option<ListId>,
+    pub(super) payload: Option<P>,
 }
 
-impl<P> Node<'_, P> {
-    pub(super) const fn children(&self) -> Option<ListId> {
-        match self.shape {
-            Shape::Group { children, .. } => Some(children),
-            Shape::Leaf | Shape::Denied => None,
+impl<'s, P> Node<'s, P> {
+    pub(super) fn new(
+        token: Stored<'s>,
+        range: Option<Range<Offset>>,
+        place: (ListId, u32),
+        children: Option<ListId>,
+        payload: Option<P>,
+    ) -> Self {
+        let ranged = range.is_some();
+        let (start, end) = range.map_or((Offset::new(0), Offset::new(0)), |range| {
+            (range.start, range.end)
+        });
+        Self {
+            token,
+            start,
+            end,
+            ranged,
+            list: place.0,
+            index: place.1,
+            children,
+            payload,
         }
     }
 
-    pub(super) const fn group_end(&self) -> Option<&GroupEnd<P>> {
-        match &self.shape {
-            Shape::Group { end, .. } => Some(end),
-            Shape::Leaf | Shape::Denied => None,
+    /// The interval of the token, or of the whole group once it is closed.
+    pub(super) fn range(&self) -> Option<Range<Offset>> {
+        self.ranged.then_some(self.start..self.end)
+    }
+
+    /// Where the token starts.
+    pub(super) const fn start(&self) -> Option<Offset> {
+        if self.ranged { Some(self.start) } else { None }
+    }
+
+    /// Moves the end of the interval, which a node without one does not have.
+    pub(super) const fn set_end(&mut self, end: Offset) {
+        if self.ranged {
+            self.end = end;
         }
     }
+}
+
+/// What a list is besides its nodes.
+#[derive(Debug)]
+pub(super) enum Owner<P> {
+    /// The root list.
+    Root {
+        /// Where the text ends, when it is known.
+        end: Option<Offset>,
+    },
+    /// The contents of a function or a simple block.
+    Group(Group<P>),
+}
+
+/// The function or simple block that owns a list.
+#[derive(Debug)]
+pub(super) struct Group<P> {
+    pub(super) node: NodeId,
+    pub(super) kind: GroupKind,
+    /// How the group ended; until it does, the end of the input at an unknown
+    /// place.
+    pub(super) end: GroupEnd<P>,
+    /// Where the opening token ends, when its interval is known.
+    pub(super) opening_end: Option<Offset>,
+    /// Whether the group has ended; nothing is added to it afterwards.
+    pub(super) closed: bool,
 }
 
 /// One list of a document.
 #[derive(Debug)]
-pub(super) struct List {
+pub(super) struct List<P> {
     pub(super) nodes: Vec<NodeId>,
-    /// The group that owns the list; none for the root.
-    pub(super) parent: Option<NodeId>,
-    /// Where the list ends in the text: its closing token, or the end of the
-    /// text.
-    pub(super) end: Option<Offset>,
     /// How many groups are open around the list, not counting the base depth
     /// a build started with.
     pub(super) depth: u32,
+    pub(super) owner: Owner<P>,
+}
+
+impl<P> List<P> {
+    pub(super) const fn root() -> Self {
+        Self {
+            nodes: Vec::new(),
+            depth: 0,
+            owner: Owner::Root { end: None },
+        }
+    }
+
+    pub(super) const fn of_group(group: Group<P>, depth: u32) -> Self {
+        Self {
+            nodes: Vec::new(),
+            depth,
+            owner: Owner::Group(group),
+        }
+    }
+
+    /// The group that owns the list; none for the root.
+    pub(super) const fn group(&self) -> Option<&Group<P>> {
+        match &self.owner {
+            Owner::Group(group) => Some(group),
+            Owner::Root { .. } => None,
+        }
+    }
+
+    pub(super) const fn group_mut(&mut self) -> Option<&mut Group<P>> {
+        match &mut self.owner {
+            Owner::Group(group) => Some(group),
+            Owner::Root { .. } => None,
+        }
+    }
+
+    pub(super) fn kind(&self) -> Option<GroupKind> {
+        self.group().map(|group| group.kind)
+    }
+
+    pub(super) fn parent(&self) -> Option<NodeId> {
+        self.group().map(|group| group.node)
+    }
+
+    /// Where the list ends in the text: its closing token, or the end of the
+    /// text.
+    pub(super) fn end(&self) -> Option<Offset> {
+        match &self.owner {
+            Owner::Root { end } => *end,
+            Owner::Group(group) => match &group.end {
+                GroupEnd::Closed { range, .. } => range.as_ref().map(|range| range.start),
+                GroupEnd::Eof { at } => *at,
+            },
+        }
+    }
+
+    /// Records where the text of the root list ends.
+    pub(super) const fn set_root_end(&mut self, at: Option<Offset>) {
+        if let Owner::Root { end } = &mut self.owner {
+            *end = at;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -205,16 +386,31 @@ mod tests {
     /// its node vector, and what a document costs per token, so it is pinned:
     /// a change is a decision about receipts and memory, not an accident. The
     /// pins describe 64-bit targets. These types are private, so the pins live
-    /// here; the measured 168 bytes per node (against the 24 to 32 the design
-    /// estimated) are recorded, not yet optimized; `tests/layout_pins.rs` pins the public handles.
+    /// here; `tests/layout_pins.rs` pins the public handles.
     #[test]
     #[cfg(target_pointer_width = "64")]
     fn the_storage_of_a_node_keeps_its_measured_layout() {
-        pinned::<Text<'static>>("Text", 24, 8);
-        pinned::<Stored<'static>>("Stored", 56, 8);
-        pinned::<Shape<()>>("Shape<()>", 64, 8);
-        pinned::<Node<'static, ()>>("Node<()>", 168, 8);
-        pinned::<Node<'static, u64>>("Node<u64>", 184, 8);
-        pinned::<List>("List", 64, 8);
+        pinned::<Text<'static>>("Text", 16, 8);
+        pinned::<Bare>("Bare", 12, 4);
+        pinned::<Stored<'static>>("Stored", 40, 8);
+        pinned::<Node<'static, ()>>("Node<()>", 72, 8);
+        pinned::<Node<'static, u64>>("Node<u64>", 88, 8);
+        pinned::<Option<ListId>>("Option<ListId>", 4, 4);
+        pinned::<List<()>>("List<()>", 88, 8);
+    }
+
+    #[test]
+    fn a_pooled_text_is_refused_when_the_pool_outgrows_its_positions() {
+        assert!(matches!(
+            Text::pooled(0, 3),
+            Some(Text::Pooled { start: 0, end: 3 })
+        ));
+        assert!(Text::pooled(u32::MAX as usize, 1).is_none());
+        assert!(Text::pooled(usize::MAX, 1).is_none());
+        assert!(Text::pooled(1, usize::MAX).is_none());
+        assert!(matches!(
+            Text::pooled(u32::MAX as usize - 1, 1),
+            Some(Text::Pooled { .. })
+        ));
     }
 }

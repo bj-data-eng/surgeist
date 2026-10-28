@@ -5,7 +5,7 @@ use std::ops::Range;
 
 use super::component::{BlockKind, GroupEnd, GroupKind};
 use super::error::{BuildError, BuildErrorKind};
-use super::store::{List, Node, Shape, Stored, Text};
+use super::store::{Group, List, Node, Stored, Text};
 use super::tree::Document;
 use super::{ListId, Metrics, NodeId};
 use crate::lexer::{Lexer, Options};
@@ -166,17 +166,18 @@ impl<'d, P> TreeBuilder<'d, P> {
     /// Panics if `group` is not a function or simple block of this builder, or
     /// if it has been closed already.
     pub fn close(&mut self, group: NodeId, end: GroupEnd<P>) -> Result<(), BuildError> {
-        let node = self.document.node(group);
-        let Shape::Group {
-            children, closed, ..
-        } = &node.shape
-        else {
+        let owned = self.document.node(group).children.and_then(|children| {
+            self.document
+                .list_data(children)
+                .group()
+                .map(|data| (children, data.closed))
+        });
+        let Some((children, closed)) = owned else {
             panic!("`close` takes a function or a simple block");
         };
         assert!(!closed, "a group is closed once");
-        let children = *children;
         let depth = self.document.list_data(children).depth;
-        let (list_end, node_end) = match &end {
+        let node_end = match &end {
             GroupEnd::Closed { range, .. } => {
                 self.charge(
                     range.as_ref().map(|range| range.start),
@@ -184,24 +185,16 @@ impl<'d, P> TreeBuilder<'d, P> {
                     false,
                     depth,
                 )?;
-                (
-                    range.as_ref().map(|range| range.start),
-                    range.as_ref().map(|range| range.end),
-                )
+                range.as_ref().map(|range| range.end)
             }
-            GroupEnd::Eof { at } => (*at, *at),
+            GroupEnd::Eof { at } => *at,
         };
-        self.document.lists[children.index()].end = list_end;
-        let node = &mut self.document.nodes[group.index()];
-        if let (Some(range), Some(node_end)) = (&mut node.range, node_end) {
-            range.end = node_end;
+        if let Some(node_end) = node_end {
+            self.document.nodes[group.index()].set_end(node_end);
         }
-        if let Shape::Group {
-            end: slot, closed, ..
-        } = &mut node.shape
-        {
-            *slot = end;
-            *closed = true;
+        if let Some(data) = self.document.lists[children.index()].group_mut() {
+            data.end = end;
+            data.closed = true;
         }
         Ok(())
     }
@@ -225,7 +218,7 @@ impl<'d, P> TreeBuilder<'d, P> {
     #[must_use]
     pub fn finish(mut self, source: Option<&'d str>) -> Document<'d, P> {
         self.document.source = source;
-        self.document.lists[0].end = source.map(|text| Offset::new(text.len()));
+        self.document.lists[0].set_root_end(source.map(|text| Offset::new(text.len())));
         self.document
     }
 
@@ -238,12 +231,7 @@ impl<'d, P> TreeBuilder<'d, P> {
     ) -> Result<Self, BuildError> {
         let mut lists = Vec::new();
         reserve(meter, &mut lists, 1, None)?;
-        lists.push(List {
-            nodes: Vec::new(),
-            parent: None,
-            end: None,
-            depth: 0,
-        });
+        lists.push(List::root());
         Ok(Self {
             document: Document {
                 source: None,
@@ -276,12 +264,9 @@ impl<'d, P> TreeBuilder<'d, P> {
 
     /// Panics if `parent` belongs to a group that has ended.
     fn assert_open(&self, parent: ListId) {
-        if let Some(group) = self.document.list_data(parent).parent {
+        if let Some(group) = self.document.list_data(parent).group() {
             assert!(
-                !matches!(
-                    self.document.node(group).shape,
-                    Shape::Group { closed: true, .. }
-                ),
+                !group.closed,
                 "nothing is added to a group after it is closed"
             );
         }
@@ -339,11 +324,12 @@ impl<'d, P> TreeBuilder<'d, P> {
         &mut self,
         parent: ListId,
         token: Stored<'d>,
-        shape: Shape<P>,
+        children: Option<ListId>,
         range: Option<Range<Offset>>,
         payload: Option<P>,
     ) -> Result<NodeId, BuildError> {
         let at = range.as_ref().map(|range| range.start);
+        let overflow = || BuildError::new(BuildErrorKind::CapacityOverflow, at);
         let meter = self.document.meter;
         let grown = reserve(meter, &mut self.document.nodes, 1, at);
         self.latched(grown)?;
@@ -351,25 +337,17 @@ impl<'d, P> TreeBuilder<'d, P> {
         self.latched(grown)?;
         let ordered = match (&range, self.document.nodes.last()) {
             (None, _) => false,
-            (Some(range), Some(last)) => last
-                .range
-                .as_ref()
-                .is_some_and(|last| last.start <= range.start),
+            (Some(range), Some(last)) => last.start().is_some_and(|last| last <= range.start),
             (Some(_), None) => true,
         };
-        self.document.ordered &= ordered;
-        let id = NodeId::new(self.document.nodes.len());
+        let id = NodeId::from_index(self.document.nodes.len()).ok_or_else(overflow)?;
         let list = &mut self.document.lists[parent.index()];
-        let index = list.nodes.len();
+        let index = u32::try_from(list.nodes.len()).map_err(|_| overflow())?;
+        self.document.ordered &= ordered;
         list.nodes.push(id);
-        self.document.nodes.push(Node {
-            token,
-            shape,
-            range,
-            payload,
-            list: parent,
-            index,
-        });
+        self.document
+            .nodes
+            .push(Node::new(token, range, (parent, index), children, payload));
         Ok(id)
     }
 
@@ -388,7 +366,7 @@ impl<'d, P> TreeBuilder<'d, P> {
             true,
             depth,
         )?;
-        self.push(parent, token, Shape::Leaf, range, payload)
+        self.push(parent, token, None, range, payload)
     }
 
     pub(super) fn add_group(
@@ -408,32 +386,26 @@ impl<'d, P> TreeBuilder<'d, P> {
             .checked_add(1)
             .ok_or_else(|| BuildError::new(BuildErrorKind::CapacityOverflow, at))?;
         self.charge(at, span(range.as_ref()), true, depth)?;
+        let overflow = || BuildError::new(BuildErrorKind::CapacityOverflow, at);
         let meter = self.document.meter;
         let grown = reserve(meter, &mut self.document.lists, 1, at);
         self.latched(grown)?;
-        let children = ListId::new(self.document.lists.len());
-        self.document.lists.push(List {
-            nodes: Vec::new(),
-            parent: None,
-            end: None,
-            depth,
-        });
+        let children = ListId::from_index(self.document.lists.len()).ok_or_else(overflow)?;
+        let node = NodeId::from_index(self.document.nodes.len()).ok_or_else(overflow)?;
         let opening_end = range.as_ref().map(|range| range.end);
-        let node = self.push(
-            parent,
-            token,
-            Shape::Group {
+        self.document.lists.push(List::of_group(
+            Group {
+                node,
                 kind,
-                children,
                 end: GroupEnd::Eof { at: None },
                 opening_end,
                 closed: false,
             },
-            range,
-            payload,
-        )?;
-        self.document.lists[children.index()].parent = Some(node);
-        Ok((node, children))
+            depth,
+        ));
+        let pushed = self.push(parent, token, Some(children), range, payload)?;
+        debug_assert_eq!(pushed, node, "the group's list names the node it is given");
+        Ok((pushed, children))
     }
 
     /// Adds a `{}`-block that nested too deep, kept as one opaque node.
@@ -444,13 +416,7 @@ impl<'d, P> TreeBuilder<'d, P> {
     ) -> Result<NodeId, BuildError> {
         let depth = self.document.list_data(parent).depth;
         self.charge(Some(range.start), span(Some(&range)), true, depth)?;
-        self.push(
-            parent,
-            Stored::Plain(Token::OpenCurly),
-            Shape::Denied,
-            Some(range),
-            None,
-        )
+        self.push(parent, Stored::Denied, None, Some(range), None)
     }
 }
 
@@ -489,24 +455,32 @@ impl Denial {
 
 /// Places `value`: a slice of `source` stays a borrow of it, and any other
 /// text goes to the pool.
-fn place<'s>(source: &'s str, pool: &mut String, value: &str) -> Text<'s> {
+///
+/// # Errors
+///
+/// Fails, with `at` as the offset, when the pool would outgrow the positions a
+/// text can address.
+fn place<'s>(
+    source: &'s str,
+    pool: &mut String,
+    value: &str,
+    at: Offset,
+) -> Result<Text<'s>, BuildError> {
     if value.is_empty() {
-        return Text::Borrowed("");
+        return Ok(Text::Borrowed(""));
     }
     let base = source.as_ptr().addr();
-    let at = value.as_ptr().addr();
-    if let Some(from) = at.checked_sub(base)
+    let address = value.as_ptr().addr();
+    if let Some(from) = address.checked_sub(base)
         && let Some(to) = from.checked_add(value.len())
         && let Some(slice) = source.get(from..to)
     {
-        return Text::Borrowed(slice);
+        return Ok(Text::Borrowed(slice));
     }
-    let start = pool.len();
+    let text = Text::pooled(pool.len(), value.len())
+        .ok_or_else(|| BuildError::new(BuildErrorKind::CapacityOverflow, Some(at)))?;
     pool.push_str(value);
-    Text::Pooled {
-        start,
-        end: pool.len(),
-    }
+    Ok(text)
 }
 
 impl<'s, P> Document<'s, P> {
@@ -591,9 +565,9 @@ impl<'s, P> Document<'s, P> {
                     });
                     continue;
                 }
-                let stored = Stored::of(token, &mut |value| {
-                    place(source, &mut builder.document.pool, value)
-                });
+                let stored = Stored::of(token, |value| {
+                    place(source, &mut builder.document.pool, value, range.start)
+                })?;
                 let (node, list) = builder.add_group(parent, stored, kind, Some(range), None)?;
                 frames.push(Frame {
                     node,
@@ -612,9 +586,9 @@ impl<'s, P> Document<'s, P> {
                     },
                 )?;
             } else {
-                let stored = Stored::of(token, &mut |value| {
-                    place(source, &mut builder.document.pool, value)
-                });
+                let stored = Stored::of(token, |value| {
+                    place(source, &mut builder.document.pool, value, range.start)
+                })?;
                 builder.add_leaf(parent, stored, Some(range), None)?;
             }
         }
@@ -627,7 +601,7 @@ impl<'s, P> Document<'s, P> {
         }
         builder.document.errors = lexer.errors().to_vec();
         builder.document.source = Some(source);
-        builder.document.lists[0].end = Some(end);
+        builder.document.lists[0].set_root_end(Some(end));
         Ok(builder.document)
     }
 

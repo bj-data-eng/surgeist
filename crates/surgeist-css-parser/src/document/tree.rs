@@ -6,7 +6,7 @@ use std::mem::size_of;
 use std::ops::Range;
 
 use super::component::{Component, GroupEnd, GroupKind};
-use super::store::{List, Node, Shape};
+use super::store::{List, Node};
 use super::{ListId, Metrics, NodeId};
 use crate::lexer::LexicalError;
 use crate::limits::Meter;
@@ -53,7 +53,7 @@ pub struct Document<'s, P = ()> {
     /// The offset at which the source begins in a larger text.
     pub(super) origin: usize,
     pub(super) nodes: Vec<Node<'s, P>>,
-    pub(super) lists: Vec<List>,
+    pub(super) lists: Vec<List<P>>,
     /// The decoded text of names and strings that differ from their spelling.
     pub(super) pool: String,
     pub(super) errors: Vec<LexicalError>,
@@ -88,7 +88,7 @@ impl<P> Drop for Document<'_, P> {
             .nodes
             .capacity()
             .saturating_mul(size_of::<Node<'_, P>>());
-        bytes = bytes.saturating_add(self.lists.capacity().saturating_mul(size_of::<List>()));
+        bytes = bytes.saturating_add(self.lists.capacity().saturating_mul(size_of::<List<P>>()));
         for list in &self.lists {
             bytes = bytes.saturating_add(list.nodes.capacity().saturating_mul(size_of::<NodeId>()));
         }
@@ -166,10 +166,10 @@ impl<'s, P> Document<'s, P> {
     #[must_use]
     pub fn spelling(&self, node: NodeId) -> Option<&str> {
         let node = self.node(node);
-        let range = node.range.as_ref()?;
-        let end = match &node.shape {
-            Shape::Group { opening_end, .. } => (*opening_end)?,
-            Shape::Leaf | Shape::Denied => range.end,
+        let range = node.range()?;
+        let end = match node.children {
+            Some(children) => self.lists[children.index()].group()?.opening_end?,
+            None => range.end,
         };
         self.slice(range.start, end)
     }
@@ -178,7 +178,7 @@ impl<'s, P> Document<'s, P> {
     /// that has ended, through its closing token or the end of the text.
     #[must_use]
     pub fn range(&self, node: NodeId) -> Option<Range<Offset>> {
-        self.node(node).range.clone()
+        self.node(node).range()
     }
 
     /// Returns the payload attached to `node`.
@@ -198,35 +198,39 @@ impl<'s, P> Document<'s, P> {
     pub fn component(&self, node: NodeId) -> Component<'_, P> {
         let stored = self.node(node);
         let payload = stored.payload.as_ref();
-        match &stored.shape {
-            Shape::Leaf => Component::Token {
-                node,
-                token: self.token_of(stored),
-                payload,
-            },
-            Shape::Denied => Component::Denied {
-                node,
-                range: stored.range.clone(),
-                payload,
-            },
-            Shape::Group { kind, children, .. } => match (kind, self.token_of(stored)) {
-                (GroupKind::Block(kind), _) => Component::Block {
+        let token = self.token_of(stored);
+        let Some(children) = stored.children else {
+            return if stored.token.is_denied() {
+                Component::Denied {
                     node,
-                    kind: *kind,
-                    children: *children,
+                    range: stored.range(),
                     payload,
-                },
-                (GroupKind::Function, Token::Function(name)) => Component::Function {
-                    node,
-                    name,
-                    children: *children,
-                    payload,
-                },
-                (GroupKind::Function, token) => Component::Token {
+                }
+            } else {
+                Component::Token {
                     node,
                     token,
                     payload,
-                },
+                }
+            };
+        };
+        match (self.lists[children.index()].kind(), token) {
+            (Some(GroupKind::Block(kind)), _) => Component::Block {
+                node,
+                kind,
+                children,
+                payload,
+            },
+            (Some(GroupKind::Function), Token::Function(name)) => Component::Function {
+                node,
+                name,
+                children,
+                payload,
+            },
+            (_, token) => Component::Token {
+                node,
+                token,
+                payload,
             },
         }
     }
@@ -235,17 +239,14 @@ impl<'s, P> Document<'s, P> {
     /// list.
     #[must_use]
     pub fn group_kind(&self, node: NodeId) -> Option<GroupKind> {
-        match &self.node(node).shape {
-            Shape::Group { kind, .. } => Some(*kind),
-            Shape::Leaf | Shape::Denied => None,
-        }
+        self.lists[self.node(node).children?.index()].kind()
     }
 
     /// Returns how the group `node` ended, or `None` for a node that is not a
     /// group.
     #[must_use]
     pub fn group_end(&self, node: NodeId) -> Option<&GroupEnd<P>> {
-        self.node(node).group_end()
+        self.group_end_of(self.node(node))
     }
 
     /// Returns the greatest number of groups open at once, the build's base
@@ -293,20 +294,20 @@ impl<'s, P> Document<'s, P> {
     /// is not a group.
     #[must_use]
     pub fn children(&self, node: NodeId) -> Option<ListId> {
-        self.node(node).children()
+        self.node(node).children
     }
 
     /// Returns the group that owns `list`, or `None` for the root list.
     #[must_use]
     pub fn parent_group(&self, list: ListId) -> Option<NodeId> {
-        self.lists[list.index()].parent
+        self.lists[list.index()].parent()
     }
 
     /// Returns the list that holds `node` and the node's place in it.
     #[must_use]
     pub fn location(&self, node: NodeId) -> (ListId, usize) {
         let node = self.node(node);
-        (node.list, node.index)
+        (node.list, node.index as usize)
     }
 
     /// Returns where `list` ends in the text: at its closing token, or at the
@@ -314,7 +315,7 @@ impl<'s, P> Document<'s, P> {
     /// not know.
     #[must_use]
     pub fn list_end(&self, list: ListId) -> Option<Offset> {
-        self.lists[list.index()].end
+        self.lists[list.index()].end()
     }
 
     /// Returns the boundary that sits at `offset`: the node whose token starts
@@ -346,30 +347,24 @@ impl<'s, P> Document<'s, P> {
         if !self.ordered {
             return None;
         }
-        let before = self.nodes.partition_point(|node| {
-            node.range
-                .as_ref()
-                .is_some_and(|range| range.start <= offset)
-        });
+        let before = self
+            .nodes
+            .partition_point(|node| node.start().is_some_and(|start| start <= offset));
         let found = self.nodes.get(before.checked_sub(1)?)?;
-        if found
-            .range
-            .as_ref()
-            .is_some_and(|range| range.start == offset)
-        {
-            return Some(Site::new(self, found.list, found.index, false));
+        if found.start() == Some(offset) {
+            return Some(Site::new(self, found.list, found.index as usize, false));
         }
         let mut node = found;
         loop {
             if let Some(GroupEnd::Closed {
                 range: Some(closer),
                 ..
-            }) = node.group_end()
+            }) = self.group_end_of(node)
                 && closer.start == offset
             {
-                return Some(Site::new(self, node.list, node.index, true));
+                return Some(Site::new(self, node.list, node.index as usize, true));
             }
-            let group = self.lists[node.list.index()].parent?;
+            let group = self.lists[node.list.index()].parent()?;
             node = self.node(group);
         }
     }
@@ -415,8 +410,14 @@ impl<'s, P> Document<'s, P> {
         &self.nodes[node.index()]
     }
 
-    pub(super) fn list_data(&self, list: ListId) -> &List {
+    pub(super) fn list_data(&self, list: ListId) -> &List<P> {
         &self.lists[list.index()]
+    }
+
+    /// How the group `node` ended; none for a node that owns no list.
+    fn group_end_of(&self, node: &Node<'s, P>) -> Option<&GroupEnd<P>> {
+        let children = node.children?;
+        self.lists[children.index()].group().map(|group| &group.end)
     }
 
     pub(super) fn token_of<'a>(&'a self, node: &Node<'s, P>) -> Token<'a> {
@@ -429,5 +430,68 @@ impl<'s, P> Document<'s, P> {
         let from = from.value().checked_sub(self.origin)?;
         let to = to.value().checked_sub(self.origin)?;
         self.source?.get(from..to)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::Cell;
+
+    use super::*;
+    use crate::limits::{Failure, Limits, Refused};
+
+    /// Keeps the bytes admitted and not yet returned.
+    #[derive(Default)]
+    struct Live(Cell<usize>);
+
+    impl Meter for Live {
+        fn step(&self) -> Result<(), Refused> {
+            Ok(())
+        }
+        fn add(&self, bytes: usize) -> Result<(), Refused> {
+            self.0.set(self.0.get() + bytes);
+            Ok(())
+        }
+        fn released(&self, bytes: usize) {
+            self.0.set(self.0.get() - bytes);
+        }
+        fn note(&self, _: Failure) -> Refused {
+            Refused
+        }
+    }
+
+    /// The charge is the size of what is stored: once a metered build has
+    /// finished, the storage a meter holds admitted is the capacity of the node
+    /// vector, of the list vector and of every list's node vector, each times
+    /// the size of its element; dropping the document returns all of it. That
+    /// is all the storage of a metered build: the decode pool and the lexical
+    /// errors are filled only by `Document::parse`, which has no meter, and a
+    /// builder borrows its texts.
+    #[test]
+    fn a_metered_build_holds_charged_exactly_the_storage_it_keeps() {
+        let meter = Live::default();
+        let mut builder = Document::<u64>::builder(Limits::default(), 0, Some(&meter)).unwrap();
+        let root = builder.root();
+        for index in 0..40_u64 {
+            let (group, inside) = builder
+                .open(root, Token::Function("f"), None, Some(index))
+                .unwrap();
+            for _ in 0..(index % 7) {
+                builder.leaf(inside, Token::Comma, None, None).unwrap();
+            }
+            builder.close(group, GroupEnd::Eof { at: None }).unwrap();
+            builder.leaf(root, Token::Ident("a"), None, None).unwrap();
+        }
+        let document = builder.finish(None);
+        let stored = document.nodes.capacity() * size_of::<Node<'_, u64>>()
+            + document.lists.capacity() * size_of::<List<u64>>()
+            + document
+                .lists
+                .iter()
+                .map(|list| list.nodes.capacity() * size_of::<NodeId>())
+                .sum::<usize>();
+        assert_eq!(meter.0.get(), stored);
+        drop(document);
+        assert_eq!(meter.0.get(), 0);
     }
 }
