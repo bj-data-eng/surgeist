@@ -830,3 +830,19 @@ fn a_source_map_is_a_value_that_compares_and_is_taken_apart_with_its_text() {
     assert_eq!(text, "a\nb");
     assert_eq!(map.original_utf16(0..3), Some(0..4));
 }
+
+#[test]
+fn the_map_charges_its_capacity_times_sixteen_bytes_beside_the_text_and_two_headers() {
+    for text in ["", "a", "a\r\nb", "é😀x", &"abc".repeat(50)] {
+        let result = preprocess(&utf16(text));
+        assert_eq!(result.map().capacity_bytes(), result.map().capacity() * 16);
+        assert_eq!(
+            result.charged_bytes(),
+            result.text_capacity()
+                + std::mem::size_of::<String>()
+                + result.map().capacity_bytes()
+                + std::mem::size_of::<Vec<(usize, usize)>>(),
+            "{text:?}"
+        );
+    }
+}

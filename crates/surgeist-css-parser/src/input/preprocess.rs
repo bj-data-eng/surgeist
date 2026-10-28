@@ -242,7 +242,7 @@ impl fmt::Display for PreprocessError {
 
 impl std::error::Error for PreprocessError {}
 
-/// The start of one scalar, in the normalized text and in the original units.
+/// The end of one scalar, in the normalized text and in the original units.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct Boundary {
     normalized: usize,
@@ -254,7 +254,11 @@ struct Boundary {
 ///
 /// The map has one entry per scalar (16 bytes each), so any scalar boundary of
 /// the normalized text maps back exactly. Positions in the normalized text are
-/// byte offsets; positions in the original are UTF-16 unit indexes.
+/// byte offsets; positions in the original are UTF-16 unit indexes. It holds
+/// nothing else, so it is no larger than the vector of its entries: each entry
+/// records where its scalar ends, which makes the start of the text, the length
+/// of the text and the number of original units the only values it does not
+/// store (the first is always 0, the others are the last entry's).
 ///
 /// ```
 /// use surgeist_css_parser::input::{preprocess_utf16, PreprocessLimits};
@@ -278,8 +282,6 @@ struct Boundary {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceMap {
     boundaries: Vec<Boundary>,
-    text_len: usize,
-    original_units: usize,
 }
 
 impl SourceMap {
@@ -297,8 +299,8 @@ impl SourceMap {
             return None;
         }
         let boundary = |offset: usize| {
-            if offset == self.text_len {
-                return Some(self.original_units);
+            if offset == 0 {
+                return Some(0);
             }
             self.boundaries
                 .binary_search_by_key(&offset, |entry| entry.normalized)
@@ -316,14 +318,22 @@ impl SourceMap {
 
     /// Returns the number of UTF-16 units in the original input.
     #[must_use]
-    pub const fn original_units(&self) -> usize {
-        self.original_units
+    pub fn original_units(&self) -> usize {
+        self.boundaries.last().map_or(0, |entry| entry.original)
     }
 
     /// Returns the number of entries the map has room for without growing.
     #[must_use]
     pub fn capacity(&self) -> usize {
         self.boundaries.capacity()
+    }
+
+    /// Returns the bytes of the entries' storage, which is the capacity times
+    /// the 16 bytes of an entry. This is the map's share of
+    /// [`Preprocessed::charged_bytes`], without the header of the map's vector.
+    #[must_use]
+    pub fn capacity_bytes(&self) -> usize {
+        self.boundaries.capacity() * size_of::<Boundary>()
     }
 }
 
@@ -369,7 +379,7 @@ impl Preprocessed {
     pub fn charged_bytes(&self) -> usize {
         self.text.capacity()
             + size_of::<String>()
-            + self.map.boundaries.capacity() * size_of::<Boundary>()
+            + self.map.capacity_bytes()
             + size_of::<Vec<Boundary>>()
     }
 }
@@ -688,11 +698,11 @@ impl Run<'_> {
                         PreprocessResource::MapEntries,
                     )?;
                     self.check_retained(text.capacity(), map.capacity())?;
+                    text.push(scalar.value);
                     map.push(Boundary {
                         normalized: text.len(),
-                        original: scalar.start,
+                        original: scalar.end,
                     });
-                    text.push(scalar.value);
                     cursor
                         .emitted()
                         .expect("the emitted scalar was the pending request");
@@ -705,14 +715,9 @@ impl Run<'_> {
             }
         }
         self.released(size_of::<InputCursor>());
-        let text_len = text.len();
         Ok(Preprocessed {
             text,
-            map: SourceMap {
-                boundaries: map,
-                text_len,
-                original_units: units.len(),
-            },
+            map: SourceMap { boundaries: map },
         })
     }
 
