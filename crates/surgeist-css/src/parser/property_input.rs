@@ -540,9 +540,12 @@ where
 {
     use crate::diagnostic::error::property::SyntaxErrorExt;
     use crate::numeric::expression::NumericInputContext;
-    use crate::syntax_consumption::{SyntaxInputLimits, checked_document, source_window_document};
+    use crate::syntax_consumption::{
+        SyntaxInputLimits, checked_document, source_scope_document, source_window_document,
+    };
     let checkpoint = input.state();
     let start = input.position().byte_index();
+    let whole_scope = matches!(range, NativeValueRange::Scope);
     match range {
         NativeValueRange::Component => {
             input.skip_whitespace();
@@ -556,7 +559,12 @@ where
     input.reset(&checkpoint);
     match numeric.ordinary() {
         NumericInputContext::Parsed(source) => {
-            let document = source_window_document(source, start..end).map_err(|detail| {
+            let window = if whole_scope {
+                source_scope_document(source, start..end)
+            } else {
+                source_window_document(source, start..end)
+            };
+            let document = window.map_err(|detail| {
                 crate::diagnostic::error::invalid_component_value(
                     input.current_source_location(),
                     detail,

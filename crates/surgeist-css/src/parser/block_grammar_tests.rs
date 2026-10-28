@@ -8,6 +8,7 @@
 //! §4 for what a block admits, and the byte offsets of the sources.
 use super::fragments;
 use crate::diagnostic::{CssErrorCode, CssRecoveryAction};
+use crate::rule::CssRule;
 use crate::rule::keyframes::CssParsedKeyframeRule;
 use crate::rule::page::CssMarginRule;
 use crate::{CssParseReport, CssParser, CssParserContext};
@@ -376,4 +377,1384 @@ fn error_locations_count_columns_in_utf16_units_and_offsets_in_bytes() {
         (position.byte_offset().value(), position.column().value()),
         (source.find('!').unwrap(), 43)
     );
+}
+
+/// What a nest of one opener, `depth` deep, in one position of a block makes of
+/// an entry point whose block the native rule driver enters: the entry point,
+/// the position of the nest (`last` after a declaration, `followed` by another
+/// declaration, `beside` a declaration on each side), the opener, the depth,
+/// whether the input has syntax, how many declarations it keeps (the sheet
+/// entry counts a keyframe declaration as 1000 and a margin declaration as 1),
+/// and each diagnostic as (code, action, span start, span end).
+type CeilingRow = (
+    &'static str,
+    &'static str,
+    &'static str,
+    usize,
+    bool,
+    usize,
+    &'static [(CssErrorCode, CssRecoveryAction, usize, usize)],
+);
+
+// The structural scans of the recovery state judge the ceiling of 256 levels,
+// counted from the whole source, one unit at a time: a unit nested past it is
+// dropped alone (and the diagnostic spans only that unit), and the units
+// around it, before and after, are kept, at 255, 256, 257 and 1000 levels, for
+// every opener, and whether the block is entered through a keyframes rule, a
+// detached keyframe, a page rule or a sheet. The scope of a block therefore
+// has no ceiling of its own that could refuse all of it.
+#[test]
+fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_driver_enters() {
+    use CssErrorCode::{
+        InvalidAtRuleBody, InvalidQualifiedRule, NestingLimit, UnexpectedEnd, UnexpectedToken,
+    };
+    use CssRecoveryAction::{DropAtRule, DropQualifiedRule, StopAtNestingLimit};
+    const TABLE: &[CeilingRow] = &[
+        (
+            "kf-body",
+            "last",
+            "brace",
+            255,
+            true,
+            1,
+            &[(NestingLimit, StopAtNestingLimit, 21, 531)],
+        ),
+        (
+            "kf-body",
+            "last",
+            "brace",
+            256,
+            true,
+            1,
+            &[(NestingLimit, StopAtNestingLimit, 21, 533)],
+        ),
+        (
+            "kf-body",
+            "last",
+            "brace",
+            257,
+            true,
+            1,
+            &[(NestingLimit, StopAtNestingLimit, 21, 535)],
+        ),
+        (
+            "kf-body",
+            "last",
+            "brace",
+            1000,
+            true,
+            1,
+            &[(NestingLimit, StopAtNestingLimit, 21, 2021)],
+        ),
+        (
+            "kf-body",
+            "followed",
+            "brace",
+            256,
+            true,
+            2,
+            &[(NestingLimit, StopAtNestingLimit, 21, 533)],
+        ),
+        (
+            "kf-body",
+            "followed",
+            "brace",
+            1000,
+            true,
+            2,
+            &[(NestingLimit, StopAtNestingLimit, 21, 2021)],
+        ),
+        (
+            "kf-body",
+            "beside",
+            "brace",
+            256,
+            true,
+            2,
+            &[(NestingLimit, StopAtNestingLimit, 26, 538)],
+        ),
+        (
+            "kf-body",
+            "beside",
+            "brace",
+            257,
+            true,
+            2,
+            &[(NestingLimit, StopAtNestingLimit, 26, 540)],
+        ),
+        (
+            "kf-body",
+            "last",
+            "paren",
+            255,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 21, 532)],
+        ),
+        (
+            "kf-body",
+            "last",
+            "paren",
+            256,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 21, 534)],
+        ),
+        (
+            "kf-body",
+            "last",
+            "paren",
+            257,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 21, 536)],
+        ),
+        (
+            "kf-body",
+            "last",
+            "paren",
+            1000,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 21, 2022)],
+        ),
+        (
+            "kf-body",
+            "followed",
+            "paren",
+            256,
+            true,
+            2,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 21, 534)],
+        ),
+        (
+            "kf-body",
+            "followed",
+            "paren",
+            1000,
+            true,
+            2,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 21, 2022)],
+        ),
+        (
+            "kf-body",
+            "beside",
+            "paren",
+            256,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 26, 550)],
+        ),
+        (
+            "kf-body",
+            "beside",
+            "paren",
+            257,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 26, 552)],
+        ),
+        (
+            "kf-body",
+            "last",
+            "square",
+            255,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 21, 532)],
+        ),
+        (
+            "kf-body",
+            "last",
+            "square",
+            256,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 21, 534)],
+        ),
+        (
+            "kf-body",
+            "last",
+            "square",
+            257,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 21, 536)],
+        ),
+        (
+            "kf-body",
+            "last",
+            "square",
+            1000,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 21, 2022)],
+        ),
+        (
+            "kf-body",
+            "followed",
+            "square",
+            256,
+            true,
+            2,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 21, 534)],
+        ),
+        (
+            "kf-body",
+            "followed",
+            "square",
+            1000,
+            true,
+            2,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 21, 2022)],
+        ),
+        (
+            "kf-body",
+            "beside",
+            "square",
+            256,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 26, 550)],
+        ),
+        (
+            "kf-body",
+            "beside",
+            "square",
+            257,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 26, 552)],
+        ),
+        (
+            "kf-body",
+            "last",
+            "function",
+            255,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 21, 787)],
+        ),
+        (
+            "kf-body",
+            "last",
+            "function",
+            256,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 21, 790)],
+        ),
+        (
+            "kf-body",
+            "last",
+            "function",
+            257,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 21, 793)],
+        ),
+        (
+            "kf-body",
+            "last",
+            "function",
+            1000,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 21, 3022)],
+        ),
+        (
+            "kf-body",
+            "followed",
+            "function",
+            256,
+            true,
+            2,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 21, 790)],
+        ),
+        (
+            "kf-body",
+            "followed",
+            "function",
+            1000,
+            true,
+            2,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 21, 3022)],
+        ),
+        (
+            "kf-body",
+            "beside",
+            "function",
+            256,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 26, 806)],
+        ),
+        (
+            "kf-body",
+            "beside",
+            "function",
+            257,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 26, 809)],
+        ),
+        (
+            "kf-rule",
+            "last",
+            "brace",
+            255,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 19, 529)],
+        ),
+        (
+            "kf-rule",
+            "last",
+            "brace",
+            256,
+            true,
+            1,
+            &[(NestingLimit, StopAtNestingLimit, 19, 531)],
+        ),
+        (
+            "kf-rule",
+            "last",
+            "brace",
+            257,
+            true,
+            1,
+            &[(NestingLimit, StopAtNestingLimit, 19, 533)],
+        ),
+        (
+            "kf-rule",
+            "last",
+            "brace",
+            1000,
+            true,
+            1,
+            &[(NestingLimit, StopAtNestingLimit, 19, 2019)],
+        ),
+        (
+            "kf-rule",
+            "followed",
+            "brace",
+            256,
+            true,
+            2,
+            &[(NestingLimit, StopAtNestingLimit, 19, 531)],
+        ),
+        (
+            "kf-rule",
+            "followed",
+            "brace",
+            1000,
+            true,
+            2,
+            &[(NestingLimit, StopAtNestingLimit, 19, 2019)],
+        ),
+        (
+            "kf-rule",
+            "beside",
+            "brace",
+            256,
+            true,
+            2,
+            &[(NestingLimit, StopAtNestingLimit, 24, 536)],
+        ),
+        (
+            "kf-rule",
+            "beside",
+            "brace",
+            257,
+            true,
+            2,
+            &[(NestingLimit, StopAtNestingLimit, 24, 538)],
+        ),
+        (
+            "kf-rule",
+            "last",
+            "paren",
+            255,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 19, 530)],
+        ),
+        (
+            "kf-rule",
+            "last",
+            "paren",
+            256,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 19, 532)],
+        ),
+        (
+            "kf-rule",
+            "last",
+            "paren",
+            257,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 19, 534)],
+        ),
+        (
+            "kf-rule",
+            "last",
+            "paren",
+            1000,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 19, 2020)],
+        ),
+        (
+            "kf-rule",
+            "followed",
+            "paren",
+            256,
+            true,
+            2,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 19, 532)],
+        ),
+        (
+            "kf-rule",
+            "followed",
+            "paren",
+            1000,
+            true,
+            2,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 19, 2020)],
+        ),
+        (
+            "kf-rule",
+            "beside",
+            "paren",
+            256,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 24, 548)],
+        ),
+        (
+            "kf-rule",
+            "beside",
+            "paren",
+            257,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 24, 550)],
+        ),
+        (
+            "kf-rule",
+            "last",
+            "square",
+            255,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 19, 530)],
+        ),
+        (
+            "kf-rule",
+            "last",
+            "square",
+            256,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 19, 532)],
+        ),
+        (
+            "kf-rule",
+            "last",
+            "square",
+            257,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 19, 534)],
+        ),
+        (
+            "kf-rule",
+            "last",
+            "square",
+            1000,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 19, 2020)],
+        ),
+        (
+            "kf-rule",
+            "followed",
+            "square",
+            256,
+            true,
+            2,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 19, 532)],
+        ),
+        (
+            "kf-rule",
+            "followed",
+            "square",
+            1000,
+            true,
+            2,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 19, 2020)],
+        ),
+        (
+            "kf-rule",
+            "beside",
+            "square",
+            256,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 24, 548)],
+        ),
+        (
+            "kf-rule",
+            "beside",
+            "square",
+            257,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 24, 550)],
+        ),
+        (
+            "kf-rule",
+            "last",
+            "function",
+            255,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 19, 785)],
+        ),
+        (
+            "kf-rule",
+            "last",
+            "function",
+            256,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 19, 788)],
+        ),
+        (
+            "kf-rule",
+            "last",
+            "function",
+            257,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 19, 791)],
+        ),
+        (
+            "kf-rule",
+            "last",
+            "function",
+            1000,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 19, 3020)],
+        ),
+        (
+            "kf-rule",
+            "followed",
+            "function",
+            256,
+            true,
+            2,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 19, 788)],
+        ),
+        (
+            "kf-rule",
+            "followed",
+            "function",
+            1000,
+            true,
+            2,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 19, 3020)],
+        ),
+        (
+            "kf-rule",
+            "beside",
+            "function",
+            256,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 24, 804)],
+        ),
+        (
+            "kf-rule",
+            "beside",
+            "function",
+            257,
+            true,
+            1,
+            &[(InvalidQualifiedRule, DropQualifiedRule, 24, 807)],
+        ),
+        (
+            "page-block",
+            "last",
+            "brace",
+            255,
+            true,
+            1,
+            &[(InvalidAtRuleBody, DropAtRule, 26, 27)],
+        ),
+        (
+            "page-block",
+            "last",
+            "brace",
+            256,
+            true,
+            1,
+            &[(InvalidAtRuleBody, DropAtRule, 26, 27)],
+        ),
+        (
+            "page-block",
+            "last",
+            "brace",
+            257,
+            true,
+            1,
+            &[(InvalidAtRuleBody, DropAtRule, 26, 27)],
+        ),
+        (
+            "page-block",
+            "last",
+            "brace",
+            1000,
+            true,
+            1,
+            &[(InvalidAtRuleBody, DropAtRule, 26, 27)],
+        ),
+        (
+            "page-block",
+            "followed",
+            "brace",
+            256,
+            true,
+            2,
+            &[(InvalidAtRuleBody, DropAtRule, 26, 27)],
+        ),
+        (
+            "page-block",
+            "followed",
+            "brace",
+            1000,
+            true,
+            2,
+            &[(InvalidAtRuleBody, DropAtRule, 26, 27)],
+        ),
+        (
+            "page-block",
+            "beside",
+            "brace",
+            256,
+            true,
+            2,
+            &[(InvalidAtRuleBody, DropAtRule, 31, 32)],
+        ),
+        (
+            "page-block",
+            "beside",
+            "brace",
+            257,
+            true,
+            2,
+            &[(InvalidAtRuleBody, DropAtRule, 31, 32)],
+        ),
+        (
+            "page-block",
+            "last",
+            "paren",
+            255,
+            true,
+            1,
+            &[(UnexpectedEnd, DropAtRule, 26, 537)],
+        ),
+        (
+            "page-block",
+            "last",
+            "paren",
+            256,
+            true,
+            1,
+            &[(UnexpectedEnd, DropAtRule, 26, 539)],
+        ),
+        (
+            "page-block",
+            "last",
+            "paren",
+            257,
+            true,
+            1,
+            &[(UnexpectedEnd, DropAtRule, 26, 541)],
+        ),
+        (
+            "page-block",
+            "last",
+            "paren",
+            1000,
+            true,
+            1,
+            &[(UnexpectedEnd, DropAtRule, 26, 2027)],
+        ),
+        (
+            "page-block",
+            "followed",
+            "paren",
+            256,
+            true,
+            2,
+            &[(UnexpectedToken, DropAtRule, 26, 539)],
+        ),
+        (
+            "page-block",
+            "followed",
+            "paren",
+            1000,
+            true,
+            2,
+            &[(UnexpectedToken, DropAtRule, 26, 2027)],
+        ),
+        (
+            "page-block",
+            "beside",
+            "paren",
+            256,
+            true,
+            1,
+            &[(UnexpectedEnd, DropAtRule, 31, 555)],
+        ),
+        (
+            "page-block",
+            "beside",
+            "paren",
+            257,
+            true,
+            1,
+            &[(UnexpectedEnd, DropAtRule, 31, 557)],
+        ),
+        (
+            "page-block",
+            "last",
+            "square",
+            255,
+            true,
+            1,
+            &[(UnexpectedEnd, DropAtRule, 26, 537)],
+        ),
+        (
+            "page-block",
+            "last",
+            "square",
+            256,
+            true,
+            1,
+            &[(UnexpectedEnd, DropAtRule, 26, 539)],
+        ),
+        (
+            "page-block",
+            "last",
+            "square",
+            257,
+            true,
+            1,
+            &[(UnexpectedEnd, DropAtRule, 26, 541)],
+        ),
+        (
+            "page-block",
+            "last",
+            "square",
+            1000,
+            true,
+            1,
+            &[(UnexpectedEnd, DropAtRule, 26, 2027)],
+        ),
+        (
+            "page-block",
+            "followed",
+            "square",
+            256,
+            true,
+            2,
+            &[(UnexpectedToken, DropAtRule, 26, 539)],
+        ),
+        (
+            "page-block",
+            "followed",
+            "square",
+            1000,
+            true,
+            2,
+            &[(UnexpectedToken, DropAtRule, 26, 2027)],
+        ),
+        (
+            "page-block",
+            "beside",
+            "square",
+            256,
+            true,
+            1,
+            &[(UnexpectedEnd, DropAtRule, 31, 555)],
+        ),
+        (
+            "page-block",
+            "beside",
+            "square",
+            257,
+            true,
+            1,
+            &[(UnexpectedEnd, DropAtRule, 31, 557)],
+        ),
+        (
+            "page-block",
+            "last",
+            "function",
+            255,
+            true,
+            1,
+            &[(UnexpectedEnd, DropAtRule, 26, 792)],
+        ),
+        (
+            "page-block",
+            "last",
+            "function",
+            256,
+            true,
+            1,
+            &[(UnexpectedEnd, DropAtRule, 26, 795)],
+        ),
+        (
+            "page-block",
+            "last",
+            "function",
+            257,
+            true,
+            1,
+            &[(UnexpectedEnd, DropAtRule, 26, 798)],
+        ),
+        (
+            "page-block",
+            "last",
+            "function",
+            1000,
+            true,
+            1,
+            &[(UnexpectedEnd, DropAtRule, 26, 3027)],
+        ),
+        (
+            "page-block",
+            "followed",
+            "function",
+            256,
+            true,
+            2,
+            &[(UnexpectedToken, DropAtRule, 26, 795)],
+        ),
+        (
+            "page-block",
+            "followed",
+            "function",
+            1000,
+            true,
+            2,
+            &[(UnexpectedToken, DropAtRule, 26, 3027)],
+        ),
+        (
+            "page-block",
+            "beside",
+            "function",
+            256,
+            true,
+            1,
+            &[(UnexpectedEnd, DropAtRule, 31, 811)],
+        ),
+        (
+            "page-block",
+            "beside",
+            "function",
+            257,
+            true,
+            1,
+            &[(UnexpectedEnd, DropAtRule, 31, 814)],
+        ),
+        (
+            "sheet",
+            "last",
+            "brace",
+            255,
+            true,
+            1001,
+            &[
+                (NestingLimit, StopAtNestingLimit, 34, 544),
+                (InvalidAtRuleBody, DropAtRule, 581, 582),
+            ],
+        ),
+        (
+            "sheet",
+            "last",
+            "brace",
+            256,
+            true,
+            1001,
+            &[
+                (NestingLimit, StopAtNestingLimit, 34, 546),
+                (InvalidAtRuleBody, DropAtRule, 583, 584),
+            ],
+        ),
+        (
+            "sheet",
+            "last",
+            "brace",
+            257,
+            true,
+            1001,
+            &[
+                (NestingLimit, StopAtNestingLimit, 34, 548),
+                (InvalidAtRuleBody, DropAtRule, 585, 586),
+            ],
+        ),
+        (
+            "sheet",
+            "last",
+            "brace",
+            1000,
+            true,
+            1001,
+            &[
+                (NestingLimit, StopAtNestingLimit, 34, 2034),
+                (InvalidAtRuleBody, DropAtRule, 2071, 2072),
+            ],
+        ),
+        (
+            "sheet",
+            "followed",
+            "brace",
+            256,
+            true,
+            2002,
+            &[
+                (NestingLimit, StopAtNestingLimit, 34, 546),
+                (InvalidAtRuleBody, DropAtRule, 596, 597),
+            ],
+        ),
+        (
+            "sheet",
+            "followed",
+            "brace",
+            1000,
+            true,
+            2002,
+            &[
+                (NestingLimit, StopAtNestingLimit, 34, 2034),
+                (InvalidAtRuleBody, DropAtRule, 2084, 2085),
+            ],
+        ),
+        (
+            "sheet",
+            "beside",
+            "brace",
+            256,
+            true,
+            2002,
+            &[
+                (NestingLimit, StopAtNestingLimit, 39, 551),
+                (InvalidAtRuleBody, DropAtRule, 604, 605),
+            ],
+        ),
+        (
+            "sheet",
+            "beside",
+            "brace",
+            257,
+            true,
+            2002,
+            &[
+                (NestingLimit, StopAtNestingLimit, 39, 553),
+                (InvalidAtRuleBody, DropAtRule, 606, 607),
+            ],
+        ),
+        (
+            "sheet",
+            "last",
+            "paren",
+            255,
+            true,
+            1001,
+            &[
+                (InvalidQualifiedRule, DropQualifiedRule, 34, 545),
+                (UnexpectedEnd, DropAtRule, 581, 1092),
+            ],
+        ),
+        (
+            "sheet",
+            "last",
+            "paren",
+            256,
+            true,
+            1001,
+            &[
+                (InvalidQualifiedRule, DropQualifiedRule, 34, 547),
+                (UnexpectedEnd, DropAtRule, 583, 1096),
+            ],
+        ),
+        (
+            "sheet",
+            "last",
+            "paren",
+            257,
+            true,
+            1001,
+            &[
+                (InvalidQualifiedRule, DropQualifiedRule, 34, 549),
+                (UnexpectedEnd, DropAtRule, 585, 1100),
+            ],
+        ),
+        (
+            "sheet",
+            "last",
+            "paren",
+            1000,
+            true,
+            1001,
+            &[
+                (InvalidQualifiedRule, DropQualifiedRule, 34, 2035),
+                (UnexpectedEnd, DropAtRule, 2071, 4072),
+            ],
+        ),
+        (
+            "sheet",
+            "followed",
+            "paren",
+            256,
+            true,
+            2002,
+            &[
+                (InvalidQualifiedRule, DropQualifiedRule, 34, 547),
+                (UnexpectedToken, DropAtRule, 596, 1109),
+            ],
+        ),
+        (
+            "sheet",
+            "followed",
+            "paren",
+            1000,
+            true,
+            2002,
+            &[
+                (InvalidQualifiedRule, DropQualifiedRule, 34, 2035),
+                (UnexpectedToken, DropAtRule, 2084, 4085),
+            ],
+        ),
+        (
+            "sheet",
+            "beside",
+            "paren",
+            256,
+            true,
+            1001,
+            &[
+                (InvalidQualifiedRule, DropQualifiedRule, 39, 563),
+                (UnexpectedEnd, DropAtRule, 604, 1128),
+            ],
+        ),
+        (
+            "sheet",
+            "beside",
+            "paren",
+            257,
+            true,
+            1001,
+            &[
+                (InvalidQualifiedRule, DropQualifiedRule, 39, 565),
+                (UnexpectedEnd, DropAtRule, 606, 1132),
+            ],
+        ),
+        (
+            "sheet",
+            "last",
+            "square",
+            255,
+            true,
+            1001,
+            &[
+                (InvalidQualifiedRule, DropQualifiedRule, 34, 545),
+                (UnexpectedEnd, DropAtRule, 581, 1092),
+            ],
+        ),
+        (
+            "sheet",
+            "last",
+            "square",
+            256,
+            true,
+            1001,
+            &[
+                (InvalidQualifiedRule, DropQualifiedRule, 34, 547),
+                (UnexpectedEnd, DropAtRule, 583, 1096),
+            ],
+        ),
+        (
+            "sheet",
+            "last",
+            "square",
+            257,
+            true,
+            1001,
+            &[
+                (InvalidQualifiedRule, DropQualifiedRule, 34, 549),
+                (UnexpectedEnd, DropAtRule, 585, 1100),
+            ],
+        ),
+        (
+            "sheet",
+            "last",
+            "square",
+            1000,
+            true,
+            1001,
+            &[
+                (InvalidQualifiedRule, DropQualifiedRule, 34, 2035),
+                (UnexpectedEnd, DropAtRule, 2071, 4072),
+            ],
+        ),
+        (
+            "sheet",
+            "followed",
+            "square",
+            256,
+            true,
+            2002,
+            &[
+                (InvalidQualifiedRule, DropQualifiedRule, 34, 547),
+                (UnexpectedToken, DropAtRule, 596, 1109),
+            ],
+        ),
+        (
+            "sheet",
+            "followed",
+            "square",
+            1000,
+            true,
+            2002,
+            &[
+                (InvalidQualifiedRule, DropQualifiedRule, 34, 2035),
+                (UnexpectedToken, DropAtRule, 2084, 4085),
+            ],
+        ),
+        (
+            "sheet",
+            "beside",
+            "square",
+            256,
+            true,
+            1001,
+            &[
+                (InvalidQualifiedRule, DropQualifiedRule, 39, 563),
+                (UnexpectedEnd, DropAtRule, 604, 1128),
+            ],
+        ),
+        (
+            "sheet",
+            "beside",
+            "square",
+            257,
+            true,
+            1001,
+            &[
+                (InvalidQualifiedRule, DropQualifiedRule, 39, 565),
+                (UnexpectedEnd, DropAtRule, 606, 1132),
+            ],
+        ),
+        (
+            "sheet",
+            "last",
+            "function",
+            255,
+            true,
+            1001,
+            &[
+                (InvalidQualifiedRule, DropQualifiedRule, 34, 800),
+                (UnexpectedEnd, DropAtRule, 836, 1602),
+            ],
+        ),
+        (
+            "sheet",
+            "last",
+            "function",
+            256,
+            true,
+            1001,
+            &[
+                (InvalidQualifiedRule, DropQualifiedRule, 34, 803),
+                (UnexpectedEnd, DropAtRule, 839, 1608),
+            ],
+        ),
+        (
+            "sheet",
+            "last",
+            "function",
+            257,
+            true,
+            1001,
+            &[
+                (InvalidQualifiedRule, DropQualifiedRule, 34, 806),
+                (UnexpectedEnd, DropAtRule, 842, 1614),
+            ],
+        ),
+        (
+            "sheet",
+            "last",
+            "function",
+            1000,
+            true,
+            1001,
+            &[
+                (InvalidQualifiedRule, DropQualifiedRule, 34, 3035),
+                (UnexpectedEnd, DropAtRule, 3071, 6072),
+            ],
+        ),
+        (
+            "sheet",
+            "followed",
+            "function",
+            256,
+            true,
+            2002,
+            &[
+                (InvalidQualifiedRule, DropQualifiedRule, 34, 803),
+                (UnexpectedToken, DropAtRule, 852, 1621),
+            ],
+        ),
+        (
+            "sheet",
+            "followed",
+            "function",
+            1000,
+            true,
+            2002,
+            &[
+                (InvalidQualifiedRule, DropQualifiedRule, 34, 3035),
+                (UnexpectedToken, DropAtRule, 3084, 6085),
+            ],
+        ),
+        (
+            "sheet",
+            "beside",
+            "function",
+            256,
+            true,
+            1001,
+            &[
+                (InvalidQualifiedRule, DropQualifiedRule, 39, 819),
+                (UnexpectedEnd, DropAtRule, 860, 1640),
+            ],
+        ),
+        (
+            "sheet",
+            "beside",
+            "function",
+            257,
+            true,
+            1001,
+            &[
+                (InvalidQualifiedRule, DropQualifiedRule, 39, 822),
+                (UnexpectedEnd, DropAtRule, 863, 1646),
+            ],
+        ),
+    ];
+    let parser = CssParser::default();
+    let context = CssParserContext::default();
+    for (entry, shape, opener, depth, has_syntax, kept, expected) in TABLE {
+        let (open, close) = match *opener {
+            "brace" => ("{", "}"),
+            "paren" => ("(", ")"),
+            "square" => ("[", "]"),
+            _ => ("f(", ")"),
+        };
+        let nest = format!("{}{}", open.repeat(*depth), close.repeat(*depth));
+        let body = match *shape {
+            "last" => format!("color: red; {nest}"),
+            "followed" => format!("color: red; {nest}; color: blue"),
+            _ => format!("margin-top: 1px; {nest} color: red"),
+        };
+        let (has_syntax_now, kept_now, diagnostics) = match *entry {
+            "kf-body" => {
+                let source = format!("{{ from {{ {body} }} }}");
+                let report = fragments::parse_keyframes_block_with_context(&source, context);
+                let kept = report.syntax().as_ref().map_or(0, |fragment| {
+                    fragment
+                        .body()
+                        .iter()
+                        .map(|block| block.declarations().len())
+                        .sum()
+                });
+                (report.syntax().is_some(), kept, dropped_with_spans(&report))
+            }
+            "kf-rule" => {
+                let source = format!("from {{ {body} }}");
+                let report = CssParsedKeyframeRule::parse(&parser, &source);
+                let kept = report
+                    .syntax()
+                    .as_ref()
+                    .map_or(0, |rule| rule.block().declarations().len());
+                (report.syntax().is_some(), kept, dropped_with_spans(&report))
+            }
+            "page-block" => {
+                let source = format!("{{ @top-left {{ {body} }} }}");
+                let report = fragments::parse_page_block_with_context(&source, context);
+                let kept = report.syntax().as_ref().map_or(0, |fragment| {
+                    fragment
+                        .body()
+                        .margin_rules()
+                        .iter()
+                        .map(|margin| margin.declarations().properties().len())
+                        .sum()
+                });
+                (report.syntax().is_some(), kept, dropped_with_spans(&report))
+            }
+            _ => {
+                let source = format!(
+                    "@keyframes k {{ from {{ {body} }} }} @page {{ @top-left {{ {body} }} }}"
+                );
+                let report = parser.parse_sheet(&source);
+                let mut kept = 0;
+                for rule in report.syntax().rules() {
+                    match rule {
+                        CssRule::Keyframes(rule) => {
+                            kept += 1000
+                                * rule
+                                    .blocks()
+                                    .iter()
+                                    .map(|block| block.declarations().len())
+                                    .sum::<usize>();
+                        }
+                        CssRule::Page(rule) => {
+                            kept += rule
+                                .margin_rules()
+                                .iter()
+                                .map(|margin| margin.declarations().properties().len())
+                                .sum::<usize>();
+                        }
+                        _ => {}
+                    }
+                }
+                (true, kept, dropped_with_spans(&report))
+            }
+        };
+        assert_eq!(
+            (has_syntax_now, kept_now, diagnostics),
+            (*has_syntax, *kept, expected.to_vec()),
+            "{entry} {shape} {opener} {depth}"
+        );
+    }
+}
+
+fn dropped_with_spans<T>(
+    report: &CssParseReport<T>,
+) -> Vec<(CssErrorCode, CssRecoveryAction, usize, usize)> {
+    report
+        .diagnostics()
+        .iter()
+        .map(|diagnostic| {
+            let (start, end) = start(diagnostic.span());
+            (diagnostic.error().code(), diagnostic.action(), start, end)
+        })
+        .collect()
 }
