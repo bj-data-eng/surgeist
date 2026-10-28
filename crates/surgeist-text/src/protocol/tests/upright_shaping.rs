@@ -699,3 +699,6 @@ mod finite;
 
 #[path = "upright_shaping/atomics.rs"]
 mod atomics;
+
+#[path = "upright_shaping/positioned.rs"]
+mod positioned;

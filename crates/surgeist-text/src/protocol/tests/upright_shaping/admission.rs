@@ -107,7 +107,7 @@ fn assert_decoration(
 }
 
 #[test]
-fn actual_out_of_flow_refusal_skips_in_flow_and_follows_supplied_occurrence_order() {
+fn actual_in_flow_and_positioned_atomics_retain_supplied_occurrence_order() {
     let bytes = vert_font();
     qualify(&bytes, &[(0x58, 58)]);
     let mut source = Source::identified("XX", Id::from_u64(1544010), 4);
@@ -133,8 +133,8 @@ fn actual_out_of_flow_refusal_skips_in_flow_and_follows_supplied_occurrence_orde
     assert_eq!(source.boxes()[1].kind(), InlineBoxKind::InFlow);
     assert_eq!(source.boxes()[2].kind(), InlineBoxKind::OutOfFlow);
     let mut input = paragraph(source, style());
-    // All three boxes are actual same-seam occurrences. Admission must skip
-    // supplied InFlow1 and refuse OutOfFlow2 before storage-earlier OutOfFlow0.
+    // All three are actual same-seam occurrences. The semantic order is
+    // InFlow1, OutOfFlow2, OutOfFlow0, independent of source-box storage order.
     input.anchor_order = [1, 2, 0]
         .into_iter()
         .map(|index| ParagraphAnchor {
@@ -177,14 +177,24 @@ fn actual_out_of_flow_refusal_skips_in_flow_and_follows_supplied_occurrence_orde
             (Id::from_u64(1544011), InlineBoxKind::OutOfFlow),
         ]
     );
-    let error = prepare(&bytes, input)
-        .expect_err("actual upright out-of-flow atomic must refuse before packet publication");
-    assert_eq!(error.code, ErrorCode::InvalidTextProtocol);
+    let vertical = prepare(&bytes, input)
+        .expect("native upright admission must retain genuine mixed-flow atomic occurrences");
     assert_eq!(
-        error.detail(),
-        Some(&ErrorDetail::InvalidTextProtocol {
-            reason: ProtocolError::UnsupportedUprightAtomic { occurrence: 2 },
-        })
+        vertical
+            .participants()
+            .filter_map(|item| match item {
+                PreparedParticipant::Atomic(atomic) => Some((
+                    atomic.view().original_box().id(),
+                    atomic.view().original_box().kind()
+                )),
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+        [
+            (Id::from_u64(1544012), InlineBoxKind::InFlow),
+            (Id::from_u64(1544013), InlineBoxKind::OutOfFlow),
+            (Id::from_u64(1544011), InlineBoxKind::OutOfFlow),
+        ]
     );
 }
 
