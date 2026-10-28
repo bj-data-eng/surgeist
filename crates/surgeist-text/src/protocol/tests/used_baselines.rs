@@ -3,6 +3,7 @@ use super::*;
 mod domains;
 mod edges;
 mod numeric;
+mod placement_precision;
 mod resources;
 use crate::{
     Affinity, Cursor, FontBaseline, FontBaselineAxis, FontBaselineOutcome, FontBaselineProvenance,
