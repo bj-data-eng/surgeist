@@ -588,9 +588,12 @@ compose in `VerticalRl` and `VerticalLr` through Text's
 [qualified native profile](../../surgeist-text/docs/reference.md#native-whole-upright-paragraphs).
 Actual Text-backed `SidewaysLr` reports
 `UnsupportedCapability(TextWritingMode(SidewaysLr))` at `TextCapture` on the
-container; box-only flow retains its own support. Sideways preparation refuses
-captured atomics, including out-of-flow content; genuine incoming native floats
-outside the paragraph binding remain Layout constraints. Physical Text baseline
+container; box-only flow retains its own support. Clockwise SidewaysRl Physical
+composition admits in-flow and positioned atomic boxes with their actual
+physical geometry and independently owned content orientation. Text glyphs
+retain Clockwise; named Text contexts keep their existing refusal. Genuine
+incoming native floats outside the paragraph binding remain Layout constraints.
+Physical Text baseline
 coordinates alone do not satisfy a named font-baseline request.
 
 Canonical frames, line allocations, ordered spacing allocations and float bands

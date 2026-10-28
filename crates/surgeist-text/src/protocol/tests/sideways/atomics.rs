@@ -1,6 +1,7 @@
 //! Clockwise glyphs compose with actual unrotated physical atomic rectangles.
 //! Local inline/line-under box allocations are distinct from physical boxes.
 use super::*;
+mod supplemental;
 use crate::{
     InlineBox, InlineBoxKind, Layout, ParagraphAnchor, ParagraphAnchorItem,
     ParagraphBoundaryDefinition, ParagraphBoundaryPolicy,
