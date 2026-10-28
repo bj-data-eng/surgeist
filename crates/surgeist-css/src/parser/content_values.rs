@@ -1,7 +1,7 @@
 //! Grammar admission for the selected CSS Generated Content 3 `content` value.
 
-use super::property_input::Parser;
-use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use super::property_input::Stream;
+use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
 use cssparser::Token;
 
 use super::background::parse_image;
@@ -10,14 +10,14 @@ use super::url::parse_url;
 use crate::values::common::CssIdent;
 use crate::values::content::content_values::*;
 
-type Result<'i, T> = std::result::Result<T, ParseError<'i, Error>>;
+type Result<'i, T> = std::result::Result<T, SyntaxError<'i, Error>>;
 
-pub(super) fn parse_content_value<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_content_value<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<'i, CssContentValue> {
-    let start = input.state();
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+    let start = input.mark();
+    if let Ok(ident) = input.attempt(Stream::consume_ident) {
         let keyword = if ident.eq_ignore_ascii_case("normal") {
             Some(CssContentValue::Normal)
         } else if ident.eq_ignore_ascii_case("none") {
@@ -26,77 +26,76 @@ pub(super) fn parse_content_value<'i, 't>(
             None
         };
         if let Some(keyword) = keyword {
-            return if input.is_exhausted() {
+            return if input.only_whitespace_remains() {
                 Ok(keyword)
             } else {
-                Err(unexpected_at(input.current_source_location()))
+                Err(unexpected_at(input.site()))
             };
         }
     }
-    input.reset(&start);
+    input.restore(start);
 
     let mut items = Vec::new();
-    while !input.is_exhausted() {
-        if input.try_parse(|input| input.expect_delim('/')).is_ok() {
+    while !input.only_whitespace_remains() {
+        if input.attempt(|input| input.consume_delim('/')).is_ok() {
             let alternative = parse_alternative(input, numeric)?;
-            input.expect_exhausted().map_err(basic)?;
+            input.require_empty().map_err(basic)?;
             return CssGeneratedContent::try_new(items, Some(alternative))
                 .map(CssContentValue::Generated)
-                .ok_or_else(|| unexpected_at(input.current_source_location()));
+                .ok_or_else(|| unexpected_at(input.site()));
         }
         items.push(parse_item(input, numeric)?);
     }
     CssGeneratedContent::try_new(items, None)
         .map(CssContentValue::Generated)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }
 
 /// Admits the full shared nonempty list without `content` keywords/slash branches.
-pub(super) fn parse_content_list<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_content_list<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<'i, CssContentList> {
     let mut items = Vec::new();
-    while !input.is_exhausted() {
+    while !input.only_whitespace_remains() {
         items.push(parse_item(input, numeric)?);
     }
-    CssContentList::try_new(items).ok_or_else(|| unexpected_at(input.current_source_location()))
+    CssContentList::try_new(items).ok_or_else(|| unexpected_at(input.site()))
 }
 
-fn parse_alternative<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_alternative<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<'i, CssContentAlternative> {
     let mut items = Vec::new();
-    while !input.is_exhausted() {
-        if let Ok(string) = input.try_parse(parse_content_string) {
+    while !input.only_whitespace_remains() {
+        if let Ok(string) = input.attempt(parse_content_string) {
             items.push(CssContentAlternativeItem::String(string));
             continue;
         }
-        let location = input.current_source_location();
-        match input.next().map_err(basic)?.clone() {
+        let location = input.site();
+        match input.consume_after_whitespace().map_err(basic)?.clone() {
             Token::Function(name) if name.eq_ignore_ascii_case("counter") => {
                 items.push(CssContentAlternativeItem::Counter(
-                    input.parse_nested_block(|input| parse_counter(input, numeric))?,
+                    input.within_block(|input| parse_counter(input, numeric))?,
                 ))
             }
             Token::Function(name) if name.eq_ignore_ascii_case("counters") => {
                 items.push(CssContentAlternativeItem::Counters(
-                    input.parse_nested_block(|input| parse_counters(input, numeric))?,
+                    input.within_block(|input| parse_counters(input, numeric))?,
                 ))
             }
-            token => return Err(location.new_unexpected_token_error::<Error>(token)),
+            token => return Err(location.unexpected::<Error>(token)),
         }
     }
-    CssContentAlternative::try_new(items)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+    CssContentAlternative::try_new(items).ok_or_else(|| unexpected_at(input.site()))
 }
 
-fn parse_item<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_item<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<'i, CssContentValueItem> {
-    if let Ok(string) = input.try_parse(parse_content_string) {
+    if let Ok(string) = input.attempt(parse_content_string) {
         return Ok(CssContentValueItem::String(string));
     }
     // A URL commits its image (Values 5 request URL modifiers report inside
@@ -104,16 +103,16 @@ fn parse_item<'i, 't>(
     if super::ui::starts_url(input) {
         return parse_image(input, numeric).map(CssContentValueItem::Image);
     }
-    match input.try_parse(|input| parse_image(input, numeric)) {
+    match input.attempt(|input| parse_image(input, numeric)) {
         Ok(image) => return Ok(CssContentValueItem::Image(image)),
         Err(error) if crate::diagnostic::error::property::is_resource_parse_error(&error) => {
             return Err(error);
         }
         Err(_) => {}
     }
-    input.skip_whitespace();
-    let ident_location = input.current_source_location();
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+    input.discard_whitespace();
+    let ident_location = input.site();
+    if let Ok(ident) = input.attempt(Stream::consume_ident) {
         // An unadmitted keyword is itself responsible (Content 3).
         return match ident.to_ascii_lowercase().as_str() {
             "contents" => Ok(CssContentValueItem::Contents),
@@ -124,112 +123,110 @@ fn parse_item<'i, 't>(
             _ => Err(unexpected_at(ident_location)),
         };
     }
-    let location = input.current_source_location();
-    match input.next().map_err(basic)?.clone() {
+    let location = input.site();
+    match input.consume_after_whitespace().map_err(basic)?.clone() {
         Token::Function(name) if name.eq_ignore_ascii_case("counter") => input
-            .parse_nested_block(|input| parse_counter(input, numeric))
+            .within_block(|input| parse_counter(input, numeric))
             .map(CssContentValueItem::Counter),
         Token::Function(name) if name.eq_ignore_ascii_case("counters") => input
-            .parse_nested_block(|input| parse_counters(input, numeric))
+            .within_block(|input| parse_counters(input, numeric))
             .map(CssContentValueItem::Counters),
         Token::Function(name) if name.eq_ignore_ascii_case("leader") => input
-            .parse_nested_block(parse_leader)
+            .within_block(parse_leader)
             .map(CssContentValueItem::Leader),
         Token::Function(name) if name.eq_ignore_ascii_case("target-counter") => input
-            .parse_nested_block(|input| parse_target_counter(input, numeric))
+            .within_block(|input| parse_target_counter(input, numeric))
             .map(CssContentValueItem::TargetCounter),
         Token::Function(name) if name.eq_ignore_ascii_case("target-counters") => input
-            .parse_nested_block(|input| parse_target_counters(input, numeric))
+            .within_block(|input| parse_target_counters(input, numeric))
             .map(CssContentValueItem::TargetCounters),
         Token::Function(name) if name.eq_ignore_ascii_case("target-text") => input
-            .parse_nested_block(|input| parse_target_text(input, numeric))
+            .within_block(|input| parse_target_text(input, numeric))
             .map(CssContentValueItem::TargetText),
         Token::Function(name) if name.eq_ignore_ascii_case("string") => input
-            .parse_nested_block(parse_named_string)
+            .within_block(parse_named_string)
             .map(CssContentValueItem::NamedString),
         Token::Function(name) if name.eq_ignore_ascii_case("content") => input
-            .parse_nested_block(parse_content_reference)
+            .within_block(parse_content_reference)
             .map(CssContentValueItem::Content),
-        token => Err(location.new_unexpected_token_error::<Error>(token)),
+        token => Err(location.unexpected::<Error>(token)),
     }
 }
 
 // Values 4 §4.2: an excluded <custom-ident> is itself responsible, not the
 // token after it.
-pub(super) fn parse_generic_name<'i, 't>(input: &mut Parser<'i, 't>) -> Result<'i, CssContentName> {
-    input.skip_whitespace();
-    let location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(super) fn parse_generic_name<'i>(input: &mut Stream<'i>) -> Result<'i, CssContentName> {
+    input.discard_whitespace();
+    let location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     let checked = CssIdent::try_new(ident.to_string()).map_err(|_| unexpected_at(location))?;
     CssContentName::try_new(checked).ok_or_else(|| unexpected_at(location))
 }
 
-pub(super) fn parse_counter_name<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<'i, CssContentCounterName> {
-    input.skip_whitespace();
-    let location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(super) fn parse_counter_name<'i>(input: &mut Stream<'i>) -> Result<'i, CssContentCounterName> {
+    input.discard_whitespace();
+    let location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     let checked = CssIdent::try_new(ident.to_string()).map_err(|_| unexpected_at(location))?;
     CssContentCounterName::try_new(checked).ok_or_else(|| unexpected_at(location))
 }
 
-fn parse_counter<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_counter<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<'i, CssContentCounter> {
     let name = parse_counter_name(input)?;
-    let style = if input.try_parse(Parser::expect_comma).is_ok() {
+    let style = if input.attempt(Stream::consume_comma).is_ok() {
         Some(parse_style(input, numeric)?)
     } else {
         None
     };
-    input.expect_exhausted().map_err(basic)?;
+    input.require_empty().map_err(basic)?;
     Ok(CssContentCounter::new(name, style))
 }
 
-fn parse_counters<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_counters<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<'i, CssContentCounters> {
     let name = parse_counter_name(input)?;
-    input.expect_comma().map_err(basic)?;
+    input.consume_comma().map_err(basic)?;
     let separator = parse_content_string(input)?;
-    let style = if input.try_parse(Parser::expect_comma).is_ok() {
+    let style = if input.attempt(Stream::consume_comma).is_ok() {
         Some(parse_style(input, numeric)?)
     } else {
         None
     };
-    input.expect_exhausted().map_err(basic)?;
+    input.require_empty().map_err(basic)?;
     Ok(CssContentCounters::new(name, separator, style))
 }
 
-pub(super) fn parse_style<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_style<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<'i, CssCounterStyleValue> {
-    let keyword_location = input.current_source_location();
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+    let keyword_location = input.site();
+    if let Ok(ident) = input.attempt(Stream::consume_ident) {
         let checked =
             CssIdent::try_new(ident.to_string()).map_err(|_| unexpected_at(keyword_location))?;
         return CssCounterStyleValue::try_named(checked)
             .ok_or_else(|| unexpected_at(keyword_location));
     }
-    let location = input.current_source_location();
-    match input.next().map_err(basic)?.clone() {
+    let location = input.site();
+    match input.consume_after_whitespace().map_err(basic)?.clone() {
         Token::Function(name) if name.eq_ignore_ascii_case("symbols") => input
-            .parse_nested_block(|input| parse_symbols(input, numeric))
+            .within_block(|input| parse_symbols(input, numeric))
             .map(CssCounterStyleValue::Symbols),
-        token => Err(location.new_unexpected_token_error::<Error>(token)),
+        token => Err(location.unexpected::<Error>(token)),
     }
 }
 
-fn parse_symbols<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_symbols<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<'i, CssSymbolsStyleValue> {
-    let start = input.state();
-    let system = if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+    let start = input.mark();
+    let system = if let Ok(ident) = input.attempt(Stream::consume_ident) {
         match ident.to_ascii_lowercase().as_str() {
             "cyclic" => Some(CssSymbolsSystem::Cyclic),
             "numeric" => Some(CssSymbolsSystem::Numeric),
@@ -237,7 +234,7 @@ fn parse_symbols<'i, 't>(
             "symbolic" => Some(CssSymbolsSystem::Symbolic),
             "fixed" => Some(CssSymbolsSystem::Fixed),
             _ => {
-                input.reset(&start);
+                input.restore(start);
                 None
             }
         }
@@ -245,70 +242,69 @@ fn parse_symbols<'i, 't>(
         None
     };
     let mut symbols = Vec::new();
-    while !input.is_exhausted() {
-        if let Ok(string) = input.try_parse(parse_content_string) {
+    while !input.only_whitespace_remains() {
+        if let Ok(string) = input.attempt(parse_content_string) {
             symbols.push(CssCounterSymbolValue::String(string));
             continue;
         }
         let image = parse_image(input, numeric)?;
         symbols.push(CssCounterSymbolValue::Image(image));
     }
-    CssSymbolsStyleValue::try_new(system, symbols)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+    CssSymbolsStyleValue::try_new(system, symbols).ok_or_else(|| unexpected_at(input.site()))
 }
 
-fn parse_target<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_target<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<'i, CssContentTarget> {
-    if let Ok(string) = input.try_parse(parse_content_string) {
+    if let Ok(string) = input.attempt(parse_content_string) {
         return Ok(CssContentTarget::String(string));
     }
     parse_url(input, numeric).map(CssContentTarget::Url)
 }
 
-fn parse_target_counter<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_target_counter<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<'i, CssTargetCounter> {
     let target = parse_target(input, numeric)?;
-    input.expect_comma().map_err(basic)?;
+    input.consume_comma().map_err(basic)?;
     let name = parse_generic_name(input)?;
-    let style = if input.try_parse(Parser::expect_comma).is_ok() {
+    let style = if input.attempt(Stream::consume_comma).is_ok() {
         Some(parse_style(input, numeric)?)
     } else {
         None
     };
-    input.expect_exhausted().map_err(basic)?;
+    input.require_empty().map_err(basic)?;
     Ok(CssTargetCounter::new(target, name, style))
 }
 
-fn parse_target_counters<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_target_counters<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<'i, CssTargetCounters> {
     let target = parse_target(input, numeric)?;
-    input.expect_comma().map_err(basic)?;
+    input.consume_comma().map_err(basic)?;
     let name = parse_generic_name(input)?;
-    input.expect_comma().map_err(basic)?;
+    input.consume_comma().map_err(basic)?;
     let separator = parse_content_string(input)?;
-    let style = if input.try_parse(Parser::expect_comma).is_ok() {
+    let style = if input.attempt(Stream::consume_comma).is_ok() {
         Some(parse_style(input, numeric)?)
     } else {
         None
     };
-    input.expect_exhausted().map_err(basic)?;
+    input.require_empty().map_err(basic)?;
     Ok(CssTargetCounters::new(target, name, separator, style))
 }
 
-fn parse_target_text<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_target_text<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<'i, CssTargetText> {
     let target = parse_target(input, numeric)?;
-    let mode = if input.try_parse(Parser::expect_comma).is_ok() {
-        let location = input.current_source_location();
-        let ident = input.expect_ident_cloned().map_err(basic)?;
+    let mode = if input.attempt(Stream::consume_comma).is_ok() {
+        let location = input.site();
+        let ident = input.consume_ident().map_err(basic)?;
         Some(match ident.to_ascii_lowercase().as_str() {
             "content" => CssTargetTextMode::Content,
             "before" => CssTargetTextMode::Before,
@@ -320,15 +316,15 @@ fn parse_target_text<'i, 't>(
     } else {
         None
     };
-    input.expect_exhausted().map_err(basic)?;
+    input.require_empty().map_err(basic)?;
     Ok(CssTargetText::new(target, mode))
 }
 
-fn parse_named_string<'i, 't>(input: &mut Parser<'i, 't>) -> Result<'i, CssNamedString> {
+fn parse_named_string<'i>(input: &mut Stream<'i>) -> Result<'i, CssNamedString> {
     let name = parse_generic_name(input)?;
-    let mode = if input.try_parse(Parser::expect_comma).is_ok() {
-        let location = input.current_source_location();
-        let ident = input.expect_ident_cloned().map_err(basic)?;
+    let mode = if input.attempt(Stream::consume_comma).is_ok() {
+        let location = input.site();
+        let ident = input.consume_ident().map_err(basic)?;
         Some(match ident.to_ascii_lowercase().as_str() {
             "first" => CssNamedStringMode::First,
             "start" => CssNamedStringMode::Start,
@@ -340,18 +336,18 @@ fn parse_named_string<'i, 't>(input: &mut Parser<'i, 't>) -> Result<'i, CssNamed
     } else {
         None
     };
-    input.expect_exhausted().map_err(basic)?;
+    input.require_empty().map_err(basic)?;
     Ok(CssNamedString::new(name, mode))
 }
 
-fn parse_content_reference<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_content_reference<'i>(
+    input: &mut Stream<'i>,
 ) -> Result<'i, Option<CssContentReferenceMode>> {
-    let mode = if input.is_exhausted() {
+    let mode = if input.only_whitespace_remains() {
         None
     } else {
-        let location = input.current_source_location();
-        let ident = input.expect_ident_cloned().map_err(basic)?;
+        let location = input.site();
+        let ident = input.consume_ident().map_err(basic)?;
         Some(match ident.to_ascii_lowercase().as_str() {
             "text" => CssContentReferenceMode::Text,
             "before" => CssContentReferenceMode::Before,
@@ -362,23 +358,23 @@ fn parse_content_reference<'i, 't>(
             _ => return Err(unexpected_at(location)),
         })
     };
-    input.expect_exhausted().map_err(basic)?;
+    input.require_empty().map_err(basic)?;
     Ok(mode)
 }
 
-fn parse_leader<'i, 't>(input: &mut Parser<'i, 't>) -> Result<'i, CssLeaderValue> {
-    if let Ok(string) = input.try_parse(parse_content_string) {
-        input.expect_exhausted().map_err(basic)?;
+fn parse_leader<'i>(input: &mut Stream<'i>) -> Result<'i, CssLeaderValue> {
+    if let Ok(string) = input.attempt(parse_content_string) {
+        input.require_empty().map_err(basic)?;
         return Ok(CssLeaderValue::String(string));
     }
-    let location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+    let location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     let mode = match ident.to_ascii_lowercase().as_str() {
         "dotted" => CssLeaderValue::Dotted,
         "solid" => CssLeaderValue::Solid,
         "space" => CssLeaderValue::Space,
         _ => return Err(unexpected_at(location)),
     };
-    input.expect_exhausted().map_err(basic)?;
+    input.require_empty().map_err(basic)?;
     Ok(mode)
 }

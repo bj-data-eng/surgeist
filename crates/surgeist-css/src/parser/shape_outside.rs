@@ -1,51 +1,46 @@
 //! Shapes 1 property composition over shared authored image and shape owners.
 
-use super::property_input::Parser;
-use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use super::property_input::Stream;
+use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
 use crate::values::shape::{CssShapeBox, CssShapeOutside, CssShapeOutsideShape};
 use cssparser::Token;
 
-pub(crate) fn parse_shape_outside<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_shape_outside<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<CssShapeOutside, ParseError<'i, Error>> {
+) -> Result<CssShapeOutside, SyntaxError<'i, Error>> {
     // `none` is the property branch, never an image-only value.
-    if input
-        .try_parse(|input| input.expect_ident_matching("none"))
-        .is_ok()
-    {
+    if input.attempt(|input| input.consume_keyword("none")).is_ok() {
         return Ok(CssShapeOutside::None);
     }
-    let mut reference_box = input.try_parse(parse_shape_box).ok();
-    if input.is_exhausted() {
+    let mut reference_box = input.attempt(parse_shape_box).ok();
+    if input.only_whitespace_remains() {
         return reference_box
             .map(CssShapeOutside::ShapeBox)
-            .ok_or_else(|| unexpected_at(input.current_source_location()));
+            .ok_or_else(|| unexpected_at(input.site()));
     }
-    let state = input.state();
-    let basic_shape = matches!(input.next(), Ok(Token::Function(name))
+    let state = input.mark();
+    let basic_shape = matches!(input.consume_after_whitespace(), Ok(Token::Function(name))
         if super::effects::is_basic_shape_function(name));
-    input.reset(&state);
+    input.restore(state);
     if reference_box.is_none() && !basic_shape {
         // Select the image owner directly: an image's original syntax/resource
         // error must not be discarded by speculative shape backtracking.
         return super::background::parse_image(input, numeric).map(CssShapeOutside::Image);
     }
     let shape = super::effects::parse_clip_path_shape(input, numeric)?;
-    if reference_box.is_none() && !input.is_exhausted() {
+    if reference_box.is_none() && !input.only_whitespace_remains() {
         reference_box = Some(parse_shape_box(input)?);
     }
-    input.expect_exhausted().map_err(basic)?;
+    input.require_empty().map_err(basic)?;
     Ok(CssShapeOutside::BasicShape(CssShapeOutsideShape::new(
         shape,
         reference_box,
     )))
 }
 
-fn parse_shape_box<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssShapeBox, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+fn parse_shape_box<'i>(input: &mut Stream<'i>) -> Result<CssShapeBox, SyntaxError<'i, Error>> {
+    let location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     CssShapeBox::from_keyword(ident.as_ref()).ok_or_else(|| unexpected_at(location))
 }

@@ -1,7 +1,7 @@
 //! Text 4 authored alignment grammar and source-preserving string admission.
 
-use super::property_input::Parser;
-use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use super::property_input::Stream;
+use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
 use cssparser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 
@@ -36,14 +36,14 @@ fn position(ident: &str) -> Option<CssTextAlignPosition> {
     }
 }
 
-fn character<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn character<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
     fallback: Option<CssTextAlignPosition>,
-) -> Result<CssCharacterAlignment, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let location = input.current_source_location();
-    let offset = input.position();
+) -> Result<CssCharacterAlignment, SyntaxError<'i, Error>> {
+    input.discard_whitespace();
+    let location = input.site();
+    let offset = input.site();
     let component = input.collect_numeric_component(numeric).map_err(|error| {
         unexpected_at(numeric.property_error_location(&error, location, offset))
     })?;
@@ -57,23 +57,23 @@ fn character<'i, 't>(
         .map_err(|_| unexpected_at(location))
 }
 
-fn alignment<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn alignment<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssTextAlignAllValue, ParseError<'i, Error>> {
-    let start = input.state();
+) -> Result<CssTextAlignAllValue, SyntaxError<'i, Error>> {
+    let start = input.mark();
     // A token that starts no alignment is itself responsible.
-    let token_location = input.current_source_location();
-    let token = input.next().map_err(basic)?.clone();
+    let token_location = input.site();
+    let token = input.consume_after_whitespace().map_err(basic)?.clone();
     match token {
         Token::QuotedString(_) => {
-            input.reset(&start);
+            input.restore(start);
             let component = character(input, numeric, None)?;
-            if input.is_exhausted() {
+            if input.only_whitespace_remains() {
                 return Ok(CssTextAlignAllValue::Character(component));
             }
-            let keyword_location = input.current_source_location();
-            let ident = input.expect_ident_cloned().map_err(basic)?;
+            let keyword_location = input.site();
+            let ident = input.consume_ident().map_err(basic)?;
             let fallback =
                 position(ident.as_ref()).ok_or_else(|| unexpected_at(keyword_location))?;
             let component = CssCharacterAlignment::try_from_component(
@@ -86,7 +86,7 @@ fn alignment<'i, 't>(
         Token::Ident(ident) => {
             let value = keyword(ident.as_ref()).ok_or_else(|| unexpected_at(token_location))?;
             if let Some(fallback) = position(ident.as_ref())
-                && !input.is_exhausted()
+                && !input.only_whitespace_remains()
             {
                 return Ok(CssTextAlignAllValue::Character(character(
                     input,
@@ -100,12 +100,12 @@ fn alignment<'i, 't>(
     }
 }
 
-pub(super) fn parse_text_align<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_text_align<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssTextAlignValue, ParseError<'i, Error>> {
+) -> Result<CssTextAlignValue, SyntaxError<'i, Error>> {
     if input
-        .try_parse(|input| input.expect_ident_matching("justify-all"))
+        .attempt(|input| input.consume_keyword("justify-all"))
         .is_ok()
     {
         return Ok(CssTextAlignValue::JustifyAll);
@@ -113,18 +113,18 @@ pub(super) fn parse_text_align<'i, 't>(
     alignment(input, numeric).map(CssTextAlignValue::Alignment)
 }
 
-pub(super) fn parse_text_align_all<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_text_align_all<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssTextAlignAllValue, ParseError<'i, Error>> {
+) -> Result<CssTextAlignAllValue, SyntaxError<'i, Error>> {
     alignment(input, numeric)
 }
 
-pub(super) fn parse_text_align_last<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssTextAlignLastValue, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(super) fn parse_text_align_last<'i>(
+    input: &mut Stream<'i>,
+) -> Result<CssTextAlignLastValue, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     if ident.eq_ignore_ascii_case("auto") {
         return Ok(CssTextAlignLastValue::Auto);
     }

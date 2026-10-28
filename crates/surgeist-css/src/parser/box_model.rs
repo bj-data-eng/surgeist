@@ -1,8 +1,8 @@
 use super::color::parse_color;
 use super::combinators::{Combinator, Tail, commit, fill, keyword, parse_group};
-use super::property_input::Parser;
+use super::property_input::Stream;
 use crate::diagnostic::CssFeatureId;
-use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::values::{parse_shadow_length, parse_shadow_nonnegative_length};
@@ -12,11 +12,11 @@ use crate::values::effects::{CssBoxShadow, CssBoxShadowList, CssDropShadow, CssS
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] =
     &[CssFeatureId::new("official.value.box-edge-keywords")];
 
-pub(crate) fn parse_box_decoration_break<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssBoxDecorationBreak, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_box_decoration_break<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssBoxDecorationBreak, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "slice" => Ok(CssBoxDecorationBreak::Slice),
         "clone" => Ok(CssBoxDecorationBreak::Clone),
@@ -24,30 +24,30 @@ pub(crate) fn parse_box_decoration_break<'i, 't>(
     }
 }
 
-pub(crate) fn parse_box_shadow<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_box_shadow<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssBoxShadow, ParseError<'i, Error>> {
-    let state = input.state();
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned)
+) -> std::result::Result<CssBoxShadow, SyntaxError<'i, Error>> {
+    let state = input.mark();
+    if let Ok(ident) = input.attempt(Stream::consume_ident)
         && ident.eq_ignore_ascii_case("none")
-        && input.is_exhausted()
+        && input.only_whitespace_remains()
     {
         return Ok(CssBoxShadow::None);
     }
-    input.reset(&state);
+    input.restore(state);
 
-    let shadows = input.parse_comma_separated(|input| parse_shadow(input, numeric))?;
+    let shadows = input.comma_segments(|input| parse_shadow(input, numeric))?;
 
     Ok(CssBoxShadow::Shadows(
         CssBoxShadowList::try_new(shadows).expect("box-shadow parser records at least one shadow"),
     ))
 }
 
-pub(super) fn parse_shadow<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_shadow<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<CssShadow, ParseError<'i, Error>> {
+) -> Result<CssShadow, SyntaxError<'i, Error>> {
     // `<color>? && [ <length>{2} <length [0,∞]>? <length>? ] && inset?`: the
     // && grammar reorders whole operands, never the lengths within one.
     let (mut inset, mut color, mut lengths) = (None, None, None);
@@ -69,11 +69,11 @@ pub(super) fn parse_shadow<'i, 't>(
                     let x = parse_shadow_length(input, numeric)?;
                     let y = parse_shadow_length(input, numeric)?;
                     let blur = input
-                        .try_parse(|input| parse_shadow_nonnegative_length(input, numeric))
+                        .attempt(|input| parse_shadow_nonnegative_length(input, numeric))
                         .ok();
                     let spread = if blur.is_some() {
                         input
-                            .try_parse(|input| parse_shadow_length(input, numeric))
+                            .attempt(|input| parse_shadow_length(input, numeric))
                             .ok()
                     } else {
                         None
@@ -91,10 +91,10 @@ pub(super) fn parse_shadow<'i, 't>(
     )
 }
 
-pub(super) fn parse_drop_shadow<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_drop_shadow<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<CssDropShadow, ParseError<'i, Error>> {
+) -> Result<CssDropShadow, SyntaxError<'i, Error>> {
     // `<color>? && [ <length>{2} <length [0,∞]>? ]`.
     let (mut color, mut lengths) = (None, None);
     parse_group::<2>(
@@ -114,7 +114,7 @@ pub(super) fn parse_drop_shadow<'i, 't>(
                     let x = parse_shadow_length(input, numeric)?;
                     let y = parse_shadow_length(input, numeric)?;
                     let standard_deviation = input
-                        .try_parse(|input| parse_shadow_nonnegative_length(input, numeric))
+                        .attempt(|input| parse_shadow_nonnegative_length(input, numeric))
                         .ok();
                     Ok((x, y, standard_deviation))
                 },

@@ -1,8 +1,8 @@
 use super::border_style::parse_border_style;
 use super::border_width::{parse_exact_line_triple, parse_exact_line_width};
 use super::combinators::{Combinator, Tail, fill, keyword, parse_group};
-use super::property_input::Parser;
-use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use super::property_input::Stream;
+use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::values::{next_is_ident, parse_positive_integer_value};
@@ -13,25 +13,22 @@ use crate::values::layout::{
     CssColumnCount, CssColumnFill, CssColumnRule, CssColumnSpan, CssColumns,
 };
 
-pub(crate) fn parse_column_count<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_column_count<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<CssColumnCount, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("auto"))
-        .is_ok()
-    {
+) -> Result<CssColumnCount, SyntaxError<'i, Error>> {
+    if input.attempt(|input| input.consume_keyword("auto")).is_ok() {
         Ok(CssColumnCount::Auto)
     } else {
         parse_positive_integer_value(input, numeric).map(CssColumnCount::Count)
     }
 }
 
-pub(crate) fn parse_column_fill<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssColumnFill, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_column_fill<'i>(
+    input: &mut Stream<'i>,
+) -> Result<CssColumnFill, SyntaxError<'i, Error>> {
+    let location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssColumnFill::Auto),
         "balance" => Ok(CssColumnFill::Balance),
@@ -40,32 +37,32 @@ pub(crate) fn parse_column_fill<'i, 't>(
     }
 }
 
-pub(crate) fn parse_line_style<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssLineStyle, ParseError<'i, Error>> {
+pub(crate) fn parse_line_style<'i>(
+    input: &mut Stream<'i>,
+) -> Result<CssLineStyle, SyntaxError<'i, Error>> {
     parse_border_style(input)
 }
 
-pub(crate) fn parse_line_width<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_line_width<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<CssLineWidth, ParseError<'i, Error>> {
+) -> Result<CssLineWidth, SyntaxError<'i, Error>> {
     parse_exact_line_width(input, numeric)
 }
 
-pub(crate) fn parse_column_rule<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_column_rule<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<CssColumnRule, ParseError<'i, Error>> {
+) -> Result<CssColumnRule, SyntaxError<'i, Error>> {
     let (width, style, color) = parse_exact_line_triple(input, numeric)?;
     Ok(CssColumnRule::try_new(width, style, color).expect("parsed nonempty column rule"))
 }
 
-pub(crate) fn parse_column_span<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssColumnSpan, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_column_span<'i>(
+    input: &mut Stream<'i>,
+) -> Result<CssColumnSpan, SyntaxError<'i, Error>> {
+    let location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "none" => Ok(CssColumnSpan::None),
         "all" => Ok(CssColumnSpan::All),
@@ -73,17 +70,17 @@ pub(crate) fn parse_column_span<'i, 't>(
     }
 }
 
-pub(crate) fn parse_column_width<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_column_width<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<CssSizeValue, ParseError<'i, Error>> {
+) -> Result<CssSizeValue, SyntaxError<'i, Error>> {
     super::sizing::parse_size_value(input, numeric)
 }
 
-pub(crate) fn parse_columns<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_columns<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<CssColumns, ParseError<'i, Error>> {
+) -> Result<CssColumns, SyntaxError<'i, Error>> {
     // `<'column-width'> || <'column-count'>`. Both admit `auto`, so `auto`
     // operands are ambiguous and the group holds at most two components.
     let (mut width, mut count): (Option<CssSizeValue>, _) = (None, None);

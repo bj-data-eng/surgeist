@@ -1,21 +1,21 @@
 //! Exact Box Alignment gap grammars.
 
-use super::property_input::Parser;
+use super::property_input::Stream;
 use super::side_shapes::parse_side_pair;
-use crate::diagnostic::error::property::{Error, ParseError};
+use crate::diagnostic::error::property::{Error, SyntaxError};
 
 use super::values::parse_nonnegative_length_percentage;
 use crate::numeric::expression::NumericInputContext;
 use crate::values::common::CssSidePair;
 use crate::values::layout::CssGapValue;
 
-pub(super) fn parse_gap_value<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_gap_value<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssGapValue, ParseError<'i, Error>> {
-    input.skip_whitespace();
+) -> Result<CssGapValue, SyntaxError<'i, Error>> {
+    input.discard_whitespace();
     if input
-        .try_parse(|input| input.expect_ident_matching("normal"))
+        .attempt(|input| input.consume_keyword("normal"))
         .is_ok()
     {
         return Ok(CssGapValue::Normal);
@@ -23,9 +23,9 @@ pub(super) fn parse_gap_value<'i, 't>(
     parse_nonnegative_length_percentage(input, numeric).map(CssGapValue::LengthPercentage)
 }
 
-pub(super) fn parse_gap_shorthand<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_gap_shorthand<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssSidePair<CssGapValue>, ParseError<'i, Error>> {
+) -> Result<CssSidePair<CssGapValue>, SyntaxError<'i, Error>> {
     parse_side_pair(input, |input| parse_gap_value(input, numeric))
 }

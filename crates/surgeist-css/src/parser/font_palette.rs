@@ -1,5 +1,5 @@
-use super::property_input::Parser;
-use crate::diagnostic::error::property::{ParseError, ParseErrorKind};
+use super::property_input::Stream;
+use crate::diagnostic::error::property::SyntaxError;
 use cssparser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 
@@ -11,46 +11,43 @@ use crate::numeric::expression::NumericInputContext;
 use crate::rule::font_palette_values::CssFontPaletteName;
 use crate::values::font::{CssFontPalette, CssFontPaletteMix, CssFontPaletteMixComponent};
 
-pub(crate) fn parse_font_palette<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_font_palette<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssFontPalette, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    match input.next().map_err(basic)?.clone() {
+) -> Result<CssFontPalette, SyntaxError<'i, Error>> {
+    let location = input.site();
+    match input.consume_after_whitespace().map_err(basic)?.clone() {
         Token::Ident(name) => match_ignore_ascii_case! { &name,
             "normal" => Ok(CssFontPalette::Normal),
             "light" => Ok(CssFontPalette::Light),
             "dark" => Ok(CssFontPalette::Dark),
             _ => CssFontPaletteName::try_new(&name).map(CssFontPalette::Named)
-                .map_err(|_| location.new_unexpected_token_error::<Error>(Token::Ident(name))),
+                .map_err(|_| location.unexpected::<Error>(Token::Ident(name))),
         },
         Token::Function(name) if name.eq_ignore_ascii_case("palette-mix") => input
-            .parse_nested_block(|input| parse_mix(input, numeric))
+            .within_block(|input| parse_mix(input, numeric))
             .map(|value| CssFontPalette::Mix(Box::new(value))),
-        token => Err(location.new_unexpected_token_error::<Error>(token)),
+        token => Err(location.unexpected::<Error>(token)),
     }
 }
 
-fn parse_mix<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_mix<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssFontPaletteMix, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    input.skip_whitespace();
-    let start = input.position();
-    let interpolation = if input
-        .try_parse(|input| input.expect_ident_matching("in"))
-        .is_ok()
-    {
+) -> Result<CssFontPaletteMix, SyntaxError<'i, Error>> {
+    let location = input.site();
+    input.discard_whitespace();
+    let start = input.site();
+    let interpolation = if input.attempt(|input| input.consume_keyword("in")).is_ok() {
         let value = parse_color_interpolation_method(input).map_err(palette_mix_error)?;
-        input.expect_comma().map_err(basic)?;
+        input.consume_comma().map_err(basic)?;
         Some(value)
     } else {
         None
     };
     let mut components = vec![parse_component(input, numeric)?];
-    while !input.is_exhausted() {
-        input.expect_comma().map_err(basic)?;
+    while !input.only_whitespace_remains() {
+        input.consume_comma().map_err(basic)?;
         components.push(parse_component(input, numeric)?);
     }
     CssFontPaletteMix::try_new(interpolation, components).map_err(|error| {
@@ -73,10 +70,10 @@ fn parse_mix<'i, 't>(
     })
 }
 
-fn parse_component<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_component<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssFontPaletteMixComponent, ParseError<'i, Error>> {
+) -> Result<CssFontPaletteMixComponent, SyntaxError<'i, Error>> {
     let leading = if next_is_mix_weight(input) {
         Some(parse_authored_mix_weight(input, numeric).map_err(palette_mix_error)?)
     } else {
@@ -93,11 +90,14 @@ fn parse_component<'i, 't>(
 
 // Shared interpolation and percentage admission have color-specific diagnostics.
 // Keep their source location while allowing the owning property context to apply.
-fn palette_mix_error<'i>(error: ParseError<'i, Error>) -> ParseError<'i, Error> {
-    if matches!(&error.kind, ParseErrorKind::Custom(detail)
-        if matches!(&detail.kind, crate::diagnostic::error::ErrorKind::InvalidColorSyntax(_)))
-    {
-        crate::diagnostic::error::property::unexpected_at(error.location)
+fn palette_mix_error<'i>(error: SyntaxError<'i, Error>) -> SyntaxError<'i, Error> {
+    if error.custom_value().is_some_and(|detail| {
+        matches!(
+            &detail.kind,
+            crate::diagnostic::error::ErrorKind::InvalidColorSyntax(_)
+        )
+    }) {
+        crate::diagnostic::error::property::unexpected_at(error.at())
     } else {
         error
     }

@@ -1,9 +1,9 @@
 use super::color::parse_color;
 use super::combinators::{Combinator, Tail, commit, fill, keyword, parse_group};
-use super::property_input::Parser;
+use super::property_input::Stream;
 use super::values::{parse_hinted_number_calculation, parse_length_percentage};
 use crate::diagnostic::CssFeatureId;
-use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
 use cssparser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 
@@ -47,26 +47,23 @@ pub(super) static IMPLEMENTED_PROPERTY_EXTENSIONS: &[CssFeatureId] =
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] =
     &[CssFeatureId::new("official.value.opentype-tag")];
 
-pub(crate) fn parse_caret_color<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_caret_color<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssCaretColor, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("auto"))
-        .is_ok()
-    {
+) -> std::result::Result<CssCaretColor, SyntaxError<'i, Error>> {
+    if input.attempt(|input| input.consume_keyword("auto")).is_ok() {
         return Ok(CssCaretColor::Auto);
     }
     let color = parse_color(input, numeric)?;
     Ok(CssCaretColor::Color(Box::new(color)))
 }
 
-pub(crate) fn parse_font_size<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_font_size<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssFontSize, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+) -> std::result::Result<CssFontSize, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    if let Ok(ident) = input.attempt(Stream::consume_ident) {
         return match_ignore_ascii_case! { &ident,
             "xx-small" => Ok(CssFontSize::XxSmall),
             "x-small" => Ok(CssFontSize::XSmall),
@@ -87,26 +84,25 @@ pub(crate) fn parse_font_size<'i, 't>(
         .map(CssFontSize::LengthPercentage)
 }
 
-pub(crate) fn parse_line_height<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_line_height<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssLineHeight, ParseError<'i, Error>> {
+) -> std::result::Result<CssLineHeight, SyntaxError<'i, Error>> {
     if input
-        .try_parse(|input| input.expect_ident_matching("normal"))
+        .attempt(|input| input.consume_keyword("normal"))
         .is_ok()
     {
         return Ok(CssLineHeight::Normal);
     }
 
-    input.skip_whitespace();
+    input.discard_whitespace();
 
-    if let Ok(calculation) =
-        input.try_parse(|input| parse_hinted_number_calculation(input, numeric))
+    if let Ok(calculation) = input.attempt(|input| parse_hinted_number_calculation(input, numeric))
     {
         return Ok(CssLineHeight::HintedNumberCalculation(calculation));
     }
 
-    if let Ok(number) = input.try_parse(|input| parse_line_height_number(input, numeric)) {
+    if let Ok(number) = input.attempt(|input| parse_line_height_number(input, numeric)) {
         return Ok(CssLineHeight::Number(number));
     }
 
@@ -114,18 +110,18 @@ pub(crate) fn parse_line_height<'i, 't>(
         .map(CssLineHeight::LengthPercentage)
 }
 
-fn parse_line_height_number<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_line_height_number<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssNumeric<CssNumber, CssNonNegative>, ParseError<'i, Error>> {
+) -> std::result::Result<CssNumeric<CssNumber, CssNonNegative>, SyntaxError<'i, Error>> {
     super::values::parse_nonnegative_number(input, numeric)
 }
 
-pub(crate) fn parse_writing_mode<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssWritingMode, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_writing_mode<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssWritingMode, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "horizontal-tb" => Ok(CssWritingMode::HorizontalTb),
         "vertical-rl" => Ok(CssWritingMode::VerticalRl),
@@ -136,24 +132,24 @@ pub(crate) fn parse_writing_mode<'i, 't>(
     }
 }
 
-pub(crate) fn parse_text_combine_upright<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_text_combine_upright<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssTextCombineUpright, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+) -> std::result::Result<CssTextCombineUpright, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "none" => Ok(CssTextCombineUpright::None),
         "all" => Ok(CssTextCombineUpright::All),
         "digits" => {
-            if input.is_exhausted() {
+            if input.only_whitespace_remains() {
                 return Ok(CssTextCombineUpright::Digits(None));
             }
-            let start = input.state();
-            let location = input.current_source_location();
-            let count = match input.next().map_err(basic)? {
+            let start = input.mark();
+            let location = input.site();
+            let count = match input.consume_after_whitespace().map_err(basic)? {
                 Token::Number { .. } => {
-                    input.reset(&start);
+                    input.restore(start);
                     let value = super::values::parse_integer_literal(input, numeric)?;
                     let count = crate::numeric::integer_value::exact_i32(value.numeric().representation())
                         .and_then(CssTextCombineDigitCount::try_literal);
@@ -163,7 +159,7 @@ pub(crate) fn parse_text_combine_upright<'i, 't>(
                     let expression = parse_numeric_function(input, &start, numeric, CalculationRoot::Integer)?;
                     CssTextCombineDigitCount::from_calculation(CssCalculation::<CssInteger>::from_expression(expression))
                 }
-                token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
+                token => return Err(location.unexpected::<Error>(token.clone())),
             };
             Ok(CssTextCombineUpright::Digits(Some(count)))
         },
@@ -171,11 +167,11 @@ pub(crate) fn parse_text_combine_upright<'i, 't>(
     }
 }
 
-pub(crate) fn parse_text_orientation<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssTextOrientation, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_text_orientation<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssTextOrientation, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "mixed" => Ok(CssTextOrientation::Mixed),
         "upright" => Ok(CssTextOrientation::Upright),
@@ -184,11 +180,11 @@ pub(crate) fn parse_text_orientation<'i, 't>(
     }
 }
 
-pub(crate) fn parse_unicode_bidi<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssUnicodeBidi, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_unicode_bidi<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssUnicodeBidi, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "normal" => Ok(CssUnicodeBidi::Normal),
         "embed" => Ok(CssUnicodeBidi::Embed),
@@ -200,13 +196,13 @@ pub(crate) fn parse_unicode_bidi<'i, 't>(
     }
 }
 
-pub(super) fn parse_glyph_orientation_vertical<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_glyph_orientation_vertical<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssTextOrientation, ParseError<'i, Error>> {
-    let start = input.state();
-    let location = input.current_source_location();
-    let value = match input.next().map_err(basic)? {
+) -> std::result::Result<CssTextOrientation, SyntaxError<'i, Error>> {
+    let start = input.mark();
+    let location = input.site();
+    let value = match input.consume_after_whitespace().map_err(basic)? {
         Token::Ident(ident) if ident.eq_ignore_ascii_case("auto") => {
             Some(CssTextOrientation::Mixed)
         }
@@ -218,9 +214,9 @@ pub(super) fn parse_glyph_orientation_vertical<'i, 't>(
             ..
         } => Some(CssTextOrientation::Sideways),
         Token::Dimension { unit, .. } if unit.eq_ignore_ascii_case("deg") => {
-            input.reset(&start);
-            input.skip_whitespace();
-            let offset = input.position();
+            input.restore(start);
+            input.discard_whitespace();
+            let offset = input.site();
             let component = input.collect_numeric_component(numeric).map_err(|error| {
                 unexpected_at(numeric.property_error_location(&error, location, offset))
             })?;
@@ -242,10 +238,10 @@ pub(super) fn parse_glyph_orientation_vertical<'i, 't>(
     value.ok_or_else(|| unexpected_at(location))
 }
 
-pub(crate) fn parse_text_indent<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_text_indent<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssTextIndent, ParseError<'i, Error>> {
+) -> std::result::Result<CssTextIndent, SyntaxError<'i, Error>> {
     // `<length-percentage> && hanging? && each-line?`; any non-identifier
     // commits the length.
     let (mut hanging, mut each_line, mut length) = (None, None, None);
@@ -263,9 +259,9 @@ pub(crate) fn parse_text_indent<'i, 't>(
                 &mut length,
                 input,
                 |input| {
-                    let state = input.state();
-                    let ident = input.expect_ident().is_ok();
-                    input.reset(&state);
+                    let state = input.mark();
+                    let ident = input.consume_ident().is_ok();
+                    input.restore(state);
                     !ident
                 },
                 |input| parse_length_percentage(input, numeric),
@@ -277,12 +273,12 @@ pub(crate) fn parse_text_indent<'i, 't>(
     Ok(CssTextIndent::new(length, hanging, each_line))
 }
 
-pub(crate) fn parse_vertical_align<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_vertical_align<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssVerticalAlign, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+) -> std::result::Result<CssVerticalAlign, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    if let Ok(ident) = input.attempt(Stream::consume_ident) {
         return match_ignore_ascii_case! { &ident,
             "baseline" => Ok(CssVerticalAlign::Baseline),
             "sub" => Ok(CssVerticalAlign::Sub),
@@ -299,62 +295,61 @@ pub(crate) fn parse_vertical_align<'i, 't>(
     parse_length_percentage(input, numeric).map(CssVerticalAlign::Length)
 }
 
-pub(crate) fn parse_font_family_list<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFontFamilyList, ParseError<'i, Error>> {
-    let families = input.parse_comma_separated(|input| parse_font_family_name(input))?;
+pub(crate) fn parse_font_family_list<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssFontFamilyList, SyntaxError<'i, Error>> {
+    let families = input.comma_segments(|input| parse_font_family_name(input))?;
 
-    CssFontFamilyList::try_new(families)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+    CssFontFamilyList::try_new(families).ok_or_else(|| unexpected_at(input.site()))
 }
 
-pub(super) fn parse_font_family_name<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFontFamilyName, ParseError<'i, Error>> {
+pub(super) fn parse_font_family_name<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssFontFamilyName, SyntaxError<'i, Error>> {
     parse_font_family_name_with_generics(input, true)
 }
 
-pub(super) fn parse_non_generic_font_family_name<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFontFamilyName, ParseError<'i, Error>> {
+pub(super) fn parse_non_generic_font_family_name<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssFontFamilyName, SyntaxError<'i, Error>> {
     parse_font_family_name_with_generics(input, false)
 }
 
-fn parse_font_family_name_with_generics<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_font_family_name_with_generics<'i>(
+    input: &mut Stream<'i>,
     allow_generic: bool,
-) -> std::result::Result<CssFontFamilyName, ParseError<'i, Error>> {
-    if let Ok(name) = input.try_parse(Parser::expect_string_cloned) {
+) -> std::result::Result<CssFontFamilyName, SyntaxError<'i, Error>> {
+    if let Ok(name) = input.attempt(Stream::consume_string) {
         return CssFontFamilyName::try_quoted(name.to_string())
-            .ok_or_else(|| unexpected_at(input.current_source_location()));
+            .ok_or_else(|| unexpected_at(input.site()));
     }
 
     if allow_generic
         && input
-            .try_parse(|input| input.expect_function_matching("generic"))
+            .attempt(|input| input.consume_function_named("generic"))
             .is_ok()
     {
-        return input.parse_nested_block(|input| {
-            let keyword_location = input.current_source_location();
-            let keyword = input.expect_ident_cloned().map_err(basic)?;
+        return input.within_block(|input| {
+            let keyword_location = input.site();
+            let keyword = input.consume_ident().map_err(basic)?;
             let generic = CssGenericFontFamily::from_script_keyword(&keyword)
                 .ok_or_else(|| unexpected_at(keyword_location))?;
-            input.expect_exhausted().map_err(basic)?;
+            input.require_empty().map_err(basic)?;
             Ok(CssFontFamilyName::generic(generic))
         });
     }
 
     let mut parts = Vec::new();
     let mut locations = Vec::new();
-    while !input.is_exhausted() && !next_is_comma(input) {
-        input.skip_whitespace();
-        let location = input.current_source_location();
-        match input.next().map_err(basic)? {
+    while !input.only_whitespace_remains() && !next_is_comma(input) {
+        input.discard_whitespace();
+        let location = input.site();
+        match input.consume_after_whitespace().map_err(basic)? {
             Token::Ident(ident) => {
                 parts.push(ident.to_string());
                 locations.push(location);
             }
-            token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
+            token => return Err(location.unexpected::<Error>(token.clone())),
         }
     }
 
@@ -374,16 +369,16 @@ fn parse_font_family_name_with_generics<'i, 't>(
         })
         .or((!parts.is_empty()).then_some(0))
         .map(|index| locations[index]);
-    let end = input.current_source_location();
+    let end = input.site();
     CssFontFamilyName::try_ident_sequence(parts)
         .ok_or_else(|| unexpected_at(responsible.unwrap_or(end)))
 }
 
-pub(crate) fn parse_font<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_font<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssFontValue, ParseError<'i, Error>> {
-    if let Ok(system) = input.try_parse(parse_system_font) {
+) -> std::result::Result<CssFontValue, SyntaxError<'i, Error>> {
+    if let Ok(system) = input.attempt(parse_system_font) {
         return Ok(CssFontValue::System(system));
     }
 
@@ -406,13 +401,11 @@ pub(crate) fn parse_font<'i, 't>(
         },
         Tail::Reject,
         |input| {
-            size = input
-                .try_parse(|input| parse_font_size(input, numeric))
-                .ok();
+            size = input.attempt(|input| parse_font_size(input, numeric)).ok();
             size.is_some()
         },
         |operand, input| {
-            let location = input.current_source_location();
+            let location = input.site();
             let matched = match operand {
                 0..=3 => keyword(&mut normals[operand], input, &[("normal", ())]),
                 4 => fill(&mut style, input, |input| parse_font_style(input, numeric)),
@@ -433,7 +426,7 @@ pub(crate) fn parse_font<'i, 't>(
         },
     )?;
     let Some(size) = size else {
-        return Err(unexpected_at(input.current_source_location()));
+        return Err(unexpected_at(input.site()));
     };
 
     for _ in matched[..4].iter().filter(|matched| **matched) {
@@ -446,13 +439,11 @@ pub(crate) fn parse_font<'i, 't>(
         } else if stretch.is_none() {
             stretch = Some(CssFontWidthKeyword::Normal);
         } else {
-            return Err(unexpected_at(
-                fifth.unwrap_or_else(|| input.current_source_location()),
-            ));
+            return Err(unexpected_at(fifth.unwrap_or_else(|| input.site())));
         }
     }
 
-    let line_height = if input.try_parse(|input| input.expect_delim('/')).is_ok() {
+    let line_height = if input.attempt(|input| input.consume_delim('/')).is_ok() {
         Some(parse_line_height(input, numeric)?)
     } else {
         None
@@ -461,14 +452,14 @@ pub(crate) fn parse_font<'i, 't>(
 
     CssExplicitFont::try_new(style, variant, weight, stretch, size, line_height, families)
         .map(CssFontValue::Explicit)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }
 
-fn parse_system_font<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssSystemFont, ParseError<'i, Error>> {
-    let ident = input.expect_ident_cloned().map_err(basic)?;
-    input.expect_exhausted().map_err(basic)?;
+fn parse_system_font<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssSystemFont, SyntaxError<'i, Error>> {
+    let ident = input.consume_ident().map_err(basic)?;
+    input.require_empty().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "caption" => Ok(CssSystemFont::Caption),
         "icon" => Ok(CssSystemFont::Icon),
@@ -476,30 +467,30 @@ fn parse_system_font<'i, 't>(
         "message-box" => Ok(CssSystemFont::MessageBox),
         "small-caption" => Ok(CssSystemFont::SmallCaption),
         "status-bar" => Ok(CssSystemFont::StatusBar),
-        _ => Err(unexpected_at(input.current_source_location())),
+        _ => Err(unexpected_at(input.site())),
     }
 }
 
-pub(crate) fn parse_font_weight<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_font_weight<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssFontWeight, ParseError<'i, Error>> {
-    let start = input.state();
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+) -> std::result::Result<CssFontWeight, SyntaxError<'i, Error>> {
+    let start = input.mark();
+    if let Ok(ident) = input.attempt(Stream::consume_ident) {
         match_ignore_ascii_case! { &ident,
             "bolder" => return Ok(CssFontWeight::Bolder),
             "lighter" => return Ok(CssFontWeight::Lighter),
             _ => {}
         }
     }
-    input.reset(&start);
+    input.restore(start);
     parse_absolute_font_weight(input, numeric).map(CssFontWeight::Absolute)
 }
 
-pub(super) fn parse_absolute_font_weight<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_absolute_font_weight<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssAbsoluteFontWeight, ParseError<'i, Error>> {
+) -> std::result::Result<CssAbsoluteFontWeight, SyntaxError<'i, Error>> {
     /// Fonts 4 `<number [1,1000]>`.
     const FONT_WEIGHT_NUMBER: NumericType<CssNumeric<CssNumber, CssFontWeightRange>> =
         NumericType {
@@ -516,9 +507,9 @@ pub(super) fn parse_absolute_font_weight<'i, 't>(
                 )
             },
         };
-    input.skip_whitespace();
-    let location = input.current_source_location();
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+    input.discard_whitespace();
+    let location = input.site();
+    if let Ok(ident) = input.attempt(Stream::consume_ident) {
         return match_ignore_ascii_case! { &ident,
             "normal" => Ok(CssAbsoluteFontWeight::Normal),
             "bold" => Ok(CssAbsoluteFontWeight::Bold),
@@ -528,15 +519,15 @@ pub(super) fn parse_absolute_font_weight<'i, 't>(
     parse_numeric_type(input, numeric, &FONT_WEIGHT_NUMBER).map(CssAbsoluteFontWeight::Number)
 }
 
-pub(crate) fn parse_font_style<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_font_style<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssFontStyle, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+) -> std::result::Result<CssFontStyle, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     if ident.eq_ignore_ascii_case("oblique") {
         let angle = input
-            .try_parse(|input| parse_font_oblique_angle(input, numeric))
+            .attempt(|input| parse_font_oblique_angle(input, numeric))
             .ok();
         return Ok(CssFontStyle::Oblique { angle });
     }
@@ -559,10 +550,10 @@ pub(super) fn common_font_style_keyword(name: &str) -> Option<CssFontStyleKeywor
     }
 }
 
-pub(super) fn parse_font_oblique_angle<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_font_oblique_angle<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssNumeric<CssAngle, CssObliqueAngleRange>, ParseError<'i, Error>> {
+) -> std::result::Result<CssNumeric<CssAngle, CssObliqueAngleRange>, SyntaxError<'i, Error>> {
     /// Fonts 4 `<angle [-90deg,90deg]>`.
     const OBLIQUE_ANGLE: NumericType<CssNumeric<CssAngle, CssObliqueAngleRange>> = NumericType {
         root: CalculationRoot::Angle,
@@ -581,11 +572,11 @@ pub(super) fn parse_font_oblique_angle<'i, 't>(
     parse_numeric_type(input, numeric, &OBLIQUE_ANGLE)
 }
 
-pub(super) fn parse_font_stretch<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFontWidthKeyword, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(super) fn parse_font_stretch<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssFontWidthKeyword, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "normal" => Ok(CssFontWidthKeyword::Normal),
         "ultra-condensed" => Ok(CssFontWidthKeyword::UltraCondensed),
@@ -600,11 +591,11 @@ pub(super) fn parse_font_stretch<'i, 't>(
     }
 }
 
-pub(crate) fn parse_font_width<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_font_width<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssFontWidth, ParseError<'i, Error>> {
-    if let Ok(keyword) = input.try_parse(parse_font_stretch) {
+) -> std::result::Result<CssFontWidth, SyntaxError<'i, Error>> {
+    if let Ok(keyword) = input.attempt(parse_font_stretch) {
         return Ok(CssFontWidth::Keyword(keyword));
     }
     /// Fonts 4 `<percentage [0,∞]>`; other numeric tokens fail its literal check.
@@ -617,11 +608,11 @@ pub(crate) fn parse_font_width<'i, 't>(
     parse_numeric_type(input, numeric, &FONT_WIDTH_PERCENTAGE).map(CssFontWidth::Percentage)
 }
 
-fn parse_css2_font_variant<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFontVariant, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+fn parse_css2_font_variant<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssFontVariant, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "normal" => Ok(CssFontVariant::Normal),
         "small-caps" => Ok(CssFontVariant::SmallCaps),
@@ -629,17 +620,14 @@ fn parse_css2_font_variant<'i, 't>(
     }
 }
 
-pub(crate) fn parse_font_synthesis<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFontSynthesis, ParseError<'i, Error>> {
-    let state = input.state();
-    if input
-        .try_parse(|input| input.expect_ident_matching("none"))
-        .is_ok()
-    {
+pub(crate) fn parse_font_synthesis<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssFontSynthesis, SyntaxError<'i, Error>> {
+    let state = input.mark();
+    if input.attempt(|input| input.consume_keyword("none")).is_ok() {
         return Ok(CssFontSynthesis::None);
     }
-    input.reset(&state);
+    input.restore(state);
 
     // `weight || style || small-caps || position`.
     const KEYWORDS: [&str; 4] = ["weight", "style", "small-caps", "position"];
@@ -654,14 +642,14 @@ pub(crate) fn parse_font_synthesis<'i, 't>(
 
     CssFontSynthesisValues::try_new(weight, style, small_caps, position)
         .map(CssFontSynthesis::Values)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }
 
-pub(crate) fn parse_font_synthesis_weight<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFontSynthesisWeight, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_font_synthesis_weight<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssFontSynthesisWeight, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssFontSynthesisWeight::Auto),
         "none" => Ok(CssFontSynthesisWeight::None),
@@ -669,11 +657,11 @@ pub(crate) fn parse_font_synthesis_weight<'i, 't>(
     }
 }
 
-pub(crate) fn parse_font_synthesis_style<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFontSynthesisStyle, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_font_synthesis_style<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssFontSynthesisStyle, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssFontSynthesisStyle::Auto),
         "none" => Ok(CssFontSynthesisStyle::None),
@@ -682,11 +670,11 @@ pub(crate) fn parse_font_synthesis_style<'i, 't>(
     }
 }
 
-pub(crate) fn parse_font_synthesis_small_caps<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFontSynthesisSmallCaps, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_font_synthesis_small_caps<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssFontSynthesisSmallCaps, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssFontSynthesisSmallCaps::Auto),
         "none" => Ok(CssFontSynthesisSmallCaps::None),
@@ -694,11 +682,11 @@ pub(crate) fn parse_font_synthesis_small_caps<'i, 't>(
     }
 }
 
-pub(crate) fn parse_font_synthesis_position<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssFontSynthesisPosition, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_font_synthesis_position<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssFontSynthesisPosition, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssFontSynthesisPosition::Auto),
         "none" => Ok(CssFontSynthesisPosition::None),
@@ -706,26 +694,26 @@ pub(crate) fn parse_font_synthesis_position<'i, 't>(
     }
 }
 
-pub(crate) fn parse_letter_spacing<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_letter_spacing<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssTextSpacingAdjustment, ParseError<'i, Error>> {
+) -> std::result::Result<CssTextSpacingAdjustment, SyntaxError<'i, Error>> {
     parse_text_spacing_adjustment(input, numeric)
 }
 
-pub(crate) fn parse_word_spacing<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_word_spacing<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssTextSpacingAdjustment, ParseError<'i, Error>> {
+) -> std::result::Result<CssTextSpacingAdjustment, SyntaxError<'i, Error>> {
     parse_text_spacing_adjustment(input, numeric)
 }
 
-fn parse_text_spacing_adjustment<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_text_spacing_adjustment<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssTextSpacingAdjustment, ParseError<'i, Error>> {
+) -> std::result::Result<CssTextSpacingAdjustment, SyntaxError<'i, Error>> {
     if input
-        .try_parse(|input| input.expect_ident_matching("normal"))
+        .attempt(|input| input.consume_keyword("normal"))
         .is_ok()
     {
         return Ok(CssTextSpacingAdjustment::Normal);
@@ -736,10 +724,10 @@ fn parse_text_spacing_adjustment<'i, 't>(
 /// `<'text-decoration-line'> || <'text-decoration-thickness'> ||
 /// <'text-decoration-style'> || <'text-decoration-color'>`. The line operand
 /// is that longhand's whole grammar, so its keywords stay contiguous.
-pub(crate) fn parse_text_decoration<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_text_decoration<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssTextDecoration, ParseError<'i, Error>> {
+) -> std::result::Result<CssTextDecoration, SyntaxError<'i, Error>> {
     let (mut line, mut style, mut thickness, mut color) = (None, None, None, None);
     parse_group::<4>(
         input,
@@ -761,31 +749,28 @@ pub(crate) fn parse_text_decoration<'i, 't>(
     Ok(CssTextDecoration::new(line, color, style, thickness))
 }
 
-pub(crate) fn parse_text_decoration_line<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssTextDecorationLine, ParseError<'i, Error>> {
+pub(crate) fn parse_text_decoration_line<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssTextDecorationLine, SyntaxError<'i, Error>> {
     parse_text_decoration_line_value(input, Tail::Reject)
 }
 
 /// `none | [ underline || overline || line-through || blink ] |
 /// spelling-error | grammar-error`, retaining authored keyword order.
-fn parse_text_decoration_line_value<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_text_decoration_line_value<'i>(
+    input: &mut Stream<'i>,
     tail: Tail,
-) -> std::result::Result<CssTextDecorationLine, ParseError<'i, Error>> {
+) -> std::result::Result<CssTextDecorationLine, SyntaxError<'i, Error>> {
     const KEYWORDS: [(&str, CssTextDecorationLineComponent); 4] = [
         ("underline", CssTextDecorationLineComponent::Underline),
         ("overline", CssTextDecorationLineComponent::Overline),
         ("line-through", CssTextDecorationLineComponent::LineThrough),
         ("blink", CssTextDecorationLineComponent::Blink),
     ];
-    if input
-        .try_parse(|input| input.expect_ident_matching("none"))
-        .is_ok()
-    {
+    if input.attempt(|input| input.consume_keyword("none")).is_ok() {
         return Ok(CssTextDecorationLine::none());
     }
-    if let Ok(error) = input.try_parse(super::text_decoration::parse_decoration_error) {
+    if let Ok(error) = input.attempt(super::text_decoration::parse_decoration_error) {
         return Ok(CssTextDecorationLine::error_line(error));
     }
     let mut components = Vec::new();
@@ -797,7 +782,7 @@ fn parse_text_decoration_line_value<'i, 't>(
         |operand, input| {
             let (keyword, component) = KEYWORDS[operand];
             let matched = input
-                .try_parse(|input| input.expect_ident_matching(keyword))
+                .attempt(|input| input.consume_keyword(keyword))
                 .is_ok();
             if matched {
                 components.push(component);
@@ -805,15 +790,14 @@ fn parse_text_decoration_line_value<'i, 't>(
             Ok(matched)
         },
     )?;
-    CssTextDecorationLine::try_new(components)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+    CssTextDecorationLine::try_new(components).ok_or_else(|| unexpected_at(input.site()))
 }
 
-pub(crate) fn parse_text_decoration_style<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssTextDecorationStyle, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_text_decoration_style<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssTextDecorationStyle, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "solid" => Ok(CssTextDecorationStyle::Solid),
         "double" => Ok(CssTextDecorationStyle::Double),
@@ -824,12 +808,12 @@ pub(crate) fn parse_text_decoration_style<'i, 't>(
     }
 }
 
-pub(crate) fn parse_text_decoration_thickness<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_text_decoration_thickness<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssTextDecorationThickness, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+) -> std::result::Result<CssTextDecorationThickness, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    if let Ok(ident) = input.attempt(Stream::consume_ident) {
         return match_ignore_ascii_case! { &ident,
             "auto" => Ok(CssTextDecorationThickness::Auto),
             "from-font" => Ok(CssTextDecorationThickness::FromFont),
@@ -840,18 +824,18 @@ pub(crate) fn parse_text_decoration_thickness<'i, 't>(
     parse_length_percentage(input, numeric).map(CssTextDecorationThickness::Length)
 }
 
-pub(crate) fn parse_text_transform<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssTextTransform, ParseError<'i, Error>> {
-    let first = input.state();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_text_transform<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssTextTransform, SyntaxError<'i, Error>> {
+    let first = input.mark();
+    let ident = input.consume_ident().map_err(basic)?;
     if ident.eq_ignore_ascii_case("none") {
         return Ok(CssTextTransform::None);
     }
     if ident.eq_ignore_ascii_case("math-auto") {
         return Ok(CssTextTransform::MathAuto);
     }
-    input.reset(&first);
+    input.restore(first);
     // `[ capitalize | uppercase | lowercase ] || full-width || full-size-kana`.
     let (mut case, mut full_width, mut full_size_kana) = (None, None, None);
     let [_, full_width, full_size_kana] = parse_group::<3>(
@@ -876,53 +860,53 @@ pub(crate) fn parse_text_transform<'i, 't>(
     )?;
     CssTextTransformSet::try_new(case, full_width, full_size_kana)
         .map(CssTextTransform::Transforms)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }
 
-pub(crate) fn parse_wrap_inside<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssWrapInside, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_wrap_inside<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssWrapInside, SyntaxError<'i, Error>> {
+    let location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssWrapInside::Auto),
         "avoid" => Ok(CssWrapInside::Avoid),
-        _ => Err(location.new_unexpected_token_error::<Error>(Token::Ident(ident))),
+        _ => Err(location.unexpected::<Error>(Token::Ident(ident))),
     }
 }
-pub(crate) fn parse_wrap_boundary<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssWrapBoundary, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_wrap_boundary<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssWrapBoundary, SyntaxError<'i, Error>> {
+    let location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssWrapBoundary::Auto), "avoid" => Ok(CssWrapBoundary::Avoid),
         "avoid-line" => Ok(CssWrapBoundary::AvoidLine), "avoid-flex" => Ok(CssWrapBoundary::AvoidFlex),
         "line" => Ok(CssWrapBoundary::Line), "flex" => Ok(CssWrapBoundary::Flex),
-        _ => Err(location.new_unexpected_token_error::<Error>(Token::Ident(ident))),
+        _ => Err(location.unexpected::<Error>(Token::Ident(ident))),
     }
 }
-pub(crate) fn parse_line_break<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssLineBreak, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_line_break<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssLineBreak, SyntaxError<'i, Error>> {
+    let location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssLineBreak::Auto), "loose" => Ok(CssLineBreak::Loose),
         "normal" => Ok(CssLineBreak::Normal), "strict" => Ok(CssLineBreak::Strict),
         "anywhere" => Ok(CssLineBreak::Anywhere),
-        _ => Err(location.new_unexpected_token_error::<Error>(Token::Ident(ident))),
+        _ => Err(location.unexpected::<Error>(Token::Ident(ident))),
     }
 }
-pub(crate) fn parse_word_space_transform<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssWordSpaceTransform, ParseError<'i, Error>> {
-    let first = input.state();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_word_space_transform<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssWordSpaceTransform, SyntaxError<'i, Error>> {
+    let first = input.mark();
+    let ident = input.consume_ident().map_err(basic)?;
     if ident.eq_ignore_ascii_case("none") {
         return Ok(CssWordSpaceTransform::None);
     }
-    input.reset(&first);
+    input.restore(first);
     // `[ space | ideographic-space ] && auto-phrase?`.
     let (mut ideographic, mut auto_phrase) = (None, None);
     let [_, auto_phrase] = parse_group::<2>(
@@ -945,17 +929,17 @@ pub(crate) fn parse_word_space_transform<'i, 't>(
     match ideographic {
         Some(false) => Ok(CssWordSpaceTransform::Space { auto_phrase }),
         Some(true) => Ok(CssWordSpaceTransform::IdeographicSpace { auto_phrase }),
-        None => Err(unexpected_at(input.current_source_location())),
+        None => Err(unexpected_at(input.site())),
     }
 }
-pub(crate) fn parse_tab_size<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_tab_size<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssTabSize, ParseError<'i, Error>> {
+) -> std::result::Result<CssTabSize, SyntaxError<'i, Error>> {
     // Number-first preserves the authored bare-zero choice. Typed math tries
     // pure roots through the shared original numeric context, never a reparse.
     if let Ok(number) =
-        input.try_parse(|input| super::values::parse_nonnegative_number(input, numeric))
+        input.attempt(|input| super::values::parse_nonnegative_number(input, numeric))
     {
         return Ok(CssTabSize::Number(number));
     }
@@ -966,9 +950,9 @@ pub(crate) fn parse_tab_size<'i, 't>(
 // exact numeric/component owners. Nested reorderable groups stay contiguous.
 macro_rules! text_keyword_parser {
     ($parser:ident, $ty:ident, $($text:literal => $variant:ident),+ $(,)?) => {
-        pub(super) fn $parser<'i, 't>(input: &mut Parser<'i, 't>) -> std::result::Result<$ty, ParseError<'i, Error>> {
-            let keyword_location = input.current_source_location();
-            let ident = input.expect_ident_cloned().map_err(basic)?;
+        pub(super) fn $parser<'i>(input: &mut Stream<'i>) -> std::result::Result<$ty, SyntaxError<'i, Error>> {
+            let keyword_location = input.site();
+            let ident = input.consume_ident().map_err(basic)?;
             match_ignore_ascii_case! { &ident,
                 $($text => Ok($ty::$variant),)+
                 _ => Err(unexpected_at(keyword_location)),
@@ -989,18 +973,15 @@ text_keyword_parser!(parse_spacing_trim, CssSpacingTrim,
     "space-all" => SpaceAll, "normal" => Normal, "space-first" => SpaceFirst,
     "trim-start" => TrimStart, "trim-both" => TrimBoth, "trim-all" => TrimAll);
 
-pub(crate) fn parse_hyphenate_character<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_hyphenate_character<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssHyphenateCharacter, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("auto"))
-        .is_ok()
-    {
+) -> std::result::Result<CssHyphenateCharacter, SyntaxError<'i, Error>> {
+    if input.attempt(|input| input.consume_keyword("auto")).is_ok() {
         return Ok(CssHyphenateCharacter::Auto);
     }
-    input.skip_whitespace();
-    let location = input.current_source_location();
+    input.discard_whitespace();
+    let location = input.site();
     let component = input
         .collect_numeric_component(numeric)
         .map_err(|_| unexpected_at(location))?;
@@ -1008,72 +989,69 @@ pub(crate) fn parse_hyphenate_character<'i, 't>(
         .map(CssHyphenateCharacter::String)
         .ok_or_else(|| unexpected_at(location))
 }
-fn parse_hyphenate_integer<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_hyphenate_integer<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssNumeric<CssInteger, CssNonNegative>, ParseError<'i, Error>> {
-    let location = input.current_source_location();
+) -> std::result::Result<CssNumeric<CssInteger, CssNonNegative>, SyntaxError<'i, Error>> {
+    let location = input.site();
     let integer = super::values::parse_integer_value(input, numeric)?;
     integer
         .try_narrow::<CssNonNegative>()
         .map_err(|_| unexpected_at(location))
 }
-fn parse_hyphenate_chars_component<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_hyphenate_chars_component<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssHyphenateLimitCharsComponent, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("auto"))
-        .is_ok()
-    {
+) -> std::result::Result<CssHyphenateLimitCharsComponent, SyntaxError<'i, Error>> {
+    if input.attempt(|input| input.consume_keyword("auto")).is_ok() {
         return Ok(CssHyphenateLimitCharsComponent::Auto);
     }
     parse_hyphenate_integer(input, numeric).map(CssHyphenateLimitCharsComponent::Integer)
 }
-pub(crate) fn parse_hyphenate_limit_chars<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_hyphenate_limit_chars<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssHyphenateLimitChars, ParseError<'i, Error>> {
+) -> std::result::Result<CssHyphenateLimitChars, SyntaxError<'i, Error>> {
     let total = parse_hyphenate_chars_component(input, numeric)?;
-    let before = if input.is_exhausted() {
+    let before = if input.only_whitespace_remains() {
         None
     } else {
         Some(parse_hyphenate_chars_component(input, numeric)?)
     };
-    let after = if input.is_exhausted() {
+    let after = if input.only_whitespace_remains() {
         None
     } else {
         Some(parse_hyphenate_chars_component(input, numeric)?)
     };
     Ok(CssHyphenateLimitChars::try_new(total, before, after).expect("ordered authored slots"))
 }
-pub(crate) fn parse_hyphenate_limit_lines<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_hyphenate_limit_lines<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssHyphenateLimitLines, ParseError<'i, Error>> {
+) -> std::result::Result<CssHyphenateLimitLines, SyntaxError<'i, Error>> {
     if input
-        .try_parse(|input| input.expect_ident_matching("no-limit"))
+        .attempt(|input| input.consume_keyword("no-limit"))
         .is_ok()
     {
         return Ok(CssHyphenateLimitLines::NoLimit);
     }
     parse_hyphenate_integer(input, numeric).map(CssHyphenateLimitLines::Integer)
 }
-pub(crate) fn parse_hyphenate_limit_zone<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_hyphenate_limit_zone<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssNumeric<CssLengthPercentage>, ParseError<'i, Error>> {
+) -> std::result::Result<CssNumeric<CssLengthPercentage>, SyntaxError<'i, Error>> {
     parse_length_percentage(input, numeric)
 }
-pub(crate) fn parse_line_padding<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_line_padding<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssNumeric<CssLength>, ParseError<'i, Error>> {
+) -> std::result::Result<CssNumeric<CssLength>, SyntaxError<'i, Error>> {
     super::values::parse_length(input, numeric)
 }
-pub(crate) fn parse_text_justify<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssTextJustify, ParseError<'i, Error>> {
+pub(crate) fn parse_text_justify<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssTextJustify, SyntaxError<'i, Error>> {
     // `[ auto | none | inter-word | inter-character | ruby ] || no-compress`.
     let (mut no_compress, mut base) = (None, None);
     let [no_compress, _] = parse_group::<2>(
@@ -1087,16 +1065,15 @@ pub(crate) fn parse_text_justify<'i, 't>(
             _ => unreachable!("two text-justify operands"),
         },
     )?;
-    CssTextJustify::try_new(base, no_compress)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+    CssTextJustify::try_new(base, no_compress).ok_or_else(|| unexpected_at(input.site()))
 }
-fn parse_autospace_flags<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<[bool; 3], ParseError<'i, Error>> {
+fn parse_autospace_flags<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<[bool; 3], SyntaxError<'i, Error>> {
     let mut flags = [false; 3];
-    while !input.is_exhausted() {
-        let state = input.state();
-        let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) else {
+    while !input.only_whitespace_remains() {
+        let state = input.mark();
+        let Ok(ident) = input.attempt(Stream::consume_ident) else {
             break;
         };
         let index = if ident.eq_ignore_ascii_case("ideograph-alpha") {
@@ -1106,57 +1083,54 @@ fn parse_autospace_flags<'i, 't>(
         } else if ident.eq_ignore_ascii_case("punctuation") {
             2
         } else {
-            input.reset(&state);
+            input.restore(state);
             break;
         };
         if std::mem::replace(&mut flags[index], true) {
-            return Err(unexpected_at(input.current_source_location()));
+            return Err(unexpected_at(input.site()));
         }
     }
     Ok(flags)
 }
-fn parse_autospace<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssAutospace, ParseError<'i, Error>> {
+fn parse_autospace<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssAutospace, SyntaxError<'i, Error>> {
     if input
-        .try_parse(|input| input.expect_ident_matching("no-autospace"))
+        .attempt(|input| input.consume_keyword("no-autospace"))
         .is_ok()
     {
         return Ok(CssAutospace::NoAutospace);
     }
     // The entire nested flag group appears either before or after the mode.
-    let (flags, mode) = if let Ok(mode) = input.try_parse(parse_autospace_mode) {
+    let (flags, mode) = if let Ok(mode) = input.attempt(parse_autospace_mode) {
         (parse_autospace_flags(input)?, Some(mode))
     } else {
         let flags = parse_autospace_flags(input)?;
-        (flags, input.try_parse(parse_autospace_mode).ok())
+        (flags, input.attempt(parse_autospace_mode).ok())
     };
     CssAutospaceValues::try_new(flags[0], flags[1], flags[2], mode)
         .map(CssAutospace::Spacing)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }
-pub(crate) fn parse_text_autospace<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssTextAutospace, ParseError<'i, Error>> {
+pub(crate) fn parse_text_autospace<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssTextAutospace, SyntaxError<'i, Error>> {
     if input
-        .try_parse(|input| input.expect_ident_matching("normal"))
+        .attempt(|input| input.consume_keyword("normal"))
         .is_ok()
     {
         return Ok(CssTextAutospace::Normal);
     }
-    if input
-        .try_parse(|input| input.expect_ident_matching("auto"))
-        .is_ok()
-    {
+    if input.attempt(|input| input.consume_keyword("auto")).is_ok() {
         return Ok(CssTextAutospace::Auto);
     }
     parse_autospace(input).map(CssTextAutospace::Autospace)
 }
-pub(crate) fn parse_text_box_trim<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssTextBoxTrim, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_text_box_trim<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssTextBoxTrim, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "none" => Ok(CssTextBoxTrim::None),
         "trim-start" => Ok(CssTextBoxTrim::TrimStart),
@@ -1165,11 +1139,11 @@ pub(crate) fn parse_text_box_trim<'i, 't>(
         _ => Err(unexpected_at(keyword_location)),
     }
 }
-fn parse_text_under_edge<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssTextUnderEdge, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+fn parse_text_under_edge<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssTextUnderEdge, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "text" => Ok(CssTextUnderEdge::Text),
         "ideographic" => Ok(CssTextUnderEdge::Ideographic),
@@ -1178,11 +1152,11 @@ fn parse_text_under_edge<'i, 't>(
         _ => Err(unexpected_at(keyword_location)),
     }
 }
-pub(crate) fn parse_text_box_edge<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssTextBoxEdge, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_text_box_edge<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssTextBoxEdge, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     if ident.eq_ignore_ascii_case("auto") {
         return Ok(CssTextBoxEdge::Auto);
     }
@@ -1194,74 +1168,62 @@ pub(crate) fn parse_text_box_edge<'i, 't>(
         "ex" => (CssTextOverEdge::Ex, None),
         _ => return Err(unexpected_at(keyword_location)),
     };
-    if let Ok(under) = input.try_parse(parse_text_under_edge) {
+    if let Ok(under) = input.attempt(parse_text_under_edge) {
         return Ok(CssTextBoxEdge::Edge(CssTextEdge::Pair { over, under }));
     }
     single
         .map(|metric| CssTextBoxEdge::Edge(CssTextEdge::Single(metric)))
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }
-pub(crate) fn parse_text_box<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssTextBox, ParseError<'i, Error>> {
+pub(crate) fn parse_text_box<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssTextBox, SyntaxError<'i, Error>> {
     if input
-        .try_parse(|input| input.expect_ident_matching("normal"))
+        .attempt(|input| input.consume_keyword("normal"))
         .is_ok()
     {
         return Ok(CssTextBox::Normal);
     }
-    let mut trim = input.try_parse(parse_text_box_trim).ok();
-    let edge = input.try_parse(parse_text_box_edge).ok();
+    let mut trim = input.attempt(parse_text_box_trim).ok();
+    let edge = input.attempt(parse_text_box_edge).ok();
     if trim.is_none() {
-        trim = input.try_parse(parse_text_box_trim).ok();
+        trim = input.attempt(parse_text_box_trim).ok();
     }
     CssTextBoxValues::try_new(trim, edge)
         .map(CssTextBox::Components)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }
 
-pub(crate) fn parse_text_spacing_trim<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssTextSpacingTrim, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("auto"))
-        .is_ok()
-    {
+pub(crate) fn parse_text_spacing_trim<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssTextSpacingTrim, SyntaxError<'i, Error>> {
+    if input.attempt(|input| input.consume_keyword("auto")).is_ok() {
         return Ok(CssTextSpacingTrim::Auto);
     }
     parse_spacing_trim(input).map(CssTextSpacingTrim::Trim)
 }
-pub(crate) fn parse_text_spacing<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssTextSpacing, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("none"))
-        .is_ok()
-    {
+pub(crate) fn parse_text_spacing<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssTextSpacing, SyntaxError<'i, Error>> {
+    if input.attempt(|input| input.consume_keyword("none")).is_ok() {
         return Ok(CssTextSpacing::None);
     }
-    if input
-        .try_parse(|input| input.expect_ident_matching("auto"))
-        .is_ok()
-    {
+    if input.attempt(|input| input.consume_keyword("auto")).is_ok() {
         return Ok(CssTextSpacing::Auto);
     }
-    let mut trim = input.try_parse(parse_spacing_trim).ok();
-    let autospace = input.try_parse(parse_autospace).ok();
+    let mut trim = input.attempt(parse_spacing_trim).ok();
+    let autospace = input.attempt(parse_autospace).ok();
     if trim.is_none() {
-        trim = input.try_parse(parse_spacing_trim).ok();
+        trim = input.attempt(parse_spacing_trim).ok();
     }
     CssTextSpacingValues::try_new(trim, autospace)
         .map(CssTextSpacing::Components)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }
-pub(crate) fn parse_hanging_punctuation<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssHangingPunctuation, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("none"))
-        .is_ok()
-    {
+pub(crate) fn parse_hanging_punctuation<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssHangingPunctuation, SyntaxError<'i, Error>> {
+    if input.attempt(|input| input.consume_keyword("none")).is_ok() {
         return Ok(CssHangingPunctuation::None);
     }
     // `first || [ force-end | allow-end ] || last`.
@@ -1287,5 +1249,5 @@ pub(crate) fn parse_hanging_punctuation<'i, 't>(
     )?;
     CssHangingPunctuationValues::try_new(first, end, last)
         .map(CssHangingPunctuation::Hang)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }

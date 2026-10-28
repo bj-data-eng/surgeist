@@ -1,9 +1,9 @@
 //! Lists 3 longhands and shorthand, sharing the Content 3 style grammar.
 
 use super::combinators::{Combinator, Tail, commit, fill, keyword, parse_group};
-use super::property_input::Parser;
+use super::property_input::Stream;
 use super::values::next_is_ident;
-use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
 use cssparser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 
@@ -15,11 +15,11 @@ use crate::values::content::{
 };
 use crate::values::image::CssImageValue;
 
-pub(super) fn parse_marker_side<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssMarkerSide, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(super) fn parse_marker_side<'i>(
+    input: &mut Stream<'i>,
+) -> Result<CssMarkerSide, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "match-self" => Ok(CssMarkerSide::MatchSelf),
         "match-parent" => Ok(CssMarkerSide::MatchParent),
@@ -27,27 +27,24 @@ pub(super) fn parse_marker_side<'i, 't>(
     }
 }
 
-pub(super) fn parse_list_style_type<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_list_style_type<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<CssListStyleTypeValue, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("none"))
-        .is_ok()
-    {
+) -> Result<CssListStyleTypeValue, SyntaxError<'i, Error>> {
+    if input.attempt(|input| input.consume_keyword("none")).is_ok() {
         return Ok(CssListStyleTypeValue::None);
     }
-    if let Ok(value) = input.try_parse(parse_content_string) {
+    if let Ok(value) = input.attempt(parse_content_string) {
         return Ok(CssListStyleTypeValue::String(value));
     }
     parse_style(input, numeric).map(CssListStyleTypeValue::CounterStyle)
 }
 
-pub(super) fn parse_list_style_position<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssListStylePosition, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(super) fn parse_list_style_position<'i>(
+    input: &mut Stream<'i>,
+) -> Result<CssListStylePosition, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "inside" => Ok(CssListStylePosition::Inside),
         "outside" => Ok(CssListStylePosition::Outside),
@@ -55,28 +52,28 @@ pub(super) fn parse_list_style_position<'i, 't>(
     }
 }
 
-pub(super) fn parse_list_style_image<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_list_style_image<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<CssImageValue, ParseError<'i, Error>> {
+) -> Result<CssImageValue, SyntaxError<'i, Error>> {
     parse_image_value(input, numeric)
 }
 
-fn starts_image(input: &mut Parser<'_, '_>) -> bool {
-    let state = input.state();
-    let starts = match input.next() {
+fn starts_image(input: &mut Stream<'_>) -> bool {
+    let state = input.mark();
+    let starts = match input.consume_after_whitespace() {
         Ok(Token::UnquotedUrl(_)) => true,
         Ok(Token::Function(name)) => !name.eq_ignore_ascii_case("symbols"),
         _ => false,
     };
-    input.reset(&state);
+    input.restore(state);
     starts
 }
 
-pub(super) fn parse_list_style<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_list_style<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<CssListStyleValue, ParseError<'i, Error>> {
+) -> Result<CssListStyleValue, SyntaxError<'i, Error>> {
     // `<'list-style-position'> || <'list-style-image'> || <'list-style-type'>`.
     // Image and type both admit `none`, so up to two `none` operands are
     // collected as ambiguous; any other type candidate commits the type.
@@ -95,7 +92,7 @@ pub(super) fn parse_list_style<'i, 't>(
             2 => fill(&mut position, input, parse_list_style_position),
             _ if next_is_ident(input, "none") => Ok(false),
             3 => {
-                let location = input.current_source_location();
+                let location = input.site();
                 // A URL or a function other than symbols() can only be the
                 // image, which commits the operand (Values 4 §2.2).
                 let matched = if commit(&mut image, input, starts_image, |input| {
@@ -113,7 +110,7 @@ pub(super) fn parse_list_style<'i, 't>(
                 Ok(matched)
             }
             4 => {
-                let location = input.current_source_location();
+                let location = input.site();
                 let matched = commit(
                     &mut style_type,
                     input,
@@ -132,9 +129,7 @@ pub(super) fn parse_list_style<'i, 't>(
 
     let free = usize::from(style_type.is_none()) + usize::from(image.is_none());
     if none_count > free {
-        return Err(unexpected_at(
-            last_slot.unwrap_or_else(|| input.current_source_location()),
-        ));
+        return Err(unexpected_at(last_slot.unwrap_or_else(|| input.site())));
     }
     if none_count != 0 {
         if style_type.is_none() {
@@ -145,5 +140,5 @@ pub(super) fn parse_list_style<'i, 't>(
         }
     }
     CssListStyleValue::try_new(style_type, position, image)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }

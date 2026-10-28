@@ -1,9 +1,9 @@
 //! Motion Path authored grammar composed over the shared numeric, position,
 //! URL and complete BasicShape owners.
 use super::combinators::{Combinator, Tail, commit, fill, keyword, parse_group};
-use super::property_input::Parser;
+use super::property_input::Stream;
 use super::values::{next_is_delim, next_is_ident, parse_angle_value, parse_length_percentage};
-use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
 use crate::numeric::expression::NumericInputContext;
 use crate::values::transform::{
     CssCoordBox, CssOffset, CssOffsetAnchor, CssOffsetPath, CssOffsetPathKind, CssOffsetPathValue,
@@ -11,18 +11,18 @@ use crate::values::transform::{
 };
 use cssparser::Token;
 
-fn next_keyword<'i, 't>(input: &mut Parser<'i, 't>) -> Option<String> {
-    let state = input.state();
-    let keyword = match input.next() {
+fn next_keyword<'i>(input: &mut Stream<'i>) -> Option<String> {
+    let state = input.mark();
+    let keyword = match input.consume_after_whitespace() {
         Ok(Token::Ident(value)) => Some(value.to_ascii_lowercase()),
         _ => None,
     };
-    input.reset(&state);
+    input.restore(state);
     keyword
 }
-fn next_path_kind<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
-    let state = input.state();
-    let result = match input.next() {
+fn next_path_kind<'i>(input: &mut Stream<'i>) -> bool {
+    let state = input.mark();
+    let result = match input.consume_after_whitespace() {
         Ok(Token::UnquotedUrl(_)) => true,
         Ok(Token::Function(name)) => {
             name.eq_ignore_ascii_case("ray")
@@ -32,39 +32,36 @@ fn next_path_kind<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
         }
         _ => false,
     };
-    input.reset(&state);
+    input.restore(state);
     result
 }
-fn next_coord_box<'i, 't>(input: &mut Parser<'i, 't>) -> Option<CssCoordBox> {
+fn next_coord_box<'i>(input: &mut Stream<'i>) -> Option<CssCoordBox> {
     next_keyword(input)
         .as_deref()
         .and_then(CssCoordBox::from_keyword)
 }
-fn next_path<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
+fn next_path<'i>(input: &mut Stream<'i>) -> bool {
     next_is_ident(input, "none") || next_coord_box(input).is_some() || next_path_kind(input)
 }
 
-pub(crate) fn parse_offset_path<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_offset_path<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssOffsetPath, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("none"))
-        .is_ok()
-    {
+) -> Result<CssOffsetPath, SyntaxError<'i, Error>> {
+    if input.attempt(|input| input.consume_keyword("none")).is_ok() {
         return Ok(CssOffsetPath::none());
     }
     let mut coord_box = next_coord_box(input);
     if coord_box.is_some() {
-        input.next().map_err(basic)?;
+        input.consume_after_whitespace().map_err(basic)?;
     }
     if let Some(coord_box) = coord_box
         && !next_path_kind(input)
     {
         return Ok(CssOffsetPath::from_coord_box(coord_box));
     }
-    let state = input.state();
-    let (ray, url) = match input.next() {
+    let state = input.mark();
+    let (ray, url) = match input.consume_after_whitespace() {
         Ok(Token::Function(name)) => (
             name.eq_ignore_ascii_case("ray"),
             name.eq_ignore_ascii_case("url") || name.eq_ignore_ascii_case("src"),
@@ -72,10 +69,10 @@ pub(crate) fn parse_offset_path<'i, 't>(
         Ok(Token::UnquotedUrl(_)) => (false, true),
         _ => (false, false),
     };
-    input.reset(&state);
+    input.restore(state);
     let path = if ray {
-        input.expect_function_matching("ray").map_err(basic)?;
-        CssOffsetPathKind::Ray(input.parse_nested_block(|input| parse_ray(input, numeric))?)
+        input.consume_function_named("ray").map_err(basic)?;
+        CssOffsetPathKind::Ray(input.within_block(|input| parse_ray(input, numeric))?)
     } else if url {
         CssOffsetPathKind::Url(super::url::parse_url(input, numeric)?)
     } else {
@@ -84,7 +81,7 @@ pub(crate) fn parse_offset_path<'i, 't>(
     if coord_box.is_none()
         && let Some(value) = next_coord_box(input)
     {
-        input.next().map_err(basic)?;
+        input.consume_after_whitespace().map_err(basic)?;
         coord_box = Some(value);
     }
     Ok(CssOffsetPath::from_path(CssOffsetPathValue::new(
@@ -92,10 +89,10 @@ pub(crate) fn parse_offset_path<'i, 't>(
     )))
 }
 
-fn parse_ray<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_ray<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssRay, ParseError<'i, Error>> {
+) -> Result<CssRay, SyntaxError<'i, Error>> {
     // `<angle> && <ray-size>? && contain? && [ at <position> ]?`; any other
     // component commits the angle.
     let (mut angle, mut size, mut contain, mut position) = (None, None, None, None);
@@ -113,7 +110,7 @@ fn parse_ray<'i, 't>(
                 input,
                 |input| next_is_ident(input, "at"),
                 |input| {
-                    input.next().map_err(basic)?;
+                    input.consume_after_whitespace().map_err(basic)?;
                     super::position::parse_full_position_before_angle(input, numeric)
                 },
             ),
@@ -124,7 +121,7 @@ fn parse_ray<'i, 't>(
                 else {
                     return Ok(false);
                 };
-                input.next().map_err(basic)?;
+                input.consume_after_whitespace().map_err(basic)?;
                 size = Some(value);
                 Ok(true)
             }
@@ -141,59 +138,53 @@ fn parse_ray<'i, 't>(
     Ok(CssRay::new(angle, size, contain, position))
 }
 
-pub(crate) fn parse_offset_position<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_offset_position<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssOffsetPosition, ParseError<'i, Error>> {
+) -> Result<CssOffsetPosition, SyntaxError<'i, Error>> {
     if input
-        .try_parse(|input| input.expect_ident_matching("normal"))
+        .attempt(|input| input.consume_keyword("normal"))
         .is_ok()
     {
         return Ok(CssOffsetPosition::Normal);
     }
-    if input
-        .try_parse(|input| input.expect_ident_matching("auto"))
-        .is_ok()
-    {
+    if input.attempt(|input| input.consume_keyword("auto")).is_ok() {
         return Ok(CssOffsetPosition::Auto);
     }
     super::position::parse_full_position(input, numeric).map(CssOffsetPosition::Position)
 }
-pub(crate) fn parse_offset_anchor<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_offset_anchor<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssOffsetAnchor, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("auto"))
-        .is_ok()
-    {
+) -> Result<CssOffsetAnchor, SyntaxError<'i, Error>> {
+    if input.attempt(|input| input.consume_keyword("auto")).is_ok() {
         return Ok(CssOffsetAnchor::Auto);
     }
     super::position::parse_full_position(input, numeric).map(CssOffsetAnchor::Position)
 }
-fn take_modifier<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<Option<CssOffsetRotateModifier>, ParseError<'i, Error>> {
+fn take_modifier<'i>(
+    input: &mut Stream<'i>,
+) -> Result<Option<CssOffsetRotateModifier>, SyntaxError<'i, Error>> {
     let modifier = match next_keyword(input).as_deref() {
         Some("auto") => Some(CssOffsetRotateModifier::Auto),
         Some("reverse") => Some(CssOffsetRotateModifier::Reverse),
         _ => None,
     };
     if modifier.is_some() {
-        input.next().map_err(basic)?;
+        input.consume_after_whitespace().map_err(basic)?;
     }
     Ok(modifier)
 }
-pub(crate) fn parse_offset_rotate<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_offset_rotate<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssOffsetRotate, ParseError<'i, Error>> {
+) -> Result<CssOffsetRotate, SyntaxError<'i, Error>> {
     let mut modifier = take_modifier(input)?;
     // This same owner parses one whole quoted rotation constituent in offset.
     // A modifier alone is complete, so a following distance or slash belongs
     // to the enclosing grammar rather than requiring an angle here.
     let angle = if modifier.is_some() {
-        match input.try_parse(|input| parse_angle_value(input, numeric)) {
+        match input.attempt(|input| parse_angle_value(input, numeric)) {
             Ok(value) => Some(value),
             Err(error) if crate::diagnostic::error::property::is_resource_parse_error(&error) => {
                 return Err(error);
@@ -206,19 +197,18 @@ pub(crate) fn parse_offset_rotate<'i, 't>(
     if modifier.is_none() {
         modifier = take_modifier(input)?;
     }
-    CssOffsetRotate::try_new(modifier, angle)
-        .map_err(|_| unexpected_at(input.current_source_location()))
+    CssOffsetRotate::try_new(modifier, angle).map_err(|_| unexpected_at(input.site()))
 }
 
-pub(crate) fn parse_offset<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_offset<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssOffset, ParseError<'i, Error>> {
+) -> Result<CssOffset, SyntaxError<'i, Error>> {
     let position = if next_is_ident(input, "normal") {
-        input.next().map_err(basic)?;
+        input.consume_after_whitespace().map_err(basic)?;
         Some(CssOffsetPosition::Normal)
     } else if next_is_ident(input, "auto") {
-        input.next().map_err(basic)?;
+        input.consume_after_whitespace().map_err(basic)?;
         Some(CssOffsetPosition::Auto)
     } else if !next_path(input) && !next_is_delim(input, '/') {
         Some(CssOffsetPosition::Position(
@@ -258,11 +248,11 @@ pub(crate) fn parse_offset<'i, 't>(
             },
         )?;
     }
-    let anchor = if input.try_parse(|input| input.expect_delim('/')).is_ok() {
+    let anchor = if input.attempt(|input| input.consume_delim('/')).is_ok() {
         Some(parse_offset_anchor(input, numeric)?)
     } else {
         None
     };
     CssOffset::try_new(position, path, distance, rotate, anchor)
-        .map_err(|_| unexpected_at(input.current_source_location()))
+        .map_err(|_| unexpected_at(input.site()))
 }

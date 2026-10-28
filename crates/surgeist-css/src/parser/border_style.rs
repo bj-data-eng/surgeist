@@ -1,19 +1,19 @@
 //! Border style grammar shared by longhands, pairs, four-side shorthand and triples.
 
-use super::property_input::Parser;
-use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use super::property_input::Stream;
+use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::side_shapes::{parse_four_sides, parse_side_pair};
 use crate::values::border::CssLineStyle;
 use crate::values::common::{CssFourSides, CssSidePair};
 
-pub(super) fn parse_border_style<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssLineStyle, ParseError<'i, Error>> {
+pub(super) fn parse_border_style<'i>(
+    input: &mut Stream<'i>,
+) -> Result<CssLineStyle, SyntaxError<'i, Error>> {
     // The unadmitted keyword itself is responsible, not the token after it.
-    let location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+    let location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "none" => Ok(CssLineStyle::None),
         "hidden" => Ok(CssLineStyle::Hidden),
@@ -29,14 +29,14 @@ pub(super) fn parse_border_style<'i, 't>(
     }
 }
 
-pub(super) fn parse_border_style_pair<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssSidePair<CssLineStyle>, ParseError<'i, Error>> {
+pub(super) fn parse_border_style_pair<'i>(
+    input: &mut Stream<'i>,
+) -> Result<CssSidePair<CssLineStyle>, SyntaxError<'i, Error>> {
     parse_side_pair(input, parse_border_style)
 }
 
-pub(super) fn parse_border_style_shorthand<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssFourSides<CssLineStyle>, ParseError<'i, Error>> {
+pub(super) fn parse_border_style_shorthand<'i>(
+    input: &mut Stream<'i>,
+) -> Result<CssFourSides<CssLineStyle>, SyntaxError<'i, Error>> {
     parse_four_sides(input, parse_border_style)
 }

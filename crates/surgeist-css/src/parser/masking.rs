@@ -7,8 +7,8 @@ use super::background::{
 };
 use super::combinators::{Combinator, Tail, attempt, commit, fill, parse_group};
 use super::position::parse_position_prefix;
-use super::property_input::Parser;
-use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use super::property_input::Stream;
+use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
 use crate::values::border::CssBorderImageSlice;
 use crate::values::effects::{
     CssClipRule, CssMaskBorder, CssMaskBoxList, CssMaskClip, CssMaskClipList, CssMaskComposite,
@@ -19,9 +19,9 @@ use crate::values::transform::CssCoordBox;
 
 macro_rules! keyword_parser {
     ($function:ident, $ty:ident, $($keyword:literal => $variant:ident),+ $(,)?) => {
-        pub(super) fn $function<'i, 't>(input: &mut Parser<'i, 't>) -> Result<$ty, ParseError<'i, Error>> {
-            let keyword_location = input.current_source_location();
-            let ident = input.expect_ident_cloned().map_err(basic)?;
+        pub(super) fn $function<'i>(input: &mut Stream<'i>) -> Result<$ty, SyntaxError<'i, Error>> {
+            let keyword_location = input.site();
+            let ident = input.consume_ident().map_err(basic)?;
             match ident.to_ascii_lowercase().as_str() {
                 $($keyword => Ok($ty::$variant),)+
                 _ => Err(unexpected_at(keyword_location)),
@@ -34,18 +34,18 @@ keyword_parser!(parse_mask_composite, CssMaskComposite, "add" => Add, "subtract"
 keyword_parser!(parse_mask_type, CssMaskType, "alpha" => Alpha, "luminance" => Luminance);
 keyword_parser!(parse_clip_rule, CssClipRule, "nonzero" => Nonzero, "evenodd" => Evenodd);
 
-pub(super) fn parse_mask_box<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssCoordBox, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(super) fn parse_mask_box<'i>(
+    input: &mut Stream<'i>,
+) -> Result<CssCoordBox, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     CssCoordBox::from_keyword(&ident).ok_or_else(|| unexpected_at(keyword_location))
 }
-pub(super) fn parse_mask_clip<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssMaskClip, ParseError<'i, Error>> {
+pub(super) fn parse_mask_clip<'i>(
+    input: &mut Stream<'i>,
+) -> Result<CssMaskClip, SyntaxError<'i, Error>> {
     if input
-        .try_parse(|input| input.expect_ident_matching("no-clip"))
+        .attempt(|input| input.consume_keyword("no-clip"))
         .is_ok()
     {
         return Ok(CssMaskClip::NoClip);
@@ -55,11 +55,11 @@ pub(super) fn parse_mask_clip<'i, 't>(
 
 macro_rules! list_parser {
     ($function:ident, $list:ident, $parse:ident) => {
-        pub(super) fn $function<'i, 't>(
-            input: &mut Parser<'i, 't>,
-        ) -> Result<$list, ParseError<'i, Error>> {
-            let values = input.parse_comma_separated($parse)?;
-            $list::try_new(values).ok_or_else(|| unexpected_at(input.current_source_location()))
+        pub(super) fn $function<'i>(
+            input: &mut Stream<'i>,
+        ) -> Result<$list, SyntaxError<'i, Error>> {
+            let values = input.comma_segments($parse)?;
+            $list::try_new(values).ok_or_else(|| unexpected_at(input.site()))
         }
     };
 }
@@ -73,27 +73,25 @@ list_parser!(
 );
 
 /// Masking's fill is trailing, unlike Backgrounds' independent && fill grammar.
-pub(crate) fn parse_mask_border_slice<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_mask_border_slice<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<CssBorderImageSlice, ParseError<'i, Error>> {
+) -> Result<CssBorderImageSlice, SyntaxError<'i, Error>> {
     let mut values = vec![parse_border_image_slice_component(input, numeric)?];
     while values.len() < 4 {
-        match input.try_parse(|input| parse_border_image_slice_component(input, numeric)) {
+        match input.attempt(|input| parse_border_image_slice_component(input, numeric)) {
             Ok(value) => values.push(value),
             Err(_) => break,
         }
     }
-    let fill = input
-        .try_parse(|input| input.expect_ident_matching("fill"))
-        .is_ok();
+    let fill = input.attempt(|input| input.consume_keyword("fill")).is_ok();
     Ok(CssBorderImageSlice::try_new(values, fill).expect("one to four checked components"))
 }
 
-pub(crate) fn parse_mask_border<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_mask_border<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<CssMaskBorder, ParseError<'i, Error>> {
+) -> Result<CssMaskBorder, SyntaxError<'i, Error>> {
     // `<'mask-border-source'> || <'mask-border-slice'> [ /
     // <'mask-border-width'>? [ / <'mask-border-outset'> ]? ]? ||
     // <'mask-border-repeat'> || <'mask-border-mode'>`.
@@ -114,12 +112,12 @@ pub(crate) fn parse_mask_border<'i, 't>(
                 })? {
                     return Ok(false);
                 }
-                if input.try_parse(|input| input.expect_delim('/')).is_ok() {
+                if input.attempt(|input| input.consume_delim('/')).is_ok() {
                     // The first width is optional, including the source's bare 10 /.
-                    if !input.is_exhausted() {
+                    if !input.only_whitespace_remains() {
                         width = attempt(input, |input| parse_border_image_width(input, numeric))?;
                     }
-                    if input.try_parse(|input| input.expect_delim('/')).is_ok() {
+                    if input.attempt(|input| input.consume_delim('/')).is_ok() {
                         outset = Some(parse_border_image_outset(input, numeric)?);
                     }
                 }
@@ -136,25 +134,25 @@ pub(crate) fn parse_mask_border<'i, 't>(
         },
     )?;
     CssMaskBorder::try_new(source, slice, width, outset, repeat, mode)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }
 
-pub(crate) fn parse_mask_list<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_mask_list<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssMaskList, ParseError<'i, Error>> {
-    let layers = input.parse_comma_separated(|input| parse_mask_layer(input, numeric))?;
+) -> std::result::Result<CssMaskList, SyntaxError<'i, Error>> {
+    let layers = input.comma_segments(|input| parse_mask_layer(input, numeric))?;
     if layers.is_empty() {
-        Err(unexpected_at(input.current_source_location()))
+        Err(unexpected_at(input.site()))
     } else {
         Ok(CssMaskList::new(layers))
     }
 }
 
-pub(super) fn parse_mask_layer<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_mask_layer<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssMaskLayer, ParseError<'i, Error>> {
+) -> std::result::Result<CssMaskLayer, SyntaxError<'i, Error>> {
     // `<mask-reference> || <position> [ / <bg-size> ]? || <repeat-style> ||
     // <geometry-box> || [ <geometry-box> | no-clip ] || <compositing-operator>
     // || <masking-mode>`.
@@ -182,7 +180,7 @@ pub(super) fn parse_mask_layer<'i, 't>(
                 })? {
                     return Ok(false);
                 }
-                if input.try_parse(|input| input.expect_delim('/')).is_ok() {
+                if input.attempt(|input| input.consume_delim('/')).is_ok() {
                     size = Some(parse_background_size(input, numeric)?);
                 }
                 Ok(true)
@@ -203,5 +201,5 @@ pub(super) fn parse_mask_layer<'i, 't>(
         (Some(origin), Some(clip)) => Some(CssMaskLayerBoxes::Pair { origin, clip }),
     };
     CssMaskLayer::try_new(image, position, size, repeat, boxes, composite, mode)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }

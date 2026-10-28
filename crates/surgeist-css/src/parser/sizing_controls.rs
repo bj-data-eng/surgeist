@@ -1,7 +1,7 @@
 //! Sizing 4 physical size pairs and finite intrinsic controls.
 
-use super::property_input::Parser;
-use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use super::property_input::Stream;
+use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::side_shapes::parse_side_pair;
@@ -11,25 +11,25 @@ use crate::values::box_model::{CssFrameSizing, CssMinIntrinsicSizing};
 use crate::values::box_model::{CssMaxSizeValue, CssSizeValue};
 use crate::values::common::CssSidePair;
 
-pub(super) fn parse_size_pair<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_size_pair<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssSidePair<CssSizeValue>, ParseError<'i, Error>> {
+) -> Result<CssSidePair<CssSizeValue>, SyntaxError<'i, Error>> {
     parse_side_pair(input, |input| parse_size_value(input, numeric))
 }
 
-pub(super) fn parse_max_size_pair<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_max_size_pair<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssSidePair<CssMaxSizeValue>, ParseError<'i, Error>> {
+) -> Result<CssSidePair<CssMaxSizeValue>, SyntaxError<'i, Error>> {
     parse_side_pair(input, |input| parse_max_size_value(input, numeric))
 }
 
-pub(super) fn parse_frame_sizing<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssFrameSizing, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(super) fn parse_frame_sizing<'i>(
+    input: &mut Stream<'i>,
+) -> Result<CssFrameSizing, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
         "auto" => Ok(CssFrameSizing::Auto),
         "content-width" => Ok(CssFrameSizing::ContentWidth),
@@ -40,11 +40,11 @@ pub(super) fn parse_frame_sizing<'i, 't>(
     }
 }
 
-pub(super) fn parse_min_intrinsic_sizing<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssMinIntrinsicSizing, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(super) fn parse_min_intrinsic_sizing<'i>(
+    input: &mut Stream<'i>,
+) -> Result<CssMinIntrinsicSizing, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     if ident.eq_ignore_ascii_case("legacy") {
         return Ok(CssMinIntrinsicSizing::Legacy);
     }
@@ -55,15 +55,15 @@ pub(super) fn parse_min_intrinsic_sizing<'i, 't>(
     } else {
         return Err(unexpected_at(keyword_location));
     };
-    if input.is_exhausted() {
+    if input.only_whitespace_remains() {
         return Ok(if first_scroll {
             CssMinIntrinsicSizing::ZeroIfScroll
         } else {
             CssMinIntrinsicSizing::ZeroIfExtrinsic
         });
     }
-    let keyword_location = input.current_source_location();
-    let second = input.expect_ident_cloned().map_err(basic)?;
+    let keyword_location = input.site();
+    let second = input.consume_ident().map_err(basic)?;
     if (first_scroll && second.eq_ignore_ascii_case("zero-if-extrinsic"))
         || (!first_scroll && second.eq_ignore_ascii_case("zero-if-scroll"))
     {

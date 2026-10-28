@@ -1,6 +1,6 @@
-use super::property_input::{Parser, ParserState};
+use super::property_input::{Mark, Stream};
 use super::values::{parse_length, parse_length_percentage};
-use crate::diagnostic::error::property::{Error, ParseError, unexpected_at};
+use crate::diagnostic::error::property::{Error, SyntaxError, unexpected_at};
 use cssparser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 
@@ -14,13 +14,13 @@ use crate::values::position::{
 };
 use crate::values::transform::CssTransformOrigin;
 
-pub(super) fn next_starts_background_position<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
+pub(super) fn next_starts_background_position<'i>(input: &mut Stream<'i>) -> bool {
     next_starts_position(input, PositionGrammar::Physical)
 }
 
-fn next_starts_position<'i, 't>(input: &mut Parser<'i, 't>, grammar: PositionGrammar) -> bool {
-    let state = input.state();
-    let starts = match input.next() {
+fn next_starts_position<'i>(input: &mut Stream<'i>, grammar: PositionGrammar) -> bool {
+    let state = input.mark();
+    let starts = match input.consume_after_whitespace() {
         Ok(Token::Ident(value)) => {
             let keyword = value.to_ascii_lowercase();
             matches!(
@@ -46,58 +46,55 @@ fn next_starts_position<'i, 't>(input: &mut Parser<'i, 't>, grammar: PositionGra
         Ok(Token::Function(name)) => crate::numeric::expression::is_math_function(name),
         Ok(_) | Err(_) => false,
     };
-    input.reset(&state);
+    input.restore(state);
     starts
 }
 
-pub(super) fn parse_background_position_prefix<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_background_position_prefix<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssBackgroundPosition, ParseError<'i, Error>> {
+) -> std::result::Result<CssBackgroundPosition, SyntaxError<'i, Error>> {
     let (atoms, states) =
         collect_position_atoms(input, numeric, PositionGrammar::Physical, &[], true)?;
     build_background_position(&atoms).ok_or_else(|| {
-        invalid_generic_position_atom(input, &states[invalid_background_atom_index(&atoms)])
+        invalid_generic_position_atom(input, states[invalid_background_atom_index(&atoms)])
     })
 }
 
-pub(crate) fn parse_mask_position_list<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_mask_position_list<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssPositionList, ParseError<'i, Error>> {
-    let positions = input.parse_comma_separated(|input| parse_position_prefix(input, numeric))?;
-    CssPositionList::try_new(positions)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+) -> std::result::Result<CssPositionList, SyntaxError<'i, Error>> {
+    let positions = input.comma_segments(|input| parse_position_prefix(input, numeric))?;
+    CssPositionList::try_new(positions).ok_or_else(|| unexpected_at(input.site()))
 }
 
-pub(crate) fn parse_background_position_list<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_background_position_list<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssBackgroundPositionList, ParseError<'i, Error>> {
-    let positions =
-        input.parse_comma_separated(|input| parse_background_position(input, numeric))?;
-    CssBackgroundPositionList::try_new(positions)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+) -> std::result::Result<CssBackgroundPositionList, SyntaxError<'i, Error>> {
+    let positions = input.comma_segments(|input| parse_background_position(input, numeric))?;
+    CssBackgroundPositionList::try_new(positions).ok_or_else(|| unexpected_at(input.site()))
 }
 
-pub(crate) fn parse_object_position<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_object_position<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssPosition, ParseError<'i, Error>> {
+) -> std::result::Result<CssPosition, SyntaxError<'i, Error>> {
     parse_position_prefix(input, numeric)
 }
 
-pub(crate) fn parse_transform_origin<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_transform_origin<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssTransformOrigin, ParseError<'i, Error>> {
+) -> std::result::Result<CssTransformOrigin, SyntaxError<'i, Error>> {
     let (atoms, states) = parse_position_atoms(input, numeric, PositionGrammar::Physical)?;
 
     if atoms.len() <= 2
         && let Some(position) = build_physical_position(&atoms)
     {
         return CssTransformOrigin::try_new(position, None)
-            .ok_or_else(|| invalid_generic_position_atom(input, &states[0]));
+            .ok_or_else(|| invalid_generic_position_atom(input, states[0]));
     }
 
     // The selected transform-origin grammar requires two planar atoms before Z.
@@ -105,10 +102,10 @@ pub(crate) fn parse_transform_origin<'i, 't>(
     if atoms.len() == 3 {
         let z_index = atoms.len() - 1;
         if let Some(position) = build_physical_position(&atoms[..z_index]) {
-            input.reset(&states[z_index]);
+            input.restore(states[z_index]);
             let z = parse_length(input, numeric)?;
             return CssTransformOrigin::try_new(position, Some(z))
-                .ok_or_else(|| invalid_generic_position_atom(input, &states[0]));
+                .ok_or_else(|| invalid_generic_position_atom(input, states[0]));
         }
     }
 
@@ -117,29 +114,29 @@ pub(crate) fn parse_transform_origin<'i, 't>(
     } else {
         invalid_atom_index(&atoms)
     };
-    Err(invalid_generic_position_atom(input, &states[invalid_index]))
+    Err(invalid_generic_position_atom(input, states[invalid_index]))
 }
 
 // Shapes and directly imported Motion consumers select the full Values 5 grammar.
-pub(super) fn parse_full_position<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_full_position<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssPosition, ParseError<'i, Error>> {
+) -> std::result::Result<CssPosition, SyntaxError<'i, Error>> {
     let (atoms, states) = parse_position_atoms(input, numeric, PositionGrammar::Full)?;
     build_full_position(&atoms)
-        .ok_or_else(|| invalid_generic_position_atom(input, &states[invalid_atom_index(&atoms)]))
+        .ok_or_else(|| invalid_generic_position_atom(input, states[invalid_atom_index(&atoms)]))
 }
 
 /// Parses the entire position region, leaving caller-owned boundary keywords unconsumed.
-pub(super) fn parse_full_position_bounded<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_full_position_bounded<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
     boundaries: &[&str],
-) -> std::result::Result<CssPosition, ParseError<'i, Error>> {
+) -> std::result::Result<CssPosition, SyntaxError<'i, Error>> {
     let (atoms, states) =
         parse_position_atoms_bounded(input, numeric, PositionGrammar::Full, boundaries)?;
     build_full_position(&atoms)
-        .ok_or_else(|| invalid_generic_position_atom(input, &states[invalid_atom_index(&atoms)]))
+        .ok_or_else(|| invalid_generic_position_atom(input, states[invalid_atom_index(&atoms)]))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -169,28 +166,28 @@ enum GenericPositionAtom {
 /// caller's boundary (list comma, shorthand group or end of value).
 /// The generic builder retains its one-, two- and four-component grammar;
 /// Background's distinct three-component model is not used by these consumers.
-pub(super) fn parse_position_prefix<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_position_prefix<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssPosition, ParseError<'i, Error>> {
+) -> std::result::Result<CssPosition, SyntaxError<'i, Error>> {
     let (atoms, states) = collect_position_atoms(input, numeric, PositionGrammar::Full, &[], true)?;
     build_full_position(&atoms)
-        .ok_or_else(|| invalid_generic_position_atom(input, &states[invalid_atom_index(&atoms)]))
+        .ok_or_else(|| invalid_generic_position_atom(input, states[invalid_atom_index(&atoms)]))
 }
 
 /// Motion uses the full greedy position owner, leaving an independently typed
 /// angle or another non-position constituent to its enclosing ray/shorthand.
-pub(super) fn parse_full_position_before_angle<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_full_position_before_angle<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssPosition, ParseError<'i, Error>> {
+) -> std::result::Result<CssPosition, SyntaxError<'i, Error>> {
     let mut atoms = Vec::new();
     let mut states = Vec::new();
     while atoms.len() < 4 && next_starts_position(input, PositionGrammar::Full) {
-        let state = input.state();
-        let angle = input.try_parse(|input| super::values::parse_angle_value(input, numeric));
+        let state = input.mark();
+        let angle = input.attempt(|input| super::values::parse_angle_value(input, numeric));
         if angle.is_ok() {
-            input.reset(&state);
+            input.restore(state);
             break;
         }
         if let Err(error) = angle
@@ -198,7 +195,7 @@ pub(super) fn parse_full_position_before_angle<'i, 't>(
         {
             return Err(error);
         }
-        input.reset(&state);
+        input.restore(state);
         states.push(state);
         atoms.push(parse_generic_position_atom(
             input,
@@ -207,38 +204,38 @@ pub(super) fn parse_full_position_before_angle<'i, 't>(
         )?);
     }
     if atoms.is_empty() {
-        return Err(unexpected_at(input.current_source_location()));
+        return Err(unexpected_at(input.site()));
     }
     build_full_position(&atoms)
-        .ok_or_else(|| invalid_generic_position_atom(input, &states[invalid_atom_index(&atoms)]))
+        .ok_or_else(|| invalid_generic_position_atom(input, states[invalid_atom_index(&atoms)]))
 }
 
-fn parse_position_atoms<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_position_atoms<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
     grammar: PositionGrammar,
-) -> std::result::Result<(Vec<GenericPositionAtom>, Vec<ParserState<'i>>), ParseError<'i, Error>> {
+) -> std::result::Result<(Vec<GenericPositionAtom>, Vec<Mark<'i>>), SyntaxError<'i, Error>> {
     parse_position_atoms_bounded(input, numeric, grammar, &[])
 }
-fn parse_position_atoms_bounded<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_position_atoms_bounded<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
     grammar: PositionGrammar,
     boundaries: &[&str],
-) -> std::result::Result<(Vec<GenericPositionAtom>, Vec<ParserState<'i>>), ParseError<'i, Error>> {
+) -> std::result::Result<(Vec<GenericPositionAtom>, Vec<Mark<'i>>), SyntaxError<'i, Error>> {
     collect_position_atoms(input, numeric, grammar, boundaries, false)
 }
 
-fn collect_position_atoms<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn collect_position_atoms<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
     grammar: PositionGrammar,
     boundaries: &[&str],
     prefix_only: bool,
-) -> std::result::Result<(Vec<GenericPositionAtom>, Vec<ParserState<'i>>), ParseError<'i, Error>> {
+) -> std::result::Result<(Vec<GenericPositionAtom>, Vec<Mark<'i>>), SyntaxError<'i, Error>> {
     let mut atoms = Vec::new();
     let mut states = Vec::new();
-    while !input.is_exhausted()
+    while !input.only_whitespace_remains()
         && !next_is_comma(input)
         && !next_is_delim(input, '/')
         && !boundaries
@@ -246,35 +243,35 @@ fn collect_position_atoms<'i, 't>(
             .any(|word| super::values::next_is_ident(input, word))
         && (!prefix_only || (atoms.len() < 4 && next_starts_position(input, grammar)))
     {
-        states.push(input.state());
+        states.push(input.mark());
         atoms.push(parse_generic_position_atom(input, numeric, grammar)?);
         if atoms.len() > 4 {
-            return Err(invalid_generic_position_atom(input, &states[4]));
+            return Err(invalid_generic_position_atom(input, states[4]));
         }
     }
     if atoms.is_empty() {
-        return Err(unexpected_at(input.current_source_location()));
+        return Err(unexpected_at(input.site()));
     }
     Ok((atoms, states))
 }
 
-fn parse_background_position<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_background_position<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssBackgroundPosition, ParseError<'i, Error>> {
+) -> std::result::Result<CssBackgroundPosition, SyntaxError<'i, Error>> {
     let (atoms, states) = parse_position_atoms(input, numeric, PositionGrammar::Physical)?;
     build_background_position(&atoms).ok_or_else(|| {
-        invalid_generic_position_atom(input, &states[invalid_background_atom_index(&atoms)])
+        invalid_generic_position_atom(input, states[invalid_background_atom_index(&atoms)])
     })
 }
 
-fn parse_generic_position_atom<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_generic_position_atom<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
     grammar: PositionGrammar,
-) -> std::result::Result<GenericPositionAtom, ParseError<'i, Error>> {
-    let state = input.state();
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
+) -> std::result::Result<GenericPositionAtom, SyntaxError<'i, Error>> {
+    let state = input.mark();
+    if let Ok(ident) = input.attempt(Stream::consume_ident) {
         if grammar == PositionGrammar::Full {
             let logical = match ident.to_ascii_lowercase().as_str() {
                 "x-start" => Some(GenericPositionAtom::Horizontal(
@@ -308,24 +305,24 @@ fn parse_generic_position_atom<'i, 't>(
             "bottom" => Ok(GenericPositionAtom::Vertical(CssVerticalPositionKeyword::Bottom)),
             "center" => Ok(GenericPositionAtom::Center),
             _ => {
-                input.reset(&state);
-                Err(invalid_generic_position_atom(input, &state))
+                input.restore(state);
+                Err(invalid_generic_position_atom(input, state))
             },
         };
     }
-    input.reset(&state);
+    input.restore(state);
     let value = parse_length_percentage(input, numeric)?;
     Ok(GenericPositionAtom::Offset(value))
 }
 
-fn invalid_generic_position_atom<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    state: &ParserState<'i>,
-) -> ParseError<'i, Error> {
-    input.reset(state);
-    let location = input.current_source_location();
-    match input.next() {
-        Ok(token) => location.new_unexpected_token_error::<Error>(token.clone()),
+fn invalid_generic_position_atom<'i>(
+    input: &mut Stream<'i>,
+    state: Mark<'i>,
+) -> SyntaxError<'i, Error> {
+    input.restore(state);
+    let location = input.site();
+    match input.consume_after_whitespace() {
+        Ok(token) => location.unexpected::<Error>(token.clone()),
         Err(error) => error.into(),
     }
 }

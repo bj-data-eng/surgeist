@@ -1,9 +1,9 @@
 //! Selected Decoration 4 intrinsic grammars.
 use super::color::parse_color;
 use super::combinators::{Combinator, Tail, fill, keyword, parse_group};
-use super::property_input::Parser;
+use super::property_input::Stream;
 use super::values::parse_length_percentage;
-use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
 use crate::values::text::{
     CssTextDecorationErrorLine, CssTextDecorationSkip, CssTextDecorationSkipBox,
     CssTextDecorationSkipInk, CssTextDecorationSkipInset, CssTextDecorationSkipSelf,
@@ -17,9 +17,9 @@ use surgeist_css_parser::match_ignore_ascii_case;
 
 macro_rules! keyword {
     ($parser:ident, $ty:ident, $($text:literal => $variant:ident),+ $(,)?) => {
-        pub(super) fn $parser<'i, 't>(input: &mut Parser<'i, 't>) -> std::result::Result<$ty, ParseError<'i, Error>> {
-            let keyword_location = input.current_source_location();
-            let ident = input.expect_ident_cloned().map_err(basic)?;
+        pub(super) fn $parser<'i>(input: &mut Stream<'i>) -> std::result::Result<$ty, SyntaxError<'i, Error>> {
+            let keyword_location = input.site();
+            let ident = input.consume_ident().map_err(basic)?;
             match_ignore_ascii_case! { &ident, $($text => Ok($ty::$variant),)+ _ => Err(unexpected_at(keyword_location)) }
         }
     };
@@ -35,13 +35,10 @@ keyword!(parse_text_decoration_skip_ink, CssTextDecorationSkipInk, "none" => Non
 keyword!(parse_emphasis_fill, CssTextEmphasisFill, "filled" => Filled, "open" => Open);
 keyword!(parse_emphasis_shape, CssTextEmphasisShape, "dot" => Dot, "circle" => Circle, "double-circle" => DoubleCircle, "triangle" => Triangle, "sesame" => Sesame);
 keyword!(parse_emphasis_vertical, CssTextEmphasisVertical, "over" => Over, "under" => Under);
-pub(crate) fn parse_text_underline_position<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssTextUnderlinePosition, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("auto"))
-        .is_ok()
-    {
+pub(crate) fn parse_text_underline_position<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssTextUnderlinePosition, SyntaxError<'i, Error>> {
+    if input.attempt(|input| input.consume_keyword("auto")).is_ok() {
         return Ok(CssTextUnderlinePosition::Auto);
     }
     // `[ from-font | under ] || [ left | right ]`.
@@ -59,27 +56,24 @@ pub(crate) fn parse_text_underline_position<'i, 't>(
     )?;
     CssUnderlinePosition::try_new(vertical, side)
         .map(CssTextUnderlinePosition::Position)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }
-pub(crate) fn parse_text_underline_offset<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_text_underline_offset<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssTextUnderlineOffset, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("auto"))
-        .is_ok()
-    {
+) -> std::result::Result<CssTextUnderlineOffset, SyntaxError<'i, Error>> {
+    if input.attempt(|input| input.consume_keyword("auto")).is_ok() {
         return Ok(CssTextUnderlineOffset::Auto);
     }
     parse_length_percentage(input, numeric).map(|value| {
         CssTextUnderlineOffset::Length(CssTextUnderlineOffsetLength::from_parsed(value))
     })
 }
-pub(crate) fn parse_text_decoration_skip_spaces<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssTextDecorationSkipSpaces, ParseError<'i, Error>> {
-    let keyword_location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+pub(crate) fn parse_text_decoration_skip_spaces<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssTextDecorationSkipSpaces, SyntaxError<'i, Error>> {
+    let keyword_location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     if ident.eq_ignore_ascii_case("none") {
         return Ok(CssTextDecorationSkipSpaces::None);
     }
@@ -91,7 +85,7 @@ pub(crate) fn parse_text_decoration_skip_spaces<'i, 't>(
     if !start && !end {
         return Err(unexpected_at(keyword_location));
     }
-    if input.is_exhausted() {
+    if input.only_whitespace_remains() {
         return Ok(if start {
             CssTextDecorationSkipSpaces::Start
         } else {
@@ -99,45 +93,42 @@ pub(crate) fn parse_text_decoration_skip_spaces<'i, 't>(
         });
     }
     input
-        .expect_ident_matching(if start { "end" } else { "start" })
+        .consume_keyword(if start { "end" } else { "start" })
         .map_err(basic)?;
     Ok(CssTextDecorationSkipSpaces::StartEnd)
 }
-fn parse_emphasis_mark<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssTextEmphasisMark, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let first_origin = input.position().value_origin();
-    let mut fill = input.try_parse(parse_emphasis_fill).ok();
+fn parse_emphasis_mark<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssTextEmphasisMark, SyntaxError<'i, Error>> {
+    input.discard_whitespace();
+    let first_origin = input.site().value_origin();
+    let mut fill = input.attempt(parse_emphasis_fill).ok();
     let mut fill_origin = fill.and(first_origin);
-    input.skip_whitespace();
-    let next_origin = input.position().value_origin();
-    let shape = input.try_parse(parse_emphasis_shape).ok();
+    input.discard_whitespace();
+    let next_origin = input.site().value_origin();
+    let shape = input.attempt(parse_emphasis_shape).ok();
     let shape_origin = shape.and(next_origin);
     if fill.is_none() {
-        input.skip_whitespace();
-        let origin = input.position().value_origin();
-        fill = input.try_parse(parse_emphasis_fill).ok();
+        input.discard_whitespace();
+        let origin = input.site().value_origin();
+        fill = input.attempt(parse_emphasis_fill).ok();
         fill_origin = fill.and(origin);
     }
     CssTextEmphasisMark::from_parsed(fill, shape, fill_origin, shape_origin)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }
-pub(crate) fn parse_text_emphasis_style<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_text_emphasis_style<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssTextEmphasisStyle, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("none"))
-        .is_ok()
-    {
+) -> std::result::Result<CssTextEmphasisStyle, SyntaxError<'i, Error>> {
+    if input.attempt(|input| input.consume_keyword("none")).is_ok() {
         return Ok(CssTextEmphasisStyle::None);
     }
-    if let Ok(mark) = input.try_parse(parse_emphasis_mark) {
+    if let Ok(mark) = input.attempt(parse_emphasis_mark) {
         return Ok(CssTextEmphasisStyle::Mark(mark));
     }
-    input.skip_whitespace();
-    let location = input.current_source_location();
+    input.discard_whitespace();
+    let location = input.site();
     let component = input
         .collect_numeric_component(numeric)
         .map_err(|_| unexpected_at(location))?;
@@ -145,10 +136,10 @@ pub(crate) fn parse_text_emphasis_style<'i, 't>(
         .map(CssTextEmphasisStyle::String)
         .ok_or_else(|| unexpected_at(location))
 }
-pub(crate) fn parse_text_emphasis<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_text_emphasis<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssTextEmphasis, ParseError<'i, Error>> {
+) -> std::result::Result<CssTextEmphasis, SyntaxError<'i, Error>> {
     // `<'text-emphasis-style'> || <'text-emphasis-color'>`.
     let (mut style, mut color) = (None, None);
     parse_group::<2>(
@@ -166,23 +157,23 @@ pub(crate) fn parse_text_emphasis<'i, 't>(
     )?;
     Ok(CssTextEmphasis::new(style, color))
 }
-pub(crate) fn parse_text_emphasis_position<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_text_emphasis_position<'i>(
+    input: &mut Stream<'i>,
     _numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssTextEmphasisPosition, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let first_origin = input.position().value_origin();
-    let side_first = input.try_parse(parse_text_side).ok();
+) -> std::result::Result<CssTextEmphasisPosition, SyntaxError<'i, Error>> {
+    input.discard_whitespace();
+    let first_origin = input.site().value_origin();
+    let side_first = input.attempt(parse_text_side).ok();
     let mut side_origin = side_first.and(first_origin);
-    input.skip_whitespace();
-    let vertical_origin = input.position().value_origin();
+    input.discard_whitespace();
+    let vertical_origin = input.site().value_origin();
     let vertical = parse_emphasis_vertical(input)?;
     let side = if side_first.is_some() {
         side_first
     } else {
-        input.skip_whitespace();
-        let origin = input.position().value_origin();
-        let side = input.try_parse(parse_text_side).ok();
+        input.discard_whitespace();
+        let origin = input.site().value_origin();
+        let side = input.attempt(parse_text_side).ok();
         side_origin = side.and(origin);
         side
     };
@@ -193,9 +184,9 @@ pub(crate) fn parse_text_emphasis_position<'i, 't>(
         side_origin,
     ))
 }
-pub(crate) fn parse_text_emphasis_skip<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssTextEmphasisSkip, ParseError<'i, Error>> {
+pub(crate) fn parse_text_emphasis_skip<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssTextEmphasisSkip, SyntaxError<'i, Error>> {
     // `spaces || punctuation || symbols || narrow`.
     const KEYWORDS: [&str; 4] = ["spaces", "punctuation", "symbols", "narrow"];
     let mut slots = [None; 4];
@@ -207,24 +198,20 @@ pub(crate) fn parse_text_emphasis_skip<'i, 't>(
         |operand, input| keyword(&mut slots[operand], input, &[(KEYWORDS[operand], ())]),
     )?;
     CssTextEmphasisSkip::try_new(flags[0], flags[1], flags[2], flags[3])
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }
-pub(crate) fn parse_text_shadow<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_text_shadow<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssTextShadow, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("none"))
-        .is_ok()
-    {
+) -> std::result::Result<CssTextShadow, SyntaxError<'i, Error>> {
+    if input.attempt(|input| input.consume_keyword("none")).is_ok() {
         return Ok(CssTextShadow::None);
     }
-    let shadows = input.parse_comma_separated(|input| {
+    let shadows = input.comma_segments(|input| {
         let shadow = super::box_model::parse_shadow(input, numeric)?;
-        CssTextShadowLayer::from_parsed(shadow)
-            .ok_or_else(|| unexpected_at(input.current_source_location()))
+        CssTextShadowLayer::from_parsed(shadow).ok_or_else(|| unexpected_at(input.site()))
     })?;
     CssTextShadowList::from_parsed(shadows)
         .map(CssTextShadow::Shadows)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }

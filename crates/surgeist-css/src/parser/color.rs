@@ -1,5 +1,5 @@
-use super::property_input::Parser;
-use crate::diagnostic::error::property::ParseError;
+use super::property_input::Stream;
+use crate::diagnostic::error::property::SyntaxError;
 use cssparser::Token;
 use surgeist_color::{ColorSpace, HueInterpolation};
 use surgeist_css_parser::match_ignore_ascii_case;
@@ -14,12 +14,12 @@ use crate::numeric::expression::is_math_function;
 use crate::numeric::expression::{CalculationRoot, NumericInputContext};
 use crate::numeric::{CssCalculation, CssPercentage};
 
-pub(crate) fn parse_color<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_color<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssColor, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let root = input.position();
+) -> std::result::Result<CssColor, SyntaxError<'i, Error>> {
+    input.discard_whitespace();
+    let root = input.site();
     let component = input.collect_component().map_err(|error| {
         let location = root.source_origin(error.origin()).unwrap_or(root);
         crate::diagnostic::error::property::invalid_component_value(location, error)
@@ -33,43 +33,43 @@ pub(crate) fn parse_color<'i, 't>(
     })
 }
 
-pub(super) fn parse_color_interpolation_method<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssColorInterpolation, ParseError<'i, Error>> {
-    let state = input.state();
-    if let Ok(name) = input.expect_ident_cloned()
+pub(super) fn parse_color_interpolation_method<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<CssColorInterpolation, SyntaxError<'i, Error>> {
+    let state = input.mark();
+    if let Ok(name) = input.consume_ident()
         && let Some(profile) = CssColorProfileName::try_new(name.as_ref())
     {
         return Ok(CssColorInterpolation::custom(profile));
     }
-    input.reset(&state);
+    input.restore(state);
     let space = parse_color_interpolation_space(input)?;
-    let hue_location = input.current_source_location();
-    let hue = input.try_parse(parse_hue_interpolation).ok();
+    let hue_location = input.site();
+    let hue = input.attempt(parse_hue_interpolation).ok();
     let method = CssColorInterpolationMethod::try_new(space, hue)
         .map_err(|_| invalid_color(hue_location, Some("hue interpolation")))?;
     Ok(CssColorInterpolation::from_predefined(method))
 }
 
-pub(super) fn next_is_mix_weight(input: &mut Parser<'_, '_>) -> bool {
-    let state = input.state();
-    let result = match input.next() {
+pub(super) fn next_is_mix_weight(input: &mut Stream<'_>) -> bool {
+    let state = input.mark();
+    let result = match input.consume_after_whitespace() {
         Ok(Token::Percentage { .. }) => true,
         Ok(Token::Function(name)) => is_math_function(name),
         _ => false,
     };
-    input.reset(&state);
+    input.restore(state);
     result
 }
 
 pub(super) fn parse_authored_mix_weight<'i>(
-    input: &mut Parser<'i, '_>,
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssColorMixWeight, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let state = input.state();
-    let location = input.current_source_location();
-    if matches!(input.next(), Ok(Token::Function(_))) {
+) -> Result<CssColorMixWeight, SyntaxError<'i, Error>> {
+    input.discard_whitespace();
+    let state = input.mark();
+    let location = input.site();
+    if matches!(input.consume_after_whitespace(), Ok(Token::Function(_))) {
         let expression =
             parse_numeric_function(input, &state, numeric, CalculationRoot::Percentage)?;
         return CssColorMixWeight::try_calculation(
@@ -79,27 +79,27 @@ pub(super) fn parse_authored_mix_weight<'i>(
             crate::diagnostic::error::property::invalid_component_value(location, error)
         });
     }
-    input.reset(&state);
+    input.restore(state);
     parse_authored_color_mix_percentage(input, numeric).map(CssColorMixWeight::literal)
 }
 
-fn parse_authored_color_mix_percentage<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_authored_color_mix_percentage<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> std::result::Result<CssColorMixPercentage, ParseError<'i, Error>> {
-    let location = input.current_source_location();
+) -> std::result::Result<CssColorMixPercentage, SyntaxError<'i, Error>> {
+    let location = input.site();
     let component = collect_color_scalar(input, numeric)?;
     CssColorMixPercentage::try_from_component(component)
         .map_err(|_| invalid_color(location, Some("color-mix component percentage")))
 }
 
-fn collect_color_scalar<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn collect_color_scalar<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<crate::component::CssComponentValue, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let offset = input.position();
-    let location = input.current_source_location();
+) -> Result<crate::component::CssComponentValue, SyntaxError<'i, Error>> {
+    input.discard_whitespace();
+    let offset = input.site();
+    let location = input.site();
     input.collect_numeric_component(numeric).map_err(|error| {
         let location = numeric.property_error_location(&error, location, offset);
         if let Some(component) = error.component_error() {
@@ -110,11 +110,11 @@ fn collect_color_scalar<'i, 't>(
     })
 }
 
-fn parse_color_interpolation_space<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<ColorSpace, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+fn parse_color_interpolation_space<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<ColorSpace, SyntaxError<'i, Error>> {
+    let location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     let space =
         if let Some(space) = crate::color::syntax::recognition::predefined_color_space(&ident) {
             ColorSpace::Predefined(space)
@@ -132,11 +132,11 @@ fn parse_color_interpolation_space<'i, 't>(
     Ok(space)
 }
 
-fn parse_hue_interpolation<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<HueInterpolation, ParseError<'i, Error>> {
-    let location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
+fn parse_hue_interpolation<'i>(
+    input: &mut Stream<'i>,
+) -> std::result::Result<HueInterpolation, SyntaxError<'i, Error>> {
+    let location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
     let hue = match_ignore_ascii_case! { &ident,
         "shorter" => HueInterpolation::Shorter,
         "longer" => HueInterpolation::Longer,
@@ -144,6 +144,6 @@ fn parse_hue_interpolation<'i, 't>(
         "decreasing" => HueInterpolation::Decreasing,
         _ => return Err(unexpected_at(location)),
     };
-    input.expect_ident_matching("hue").map_err(basic)?;
+    input.consume_keyword("hue").map_err(basic)?;
     Ok(hue)
 }

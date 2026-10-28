@@ -1,7 +1,7 @@
 //! Checked border-corner radii and physical border-radius shorthand.
 
-use super::property_input::Parser;
-use crate::diagnostic::error::property::{Error, ParseError, unexpected_at};
+use super::property_input::Stream;
+use crate::diagnostic::error::property::{Error, SyntaxError, unexpected_at};
 
 use super::side_shapes::parse_side_pair;
 use super::values::parse_nonnegative_length_percentage;
@@ -11,56 +11,56 @@ use crate::values::border::CssBorderRadiusShorthand;
 use crate::values::border::border_radius::CornerRadiusLength;
 use crate::values::common::CssSidePair;
 
-pub(super) fn parse_exact_corner_radius<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_exact_corner_radius<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssSidePair<CornerRadiusLength>, ParseError<'i, Error>> {
+) -> Result<CssSidePair<CornerRadiusLength>, SyntaxError<'i, Error>> {
     parse_side_pair(input, |input| {
         parse_nonnegative_length_percentage(input, numeric)
     })
 }
 
-fn parse_radius_list<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_radius_list<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<Vec<CssNumeric<CssLengthPercentage, CssNonNegative>>, ParseError<'i, Error>> {
+) -> Result<Vec<CssNumeric<CssLengthPercentage, CssNonNegative>>, SyntaxError<'i, Error>> {
     let mut values = Vec::new();
-    while !input.is_exhausted() {
-        let state = input.state();
-        if input.try_parse(|input| input.expect_delim('/')).is_ok() {
-            input.reset(&state);
+    while !input.only_whitespace_remains() {
+        let state = input.mark();
+        if input.attempt(|input| input.consume_delim('/')).is_ok() {
+            input.restore(state);
             break;
         }
         values.push(parse_nonnegative_length_percentage(input, numeric)?);
-        if values.len() == 4 && !input.is_exhausted() {
-            let state = input.state();
-            let slash_is_next = input.try_parse(|input| input.expect_delim('/')).is_ok();
-            input.reset(&state);
+        if values.len() == 4 && !input.only_whitespace_remains() {
+            let state = input.mark();
+            let slash_is_next = input.attempt(|input| input.consume_delim('/')).is_ok();
+            input.restore(state);
             if !slash_is_next {
-                return Err(unexpected_at(input.current_source_location()));
+                return Err(unexpected_at(input.site()));
             }
         }
     }
     Ok(values)
 }
 
-pub(super) fn parse_exact_border_radius<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_exact_border_radius<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssBorderRadiusShorthand, ParseError<'i, Error>> {
+) -> Result<CssBorderRadiusShorthand, SyntaxError<'i, Error>> {
     let horizontal = parse_radius_list(input, numeric)?;
     if horizontal.is_empty() {
-        return Err(unexpected_at(input.current_source_location()));
+        return Err(unexpected_at(input.site()));
     }
-    let vertical = if input.try_parse(|input| input.expect_delim('/')).is_ok() {
+    let vertical = if input.attempt(|input| input.consume_delim('/')).is_ok() {
         let values = parse_radius_list(input, numeric)?;
         if values.is_empty() {
-            return Err(unexpected_at(input.current_source_location()));
+            return Err(unexpected_at(input.site()));
         }
         Some(values)
     } else {
         None
     };
     CssBorderRadiusShorthand::try_new(horizontal, vertical)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| unexpected_at(input.site()))
 }
