@@ -96,21 +96,6 @@ fn khmer_actual_missing_constructor_not_empty_detector_supplies_letter_pair_assu
         // Neither an empty cut inventory nor this test constructs absence.
         let policies = line_break::policies(&styles).unwrap();
         let line_units = super::super::line_units::LineBreakUnits::new(&projection).unwrap();
-        let missing = line_break::apply(
-            &projection,
-            &styles,
-            line_break::LineRules {
-                policies: &policies,
-                units: &line_units,
-            },
-            &offsets,
-            0..projection.atoms.len(),
-            &mut boundaries,
-            &mut candidates,
-        )
-        .unwrap();
-        assert!(boundaries.iter().all(|boundary| *boundary < Boundary::Line));
-        assert!(candidates.is_empty());
         let units = projection
             .graphemes
             .windows(2)
@@ -123,6 +108,22 @@ fn khmer_actual_missing_constructor_not_empty_detector_supplies_letter_pair_assu
                         .partition_point(|atom| atom.presentation.start < pair[1])
             })
             .collect::<Vec<_>>();
+        let missing = line_break::apply(
+            &projection,
+            &styles,
+            line_break::LineRules {
+                policies: &policies,
+                units: &line_units,
+                graphemes: &units,
+            },
+            &offsets,
+            0..projection.atoms.len(),
+            &mut boundaries,
+            &mut candidates,
+        )
+        .unwrap();
+        assert!(boundaries.iter().all(|boundary| *boundary < Boundary::Line));
+        assert!(candidates.is_empty());
         let mut proposed = vec![false; projection.atoms.len()];
         propose(
             missing,

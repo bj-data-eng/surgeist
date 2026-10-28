@@ -7,14 +7,17 @@ use std::ops::Range;
 
 use icu_properties::{
     CodePointMapData,
-    props::{EastAsianWidth, GeneralCategory, LineBreak as Class},
+    props::{EastAsianWidth, GeneralCategory, GeneralCategoryGroup, LineBreak as Class},
 };
 use icu_segmenter::{
     LineSegmenter,
     options::{LineBreakOptions, LineBreakStrictness, LineBreakWordOption},
 };
 
-use super::{Boundary, LineCandidate, LineCause, is_hard_separator, issue_candidate, style_at};
+use super::{
+    Boundary, LineCandidate, LineCause, is_hard_separator, issue_candidate, style_at,
+    unit_properties,
+};
 use crate::{
     LineBreak, engine::resolve::AnalyzedStyleRun, projection::SourceProjection,
     style::OrdinaryWordBreak,
@@ -99,7 +102,7 @@ pub(super) struct MissingLexicalModels(());
 /// maps back to the unchanged component's original UTF-8 byte boundary.
 enum ProviderInput<'a> {
     Original(&'a str),
-    ResolvedSa {
+    ResolvedClasses {
         text: String,
         boundaries: Vec<(usize, usize)>,
         original_len: usize,
@@ -115,22 +118,18 @@ impl<'a> ProviderInput<'a> {
         {
             return Self::Original(original);
         }
+        Self::mapped(original, |_, ch| non_lexical_character(ch))
+    }
+
+    fn mapped(original: &str, mut replace: impl FnMut(usize, char) -> char) -> Self {
         let mut text = String::with_capacity(original.len());
         let mut boundaries = Vec::new();
-        for (byte, ch) in original.char_indices() {
+        for (index, (byte, ch)) in original.char_indices().enumerate() {
             boundaries.push((text.len(), byte));
-            let class = classes.get(ch);
-            text.push(if class == Class::ComplexContext {
-                match resolved_class(ch as u32, class) {
-                    Class::CombiningMark => '\u{300}',
-                    _ => 'a',
-                }
-            } else {
-                ch
-            });
+            text.push(replace(index, ch));
         }
         boundaries.push((text.len(), original.len()));
-        Self::ResolvedSa {
+        Self::ResolvedClasses {
             text,
             boundaries,
             original_len: original.len(),
@@ -140,9 +139,110 @@ impl<'a> ProviderInput<'a> {
     fn text(&self) -> &str {
         match self {
             Self::Original(text) => text,
-            Self::ResolvedSa { text, .. } => text,
+            Self::ResolvedClasses { text, .. } => text,
         }
     }
+}
+
+fn non_lexical_character(ch: char) -> char {
+    let class = CodePointMapData::<Class>::new().get(ch);
+    if class == Class::ComplexContext {
+        match resolved_class(ch as u32, class) {
+            Class::CombiningMark => '\u{300}',
+            _ => 'a',
+        }
+    } else {
+        ch
+    }
+}
+
+/// CSS class conversion belongs to the complete TCU, independently of its
+/// source scalar classes retained by the semantic floor below.
+struct BreakAll<'a> {
+    ideographic: Vec<bool>,
+    input: Option<ProviderInput<'a>>,
+}
+
+impl<'a> BreakAll<'a> {
+    fn new(
+        projection: &SourceProjection,
+        graphemes: &[Range<usize>],
+        units: &super::line_units::LineBreakUnits,
+        component: &Range<usize>,
+        text: &'a str,
+    ) -> Self {
+        let classes = CodePointMapData::<Class>::new();
+        let mut ideographic = vec![false; component.len()];
+        // Include complete EGCs intersecting the component. A genuine capture
+        // boundary may intersect an EGC but cannot change its CSS properties.
+        let first = graphemes.partition_point(|egc| egc.end <= component.start);
+        let last = graphemes.partition_point(|egc| egc.start < component.end);
+        for unit in units.ranges(&graphemes[first..last]) {
+            let egc = &graphemes[graphemes.partition_point(|egc| egc.start < unit.start)];
+            let atoms = &projection.atoms[egc.clone()];
+            let base = unit_properties::base(atoms).expect("a complete TCU has a base");
+            let class = resolved_class(base.code_point, classes.get32(base.code_point));
+            let listed = matches!(
+                class,
+                Class::Alphabetic | Class::Numeric | Class::Ambiguous | Class::Ideographic
+            );
+            if listed || unit_properties::is_typographic_letter(atoms) {
+                ideographic[unit.start.max(component.start) - component.start
+                    ..unit.end.min(component.end) - component.start]
+                    .fill(true);
+            }
+        }
+        let atoms = &projection.atoms[component.clone()];
+        let input = atoms
+            .iter()
+            .zip(&ideographic)
+            .any(|(atom, &id)| break_all_replacement(atom.code_point, id))
+            .then(|| {
+                ProviderInput::mapped(text, |local, ch| {
+                    if break_all_replacement(atoms[local].code_point, ideographic[local]) {
+                        // Plain ID in the locked ICU provider, with none of its
+                        // scalar-specific punctuation/iteration identities.
+                        '\u{20000}'
+                    } else {
+                        non_lexical_character(ch)
+                    }
+                })
+            });
+        Self { ideographic, input }
+    }
+
+    fn class(&self, local: usize, original: Class) -> Class {
+        if self.ideographic[local] {
+            Class::Ideographic
+        } else {
+            original
+        }
+    }
+}
+
+fn break_all_replacement(cp: u32, ideographic: bool) -> bool {
+    if !ideographic {
+        return false;
+    }
+    let class = resolved_class(cp, CodePointMapData::<Class>::new().get32(cp));
+    if matches!(
+        class,
+        Class::Alphabetic
+            | Class::Numeric
+            | Class::Ideographic
+            | Class::ConditionalJapaneseStarter
+            | Class::CombiningMark
+            | Class::ZWJ
+            | Class::WordJoiner
+            | Class::Glue
+    ) || is_hard_separator(cp)
+    {
+        return false;
+    }
+    let category = CodePointMapData::<GeneralCategory>::new().get32(cp);
+    GeneralCategoryGroup::Letter.contains(category)
+        || GeneralCategoryGroup::Number.contains(category)
+        || class == Class::Ambiguous
 }
 
 pub(super) fn resolved_class(code_point: u32, class: Class) -> Class {
@@ -180,14 +280,14 @@ fn provider(input: &ProviderInput<'_>, policy: Policy) -> (Vec<bool>, MissingLex
     options.content_locale = policy.cjk.then_some(&cjk);
     let original_len = match input {
         ProviderInput::Original(text) => text.len(),
-        ProviderInput::ResolvedSa { original_len, .. } => *original_len,
+        ProviderInput::ResolvedClasses { original_len, .. } => *original_len,
     };
     let mut cuts = vec![false; original_len + 1];
     let mut cursor = 0;
     for byte in LineSegmenter::new_for_non_complex_scripts(options).segment_str(input.text()) {
         let original = match input {
             ProviderInput::Original(_) => byte,
-            ProviderInput::ResolvedSa { boundaries, .. } => {
+            ProviderInput::ResolvedClasses { boundaries, .. } => {
                 while boundaries[cursor].0 < byte {
                     cursor += 1;
                 }
@@ -205,6 +305,7 @@ fn provider(input: &ProviderInput<'_>, policy: Policy) -> (Vec<bool>, MissingLex
 pub(super) struct LineRules<'a> {
     pub(super) policies: &'a [Policy],
     pub(super) units: &'a super::line_units::LineBreakUnits,
+    pub(super) graphemes: &'a [Range<usize>],
 }
 
 pub(super) fn apply(
@@ -216,7 +317,11 @@ pub(super) fn apply(
     boundaries: &mut [Boundary],
     candidates: &mut Vec<LineCandidate>,
 ) -> crate::Result<MissingLexicalModels> {
-    let LineRules { policies, units } = rules;
+    let LineRules {
+        policies,
+        units,
+        graphemes,
+    } = rules;
     let mut needed = Vec::new();
     for atom in component.clone() {
         let policy = policies[style_at(projection, styles, atom)];
@@ -230,6 +335,10 @@ pub(super) fn apply(
     // This input resolution belongs to the selected non-complex constructor,
     // not to a style mode or the presence/absence of returned cut positions.
     let input = ProviderInput::without_lexical_models(text);
+    let break_all = needed
+        .iter()
+        .any(|policy| policy.word == OrdinaryWordBreak::BreakAll)
+        .then(|| BreakAll::new(projection, graphemes, units, &component, text));
     let (baseline, missing_lexical) = provider(&input, Policy::BASELINE);
     let classes = CodePointMapData::<Class>::new();
     let mut effective = Vec::with_capacity(component.len());
@@ -332,11 +441,18 @@ pub(super) fn apply(
             .copied()
             .filter(|policy| policy.normal_word() == group)
         {
-            let actual_storage =
-                (policy.word != OrdinaryWordBreak::Normal).then(|| provider(&input, policy).0);
+            let css = (policy.word == OrdinaryWordBreak::BreakAll)
+                .then(|| break_all.as_ref().expect("the BreakAll policy is prepared"));
+            let provider_input = css.and_then(|css| css.input.as_ref()).unwrap_or(&input);
+            let actual_storage = (policy.word != OrdinaryWordBreak::Normal)
+                .then(|| provider(provider_input, policy).0);
             let actual = actual_storage.as_ref().unwrap_or(normal);
             for atom in component.start + 1..component.end {
                 if !units.permits_edge(atom)
+                    || css.is_some()
+                        && graphemes
+                            .binary_search_by_key(&atom, |egc| egc.start)
+                            .is_err()
                     || policies[style_at(projection, styles, atom)] != policy
                 {
                     continue;
@@ -348,8 +464,8 @@ pub(super) fn apply(
                 let required = required_pair(
                     projection.atoms[atom - 1].code_point,
                     projection.atoms[atom].code_point,
-                    before,
-                    after,
+                    css.map_or(before, |css| css.class(atom - component.start - 1, before)),
+                    css.map_or(after, |css| css.class(atom - component.start, after)),
                     policy,
                 );
                 let allowed = match required {
@@ -357,7 +473,9 @@ pub(super) fn apply(
                     // and ZWSP permissions without retaining the provider's extra CJ.
                     Some(false) => independent,
                     Some(true) => actual[byte] || normal[byte],
-                    None => actual[byte],
+                    None => {
+                        actual[byte] || policy.word == OrdinaryWordBreak::BreakAll && normal[byte]
+                    }
                 };
                 if !allowed
                     || !provider_cut_allowed(
@@ -725,10 +843,27 @@ fn required_pair(
 }
 
 #[cfg(test)]
+#[path = "line_break/break_all_tests.rs"]
+mod break_all_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
-    fn ordinary_boundaries(
+    pub(super) fn graphemes(projection: &SourceProjection) -> Vec<Range<usize>> {
+        let stops: Vec<_> = projection
+            .graphemes
+            .iter()
+            .map(|at| {
+                projection
+                    .atoms
+                    .partition_point(|atom| atom.presentation.start < *at)
+            })
+            .collect();
+        stops.windows(2).map(|pair| pair[0]..pair[1]).collect()
+    }
+
+    pub(super) fn ordinary_boundaries(
         text: &str,
         word_break: crate::WordBreak,
         line_break: LineBreak,
@@ -760,6 +895,7 @@ mod tests {
             LineRules {
                 policies: &policies(&styles).unwrap(),
                 units: &super::super::line_units::LineBreakUnits::new(&projection).unwrap(),
+                graphemes: &graphemes(&projection),
             },
             &offsets,
             0..projection.atoms.len(),
@@ -929,6 +1065,7 @@ mod tests {
                 LineRules {
                     policies: &policies(&styles).unwrap(),
                     units: &super::super::line_units::LineBreakUnits::new(&projection).unwrap(),
+                    graphemes: &graphemes(&projection),
                 },
                 &offsets,
                 0..projection.atoms.len(),
@@ -978,6 +1115,7 @@ mod tests {
                 LineRules {
                     policies: &policies(&styles).unwrap(),
                     units: &super::super::line_units::LineBreakUnits::new(&projection).unwrap(),
+                    graphemes: &graphemes(&projection),
                 },
                 &offsets,
                 0..seam,

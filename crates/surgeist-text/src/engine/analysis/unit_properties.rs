@@ -2,11 +2,13 @@
 
 use icu_properties::{
     CodePointMapData,
-    props::{GeneralCategory, Script},
+    props::{EastAsianWidth, GeneralCategory, GeneralCategoryGroup, GraphemeClusterBreak, Script},
     script::ScriptWithExtensions,
 };
 
-use crate::engine::OriginalAtom;
+use crate::{Result, engine::OriginalAtom};
+
+use super::capacity;
 
 /// Appendix E's exception uses raw ScriptExtensions, not a shaping-run script.
 pub(crate) fn has_common_enclosing_mark(atoms: &[OriginalAtom]) -> bool {
@@ -27,10 +29,134 @@ pub(crate) fn first_non_format(atoms: &[OriginalAtom]) -> Option<&OriginalAtom> 
         .find(|atom| categories.get32(atom.code_point) != GeneralCategory::Format)
 }
 
+pub(super) fn base(atoms: &[OriginalAtom]) -> Option<&OriginalAtom> {
+    let category = CodePointMapData::<GeneralCategory>::new();
+    let grapheme = CodePointMapData::<GraphemeClusterBreak>::new();
+    atoms
+        .iter()
+        .find(|atom| {
+            category.get32(atom.code_point) != GeneralCategory::Format
+                && grapheme.get32(atom.code_point) != GraphemeClusterBreak::Prepend
+        })
+        .or_else(|| first_non_format(atoms))
+        .or_else(|| atoms.first())
+}
+
+/// Allocation-free category query over the same Appendix E property source.
+/// Neither exception promotes a nonletter base: Common Me produces So, while
+/// Zs-based sequences produce Sk. A Letter/Number base can therefore only be
+/// rejected by the Common-Me exception; its ScriptExtensions need no Vec.
+pub(super) fn is_typographic_letter(atoms: &[OriginalAtom]) -> bool {
+    base(atoms).is_some_and(|base| {
+        let category = CodePointMapData::<GeneralCategory>::new().get32(base.code_point);
+        (GeneralCategoryGroup::Letter.contains(category)
+            || GeneralCategoryGroup::Number.contains(category))
+            && !has_common_enclosing_mark(atoms)
+    })
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct Properties {
+    pub(super) category: GeneralCategory,
+    pub(super) width: EastAsianWidth,
+    pub(super) scripts: Vec<Script>,
+}
+
+pub(super) fn scalar_properties(cp: u32) -> Result<Properties> {
+    let set = ScriptWithExtensions::new().get_script_extensions_val32(cp);
+    let mut scripts = Vec::new();
+    for script in set.iter() {
+        scripts.try_reserve(1).map_err(|_| capacity())?;
+        scripts.push(script);
+    }
+    if scripts.is_empty() {
+        scripts.try_reserve(1).map_err(|_| capacity())?;
+        scripts.push(CodePointMapData::<Script>::new().get32(cp));
+    }
+    Ok(Properties {
+        category: CodePointMapData::<GeneralCategory>::new().get32(cp),
+        width: CodePointMapData::<EastAsianWidth>::new().get32(cp),
+        scripts,
+    })
+}
+
+pub(super) fn properties(atoms: &[OriginalAtom]) -> Result<Properties> {
+    let base = base(atoms).expect("a nonempty EGC has an actual scalar or opaque source unit");
+    let base_index = atoms
+        .iter()
+        .position(|atom| std::ptr::eq(atom, base))
+        .expect("actual EGC base");
+    let base = scalar_properties(base.code_point)?;
+    let common_enclosing = has_common_enclosing_mark(atoms);
+    let first_mark = if !common_enclosing && base.category == GeneralCategory::SpaceSeparator {
+        let categories = CodePointMapData::<GeneralCategory>::new();
+        atoms[base_index + 1..]
+            .iter()
+            .find(|atom| GeneralCategoryGroup::Mark.contains(categories.get32(atom.code_point)))
+            .map(|atom| scalar_properties(atom.code_point))
+            .transpose()?
+    } else {
+        None
+    };
+    resolve_properties(base, common_enclosing, first_mark)
+}
+
+/// Pure Appendix E mapping; fact qualification remains in `properties`.
+pub(super) fn resolve_properties(
+    base: Properties,
+    common_enclosing: bool,
+    first_mark: Option<Properties>,
+) -> Result<Properties> {
+    if common_enclosing {
+        return scalar_properties(0xfffd);
+    }
+    if base.category == GeneralCategory::SpaceSeparator
+        && let Some(mut mark) = first_mark
+    {
+        mark.category = GeneralCategory::ModifierSymbol;
+        mark.width = base.width;
+        return Ok(mark);
+    }
+    Ok(base)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{Source, Text, projection::SourceProjection};
+
+    #[test]
+    fn letter_query_matches_complete_appendix_e_category_resolution() {
+        for (text, expected) in [
+            ("A", true),
+            ("א\u{5b0}", true),
+            ("\u{1b05}", true),
+            ("\u{2160}", true),
+            ("\u{bc}", true),
+            ("א\u{20dd}", true),
+            ("\u{600}א", true),
+            ("\u{301}", false),
+            ("\u{202f}", false),
+            ("\u{202f}\u{363}", false),
+            ("\u{3000}\u{363}", false),
+            ("(", false),
+            ("\u{61c}", false),
+        ] {
+            let projection = SourceProjection::new(&Source::new(text)).unwrap();
+            let category = properties(&projection.atoms).unwrap().category;
+            assert_eq!(
+                is_typographic_letter(&projection.atoms),
+                GeneralCategoryGroup::Letter.contains(category)
+                    || GeneralCategoryGroup::Number.contains(category),
+                "{text:?}"
+            );
+            assert_eq!(
+                is_typographic_letter(&projection.atoms),
+                expected,
+                "{text:?}"
+            );
+        }
+    }
 
     #[test]
     fn unicode_seventeen_enclosing_marks_do_not_supply_a_common_script_witness() {

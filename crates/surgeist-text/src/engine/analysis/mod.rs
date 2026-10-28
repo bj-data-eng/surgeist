@@ -303,6 +303,7 @@ pub(crate) fn analyze(
             line_break::LineRules {
                 policies: &line_policies,
                 units: &line_units,
+                graphemes: &graphemes,
             },
             &offsets,
             component_start..component_end,
