@@ -681,12 +681,12 @@ impl LineFrame {
         }
     }
 
-    fn rect<S: LayoutScalar>(
+    fn physical_rect(
         self,
         anchor: LineAnchor,
         baseline: f64,
         rect: Rect,
-    ) -> Result<ScrollRectOf<S>, FitError> {
+    ) -> Result<Rect, FitError> {
         let point = self.point(anchor, baseline, rect.origin.x, rect.origin.y)?;
         let (origin, size) = if self.vertical_cell() {
             let end_x = add(point.x, -rect.size.height)?;
@@ -698,11 +698,128 @@ impl LineFrame {
         } else {
             (point, Size::new(rect.size.width, rect.size.height))
         };
+        Ok(Rect::new(origin.x, origin.y, size.width, size.height))
+    }
+
+    fn rect<S: LayoutScalar>(
+        self,
+        anchor: LineAnchor,
+        baseline: f64,
+        rect: Rect,
+    ) -> Result<ScrollRectOf<S>, FitError> {
+        let physical = self.physical_rect(anchor, baseline, rect)?;
         ScrollRectOf::try_new(
-            self.relative_point(origin)?,
-            Size::new(number(size.width)?, number(size.height)?),
+            self.relative_point(Point::new(physical.origin.x, physical.origin.y))?,
+            Size::new(number(physical.size.width)?, number(physical.size.height)?),
         )
         .map_err(|_| FitError::InvalidGeometry)
+    }
+
+    /// Inverse cell mapping of an unrotated physical child rectangle.
+    fn local_rect(self, anchor: LineAnchor, baseline: f64, rect: Rect) -> Result<Rect, FitError> {
+        if self.vertical_cell() {
+            Ok(Rect::new(
+                finite(rect.origin.y - anchor.inline_origin)?,
+                finite(baseline - (add(rect.origin.x, rect.size.width)? - anchor.baseline))?,
+                rect.size.height,
+                rect.size.width,
+            ))
+        } else {
+            Ok(Rect::new(
+                finite(rect.origin.x - anchor.inline_origin)?,
+                add(rect.origin.y - anchor.baseline, baseline)?,
+                rect.size.width,
+                rect.size.height,
+            ))
+        }
+    }
+
+    fn atomic_rect(
+        self,
+        anchor: LineAnchor,
+        baseline: f64,
+        slot: surgeist_text::Point,
+        rect: Rect,
+    ) -> Result<Rect, FitError> {
+        if self.vertical_cell() {
+            self.physical_rect(anchor, baseline, translate(rect, slot.x, slot.y)?)
+        } else {
+            translate(
+                rect,
+                add(anchor.inline_origin, slot.x)?,
+                add(anchor.baseline, slot.y - baseline)?,
+            )
+        }
+    }
+
+    fn atomic_local_rect(
+        self,
+        anchor: LineAnchor,
+        baseline: f64,
+        slot: surgeist_text::Point,
+        rect: Rect,
+    ) -> Result<Rect, FitError> {
+        if self.vertical_cell() {
+            translate(self.local_rect(anchor, baseline, rect)?, -slot.x, -slot.y)
+        } else {
+            Ok(Rect::new(
+                finite(rect.origin.x - anchor.inline_origin - slot.x)?,
+                finite(rect.origin.y - add(anchor.baseline, slot.y - baseline)?)?,
+                rect.size.width,
+                rect.size.height,
+            ))
+        }
+    }
+
+    fn atomic_cross(
+        self,
+        anchor: LineAnchor,
+        baseline: f64,
+        slot: surgeist_text::Point,
+        offset: f64,
+    ) -> Result<f64, FitError> {
+        if self.vertical_cell() {
+            Ok(self
+                .point(anchor, baseline, slot.x, add(slot.y, offset)?)?
+                .x)
+        } else {
+            add(add(anchor.baseline, slot.y - baseline)?, offset)
+        }
+    }
+
+    /// Numeric participants retain their flow-block-start reference. Text uses
+    /// line-over, which is the opposite border edge in VerticalLr.
+    fn atomic_baseline<S: LayoutScalar>(
+        self,
+        item: AtomicInlineBoxParticipant<S>,
+    ) -> Result<f64, FitError> {
+        if self.vertical_cell() {
+            if let Some(baseline) = item.first_baseline {
+                finite(if self.decreasing_block() {
+                    baseline.to_f64()
+                } else {
+                    item.size.width.to_f64() - baseline.to_f64()
+                })
+            } else {
+                // Physical fallback is the actual line-under margin edge.
+                add(item.size.width.to_f64(), item.margin.left.to_f64())
+            }
+        } else {
+            Ok(item
+                .first_baseline
+                .unwrap_or(item.size.height + item.margin.bottom)
+                .to_f64())
+        }
+    }
+
+    fn participant_baseline(self, border: Rect, cross: f64) -> Result<f64, FitError> {
+        finite(if self.decreasing_block() {
+            add(border.origin.x, border.size.width)? - cross
+        } else if self.vertical_cell() {
+            cross - border.origin.x
+        } else {
+            cross - border.origin.y
+        })
     }
 
     /// Normal-flow allocation follows block progression, not Text cell direction.
@@ -794,6 +911,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
         Frame::Measurement => Point::ZERO,
         Frame::Canonical { origin, .. } => origin,
     };
+    let frame = context.line_frame(origin)?;
     let allocations = binding
         .atomics
         .iter()
@@ -807,6 +925,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
                 })
             } else {
                 initial_allocation(
+                    frame,
                     binding,
                     atomics
                         .iter()
@@ -827,7 +946,6 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
             unreachable!("analysis lends a resolved original direction")
         }
     };
-    let frame = context.line_frame(origin)?;
     let orientation = frame.orientation();
     let available = match context.available {
         AvailableOf::Definite(value) => fit::Available::Definite(value.to_f64()),
@@ -918,6 +1036,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
 }
 
 fn initial_allocation<Node: Copy + Eq, S: LayoutScalar>(
+    frame: LineFrame,
     binding: &TextParagraphBinding<Node>,
     atomic: &Atomic<Node, S>,
 ) -> Result<AtomicAllocation, FitError> {
@@ -929,56 +1048,104 @@ fn initial_allocation<Node: Copy + Eq, S: LayoutScalar>(
         .occurrence
         .clone();
     let item = atomic.item;
-    let baseline = item
-        .first_baseline
-        .unwrap_or(item.size.height + item.margin.bottom)
-        .to_f64();
-    let x = add(item.margin.left.to_f64(), atomic.relative_offset.x.to_f64())?;
-    let y = add(-baseline, atomic.relative_offset.y.to_f64())?;
-    let content = atomic.content_box;
     Ok(AtomicAllocation {
         occurrence,
         allocation: AtomicLineAllocation::InFlow {
             alignment: alignment(item.alignment),
             flow: flow(
+                frame,
                 item,
                 item.size.width.to_f64(),
                 item.size.height.to_f64(),
-                baseline,
+                frame.atomic_baseline(item)?,
             )?,
-            box_geometry: AtomicBoxAllocation {
-                border: Rect::new(x, y, item.size.width.to_f64(), item.size.height.to_f64()),
-                content: Rect::new(
-                    add(x, content.origin().x.to_f64())?,
-                    add(y, content.origin().y.to_f64())?,
-                    content.size().width.to_f64(),
-                    content.size().height.to_f64(),
-                ),
-                baseline: atomic.relative_offset.y.to_f64(),
-            },
+            box_geometry: initial_box(frame, atomic)?,
         },
     })
 }
 
+fn initial_box<Node, S: LayoutScalar>(
+    frame: LineFrame,
+    atomic: &Atomic<Node, S>,
+) -> Result<AtomicBoxAllocation, FitError> {
+    let item = atomic.item;
+    let baseline = frame.atomic_baseline(item)?;
+    let content = atomic.content_box;
+    if frame.vertical_cell() {
+        let x = add(item.margin.top.to_f64(), atomic.relative_offset.y.to_f64())?;
+        let y = add(-baseline, -atomic.relative_offset.x.to_f64())?;
+        Ok(AtomicBoxAllocation {
+            border: Rect::new(x, y, item.size.height.to_f64(), item.size.width.to_f64()),
+            content: Rect::new(
+                add(x, content.origin().y.to_f64())?,
+                add(
+                    y,
+                    finite(
+                        item.size.width.to_f64()
+                            - content.origin().x.to_f64()
+                            - content.size().width.to_f64(),
+                    )?,
+                )?,
+                content.size().height.to_f64(),
+                content.size().width.to_f64(),
+            ),
+            baseline: -atomic.relative_offset.x.to_f64(),
+        })
+    } else {
+        let x = add(item.margin.left.to_f64(), atomic.relative_offset.x.to_f64())?;
+        let y = add(-baseline, atomic.relative_offset.y.to_f64())?;
+        Ok(AtomicBoxAllocation {
+            border: Rect::new(x, y, item.size.width.to_f64(), item.size.height.to_f64()),
+            content: Rect::new(
+                add(x, content.origin().x.to_f64())?,
+                add(y, content.origin().y.to_f64())?,
+                content.size().width.to_f64(),
+                content.size().height.to_f64(),
+            ),
+            baseline: atomic.relative_offset.y.to_f64(),
+        })
+    }
+}
+
 fn flow<S: LayoutScalar>(
+    frame: LineFrame,
     item: AtomicInlineBoxParticipant<S>,
     width: f64,
     height: f64,
     baseline: f64,
 ) -> Result<AtomicFlowAllocation, FitError> {
-    let left = item.margin.left.to_f64();
-    let right = item.margin.right.to_f64();
-    let advance = add(add(left, width)?, right)?;
+    let (left, right, over, under, inline, cross) = if frame.vertical_cell() {
+        (
+            item.margin.top,
+            item.margin.bottom,
+            item.margin.right,
+            item.margin.left,
+            height,
+            width,
+        )
+    } else {
+        (
+            item.margin.left,
+            item.margin.right,
+            item.margin.top,
+            item.margin.bottom,
+            width,
+            height,
+        )
+    };
+    let left = left.to_f64();
+    let right = right.to_f64();
+    let advance = add(add(left, inline)?, right)?;
     Ok(AtomicFlowAllocation {
         advance,
-        before_baseline: add(item.margin.top.to_f64(), baseline)?,
+        before_baseline: add(over.to_f64(), baseline)?,
         after_baseline: if item.first_baseline.is_some() {
-            add(height - baseline, item.margin.bottom.to_f64())?
+            add(cross - baseline, under.to_f64())?
         } else {
             0.0
         },
         occupied_start: 0.0f64.min(left).min(advance),
-        occupied_end: 0.0f64.max(add(left, width)?).max(advance),
+        occupied_end: 0.0f64.max(add(left, inline)?).max(advance),
     })
 }
 
@@ -992,6 +1159,7 @@ fn canonical_allocations<Node: Copy + Eq, S: LayoutScalar>(
     block: f64,
 ) -> Result<Vec<AtomicAllocation>, FitError> {
     let feedback = line.feedback();
+    let frame = context.line_frame(origin)?;
     let anchor = finalized_anchor(
         context,
         origin,
@@ -1018,12 +1186,9 @@ fn canonical_allocations<Node: Copy + Eq, S: LayoutScalar>(
                 .find(|atomic| atomic.node == actual.node)
                 .expect("every admitted in-flow atomic was measured by its Layout owner");
             let item = atomic.item;
-            let baseline = item
-                .first_baseline
-                .unwrap_or(item.size.height + item.margin.bottom)
-                .to_f64();
-            let (raw_x, raw_y) = raw_box(atomic, anchor, slot.origin, feedback.baseline)?;
-            let slot_y = add(anchor.baseline, slot.origin.y - feedback.baseline)?;
+            let initial = initial_box(frame, atomic)?;
+            let (raw_x, raw_y) = raw_box(frame, atomic, anchor, slot.origin, feedback.baseline)?;
+            let slot_cross = frame.atomic_cross(anchor, feedback.baseline, slot.origin, 0.0)?;
             let left = round(raw_x)?;
             let top = round(raw_y)?;
             let right = round(add(raw_x, item.size.width.to_f64())?)?;
@@ -1041,26 +1206,40 @@ fn canonical_allocations<Node: Copy + Eq, S: LayoutScalar>(
                 add(raw_y, content.origin().y.to_f64())?,
                 content.size().height.to_f64(),
             )?)?;
-            let actual_baseline = round(add(raw_y, baseline)?)?;
+            let actual_baseline = round(if frame.vertical_cell() {
+                frame.atomic_cross(anchor, feedback.baseline, slot.origin, initial.baseline)?
+            } else {
+                add(raw_y, frame.atomic_baseline(item)?)?
+            })?;
+            let baseline_over = if frame.vertical_cell() {
+                finite(right - actual_baseline)?
+            } else {
+                finite(actual_baseline - top)?
+            };
             Ok(AtomicAllocation {
                 occurrence: slot.occurrence,
                 allocation: AtomicLineAllocation::InFlow {
                     alignment: alignment(item.alignment),
-                    flow: flow(item, width, height, actual_baseline - top)?,
+                    flow: flow(frame, item, width, height, baseline_over)?,
                     box_geometry: AtomicBoxAllocation {
-                        border: Rect::new(
-                            left - anchor.inline_origin - slot.origin.x,
-                            top - slot_y,
-                            width,
-                            height,
-                        ),
-                        content: Rect::new(
-                            content_x - anchor.inline_origin - slot.origin.x,
-                            content_y - slot_y,
-                            (content_right - content_x).max(0.0),
-                            (content_bottom - content_y).max(0.0),
-                        ),
-                        baseline: actual_baseline - slot_y,
+                        border: frame.atomic_local_rect(
+                            anchor,
+                            feedback.baseline,
+                            slot.origin,
+                            Rect::new(left, top, width, height),
+                        )?,
+                        content: frame.atomic_local_rect(
+                            anchor,
+                            feedback.baseline,
+                            slot.origin,
+                            Rect::new(
+                                content_x,
+                                content_y,
+                                (content_right - content_x).max(0.0),
+                                (content_bottom - content_y).max(0.0),
+                            ),
+                        )?,
+                        baseline: frame.cross_distance(slot_cross, actual_baseline)?,
                     },
                 },
             })
@@ -1566,34 +1745,35 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 .iter()
                 .find(|row| row.node == binding.node)
                 .expect("actual atomic measurement remains retained");
-            let slot_y = add(anchor.baseline, slot.origin.y - feedback.baseline)?;
-            let border = translate(
-                box_geometry.border,
-                add(anchor.inline_origin, slot.origin.x)?,
-                slot_y,
+            let border =
+                frame.atomic_rect(anchor, feedback.baseline, slot.origin, box_geometry.border)?;
+            let content =
+                frame.atomic_rect(anchor, feedback.baseline, slot.origin, box_geometry.content)?;
+            let baseline = frame.atomic_cross(
+                anchor,
+                feedback.baseline,
+                slot.origin,
+                box_geometry.baseline,
             )?;
-            let content = translate(
-                box_geometry.content,
-                add(anchor.inline_origin, slot.origin.x)?,
-                slot_y,
-            )?;
-            let baseline = add(slot_y, box_geometry.baseline)?;
             atomic_origins.push((atomic.node, Point::new(border.origin.x, border.origin.y)));
             let size = Size::new(number(border.size.width)?, number(border.size.height)?);
             let physical = Point::new(
                 number(border.origin.x - origin.x.to_f64())?,
                 number(border.origin.y - origin.y.to_f64())?,
             );
-            let logical = context
-                .axes
-                .logical_point(physical, size, context.containing_size);
+            let containing_size = if frame.vertical_cell() {
+                context.frame_size()
+            } else {
+                context.containing_size
+            };
+            let logical = context.axes.logical_point(physical, size, containing_size);
             let mut item = atomic.item;
-            let (raw_x, raw_y) = raw_box(atomic, anchor, slot.origin, feedback.baseline)?;
+            let (raw_x, raw_y) = raw_box(frame, atomic, anchor, slot.origin, feedback.baseline)?;
             item.border = canonical_edges(raw_x, raw_y, atomic.item.size, atomic.item.border)?;
             item.padding = canonical_edges(raw_x, raw_y, atomic.item.size, atomic.item.padding)?;
             item.first_baseline = item
                 .first_baseline
-                .map(|_| number(baseline - border.origin.y))
+                .map(|_| number(frame.participant_baseline(border, baseline)?))
                 .transpose()?;
             item.size = size;
             // Content overflow extent and content-box allocation are distinct.
@@ -1739,26 +1919,19 @@ fn fragment_owner<Node: Copy + Eq>(
 }
 
 fn raw_box<Node, S: LayoutScalar>(
+    frame: LineFrame,
     atomic: &Atomic<Node, S>,
     anchor: LineAnchor,
     slot: surgeist_text::Point,
     line_baseline: f64,
 ) -> Result<(f64, f64), FitError> {
-    let item = atomic.item;
-    let baseline = item
-        .first_baseline
-        .unwrap_or(item.size.height + item.margin.bottom)
-        .to_f64();
-    Ok((
-        add(
-            add(anchor.inline_origin, slot.x)?,
-            add(item.margin.left.to_f64(), atomic.relative_offset.x.to_f64())?,
-        )?,
-        add(
-            add(anchor.baseline, slot.y - line_baseline)?,
-            add(-baseline, atomic.relative_offset.y.to_f64())?,
-        )?,
-    ))
+    let border = frame.atomic_rect(
+        anchor,
+        line_baseline,
+        slot,
+        initial_box(frame, atomic)?.border,
+    )?;
+    Ok((border.origin.x, border.origin.y))
 }
 
 fn alignment(value: InlineControlAlignment) -> surgeist_text::LineBoxAlignment {
