@@ -264,28 +264,14 @@ pub(crate) fn prepare(
             },
         ));
     }
-    match options.orientation() {
-        crate::LineOrientation::Vertical if !analyzed.typography.is_upright() => {
-            return Err(crate::protocol::protocol_error(
-                crate::ProtocolError::UnsupportedContext {
-                    field: crate::ProtocolContextField::Orientation,
-                },
-            ));
-        }
-        crate::LineOrientation::Sideways => {
-            if let Some(occurrence) = analyzed.paragraph.anchor_order.iter().find_map(|anchor| {
-                if let crate::protocol::paragraph::SemanticAnchorItem::Atomic(i) = anchor.item {
-                    Some(i)
-                } else {
-                    None
-                }
-            }) {
-                return Err(crate::protocol::protocol_error(
-                    crate::ProtocolError::UnsupportedSidewaysAtomic { occurrence },
-                ));
-            }
-        }
-        crate::LineOrientation::Horizontal | crate::LineOrientation::Vertical => {}
+    if options.orientation() == crate::LineOrientation::Vertical
+        && !analyzed.typography.is_upright()
+    {
+        return Err(crate::protocol::protocol_error(
+            crate::ProtocolError::UnsupportedContext {
+                field: crate::ProtocolContextField::Orientation,
+            },
+        ));
     }
     let upright_units = upright::units(
         &analyzed,

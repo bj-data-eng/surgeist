@@ -38,6 +38,9 @@ mod computed_boundaries;
 #[path = "placed_text_render/sideways_rl.rs"]
 mod sideways_rl;
 
+#[path = "placed_text_render/sideways_atomics.rs"]
+mod sideways_atomics;
+
 struct Tree {
     inputs: [layout::LayoutInput; 2],
     non_box: layout::NodeInput,

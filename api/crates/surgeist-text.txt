@@ -882,8 +882,6 @@ pub surgeist_text::ProtocolError::UnexpectedControl
 pub surgeist_text::ProtocolError::UnexpectedControl::occurrence: usize
 pub surgeist_text::ProtocolError::UnsupportedContext
 pub surgeist_text::ProtocolError::UnsupportedContext::field: surgeist_text::ProtocolContextField
-pub surgeist_text::ProtocolError::UnsupportedSidewaysAtomic
-pub surgeist_text::ProtocolError::UnsupportedSidewaysAtomic::occurrence: usize
 pub surgeist_text::ProtocolError::UnsupportedStandaloneAnalysis
 pub surgeist_text::ProtocolError::UnsupportedWrappingAnalysis
 pub surgeist_text::ProtocolError::WrappingScopeQuery

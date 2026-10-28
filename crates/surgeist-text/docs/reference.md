@@ -189,12 +189,15 @@ y and x respectively. Font ascent/descent keep their unrotated before/after
 distances; the query's retained `layout().orientation()` identifies their physical
 placement frame.
 
-The profile supports text, controls, line breaks, replacements, spacing and tabs.
-Any actual Atomic occurrence, including out-of-flow content, returns
-`UnsupportedSidewaysAtomic` during preparation. Mixed typography, sideways-lr
-progression, combined upright content and independent child-content rotation
-remain separate capabilities. Nominal vertical font metrics do not
-enable them. See the [composed-line guide](composed-lines.md) for retained
+The profile supports text, controls, line breaks, replacements, spacing, tabs and
+actual in-flow/out-of-flow atomic occurrences. In-flow allocations use local
+inline/line-under geometry; physical placement checks the actual border/content
+rectangles and x baseline. Out-of-flow geometry comes from its positioned-box
+owner with zero flow contribution. Atomic boxes retain their physical dimensions
+and their owner's content orientation while text glyphs use Clockwise.
+Mixed typography, counterclockwise sideways-lr progression and combined upright
+remain separate capabilities. See the [composed-line guide](composed-lines.md)
+for retained
 source, receipt and placement custody.
 
 ## Borrowed paint readback
