@@ -94,12 +94,18 @@ fn a_keyframe_declaration_block_is_one_block_and_nothing_else() {
     }
 }
 
+// CHARACTERIZATION of current behaviour that contradicts Syntax 3 (2026 CRD)
+// §5.5.6 step 8, which returns nothing for a non-custom declaration whose
+// value holds a `{}`-block beside other values (WPT `var-with-blocks.html`
+// agrees). It is due to change when every declaration path follows steps 6 to
+// 8; the expectations below then change with it.
 #[test]
-fn a_declaration_value_runs_to_its_semicolon_when_a_substitution_admits_the_block() {
-    // The value of `color` holds a substitution, which admits any tokens (CSS
-    // Variables 1 section 3), so the `{}`-block does not end the declaration:
-    // it runs to the `;`, as the native block parser read it, and the
-    // declaration after the semicolon is separate.
+fn characterization_a_declaration_value_runs_to_its_semicolon_when_a_substitution_admits_the_block()
+{
+    // The value of `color` holds a substitution; the `{}`-block does not end
+    // the declaration, which runs to the `;`, and the declaration after the
+    // semicolon is separate. Step 8 would drop `color: var(--a) {x}` as a
+    // qualified rule and read `opacity: 1;` as a declaration of its own.
     let source = "{ color: var(--a) {x} opacity: 1; width: 1px }";
     let report = fragments::parse_keyframe_declaration_block_with_context(
         source,
@@ -110,10 +116,12 @@ fn a_declaration_value_runs_to_its_semicolon_when_a_substitution_admits_the_bloc
     assert!(report.is_clean(), "{report:?}");
 }
 
+// CHARACTERIZATION, as above: step 8 refuses `x: y { z }` before any grammar
+// sees it, so its error would be the unexpected `{`, not the unknown property.
 #[test]
-fn a_declaration_whose_block_is_refused_reports_its_grammars_verdict_first() {
-    // An unknown property is the first thing the declaration grammar says of
-    // `x: y { z }`, before the value, which §5.5.6 step 8 would refuse.
+fn characterization_a_declaration_whose_block_is_refused_reports_its_grammars_verdict_first() {
+    // The unknown property is the first thing the declaration grammar says of
+    // `x: y { z }`, before the value.
     let source = "{ x: y { z } ; color: red }";
     let report = fragments::parse_keyframe_declaration_block_with_context(
         source,
@@ -135,7 +143,8 @@ fn a_detached_margin_rule_admits_its_declarations_and_reports_what_it_drops() {
     let source = "@top-left { margin: var(--a) {x} 1px; margin-top: 1px; bogus: 1; @media x {} }";
     let report = CssMarginRule::parse(&CssParser::default(), source);
     let rule = report.syntax().as_ref().expect("a margin rule");
-    // The substitution admits the block, so the first declaration runs to its `;`.
+    // CHARACTERIZATION (contradicts §5.5.6 step 8, due to change with it): the
+    // substitution admits the block, so the first declaration runs to its `;`.
     assert_eq!(rule.declarations().properties().len(), 2, "{report:?}");
     assert_eq!(
         dropped(&report),
@@ -231,5 +240,140 @@ fn a_detached_keyframe_rule_reaches_the_declaration_grammar_through_the_native_r
             CssErrorCode::UnknownProperty,
             range_of(source, "bogus: 1;")
         )]
+    );
+}
+
+fn importance_and_codes(body: &str) -> (Vec<crate::declaration::CssImportance>, Vec<CssErrorCode>) {
+    let source = format!("@top-left {{ {body} }}");
+    let report = CssMarginRule::parse(&CssParser::default(), &source);
+    let rule = report.syntax().as_ref().expect("a margin rule");
+    (
+        rule.declarations()
+            .properties()
+            .iter()
+            .map(|declaration| declaration.importance())
+            .collect(),
+        report
+            .diagnostics()
+            .iter()
+            .map(|diagnostic| diagnostic.error().code())
+            .collect(),
+    )
+}
+
+#[test]
+fn the_importance_annotation_ignores_whitespace_comments_and_the_case_of_important() {
+    use crate::declaration::CssImportance::{Important, Normal};
+    // Syntax 3 (2026 CRD) §5.5.6 step 6: a value whose last two non-whitespace
+    // tokens are `!` and an ASCII case-insensitive `important` is important,
+    // and a comment is not a token.
+    for (body, expected) in [
+        ("margin-top: 1px", Normal),
+        ("margin-top: 1px !important", Important),
+        ("margin-top: 1px!important", Important),
+        ("margin-top: 1px ! important", Important),
+        ("margin-top: 1px /*c*/ ! /*d*/ important /*e*/", Important),
+        ("margin-top: 1px !IMPORTANT", Important),
+        ("margin-top: 1px !ImPoRtAnT\n", Important),
+        ("--x: a !important", Important),
+        ("--x: a ! important ", Important),
+    ] {
+        assert_eq!(
+            importance_and_codes(body),
+            (vec![expected], vec![]),
+            "{body:?}"
+        );
+    }
+}
+
+// CHARACTERIZATION of current behaviour that departs from Syntax 3 (2026 CRD)
+// §5.5.6 steps 6 and 7: the first `!` of a value starts the annotation, and
+// anything but `important` after it is an invalid annotation. By the steps, a
+// `!` that is not the second to last token is an ordinary delimiter in the
+// value, and the declaration is judged by its property's grammar (for a custom
+// property it is accepted whole). Due to change with step 12.
+#[test]
+fn characterization_a_bang_that_does_not_end_the_value_is_an_invalid_annotation() {
+    for body in [
+        "margin-top: 1px ! 2px",
+        "margin-top: 1px !important x",
+        "margin-top: 1px !important !important",
+        "margin-top: 1px !",
+        "margin-top: 1px !importantx",
+        "--x: a ! b",
+        "--x: a !important b",
+    ] {
+        assert_eq!(
+            importance_and_codes(body),
+            (vec![], vec![CssErrorCode::InvalidDeclarationAnnotation]),
+            "{body:?}"
+        );
+    }
+}
+
+#[test]
+fn a_keyframe_declaration_admits_no_importance() {
+    // CSS Animations 1 section 4.2: a declaration marked `!important` in a
+    // keyframe is ignored.
+    for body in [
+        "color: red !important",
+        "color: red ! important",
+        "--x: a !important",
+    ] {
+        let source = format!("{{ {body}; opacity: 1 }}");
+        let report = fragments::parse_keyframe_declaration_block_with_context(
+            &source,
+            CssParserContext::default(),
+        );
+        assert_eq!(
+            report.syntax().as_ref().unwrap().body().len(),
+            1,
+            "{body:?}"
+        );
+        assert_eq!(
+            dropped(&report)
+                .iter()
+                .map(|unit| (unit.0, unit.1))
+                .collect::<Vec<_>>(),
+            [(
+                CssRecoveryAction::DropDeclaration,
+                CssErrorCode::InvalidDeclarationAnnotation
+            )],
+            "{body:?}"
+        );
+    }
+}
+
+#[test]
+fn error_locations_count_columns_in_utf16_units_and_offsets_in_bytes() {
+    // Every character before the error is counted once in a column per UTF-16
+    // unit (`é` one, `😀` two) and in the byte offset per UTF-8 byte (two and
+    // four).
+    let source = "@top-left { content: \"é😀\"; bogus: 1 }";
+    let report = CssMarginRule::parse(&CssParser::default(), source);
+    let [unknown] = report.diagnostics() else {
+        panic!("one diagnostic: {report:?}")
+    };
+    assert_eq!(unknown.error().code(), CssErrorCode::UnknownProperty);
+    let position = unknown.error().position();
+    assert_eq!(
+        (position.byte_offset().value(), position.column().value()),
+        (source.find("bogus").unwrap(), 28)
+    );
+    // CHARACTERIZATION (§5.5.6 step 6 would not call this an annotation): the
+    // annotation error is located at the `!`.
+    let source = "@top-left { content: \"😀\"; margin-top: 1px ! x }";
+    let report = CssMarginRule::parse(&CssParser::default(), source);
+    let [annotation] = report.diagnostics() else {
+        panic!("one diagnostic: {report:?}")
+    };
+    assert_eq!(
+        annotation.error().code(),
+        CssErrorCode::InvalidDeclarationAnnotation
+    );
+    let position = annotation.error().position();
+    assert_eq!(
+        (position.byte_offset().value(), position.column().value()),
+        (source.find('!').unwrap(), 43)
     );
 }

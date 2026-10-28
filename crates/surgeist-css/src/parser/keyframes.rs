@@ -176,7 +176,7 @@ pub(super) fn drive_declarations<'i>(
     };
     let mut declarations = Vec::new();
     let mut diagnostics = Vec::new();
-    let mut legacy = KeyframeDeclarationParser {
+    let mut readmit = KeyframeDeclarationParser {
         source,
         recovery: recovery.clone(),
     };
@@ -190,14 +190,15 @@ pub(super) fn drive_declarations<'i>(
         };
         let mut dropped = dropped_unit(snapshot, source, &failed);
         if let Some((start, end)) = refused_declaration(&failed) {
-            // The native block parser read the value of a declaration that
-            // step 8 refuses, to its `;`, and reported its grammar's verdict.
+            // A declaration that step 8 refuses is read to its `;` all the
+            // same, and the grammar's verdict on it is reported (until the
+            // declaration paths follow step 8).
             let text = DeclarationText::read(start, end);
             let name = match start.token() {
                 Some(surgeist_css_parser::Token::Ident(name)) => name,
                 _ => "",
             };
-            match legacy.admit(name, &text) {
+            match readmit.admit(name, &text) {
                 Ok(declaration) => {
                     declarations.push(declaration);
                     return Some(end);
@@ -205,8 +206,8 @@ pub(super) fn drive_declarations<'i>(
                 Err(error) => dropped.error = error,
             }
         }
-        // cssparser slices an at-rule whose prelude it rejected before the `;`
-        // or `{` that ended it, and every at-rule is rejected in a keyframe's
+        // An at-rule is dropped for its prelude, so its text ends before the
+        // `;` or `{` that ended it; every at-rule is invalid in a keyframe's
         // block.
         let text = if dropped.kind == UnitKind::AtRule {
             dropped.text_to_prelude_end()
