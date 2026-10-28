@@ -690,3 +690,6 @@ mod policy;
 
 #[path = "upright_shaping/arrangement.rs"]
 mod arrangement;
+
+#[path = "upright_shaping/admission.rs"]
+mod admission;

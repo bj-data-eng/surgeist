@@ -2,7 +2,7 @@
 use super::*;
 use crate::{
     FinalizedFragmentOwner, GlyphBasis, HyphenationPlacement, Hyphens, NativeHyphenationConvention,
-    Text,
+    OverflowWrap, Text,
 };
 use icu_properties::{CodePointMapData, props::LineBreak as UnicodeLineBreak};
 
@@ -607,6 +607,427 @@ fn real_before_after_and_both_indications_keep_local_ltr_glyphs_and_custody() {
             assert!(
                 points.windows(2).all(|p| p[0] < p[1]),
                 "physical TTB order in {mode:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_real_intrinsic_conditional_cut_rebuilds_the_tibetan_prefix_context() {
+    let bytes = tibetan_font();
+    qualify_native(
+        &bytes,
+        &[
+            (0xf40, 35),
+            (0xf72, 100),
+            (0xf0b, 58),
+            (0xf08, 36),
+            (0xf41, 37),
+        ],
+        *b"tibt",
+    );
+    let mut system = system_with(&bytes);
+    let text = "\u{f40}\u{f72}\u{f0b}\u{f08}\u{f41}";
+    let mut style = own_style();
+    style.overflow_wrap = OverflowWrap::Anywhere;
+    let p = prepare(&mut system, text, style);
+    let ceiling = p
+        .opportunity_views()
+        .find(|o| {
+            o.kind() == PreparedBreakKind::Allowed && o.boundary().view().source_before().get() == 3
+        })
+        .unwrap()
+        .handle();
+    let batch = p
+        .conditional_search(
+            &start(&p),
+            None,
+            &ceiling,
+            ConditionalPurpose::MinContent,
+            &[],
+            None,
+        )
+        .unwrap()
+        .begin(&[])
+        .unwrap();
+    let cuts = batch.opportunities();
+    assert_eq!(cuts.len(), 1);
+    let cut = &cuts[0];
+    assert_eq!(cut.boundary().view().source_before().get(), 2);
+    let mut r = select_request(&p, cut.start(), ceiling);
+    r.end = cut.boundary();
+    let first = r.start.view().participant_offset();
+    let last = r.end.view().participant_offset();
+    r.participants = p.participants().skip(first).take(last - first).collect();
+    r.termination = PreparedTermination::Conditional(cut.clone());
+    r.alternative = cut.alternative();
+    r.context.end = LineEnd::Soft;
+    r.context.available_inline = None;
+    let line = finish(&p, r);
+    // At this authentic conditional boundary the actual fragment has no tsek,
+    // so neither authored vert context can substitute Ka35. Full-unit277 and
+    // ordinary-prefix274 are independently qualified by the preceding test.
+    assert_eq!(ids(&line), [35, 100]);
+    assert_eq!(line.feedback().advance, 12.0);
+    assert_eq!(line.selected_line().request().end, cut.boundary());
+    let selected = line.selected_line();
+    let actual = selected.request();
+    assert_eq!(
+        Range::new(
+            actual.start.view().source_after().get(),
+            actual.end.view().source_before().get(),
+        ),
+        Range::new(0, 2)
+    );
+    assert_eq!(
+        p.analyzed_source().graphemes().collect::<Vec<_>>(),
+        [
+            Range::new(0, 2),
+            Range::new(2, 3),
+            Range::new(3, 4),
+            Range::new(4, 5)
+        ]
+    );
+    assert_eq!(
+        p.analyzed_source().source().text().code_units(),
+        text.encode_utf16().collect::<Vec<_>>()
+    );
+}
+
+fn portion_line(p: &PreparedText, portion: &crate::PreparedWordPortion) -> FinalizedLine {
+    let mut r = select_request(p, portion.start(), terminal(p));
+    r.end = portion.end();
+    let first = r.start.view().participant_offset();
+    let last = r.end.view().participant_offset();
+    r.participants = p.participants().skip(first).take(last - first).collect();
+    r.incoming = portion.incoming();
+    r.alternative = portion.alternative();
+    r.termination = PreparedTermination::Measurement(portion.clone());
+    r.context.end = LineEnd::Soft;
+    finish(p, r)
+}
+
+fn flow_request(
+    p: &PreparedText,
+    segment: &crate::PreparedFlowSegment,
+) -> crate::FlowObservationRequest {
+    let mut r = select_request(p, segment.start(), terminal(p));
+    r.context.end = if segment.role() == crate::FlowSegmentRole::Target {
+        LineEnd::Soft
+    } else {
+        segment
+            .mandatory_end()
+            .map_or(LineEnd::Soft, |offer| match offer.view().kind() {
+                PreparedBreakKind::Forced => LineEnd::Forced,
+                PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
+                _ => unreachable!("a mandatory flow endpoint has its actual cause"),
+            })
+    };
+    crate::FlowObservationRequest {
+        context: r.context,
+        atomics: vec![],
+        controls: vec![],
+        line_strut: None,
+        line_box_struts: vec![],
+        boundary_context: vec![],
+    }
+}
+
+#[test]
+fn actual_native_indication_portions_and_flows_keep_each_selected_side() {
+    let bytes = indication_font();
+    qualify_native(&bytes, &[(0x5d0, 82), (0x628, 35), (0x31, 58)], *b"arab");
+    let mut system = system_with(&bytes);
+    let indication = "\u{5d0}(\u{628})1\u{202e}AB\u{202c}";
+    let visible = [82, 36, 274, 37, 58, 35, 36];
+    for mode in [
+        HyphenationPlacement::LogicalBefore,
+        HyphenationPlacement::LogicalAfter,
+        HyphenationPlacement::BothSides,
+    ] {
+        let mut style = own_style();
+        style.hyphens = Hyphens::Manual;
+        style.locale = Some("und-Latn".into());
+        style.native_hyphenation_convention = Some(
+            NativeHyphenationConvention::language_script(
+                "und-Latn",
+                "Latn",
+                Text::from(indication),
+                mode,
+            )
+            .unwrap(),
+        );
+        let p = prepare(&mut system, "AB\u{ad}CCC", style);
+        let portions = p.word_views().next().unwrap().portions().unwrap();
+        assert_eq!(portions.len(), 2);
+        assert_eq!(portions[0].end(), portions[1].start());
+        assert_eq!(portions[0].end().view().source_before().get(), 3);
+        let chosen = portions[0].alternative().unwrap();
+        assert_eq!(
+            chosen.view().text().code_units(),
+            indication.encode_utf16().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            portions[1].incoming().is_some(),
+            mode != HyphenationPlacement::LogicalBefore
+        );
+        for (index, portion) in portions.iter().enumerate() {
+            let mut expected = if index == 0 { vec![35, 36] } else { vec![] };
+            let emits = if index == 0 {
+                mode != HyphenationPlacement::LogicalAfter
+            } else {
+                mode != HyphenationPlacement::LogicalBefore
+            };
+            if emits {
+                expected.extend(visible);
+            }
+            if index == 1 {
+                expected.extend([37, 37, 37]);
+            }
+            let line = portion_line(&p, portion);
+            assert_eq!(ids(&line), expected, "actual {mode:?} portion{index}");
+            assert_eq!(line.feedback().advance, expected.len() as f64 * 12.0);
+            assert_eq!(line.selected_line().request().incoming, portion.incoming());
+            assert_eq!(
+                line.selected_line().request().alternative,
+                portion.alternative()
+            );
+            assert!(
+                line.inner
+                    .selected
+                    .presentation
+                    .analysis
+                    .levels
+                    .iter()
+                    .all(|&level| level == 0)
+            );
+            let error = crate::Layout::from_finalized_lines(PlacementRequest {
+                prepared: p.clone(),
+                coverage: PlacementCoverage::Range {
+                    start: portion.start(),
+                    end: portion.end(),
+                },
+                entries: vec![crate::PlacementEntry::Formatted(LinePlacement {
+                    line,
+                    anchor: LineAnchor {
+                        inline_origin: 20.0,
+                        baseline: 100.0,
+                    },
+                    orientation: LineOrientation::Vertical,
+                    atomics: vec![],
+                })],
+            })
+            .unwrap_err();
+            assert!(matches!(
+                error.detail(),
+                Some(crate::ErrorDetail::InvalidTextProtocol {
+                    reason: ProtocolError::MeasurementNotPlaceable
+                })
+            ));
+
+            // The flow target is this genuine issued native word portion.
+            // Ordinary/conditional Tibetan offers are not invented flow targets.
+            let flow = p
+                .measurement_flow(
+                    &start(&p),
+                    None,
+                    &PreparedTermination::Measurement(portion.clone()),
+                )
+                .unwrap();
+            let segments = flow.segments().collect::<Vec<_>>();
+            let target = segments
+                .iter()
+                .find(|s| s.role() == crate::FlowSegmentRole::Target)
+                .unwrap();
+            assert_eq!(target.start(), portion.start());
+            assert_eq!(target.end(), portion.end());
+            assert_eq!(target.incoming(), portion.incoming());
+            assert_eq!(target.alternative(), portion.alternative());
+            let observations = segments
+                .iter()
+                .map(|segment| {
+                    let input = flow_request(&p, segment);
+                    assert!(
+                        p.flow_boundary_context_demand(segment, &input)
+                            .unwrap()
+                            .is_none()
+                    );
+                    let observation = p.observe_flow(segment, &input).unwrap();
+                    assert_eq!(observation.segment(), *segment);
+                    assert_eq!(
+                        observation.request().context.orientation,
+                        LineOrientation::Vertical
+                    );
+                    assert!(observation.has_in_flow_content());
+                    observation
+                })
+                .collect::<Vec<_>>();
+            flow.validate_observations(&observations).unwrap();
+        }
+        assert_eq!(
+            p.analyzed_source().source().text().code_units(),
+            [65, 66, 173, 67, 67, 67]
+        );
+        assert_eq!(chosen.view().source_range(), Some(Range::new(2, 3)));
+    }
+}
+
+fn cursive_font(script: [u8; 4], letter: u32, mark: u32) -> Vec<u8> {
+    let font = arabic_font();
+    let mut tables = vec![(
+        *b"cmap",
+        cmap(&[
+            (0x20, 3),
+            (0x58, 58),
+            (letter, 35),
+            (mark, 100),
+            (0x200c, 252),
+            (0x200d, 253),
+        ]),
+    )];
+    for tag in [*b"GSUB", *b"GPOS"] {
+        let mut table = sfnt::table(&font, tag).to_vec();
+        let list = usize::from(sfnt::u16_at(&table, 4));
+        assert_eq!(sfnt::u16_at(&table, list), 1);
+        assert_eq!(&table[list + 2..list + 6], b"arab");
+        table[list + 2..list + 6].copy_from_slice(&script);
+        tables.push((tag, table));
+    }
+    native(&sfnt::replace_tables(&font, tables), &[*b"latn", script])
+}
+
+fn physical_glyphs(layout: &crate::Layout) -> Vec<(u32, Point)> {
+    layout
+        .run_views()
+        .flat_map(|r| {
+            r.glyphs()
+                .map(|g| {
+                    (
+                        g.id(),
+                        Point::new(
+                            r.origin().x + f64::from(g.x()),
+                            r.origin().y + g.pen() + f64::from(g.y()),
+                        ),
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+#[test]
+fn syriac_default_isol_keeps_complete_mark_and_joiner_context() {
+    let bytes = cursive_font(*b"syrc", 0x712, 0x730);
+    qualify_native(
+        &bytes,
+        &[(0x712, 35), (0x730, 100), (0x200d, 253)],
+        *b"syrc",
+    );
+    let mut system = system_with(&bytes);
+    for (features, expected) in [
+        (&[][..], 274),
+        (&[r#""isol" 0"#][..], 35),
+        (&[r#""isol" 0"#, r#""init" 1"#][..], 82),
+        (&[r#""isol" 0"#, r#""medi" 1"#][..], 277),
+        (&[r#""isol" 0"#, r#""fina" 1"#][..], 58),
+    ] {
+        let (_, line) = upright_line(&mut system, "\u{712}", features);
+        assert_eq!(ids(&line), [expected]);
+    }
+    let (p, line) = upright_line(&mut system, "\u{712}\u{712}", &[]);
+    assert_eq!(
+        ids(&line),
+        [274, 274],
+        "actual default forms, not a manual isol override"
+    );
+    assert_eq!(line.feedback().advance, 24.0);
+    assert_eq!(
+        place_upright(p, line).source().text().code_units(),
+        [0x712, 0x712]
+    );
+    for (text, first, expected) in [
+        (
+            "\u{712}\u{730}\u{712}",
+            274,
+            [
+                Point::new(94.0, 27.0),
+                Point::new(97.0, 23.0),
+                Point::new(94.0, 39.0),
+            ],
+        ),
+        (
+            "\u{712}\u{730}\u{200d}\u{712}",
+            36,
+            [
+                Point::new(94.0, 29.0),
+                Point::new(97.0, 25.0),
+                Point::new(94.0, 39.0),
+            ],
+        ),
+    ] {
+        let (p, line) = upright_line(&mut system, text, &[]);
+        assert_eq!(ids(&line), [first, 100, 274]);
+        assert_eq!(line.feedback().advance, 24.0);
+        let layout = place_upright(p, line);
+        assert_eq!(
+            layout.source().text().code_units(),
+            text.encode_utf16().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            physical_glyphs(&layout),
+            [(first, expected[0]), (100, expected[1]), (274, expected[2])]
+        );
+        assert!(
+            layout
+                .run_views()
+                .all(|r| r.face().bytes() == bytes && r.glyph_basis() == GlyphBasis::Unrotated)
+        );
+    }
+}
+
+#[test]
+fn nko_use_default_isol_and_transparent_tone_use_the_real_vertical_provider() {
+    use icu_properties::props::{GeneralCategory, Script};
+    use icu_properties::script::ScriptWithExtensions;
+    assert_eq!(CodePointMapData::<Script>::new().get32(0x7ca), Script::Nko);
+    assert_eq!(
+        CodePointMapData::<GeneralCategory>::new().get32(0x7eb),
+        GeneralCategory::NonspacingMark
+    );
+    assert!(ScriptWithExtensions::new().has_script32(0x7eb, Script::Nko));
+    // N'Ko's actual OpenType script tag has a trailing space. USE supplies its
+    // joining masks; Text's Arabic/Syriac generic-plan isol default is not used.
+    let bytes = cursive_font(*b"nko ", 0x7ca, 0x7eb);
+    qualify_native(&bytes, &[(0x7ca, 35), (0x7eb, 100)], *b"nko ");
+    let mut system = system_with(&bytes);
+    let (_, off) = upright_line(&mut system, "\u{7ca}", &[r#""isol" 0"#]);
+    assert_eq!(ids(&off), [35]);
+    for (text, expected, advance) in [
+        ("\u{7ca}", vec![274], 12.0),
+        ("\u{7ca}\u{7ca}", vec![274, 274], 24.0),
+        ("\u{7ca}\u{7eb}\u{7ca}", vec![274, 100, 274], 24.0),
+    ] {
+        let (p, line) = upright_line(&mut system, text, &[]);
+        assert_eq!(ids(&line), expected, "default USE result for {text:?}");
+        assert_eq!(line.feedback().advance, advance);
+        let layout = place_upright(p, line);
+        assert_eq!(
+            layout.source().text().code_units(),
+            text.encode_utf16().collect::<Vec<_>>()
+        );
+        assert!(
+            layout
+                .run_views()
+                .all(|r| r.face().bytes() == bytes && r.glyph_basis() == GlyphBasis::Unrotated)
+        );
+        if text.contains('\u{7eb}') {
+            assert_eq!(
+                physical_glyphs(&layout),
+                [
+                    (274, Point::new(94.0, 27.0)),
+                    (100, Point::new(97.0, 23.0)),
+                    (274, Point::new(94.0, 39.0))
+                ]
             );
         }
     }
