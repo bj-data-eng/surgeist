@@ -268,6 +268,7 @@ fn intrinsic_with_indent(
         &[],
         &[],
         super::super::run::Context {
+            inline_baseline_context: crate::InlineBaselineContext::Physical,
             groups: crate::group_alignment::Snapshot::default(),
             wrap_style: crate::TextWrapStyle::Auto,
             wrapping: None,

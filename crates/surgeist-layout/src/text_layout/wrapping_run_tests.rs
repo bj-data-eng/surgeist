@@ -80,6 +80,7 @@ fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
         &[],
         &controls,
         Context {
+            inline_baseline_context: crate::InlineBaselineContext::Physical,
             groups: crate::group_alignment::Snapshot::default(),
             wrap_style: crate::TextWrapStyle::Auto,
             wrapping: WrappingProjection::new(

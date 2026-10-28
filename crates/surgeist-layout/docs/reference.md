@@ -218,12 +218,15 @@ unused name and establishes no named anchor. Explicit control struts still use
 their declared reference, because they have no atomic box from which to resolve
 another one.
 
-This named capability covers numeric atomic-box flow. Text placement origins
-and generic Flex/Grid baseline projections do not supply named facts. Text's
-font-design measurements require a real placed-origin adapter before they can
-satisfy a named box request. A horizontal design-zero coordinate cannot stand
-in for a possibly nonzero font-defined alphabetic baseline. Physical Text
-composition remains available through its existing contract.
+Numeric atomic-box flow supports both names. Native upright Text in
+`VerticalRl` or `VerticalLr` additionally admits `Named(Central)` when the actual
+prepared paragraph has matching Upright analysis and Vertical orientation.
+Its first/last formatted lines establish Central facts on the physical x axis;
+absent or nonformatted lines do not acquire authority from the requested name.
+`Physical` remains a separate operation and leaves named Text facts Unknown.
+Other named Text contexts retain `MissingContext(NamedInlineBaseline)`.
+Generic Flex/Grid projections and font-design zero coordinates do not establish
+named facts or substitute for a possibly nonzero alphabetic baseline.
 A Flex/Grid container can remain named-Unknown while its child's independently
 qualified facts remain available in that child's packet. Positioning and floating
 likewise preserve child-owned facts. Published cache outputs retain the same
@@ -580,11 +583,15 @@ frame and source-fragment geometry retained for scrollable overflow. A supplied
 block-end claim is checked against known later in-flow content in the captured
 container; unknown authority is never upgraded from numeric coverage.
 This explicit profile does not implement CSS-wide justification methods,
-BreakSpaces or styled inline hanging barriers. `VerticalRl`, `VerticalLr` and
-`SidewaysLr` Text composition remain unsupported. Sideways preparation refuses
+BreakSpaces or styled inline hanging barriers. Native whole-upright paragraphs
+compose in `VerticalRl` and `VerticalLr` through Text's
+[qualified native profile](../../surgeist-text/docs/reference.md#native-whole-upright-paragraphs).
+Actual Text-backed `SidewaysLr` reports
+`UnsupportedCapability(TextWritingMode(SidewaysLr))` at `TextCapture` on the
+container; box-only flow retains its own support. Sideways preparation refuses
 captured atomics, including out-of-flow content; genuine incoming native floats
 outside the paragraph binding remain Layout constraints. Physical Text baseline
-coordinates do not satisfy a named font-baseline request.
+coordinates alone do not satisfy a named font-baseline request.
 
 Canonical frames, line allocations, ordered spacing allocations and float bands
 govern same-invocation retries.
@@ -594,8 +601,9 @@ The common physical line anchor uses nearest-CSS-pixel rounding while retaining
 fractional Text geometry. A real float transition or explicit clearance imposes
 a minimum logical block position; Layout selects the earliest permitted anchor on
 that same pixel grid and retains the constraint during feedback retries. For
-clockwise SidewaysRl this is a maximum physical x, snapped downward when the
-nearest anchor would violate it. Actual canonical container origin, used size
+clockwise SidewaysRl and native VerticalRl this is a maximum physical x,
+snapped downward when the nearest anchor would violate it; VerticalLr instead
+requires a minimum physical x. Actual canonical container origin, used size
 and all four content insets govern placement, including automatic block size.
 Intrinsic sizing and final canonical placement are distinct: a final used frame
 can supply a finite selection span after an intrinsic root sizing request.
@@ -609,6 +617,17 @@ Source fragments and atomic boxes contribute their own actual geometry; glyph
 ink and glyph advance do not replace line allocations. The
 [shared placement contract](../../../docs/text-layout-contract.md#canonical-boxes-and-coherent-line-placement)
 distinguishes logical progression, physical anchors and their float constraints.
+
+Native upright placement keeps three coordinate mappings separate. Flow columns
+progress leftward in VerticalRl and rightward in VerticalLr, while Text's
+line-over to line-under cell direction decreases physical x in both. For actual
+allocated line height `H` and finalized local Central baseline `B`, the anchor
+is `B` from the right block-start in VerticalRl or `H-B` from the left in
+VerticalLr. A finalized local point `(u,v)` maps to
+`(CentralX+B-v, inlineOrigin+u)`. Normal-flow allocations follow the actual
+block progression; source and metric rectangles retain their own extents.
+Containing direction maps the available interval once, independently of the
+upright paragraph's used LTR direction and retained computed direction.
 
 The box/control-only numeric fitter uses Text's canonical `BidiLevel` and
 borrowed [`SuppliedLine`](../../surgeist-text/src/supplied_line.rs) for ordering.

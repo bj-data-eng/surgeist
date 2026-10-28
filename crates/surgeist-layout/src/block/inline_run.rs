@@ -483,14 +483,19 @@ where
         tree.text_computation()
             .and_then(|state| state.paragraph(container, run))
     });
-    if text_binding.is_some()
-        && constants.inline_baseline_context != crate::InlineBaselineContext::Physical
-    {
-        return Err(LayoutErrorOf::new(
-            LayoutErrorSiteOf::Node(container),
-            LayoutOperation::TextCapture,
-            LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::NamedInlineBaseline),
-        ));
+    if let Some(binding) = text_binding {
+        crate::text_layout::run::text_orientation(constants.flow_axes.writing_mode())
+            .map_err(|error| text_run_error(container, error))?;
+        let central = constants.inline_baseline_context
+            == crate::InlineBaselineContext::Named(crate::BaselineName::Central)
+            && crate::text_layout::run::native_upright(&binding.prepared, constants.flow_axes);
+        if constants.inline_baseline_context != crate::InlineBaselineContext::Physical && !central {
+            return Err(LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(container),
+                LayoutOperation::TextCapture,
+                LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::NamedInlineBaseline),
+            ));
+        }
     }
     if text_binding.is_none()
         && run.iter().any(|node| {
@@ -883,6 +888,7 @@ where
             .map(|groups| groups.snapshot())
             .unwrap_or_default();
         let context = crate::text_layout::run::Context {
+            inline_baseline_context: constants.inline_baseline_context,
             groups: group_snapshot,
             wrapping: tree.wrapping_context().and_then(|(context, graph)| {
                 crate::text_layout::run::WrappingProjection::new(
@@ -1991,6 +1997,15 @@ pub(super) fn text_run_error<Node: Copy, S: LayoutScalar, M>(
     error: crate::text_layout::fit::FitError,
 ) -> LayoutErrorOf<Node, S, M> {
     let kind = match error {
+        crate::text_layout::fit::FitError::TextWritingMode(mode) => {
+            return LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(node),
+                LayoutOperation::TextCapture,
+                LayoutErrorKindOf::UnsupportedCapability(
+                    crate::LayoutUnsupportedCapability::TextWritingMode(mode),
+                ),
+            );
+        }
         crate::text_layout::fit::FitError::Wrapping(error) => {
             return crate::inline_wrapping::wrapping_error(node, error);
         }

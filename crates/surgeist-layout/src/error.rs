@@ -321,6 +321,8 @@ impl UnsupportedSizingBehavior {
 pub enum LayoutUnsupportedCapability {
     LaterFriBehavior,
     SizingBehavior(UnsupportedSizingBehavior),
+    /// The actual Text-backed run needs an unsupported physical writing-mode adapter.
+    TextWritingMode(crate::WritingMode),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

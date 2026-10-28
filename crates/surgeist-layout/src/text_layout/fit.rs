@@ -169,6 +169,8 @@ struct CandidateBasis {
 pub(crate) struct BlockPosition {
     pub proposed: f64,
     pub minimum: Option<f64>,
+    /// Actual used allocation height paired with the callback's finalized baseline.
+    pub height: f64,
 }
 
 /// Accepted logical allocation and any genuine following clearance movement.
@@ -252,6 +254,7 @@ pub(crate) struct ReusableLine {
 
 pub(crate) enum FitError {
     Text(surgeist_text::Error),
+    TextWritingMode(crate::WritingMode),
     Wrapping(crate::inline_wrapping::WrappingScopeError),
     FeedbackCycle,
     InvalidTailBasis,
@@ -1152,6 +1155,7 @@ where
                 BlockPosition {
                     proposed: position.logical_start,
                     minimum: position.minimum_block,
+                    height: actual_height,
                 },
                 disposition.baseline(&finalized),
             )?;
