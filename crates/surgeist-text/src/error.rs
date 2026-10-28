@@ -149,8 +149,8 @@ pub enum ErrorDetail {
     /// Effective script candidates cannot use the unrotated upright profile.
     UprightScript {
         content: Box<UprightContent>,
-        candidates: Vec<TextScript>,
-        contexts: Vec<UprightScriptContext>,
+        candidates: Box<[TextScript]>,
+        contexts: Box<[UprightScriptContext]>,
         reason: UprightScriptFailure,
     },
     /// An enabled decoration needs an unavailable automatic upright metric.

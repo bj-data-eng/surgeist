@@ -94,8 +94,8 @@ pub(crate) fn units(
                 )
                 .with_detail(ErrorDetail::UprightScript {
                     content: Box::new(content(atoms)),
-                    candidates,
-                    contexts,
+                    candidates: candidates.into_boxed_slice(),
+                    contexts: contexts.into_boxed_slice(),
                     reason,
                 }));
             }

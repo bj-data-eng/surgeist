@@ -290,9 +290,9 @@ pub surgeist_text::ErrorDetail::UprightDecoration::kind: surgeist_text::Decorati
 pub surgeist_text::ErrorDetail::UprightDecoration::owner: surgeist_text::TextStyleOwner
 pub surgeist_text::ErrorDetail::UprightDecoration::role: surgeist_text::UprightDecorationRole
 pub surgeist_text::ErrorDetail::UprightScript
-pub surgeist_text::ErrorDetail::UprightScript::candidates: alloc::vec::Vec<surgeist_text::TextScript>
+pub surgeist_text::ErrorDetail::UprightScript::candidates: alloc::boxed::Box<[surgeist_text::TextScript]>
 pub surgeist_text::ErrorDetail::UprightScript::content: alloc::boxed::Box<surgeist_text::UprightContent>
-pub surgeist_text::ErrorDetail::UprightScript::contexts: alloc::vec::Vec<surgeist_text::UprightScriptContext>
+pub surgeist_text::ErrorDetail::UprightScript::contexts: alloc::boxed::Box<[surgeist_text::UprightScriptContext]>
 pub surgeist_text::ErrorDetail::UprightScript::reason: surgeist_text::UprightScriptFailure
 pub surgeist_text::ErrorDetail::VerticalMetricSupplier
 pub surgeist_text::ErrorDetail::VerticalMetricSupplier::content: surgeist_text::UprightContent
