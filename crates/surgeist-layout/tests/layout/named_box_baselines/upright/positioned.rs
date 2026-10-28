@@ -1,5 +1,6 @@
 //! Genuine native OutOfFlow capture uses actual absolute child geometry.
 use super::*;
+mod supplemental;
 
 struct Parent {
     prepared: t::PreparedText,

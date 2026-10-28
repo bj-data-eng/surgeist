@@ -1,5 +1,7 @@
 //! An actual positioned occurrence is retained without becoming line content.
 use super::*;
+#[path = "positioned/supplemental.rs"]
+mod supplemental;
 use crate::{
     Affinity, FontBaselineScript, Id, InlineBox, InlineBoxKind, Layout, ParagraphAnchor,
     ParagraphAnchorItem, ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphOrigin,
