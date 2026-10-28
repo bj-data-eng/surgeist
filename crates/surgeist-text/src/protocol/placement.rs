@@ -279,7 +279,23 @@ pub(crate) fn place_request(
         // Glyph-outline axes are independent from the line's cell frame.
         // Qualify every actual emitted origin before publishing placement.
         for run in &placed.finalized.data.runs {
-            let origin = crate::layout::line_point(&placed, crate::Point::new(run.x, run.y));
+            let vector = crate::layout::line_vector(
+                &placed,
+                crate::Point::new(run.x, run.y - metrics.baseline),
+            );
+            // Finalization qualifies the local font displacement. Translation
+            // can lose it again at a finite physical anchor, so check the
+            // required cross-axis contribution in this owning phase as well.
+            let origin = match placed.orientation {
+                LineOrientation::Horizontal => crate::Point::new(
+                    placed.anchor.x + vector.x,
+                    checked_add("placed run origin y", placed.anchor.y, vector.y)?,
+                ),
+                LineOrientation::Sideways | LineOrientation::Vertical => crate::Point::new(
+                    checked_add("placed run origin x", placed.anchor.x, vector.x)?,
+                    placed.anchor.y + vector.y,
+                ),
+            };
             finite("placed run origin x", origin.x)?;
             finite("placed run origin y", origin.y)?;
             for glyph in &placed.finalized.data.glyphs[run.glyphs.clone()] {
