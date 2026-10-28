@@ -1,15 +1,17 @@
-use super::property_input::{Site, Stream};
+use super::syntax_types::{Site, Stream};
 use crate::color::CssColor;
 use crate::component::{CssComponentValueRef, CssComponentValues, CssValueTokenRef};
-use crate::diagnostic::error::property::SyntaxError;
+use crate::diagnostic::error::property::SyntaxErrorExt;
 use crate::diagnostic::error::property::{Error, basic, unexpected_at};
 use crate::numeric::expression::{CalculationRoot, NumericInputContext};
 use crate::numeric::{CssCalculation, CssFlex, CssLengthPercentage, CssNumeric};
+use crate::parser::property_input::StreamExt;
+use crate::parser::syntax_types::SyntaxError;
 use crate::values::image::{
     CssImage1D, CssImageConstructionError, CssStripe, CssStripeLengthPercentage,
     CssStripeThickness, CssStripes,
 };
-use cssparser::Token;
+use surgeist_css_parser::Token;
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::diagnostic::CssFeatureId] = &[
     crate::diagnostic::CssFeatureId::new("ext.value.image-1d"),
@@ -38,13 +40,13 @@ fn checked<T: Send>(
 ) -> Result<T, CssImageConstructionError> {
     let refused = CssImageConstructionError::from;
     super::bounded_execution::components(values.items(), values.nesting_depth(), refused, || {
-        let document = crate::syntax_consumption::normalize(
-            crate::syntax_consumption::SyntaxInput::CheckedComponents(values.items()),
+        let document = crate::syntax_consumption::checked_document(
+            values.items(),
             crate::syntax_consumption::SyntaxInputLimits::default(),
             0,
         )
         .map_err(CssImageConstructionError::from)?;
-        let mut input = Stream::new(&document);
+        let mut input = document.root();
         input
             .parse_complete(|input| parse(input, &NumericInputContext::Checked))
             .map_err(|error| {
@@ -68,7 +70,7 @@ pub(super) fn parse_image_1d<'i>(
     input.restore(start);
     match input.consume_after_whitespace().map_err(basic)? {
         Token::Function(name) if name.eq_ignore_ascii_case("stripes") => {}
-        token => return Err(location.unexpected::<Error>(token.clone())),
+        token => return Err(location.unexpected::<Error>(token)),
     }
     let stripes = input.within_block(|input| {
         input.comma_segments(|input| {

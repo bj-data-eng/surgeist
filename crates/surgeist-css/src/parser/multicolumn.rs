@@ -1,8 +1,9 @@
 use super::border_style::parse_border_style;
 use super::border_width::{parse_exact_line_triple, parse_exact_line_width};
 use super::combinators::{Combinator, Tail, fill, keyword, parse_group};
-use super::property_input::Stream;
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
+use super::syntax_types::Stream;
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::parser::syntax_types::SyntaxError;
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::values::{next_is_ident, parse_positive_integer_value};

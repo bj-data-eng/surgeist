@@ -13,6 +13,7 @@ use crate::declaration::{CssDeclarationBody, CssImportance};
 use crate::diagnostic::CssError;
 use crate::diagnostic::CssRecoveryDiagnostic;
 use crate::diagnostic::error::ErrorKind;
+use crate::diagnostic::error::property::SyntaxErrorExt;
 use crate::diagnostic::error::{
     invalid_syntax, is_nesting_limit_error, with_at_rule_prelude_context,
 };
@@ -632,16 +633,8 @@ fn parsed_admitted(
         .expect("parsed lexical root");
     let start = first.span().start().byte_offset().value();
     let end = last.span().end().byte_offset().value();
-    let document = crate::syntax_consumption::normalize(
-        crate::syntax_consumption::SyntaxInput::Source(crate::syntax_consumption::SourceWindow {
-            text: std::borrow::Cow::Borrowed(first.source().as_str()),
-            range: start..end,
-            original: first.source().clone(),
-        }),
-        crate::syntax_consumption::SyntaxInputLimits::default(),
-        0,
-    )?;
-    let mut input = super::property_input::Stream::new(&document);
+    let document = crate::syntax_consumption::source_window_document(first.source(), start..end)?;
+    let mut input = document.root();
     let numeric = crate::numeric::expression::NumericInputContext::parsed(first.source());
     let parsed = if parser_context.selects_svg_glyph(name) {
         super::parse_svg_glyph_declaration_body_from_property_input(

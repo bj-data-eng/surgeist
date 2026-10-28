@@ -4,6 +4,10 @@ use crate::source::CssUtf16InputLimits;
 /// Independent preparation policy and the complete operation envelope. The
 /// component limits that charge the lexical input come from the
 /// [`crate::CssParser`] that drives the operation.
+///
+/// The work an operation is charged and the bytes it holds are functions of the
+/// representation CSS retains while it parses, and may change between versions:
+/// a caller measures its operation and sets a ceiling above what it measured.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssUtf16PropertyValueLimits {
     /// Preparation limits for the original UTF-16 input.

@@ -12,10 +12,9 @@
 //! example a malformed nested function) propagates unchanged, and [`fill`]
 //! treats an ordinary rejection as "no match" while nesting and
 //! component-resource failures propagate from any operand.
-use super::property_input::Stream;
-use crate::diagnostic::error::property::{
-    Error, SyntaxError, is_resource_parse_error, unexpected_at,
-};
+use super::syntax_types::Stream;
+use crate::diagnostic::error::property::{Error, is_resource_parse_error, unexpected_at};
+use crate::parser::syntax_types::SyntaxError;
 
 /// The reorderable combinator joining one operand table.
 #[derive(Clone, Copy)]
@@ -99,7 +98,7 @@ fn rejected_here<'i>(input: &mut Stream<'i>) -> SyntaxError<'i, Error> {
     let location = input.site();
     let state = input.mark();
     let error = match input.consume_after_whitespace() {
-        Ok(token) => location.unexpected(token.clone()),
+        Ok(token) => location.unexpected(token),
         Err(_) => unexpected_at(location),
     };
     input.restore(state);
@@ -243,17 +242,16 @@ mod tests {
     use super::*;
     use crate::component::values::CssComponentValueErrorKind;
     use crate::component::{CssComponentValueError, CssValueOrigin};
-    use crate::syntax_consumption::{SyntaxInput, SyntaxInputLimits, normalize};
 
     fn with_input<R>(css: &str, run: impl FnOnce(&mut Stream<'_>) -> R) -> R {
         let values = crate::component::values::parse_component_values(css).unwrap();
-        let document = normalize(
-            SyntaxInput::CheckedComponents(values.items()),
-            SyntaxInputLimits::default(),
+        let document = crate::syntax_consumption::checked_document(
+            values.items(),
+            crate::syntax_consumption::SyntaxInputLimits::default(),
             0,
         )
         .unwrap();
-        run(&mut Stream::new(&document))
+        run(&mut document.root())
     }
 
     fn word<'i>(input: &mut Stream<'i>, expected: &str) -> Operand<'i> {

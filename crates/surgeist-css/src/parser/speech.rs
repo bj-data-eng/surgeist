@@ -1,20 +1,22 @@
 //! Exact authored Speech 1 keyword grammars; no speech execution.
 
 use super::combinators::{Combinator, Tail, commit, parse_group};
-use super::property_input::Stream;
 use super::side_shapes::parse_side_pair;
-use crate::diagnostic::error::property::{Error, SyntaxError, basic};
+use super::syntax_types::Stream;
+use crate::diagnostic::error::property::{Error, basic};
+use crate::parser::property_input::StreamExt;
+use crate::parser::syntax_types::SyntaxError;
 use crate::values::common::CssSidePair;
 use crate::values::speech::CssCue;
 use crate::values::speech::{
     CssSpeak, CssSpeakAs, CssSpeakAsPunctuation, CssSpeechBreak, CssSpeechBreakStrength,
 };
-use cssparser::Token;
+use surgeist_css_parser::Token;
 
 pub(super) fn parse_speak<'i>(input: &mut Stream<'i>) -> Result<CssSpeak, SyntaxError<'i, Error>> {
     input.discard_whitespace();
     let location = input.site();
-    let token = input.consume_after_whitespace().map_err(basic)?.clone();
+    let token = input.consume_after_whitespace().map_err(basic)?;
     match &token {
         Token::Ident(ident) if ident.eq_ignore_ascii_case("auto") => Ok(CssSpeak::Auto),
         Token::Ident(ident) if ident.eq_ignore_ascii_case("never") => Ok(CssSpeak::Never),
@@ -33,7 +35,7 @@ pub(super) fn parse_speak_as<'i>(
     while !input.only_whitespace_remains() {
         input.discard_whitespace();
         let location = input.site();
-        let token = input.consume_after_whitespace().map_err(basic)?.clone();
+        let token = input.consume_after_whitespace().map_err(basic)?;
         let valid = match &token {
             Token::Ident(ident) if !normal && ident.eq_ignore_ascii_case("normal") => {
                 if spell_out || digits || punctuation.is_some() {
@@ -198,16 +200,16 @@ fn parse_voice_entry<'i>(
     }
     let start = input.mark();
     let first = input.consume_ident().map_err(basic)?;
-    let age = voice_age(&first);
+    let age = voice_age(first);
     let gender = if age.is_some() {
         input
             .attempt(|input| {
                 let ident = input.consume_ident()?;
-                voice_gender(&ident).ok_or_else(|| input.unexpected::<Error>(Token::Ident(ident)))
+                voice_gender(ident).ok_or_else(|| input.unexpected::<Error>(Token::Ident(ident)))
             })
             .ok()
     } else {
-        voice_gender(&first)
+        voice_gender(first)
     };
     if let Some(gender) = gender {
         let variant = if input.only_whitespace_remains() || super::values::next_is_comma(input) {
@@ -225,7 +227,7 @@ fn parse_voice_entry<'i>(
         input.discard_whitespace();
         let location = input.site();
         let ident = input.consume_ident().map_err(basic)?;
-        if crate::values::speech::values::reserved_voice_identifier(&ident) {
+        if crate::values::speech::values::reserved_voice_identifier(ident) {
             return Err(location.unexpected(Token::Ident(ident)));
         }
         identifiers.push(
@@ -262,7 +264,7 @@ pub(super) fn parse_voice_pitch_range<'i>(
         let location = input.site();
         let root_site = input.site();
         if let Ok(ident) = input.attempt(Stream::consume_ident) {
-            if let Some(value) = voice_level(&ident)
+            if let Some(value) = voice_level(ident)
                 && level.is_none()
             {
                 level = Some(value);
@@ -368,7 +370,7 @@ pub(super) fn parse_voice_rate<'i>(
                 input.discard_whitespace();
                 let location = input.site();
                 let ident = input.consume_ident().map_err(basic)?;
-                voice_rate_keyword(&ident).ok_or_else(|| location.unexpected(Token::Ident(ident)))
+                voice_rate_keyword(ident).ok_or_else(|| location.unexpected(Token::Ident(ident)))
             }),
             1 => commit(
                 &mut percentage,
@@ -420,8 +422,8 @@ fn parse_voice_rate_percentage<'i>(
 fn speech_numeric_error<'i>(
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
     error: &crate::numeric::CssNumericConstructionError,
-    fallback: super::property_input::Site<'i>,
-    offset: super::property_input::Site<'i>,
+    fallback: super::syntax_types::Site<'i>,
+    offset: super::syntax_types::Site<'i>,
 ) -> SyntaxError<'i, Error> {
     let location = numeric.property_error_location(error, fallback, offset);
     if let Some(component) = error.component_error()

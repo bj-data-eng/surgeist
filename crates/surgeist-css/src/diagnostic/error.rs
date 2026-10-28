@@ -360,6 +360,15 @@ impl CssTokenSummary {
         }
     }
 
+    /// The summary of a token of the parser crate's token tree, in its
+    /// canonical spelling (Syntax 3 section 9).
+    pub(crate) fn from_syntax_token(token: surgeist_css_parser::Token<'_>) -> Self {
+        Self {
+            kind: syntax_token_kind(token),
+            authored: token.to_string(),
+        }
+    }
+
     fn from_authored_token(token: &Token<'_>, authored: &str) -> Self {
         let (token, range) =
             crate::tokenization::source_token_parts(authored, token.clone(), 0..authored.len())
@@ -2601,6 +2610,45 @@ fn optional_encountered_mut(kind: &mut ErrorKind) -> Option<&mut Option<CssToken
         ErrorKind::InvalidDescriptorValue(detail) => Some(&mut detail.encountered),
         ErrorKind::InvalidColorSyntax(detail) => Some(&mut detail.encountered),
         _ => None,
+    }
+}
+
+/// The kind of a token of the parser crate's token tree.
+pub(crate) fn syntax_token_kind(token: surgeist_css_parser::Token<'_>) -> CssTokenKind {
+    use surgeist_css_parser::Token as Syntax;
+    use surgeist_css_parser::token::HashKind;
+    match token {
+        Syntax::Ident(_) | Syntax::UnicodeRange(_) => CssTokenKind::Ident,
+        Syntax::AtKeyword(_) => CssTokenKind::AtKeyword,
+        Syntax::Hash {
+            kind: HashKind::Id, ..
+        } => CssTokenKind::IdHash,
+        Syntax::Hash {
+            kind: HashKind::Unrestricted,
+            ..
+        } => CssTokenKind::Hash,
+        Syntax::String(_) => CssTokenKind::String,
+        Syntax::Url(_) => CssTokenKind::Url,
+        Syntax::Delim(_) => CssTokenKind::Delim,
+        Syntax::Number(_) => CssTokenKind::Number,
+        Syntax::Percentage(_) => CssTokenKind::Percentage,
+        Syntax::Dimension { .. } => CssTokenKind::Dimension,
+        Syntax::Whitespace => CssTokenKind::Whitespace,
+        Syntax::Comment => CssTokenKind::Comment,
+        Syntax::Colon => CssTokenKind::Colon,
+        Syntax::Semicolon => CssTokenKind::Semicolon,
+        Syntax::Comma => CssTokenKind::Comma,
+        Syntax::Cdo => CssTokenKind::Cdo,
+        Syntax::Cdc => CssTokenKind::Cdc,
+        Syntax::Function(_) => CssTokenKind::Function,
+        Syntax::OpenParen => CssTokenKind::ParenthesisBlock,
+        Syntax::OpenSquare => CssTokenKind::SquareBracketBlock,
+        Syntax::OpenCurly => CssTokenKind::CurlyBracketBlock,
+        Syntax::BadUrl => CssTokenKind::BadUrl,
+        Syntax::BadString => CssTokenKind::BadString,
+        Syntax::CloseParen => CssTokenKind::CloseParenthesis,
+        Syntax::CloseSquare => CssTokenKind::CloseSquareBracket,
+        Syntax::CloseCurly => CssTokenKind::CloseCurlyBracket,
     }
 }
 

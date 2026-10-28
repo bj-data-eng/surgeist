@@ -1,9 +1,10 @@
 //! Shapes 1 property composition over shared authored image and shape owners.
 
-use super::property_input::Stream;
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
+use super::syntax_types::Stream;
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::parser::syntax_types::SyntaxError;
 use crate::values::shape::{CssShapeBox, CssShapeOutside, CssShapeOutsideShape};
-use cssparser::Token;
+use surgeist_css_parser::Token;
 
 pub(crate) fn parse_shape_outside<'i>(
     input: &mut Stream<'i>,
@@ -42,5 +43,5 @@ pub(crate) fn parse_shape_outside<'i>(
 fn parse_shape_box<'i>(input: &mut Stream<'i>) -> Result<CssShapeBox, SyntaxError<'i, Error>> {
     let location = input.site();
     let ident = input.consume_ident().map_err(basic)?;
-    CssShapeBox::from_keyword(ident.as_ref()).ok_or_else(|| unexpected_at(location))
+    CssShapeBox::from_keyword(ident).ok_or_else(|| unexpected_at(location))
 }

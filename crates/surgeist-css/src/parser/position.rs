@@ -1,7 +1,8 @@
-use super::property_input::{Mark, Stream};
+use super::syntax_types::{Mark, Stream};
 use super::values::{parse_length, parse_length_percentage};
-use crate::diagnostic::error::property::{Error, SyntaxError, unexpected_at};
-use cssparser::Token;
+use crate::diagnostic::error::property::{Error, unexpected_at};
+use crate::parser::syntax_types::SyntaxError;
+use surgeist_css_parser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::values::{next_is_comma, next_is_delim};
@@ -41,8 +42,8 @@ fn next_starts_position<'i>(input: &mut Stream<'i>, grammar: PositionGrammar) ->
                         | "end"
                 )
         }
-        Ok(Token::Dimension { .. } | Token::Percentage { .. }) => true,
-        Ok(Token::Number { value, .. }) => *value == 0.0,
+        Ok(Token::Dimension { .. } | Token::Percentage(_)) => true,
+        Ok(Token::Number(number)) => number.to_f64() == 0.0,
         Ok(Token::Function(name)) => crate::numeric::expression::is_math_function(name),
         Ok(_) | Err(_) => false,
     };
@@ -322,7 +323,7 @@ fn invalid_generic_position_atom<'i>(
     input.restore(state);
     let location = input.site();
     match input.consume_after_whitespace() {
-        Ok(token) => location.unexpected::<Error>(token.clone()),
+        Ok(token) => location.unexpected::<Error>(token),
         Err(error) => error.into(),
     }
 }

@@ -1,12 +1,14 @@
-use super::property_input::Stream;
 use super::side_shapes::parse_auto_or;
+use super::syntax_types::Stream;
 use super::values::{
     parse_length, parse_length_percentage, parse_nonnegative_length,
     parse_nonnegative_length_percentage,
 };
 use crate::diagnostic::CssFeatureId;
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
-use cssparser::Token;
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::parser::property_input::StreamExt;
+use crate::parser::syntax_types::SyntaxError;
+use surgeist_css_parser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::box_model::parse_drop_shadow;
@@ -79,7 +81,7 @@ pub(crate) fn parse_transform_box<'i>(
 ) -> std::result::Result<CssTransformBox, SyntaxError<'i, Error>> {
     let location = input.site();
     let ident = input.consume_ident().map_err(basic)?;
-    CssBoxEdgeKeyword::from_keyword(ident.as_ref())
+    CssBoxEdgeKeyword::from_keyword(ident)
         .and_then(CssTransformBox::try_new)
         .ok_or_else(|| unexpected_at(location))
 }
@@ -122,7 +124,7 @@ pub(crate) fn parse_blend_mode<'i>(
 ) -> std::result::Result<CssBlendMode, SyntaxError<'i, Error>> {
     let location = input.site();
     let ident = input.consume_ident().map_err(basic)?;
-    CssBlendMode::from_keyword(ident.as_ref()).ok_or_else(|| unexpected_at(location))
+    CssBlendMode::from_keyword(ident).ok_or_else(|| unexpected_at(location))
 }
 
 pub(crate) fn parse_blend_mode_list<'i>(
@@ -241,10 +243,10 @@ fn parse_transform_function<'i>(
 ) -> std::result::Result<CssTransformFunction, SyntaxError<'i, Error>> {
     let location = input.site();
     let name = match input.consume_after_whitespace().map_err(basic)? {
-        Token::Function(name) => name.clone(),
-        token => return Err(location.unexpected::<Error>(token.clone())),
+        Token::Function(name) => name,
+        token => return Err(location.unexpected::<Error>(token)),
     };
-    let kind = parse_transform_function_kind(input, name.as_ref())?;
+    let kind = parse_transform_function_kind(input, name)?;
     input.within_block(|input| parse_transform_function_value(input, numeric, kind))
 }
 
@@ -867,10 +869,10 @@ pub(super) fn parse_filter_function<'i>(
     }
     let location = input.site();
     let name = match input.consume_after_whitespace().map_err(basic)? {
-        Token::Function(name) => name.clone(),
-        token => return Err(location.unexpected::<Error>(token.clone())),
+        Token::Function(name) => name,
+        token => return Err(location.unexpected::<Error>(token)),
     };
-    input.within_block(|input| parse_filter_function_value(input, numeric, name.as_ref()))
+    input.within_block(|input| parse_filter_function_value(input, numeric, name))
 }
 
 fn parse_filter_function_value<'i>(
@@ -967,7 +969,7 @@ fn parse_geometry_box<'i>(
 ) -> Result<CssBoxEdgeKeyword, SyntaxError<'i, Error>> {
     let location = input.site();
     let ident = input.consume_ident().map_err(basic)?;
-    CssBoxEdgeKeyword::from_keyword(ident.as_ref()).ok_or_else(|| unexpected_at(location))
+    CssBoxEdgeKeyword::from_keyword(ident).ok_or_else(|| unexpected_at(location))
 }
 
 pub(super) fn is_basic_shape_function(name: &str) -> bool {
@@ -983,8 +985,8 @@ pub(super) fn parse_clip_path_shape<'i>(
 ) -> Result<CssBasicShape, SyntaxError<'i, Error>> {
     let location = input.site();
     let name = match input.consume_after_whitespace().map_err(basic)? {
-        Token::Function(name) => name.clone(),
-        token => return Err(location.unexpected::<Error>(token.clone())),
+        Token::Function(name) => name,
+        token => return Err(location.unexpected::<Error>(token)),
     };
     let normalized_name = name.to_ascii_lowercase();
     if !is_basic_shape_function(normalized_name.as_str()) {
@@ -1021,12 +1023,12 @@ mod transform_tests {
         let numeric = crate::numeric::expression::NumericInputContext::parsed(&snapshot);
         let document = crate::syntax_consumption::source_document(value, &snapshot, 0)
             .expect("transform source document");
-        let mut parser = Stream::new(&document);
+        let mut parser = document.root();
         let result = parse_transform(&mut parser, &numeric).and_then(|value| {
             parser.require_empty().map_err(basic)?;
             Ok(value)
         });
-        result.map_err(SyntaxError::into_source_error)
+        result.map_err(crate::diagnostic::error::property::SyntaxErrorExt::into_source_error)
     }
 
     #[test]

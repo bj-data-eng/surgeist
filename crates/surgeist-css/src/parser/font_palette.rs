@@ -1,6 +1,7 @@
-use super::property_input::Stream;
-use crate::diagnostic::error::property::SyntaxError;
-use cssparser::Token;
+use super::syntax_types::Stream;
+use crate::parser::property_input::SiteExt;
+use crate::parser::syntax_types::SyntaxError;
+use surgeist_css_parser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::color::{
@@ -16,12 +17,12 @@ pub(crate) fn parse_font_palette<'i>(
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssFontPalette, SyntaxError<'i, Error>> {
     let location = input.site();
-    match input.consume_after_whitespace().map_err(basic)?.clone() {
+    match input.consume_after_whitespace().map_err(basic)? {
         Token::Ident(name) => match_ignore_ascii_case! { &name,
             "normal" => Ok(CssFontPalette::Normal),
             "light" => Ok(CssFontPalette::Light),
             "dark" => Ok(CssFontPalette::Dark),
-            _ => CssFontPaletteName::try_new(&name).map(CssFontPalette::Named)
+            _ => CssFontPaletteName::try_new(name).map(CssFontPalette::Named)
                 .map_err(|_| location.unexpected::<Error>(Token::Ident(name))),
         },
         Token::Function(name) if name.eq_ignore_ascii_case("palette-mix") => input

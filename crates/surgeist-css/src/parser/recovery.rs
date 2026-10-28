@@ -359,20 +359,17 @@ fn scan_delimiters(source: &str, base_depth: u32, list: StructuralListContext) -
 // its private recovery view. Denied Curly boundaries remain opaque structural
 // units, so their payload cannot absorb an independent following rule. Native
 // callbacks retain their unchanged source and own resource diagnosis/consumption.
-fn source_normalization_view(
-    source: &str,
-    base_depth: u32,
-) -> (Cow<'_, str>, Vec<std::ops::Range<usize>>) {
+fn source_normalization_view(source: &str, base_depth: u32) -> Cow<'_, str> {
     let ranges = scan_delimiters(source, base_depth, StructuralListContext::Stylesheet)
         .over_limit_components;
     if ranges.is_empty() {
-        return (Cow::Borrowed(source), Vec::new());
+        return Cow::Borrowed(source);
     }
     let mut view = source.as_bytes().to_vec();
-    let mut denied_curly = Vec::new();
     for component in ranges {
+        // A denied `{}` block stays opaque in the document, which denies it
+        // by its own nesting; any other component is masked.
         if component.block == BlockKind::Curly {
-            denied_curly.push(component.range);
             continue;
         }
         for byte in &mut view[component.range] {
@@ -381,10 +378,7 @@ fn source_normalization_view(
             }
         }
     }
-    (
-        Cow::Owned(String::from_utf8(view).expect("ASCII masking preserves UTF-8")),
-        denied_curly,
-    )
+    Cow::Owned(String::from_utf8(view).expect("ASCII masking preserves UTF-8"))
 }
 
 /// Parser-owned algorithm state shared by structural and component-value paths.
@@ -403,7 +397,7 @@ pub(crate) struct RecoveryState {
     retained_implicit_openings: Rc<RefCell<Vec<usize>>>,
     retained_navigation_diagnostics: Rc<RefCell<Vec<crate::diagnostic::CssRecoveryDiagnostic>>>,
     syntax_base_depth: u32,
-    syntax_document: Rc<RefCell<Option<Rc<crate::syntax_consumption::SyntaxDocument<'static>>>>>,
+    syntax_document: Rc<RefCell<Option<Rc<crate::parser::syntax_types::Document<'static>>>>>,
 }
 
 impl RecoveryState {
@@ -487,19 +481,17 @@ impl RecoveryState {
         &self,
         source: &str,
     ) -> Result<
-        Rc<crate::syntax_consumption::SyntaxDocument<'static>>,
+        Rc<crate::parser::syntax_types::Document<'static>>,
         crate::component::CssComponentValueError,
     > {
         if let Some(document) = self.syntax_document.borrow().as_ref() {
             return Ok(Rc::clone(document));
         }
-        let (normalization_view, denied_curly) =
-            source_normalization_view(source, self.syntax_base_depth);
+        let normalization_view = source_normalization_view(source, self.syntax_base_depth);
         let document = Rc::new(crate::syntax_consumption::recovery_source_document(
-            &normalization_view,
+            normalization_view.into_owned(),
             &self.source_snapshot,
             self.syntax_base_depth,
-            &denied_curly,
         )?);
         *self.syntax_document.borrow_mut() = Some(Rc::clone(&document));
         Ok(document)
@@ -1487,15 +1479,109 @@ mod tests {
 
     use super::{RecoveryLoopOutcome, RecoveryProgress, unclosed_openings};
 
+    /// The structural scan and the document agree on which blocks are too deep:
+    /// the `{}` blocks the scan found past the ceiling are exactly the ones the
+    /// document denies on its own, with mixed paren, square and curly nesting
+    /// around the ceiling and a nonzero base depth, and the document builds
+    /// whatever the scan masked.
+    #[test]
+    fn the_scan_and_the_document_agree_on_which_blocks_are_too_deep() {
+        use super::{BlockKind, scan_delimiters, source_normalization_view};
+        use crate::STRUCTURAL_NESTING_LIMIT;
+        use crate::source::CssSourceSnapshot;
+        use crate::syntax_consumption::recovery_source_document;
+        use surgeist_css_parser::document::Component;
+
+        let ceiling = STRUCTURAL_NESTING_LIMIT as usize;
+        let patterns = ["(", "{", "[", "({", "{(", "[{(", "{{(", "f("];
+        let finals = ["(", "{", "["];
+        let mut cases = 0;
+        for base in [0_u32, 1, 200, 255] {
+            let room = ceiling - base as usize;
+            for pattern in patterns {
+                for around in [room - 1, room, room + 1, room + 3] {
+                    for last in finals {
+                        for close in [true, false] {
+                            let mut opens = Vec::new();
+                            let mut text = String::new();
+                            let mut chars = pattern.chars().cycle();
+                            while opens.len() < around {
+                                let next = chars.next().unwrap();
+                                if next == 'f' {
+                                    text.push('f');
+                                    continue;
+                                }
+                                text.push(next);
+                                opens.push(next);
+                            }
+                            text.push_str(last);
+                            opens.push(last.chars().next().unwrap());
+                            text.push_str("a ");
+                            if close {
+                                for open in opens.iter().rev() {
+                                    text.push(match open {
+                                        '(' => ')',
+                                        '{' => '}',
+                                        _ => ']',
+                                    });
+                                }
+                                text.push_str(" @layer kept;");
+                            }
+                            let scan = scan_delimiters(
+                                &text,
+                                base,
+                                super::StructuralListContext::Stylesheet,
+                            );
+                            let expected: Vec<_> = scan
+                                .over_limit_components
+                                .iter()
+                                .filter(|component| component.block == BlockKind::Curly)
+                                .map(|component| component.range.clone())
+                                .collect();
+                            let view = source_normalization_view(&text, base).into_owned();
+                            let snapshot = CssSourceSnapshot::new(&text);
+                            let document = recovery_source_document(view, &snapshot, base)
+                                .unwrap_or_else(|error| {
+                                    panic!("{pattern:?} {around} {last:?} base {base}: {error:?}")
+                                });
+                            let denied: Vec<_> = document
+                                .nodes()
+                                .filter_map(|node| match document.component(node) {
+                                    Component::Denied {
+                                        range: Some(range), ..
+                                    } => Some(range.start.value()..range.end.value()),
+                                    _ => None,
+                                })
+                                .collect();
+                            assert_eq!(
+                                denied, expected,
+                                "{pattern:?} {around} {last:?} close={close} base {base}"
+                            );
+                            assert!(
+                                document.metrics().maximum_depth() as usize <= room,
+                                "{pattern:?} {around} {last:?} base {base}"
+                            );
+                            cases += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 4 * 8 * 4 * 3 * 2);
+    }
+
     #[test]
     fn denied_curly_keeps_actual_units_and_charges_only_its_opaque_boundary() {
-        use crate::syntax_consumption::{self as syntax, GenericRule, RuleTermination, SyntaxNode};
+        use crate::syntax_consumption::{
+            self as syntax, DocumentExt, GenericRule, RuleTermination,
+        };
+        use surgeist_css_parser::document::Component;
         let source = "@page {😀\r\nnot parsed}@layer kept;";
         let state =
             super::RecoveryState::at_depth(source, 256, super::StyleContextCaptures::default());
         let document = state.syntax_document(source).unwrap();
         let selected = syntax::consume_rules(
-            &mut document.cursor(document.root),
+            &mut document.cursor(document.root_list()),
             syntax::RuleListSyntax::Stylesheet,
         );
         let [Ok(GenericRule::At(page)), Ok(GenericRule::At(layer))] = selected.as_slice() else {
@@ -1505,33 +1591,35 @@ mod tests {
         assert!(page.fault.is_none());
         assert!(matches!(layer.termination, RuleTermination::Semicolon(_)));
         assert_eq!(
-            document.nodes[layer.name].token().kind(),
+            document.kind(layer.name),
             syntax::TokenKind::AtKeyword("layer")
         );
         let denied = page.block.unwrap();
         assert!(matches!(
-            document.nodes[denied],
-            SyntaxNode::DeniedCurlyBlock { .. }
+            document.component(denied),
+            Component::Denied { .. }
         ));
-        assert!(document.nodes[denied].children().is_none());
+        assert!(document.children(denied).is_none());
         let opening = source.find('{').unwrap();
         let next = source.find("@layer").unwrap();
-        assert_eq!(document.range(denied), Some(opening..next));
+        assert_eq!(
+            document
+                .range(denied)
+                .map(|range| range.start.value()..range.end.value()),
+            Some(opening..next)
+        );
         assert_eq!(
             document
                 .boundary(page.range.list, page.range.end)
-                .source
-                .unwrap()
-                .offset,
+                .offset
+                .unwrap(),
             next
         );
-        assert_eq!(document.metrics.components, 7);
-        assert_eq!(document.metrics.maximum_depth, 256);
-        assert_eq!(document.metrics.known_spelling_bytes, source.len());
-        assert_eq!(document.metrics.unspelled_tokens, 0);
-        let crate::component::CssValueOrigin::Parsed(origin) =
-            document.nodes[denied].token().origin.as_ref()
-        else {
+        assert_eq!(document.metrics().components(), 7);
+        // The tree counts depth from its own root; the denied block adds none.
+        assert_eq!(document.metrics().maximum_depth(), 0);
+        assert_eq!(document.metrics().spelling_bytes(), source.len());
+        let crate::component::CssValueOrigin::Parsed(origin) = &document.origin(denied) else {
             panic!("actual original denied opening");
         };
         assert!(origin.source().same_snapshot(state.source_snapshot()));
@@ -1542,8 +1630,7 @@ mod tests {
         assert_eq!(origin.span().start().column().value(), 6);
         assert_eq!(origin.span().end().byte_offset().value(), 7);
         assert_eq!(origin.span().end().column().value(), 7);
-        let crate::component::CssValueOrigin::Parsed(layer_origin) =
-            document.nodes[layer.name].token().origin.as_ref()
+        let crate::component::CssValueOrigin::Parsed(layer_origin) = &document.origin(layer.name)
         else {
             panic!("original Layer coordinates after Unicode and CRLF");
         };
@@ -1551,7 +1638,7 @@ mod tests {
         assert_eq!(layer_origin.span().start().byte_offset().value(), 24);
         assert_eq!(layer_origin.span().start().line().value(), 1);
         assert_eq!(layer_origin.span().start().column().value(), 11);
-        let denied_origin = document.nodes[denied].token().origin.clone().into_owned();
+        let denied_origin = document.origin(denied);
         let promoted = crate::component::values::parse::promote_nodes(
             &document,
             &[denied],
@@ -1563,24 +1650,8 @@ mod tests {
             crate::component::values::CssComponentValueErrorKind::NestingLimit
         );
         assert_eq!(promoted.origin(), &denied_origin);
-        let reused = syntax::normalize(
-            syntax::SyntaxInput::Components {
-                document: &document,
-                list: document.root,
-            },
-            syntax::SyntaxInputLimits::default(),
-            0,
-        )
-        .err()
-        .expect("denied grouped input cannot be admitted");
-        assert_eq!(
-            reused.kind(),
-            crate::component::values::CssComponentValueErrorKind::NestingLimit
-        );
-        assert_eq!(reused.origin(), &denied_origin);
         let direct = syntax::source_document(source, state.source_snapshot(), 256)
-            .err()
-            .expect("direct source has no recovery admission");
+            .expect_err("direct source has no recovery admission");
         assert_eq!(
             direct.kind(),
             crate::component::values::CssComponentValueErrorKind::NestingLimit
@@ -1590,13 +1661,15 @@ mod tests {
 
     #[test]
     fn denied_curly_ends_qualified_units_and_preserves_true_statement_eof() {
-        use crate::syntax_consumption::{self as syntax, GenericRule, RuleTermination};
+        use crate::syntax_consumption::{
+            self as syntax, DocumentExt, GenericRule, RuleTermination,
+        };
         let source = "bad{}@layer kept;";
         let state =
             super::RecoveryState::at_depth(source, 256, super::StyleContextCaptures::default());
         let document = state.syntax_document(source).unwrap();
         let selected = syntax::consume_rules(
-            &mut document.cursor(document.root),
+            &mut document.cursor(document.root_list()),
             syntax::RuleListSyntax::Stylesheet,
         );
         let [
@@ -1606,13 +1679,17 @@ mod tests {
         else {
             panic!("denied qualified body and independent Layer unit");
         };
-        assert_eq!(document.range(qualified.block), Some(3..5));
+        assert_eq!(
+            document
+                .range(qualified.block)
+                .map(|range| range.start.value()..range.end.value()),
+            Some(3..5)
+        );
         assert_eq!(
             document
                 .boundary(qualified.range.list, qualified.range.end)
-                .source
-                .unwrap()
-                .offset,
+                .offset
+                .unwrap(),
             5
         );
         assert!(matches!(layer.termination, RuleTermination::Semicolon(_)));
@@ -1622,22 +1699,27 @@ mod tests {
                 super::RecoveryState::at_depth(source, 256, super::StyleContextCaptures::default());
             let document = state.syntax_document(source).unwrap();
             let selected = syntax::consume_rules(
-                &mut document.cursor(document.root),
+                &mut document.cursor(document.root_list()),
                 syntax::RuleListSyntax::Stylesheet,
             );
             let [Ok(GenericRule::At(rule))] = selected.as_slice() else {
                 panic!("one selected unit");
             };
-            assert_eq!(document.metrics.known_spelling_bytes, source.len());
+            assert_eq!(document.metrics().spelling_bytes(), source.len());
             if source.starts_with("@page") {
                 assert!(matches!(rule.termination, RuleTermination::Block));
                 assert!(rule.fault.is_none());
-                assert_eq!(document.range(rule.block.unwrap()), Some(5..source.len()));
+                assert_eq!(
+                    document
+                        .range(rule.block.unwrap())
+                        .map(|range| range.start.value()..range.end.value()),
+                    Some(5..source.len())
+                );
             } else {
                 let RuleTermination::EndOfInput(at) = &rule.termination else {
                     panic!("actual source EOF");
                 };
-                assert_eq!(at.source.as_ref().unwrap().offset, source.len());
+                assert_eq!(at.offset, Some(source.len()));
                 assert_eq!(
                     rule.fault.as_ref().unwrap().kind,
                     syntax::GenericFaultKind::AtRuleEndOfInput

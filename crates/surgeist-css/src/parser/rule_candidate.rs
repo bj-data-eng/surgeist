@@ -10,8 +10,10 @@ use crate::rule::CssRule;
 use crate::rule::CssStyleAncestor;
 use crate::rule::{CssRuleAdmissionContext, CssRuleSyntax};
 use crate::source::CssParsedOrigin;
+use crate::syntax_consumption::DocumentExt;
 use crate::syntax_consumption::{self as syntax, GenericRule, RuleTermination};
 use cssparser::{Parser, ParserInput};
+use surgeist_css_parser::document::Fault;
 
 #[derive(Clone, Debug)]
 pub(crate) struct RuleEnvelope {
@@ -31,24 +33,21 @@ pub(crate) fn classify_rule_syntax_with_limits(
         }
     };
     let snapshot = document
-        .source
-        .as_ref()
+        .snapshot()
         .expect("original source document")
-        .original
         .clone();
-    let selected = syntax::consume_one_rule(&mut document.cursor(document.root));
+    let selected = syntax::consume_one_rule(&mut document.cursor(document.root_list()));
     let selected = match selected {
         Ok(GenericRule::Qualified(rule))
             if syntax::custom_property_rule_prelude(&document, &rule.prelude) =>
         {
             Err(document
                 .boundary(rule.range.list, rule.range.start)
-                .source
-                .expect("source qualified start")
-                .offset)
+                .offset
+                .expect("source qualified start"))
         }
         Ok(rule) => Ok(rule),
-        Err(fault) => Err(fault.at.source.expect("source syntax fault").offset),
+        Err(fault) => Err(fault.at.offset.expect("source syntax fault")),
     };
     let rule = match selected {
         Ok(rule) => rule,
@@ -75,8 +74,7 @@ pub(crate) fn classify_rule_syntax_with_limits(
     };
     let (range, name, termination, at_eof) = match rule {
         GenericRule::At(rule) => {
-            let syntax::TokenKind::AtKeyword(name) = document.nodes[rule.name].token().kind()
-            else {
+            let syntax::TokenKind::AtKeyword(name) = document.kind(rule.name) else {
                 unreachable!("at dispatch")
             };
             (
@@ -90,14 +88,14 @@ pub(crate) fn classify_rule_syntax_with_limits(
     };
     let start = document
         .boundary(range.list, range.start)
-        .source
-        .expect("source boundary")
-        .offset;
+        .offset
+        .expect("source boundary");
     let end = if range.end > range.start {
         document
-            .range(document.lists[range.list][range.end - 1])
+            .range(document.list(range.list)[range.end - 1])
             .expect("source node")
             .end
+            .value()
     } else {
         start
     };
@@ -109,28 +107,24 @@ pub(crate) fn classify_rule_syntax_with_limits(
     );
     state.retain_component_closures(state.component_openings_in(0..source.len()));
     let mut diagnostics = state.take_implicit_closure_diagnostics(source);
-    for node in &document.nodes {
-        if let syntax::SyntaxNode::Error { token, cause } = node {
-            let kind = match cause {
-                syntax::SyntaxTokenFault::BadString => {
-                    crate::component::values::CssComponentValueErrorKind::BadString
-                }
-                syntax::SyntaxTokenFault::BadUrl => {
-                    crate::component::values::CssComponentValueErrorKind::BadUrl
-                }
-                syntax::SyntaxTokenFault::UnexpectedCloser => {
+    for node in document.nodes() {
+        if let Some(fault) = document.component(node).fault() {
+            let kind = match fault {
+                Fault::BadString => crate::component::values::CssComponentValueErrorKind::BadString,
+                Fault::BadUrl => crate::component::values::CssComponentValueErrorKind::BadUrl,
+                Fault::UnexpectedCloser => {
                     crate::component::values::CssComponentValueErrorKind::UnmatchedClosingDelimiter
                 }
+                // A parse error the tree newly preserves is still an invalid token.
+                _ => crate::component::values::CssComponentValueErrorKind::InvalidToken,
             };
-            let CssValueOrigin::Parsed(origin) = token.origin.as_ref() else {
+            let token_origin = document.origin(node);
+            let CssValueOrigin::Parsed(origin) = &token_origin else {
                 unreachable!("source token origin")
             };
             let diagnostic = syntax_bridge::component_error_diagnostic(
                 source,
-                crate::component::CssComponentValueError::new(
-                    kind,
-                    token.origin.clone().into_owned(),
-                ),
+                crate::component::CssComponentValueError::new(kind, token_origin.clone()),
                 origin.span(),
                 CssRecoveryAction::RetainSyntaxCandidate,
             );
@@ -160,7 +154,7 @@ pub(crate) fn classify_rule_syntax_with_limits(
             at_termination: termination,
         },
         limits,
-        metrics: document.metrics,
+        metrics: document.metrics(),
         diagnostics: diagnostics.clone(),
     };
     CssParseReport::new(Some(candidate), diagnostics)

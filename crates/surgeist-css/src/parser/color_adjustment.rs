@@ -1,7 +1,9 @@
 //! Selected Color Adjustment 1 property grammars.
 
-use super::property_input::Stream;
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
+use super::syntax_types::Stream;
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::parser::property_input::{SiteExt, StreamExt};
+use crate::parser::syntax_types::SyntaxError;
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use crate::values::color_adjust::{
@@ -37,7 +39,7 @@ impl Drop for SchemeBank<'_> {
         }
     }
 }
-fn rejected<'i>(location: super::property_input::Site<'i>) -> SyntaxError<'i, Error> {
+fn rejected<'i>(location: super::syntax_types::Site<'i>) -> SyntaxError<'i, Error> {
     if location.control().is_some() {
         location.end_of_stream()
     } else {
@@ -63,7 +65,7 @@ pub(super) fn parse_color_scheme<'i>(
         input.discard_whitespace();
         let location = input.site();
         let ident = input.consume_ident().map_err(basic)?;
-        input.controlled_step().map_err(basic)?;
+        input.controlled_step()?;
         if ident.eq_ignore_ascii_case("only") {
             if only || schemes.values.is_empty() && input.only_whitespace_remains() {
                 return Err(rejected(location));
@@ -92,13 +94,11 @@ pub(super) fn parse_color_scheme<'i>(
                             }
                             None => { control.released(capacity); return Err(rejected(location)); }
                         }
-                    } else { CssColorSchemeName::try_new(CssIdent::new(ident.as_ref())).map_err(|_| rejected(location))? };
+                    } else { CssColorSchemeName::try_new(CssIdent::new(ident)).map_err(|_| rejected(location))? };
                     CssColorSchemeKeyword::Custom(name)
                 },
             };
-            input
-                .reserve_controlled(&mut schemes.values, 1)
-                .map_err(basic)?;
+            input.reserve_controlled(&mut schemes.values, 1)?;
             schemes.values.push(scheme);
         }
     }

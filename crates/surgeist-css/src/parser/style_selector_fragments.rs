@@ -4,6 +4,7 @@ use crate::parser::{fragments, selectors, syntax_bridge};
 use crate::selector::{CssNamespaceContext, CssStyleSelectorList};
 use crate::selector::{CssParsedStyleSelectors, CssStyleSelectorContext};
 use crate::source::CssParsedOrigin;
+use crate::syntax_consumption::DocumentExt;
 
 #[must_use]
 pub(crate) fn parse_style_selector_list_with_limits(
@@ -24,10 +25,8 @@ pub(crate) fn parse_style_selector_list_with_limits(
             }
         };
         let snapshot = document
-            .source
-            .as_ref()
+            .snapshot()
             .expect("original selector input")
-            .original
             .clone();
         let state = RecoveryState::at_depth_with_snapshot(
             source,

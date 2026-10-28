@@ -1,8 +1,9 @@
 //! Authored margin and padding from Box 3 and Logical Properties 1.
 
-use super::property_input::Stream;
 use super::side_shapes::{parse_four_sides, parse_side_pair};
-use crate::diagnostic::error::property::{Error, SyntaxError};
+use super::syntax_types::Stream;
+use crate::diagnostic::error::property::Error;
+use crate::parser::syntax_types::SyntaxError;
 
 use super::values::{parse_length_percentage, parse_nonnegative_length_percentage};
 use crate::numeric::expression::NumericInputContext;

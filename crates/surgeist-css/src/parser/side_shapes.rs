@@ -3,8 +3,9 @@
 //! Each family supplies only the parser of one element; the `logical` switch, the count bounds,
 //! the location of a surplus value and the `auto` keyword are decided here once.
 
-use super::property_input::Stream;
-use crate::diagnostic::error::property::{Error, SyntaxError, unexpected_at};
+use super::syntax_types::Stream;
+use crate::diagnostic::error::property::{Error, unexpected_at};
+use crate::parser::syntax_types::SyntaxError;
 use crate::values::common::{CssAutoOr, CssBoxSideKind, CssFourSides, CssSidePair};
 
 /// Consumes an optional leading `logical` and returns the side assignment it selects.

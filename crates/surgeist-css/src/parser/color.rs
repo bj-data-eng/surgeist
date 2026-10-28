@@ -1,7 +1,8 @@
-use super::property_input::Stream;
-use crate::diagnostic::error::property::SyntaxError;
-use cssparser::Token;
+use super::syntax_types::Stream;
+use crate::parser::property_input::{SiteExt, StreamExt};
+use crate::parser::syntax_types::SyntaxError;
 use surgeist_color::{ColorSpace, HueInterpolation};
+use surgeist_css_parser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::values::parse_numeric_function;
@@ -38,7 +39,7 @@ pub(super) fn parse_color_interpolation_method<'i>(
 ) -> std::result::Result<CssColorInterpolation, SyntaxError<'i, Error>> {
     let state = input.mark();
     if let Ok(name) = input.consume_ident()
-        && let Some(profile) = CssColorProfileName::try_new(name.as_ref())
+        && let Some(profile) = CssColorProfileName::try_new(name)
     {
         return Ok(CssColorInterpolation::custom(profile));
     }
@@ -54,7 +55,7 @@ pub(super) fn parse_color_interpolation_method<'i>(
 pub(super) fn next_is_mix_weight(input: &mut Stream<'_>) -> bool {
     let state = input.mark();
     let result = match input.consume_after_whitespace() {
-        Ok(Token::Percentage { .. }) => true,
+        Ok(Token::Percentage(_)) => true,
         Ok(Token::Function(name)) => is_math_function(name),
         _ => false,
     };
@@ -116,7 +117,7 @@ fn parse_color_interpolation_space<'i>(
     let location = input.site();
     let ident = input.consume_ident().map_err(basic)?;
     let space =
-        if let Some(space) = crate::color::syntax::recognition::predefined_color_space(&ident) {
+        if let Some(space) = crate::color::syntax::recognition::predefined_color_space(ident) {
             ColorSpace::Predefined(space)
         } else {
             match_ignore_ascii_case! { &ident,

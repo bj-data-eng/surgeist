@@ -1,30 +1,15 @@
 #![forbid(unsafe_code)]
+use crate::component::CssValueOrigin;
 use crate::component::values::CssComponentValueErrorKind;
-use crate::component::{CssComponentValue, CssValueOrigin};
 use crate::component::{CssComponentValueRef, CssValueTokenRef};
 use crate::diagnostic::CssRecoveryAction;
 use crate::parser::named_supports::{PartitionIssue, partition};
 use crate::query::supports::CssSupportsTestItem;
-use crate::source::CssSourceSnapshot;
-use crate::syntax_consumption::SyntaxNode;
-use crate::syntax_consumption::{
-    CheckedLexeme, SyntaxInput, SyntaxInputLimits, SyntaxToken, SyntaxTokenFault, TokenPayload,
-    normalize, source_document,
-};
-use cssparser::Token;
-use std::borrow::Cow;
-
-fn checked(component: &CssComponentValue) -> SyntaxToken<'_> {
-    let spelling = component.structural_lexeme(false).unwrap().0;
-    SyntaxToken {
-        payload: TokenPayload::Checked {
-            component,
-            lexeme: CheckedLexeme::Leaf,
-        },
-        spelling: Some(Cow::Borrowed(spelling)),
-        origin: Cow::Borrowed(component.origin()),
-    }
-}
+use crate::source::{CssParsedOrigin, CssSourceSnapshot};
+use crate::syntax_consumption::DocumentExt;
+use crate::syntax_consumption::Supplied::{Checked, FaultAt};
+use crate::syntax_consumption::supplied_document;
+use surgeist_css_parser::Token;
 
 fn identity(actual: &CssValueOrigin, expected: &CssValueOrigin) {
     assert_eq!(actual, expected);
@@ -39,63 +24,27 @@ fn actual_named_partition_keeps_error_membership_when_origins_are_nonmonotonic_o
     let good = crate::component::values::parse_component_values(";good:yes;bad_b:").unwrap();
     let bad_c = crate::component::values::parse_component_values(";bad_c:").unwrap();
     let last = crate::component::values::parse_component_values(";last:yes;").unwrap();
-    let late_text = format!("{}\"broken\n", " ".repeat(32));
-    let late_snapshot = CssSourceSnapshot::new(&late_text);
-    let late_document = source_document(&late_text, &late_snapshot, 0).unwrap();
-    let late = late_document
-        .nodes
+    // The faults sit at intervals of one text, out of order, so each issue's
+    // origin tells which fault it is: the list's first fault is the last in the
+    // text, and the recovery origin must be that one and not the earliest.
+    let text = CssSourceSnapshot::new(&"0123456789".repeat(6));
+    let fault_ranges = [41..44, 3..5, 20..22];
+    let mut tokens: Vec<_> = head.items().iter().map(Checked).collect();
+    tokens.push(FaultAt(Token::BadString, fault_ranges[0].clone()));
+    tokens.extend(good.items().iter().map(Checked));
+    tokens.push(FaultAt(Token::BadUrl, fault_ranges[1].clone()));
+    tokens.extend(bad_c.items().iter().map(Checked));
+    tokens.push(FaultAt(Token::BadString, fault_ranges[2].clone()));
+    tokens.extend(last.items().iter().map(Checked));
+    let document = supplied_document(&tokens, Some(&text));
+    let fault_origins: Vec<_> = fault_ranges
         .iter()
-        .find_map(|node| match node {
-            SyntaxNode::Error {
-                token,
-                cause: SyntaxTokenFault::BadString,
-            } => Some(token.clone()),
-            _ => None,
+        .map(|range| {
+            CssValueOrigin::Parsed(CssParsedOrigin::from_range(&text, range.clone()).unwrap())
         })
-        .unwrap();
-    let early_snapshot = CssSourceSnapshot::new("url(a b)");
-    let early_document = source_document(early_snapshot.as_str(), &early_snapshot, 0).unwrap();
-    let early = early_document
-        .nodes
-        .iter()
-        .find_map(|node| match node {
-            SyntaxNode::Error {
-                token,
-                cause: SyntaxTokenFault::BadUrl,
-            } => Some(token.clone()),
-            _ => None,
-        })
-        .unwrap();
-    let late_origin = late.origin.clone().into_owned();
-    let early_origin = early.origin.clone().into_owned();
-    let CssValueOrigin::Parsed(late_site) = &late_origin else {
-        panic!("actual later source token")
-    };
-    let CssValueOrigin::Parsed(early_site) = &early_origin else {
-        panic!("actual earlier source token")
-    };
-    assert_eq!(late_site.span().start().byte_offset().value(), 32);
-    assert_eq!(early_site.span().start().byte_offset().value(), 0);
-    assert!(!late_site.source().same_snapshot(early_site.source()));
-    let mut tokens: Vec<_> = head.items().iter().map(checked).collect();
-    tokens.push(late);
-    tokens.extend(good.items().iter().map(checked));
-    tokens.push(early);
-    tokens.extend(bad_c.items().iter().map(checked));
-    tokens.push(SyntaxToken {
-        payload: TokenPayload::Native(Token::BadString("programmatic payload".into())),
-        spelling: None,
-        origin: Cow::Owned(CssValueOrigin::Programmatic),
-    });
-    tokens.extend(last.items().iter().map(checked));
-    let document = normalize(
-        SyntaxInput::Tokens(&tokens),
-        SyntaxInputLimits::default(),
-        0,
-    )
-    .unwrap();
+        .collect();
     let mut issues = Vec::new();
-    let body = partition(&document, document.root, None, true, &mut issues).unwrap();
+    let body = partition(&document, document.root_list(), None, true, &mut issues).unwrap();
     let declarations: Vec<_> = body
         .items()
         .iter()
@@ -133,12 +82,9 @@ fn actual_named_partition_keeps_error_membership_when_origins_are_nonmonotonic_o
     }
     assert_eq!(issues.len(), 3);
     for (issue, (kind, origin)) in issues.iter().zip([
-        (CssComponentValueErrorKind::BadString, &late_origin),
-        (CssComponentValueErrorKind::BadUrl, &early_origin),
-        (
-            CssComponentValueErrorKind::BadString,
-            &CssValueOrigin::Programmatic,
-        ),
+        (CssComponentValueErrorKind::BadString, &fault_origins[0]),
+        (CssComponentValueErrorKind::BadUrl, &fault_origins[1]),
+        (CssComponentValueErrorKind::BadString, &fault_origins[2]),
     ]) {
         let PartitionIssue::Lexical(error, action) = issue else {
             panic!("actual lexical member fault")
@@ -147,12 +93,15 @@ fn actual_named_partition_keeps_error_membership_when_origins_are_nonmonotonic_o
         assert_eq!(*action, CssRecoveryAction::DropDeclaration);
         identity(error.origin(), origin);
     }
-    identity(body.recovery_origin().unwrap(), &late_origin);
-    assert!(
+    identity(body.recovery_origin().unwrap(), &fault_origins[0]);
+    assert_eq!(
         document
-            .boundary(document.root, document.lists[document.root].len())
-            .source
-            .is_none(),
-        "mixed passed items have conceptual EOF without invented aggregate source"
+            .boundary(
+                document.root_list(),
+                document.list(document.root_list()).len()
+            )
+            .offset,
+        Some(text.as_str().len()),
+        "the mixed list ends where its text ends, not at an item's interval"
     );
 }

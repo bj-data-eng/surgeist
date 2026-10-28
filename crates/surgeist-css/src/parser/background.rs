@@ -1,15 +1,17 @@
+use crate::parser::property_input::{SiteExt, StreamExt};
 use std::borrow::Cow;
 
 use super::color::{parse_color, parse_color_interpolation_method};
 use super::combinators::{Combinator, Tail, attempt, commit, fill, parse_group};
-use super::property_input::Stream;
 use super::side_shapes::parse_auto_or;
+use super::syntax_types::Stream;
 use super::values::{
     parse_length_percentage, parse_nonnegative_length, parse_nonnegative_length_percentage,
 };
 use crate::diagnostic::CssFeatureId;
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
-use cssparser::Token;
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::parser::syntax_types::SyntaxError;
+use surgeist_css_parser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::position::{
@@ -108,7 +110,7 @@ fn parse_background_layer<'i>(
     input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<
-    (CssBackgroundLayer, Option<super::property_input::Site<'i>>),
+    (CssBackgroundLayer, Option<super::syntax_types::Site<'i>>),
     SyntaxError<'i, Error>,
 > {
     // `<bg-image> || <bg-position> [ / <bg-size> ]? || <repeat-style> ||
@@ -194,7 +196,7 @@ pub(super) fn next_starts_background_image<'i>(input: &mut Stream<'i>) -> bool {
     let state = input.mark();
     let starts = match input.consume_after_whitespace() {
         Ok(Token::Ident(value)) => value.eq_ignore_ascii_case("none"),
-        Ok(Token::UnquotedUrl(_)) => true,
+        Ok(Token::Url(_)) => true,
         Ok(Token::Function(name)) => {
             name.eq_ignore_ascii_case("url")
                 || name.eq_ignore_ascii_case("light-dark")
@@ -240,11 +242,11 @@ pub(super) fn parse_background_repeat<'i>(
         "repeat-x" => Ok(CssBackgroundRepeat::RepeatX),
         "repeat-y" => Ok(CssBackgroundRepeat::RepeatY),
         _ => {
-            let x = parse_background_repeat_style_from_ident(first_location, first.as_ref())?;
+            let x = parse_background_repeat_style_from_ident(first_location, first)?;
             let y = attempt(input, |input| {
                 let second_location = input.site();
                 let second = input.consume_ident().map_err(basic)?;
-                parse_background_repeat_style_from_ident(second_location, second.as_ref())
+                parse_background_repeat_style_from_ident(second_location, second)
             })?
             .unwrap_or(x);
             Ok(CssBackgroundRepeat::Axes { x, y })
@@ -292,8 +294,8 @@ pub(super) fn parse_image<'i>(
 // original image token origin; semantic None rejection remains grammar-owned.
 fn image_construction_error<'i>(
     error: CssImageConstructionError,
-    location: super::property_input::Site<'i>,
-    start: super::property_input::Site<'i>,
+    location: super::syntax_types::Site<'i>,
+    start: super::syntax_types::Site<'i>,
 ) -> SyntaxError<'i, Error> {
     // `CssImage::try_new` reports only these three image failures.
     let kind = if error.is_not_image() {
@@ -327,7 +329,7 @@ pub(super) fn parse_image_value<'i>(
         input.consume_after_whitespace().map_err(basic)?;
         return input.within_block(|input| {
             let state = input.mark();
-            let string = matches!(input.consume_after_whitespace(), Ok(Token::QuotedString(_)));
+            let string = matches!(input.consume_after_whitespace(), Ok(Token::String(_)));
             input.restore(state);
             let input_value = if string {
                 // Collect the exact original String rather than decoded text re-tokenization.
@@ -551,7 +553,7 @@ pub(super) fn next_starts_border_image_repeat<'i>(input: &mut Stream<'i>) -> boo
 pub(super) fn next_starts_border_image_slice<'i>(input: &mut Stream<'i>) -> bool {
     let state = input.mark();
     let starts = match input.consume_after_whitespace() {
-        Ok(Token::Number { .. } | Token::Percentage { .. }) => true,
+        Ok(Token::Number(_) | Token::Percentage(_)) => true,
         Ok(Token::Ident(value)) => value.eq_ignore_ascii_case("fill"),
         Ok(Token::Function(name)) => crate::numeric::expression::is_math_function(name),
         Ok(_) | Err(_) => false,
@@ -749,7 +751,7 @@ fn next_starts_linear_gradient_direction<'i>(input: &mut Stream<'i>) -> bool {
     let state = input.mark();
     let starts = match input.consume_after_whitespace() {
         Ok(Token::Ident(value)) => value.eq_ignore_ascii_case("to"),
-        Ok(Token::Number { .. } | Token::Dimension { .. }) => true,
+        Ok(Token::Number(_) | Token::Dimension { .. }) => true,
         Ok(Token::Function(name)) => crate::numeric::expression::is_math_function(name),
         Ok(_) | Err(_) => false,
     };
@@ -855,9 +857,9 @@ enum ParsedRadialSize<'i> {
     Explicit {
         values: Vec<(
             Cow<'i, crate::component::CssComponentValue>,
-            super::property_input::Site<'i>,
+            super::syntax_types::Site<'i>,
         )>,
-        location: super::property_input::Site<'i>,
+        location: super::syntax_types::Site<'i>,
     },
 }
 
@@ -898,8 +900,8 @@ fn next_starts_radial_prelude<'i>(input: &mut Stream<'i>) -> bool {
                 | "farthest-corner"
                 | "at"
         ),
-        Ok(Token::Dimension { .. } | Token::Percentage { .. }) => true,
-        Ok(Token::Number { value, .. }) => *value == 0.0,
+        Ok(Token::Dimension { .. } | Token::Percentage(_)) => true,
+        Ok(Token::Number(number)) => number.to_f64() == 0.0,
         Ok(Token::Function(name)) => crate::numeric::expression::is_math_function(name),
         Ok(_) | Err(_) => false,
     };
@@ -1065,7 +1067,7 @@ fn parse_radial_size_component<'i>(
 ) -> Result<
     (
         Cow<'i, crate::component::CssComponentValue>,
-        super::property_input::Site<'i>,
+        super::syntax_types::Site<'i>,
     ),
     SyntaxError<'i, Error>,
 > {
@@ -1073,9 +1075,9 @@ fn parse_radial_size_component<'i>(
     let state = input.mark();
     let location = input.site();
     match input.consume_after_whitespace().map_err(basic)? {
-        Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {}
+        Token::Number(_) | Token::Dimension { .. } | Token::Percentage(_) => {}
         Token::Function(name) if crate::numeric::expression::is_math_function(name) => {}
-        token => return Err(location.unexpected::<Error>(token.clone())),
+        token => return Err(location.unexpected::<Error>(token)),
     }
     input.restore(state);
     input
@@ -1134,7 +1136,7 @@ fn validate_radial_size<'i>(
                 (Some(horizontal), Some(vertical), None) => {
                     let admit = |(component, component_location): (
                         Cow<'i, crate::component::CssComponentValue>,
-                        super::property_input::Site<'i>,
+                        super::syntax_types::Site<'i>,
                     )| {
                         let value = if matches!(
                             component.view(),
@@ -1206,7 +1208,7 @@ pub(crate) fn parse_background_repeat_list<'i>(
 /// The repeat style `ident`, whose own `location` is responsible when it is
 /// unknown.
 pub(super) fn parse_background_repeat_style_from_ident<'i>(
-    location: super::property_input::Site<'i>,
+    location: super::syntax_types::Site<'i>,
     ident: &str,
 ) -> std::result::Result<CssBackgroundRepeatStyle, SyntaxError<'i, Error>> {
     match ident.to_ascii_lowercase().as_str() {
@@ -1269,7 +1271,7 @@ mod tests {
         let numeric = crate::numeric::expression::NumericInputContext::parsed(&snapshot);
         let document = crate::syntax_consumption::source_document(source, &snapshot, 0)
             .expect("position source document");
-        let mut parser = Stream::new(&document);
+        let mut parser = document.root();
         let value = parse_position_prefix(&mut parser, &numeric).expect("valid generic position");
         parser.require_empty().expect("complete generic position");
         let crate::values::position::CssPositionRef::Cartesian(cartesian) = value.view() else {

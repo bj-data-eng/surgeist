@@ -1,8 +1,10 @@
 use super::combinators::{Combinator, Tail, keyword, parse_group};
-use super::property_input::Stream;
+use super::syntax_types::Stream;
 use super::values::parse_nonnegative_length;
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
-use cssparser::Token;
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::parser::property_input::StreamExt;
+use crate::parser::syntax_types::SyntaxError;
+use surgeist_css_parser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::values::{
@@ -465,7 +467,7 @@ pub(crate) fn parse_opacity<'i>(
     let numeric_start = input.mark();
     let location = input.site();
     match input.consume_after_whitespace().map_err(basic)? {
-        Token::Number { .. } | Token::Percentage { .. } => {
+        Token::Number(_) | Token::Percentage(_) => {
             input.restore(numeric_start);
             input.discard_whitespace();
             let offset = input.site();
@@ -501,7 +503,7 @@ pub(crate) fn parse_opacity<'i>(
                 _ => unreachable!("checked opacity Number or Percentage"),
             })
         }
-        token => Err(location.unexpected::<Error>(token.clone())),
+        token => Err(location.unexpected::<Error>(token)),
     }
 }
 
@@ -585,7 +587,7 @@ pub(crate) fn parse_z_index<'i>(
     match input.consume_after_whitespace().map_err(basic)? {
         Token::Ident(ident) if ident.eq_ignore_ascii_case("auto") => Ok(CssZIndexValue::Auto),
         Token::Ident(_) => Err(unexpected_at(location)),
-        Token::Number { .. } => {
+        Token::Number(_) => {
             input.restore(numeric_start);
             parse_integer_literal(input, numeric)
                 .map(CssNumeric::from_literal)
@@ -599,6 +601,6 @@ pub(crate) fn parse_z_index<'i>(
                 .map(CssZIndexValue::Integer)
                 .map_err(|_| unexpected_at(location))
         }
-        token => Err(location.unexpected::<Error>(token.clone())),
+        token => Err(location.unexpected::<Error>(token)),
     }
 }

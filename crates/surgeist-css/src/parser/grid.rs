@@ -1,7 +1,9 @@
-use super::property_input::Stream;
+use super::syntax_types::Stream;
 use super::values::parse_length_percentage;
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
-use cssparser::Token;
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::parser::property_input::StreamExt;
+use crate::parser::syntax_types::SyntaxError;
+use surgeist_css_parser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::values::{next_is_delim, parse_positive_integer_value};
@@ -108,7 +110,7 @@ fn parse_grid_subgrid<'i>(
     while !input.only_whitespace_remains() && !(stop_at_slash && next_is_delim(input, '/')) {
         let location = input.site();
         let component = match input.consume_after_whitespace().map_err(basic)? {
-            Token::SquareBracketBlock => {
+            Token::OpenSquare => {
                 CssGridSubgridComponent::LineNames(input.within_block(parse_grid_line_names)?)
             }
             Token::Function(name) if name.eq_ignore_ascii_case("repeat") => {
@@ -146,7 +148,7 @@ fn parse_grid_subgrid<'i>(
                 has_auto_fill |= repeat.is_auto_fill();
                 CssGridSubgridComponent::Repeat(repeat)
             }
-            token => return Err(location.unexpected::<Error>(token.clone())),
+            token => return Err(location.unexpected::<Error>(token)),
         };
         components.push(component);
     }
@@ -162,7 +164,7 @@ fn parse_optional_grid_line_names<'i>(
     let state = input.mark();
     if matches!(
         input.consume_after_whitespace().map_err(basic)?,
-        Token::SquareBracketBlock
+        Token::OpenSquare
     ) {
         input.within_block(parse_grid_line_names).map(Some)
     } else {
@@ -173,10 +175,10 @@ fn parse_optional_grid_line_names<'i>(
 
 #[derive(Clone)]
 struct LocatedGridTrackComponent<'i> {
-    location: super::property_input::Site<'i>,
+    location: super::syntax_types::Site<'i>,
     /// For a repetition, the site its own grammar makes responsible: the
     /// automatic keyword, or the first non-fixed track of an integer repeat.
-    inner: Option<super::property_input::Site<'i>>,
+    inner: Option<super::syntax_types::Site<'i>>,
     component: ParsedGridTrackComponent,
 }
 
@@ -193,7 +195,7 @@ enum ParsedGridTrackComponent {
     },
 }
 
-type RepeatSite<'i> = Option<super::property_input::Site<'i>>;
+type RepeatSite<'i> = Option<super::syntax_types::Site<'i>>;
 
 fn parse_grid_track_component<'i>(
     input: &mut Stream<'i>,
@@ -201,7 +203,7 @@ fn parse_grid_track_component<'i>(
 ) -> std::result::Result<(ParsedGridTrackComponent, RepeatSite<'i>), SyntaxError<'i, Error>> {
     let state = input.mark();
     match input.consume_after_whitespace().map_err(basic)? {
-        Token::SquareBracketBlock => {
+        Token::OpenSquare => {
             return input
                 .within_block(parse_grid_line_names)
                 .map(|names| (ParsedGridTrackComponent::LineNames(names), None));
@@ -224,7 +226,7 @@ pub(super) fn parse_grid_line_names<'i>(
         let location = input.site();
         let ident = input.consume_ident().map_err(basic)?;
         names.push(
-            CssGridLineName::try_new(CssIdent::new(ident.as_ref()))
+            CssGridLineName::try_new(CssIdent::new(ident))
                 .ok_or_else(|| unexpected_at(location))?,
         );
     }
@@ -276,7 +278,7 @@ fn parse_integer_grid_repeat<'i>(
         let location = input.site();
         if matches!(
             input.consume_after_whitespace().map_err(basic)?,
-            Token::SquareBracketBlock
+            Token::OpenSquare
         ) {
             let names = input.within_block(parse_grid_line_names)?;
             let component = CssGridTrackRepeatComponent::LineNames(names.clone());
@@ -331,7 +333,7 @@ fn parse_auto_grid_repeat<'i>(
         let location = input.site();
         if matches!(
             input.consume_after_whitespace().map_err(basic)?,
-            Token::SquareBracketBlock
+            Token::OpenSquare
         ) {
             let names = input.within_block(parse_grid_line_names)?;
             let component = CssGridTrackRepeatComponent::LineNames(names.clone());
@@ -414,7 +416,7 @@ fn parse_grid_track_breadth<'i>(
     input.discard_whitespace();
     let root_site = input.site();
     match input.consume_after_whitespace().map_err(basic)? {
-        Token::Dimension { .. } | Token::Percentage { .. } | Token::Number { .. } => {
+        Token::Dimension { .. } | Token::Percentage(_) | Token::Number(_) => {
             input.restore(numeric_start);
             let component = grid_numeric_component(input, numeric)?;
             if matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Dimension { unit, .. }) if unit.eq_ignore_ascii_case("fr"))
@@ -467,7 +469,7 @@ fn parse_grid_track_breadth<'i>(
             }
         }
         Token::Function(_) => Err(unexpected_at(location)),
-        token => Err(location.unexpected::<Error>(token.clone())),
+        token => Err(location.unexpected::<Error>(token)),
     }
 }
 
@@ -490,8 +492,8 @@ fn grid_numeric_component<'i>(
 fn grid_numeric_error<'i>(
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
     error: &crate::numeric::CssNumericConstructionError,
-    location: super::property_input::Site<'i>,
-    offset: super::property_input::Site<'i>,
+    location: super::syntax_types::Site<'i>,
+    offset: super::syntax_types::Site<'i>,
 ) -> SyntaxError<'i, Error> {
     super::values::calculation_error(numeric.property_error_location(error, location, offset))
 }
@@ -656,7 +658,7 @@ pub(crate) fn parse_grid_template_areas<'i>(
         let location = input.site();
         let row = input.consume_string().map_err(basic)?;
         rows.push(
-            crate::values::layout::grid_template_areas::parse_decoded_row(row.as_ref())
+            crate::values::layout::grid_template_areas::parse_decoded_row(row)
                 .map_err(|_| unexpected_at(location))?,
         );
     }
@@ -706,13 +708,13 @@ fn parse_grid_area_template<'i>(
         let before = parse_optional_grid_line_names(input)?;
         let location = input.site();
         let text = input.consume_string().map_err(basic)?;
-        let area = crate::values::layout::grid_template_areas::parse_decoded_row(text.as_ref())
+        let area = crate::values::layout::grid_template_areas::parse_decoded_row(text)
             .map_err(|_| unexpected_at(location))?;
         let state = input.mark();
         let omitted = input.only_whitespace_remains()
             || matches!(
                 input.consume_after_whitespace(),
-                Ok(Token::QuotedString(_) | Token::SquareBracketBlock | Token::Delim('/'))
+                Ok(Token::String(_) | Token::OpenSquare | Token::Delim('/'))
             );
         input.restore(state);
         let size = if omitted {

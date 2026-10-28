@@ -1,8 +1,9 @@
 //! Grammar admission for the selected CSS Generated Content 3 `content` value.
 
-use super::property_input::Stream;
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
-use cssparser::Token;
+use super::syntax_types::Stream;
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::parser::syntax_types::SyntaxError;
+use surgeist_css_parser::Token;
 
 use super::background::parse_image;
 use super::generated_content::parse_content_string;
@@ -74,7 +75,7 @@ fn parse_alternative<'i>(
             continue;
         }
         let location = input.site();
-        match input.consume_after_whitespace().map_err(basic)?.clone() {
+        match input.consume_after_whitespace().map_err(basic)? {
             Token::Function(name) if name.eq_ignore_ascii_case("counter") => {
                 items.push(CssContentAlternativeItem::Counter(
                     input.within_block(|input| parse_counter(input, numeric))?,
@@ -124,7 +125,7 @@ fn parse_item<'i>(
         };
     }
     let location = input.site();
-    match input.consume_after_whitespace().map_err(basic)?.clone() {
+    match input.consume_after_whitespace().map_err(basic)? {
         Token::Function(name) if name.eq_ignore_ascii_case("counter") => input
             .within_block(|input| parse_counter(input, numeric))
             .map(CssContentValueItem::Counter),
@@ -213,7 +214,7 @@ pub(super) fn parse_style<'i>(
             .ok_or_else(|| unexpected_at(keyword_location));
     }
     let location = input.site();
-    match input.consume_after_whitespace().map_err(basic)?.clone() {
+    match input.consume_after_whitespace().map_err(basic)? {
         Token::Function(name) if name.eq_ignore_ascii_case("symbols") => input
             .within_block(|input| parse_symbols(input, numeric))
             .map(CssCounterStyleValue::Symbols),

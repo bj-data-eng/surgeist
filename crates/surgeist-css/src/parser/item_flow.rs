@@ -6,8 +6,8 @@
 //! Complete candidates rank by occupied count, D/W/P/T occupancy, then earlier
 //! source starts in that order. Grouped wrap/pack productions never interleave.
 
-use super::property_input::{Mark, Stream};
-use crate::diagnostic::error::property::SyntaxError;
+use super::syntax_types::{Mark, Stream};
+use crate::parser::syntax_types::SyntaxError;
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::grid::parse_flow_tolerance;
@@ -160,7 +160,7 @@ struct Selection<'i> {
 
 impl<'i> Selection<'i> {
     fn failed(&mut self, input: &Stream<'i>, error: SyntaxError<'i, Error>) {
-        let offset = input.site().ordinal();
+        let offset = input.site().index();
         if offset >= self.failure_offset {
             self.failure = error;
             self.failure_offset = offset;
@@ -175,7 +175,7 @@ pub(super) fn parse_item_flow<'i>(
     let mut selection = Selection {
         best: None,
         failure: unexpected_at(input.site()),
-        failure_offset: input.site().ordinal(),
+        failure_offset: input.site().index(),
     };
     search(input, numeric, &Candidate::empty(), &mut selection);
     if let Some(complete) = selection.best {
@@ -232,7 +232,7 @@ fn search<'i>(
             match result {
                 Ok(()) => {
                     next.occupied |= bit;
-                    next.starts[slot] = start.site().ordinal();
+                    next.starts[slot] = start.site().index();
                     search(input, numeric, &next, selection);
                 }
                 Err(error) => selection.failed(input, error),

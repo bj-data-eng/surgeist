@@ -1,9 +1,10 @@
 //! Shared authored Values 4 `<url>` parsing for properties, imports, and fonts.
 
-use super::property_input::Stream;
-use crate::diagnostic::error::property::SyntaxError;
-use cssparser::Token;
+use super::syntax_types::Stream;
+use crate::parser::property_input::StreamExt;
+use crate::parser::syntax_types::SyntaxError;
 use std::borrow::Cow;
+use surgeist_css_parser::Token;
 
 use crate::component::CssComponentValueRef;
 use crate::declaration::CssAuthoredFunctionArguments;
@@ -17,8 +18,8 @@ pub(super) fn parse_url<'i>(
     _numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssUrl, SyntaxError<'i, Error>> {
     let location = input.site();
-    match input.consume_after_whitespace().map_err(basic)?.clone() {
-        Token::UnquotedUrl(value) => Ok(CssUrl::new(value.to_string())),
+    match input.consume_after_whitespace().map_err(basic)? {
+        Token::Url(value) => Ok(CssUrl::new(value.to_string())),
         Token::Function(name)
             if name.eq_ignore_ascii_case("url") || name.eq_ignore_ascii_case("src") =>
         {
@@ -33,7 +34,7 @@ pub(super) fn parse_url<'i>(
                 while !input.only_whitespace_remains() {
                     let modifier_start = input.mark();
                     let modifier_location = input.site();
-                    match input.consume_after_whitespace().map_err(basic)?.clone() {
+                    match input.consume_after_whitespace().map_err(basic)? {
                         Token::Ident(value) => {
                             modifiers.push(CssUrlModifier::Ident(CssIdent::new(value.to_string())));
                         }
@@ -41,7 +42,9 @@ pub(super) fn parse_url<'i>(
                             let arguments = input.within_block(|input| {
                                 let start = input.site();
                                 consume_url_modifier_components(input)?;
-                                Ok(CssAuthoredFunctionArguments::new(input.text_since(start)))
+                                Ok(CssAuthoredFunctionArguments::new(
+                                    input.authored_text_since(start),
+                                ))
                             })?;
                             let modifier_end = input.mark();
                             input.restore(modifier_start);
@@ -98,18 +101,15 @@ fn consume_url_modifier_components<'i>(
 ) -> std::result::Result<(), SyntaxError<'i, Error>> {
     while !input.only_whitespace_remains() {
         let location = input.site();
-        match input.consume_token_with_comments().map_err(basic)?.clone() {
-            Token::Function(_)
-            | Token::ParenthesisBlock
-            | Token::SquareBracketBlock
-            | Token::CurlyBracketBlock => {
+        match input.consume_token_with_comments().map_err(basic)? {
+            Token::Function(_) | Token::OpenParen | Token::OpenSquare | Token::OpenCurly => {
                 input.within_block(consume_url_modifier_components)?;
             }
-            token @ (Token::BadString(_)
-            | Token::BadUrl(_)
-            | Token::CloseParenthesis
-            | Token::CloseSquareBracket
-            | Token::CloseCurlyBracket) => {
+            token @ (Token::BadString
+            | Token::BadUrl
+            | Token::CloseParen
+            | Token::CloseSquare
+            | Token::CloseCurly) => {
                 return Err(location.unexpected::<Error>(token));
             }
             _ => {}

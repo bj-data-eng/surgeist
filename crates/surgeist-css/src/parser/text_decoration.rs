@@ -1,9 +1,11 @@
 //! Selected Decoration 4 intrinsic grammars.
 use super::color::parse_color;
 use super::combinators::{Combinator, Tail, fill, keyword, parse_group};
-use super::property_input::Stream;
+use super::syntax_types::Stream;
 use super::values::parse_length_percentage;
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::parser::property_input::{SiteExt, StreamExt};
+use crate::parser::syntax_types::SyntaxError;
 use crate::values::text::{
     CssTextDecorationErrorLine, CssTextDecorationSkip, CssTextDecorationSkipBox,
     CssTextDecorationSkipInk, CssTextDecorationSkipInset, CssTextDecorationSkipSelf,

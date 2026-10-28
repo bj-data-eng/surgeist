@@ -2,6 +2,7 @@
 use crate::component::CssComponentValues;
 use crate::declaration::{CssDeclaration, CssImportance};
 use crate::diagnostic::CssError;
+use crate::diagnostic::error::property::SyntaxErrorExt;
 use crate::diagnostic::error::{
     basic, from_parse_error, from_rule_parse_error, with_media_query_context,
 };
@@ -15,7 +16,7 @@ use crate::parser::{
     color_profile, conditional_chains, counter_style, font_face, font_feature_values,
     font_palette_values, keyframes, named_supports, page, parse_declaration_core,
     parse_descriptor_boundary, parse_nested_group_rules, parse_property_value_from_parser,
-    parse_scoped_rule_list, property_input, queries, recovery, selectors,
+    parse_scoped_rule_list, queries, recovery, selectors,
 };
 use crate::property::{CssPropertyGrammar, CssPropertyNameRef};
 use crate::query::media::{CssMediaQuery, CssMediaQueryList, CssNeverMediaQuery};
@@ -1170,24 +1171,15 @@ fn property_value_text(
         let mut input = Parser::new(&mut parser_input);
         let result = (|| {
             let openings = state.check_component_values(source, &input, "css.declaration")?;
-            let document = crate::syntax_consumption::normalize(
-                crate::syntax_consumption::SyntaxInput::Source(
-                    crate::syntax_consumption::SourceWindow {
-                        text: std::borrow::Cow::Borrowed(source),
-                        range: 0..source.len(),
-                        original: state.source_snapshot().clone(),
-                    },
-                ),
-                crate::syntax_consumption::SyntaxInputLimits::default(),
-                0,
-            )
-            .map_err(|error| {
-                crate::diagnostic::error::invalid_component_value(
-                    input.current_source_location(),
-                    error,
-                )
-            })?;
-            let mut property_input = property_input::Stream::new(&document);
+            let document =
+                crate::syntax_consumption::source_document(source, state.source_snapshot(), 0)
+                    .map_err(|error| {
+                        crate::diagnostic::error::invalid_component_value(
+                            input.current_source_location(),
+                            error,
+                        )
+                    })?;
+            let mut property_input = document.root();
             let body = parse_property_value_from_parser(
                 grammar,
                 &mut property_input,

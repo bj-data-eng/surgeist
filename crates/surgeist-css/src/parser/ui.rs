@@ -1,13 +1,15 @@
 //! UI interaction, cursor, and outline grammar.
 use super::color::parse_color;
 use super::combinators::{Combinator, Tail, fill, keyword, parse_group};
-use super::property_input::Stream;
+use super::syntax_types::Stream;
 use super::url::parse_url;
 use super::values::{next_is_ident, parse_length};
 use crate::component::{CssComponentValueRef, CssValueTokenRef};
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
 use crate::numeric::expression::NumericInputContext;
 use crate::numeric::{CssLength, CssNumeric};
+use crate::parser::property_input::StreamExt;
+use crate::parser::syntax_types::SyntaxError;
 use crate::values::border::CssLineWidth;
 use crate::values::border::{CssOutline, CssOutlineColor, CssOutlineStyle};
 use crate::values::common::CssSidePair;
@@ -19,7 +21,7 @@ use crate::values::ui::{
     CssCursorUrlSetDescriptor, CssCursorUrlSetOption, CssCursorUrlSetReference,
 };
 use crate::values::ui::{CssCursorKeyword, CssPointerEvents, CssUserSelect};
-use cssparser::Token;
+use surgeist_css_parser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 
 macro_rules! keyword_parser {
@@ -167,7 +169,7 @@ pub(crate) fn parse_navigation<'i>(
 fn numeric_error<'i>(
     numeric: &NumericInputContext<'_>,
     error: &crate::numeric::CssNumericConstructionError,
-    location: super::property_input::Site<'i>,
+    location: super::syntax_types::Site<'i>,
 ) -> SyntaxError<'i, Error> {
     if let Some(component) = error.component_error()
         && crate::diagnostic::error::is_component_resource_error(component)
@@ -186,7 +188,7 @@ fn numeric_error<'i>(
 pub(super) fn starts_url(input: &mut Stream<'_>) -> bool {
     let state = input.mark();
     let starts = match input.consume_after_whitespace() {
-        Ok(Token::UnquotedUrl(_)) => true,
+        Ok(Token::Url(_)) => true,
         Ok(Token::Function(name)) => {
             name.eq_ignore_ascii_case("url") || name.eq_ignore_ascii_case("src")
         }
@@ -247,7 +249,7 @@ fn parse_cursor_image_source<'i>(
     if starts_url(input) {
         return parse_url(input, numeric).map(CssCursorImageSource::Url);
     }
-    let name = input.consume_function_name().map_err(basic)?.clone();
+    let name = input.consume_function_name().map_err(basic)?;
     if !name.eq_ignore_ascii_case("image-set") && !name.eq_ignore_ascii_case("-webkit-image-set") {
         return Err(unexpected_at(input.site()));
     }
@@ -294,7 +296,7 @@ fn parse_cursor_image_source<'i>(
 fn parse_cursor_image_type<'i>(
     input: &mut Stream<'i>,
 ) -> Result<CssContentString, SyntaxError<'i, Error>> {
-    let name = input.consume_function_name().map_err(basic)?.clone();
+    let name = input.consume_function_name().map_err(basic)?;
     if !name.eq_ignore_ascii_case("type") {
         return Err(unexpected_at(input.site()));
     }

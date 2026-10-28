@@ -1,8 +1,9 @@
 //! Sizing 4 authored contained intrinsic-size declarations.
 
-use super::property_input::Stream;
 use super::side_shapes::parse_side_pair;
-use crate::diagnostic::error::property::{Error, SyntaxError};
+use super::syntax_types::Stream;
+use crate::diagnostic::error::property::Error;
+use crate::parser::syntax_types::SyntaxError;
 
 use super::values::parse_nonnegative_length;
 use crate::numeric::expression::NumericInputContext;

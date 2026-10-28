@@ -1,14 +1,15 @@
 //! CSS Syntax 3 defines one tokenization (§4) of one preprocessed input stream
 //! (§3.3). Component values reach consumers through three construction paths:
-//! direct collection from the cssparser provider, promotion from the private
-//! syntax-consumption arena, and the crate's bounded tokenizer over
-//! preprocessed scalars. Each must produce the same values for equivalent UTF-8
-//! and UTF-16 input.
+//! the unmetered token tree of the parser crate promoted to values, the crate's
+//! bounded tokenizer over preprocessed scalars (metered), and the tree of
+//! checked components, which a typed value is parsed through again. Each must
+//! produce the same values, and the same tokens, for equivalent UTF-8 and UTF-16
+//! input.
 //!
 //! Equivalence follows §3.3. A UTF-16 input and its UTF-8 transcoding are the
 //! same code points. The UTF-16 and decoded-UTF-8 fronts retain the
 //! preprocessed stream as their snapshot text, so their values, spellings and
-//! spans equal direct collection over the preprocessed text. Direct collection
+//! spans equal the unmetered tree over the preprocessed text. The unmetered tree
 //! over raw text retains authored spellings and offsets, so it agrees on decoded
 //! token identity. A lone surrogate has no UTF-8 form; §3.3 replaces it with
 //! U+FFFD, so its equivalent UTF-8 input is that preprocessed text.
@@ -22,9 +23,11 @@ use crate::component::{
     CssComponentValueError, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
     CssValueOrigin, CssValueTokenRef,
 };
+use crate::parser::syntax_types::Document;
 use crate::source::CssSourceSnapshot;
 use crate::source::{CssUtf16InputLimits, CssUtf16PropertyValueLimits};
 use crate::values::color_adjust::utf16_value::Control;
+use surgeist_css_parser::document::{GroupEnd, ListId};
 
 type Outcome = Result<CssComponentValues, CssComponentValueError>;
 
@@ -76,14 +79,17 @@ fn direct(text: &str) -> Outcome {
     crate::component::values::parse_component_values(text)
 }
 
-fn arena(text: &str) -> Outcome {
-    let document = crate::syntax_consumption::source_document_with_limits(
-        text,
-        CssComponentValueLimits::default(),
-    )?;
-    promote_nodes(
-        &document,
-        &document.lists[document.root],
+/// The cssparser-driven collection that the stack-B consumers still use (removed
+/// with them), over the same preprocessed text: it must give the values the
+/// unmetered token tree gives.
+fn cssparser_collected(text: &str) -> Outcome {
+    let snapshot = CssSourceSnapshot::new(text);
+    let working = crate::tokenization::prepare(text);
+    let mut input = cssparser::ParserInput::new(&working);
+    let mut parser = cssparser::Parser::new(&mut input);
+    crate::component::values::parse::collect(
+        &mut parser,
+        &snapshot,
         CssComponentValueLimits::default(),
     )
 }
@@ -99,7 +105,7 @@ fn utf16_snapshot(units: &[u16]) -> CssSourceSnapshot {
     .expect("UTF-16 preparation within default limits")
 }
 
-fn arena_utf16(units: &[u16]) -> Outcome {
+fn unmetered_utf16(units: &[u16]) -> Outcome {
     let snapshot = utf16_snapshot(units);
     let document = crate::syntax_consumption::source_document_snapshot_with_limits(
         &snapshot,
@@ -107,9 +113,69 @@ fn arena_utf16(units: &[u16]) -> Outcome {
     )?;
     promote_nodes(
         &document,
-        &document.lists[document.root],
+        document.list(document.root_list()),
         CssComponentValueLimits::default(),
     )
+}
+
+/// The tokens of a tree and of the tree of its checked components, level by
+/// level: the checked tree must hand a grammar the tokens the text did.
+fn assert_same_tree(
+    left: &Document<'_>,
+    left_list: ListId,
+    right: &Document<'_>,
+    right_list: ListId,
+    case: &str,
+) {
+    let (left_nodes, right_nodes) = (left.list(left_list), right.list(right_list));
+    assert_eq!(left_nodes.len(), right_nodes.len(), "node count: {case:?}");
+    for (a, b) in left_nodes.iter().zip(right_nodes) {
+        assert_eq!(left.token(*a), right.token(*b), "token: {case:?}");
+        match (left.children(*a), right.children(*b)) {
+            (Some(a_list), Some(b_list)) => {
+                assert_eq!(
+                    matches!(left.group_end(*a), Some(GroupEnd::Closed { .. })),
+                    matches!(right.group_end(*b), Some(GroupEnd::Closed { .. })),
+                    "group end: {case:?}"
+                );
+                assert_same_tree(left, a_list, right, b_list, case);
+            }
+            (None, None) => {}
+            _ => panic!("group structure: {case:?}"),
+        }
+    }
+}
+
+fn assert_checked_tree_agrees(text: &str, outcome: &Outcome) {
+    let Ok(values) = outcome else { return };
+    let source = crate::syntax_consumption::source_document_with_limits(
+        text,
+        CssComponentValueLimits::default(),
+    )
+    .expect("a text that has values has a tree");
+    let checked = crate::syntax_consumption::checked_document(
+        values.items(),
+        crate::syntax_consumption::SyntaxInputLimits::default(),
+        0,
+    )
+    .expect("checked components have a tree");
+    assert_same_tree(
+        &source,
+        source.root_list(),
+        &checked,
+        checked.root_list(),
+        text,
+    );
+    assert_eq!(
+        promote_nodes(
+            &checked,
+            checked.list(checked.root_list()),
+            CssComponentValueLimits::default()
+        )
+        .as_ref(),
+        Ok(values),
+        "{text:?}"
+    );
 }
 
 fn bounded_utf16(units: &[u16]) -> Outcome {
@@ -199,13 +265,18 @@ fn assert_paths_agree(utf8: Option<&str>, utf16: &[u16]) {
     let preprocessed = preprocess(utf16);
     let case = utf8.unwrap_or(&preprocessed);
     let expected = direct(&preprocessed);
-    assert_eq!(
-        arena(&preprocessed),
-        expected,
-        "arena over preprocessed text: {case:?}"
-    );
     assert_eq!(bounded_utf16(utf16), expected, "bounded UTF-16: {case:?}");
-    assert_eq!(arena_utf16(utf16), expected, "arena UTF-16: {case:?}");
+    assert_eq!(
+        unmetered_utf16(utf16),
+        expected,
+        "unmetered tree over UTF-16: {case:?}"
+    );
+    assert_checked_tree_agrees(&preprocessed, &expected);
+    assert_eq!(
+        cssparser_collected(&preprocessed),
+        expected,
+        "cssparser-driven collection: {case:?}"
+    );
     assert_eq!(
         bounded_decoded_utf8(&preprocessed),
         expected,
@@ -213,7 +284,7 @@ fn assert_paths_agree(utf8: Option<&str>, utf16: &[u16]) {
     );
     if let Some(text) = utf8 {
         let raw = direct(text);
-        assert_eq!(arena(text), raw, "arena over raw text: {case:?}");
+        assert_checked_tree_agrees(text, &raw);
         assert_eq!(
             bounded_decoded_utf8(text),
             expected,

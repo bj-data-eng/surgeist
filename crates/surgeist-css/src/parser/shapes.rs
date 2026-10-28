@@ -1,9 +1,10 @@
 //! Authored shape command parsing over shared exact scalar and position owners.
 use super::position::parse_full_position_bounded;
-use super::property_input::Stream;
+use super::syntax_types::Stream;
 use super::values::{next_is_ident, parse_angle_value, parse_length_percentage};
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
 use crate::numeric::expression::NumericInputContext;
+use crate::parser::syntax_types::SyntaxError;
 use crate::values::position::{CssHorizontalPositionKeyword, CssVerticalPositionKeyword};
 use crate::values::shape::{
     CssFillRule, CssShapeAbsoluteControlPoint, CssShapeArc, CssShapeArcRadii, CssShapeArcSize,

@@ -1,10 +1,12 @@
 use super::color::parse_color;
 use super::combinators::{Combinator, Tail, commit, fill, keyword, parse_group};
-use super::property_input::Stream;
+use super::syntax_types::Stream;
 use super::values::{parse_hinted_number_calculation, parse_length_percentage};
 use crate::diagnostic::CssFeatureId;
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
-use cssparser::Token;
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::parser::property_input::StreamExt;
+use crate::parser::syntax_types::SyntaxError;
+use surgeist_css_parser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::values::{
@@ -148,7 +150,7 @@ pub(crate) fn parse_text_combine_upright<'i>(
             let start = input.mark();
             let location = input.site();
             let count = match input.consume_after_whitespace().map_err(basic)? {
-                Token::Number { .. } => {
+                Token::Number(_) => {
                     input.restore(start);
                     let value = super::values::parse_integer_literal(input, numeric)?;
                     let count = crate::numeric::integer_value::exact_i32(value.numeric().representation())
@@ -159,7 +161,7 @@ pub(crate) fn parse_text_combine_upright<'i>(
                     let expression = parse_numeric_function(input, &start, numeric, CalculationRoot::Integer)?;
                     CssTextCombineDigitCount::from_calculation(CssCalculation::<CssInteger>::from_expression(expression))
                 }
-                token => return Err(location.unexpected::<Error>(token.clone())),
+                token => return Err(location.unexpected::<Error>(token)),
             };
             Ok(CssTextCombineUpright::Digits(Some(count)))
         },
@@ -206,13 +208,8 @@ pub(super) fn parse_glyph_orientation_vertical<'i>(
         Token::Ident(ident) if ident.eq_ignore_ascii_case("auto") => {
             Some(CssTextOrientation::Mixed)
         }
-        Token::Number {
-            int_value: Some(0), ..
-        } => Some(CssTextOrientation::Upright),
-        Token::Number {
-            int_value: Some(90),
-            ..
-        } => Some(CssTextOrientation::Sideways),
+        Token::Number(number) if number.integer() == Some(0) => Some(CssTextOrientation::Upright),
+        Token::Number(number) if number.integer() == Some(90) => Some(CssTextOrientation::Sideways),
         Token::Dimension { unit, .. } if unit.eq_ignore_ascii_case("deg") => {
             input.restore(start);
             input.discard_whitespace();
@@ -332,7 +329,7 @@ fn parse_font_family_name_with_generics<'i>(
         return input.within_block(|input| {
             let keyword_location = input.site();
             let keyword = input.consume_ident().map_err(basic)?;
-            let generic = CssGenericFontFamily::from_script_keyword(&keyword)
+            let generic = CssGenericFontFamily::from_script_keyword(keyword)
                 .ok_or_else(|| unexpected_at(keyword_location))?;
             input.require_empty().map_err(basic)?;
             Ok(CssFontFamilyName::generic(generic))
@@ -349,7 +346,7 @@ fn parse_font_family_name_with_generics<'i>(
                 parts.push(ident.to_string());
                 locations.push(location);
             }
-            token => return Err(location.unexpected::<Error>(token.clone())),
+            token => return Err(location.unexpected::<Error>(token)),
         }
     }
 
@@ -531,7 +528,7 @@ pub(crate) fn parse_font_style<'i>(
             .ok();
         return Ok(CssFontStyle::Oblique { angle });
     }
-    common_font_style_keyword(&ident)
+    common_font_style_keyword(ident)
         .map(CssFontStyle::Keyword)
         .ok_or_else(|| unexpected_at(keyword_location))
 }

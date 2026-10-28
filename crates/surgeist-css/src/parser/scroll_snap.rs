@@ -1,8 +1,9 @@
 //! Checked authored grammars from the selected Scroll Snap 1 publication.
 
-use super::property_input::Stream;
 use super::side_shapes::{parse_auto_or, parse_four_sides, parse_side_pair};
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
+use super::syntax_types::Stream;
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::parser::syntax_types::SyntaxError;
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::values::{parse_length, parse_nonnegative_length_percentage};
