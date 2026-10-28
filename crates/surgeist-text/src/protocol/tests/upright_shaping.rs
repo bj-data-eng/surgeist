@@ -696,3 +696,6 @@ mod admission;
 
 #[path = "upright_shaping/finite.rs"]
 mod finite;
+
+#[path = "upright_shaping/atomics.rs"]
+mod atomics;

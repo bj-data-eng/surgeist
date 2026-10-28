@@ -629,6 +629,22 @@ block progression; source and metric rectangles retain their own extents.
 Containing direction maps the available interval once, independently of the
 upright paragraph's used LTR direction and retained computed direction.
 
+Native upright in-flow atomics retain their physical child size, border, content
+and overflow geometry. The adapter converts those boxes to Text's local
+inline/line-under cells before finalization, then maps the accepted geometry
+back once. A physical 6×14 child therefore uses a local 14×6 cell without
+rotating its content. Signed margins and flow advance remain separate from
+occupied bounds. Relative offsets place the physical box without being added
+to its signed flow advance; changed canonical box edges still reenter fitting.
+
+Named Central alignment uses the existing child first/last resolver and its
+Absent synthesis, Unknown refusal and axis checks. Numeric participants retain
+their distance from flow block-start; Text needs distance from line-over, so
+VerticalLr converts that reference through the child's physical width.
+Baseline, Top and Bottom keep their existing alignment roles. Out-of-flow
+upright atomics remain an explicit Text preparation refusal; this capability
+does not introduce positioned-atomic composition or offset-valued alignment.
+
 The box/control-only numeric fitter uses Text's canonical `BidiLevel` and
 borrowed [`SuppliedLine`](../../surgeist-text/src/supplied_line.rs) for ordering.
 Supplied levels include 126; values `127..=255` refuse. It accepts actual atomic

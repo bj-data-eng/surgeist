@@ -274,7 +274,11 @@ pub(crate) fn prepare(
         }
         crate::LineOrientation::Sideways | crate::LineOrientation::Vertical => {
             if let Some(occurrence) = analyzed.paragraph.anchor_order.iter().find_map(|anchor| {
-                if let crate::protocol::paragraph::SemanticAnchorItem::Atomic(i) = anchor.item {
+                if let crate::protocol::paragraph::SemanticAnchorItem::Atomic(i) = anchor.item
+                    && (options.orientation() == crate::LineOrientation::Sideways
+                        || analyzed.processed.source().boxes()[i].kind()
+                            == crate::InlineBoxKind::OutOfFlow)
+                {
                     Some(i)
                 } else {
                     None

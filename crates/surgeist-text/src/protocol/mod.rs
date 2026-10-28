@@ -340,6 +340,8 @@ impl FormattedLineUsage {
 }
 
 /// Signed flow contributions, distinct from nonnegative border/content sizes.
+/// Advance and occupied bounds use the local inline axis; before/after baseline
+/// contributions extend toward line-over/line-under respectively.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AtomicFlowAllocation {
     pub advance: f64,
@@ -348,12 +350,18 @@ pub struct AtomicFlowAllocation {
     pub occupied_start: f64,
     pub occupied_end: f64,
 }
-/// Box geometry relative to the actual final flow slot, including its resolved
-/// baseline/top/bottom baseline coordinate.
+/// Line-local box geometry relative to the actual final flow slot.
+///
+/// Local x is inline; local y runs from line-over toward line-under. Native
+/// Vertical therefore represents a physical 6x14 box with local size 14x6;
+/// this cell-coordinate conversion does not rotate the child's content.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AtomicBoxAllocation {
+    /// Border rectangle in the local inline/line-under frame.
     pub border: Rect,
+    /// Content rectangle in the same local frame.
     pub content: Rect,
+    /// Signed local line-under baseline offset relative to the flow slot.
     pub baseline: f64,
 }
 /// Line-time geometry exists only for actual in-flow participation.
@@ -610,8 +618,11 @@ pub struct LineAnchor {
 #[derive(Clone, Debug, PartialEq)]
 pub struct AtomicPlacement {
     pub occurrence: PreparedAtomic,
+    /// Actual physical border rectangle, validated against the finalized cell.
     pub border: Rect,
+    /// Actual physical content rectangle in the same placement frame.
     pub content: Rect,
+    /// Physical cross-axis baseline: y for Horizontal, x for native Vertical.
     pub baseline: f64,
 }
 #[derive(Clone, Debug, PartialEq)]
@@ -883,9 +894,9 @@ pub enum ProtocolError {
         /// Actual original box occurrence in this paragraph, including out-of-flow.
         occurrence: usize,
     },
-    /// The unrotated upright profile cannot place independent boxes.
+    /// The unrotated upright profile cannot place out-of-flow boxes.
     UnsupportedUprightAtomic {
-        /// Actual original box occurrence in this paragraph, including out-of-flow.
+        /// Actual original out-of-flow box occurrence in this paragraph.
         occurrence: usize,
     },
     InvalidAtomicGeometry {

@@ -7,8 +7,8 @@ composition supports `HorizontalTb`, clockwise `SidewaysRl`, and native upright
 `VerticalRl`/`VerticalLr`, normal and
 last-line alignment, signed indentation and
 explicit U+0020 space expansion; see the [Text input contract](docs/reference.md#node-input).
-Native upright paragraphs expose their actual Central baseline; numeric
-atomic-box flow also supports explicit alphabetic and central
+Native upright paragraphs support explicit Central baseline matching, including
+in-flow child boxes. Numeric atomic-box flow also supports alphabetic and central
 [baseline matching](docs/reference.md#numeric-inline-baseline-references).
 
 The crate is at version `0.1.0`. Its grid support is a defined subset, and it does

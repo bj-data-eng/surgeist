@@ -444,11 +444,13 @@ fn validate_atomics(
                     box_geometry.content.size.height,
                 ),
             );
-            let baseline = crate::layout::line_point(
-                placed,
-                Point::new(item.slot.x, item.slot.y + box_geometry.baseline),
-            )
-            .y;
+            let baseline = crate::layout::cross_coordinate(
+                placed.orientation,
+                crate::layout::line_point(
+                    placed,
+                    Point::new(item.slot.x, item.slot.y + box_geometry.baseline),
+                ),
+            );
             qualify_rect(border)?;
             qualify_rect(content)?;
             finite("placed atomic baseline", baseline)?;
