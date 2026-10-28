@@ -113,6 +113,11 @@ fn intrinsic<S: LayoutScalar>(
         &[],
         &[],
         super::super::run::Context {
+            orientation: super::super::run::text_orientation(
+                WritingMode::HorizontalTb,
+                &binding.prepared,
+            )
+            .unwrap_or_else(|_| panic!("horizontal fixture must resolve its Text orientation")),
             inline_baseline_context: crate::InlineBaselineContext::Physical,
             groups: crate::group_alignment::Snapshot::default(),
             wrap_style: crate::TextWrapStyle::Auto,

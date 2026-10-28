@@ -401,6 +401,7 @@ pub(crate) enum Frame<S: LayoutScalar> {
 }
 
 pub(crate) struct Context<Node, S: LayoutScalar> {
+    pub orientation: LineOrientation,
     pub inline_baseline_context: crate::InlineBaselineContext,
     pub groups: crate::group_alignment::Snapshot,
     pub wrapping: Option<WrappingProjection<Node>>,
@@ -435,24 +436,38 @@ impl<Node, S: LayoutScalar> Context<Node, S> {
         }
     }
 
-    fn line_frame(&self, origin: Point<f64>) -> Result<LineFrame, FitError> {
+    fn line_frame(&self, origin: Point<f64>) -> LineFrame {
         let size = self.frame_size();
-        Ok(LineFrame {
+        LineFrame {
             axes: self.axes,
-            orientation: text_orientation(self.axes.writing_mode())?,
+            orientation: self.orientation,
             origin,
             size: Size::new(size.width.to_f64(), size.height.to_f64()),
             insets: self.content_insets.map(LayoutScalar::to_f64),
             cursor_block: self.cursor_block.to_f64(),
-        })
+        }
     }
 }
 
 /// One owning mapping for actual Text consumption, independent of box-only flow.
-pub(crate) fn text_orientation(mode: crate::WritingMode) -> Result<LineOrientation, FitError> {
+/// Other preparation pairings retain their expected basis so Text preserves its
+/// existing context validation and diagnostic phase.
+pub(crate) fn text_orientation(
+    mode: crate::WritingMode,
+    prepared: &surgeist_text::PreparedText,
+) -> Result<LineOrientation, FitError> {
     match mode {
         crate::WritingMode::HorizontalTb => Ok(LineOrientation::Horizontal),
         crate::WritingMode::SidewaysRl => Ok(LineOrientation::Sideways),
+        crate::WritingMode::VerticalRl | crate::WritingMode::VerticalLr
+            if prepared.orientation() == LineOrientation::Sideways
+                && matches!(
+                    prepared.analyzed_source().typography(),
+                    surgeist_text::AnalysisTypography::HorizontalComposition
+                ) =>
+        {
+            Ok(LineOrientation::Sideways)
+        }
         crate::WritingMode::VerticalRl | crate::WritingMode::VerticalLr => {
             Ok(LineOrientation::Vertical)
         }
@@ -928,7 +943,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
         Frame::Measurement => Point::ZERO,
         Frame::Canonical { origin, .. } => origin,
     };
-    let frame = context.line_frame(origin)?;
+    let frame = context.line_frame(origin);
     let allocations = binding
         .atomics
         .iter()
@@ -1176,7 +1191,7 @@ fn canonical_allocations<Node: Copy + Eq, S: LayoutScalar>(
     block: f64,
 ) -> Result<Vec<AtomicAllocation>, FitError> {
     let feedback = line.feedback();
-    let frame = context.line_frame(origin)?;
+    let frame = context.line_frame(origin);
     let anchor = finalized_anchor(
         context,
         origin,
@@ -1294,7 +1309,7 @@ fn canonical_controls<Node: Copy + Eq, S: LayoutScalar>(
                 .allocation
                 .strut
                 .map(|strut| {
-                    let metrics = context.line_frame(origin)?.aligned_strut(
+                    let metrics = context.line_frame(origin).aligned_strut(
                         anchor,
                         feedback,
                         surgeist_text::LineStrut {
@@ -1343,7 +1358,7 @@ fn canonical_box_struts<Node, S: LayoutScalar>(
         .iter()
         .map(|strut| {
             Ok(surgeist_text::LineBoxStrut {
-                metrics: context.line_frame(origin)?.aligned_strut(
+                metrics: context.line_frame(origin).aligned_strut(
                     anchor,
                     feedback,
                     strut.metrics,
@@ -1374,7 +1389,7 @@ fn canonical_line_strut<Node, S: LayoutScalar>(
         block,
         line,
     )?;
-    let frame = context.line_frame(origin)?;
+    let frame = context.line_frame(origin);
     let over = frame.cross_offset(anchor.baseline, -strut.baseline)?;
     let canonical_over = round(over)?;
     Ok(Some(surgeist_text::LineStrut {
@@ -1396,7 +1411,7 @@ fn line_anchor<Node, S: LayoutScalar>(
     height: f64,
 ) -> Result<LineAnchor, FitError> {
     context
-        .line_frame(origin)?
+        .line_frame(origin)
         .anchor(start, available, block, baseline, height)
 }
 
@@ -1429,7 +1444,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     origin: Point<f64>,
     lines: Vec<FittedLine>,
 ) -> Result<Output<Node, S>, FitError> {
-    let frame = context.line_frame(origin)?;
+    let frame = context.line_frame(origin);
     let orientation = frame.orientation();
     let named_central = native_upright(&binding.prepared, context.axes)
         && context.inline_baseline_context

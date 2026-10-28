@@ -4,7 +4,7 @@ A Rust library for developers integrating layout into Surgeist document surfaces
 It computes box, line, and scroll geometry from layout-ready inputs, with block,
 inline, flex, grid, subgrid, and experimental grid-lanes algorithms. Prepared Text
 composition supports `HorizontalTb`, clockwise `SidewaysRl`, and native upright
-`VerticalRl`/`VerticalLr`, normal and
+or clockwise Sideways preparation in `VerticalRl`/`VerticalLr`, normal and
 last-line alignment, signed indentation and
 explicit U+0020 space expansion; see the [Text input contract](docs/reference.md#node-input).
 Native upright paragraphs support explicit Central baseline matching. Native

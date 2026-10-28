@@ -483,9 +483,16 @@ where
         tree.text_computation()
             .and_then(|state| state.paragraph(container, run))
     });
+    let text_orientation = text_binding
+        .map(|binding| {
+            crate::text_layout::run::text_orientation(
+                constants.flow_axes.writing_mode(),
+                &binding.prepared,
+            )
+            .map_err(|error| text_run_error(container, error))
+        })
+        .transpose()?;
     if let Some(binding) = text_binding {
-        crate::text_layout::run::text_orientation(constants.flow_axes.writing_mode())
-            .map_err(|error| text_run_error(container, error))?;
         let central = constants.inline_baseline_context
             == crate::InlineBaselineContext::Named(crate::BaselineName::Central)
             && crate::text_layout::run::native_upright(&binding.prepared, constants.flow_axes);
@@ -888,6 +895,8 @@ where
             .map(|groups| groups.snapshot())
             .unwrap_or_default();
         let context = crate::text_layout::run::Context {
+            orientation: text_orientation
+                .expect("the actual Text binding has its resolved orientation"),
             inline_baseline_context: constants.inline_baseline_context,
             groups: group_snapshot,
             wrapping: tree.wrapping_context().and_then(|(context, graph)| {

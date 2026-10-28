@@ -80,6 +80,8 @@ fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
         &[],
         &controls,
         Context {
+            orientation: text_orientation(WritingMode::HorizontalTb, &binding.prepared)
+                .unwrap_or_else(|_| panic!("horizontal fixture must resolve its Text orientation")),
             inline_baseline_context: crate::InlineBaselineContext::Physical,
             groups: crate::group_alignment::Snapshot::default(),
             wrap_style: crate::TextWrapStyle::Auto,

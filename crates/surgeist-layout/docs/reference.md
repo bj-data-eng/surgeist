@@ -435,8 +435,11 @@ facts; missing facts needed by an active proof still refuse. See the [Text/Layou
 the shared ownership and placement boundary.
 
 The native profile supports horizontal LTR and RTL text and clockwise
-`WritingMode::SidewaysRl`. Prepare the latter with Text's
-`LineOrientation::Sideways`; selection and placement retain that actual
+`WritingMode::SidewaysRl`. `VerticalRl` and `VerticalLr` also consume authentic
+`HorizontalComposition` analysis prepared with `LineOrientation::Sideways`.
+Block progression follows the containing writing mode while glyph outlines
+remain clockwise and use horizontal text metrics and bidi. Selection and
+placement retain that actual
 preparation and its receipts. Paragraph bidi direction and container line-box
 direction remain independent. RTL line-box alignment does not reverse the
 already ordered local glyph geometry again.
@@ -588,7 +591,7 @@ compose in `VerticalRl` and `VerticalLr` through Text's
 [qualified native profile](../../surgeist-text/docs/reference.md#native-whole-upright-paragraphs).
 Actual Text-backed `SidewaysLr` reports
 `UnsupportedCapability(TextWritingMode(SidewaysLr))` at `TextCapture` on the
-container; box-only flow retains its own support. Clockwise SidewaysRl Physical
+container; box-only flow retains its own support. Clockwise Sideways Physical
 composition admits in-flow and positioned atomic boxes with their actual
 physical geometry and independently owned content orientation. Text glyphs
 retain Clockwise; named Text contexts keep their existing refusal. Genuine
