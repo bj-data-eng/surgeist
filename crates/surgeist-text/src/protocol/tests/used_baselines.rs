@@ -1,6 +1,7 @@
 //! Explicit used references preserve raw font facts and shift the paint origin.
 use super::*;
 mod domains;
+mod edges;
 mod numeric;
 mod resources;
 use crate::{

@@ -109,6 +109,11 @@ with retained font/script identity and unhinted horizontal-Y or vertical-X
 coordinates. Alphabetic and central availability are independent. These metrics
 leave vertical paragraph shaping and placement with their own capability gates.
 
+Horizontal and clockwise Sideways preparation can explicitly request
+[used Alphabetic composition](docs/reference.md#used-named-preparation-references).
+It retains raw font observations while carrying the shared alignment reference
+and each actual font's displaced paint origin through placement.
+
 A separate [used upright metric observation](docs/reference.md#used-upright-font-metrics)
 retains absolute BASE or nominal-pen-relative em sides, Central and provenance.
 It preserves qualified fractional BASE and same-instance vhea/MVAR values without
