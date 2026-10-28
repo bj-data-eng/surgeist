@@ -196,27 +196,30 @@ fn registered(
     let ancestor_wrap = style.wrap;
     let source = Source::new(source);
     let length = source.text().len();
-    let analyzed = surgeist_text::AnalyzedSource::from_paragraph(surgeist_text::ParagraphInput {
-        terminal_edge: surgeist_text::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        source: source.clone(),
-        base_style: style,
-        base_direction: direction,
-        segment_breaks: surgeist_text::DocumentSegmentBreaks::LineFeedDefault,
-        paragraph_strut: surgeist_text::ParagraphStrut::DefaultFont,
-        origins: vec![surgeist_text::ParagraphOrigin {
-            text_node: None,
-            source,
-            local: Range::new(0, length),
-            aggregate: Range::new(0, length),
-            kind: surgeist_text::ParagraphOriginKind::Authored,
-        }],
-        connections: vec![],
-        controls: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-        anchor_order: vec![],
-    })
+    let analyzed = surgeist_text::AnalyzedSource::from_paragraph(
+        surgeist_text::ParagraphInput {
+            terminal_edge: surgeist_text::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            source: source.clone(),
+            base_style: style,
+            base_direction: direction,
+            segment_breaks: surgeist_text::DocumentSegmentBreaks::LineFeedDefault,
+            paragraph_strut: surgeist_text::ParagraphStrut::DefaultFont,
+            origins: vec![surgeist_text::ParagraphOrigin {
+                text_node: None,
+                source,
+                local: Range::new(0, length),
+                aggregate: Range::new(0, length),
+                kind: surgeist_text::ParagraphOriginKind::Authored,
+            }],
+            connections: vec![],
+            controls: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: vec![],
+        },
+        surgeist_text::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, ancestor_wrap);
     let mut system = surgeist_text::System::new(surgeist_text::SystemOptions {
@@ -664,7 +667,12 @@ fn native_later_ordinary_fit_restores_its_own_float_receipt_after_a_rejected_lon
 fn raw_minimum<S: LayoutScalar>(overflow: OverflowWrap) -> (f64, Vec<LineFact>) {
     let mut style = ahem_style(10.0, 10.0);
     style.overflow_wrap = overflow;
-    let analyzed = surgeist_text::AnalyzedSource::new(Source::new("AAAA"), style).unwrap();
+    let analyzed = surgeist_text::AnalyzedSource::new(
+        Source::new("AAAA"),
+        style,
+        surgeist_text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let mut system = surgeist_text::System::new(surgeist_text::SystemOptions {
         font_catalogue: surgeist_text::FontCatalogueMode::RegisteredOnly,
     })

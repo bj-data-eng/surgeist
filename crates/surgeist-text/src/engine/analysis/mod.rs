@@ -192,6 +192,7 @@ pub(crate) fn analyze(
     styles: &[AnalyzedStyleRun],
     boxes: &[InlineBox],
     paragraph: &ParagraphData,
+    typography: crate::AnalysisTypography,
 ) -> Result<(Analysis, Vec<Range<usize>>, direction::DirectionBody)> {
     let sources = AnalysisDataSources;
     for (policy, row) in paragraph.boundary_policies.iter().enumerate() {
@@ -367,8 +368,8 @@ pub(crate) fn analyze(
         mandatory = is_hard_separator(atom.code_point);
         infos.push((info, style));
     }
-    let mut original = Vec::with_capacity(infos.len() + paragraph.anchor_order.len());
-    let mut owners = Vec::with_capacity(original.capacity());
+    let mut stream = Vec::with_capacity(infos.len() + paragraph.anchor_order.len());
+    let mut owners = Vec::with_capacity(stream.capacity());
     let positions: Vec<_> = (0..paragraph.anchor_order.len())
         .map(|anchor| anchor_atom(anchor, paragraph, boxes, projection))
         .collect();
@@ -394,11 +395,11 @@ pub(crate) fn analyze(
                 paragraph,
                 boxes,
                 &sources,
-                &mut original,
+                &mut stream,
                 &mut owners,
             );
         }
-        original.push((
+        stream.push((
             atom.glyph,
             (infos[index].0.bidi_class, infos[index].0.bracket),
         ));
@@ -410,26 +411,37 @@ pub(crate) fn analyze(
             paragraph,
             boxes,
             &sources,
-            &mut original,
+            &mut stream,
             &mut owners,
         );
     }
+    // Structural B delimiters are already present at their actual owner cuts.
+    // Reinterpret only the effective stream; original Unicode/control facts
+    // continue to own source, segmentation, invisibility and extraction roles.
+    if typography.is_upright() {
+        for (_, (class, _)) in &mut stream {
+            *class = used_bidi_class(typography, *class);
+        }
+    }
     let direction =
-        direction::DirectionBody::new(original.iter().map(|(_, (class, _))| *class), owners)?;
+        direction::DirectionBody::new(stream.iter().map(|(_, (class, _))| *class), owners)?;
     // Raw Standalone retains one source-wide automatic base. Captured native
     // input supplies its fixed base; neither policy changes across a body B.
-    let base_level = paragraph.base_direction.map_or_else(
-        || BidiResolver::default_level(original.iter().map(|(_, (class, _))| *class)),
-        |direction| direction.level(),
-    );
+    let base_level = if typography.is_upright() {
+        0
+    } else {
+        paragraph.base_direction.map_or_else(
+            || BidiResolver::default_level(stream.iter().map(|(_, (class, _))| *class)),
+            |direction| direction.level(),
+        )
+    };
     let mut levels = vec![base_level; infos.len()];
     let mut box_levels = vec![base_level; boxes.len()];
     let mut control_levels = vec![base_level; paragraph.controls.len()];
     let mut computed_levels = vec![base_level; paragraph.computed_boundaries.len()];
     let mut bidi = BidiResolver::new();
     let mut owner_start = 0;
-    for body in original.split_inclusive(|(_, (class, _))| *class == BidiClass::ParagraphSeparator)
-    {
+    for body in stream.split_inclusive(|(_, (class, _))| *class == BidiClass::ParagraphSeparator) {
         // P1 makes B part of the preceding paragraph. All contextual UBA work,
         // including neutral runs and isolate sequences, stays in this body.
         bidi.resolve(body.iter().copied(), Some(base_level));
@@ -485,6 +497,16 @@ pub(crate) fn analyze(
         word_ranges,
         direction,
     ))
+}
+// Native whole-upright interpretation is shared by actual source characters
+// and participating semantic controls. B is retained as a structural delimiter;
+// L-class projection never changes the original character's rendering role.
+fn used_bidi_class(typography: crate::AnalysisTypography, original: BidiClass) -> BidiClass {
+    if typography.is_upright() && original != BidiClass::ParagraphSeparator {
+        BidiClass::LeftToRight
+    } else {
+        original
+    }
 }
 
 fn style_at(projection: &SourceProjection, styles: &[AnalyzedStyleRun], atom: usize) -> usize {
@@ -672,9 +694,15 @@ mod tests {
         }];
         let mut paragraph = ParagraphData::standalone(&source);
         paragraph.base_direction = base;
-        analyze(&projection, &styles, &[], &paragraph)
-            .expect("actual bidi analysis")
-            .0
+        analyze(
+            &projection,
+            &styles,
+            &[],
+            &paragraph,
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .expect("actual bidi analysis")
+        .0
     }
 
     #[test]
@@ -707,9 +735,12 @@ mod tests {
             assert_eq!(analysis.base_level, expected_base, "{text:?}");
             assert_eq!(analysis.levels.len(), text.chars().count(), "{text:?}");
         }
-        let analyzed =
-            crate::AnalyzedSource::new(crate::Source::new("א\n.A"), crate::Style::default())
-                .expect("raw public analysis");
+        let analyzed = crate::AnalyzedSource::new(
+            crate::Source::new("א\n.A"),
+            crate::Style::default(),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .expect("raw public analysis");
         assert_eq!(analyzed.direction(), crate::Direction::RightToLeft);
         assert_eq!(analyzed.inner.analysis.levels, [1, 1, 1, 2]);
     }
@@ -733,8 +764,12 @@ mod tests {
     fn original_surrogate_and_literal_replacement_choose_distinct_bidi_bases() {
         for (cp, expected) in [(0xd800, 0), (0xfffd, 1)] {
             let source = crate::Source::new(crate::Text::from_code_units(vec![cp, 0x05d0]));
-            let analyzed = crate::AnalyzedSource::new(source, crate::Style::default())
-                .expect("original-property analysis");
+            let analyzed = crate::AnalyzedSource::new(
+                source,
+                crate::Style::default(),
+                crate::AnalysisTypography::HorizontalComposition,
+            )
+            .expect("original-property analysis");
             assert_eq!(analyzed.inner.analysis.base_level, expected);
             assert_eq!(analyzed.inner.analysis.levels.len(), 2);
         }
@@ -755,6 +790,7 @@ mod tests {
             &styles,
             &[],
             &ParagraphData::standalone(&source),
+            crate::AnalysisTypography::HorizontalComposition,
         )
         .expect("original analysis");
         assert_eq!(analysis.base_level, 0);
@@ -776,3 +812,6 @@ mod tests {
         assert_eq!(direction.query(3, 4), Some((Some(0), true)));
     }
 }
+
+#[cfg(test)]
+mod upright_tests;

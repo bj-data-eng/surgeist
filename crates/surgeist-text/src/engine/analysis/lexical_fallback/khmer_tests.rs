@@ -149,6 +149,7 @@ fn khmer_simple_complete_letter_units_gain_only_logical_fallback_for_known_or_un
             let analyzed = AnalyzedSource::new(
                 source(&[0x1780, 0x1781]),
                 style(word_break, crate::LineBreak::Auto, locale),
+                crate::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             assert_eq!(analyzed.source().text().code_units(), [0x1780, 0x1781]);
@@ -182,6 +183,7 @@ fn khmer_manual_preserves_source_and_suppresses_only_missing_lexical_cause() {
     let analyzed = AnalyzedSource::new(
         source(&[0x1780, 0x1781]),
         style(WordBreak::Manual, crate::LineBreak::Auto, Some("km")),
+        crate::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(
@@ -221,8 +223,12 @@ fn post_matra(word_break: WordBreak, line_break: crate::LineBreak) {
             &[4][..],
         ),
     ] {
-        let analyzed =
-            AnalyzedSource::new(source(units), style(word_break, line_break, Some("km"))).unwrap();
+        let analyzed = AnalyzedSource::new(
+            source(units),
+            style(word_break, line_break, Some("km")),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         // Unicode17 editing EGCs remain unchanged. Adopted shared LINE units
         // merge the first two whole EGCs via actual COENG Linker before KHA.
         assert_eq!(analyzed.graphemes().collect::<Vec<_>>(), editing);
@@ -342,7 +348,11 @@ fn captured(
         replacements: vec![],
         anchor_order: anchors,
     };
-    crate::test_wrapping::bind_missing(&AnalyzedSource::from_paragraph(input).unwrap(), ancestor)
+    crate::test_wrapping::bind_missing(
+        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap(),
+        ancestor,
+    )
 }
 
 #[test]
@@ -366,6 +376,7 @@ fn khmer_canonical_gb9c_stacks_and_all_attached_marks_keep_complete_fallback_uni
         let analyzed = AnalyzedSource::new(
             source(units),
             style(WordBreak::Normal, crate::LineBreak::Auto, Some("km")),
+            crate::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(
@@ -428,6 +439,7 @@ fn khmer_post_matra_line_restriction_merges_whole_egcs_transitively_through_incb
             let analyzed = AnalyzedSource::new(
                 source(units),
                 style(word, crate::LineBreak::Auto, Some("km")),
+                crate::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             assert_eq!(analyzed.graphemes().collect::<Vec<_>>(), editing);
@@ -437,6 +449,7 @@ fn khmer_post_matra_line_restriction_merges_whole_egcs_transitively_through_incb
         let analyzed = AnalyzedSource::new(
             source(units),
             style(WordBreak::Manual, crate::LineBreak::Anywhere, Some("km")),
+            crate::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert!(fallback_offsets(&analyzed).is_empty());
@@ -453,6 +466,7 @@ fn khmer_non_extend_interrupts_linker_suffix_and_leading_marks_gain_no_lexical_s
     let analyzed = AnalyzedSource::new(
         source(&units),
         style(WordBreak::Manual, crate::LineBreak::Anywhere, Some("km")),
+        crate::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(
@@ -470,6 +484,7 @@ fn khmer_non_extend_interrupts_linker_suffix_and_leading_marks_gain_no_lexical_s
         let analyzed = AnalyzedSource::new(
             source(units),
             style(WordBreak::Normal, crate::LineBreak::Auto, Some("km")),
+            crate::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert!(fallback_offsets(&analyzed).is_empty(), "{units:x?}");
@@ -480,6 +495,7 @@ fn khmer_non_extend_interrupts_linker_suffix_and_leading_marks_gain_no_lexical_s
     let analyzed = AnalyzedSource::new(
         source(&[0x17d2, 0x1781, 0x1782]),
         style(WordBreak::BreakAll, crate::LineBreak::Auto, Some("km")),
+        crate::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(
@@ -801,7 +817,12 @@ fn khmer_raw_oof_at_protected_offset_cannot_donate_atomic_side_permission() {
             3,
             crate::Size::new(0.0, 0.0),
         ));
-        let analyzed = AnalyzedSource::new(original, style(word, line, Some("km"))).unwrap();
+        let analyzed = AnalyzedSource::new(
+            original,
+            style(word, line, Some("km")),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         assert_eq!(
             analyzed.graphemes().collect::<Vec<_>>(),
             [
@@ -837,6 +858,7 @@ fn khmer_raw_oof_at_protected_offset_cannot_donate_atomic_side_permission() {
     let analyzed = AnalyzedSource::new(
         original,
         style(WordBreak::Manual, crate::LineBreak::Auto, Some("km")),
+        crate::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let prepared = prepare(&analyzed);

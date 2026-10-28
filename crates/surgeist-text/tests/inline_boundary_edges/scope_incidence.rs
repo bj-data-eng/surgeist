@@ -128,7 +128,11 @@ fn prepare_input(value: t::ContextualSourceInput, font: &[u8]) -> Vec<t::Prepare
     processed
         .paragraphs()
         .map(|paragraph| {
-            let a = t::AnalyzedSource::from_processed_paragraph(paragraph).unwrap();
+            let a = t::AnalyzedSource::from_processed_paragraph(
+                paragraph,
+                t::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap();
             let policies = a
                 .wrapping_relations()
                 .filter(|r| r.ancestor_wrap().is_none())
@@ -973,7 +977,12 @@ fn context_custody_errors_are_precise_and_real_domain_holes_stay_distinct() {
         t::WrappingScopeQueryError::ForeignCapture,
     );
 
-    let flat = t::AnalyzedSource::new(t::Source::new("AB"), base()).unwrap();
+    let flat = t::AnalyzedSource::new(
+        t::Source::new("AB"),
+        base(),
+        t::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let mut system = t::System::new(t::SystemOptions {
         font_catalogue: t::FontCatalogueMode::RegisteredOnly,
     })

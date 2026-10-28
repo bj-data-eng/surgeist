@@ -2,7 +2,12 @@ use super::*;
 use crate::*;
 
 fn prepare(bytes: Vec<u8>, source: &str, style: Style) -> PreparedText {
-    let analyzed = AnalyzedSource::new(Source::new(source), style).unwrap();
+    let analyzed = AnalyzedSource::new(
+        Source::new(source),
+        style,
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let mut system = System::new(SystemOptions {
         font_catalogue: FontCatalogueMode::RegisteredOnly,
     })
@@ -123,27 +128,30 @@ fn native(
             affinity: Affinity::Before,
         });
     }
-    let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        source: source.clone(),
-        base_style: style,
-        segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: ParagraphStrut::DefaultFont,
-        origins: vec![ParagraphOrigin {
-            text_node: None,
-            source,
-            local: Range::new(0, len),
-            aggregate: Range::new(0, len),
-            kind: ParagraphOriginKind::Authored,
-        }],
-        connections: vec![],
-        controls,
-        boundary_policies: vec![],
-        replacements,
-        anchor_order,
-    })
+    let analyzed = AnalyzedSource::from_paragraph(
+        ParagraphInput {
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            source: source.clone(),
+            base_style: style,
+            segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: ParagraphStrut::DefaultFont,
+            origins: vec![ParagraphOrigin {
+                text_node: None,
+                source,
+                local: Range::new(0, len),
+                aggregate: Range::new(0, len),
+                kind: ParagraphOriginKind::Authored,
+            }],
+            connections: vec![],
+            controls,
+            boundary_policies: vec![],
+            replacements,
+            anchor_order,
+        },
+        crate::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let mut system = System::new(SystemOptions {
         font_catalogue: FontCatalogueMode::RegisteredOnly,
@@ -260,7 +268,12 @@ fn finalized_prefix_provider_groups_survive_actual_resource_instance_and_plan_ca
     system
         .register_fonts(crate::shaping_test_fonts::ligature_ahem())
         .unwrap();
-    let analyzed = AnalyzedSource::new(Source::new("AA"), style()).unwrap();
+    let analyzed = AnalyzedSource::new(
+        Source::new("AA"),
+        style(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let cold = system
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap();
@@ -313,7 +326,12 @@ fn finalized_prefix_optional_unit_failure_does_not_poison_other_actual_queries()
     source.span(Range::new(0, 1), leading);
     source.span(Range::new(1, 2), joined);
     source.span(Range::new(2, 3), last);
-    let analyzed = AnalyzedSource::new(source, style()).unwrap();
+    let analyzed = AnalyzedSource::new(
+        source,
+        style(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let mut system = System::new(SystemOptions {
         font_catalogue: FontCatalogueMode::RegisteredOnly,
     })
@@ -745,61 +763,64 @@ fn finalized_original_prefix_membership_uses_actual_control_bundle_and_allocated
 
 #[test]
 fn finalized_original_prefix_empty_occurrences_inherit_only_actual_preceding_content() {
-    let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        source: Source::new("A"),
-        base_style: style(),
-        segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: ParagraphStrut::DefaultFont,
-        origins: vec![
-            ParagraphOrigin {
-                text_node: None,
-                source: Source::new(""),
-                local: Range::new(0, 0),
-                aggregate: Range::new(0, 0),
-                kind: ParagraphOriginKind::Authored,
-            },
-            ParagraphOrigin {
-                text_node: None,
-                source: Source::new("A"),
-                local: Range::new(0, 1),
-                aggregate: Range::new(0, 1),
-                kind: ParagraphOriginKind::Authored,
-            },
-            ParagraphOrigin {
-                text_node: None,
-                source: Source::new(""),
-                local: Range::new(0, 0),
-                aggregate: Range::new(1, 1),
-                kind: ParagraphOriginKind::Authored,
-            },
-        ],
-        connections: vec![
-            ParagraphConnection {
-                at: 0,
-                kind: ParagraphConnectionKind::Disconnected,
-            },
-            ParagraphConnection {
-                at: 1,
-                kind: ParagraphConnectionKind::Disconnected,
-            },
-        ],
-        controls: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-        anchor_order: vec![
-            ParagraphAnchor {
-                item: ParagraphAnchorItem::EmptyOrigin(0),
-                affinity: Affinity::Before,
-            },
-            ParagraphAnchor {
-                item: ParagraphAnchorItem::EmptyOrigin(2),
-                affinity: Affinity::After,
-            },
-        ],
-    })
+    let analyzed = AnalyzedSource::from_paragraph(
+        ParagraphInput {
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            source: Source::new("A"),
+            base_style: style(),
+            segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: ParagraphStrut::DefaultFont,
+            origins: vec![
+                ParagraphOrigin {
+                    text_node: None,
+                    source: Source::new(""),
+                    local: Range::new(0, 0),
+                    aggregate: Range::new(0, 0),
+                    kind: ParagraphOriginKind::Authored,
+                },
+                ParagraphOrigin {
+                    text_node: None,
+                    source: Source::new("A"),
+                    local: Range::new(0, 1),
+                    aggregate: Range::new(0, 1),
+                    kind: ParagraphOriginKind::Authored,
+                },
+                ParagraphOrigin {
+                    text_node: None,
+                    source: Source::new(""),
+                    local: Range::new(0, 0),
+                    aggregate: Range::new(1, 1),
+                    kind: ParagraphOriginKind::Authored,
+                },
+            ],
+            connections: vec![
+                ParagraphConnection {
+                    at: 0,
+                    kind: ParagraphConnectionKind::Disconnected,
+                },
+                ParagraphConnection {
+                    at: 1,
+                    kind: ParagraphConnectionKind::Disconnected,
+                },
+            ],
+            controls: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: vec![
+                ParagraphAnchor {
+                    item: ParagraphAnchorItem::EmptyOrigin(0),
+                    affinity: Affinity::Before,
+                },
+                ParagraphAnchor {
+                    item: ParagraphAnchorItem::EmptyOrigin(2),
+                    affinity: Affinity::After,
+                },
+            ],
+        },
+        crate::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let mut system = System::new(SystemOptions {
         font_catalogue: FontCatalogueMode::RegisteredOnly,

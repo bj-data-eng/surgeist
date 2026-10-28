@@ -69,7 +69,8 @@ fn system_with(bytes: Vec<u8>) -> System {
 }
 fn analyze(value: ParagraphInput) -> AnalyzedSource {
     crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(value).unwrap(),
+        &AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap(),
         crate::Wrap::Word,
     )
 }

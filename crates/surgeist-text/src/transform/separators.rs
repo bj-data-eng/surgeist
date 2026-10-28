@@ -795,12 +795,15 @@ mod tests {
                 word_space_transform: operation,
                 ..base.clone()
             };
-            let a = AnalyzedSource::from_paragraph(capture(
-                "ΟΣΑ",
-                base.clone(),
-                own,
-                ParagraphBaseDirection::LeftToRight,
-            ))
+            let a = AnalyzedSource::from_paragraph(
+                capture(
+                    "ΟΣΑ",
+                    base.clone(),
+                    own,
+                    ParagraphBaseDirection::LeftToRight,
+                ),
+                crate::AnalysisTypography::HorizontalComposition,
+            )
             .unwrap();
             assert_eq!(a.inner.projection.text, expected);
             assert_eq!(a.inner.transform.rows.len(), 3);
@@ -821,12 +824,15 @@ mod tests {
             word_space_transform: WordSpaceTransform::Space,
             ..Style::default()
         };
-        let a = AnalyzedSource::from_paragraph(capture(
-            "אA",
-            Style::default(),
-            own,
-            ParagraphBaseDirection::RightToLeft,
-        ))
+        let a = AnalyzedSource::from_paragraph(
+            capture(
+                "אA",
+                Style::default(),
+                own,
+                ParagraphBaseDirection::RightToLeft,
+            ),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap();
         assert_eq!(a.inner.projection.text, "א A");
         assert_eq!(a.inner.analysis.levels, [1, 1, 2]);
@@ -846,12 +852,15 @@ mod tests {
             size: f32::NAN,
             ..Style::default()
         };
-        let error = AnalyzedSource::from_paragraph(capture(
-            "AA",
-            Style::default(),
-            own,
-            ParagraphBaseDirection::LeftToRight,
-        ))
+        let error = AnalyzedSource::from_paragraph(
+            capture(
+                "AA",
+                Style::default(),
+                own,
+                ParagraphBaseDirection::LeftToRight,
+            ),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap_err();
         assert_eq!(error.code, ErrorCode::InvalidStyle);
     }
@@ -925,7 +934,11 @@ mod barrier_tests {
     }
 
     fn atomic_order(before: bool) -> AnalyzedSource {
-        AnalyzedSource::from_paragraph(atomic_input(before)).unwrap()
+        AnalyzedSource::from_paragraph(
+            atomic_input(before),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap()
     }
 
     #[test]
@@ -971,7 +984,8 @@ mod barrier_tests {
                 ancestor_wrap: Wrap::Word,
             });
         }
-        let a = AnalyzedSource::from_paragraph(p).unwrap();
+        let a = AnalyzedSource::from_paragraph(p, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
         assert_eq!(a.inner.projection.text, "A \u{3099}");
         assert_eq!(a.inner.projection.barriers, [1]);
         assert_eq!(a.inner.projection.barrier_atoms, [1, 2]);

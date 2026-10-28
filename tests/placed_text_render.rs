@@ -130,36 +130,39 @@ fn assert_css_tab_composition(tab_size: text::TabSize, block_spacing: f64, b_x: 
         ..text::Style::default()
     };
     let ancestor_wrap = style.wrap;
-    let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-        terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: Some(
-            text::ParagraphTabReference::new(
-                text::Style {
-                    word_spacing: block_spacing,
-                    ..style.clone()
-                },
-                text::ParagraphBaseDirection::LeftToRight,
-            )
-            .unwrap(),
-        ),
-        source: source.clone(),
-        base_style: style,
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: text::ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: text::ParagraphStrut::DefaultFont,
-        origins: vec![text::ParagraphOrigin {
-            text_node: None,
+    let analyzed = text::AnalyzedSource::from_paragraph(
+        text::ParagraphInput {
+            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: Some(
+                text::ParagraphTabReference::new(
+                    text::Style {
+                        word_spacing: block_spacing,
+                        ..style.clone()
+                    },
+                    text::ParagraphBaseDirection::LeftToRight,
+                )
+                .unwrap(),
+            ),
             source: source.clone(),
-            local: text::Range::new(0, 3),
-            aggregate: text::Range::new(0, 3),
-            kind: text::ParagraphOriginKind::Authored,
-        }],
-        connections: vec![],
-        controls: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-        anchor_order: vec![],
-    })
+            base_style: style,
+            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            origins: vec![text::ParagraphOrigin {
+                text_node: None,
+                source: source.clone(),
+                local: text::Range::new(0, 3),
+                aggregate: text::Range::new(0, 3),
+                kind: text::ParagraphOriginKind::Authored,
+            }],
+            connections: vec![],
+            controls: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: vec![],
+        },
+        text::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let policies = analyzed
         .wrapping_relations()
@@ -359,23 +362,29 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
             })
             .collect();
         assert_eq!(plaintext, "A X".encode_utf16().collect::<Vec<_>>());
-        text::AnalyzedSource::from_processed_paragraph(paragraph)
+        text::AnalyzedSource::from_processed_paragraph(
+            paragraph,
+            text::AnalysisTypography::HorizontalComposition,
+        )
     } else {
-        text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-            tab_reference: None,
-            source: source.clone(),
-            base_style: style,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
-            origins,
-            connections: vec![],
-            controls: vec![],
-            boundary_policies: vec![],
-            replacements: vec![],
-            anchor_order: vec![],
-        })
+        text::AnalyzedSource::from_paragraph(
+            text::ParagraphInput {
+                terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+                tab_reference: None,
+                source: source.clone(),
+                base_style: style,
+                segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+                base_direction: text::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: text::ParagraphStrut::DefaultFont,
+                origins,
+                connections: vec![],
+                controls: vec![],
+                boundary_policies: vec![],
+                replacements: vec![],
+                anchor_order: vec![],
+            },
+            text::AnalysisTypography::HorizontalComposition,
+        )
     }
     .unwrap();
     // This fixture's text belongs to the single inline box in Tree. Its
@@ -674,27 +683,30 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
         ..text::Style::default()
     };
     let ancestor_wrap = style.wrap;
-    let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-        source: source.clone(),
-        base_style: style,
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: text::ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: text::ParagraphStrut::DefaultFont,
-        terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        origins: vec![text::ParagraphOrigin {
-            text_node: None,
+    let analyzed = text::AnalyzedSource::from_paragraph(
+        text::ParagraphInput {
             source: source.clone(),
-            local: text::Range::new(0, 6),
-            aggregate: text::Range::new(0, 6),
-            kind: text::ParagraphOriginKind::Authored,
-        }],
-        connections: vec![],
-        controls: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-        anchor_order: vec![],
-    })
+            base_style: style,
+            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            origins: vec![text::ParagraphOrigin {
+                text_node: None,
+                source: source.clone(),
+                local: text::Range::new(0, 6),
+                aggregate: text::Range::new(0, 6),
+                kind: text::ParagraphOriginKind::Authored,
+            }],
+            connections: vec![],
+            controls: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: vec![],
+        },
+        text::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let policies = analyzed
         .wrapping_relations()
@@ -1076,27 +1088,30 @@ mod kana_transform {
             ..style
         };
         let ancestor_wrap = style.wrap;
-        let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-            source: source.clone(),
-            base_style: style,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-            tab_reference: None,
-            origins: vec![text::ParagraphOrigin {
-                text_node: None,
+        let analyzed = text::AnalyzedSource::from_paragraph(
+            text::ParagraphInput {
                 source: source.clone(),
-                local: text::Range::new(0, 4),
-                aggregate: text::Range::new(0, 4),
-                kind: text::ParagraphOriginKind::Authored,
-            }],
-            connections: vec![],
-            controls: vec![],
-            boundary_policies: vec![],
-            replacements: vec![],
-            anchor_order: vec![],
-        })
+                base_style: style,
+                segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+                base_direction: text::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: text::ParagraphStrut::DefaultFont,
+                terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+                tab_reference: None,
+                origins: vec![text::ParagraphOrigin {
+                    text_node: None,
+                    source: source.clone(),
+                    local: text::Range::new(0, 4),
+                    aggregate: text::Range::new(0, 4),
+                    kind: text::ParagraphOriginKind::Authored,
+                }],
+                connections: vec![],
+                controls: vec![],
+                boundary_policies: vec![],
+                replacements: vec![],
+                anchor_order: vec![],
+            },
+            text::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap();
         assert_eq!(
             analyzed.processed_source().processed_text().code_units(),

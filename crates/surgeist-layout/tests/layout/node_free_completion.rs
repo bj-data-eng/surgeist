@@ -133,9 +133,11 @@ impl<S: l::LayoutScalar> Fixture<S> {
         assert!(capture.captured_origin(0).is_none());
         assert!(capture.captured_control(0).is_none());
         assert!(capture.captured_atomic(0).is_none());
-        let analyzed =
-            t::AnalyzedSource::from_processed_paragraph(capture.paragraphs().next().unwrap())
-                .unwrap();
+        let analyzed = t::AnalyzedSource::from_processed_paragraph(
+            capture.paragraphs().next().unwrap(),
+            t::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let missing = analyzed
             .wrapping_relations()
             .filter(|r| r.ancestor_wrap().is_none())
@@ -678,7 +680,11 @@ impl<S: l::LayoutScalar> SharedGap<S> {
         let prepared = capture
             .paragraphs()
             .map(|paragraph| {
-                let analyzed = t::AnalyzedSource::from_processed_paragraph(paragraph).unwrap();
+                let analyzed = t::AnalyzedSource::from_processed_paragraph(
+                    paragraph,
+                    t::AnalysisTypography::HorizontalComposition,
+                )
+                .unwrap();
                 let policies = analyzed
                     .wrapping_relations()
                     .filter(|row| row.ancestor_wrap().is_none())
@@ -1197,7 +1203,11 @@ impl<S: l::LayoutScalar> BlockFence<S> {
         let prepared = capture
             .paragraphs()
             .map(|paragraph| {
-                let analyzed = t::AnalyzedSource::from_processed_paragraph(paragraph).unwrap();
+                let analyzed = t::AnalyzedSource::from_processed_paragraph(
+                    paragraph,
+                    t::AnalysisTypography::HorizontalComposition,
+                )
+                .unwrap();
                 let policies = analyzed
                     .wrapping_relations()
                     .filter(|row| row.ancestor_wrap().is_none())
@@ -1869,9 +1879,11 @@ impl<S: l::LayoutScalar> Fixture<S> {
             capture.captured_scope(1).unwrap(),
             capture.captured_scope(2).unwrap(),
         ];
-        let analyzed =
-            t::AnalyzedSource::from_processed_paragraph(capture.paragraphs().next().unwrap())
-                .unwrap();
+        let analyzed = t::AnalyzedSource::from_processed_paragraph(
+            capture.paragraphs().next().unwrap(),
+            t::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let policies = analyzed
             .wrapping_relations()
             .filter(|row| row.ancestor_wrap().is_none())

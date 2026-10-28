@@ -125,9 +125,11 @@ fn captured_pair(system: &mut text::System) -> text::PreparedText {
     );
     assert_eq!(processed.source(), &source);
     assert_eq!(processed.processed_text(), &text::Text::from("AA"));
-    let analyzed =
-        text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-            .unwrap();
+    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())

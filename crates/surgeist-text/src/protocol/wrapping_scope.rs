@@ -264,7 +264,9 @@ mod tests {
                 affinity: Affinity::After,
             }],
         };
-        let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+        let analyzed =
+            AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+                .unwrap();
         let mut system = System::new(SystemOptions {
             font_catalogue: FontCatalogueMode::RegisteredOnly,
         })

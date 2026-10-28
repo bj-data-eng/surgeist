@@ -767,7 +767,12 @@ fn leading_float_uses_the_actual_legal_break_reshaped_association() {
         word_break: text::WordBreak::BreakAll,
         ..text::Style::default()
     };
-    let analyzed = text::AnalyzedSource::new(Source::new("AA"), style).unwrap();
+    let analyzed = text::AnalyzedSource::new(
+        Source::new("AA"),
+        style,
+        text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let mut fonts = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,
     })

@@ -59,30 +59,33 @@ fn a_finite_pair_with_unrepresentable_consumed_content_width_fails_numerically()
 fn geometry_search_identity_keeps_insets_while_conditional_selection_accepts_a_new_trial_frame() {
     let mut system = system();
     let source = Source::new("AAA");
-    let analyzed = crate::AnalyzedSource::from_paragraph(ParagraphInput {
-        source: source.clone(),
-        base_style: Style {
-            overflow_wrap: OverflowWrap::Anywhere,
-            ..style()
+    let analyzed = crate::AnalyzedSource::from_paragraph(
+        ParagraphInput {
+            source: source.clone(),
+            base_style: Style {
+                overflow_wrap: OverflowWrap::Anywhere,
+                ..style()
+            },
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            paragraph_strut: ParagraphStrut::DefaultFont,
+            tab_reference: None,
+            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: ParagraphBaseDirection::LeftToRight,
+            origins: vec![paragraph::ParagraphOrigin {
+                text_node: None,
+                source,
+                local: crate::Range::new(0, 3),
+                aggregate: crate::Range::new(0, 3),
+                kind: paragraph::ParagraphOriginKind::Authored,
+            }],
+            connections: Vec::new(),
+            controls: Vec::new(),
+            boundary_policies: Vec::new(),
+            replacements: Vec::new(),
+            anchor_order: Vec::new(),
         },
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-        paragraph_strut: ParagraphStrut::DefaultFont,
-        tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: ParagraphBaseDirection::LeftToRight,
-        origins: vec![paragraph::ParagraphOrigin {
-            text_node: None,
-            source,
-            local: crate::Range::new(0, 3),
-            aggregate: crate::Range::new(0, 3),
-            kind: paragraph::ParagraphOriginKind::Authored,
-        }],
-        connections: Vec::new(),
-        controls: Vec::new(),
-        boundary_policies: Vec::new(),
-        replacements: Vec::new(),
-        anchor_order: Vec::new(),
-    })
+        crate::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let p = system
         .prepare(

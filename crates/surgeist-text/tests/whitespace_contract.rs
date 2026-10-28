@@ -114,7 +114,11 @@ fn collapsed_space_cuts(first: text::Wrap, second: text::Wrap, ancestor: text::W
         paragraph.source_pieces().collect::<Vec<_>>(),
         [text::Range::new(0, 2), text::Range::new(2, 4)]
     );
-    let analyzed = text::AnalyzedSource::from_processed_paragraph(paragraph).unwrap();
+    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+        paragraph,
+        text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let prepared = system(AHEM)
         .prepare(&analyzed, text::PreparationOptions::default())
         .unwrap();
@@ -301,27 +305,30 @@ struct Rendered {
 fn rendered(bytes: &[u8], value: &str) -> Rendered {
     let source = text::Source::new(value);
     let end = source.text().len();
-    let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-        source: source.clone(),
-        base_style: style(text::Wrap::Word),
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: text::ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: text::ParagraphStrut::DefaultFont,
-        terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        origins: vec![text::ParagraphOrigin {
-            text_node: None,
-            source,
-            local: text::Range::new(0, end),
-            aggregate: text::Range::new(0, end),
-            kind: text::ParagraphOriginKind::Authored,
-        }],
-        connections: vec![],
-        controls: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-        anchor_order: vec![],
-    })
+    let analyzed = text::AnalyzedSource::from_paragraph(
+        text::ParagraphInput {
+            source: source.clone(),
+            base_style: style(text::Wrap::Word),
+            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            origins: vec![text::ParagraphOrigin {
+                text_node: None,
+                source,
+                local: text::Range::new(0, end),
+                aggregate: text::Range::new(0, end),
+                kind: text::ParagraphOriginKind::Authored,
+            }],
+            connections: vec![],
+            controls: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: vec![],
+        },
+        text::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let prepared = system(bytes)
         .prepare(&analyzed, text::PreparationOptions::default())

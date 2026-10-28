@@ -679,6 +679,42 @@ provider reference conversion precisely refuses `NotHalfUnit`; it is not rounded
 or treated as malformed. Whole-upright analysis, shaping, placement and consumer
 adapters retain their separate capability boundaries.
 
+## Source typography and upright analysis
+
+All three analysis fronts require `AnalysisTypography`: `AnalyzedSource::new`,
+`from_paragraph` and `from_processed_paragraph`. `HorizontalComposition` retains
+the current Unicode interpretation used for horizontal and clockwise-sideways
+composition. `Upright { computed_direction }` retains an actual computed LTR/RTL
+paragraph direction while resolving used LTR before the bidi algorithm.
+`typography()` returns that retained authority; `direction()` returns the used
+paragraph direction. No font catalogue or glyph shaping is needed.
+
+Whole-upright analysis applies the [native interpretation](../../../references/text-upright-bidi--native-determination.md)
+to original/transformed characters and participating captured formatting controls
+in the same actual stream. Directional instructions become inert L-class inputs;
+raw Unicode properties, invisibility/removal, source/occurrence identity and
+capture order remain unchanged. Surviving B separators, genuine Forced controls
+and computed boundaries establish their real body cuts before interpretation,
+including the terminal empty context. There is no final-level overwrite or
+fabricated strong character in a genuine empty body.
+
+A captured paragraph `base_direction` is an already-resolved used authority.
+Upright rejects a contradictory RTL claim with a BaseDirection context mismatch.
+Its separately retained computedRTL input is valid with captured usedLTR;
+existing `Style.direction` admission is unchanged. A nearest-block tab reference
+is independent of paragraph bidi and may retain its own RTL direction. Raw
+standalone analysis has no contradictory fixed base to replace.
+
+Analysis clones and wrapping-derived contexts preserve the executed semantic
+core and typography; their existing allocation/foreign-handle rules remain.
+Logical source accessibility keeps actual original text/cursor/selection custody
+without claiming placed geometry. Upright analysis cannot prepare horizontal or
+sideways text: those new combinations return an Orientation context mismatch.
+Matching Vertical preparation remains precisely unsupported; old horizontal
+analysis with Vertical retains its original unsupported-context diagnostic.
+Generated indication bidi, upright shaping/metrics, placement, interaction and
+Layout/Render consumers remain separate capabilities.
+
 ## Defaults and validation
 
 `Options::default()` has no width constraint, scale `1.0`, start alignment,
@@ -715,7 +751,7 @@ once before returning the edited source. At `u64::MAX` it returns
 changing text, spans, or inline-box anchors. Retained sources and layouts remain
 unchanged. `SourceRevision::checked_next` returns `None` at exhaustion.
 
-`AnalyzedSource::new(Source, Style)` captures the original source and effective
+`AnalyzedSource::new(Source, Style, typography)` captures the original source and effective
 style winners once, without fonts. The post-Phase-I transform phase executes
 before semantic Unicode analysis. `Style::word_space_transform` independently
 selects `WordSpaceTransform::{None, Space, IdeographicSpace, SpaceAutoPhrase,

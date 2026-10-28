@@ -234,6 +234,7 @@ fn shape(value: &str, features: &[&str], expected_id: u32, expected_level: u8) {
             line_height: LineHeight::Absolute(10.0),
             ..Style::default()
         },
+        crate::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(

@@ -136,8 +136,11 @@ fn census_counts_computed_admission_facts_before_local_index_and_only_once() {
     let source = processed(true);
     let captured = source.captured_scope(1).unwrap();
     assert!(captured.capture.canonical.0.lock().unwrap().is_some());
-    let analyzed =
-        AnalyzedSource::from_processed_paragraph(source.paragraphs().next().unwrap()).unwrap();
+    let analyzed = AnalyzedSource::from_processed_paragraph(
+        source.paragraphs().next().unwrap(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert!(analyzed.inner.scope_cuts.get().is_none());
     let mut census = crate::engine::analysis::scope::IndexPayloadCensus::default();
     census.analyzed(&analyzed.inner.core);

@@ -1159,8 +1159,11 @@ fn actual_text_unknown<S: l::LayoutScalar>() {
         })
         .unwrap(),
     );
-    let analyzed =
-        t::AnalyzedSource::from_processed_paragraph(capture.paragraphs().next().unwrap()).unwrap();
+    let analyzed = t::AnalyzedSource::from_processed_paragraph(
+        capture.paragraphs().next().unwrap(),
+        t::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let wrapping = analyzed
         .wrapping_relations()
         .filter(|r| r.ancestor_wrap().is_none())
@@ -2302,8 +2305,11 @@ fn packet_text_float_binding() -> l::TextParagraphBinding<u32> {
         })
         .unwrap(),
     );
-    let analyzed =
-        t::AnalyzedSource::from_processed_paragraph(capture.paragraphs().next().unwrap()).unwrap();
+    let analyzed = t::AnalyzedSource::from_processed_paragraph(
+        capture.paragraphs().next().unwrap(),
+        t::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let wrapping = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())

@@ -49,13 +49,21 @@ fn capture(operation: WordSpaceTransform) -> ParagraphInput {
 }
 #[test]
 fn none_wbr_with_real_neutral_inline_edges_keeps_valid_capture_order() {
-    let a = AnalyzedSource::from_paragraph(capture(WordSpaceTransform::None)).unwrap();
+    let a = AnalyzedSource::from_paragraph(
+        capture(WordSpaceTransform::None),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(a.inner.projection.text, "A\u{3099}");
     assert_eq!(a.source().text().code_units(), [0x41, 0x3099]);
 }
 #[test]
 fn positive_wbr_with_real_neutral_inline_edges_keeps_valid_capture_order() {
-    let a = AnalyzedSource::from_paragraph(capture(WordSpaceTransform::Space)).unwrap();
+    let a = AnalyzedSource::from_paragraph(
+        capture(WordSpaceTransform::Space),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(a.inner.projection.text, "A \u{3099}");
     assert_eq!(a.inner.projection.graphemes, [0, 1, 3]);
     assert_eq!(a.source().text().code_units(), [0x41, 0x3099]);
@@ -107,7 +115,9 @@ fn different_source_cuts_in_one_old_egc_use_rebuilt_typography_without_reorderin
                         TextTransform::Set(TextTransformSet::none().with_full_width(true));
                 }
             }
-            let a = AnalyzedSource::from_paragraph(p).unwrap();
+            let a =
+                AnalyzedSource::from_paragraph(p, crate::AnalysisTypography::HorizontalComposition)
+                    .unwrap();
             let expected = if operation == WordSpaceTransform::None {
                 "a\u{3099}\u{3099}"
             } else if reverse {
@@ -186,7 +196,11 @@ fn no_emission_retains_phase_i_replacement_projection_but_positive_interior_seam
             // Physical Start2 is inside the one executed Phase-I replacement
             // of source1..3. It has no exact emitted side, independently of
             // whether the Wbr would emit or be suppressed by a forced break.
-            let error = AnalyzedSource::from_paragraph(p.clone()).unwrap_err();
+            let error = AnalyzedSource::from_paragraph(
+                p.clone(),
+                crate::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap_err();
             assert_eq!(error.code, ErrorCode::InvalidTextProtocol);
             assert_eq!(
                 error.detail(),
@@ -198,7 +212,8 @@ fn no_emission_retains_phase_i_replacement_projection_but_positive_interior_seam
             // but put physical Start at its genuine boundary1. This retains
             // independent coverage of Wbr no-emission and positive refusal.
             p.controls[0].at = 1;
-            let a = AnalyzedSource::from_paragraph(p);
+            let a =
+                AnalyzedSource::from_paragraph(p, crate::AnalysisTypography::HorizontalComposition);
             if operation == WordSpaceTransform::Space && mode == WhiteSpace::PreserveSpaces {
                 let error = a.unwrap_err();
                 assert_eq!(error.code, ErrorCode::UnsupportedFeature);
@@ -241,7 +256,8 @@ fn crossing_requested_typographic_affinities_refuse_with_typed_order_error() {
     // Wbr After1 projects to3, but the later physical Start remains exact2
     // regardless of Before affinity. The requested cuts still cross: 3 > 2.
     p.anchor_order[0].affinity = Affinity::After;
-    let error = AnalyzedSource::from_paragraph(p).unwrap_err();
+    let error = AnalyzedSource::from_paragraph(p, crate::AnalysisTypography::HorizontalComposition)
+        .unwrap_err();
     assert_eq!(error.code, ErrorCode::InvalidTextProtocol);
     assert!(matches!(
         error.detail(),

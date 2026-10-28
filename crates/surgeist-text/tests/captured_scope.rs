@@ -62,7 +62,11 @@ fn prepare(processed: &Arc<ProcessedSource>) -> Vec<PreparedText> {
     processed
         .paragraphs()
         .map(|paragraph| {
-            let analyzed = AnalyzedSource::from_processed_paragraph(paragraph).unwrap();
+            let analyzed = AnalyzedSource::from_processed_paragraph(
+                paragraph,
+                surgeist_text::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap();
             let policies = analyzed
                 .wrapping_relations()
                 .filter(|relation| relation.ancestor_wrap().is_none())
@@ -560,7 +564,12 @@ fn empty_nested_owners_keep_distinct_same_anchor_endpoints_without_emitting() {
 
 #[test]
 fn standalone_preparation_does_not_acquire_contextual_authority() {
-    let analyzed = AnalyzedSource::new(Source::new("X"), style(WordSpaceTransform::None)).unwrap();
+    let analyzed = AnalyzedSource::new(
+        Source::new("X"),
+        style(WordSpaceTransform::None),
+        surgeist_text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let prepared = system()
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap();

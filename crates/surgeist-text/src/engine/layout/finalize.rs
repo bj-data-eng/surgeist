@@ -2180,44 +2180,47 @@ mod tests {
                 affinity: crate::Affinity::Before,
             });
         }
-        let analyzed = crate::AnalyzedSource::from_paragraph(ParagraphInput {
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-            tab_reference: None,
-            source: source.clone(),
-            base_style: style,
-            segment_breaks: crate::DocumentSegmentBreaks::Defined(Vec::new()),
-            paragraph_strut: ParagraphStrut::DefaultFont,
-            base_direction: ParagraphBaseDirection::LeftToRight,
-            origins: vec![ParagraphOrigin {
-                text_node: None,
-                source,
-                local: crate::Range::new(0, source_len),
-                aggregate: crate::Range::new(0, source_len),
-                kind: ParagraphOriginKind::Authored,
-            }],
-            connections: Vec::new(),
-            controls: control
-                .map(|kind| vec![ParagraphControl { at: 0, kind }])
-                .unwrap_or_default(),
-            boundary_policies: if atomic == Some(crate::InlineBoxKind::InFlow) {
-                [
-                    ParagraphBoundaryDefinition::AtomicBefore(0),
-                    ParagraphBoundaryDefinition::AtomicAfter(0),
-                ]
-                .into_iter()
-                .map(|definition| ParagraphBoundaryPolicy {
-                    definition,
-                    preceding_wrap: crate::Wrap::Word,
-                    following_wrap: crate::Wrap::Word,
-                    ancestor_wrap: crate::Wrap::Word,
-                })
-                .collect()
-            } else {
-                Vec::new()
+        let analyzed = crate::AnalyzedSource::from_paragraph(
+            ParagraphInput {
+                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                tab_reference: None,
+                source: source.clone(),
+                base_style: style,
+                segment_breaks: crate::DocumentSegmentBreaks::Defined(Vec::new()),
+                paragraph_strut: ParagraphStrut::DefaultFont,
+                base_direction: ParagraphBaseDirection::LeftToRight,
+                origins: vec![ParagraphOrigin {
+                    text_node: None,
+                    source,
+                    local: crate::Range::new(0, source_len),
+                    aggregate: crate::Range::new(0, source_len),
+                    kind: ParagraphOriginKind::Authored,
+                }],
+                connections: Vec::new(),
+                controls: control
+                    .map(|kind| vec![ParagraphControl { at: 0, kind }])
+                    .unwrap_or_default(),
+                boundary_policies: if atomic == Some(crate::InlineBoxKind::InFlow) {
+                    [
+                        ParagraphBoundaryDefinition::AtomicBefore(0),
+                        ParagraphBoundaryDefinition::AtomicAfter(0),
+                    ]
+                    .into_iter()
+                    .map(|definition| ParagraphBoundaryPolicy {
+                        definition,
+                        preceding_wrap: crate::Wrap::Word,
+                        following_wrap: crate::Wrap::Word,
+                        ancestor_wrap: crate::Wrap::Word,
+                    })
+                    .collect()
+                } else {
+                    Vec::new()
+                },
+                replacements: Vec::new(),
+                anchor_order,
             },
-            replacements: Vec::new(),
-            anchor_order,
-        })
+            crate::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap();
         let mut system = System::new(SystemOptions {
             font_catalogue: FontCatalogueMode::RegisteredOnly,
@@ -2621,35 +2624,38 @@ mod tests {
             0,
             crate::Size::new(4.0, 4.0),
         ));
-        let analyzed = crate::AnalyzedSource::from_paragraph(ParagraphInput {
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-            tab_reference: None,
-            source,
-            base_style: Style::default(),
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-            paragraph_strut: crate::ParagraphStrut::AllocatedContributions,
-            base_direction: ParagraphBaseDirection::LeftToRight,
-            origins: vec![],
-            connections: vec![],
-            controls: vec![],
-            replacements: vec![],
-            boundary_policies: [
-                ParagraphBoundaryDefinition::AtomicBefore(0),
-                ParagraphBoundaryDefinition::AtomicAfter(0),
-            ]
-            .into_iter()
-            .map(|definition| ParagraphBoundaryPolicy {
-                definition,
-                preceding_wrap: crate::Wrap::Word,
-                following_wrap: crate::Wrap::Word,
-                ancestor_wrap: crate::Wrap::Word,
-            })
-            .collect(),
-            anchor_order: vec![ParagraphAnchor {
-                item: ParagraphAnchorItem::Atomic(0),
-                affinity: crate::Affinity::Before,
-            }],
-        })
+        let analyzed = crate::AnalyzedSource::from_paragraph(
+            ParagraphInput {
+                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                tab_reference: None,
+                source,
+                base_style: Style::default(),
+                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                paragraph_strut: crate::ParagraphStrut::AllocatedContributions,
+                base_direction: ParagraphBaseDirection::LeftToRight,
+                origins: vec![],
+                connections: vec![],
+                controls: vec![],
+                replacements: vec![],
+                boundary_policies: [
+                    ParagraphBoundaryDefinition::AtomicBefore(0),
+                    ParagraphBoundaryDefinition::AtomicAfter(0),
+                ]
+                .into_iter()
+                .map(|definition| ParagraphBoundaryPolicy {
+                    definition,
+                    preceding_wrap: crate::Wrap::Word,
+                    following_wrap: crate::Wrap::Word,
+                    ancestor_wrap: crate::Wrap::Word,
+                })
+                .collect(),
+                anchor_order: vec![ParagraphAnchor {
+                    item: ParagraphAnchorItem::Atomic(0),
+                    affinity: crate::Affinity::Before,
+                }],
+            },
+            crate::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap();
         // No font is registered or requested: the sole actual allocation owns
         // all metrics, including its used negative outer margins.
@@ -3047,47 +3053,50 @@ mod tests {
                 kind: ParagraphOriginKind::Authored,
             })
             .collect();
-        let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-            tab_reference: None,
-            source: source.clone(),
-            base_style: Style {
-                white_space: WhiteSpace::Collapse,
-                wrap: crate::Wrap::Word,
-                ..ahem_strut(16.0, 20.0)
-            },
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: ParagraphBaseDirection::RightToLeft,
-            paragraph_strut: ParagraphStrut::DefaultFont,
-            origins,
-            connections: [1, 5]
-                .map(|at| ParagraphConnection {
-                    at,
-                    kind: ParagraphConnectionKind::Continuous,
-                })
+        let analyzed = AnalyzedSource::from_paragraph(
+            ParagraphInput {
+                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                tab_reference: None,
+                source: source.clone(),
+                base_style: Style {
+                    white_space: WhiteSpace::Collapse,
+                    wrap: crate::Wrap::Word,
+                    ..ahem_strut(16.0, 20.0)
+                },
+                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                base_direction: ParagraphBaseDirection::RightToLeft,
+                paragraph_strut: ParagraphStrut::DefaultFont,
+                origins,
+                connections: [1, 5]
+                    .map(|at| ParagraphConnection {
+                        at,
+                        kind: ParagraphConnectionKind::Continuous,
+                    })
+                    .to_vec(),
+                controls: [
+                    (1, ParagraphControlKind::InlineBoundaryStart),
+                    (5, ParagraphControlKind::InlineBoundaryEnd),
+                ]
+                .map(|(at, kind)| ParagraphControl { at, kind })
                 .to_vec(),
-            controls: [
-                (1, ParagraphControlKind::InlineBoundaryStart),
-                (5, ParagraphControlKind::InlineBoundaryEnd),
-            ]
-            .map(|(at, kind)| ParagraphControl { at, kind })
-            .to_vec(),
-            boundary_policies: (0..2)
-                .map(|index| ParagraphBoundaryPolicy {
-                    definition: ParagraphBoundaryDefinition::Connection(index),
-                    preceding_wrap: crate::Wrap::Word,
-                    following_wrap: crate::Wrap::Word,
-                    ancestor_wrap: crate::Wrap::Word,
-                })
-                .collect(),
-            replacements: vec![],
-            anchor_order: (0..2)
-                .map(|index| ParagraphAnchor {
-                    item: ParagraphAnchorItem::Control(index),
-                    affinity: Affinity::Before,
-                })
-                .collect(),
-        })
+                boundary_policies: (0..2)
+                    .map(|index| ParagraphBoundaryPolicy {
+                        definition: ParagraphBoundaryDefinition::Connection(index),
+                        preceding_wrap: crate::Wrap::Word,
+                        following_wrap: crate::Wrap::Word,
+                        ancestor_wrap: crate::Wrap::Word,
+                    })
+                    .collect(),
+                replacements: vec![],
+                anchor_order: (0..2)
+                    .map(|index| ParagraphAnchor {
+                        item: ParagraphAnchorItem::Control(index),
+                        affinity: Affinity::Before,
+                    })
+                    .collect(),
+            },
+            crate::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap();
         assert_eq!(analyzed.source().text().code_units(), original);
         assert_eq!(analyzed.inner.analysis.base_level, 1);

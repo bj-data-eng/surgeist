@@ -74,53 +74,56 @@ fn capture(
     } else {
         vec![]
     };
-    let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-        source: source.clone(),
-        base_style: style.clone(),
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: text::ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: text::ParagraphStrut::DefaultFont,
-        terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        origins,
-        connections: if shared_mark {
-            vec![text::ParagraphConnection {
-                at: 1,
-                kind: text::ParagraphConnectionKind::Continuous,
-            }]
-        } else {
-            vec![]
+    let analyzed = text::AnalyzedSource::from_paragraph(
+        text::ParagraphInput {
+            source: source.clone(),
+            base_style: style.clone(),
+            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            origins,
+            connections: if shared_mark {
+                vec![text::ParagraphConnection {
+                    at: 1,
+                    kind: text::ParagraphConnectionKind::Continuous,
+                }]
+            } else {
+                vec![]
+            },
+            boundary_policies: if shared_mark {
+                vec![text::ParagraphBoundaryPolicy {
+                    definition: text::ParagraphBoundaryDefinition::Connection(0),
+                    preceding_wrap: style.wrap,
+                    following_wrap: style.wrap,
+                    ancestor_wrap: style.wrap,
+                }]
+            } else {
+                vec![]
+            },
+            controls: replacements
+                .iter()
+                .map(|&replacement| text::ParagraphControl {
+                    at,
+                    kind: text::ParagraphControlKind::Wbr {
+                        style: Box::new(text::Style {
+                            word_space_transform: replacement,
+                            ..style.clone()
+                        }),
+                    },
+                })
+                .collect(),
+            anchor_order: (0..replacements.len())
+                .map(|index| text::ParagraphAnchor {
+                    item: text::ParagraphAnchorItem::Control(index),
+                    affinity: text::Affinity::After,
+                })
+                .collect(),
+            replacements: vec![],
         },
-        boundary_policies: if shared_mark {
-            vec![text::ParagraphBoundaryPolicy {
-                definition: text::ParagraphBoundaryDefinition::Connection(0),
-                preceding_wrap: style.wrap,
-                following_wrap: style.wrap,
-                ancestor_wrap: style.wrap,
-            }]
-        } else {
-            vec![]
-        },
-        controls: replacements
-            .iter()
-            .map(|&replacement| text::ParagraphControl {
-                at,
-                kind: text::ParagraphControlKind::Wbr {
-                    style: Box::new(text::Style {
-                        word_space_transform: replacement,
-                        ..style.clone()
-                    }),
-                },
-            })
-            .collect(),
-        anchor_order: (0..replacements.len())
-            .map(|index| text::ParagraphAnchor {
-                item: text::ParagraphAnchorItem::Control(index),
-                affinity: text::Affinity::After,
-            })
-            .collect(),
-        replacements: vec![],
-    })
+        text::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     assert_eq!(analyzed.processed_source().processed_text(), source.text());
     let policies = analyzed

@@ -43,7 +43,12 @@ fn explicit_rows_replace_before_casing_without_changing_original_phase_i_or_plai
         (WordSpaceTransform::IdeographicSpace, "A\u{3000}A"),
     ] {
         let source = Source::new("A\u{200b}A");
-        let a = AnalyzedSource::new(source.clone(), style(operation)).unwrap();
+        let a = AnalyzedSource::new(
+            source.clone(),
+            style(operation),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         assert_eq!(a.source(), &source);
         assert_eq!(a.processed_source().processed_text(), source.text());
         assert_eq!(a.inner.projection.text, expected);
@@ -79,6 +84,7 @@ fn explicit_rows_replace_before_casing_without_changing_original_phase_i_or_plai
                 ),
                 ..style(operation)
             },
+            crate::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         assert_eq!(a.inner.projection.text, expected);
@@ -98,8 +104,26 @@ fn generated_space_is_width_eligible_in_every_mode_without_replaying_phase_i() {
             ("A\u{200b}\u{200b}A", "Ａ\u{3000}\u{3000}Ａ"),
         ] {
             let source = Source::new(text);
-            let a = AnalyzedSource::from_paragraph(input(
-                source.clone(),
+            let a = AnalyzedSource::from_paragraph(
+                input(
+                    source.clone(),
+                    Style {
+                        white_space: mode,
+                        text_transform: TextTransform::Set(
+                            TextTransformSet::none().with_full_width(true),
+                        ),
+                        ..style(WordSpaceTransform::Space)
+                    },
+                ),
+                crate::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap();
+            assert_eq!(a.inner.projection.text, expected, "{mode:?}");
+            assert_eq!(a.processed_source().processed_text(), source.text());
+        }
+        let a = AnalyzedSource::from_paragraph(
+            input(
+                Source::new("A A"),
                 Style {
                     white_space: mode,
                     text_transform: TextTransform::Set(
@@ -107,19 +131,9 @@ fn generated_space_is_width_eligible_in_every_mode_without_replaying_phase_i() {
                     ),
                     ..style(WordSpaceTransform::Space)
                 },
-            ))
-            .unwrap();
-            assert_eq!(a.inner.projection.text, expected, "{mode:?}");
-            assert_eq!(a.processed_source().processed_text(), source.text());
-        }
-        let a = AnalyzedSource::from_paragraph(input(
-            Source::new("A A"),
-            Style {
-                white_space: mode,
-                text_transform: TextTransform::Set(TextTransformSet::none().with_full_width(true)),
-                ..style(WordSpaceTransform::Space)
-            },
-        ))
+            ),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap();
         assert_eq!(
             a.inner.projection.text,
@@ -144,12 +158,18 @@ fn actual_winning_component_style_is_the_only_separator_authority() {
         Range::new(3, 4),
         style(WordSpaceTransform::IdeographicSpace),
     );
-    let a = AnalyzedSource::new(source, style(WordSpaceTransform::Space)).unwrap();
+    let a = AnalyzedSource::new(
+        source,
+        style(WordSpaceTransform::Space),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(a.inner.projection.text, "A\u{200b}A\u{3000}A");
     // Other authored separators and spaces are not candidate U+200B rows.
     let a = AnalyzedSource::new(
         Source::new(" \u{a0}\u{3000}\u{200b}"),
         style(WordSpaceTransform::Space),
+        crate::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(a.inner.projection.text, " \u{a0}\u{3000} ");
@@ -195,13 +215,16 @@ fn forced_character_adjacency_uses_the_executed_phase_i_value() {
         ),
         (WhiteSpace::Discard, "A\u{200b} \nA", "A\u{200b}A", "A A"),
     ] {
-        let a = AnalyzedSource::from_paragraph(input(
-            Source::new(text),
-            Style {
-                white_space: mode,
-                ..style(WordSpaceTransform::Space)
-            },
-        ))
+        let a = AnalyzedSource::from_paragraph(
+            input(
+                Source::new(text),
+                Style {
+                    white_space: mode,
+                    ..style(WordSpaceTransform::Space)
+                },
+            ),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap();
         assert_eq!(
             a.processed_source().processed_text(),
@@ -258,7 +281,8 @@ fn genuine_controls_and_atomic_occurrences_determine_mixed_adjacency() {
                 affinity: crate::Affinity::After,
             })
             .collect();
-        let a = AnalyzedSource::from_paragraph(i).unwrap();
+        let a = AnalyzedSource::from_paragraph(i, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
         assert_eq!(a.inner.projection.text, expected);
     }
     for (kind, expected) in [
@@ -301,7 +325,8 @@ fn genuine_controls_and_atomic_occurrences_determine_mixed_adjacency() {
                 ancestor_wrap: crate::Wrap::Word,
             },
         ];
-        let a = AnalyzedSource::from_paragraph(i).unwrap();
+        let a = AnalyzedSource::from_paragraph(i, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
         assert_eq!(a.inner.projection.text, expected);
     }
 }
@@ -367,7 +392,8 @@ fn deleted_rows_empty_origins_and_oof_remain_transparent_to_the_actual_forced_ne
             affinity: crate::Affinity::After,
         },
     ];
-    let a = AnalyzedSource::from_paragraph(i).unwrap();
+    let a = AnalyzedSource::from_paragraph(i, crate::AnalysisTypography::HorizontalComposition)
+        .unwrap();
     assert_eq!(a.source(), &source);
     assert_eq!(
         a.processed_source().processed_text(),
@@ -490,8 +516,11 @@ fn original_separator_at_disconnected_join(
         events,
     };
     let processed = std::sync::Arc::new(process_contextual_source(input).unwrap());
-    let analyzed =
-        AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap()).unwrap();
+    let analyzed = AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(analyzed.source(), &source);
     assert_eq!(analyzed.processed_source().processed_text(), source.text());
     assert_eq!(
@@ -574,11 +603,10 @@ fn original_separator_flat_disconnected(
 }
 
 fn assert_original_separator_flat_side_missing(at: usize, operation: WordSpaceTransform) {
-    let error = AnalyzedSource::from_paragraph(original_separator_flat_disconnected(
-        "A\u{200b}B",
-        at,
-        operation,
-    ))
+    let error = AnalyzedSource::from_paragraph(
+        original_separator_flat_disconnected("A\u{200b}B", at, operation),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap_err();
     assert_eq!(error.code, crate::ErrorCode::UnsupportedFeature);
     assert!(matches!(
@@ -610,11 +638,10 @@ fn original_separator_disconnected_flat_after_join_ideographic_space_requires_co
 #[test]
 fn original_separator_disconnected_flat_none_does_not_demand_control_side() {
     for at in [1, 2] {
-        let analyzed = AnalyzedSource::from_paragraph(original_separator_flat_disconnected(
-            "A\u{200b}B",
-            at,
-            WordSpaceTransform::None,
-        ))
+        let analyzed = AnalyzedSource::from_paragraph(
+            original_separator_flat_disconnected("A\u{200b}B", at, WordSpaceTransform::None),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap();
         assert_eq!(analyzed.inner.projection.text, "A\u{200b}B");
         assert_eq!(analyzed.source().text(), &Text::from("A\u{200b}B"));
@@ -629,9 +656,10 @@ fn original_separator_disconnected_flat_known_source_hard_break_suppression_need
         WordSpaceTransform::IdeographicSpace,
     ] {
         for (text, at) in [("A\u{200b}\nB", 3), ("A\n\u{200b}B", 1)] {
-            let analyzed = AnalyzedSource::from_paragraph(original_separator_flat_disconnected(
-                text, at, operation,
-            ))
+            let analyzed = AnalyzedSource::from_paragraph(
+                original_separator_flat_disconnected(text, at, operation),
+                crate::AnalysisTypography::HorizontalComposition,
+            )
             .unwrap();
             assert_eq!(analyzed.inner.projection.text, text);
             assert_eq!(analyzed.source().text(), &Text::from(text));
@@ -650,9 +678,10 @@ fn original_separator_disconnected_flat_intervening_original_blocks_unknown_forc
         ),
     ] {
         for (text, at, expected) in [("A\u{200b}XB", 3, before), ("AX\u{200b}B", 1, after)] {
-            let analyzed = AnalyzedSource::from_paragraph(original_separator_flat_disconnected(
-                text, at, operation,
-            ))
+            let analyzed = AnalyzedSource::from_paragraph(
+                original_separator_flat_disconnected(text, at, operation),
+                crate::AnalysisTypography::HorizontalComposition,
+            )
             .unwrap();
             assert_eq!(analyzed.inner.projection.text, expected);
             assert_eq!(analyzed.source().text(), &Text::from(text));
@@ -667,11 +696,10 @@ fn original_separator_disconnected_flat_refusal_identifies_original_range_and_co
         WordSpaceTransform::IdeographicSpace,
     ] {
         for at in [1, 2] {
-            let error = AnalyzedSource::from_paragraph(original_separator_flat_disconnected(
-                "A\u{200b}B",
-                at,
-                operation,
-            ))
+            let error = AnalyzedSource::from_paragraph(
+                original_separator_flat_disconnected("A\u{200b}B", at, operation),
+                crate::AnalysisTypography::HorizontalComposition,
+            )
             .unwrap_err();
             assert_eq!(
                 error.detail(),
@@ -696,11 +724,10 @@ fn original_separator_disconnected_flat_split_surrogate_barrier_blocks_control_i
             "\u{fffd}\u{fffd}\u{3000}B",
         ),
     ] {
-        let analyzed = AnalyzedSource::from_paragraph(original_separator_flat_disconnected(
-            "😀\u{200b}B",
-            1,
-            operation,
-        ))
+        let analyzed = AnalyzedSource::from_paragraph(
+            original_separator_flat_disconnected("😀\u{200b}B", 1, operation),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap();
         assert_eq!(analyzed.inner.projection.text, expected);
         assert_eq!(analyzed.source().text(), &Text::from("😀\u{200b}B"));
@@ -735,7 +762,9 @@ fn original_separator_disconnected_flat_uncertain_forcing_on_both_sides_is_not_p
         item: ParagraphAnchorItem::Control(1),
         affinity: Affinity::After,
     });
-    let error = AnalyzedSource::from_paragraph(captured).unwrap_err();
+    let error =
+        AnalyzedSource::from_paragraph(captured, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap_err();
     assert_eq!(error.code, ErrorCode::UnsupportedFeature);
     assert!(matches!(error.detail(), Some(ErrorDetail::TextTransform {
         reason: TextTransformError::MissingOriginalSeparatorBoundaryContext { source, .. }
@@ -780,7 +809,9 @@ fn original_separator_disconnected_flat_reversed_empty_occurrences_refuse_contra
         affinity: Affinity::After,
     })
     .collect();
-    let error = AnalyzedSource::from_paragraph(captured).unwrap_err();
+    let error =
+        AnalyzedSource::from_paragraph(captured, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap_err();
     assert_eq!(error.code, ErrorCode::InvalidTextProtocol);
     assert_eq!(
         error.detail(),
@@ -821,7 +852,11 @@ fn original_separator_disconnected_flat_nearer_nonforced_control_blocks_uncertai
                     affinity: Affinity::After,
                 })
                 .collect();
-            let analyzed = AnalyzedSource::from_paragraph(captured).unwrap();
+            let analyzed = AnalyzedSource::from_paragraph(
+                captured,
+                crate::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap();
             assert_eq!(analyzed.inner.projection.text, expected);
         }
     }

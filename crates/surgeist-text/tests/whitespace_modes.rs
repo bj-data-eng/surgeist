@@ -69,7 +69,9 @@ fn input(value: &str, base: t::Style, direction: t::ParagraphBaseDirection) -> t
 }
 
 fn prepare_input(input: t::ParagraphInput, options: t::PreparationOptions) -> t::PreparedText {
-    let analyzed = t::AnalyzedSource::from_paragraph(input).unwrap();
+    let analyzed =
+        t::AnalyzedSource::from_paragraph(input, t::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     prepare_analyzed(analyzed, options)
 }
 
@@ -846,9 +848,11 @@ fn captured_trim_runs_before_preserve_breaks_collapse_and_full_width_copy_stays_
         },
     );
     assert_eq!(processed.processed_text(), &t::Text::from("a b"));
-    let analyzed =
-        t::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-            .unwrap();
+    let analyzed = t::AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        t::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let p = prepare_analyzed(analyzed, t::PreparationOptions::default());
     let line = whole(&p, Some(100.0));
     assert_eq!(
@@ -972,7 +976,11 @@ fn preserve_breaks_does_not_collapse_across_distinct_real_block_domains() {
     ] {
         assert_eq!(paragraph.source_pieces().collect::<Vec<_>>(), [range]);
         let p = prepare_analyzed(
-            t::AnalyzedSource::from_processed_paragraph(paragraph).unwrap(),
+            t::AnalyzedSource::from_processed_paragraph(
+                paragraph,
+                t::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap(),
             t::PreparationOptions::default(),
         );
         let line = whole(&p, Some(100.0));

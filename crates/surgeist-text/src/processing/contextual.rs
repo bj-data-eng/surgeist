@@ -331,11 +331,17 @@ impl ProcessedSource {
 }
 impl AnalyzedSource {
     /// Analyzes exactly the retained issued coverage and captured domain style.
-    pub fn from_processed_paragraph(paragraph: ProcessedParagraph) -> Result<Self> {
+    /// Upright requires the paragraph's captured used base to be LTR. Its
+    /// nearest-block tab reference remains a separate authority.
+    pub fn from_processed_paragraph(
+        paragraph: ProcessedParagraph,
+        typography: crate::AnalysisTypography,
+    ) -> Result<Self> {
         let data = paragraph.data().clone();
         Ok(Self::from_inner(crate::engine::analyze_paragraph(
             paragraph.owner,
             data,
+            typography,
         )?))
     }
 }

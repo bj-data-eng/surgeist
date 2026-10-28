@@ -569,44 +569,47 @@ fn prepare_wrapping_text() -> surgeist_text::PreparedText {
     };
     let first = Source::new("AAAAA\u{200b}");
     let second = Source::new("AAAA");
-    let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
-        terminal_edge: surgeist_text::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        source: Source::new("AAAAA\u{200b}AAAA"),
-        base_style: style.clone(),
-        base_direction: ParagraphBaseDirection::LeftToRight,
-        segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
-        paragraph_strut: ParagraphStrut::DefaultFont,
-        origins: vec![
-            ParagraphOrigin {
-                text_node: None,
-                source: first,
-                local: Range::new(0, 6),
-                aggregate: Range::new(0, 6),
-                kind: ParagraphOriginKind::Authored,
-            },
-            ParagraphOrigin {
-                text_node: None,
-                source: second,
-                local: Range::new(0, 4),
-                aggregate: Range::new(6, 10),
-                kind: ParagraphOriginKind::Authored,
-            },
-        ],
-        connections: vec![ParagraphConnection {
-            at: 6,
-            kind: ParagraphConnectionKind::Continuous,
-        }],
-        boundary_policies: vec![ParagraphBoundaryPolicy {
-            definition: ParagraphBoundaryDefinition::Connection(0),
-            preceding_wrap: style.wrap,
-            following_wrap: style.wrap,
-            ancestor_wrap: style.wrap,
-        }],
-        controls: vec![],
-        replacements: vec![],
-        anchor_order: vec![],
-    })
+    let analyzed = AnalyzedSource::from_paragraph(
+        ParagraphInput {
+            terminal_edge: surgeist_text::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            source: Source::new("AAAAA\u{200b}AAAA"),
+            base_style: style.clone(),
+            base_direction: ParagraphBaseDirection::LeftToRight,
+            segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+            paragraph_strut: ParagraphStrut::DefaultFont,
+            origins: vec![
+                ParagraphOrigin {
+                    text_node: None,
+                    source: first,
+                    local: Range::new(0, 6),
+                    aggregate: Range::new(0, 6),
+                    kind: ParagraphOriginKind::Authored,
+                },
+                ParagraphOrigin {
+                    text_node: None,
+                    source: second,
+                    local: Range::new(0, 4),
+                    aggregate: Range::new(6, 10),
+                    kind: ParagraphOriginKind::Authored,
+                },
+            ],
+            connections: vec![ParagraphConnection {
+                at: 6,
+                kind: ParagraphConnectionKind::Continuous,
+            }],
+            boundary_policies: vec![ParagraphBoundaryPolicy {
+                definition: ParagraphBoundaryDefinition::Connection(0),
+                preceding_wrap: style.wrap,
+                following_wrap: style.wrap,
+                ancestor_wrap: style.wrap,
+            }],
+            controls: vec![],
+            replacements: vec![],
+            anchor_order: vec![],
+        },
+        surgeist_text::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let mut system = System::new(SystemOptions {
         font_catalogue: FontCatalogueMode::RegisteredOnly,

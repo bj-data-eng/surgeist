@@ -63,39 +63,42 @@ fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
         line_height: text::LineHeight::Absolute(10.0),
         ..text::Style::default()
     };
-    let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-        terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        source: text::Source::new("AX"),
-        base_style: style.clone(),
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: text::ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: text::ParagraphStrut::DefaultFont,
-        origins: ["A", "X"]
-            .into_iter()
-            .enumerate()
-            .map(|(index, value)| text::ParagraphOrigin {
-                text_node: None,
-                source: text::Source::new(value),
-                local: text::Range::new(0, 1),
-                aggregate: text::Range::new(index, index + 1),
-                kind: text::ParagraphOriginKind::Authored,
-            })
-            .collect(),
-        connections: vec![text::ParagraphConnection {
-            at: 1,
-            kind: text::ParagraphConnectionKind::Continuous,
-        }],
-        controls: vec![],
-        boundary_policies: vec![text::ParagraphBoundaryPolicy {
-            definition: text::ParagraphBoundaryDefinition::Connection(0),
-            preceding_wrap: style.wrap,
-            following_wrap: style.wrap,
-            ancestor_wrap: style.wrap,
-        }],
-        replacements: vec![],
-        anchor_order: vec![],
-    })
+    let analyzed = text::AnalyzedSource::from_paragraph(
+        text::ParagraphInput {
+            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            source: text::Source::new("AX"),
+            base_style: style.clone(),
+            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            origins: ["A", "X"]
+                .into_iter()
+                .enumerate()
+                .map(|(index, value)| text::ParagraphOrigin {
+                    text_node: None,
+                    source: text::Source::new(value),
+                    local: text::Range::new(0, 1),
+                    aggregate: text::Range::new(index, index + 1),
+                    kind: text::ParagraphOriginKind::Authored,
+                })
+                .collect(),
+            connections: vec![text::ParagraphConnection {
+                at: 1,
+                kind: text::ParagraphConnectionKind::Continuous,
+            }],
+            controls: vec![],
+            boundary_policies: vec![text::ParagraphBoundaryPolicy {
+                definition: text::ParagraphBoundaryDefinition::Connection(0),
+                preceding_wrap: style.wrap,
+                following_wrap: style.wrap,
+                ancestor_wrap: style.wrap,
+            }],
+            replacements: vec![],
+            anchor_order: vec![],
+        },
+        text::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     // Both text origins are direct children of Tree's one block. The float is
     // outside their influencing pair; retain the existing connection policy.

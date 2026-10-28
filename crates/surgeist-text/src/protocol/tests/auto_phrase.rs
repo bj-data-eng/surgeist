@@ -98,7 +98,9 @@ fn prepare_in(mut input: ParagraphInput, ancestor_wrap: Wrap) -> PreparedText {
             following_wrap: wrap,
             ancestor_wrap,
         }));
-    let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+    let analyzed =
+        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, ancestor_wrap);
     catalogue()
         .prepare(&analyzed, PreparationOptions::default())

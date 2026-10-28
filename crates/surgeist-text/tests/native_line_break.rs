@@ -72,7 +72,9 @@ fn prepare(input: t::ParagraphInput) -> t::PreparedText {
     // Every fixture has an actual enclosing block with this authored Wrap.
     let wrap = input.base_style.wrap;
     let source = input.source.clone();
-    let analyzed = t::AnalyzedSource::from_paragraph(input).unwrap();
+    let analyzed =
+        t::AnalyzedSource::from_paragraph(input, t::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())

@@ -55,64 +55,67 @@ fn prepare_paragraph_at(
         affinity: Affinity::After,
     }));
     let length = source.text().len();
-    let analysis = AnalyzedSource::from_paragraph(ParagraphInput {
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        source: source.clone(),
-        base_style: Style {
-            white_space,
-            wrap: Wrap::Word,
-            ..style()
-        },
-        segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: ParagraphStrut::DefaultFont,
-        origins: vec![ParagraphOrigin {
-            text_node: None,
+    let analysis = AnalyzedSource::from_paragraph(
+        ParagraphInput {
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
             source: source.clone(),
-            local: Range::new(0, length),
-            aggregate: Range::new(0, length),
-            kind: ParagraphOriginKind::Authored,
-        }],
-        connections: Vec::new(),
-        controls: kinds
-            .iter()
-            .cloned()
-            .map(|kind| ParagraphControl {
-                at: control_at,
-                kind,
+            base_style: Style {
+                white_space,
+                wrap: Wrap::Word,
+                ..style()
+            },
+            segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: ParagraphStrut::DefaultFont,
+            origins: vec![ParagraphOrigin {
+                text_node: None,
+                source: source.clone(),
+                local: Range::new(0, length),
+                aggregate: Range::new(0, length),
+                kind: ParagraphOriginKind::Authored,
+            }],
+            connections: Vec::new(),
+            controls: kinds
+                .iter()
+                .cloned()
+                .map(|kind| ParagraphControl {
+                    at: control_at,
+                    kind,
+                })
+                .collect(),
+            boundary_policies: [
+                ParagraphBoundaryDefinition::AtomicBefore(0),
+                ParagraphBoundaryDefinition::AtomicAfter(0),
+            ]
+            .map(|definition| ParagraphBoundaryPolicy {
+                definition,
+                preceding_wrap: Wrap::Word,
+                following_wrap: Wrap::Word,
+                ancestor_wrap: Wrap::Word,
             })
-            .collect(),
-        boundary_policies: [
-            ParagraphBoundaryDefinition::AtomicBefore(0),
-            ParagraphBoundaryDefinition::AtomicAfter(0),
-        ]
-        .map(|definition| ParagraphBoundaryPolicy {
-            definition,
-            preceding_wrap: Wrap::Word,
-            following_wrap: Wrap::Word,
-            ancestor_wrap: Wrap::Word,
-        })
-        .to_vec(),
-        replacements: kinds
-            .iter()
-            .enumerate()
-            .filter_map(|(control, kind)| {
-                matches!(kind, ParagraphControlKind::DiscretionaryBreak { .. }).then_some(
-                    ParagraphReplacement::resolved_native_logical_before(
-                        ParagraphReplacementDefinition::Control {
-                            control,
-                            origin: None,
-                        },
-                        control_at,
-                        vec![Text::from("-")],
+            .to_vec(),
+            replacements: kinds
+                .iter()
+                .enumerate()
+                .filter_map(|(control, kind)| {
+                    matches!(kind, ParagraphControlKind::DiscretionaryBreak { .. }).then_some(
+                        ParagraphReplacement::resolved_native_logical_before(
+                            ParagraphReplacementDefinition::Control {
+                                control,
+                                origin: None,
+                            },
+                            control_at,
+                            vec![Text::from("-")],
+                        )
+                        .unwrap(),
                     )
-                    .unwrap(),
-                )
-            })
-            .collect(),
-        anchor_order,
-    })
+                })
+                .collect(),
+            anchor_order,
+        },
+        surgeist_text::AnalysisTypography::HorizontalComposition,
+    )
     .expect("the actual paragraph capture is valid");
     let identity = analysis.identity();
     let mut system = registered_ahem();

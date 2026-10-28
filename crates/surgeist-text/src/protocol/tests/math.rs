@@ -15,30 +15,33 @@ fn style() -> Style {
 fn analyzed(text: &str, complete: &str) -> AnalyzedSource {
     let source = Source::new(text);
     let len = source.text().len();
-    AnalyzedSource::from_paragraph(ParagraphInput {
-        source: source.clone(),
-        base_style: style(),
-        paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: ParagraphBaseDirection::LeftToRight,
-        origins: vec![paragraph::ParagraphOrigin {
-            source,
-            local: Range::new(0, len),
-            aggregate: Range::new(0, len),
-            kind: paragraph::ParagraphOriginKind::Authored,
-            text_node: Some(
-                CompleteTextNodeContribution::new(Text::from(complete), Range::new(0, len))
-                    .unwrap(),
-            ),
-        }],
-        connections: vec![],
-        controls: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-        anchor_order: vec![],
-    })
+    AnalyzedSource::from_paragraph(
+        ParagraphInput {
+            source: source.clone(),
+            base_style: style(),
+            paragraph_strut: ParagraphStrut::DefaultFont,
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: ParagraphBaseDirection::LeftToRight,
+            origins: vec![paragraph::ParagraphOrigin {
+                source,
+                local: Range::new(0, len),
+                aggregate: Range::new(0, len),
+                kind: paragraph::ParagraphOriginKind::Authored,
+                text_node: Some(
+                    CompleteTextNodeContribution::new(Text::from(complete), Range::new(0, len))
+                        .unwrap(),
+                ),
+            }],
+            connections: vec![],
+            controls: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: vec![],
+        },
+        crate::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap()
 }
 fn system() -> System {

@@ -101,7 +101,9 @@ mod tests {
         system
             .register_fonts(include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
             .unwrap();
-        let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+        let analyzed =
+            AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+                .unwrap();
         system
             .prepare(&analyzed, PreparationOptions::default())
             .unwrap()

@@ -180,9 +180,11 @@ impl Case {
         let scopes = (1..=count)
             .map(|i| processed.captured_scope(i).unwrap())
             .collect::<Vec<_>>();
-        let analyzed =
-            text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-                .unwrap();
+        let analyzed = text::AnalyzedSource::from_processed_paragraph(
+            processed.paragraphs().next().unwrap(),
+            text::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let analyzed =
             crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::Word);
         let mut system = text::System::new(text::SystemOptions {
@@ -1149,9 +1151,11 @@ fn pinned_after_s(direction: Direction) -> Case {
         processed.captured_scope(1).unwrap(),
         processed.captured_scope(2).unwrap(),
     ];
-    let analyzed =
-        text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-            .unwrap();
+    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::Word);
     let mut system = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,
@@ -1603,9 +1607,11 @@ fn realization_case(direction: Direction, force: bool) -> Case {
         processed.captured_scope(1).unwrap(),
         processed.captured_scope(2).unwrap(),
     ];
-    let analyzed =
-        text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-            .unwrap();
+    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::Word);
     let mut system = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,
@@ -1972,9 +1978,11 @@ fn exterior_case(direction: Direction, trailing: bool) -> Case {
         .unwrap(),
     );
     let scope = processed.captured_scope(1).unwrap();
-    let analyzed =
-        text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-            .unwrap();
+    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::Word);
     let mut system = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,

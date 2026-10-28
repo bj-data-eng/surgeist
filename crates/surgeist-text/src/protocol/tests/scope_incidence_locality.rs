@@ -71,7 +71,11 @@ fn enclosing_edges_localize_to_their_paragraph_and_remote_same_domain_is_outside
         .map(|p| {
             fonts
                 .prepare(
-                    &AnalyzedSource::from_processed_paragraph(p).unwrap(),
+                    &AnalyzedSource::from_processed_paragraph(
+                        p,
+                        crate::AnalysisTypography::HorizontalComposition,
+                    )
+                    .unwrap(),
                     PreparationOptions::default(),
                 )
                 .unwrap()

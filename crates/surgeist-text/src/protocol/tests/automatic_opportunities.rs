@@ -51,7 +51,8 @@ fn auto_prepare(word: &str, hyphens: Hyphens, locale: Option<&str>) -> (Prepared
         anchor_order: vec![],
     };
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(input).unwrap(),
+        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap(),
         crate::Wrap::Word,
     );
     let mut system = System::new(SystemOptions {
@@ -269,7 +270,12 @@ fn native_direct_analysis_counts_differ_from_the_actual_raw_standalone_operation
     })
     .unwrap();
     system.register_fonts(bytes.clone()).unwrap();
-    let analyzed = AnalyzedSource::new(source.clone(), own.clone()).unwrap();
+    let analyzed = AnalyzedSource::new(
+        source.clone(),
+        own.clone(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     // This existing operation is genuinely raw and remains unconstrained.
     let raw = system
         .layout_analyzed(

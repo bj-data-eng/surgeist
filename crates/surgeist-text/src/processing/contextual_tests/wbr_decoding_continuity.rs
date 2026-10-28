@@ -72,7 +72,11 @@ fn add_wbr(p: &mut ContextualSourceInput, operation: WordSpaceTransform) {
 
 fn analyze(p: ContextualSourceInput) -> AnalyzedSource {
     let owner = Arc::new(process_contextual_source(p).unwrap());
-    AnalyzedSource::from_processed_paragraph(owner.paragraphs().next().unwrap()).unwrap()
+    AnalyzedSource::from_processed_paragraph(
+        owner.paragraphs().next().unwrap(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap()
 }
 
 fn prepare_with(analyzed: &AnalyzedSource, font: Vec<u8>) -> PreparedText {
@@ -528,7 +532,8 @@ fn direct_paragraph_and_scalar_span_admission_use_only_genuine_wbr_decode_cuts()
         p.origins = vec![origin(&p.source, Range::new(0, 4))];
         p.connections.clear();
         p.boundary_policies.clear();
-        let a = AnalyzedSource::from_paragraph(p).unwrap();
+        let a = AnalyzedSource::from_paragraph(p, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
         let expected: &[u16] = if wbr {
             &[0xd840, 0xdc00, 0x20, 0x6f22]
         } else {
@@ -554,7 +559,9 @@ fn direct_paragraph_and_scalar_span_admission_use_only_genuine_wbr_decode_cuts()
     unsplit.origins = vec![origin(&unsplit.source, Range::new(0, 2))];
     unsplit.connections.clear();
     unsplit.boundary_policies.clear();
-    let a = AnalyzedSource::from_paragraph(unsplit).unwrap();
+    let a =
+        AnalyzedSource::from_paragraph(unsplit, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     assert_eq!(
         a.inner
             .host_projection
@@ -576,7 +583,9 @@ fn direct_paragraph_and_scalar_span_admission_use_only_genuine_wbr_decode_cuts()
     }
     let without_wbr = direct(p.clone());
     add_wbr(&mut p, WordSpaceTransform::None);
-    let a = AnalyzedSource::from_paragraph(direct(p)).unwrap();
+    let a =
+        AnalyzedSource::from_paragraph(direct(p), crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     assert_eq!(
         a.inner
             .host_projection
@@ -587,7 +596,11 @@ fn direct_paragraph_and_scalar_span_admission_use_only_genuine_wbr_decode_cuts()
         [0xd840, 0xdc00]
     );
     assert_eq!(prepare_ahem(&a).unit_views().count(), 2);
-    let error = AnalyzedSource::from_paragraph(without_wbr).unwrap_err();
+    let error = AnalyzedSource::from_paragraph(
+        without_wbr,
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap_err();
     assert_eq!(
         error.detail(),
         Some(&ErrorDetail::UnsupportedShapingBoundary {
@@ -680,7 +693,11 @@ fn an_empty_out_of_flow_child_wbr_cannot_split_parent_phase_one_decoding() {
             [0xd840, 0xdc00, 0xa, 0x6f22]
         );
         let paragraphs: Vec<_> = processed.paragraphs().collect();
-        let parent = AnalyzedSource::from_processed_paragraph(paragraphs[0].clone()).unwrap();
+        let parent = AnalyzedSource::from_processed_paragraph(
+            paragraphs[0].clone(),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         assert_eq!(
             parent
                 .inner

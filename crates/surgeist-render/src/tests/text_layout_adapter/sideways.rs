@@ -23,6 +23,7 @@ fn clockwise(mut authored: text::Style) -> (text::Layout, text::System) {
     let a = text::AnalyzedSource::new(
         text::Source::identified("\u{3a7}", text::Id::from_u64(1515005), 5),
         authored,
+        text::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let p = s

@@ -410,7 +410,11 @@ mod tests {
             ],
         };
         let processed = Arc::new(process_contextual_source(input).unwrap());
-        AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap()).unwrap()
+        AnalyzedSource::from_processed_paragraph(
+            processed.paragraphs().next().unwrap(),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap()
     }
 
     fn incidences(analyzed: &AnalyzedSource) -> Vec<bool> {

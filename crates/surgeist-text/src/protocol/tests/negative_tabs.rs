@@ -52,7 +52,7 @@ fn input(
 
 fn prepare(value: ParagraphInput, demand: TabPreparation) -> crate::Result<PreparedText> {
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(value)?,
+        &AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)?,
         crate::Wrap::Word,
     );
     let mut s = System::new(SystemOptions {

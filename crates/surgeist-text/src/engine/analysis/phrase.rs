@@ -350,6 +350,7 @@ mod tests {
                 locale: Some("ja".to_owned()),
                 ..crate::Style::default()
             },
+            crate::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let catalog = &analyzed.inner.analysis.phrases;
@@ -383,8 +384,12 @@ mod tests {
     #[test]
     fn supported_empty_inference_and_unsupported_language_are_distinct() {
         for locale in ["ja", "ja-JP", "ja-Jpan", "ja-u-ca-japanese"] {
-            let analyzed =
-                crate::AnalyzedSource::new(crate::Source::new("日"), style(locale)).unwrap();
+            let analyzed = crate::AnalyzedSource::new(
+                crate::Source::new("日"),
+                style(locale),
+                crate::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap();
             let catalog = &analyzed.inner.analysis.phrases;
             assert_eq!(catalog.components.len(), 1, "{locale}");
             assert!(catalog.components[0].raw_cuts.is_empty());
@@ -393,8 +398,12 @@ mod tests {
         for locale in ["en-JP", "und-Jpan", "ja-Latn", "zh", "ko"] {
             let authored = style(locale);
             assert!(authored.effective_breaking().auto_phrase);
-            let analyzed =
-                crate::AnalyzedSource::new(crate::Source::new("日本へ"), authored).unwrap();
+            let analyzed = crate::AnalyzedSource::new(
+                crate::Source::new("日本へ"),
+                authored,
+                crate::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap();
             assert!(
                 analyzed.inner.analysis.phrases.components.is_empty(),
                 "{locale}"
@@ -410,7 +419,12 @@ mod tests {
     fn hard_and_unsupported_tcus_bound_final_components() {
         let mut source = crate::Source::new("日は\n天気");
         source.span(crate::Range::new(4, 5), style("en"));
-        let analyzed = crate::AnalyzedSource::new(source, style("ja")).unwrap();
+        let analyzed = crate::AnalyzedSource::new(
+            source,
+            style("ja"),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         assert_eq!(
             analyzed
                 .inner
@@ -424,7 +438,12 @@ mod tests {
         );
         let mut source = crate::Source::new("か\u{3099}日");
         source.span(crate::Range::new(1, 2), style("en"));
-        let analyzed = crate::AnalyzedSource::new(source, style("ja")).unwrap();
+        let analyzed = crate::AnalyzedSource::new(
+            source,
+            style("ja"),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         assert_eq!(analyzed.inner.analysis.graphemes, [0..2, 2..3]);
         assert_eq!(analyzed.inner.analysis.phrases.components[0].atoms, 2..3);
     }
@@ -470,7 +489,12 @@ mod tests {
     fn causes_keep_independent_owners_without_rewriting_word_metadata() {
         let mut authored = style("ja");
         authored.line_break = crate::LineBreak::Loose;
-        let analyzed = crate::AnalyzedSource::new(crate::Source::new("漢ぁ"), authored).unwrap();
+        let analyzed = crate::AnalyzedSource::new(
+            crate::Source::new("漢ぁ"),
+            authored,
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         assert!(
             analyzed
                 .inner
@@ -479,8 +503,12 @@ mod tests {
                 .iter()
                 .any(|row| row.atom == 1 && row.cause == LineCause::RequiredLineBreak)
         );
-        let analyzed =
-            crate::AnalyzedSource::new(crate::Source::new("a\u{200b} b"), style("ja")).unwrap();
+        let analyzed = crate::AnalyzedSource::new(
+            crate::Source::new("a\u{200b} b"),
+            style("ja"),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         assert!(
             analyzed
                 .inner
@@ -505,6 +533,7 @@ mod tests {
                 locale: Some("ja".to_owned()),
                 ..crate::Style::default()
             },
+            crate::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let whitespace = analyzed
@@ -524,9 +553,15 @@ mod tests {
                 locale: Some("th".to_owned()),
                 ..crate::Style::default()
             },
+            crate::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
-        let analyzed = crate::AnalyzedSource::new(source, style("th")).unwrap();
+        let analyzed = crate::AnalyzedSource::new(
+            source,
+            style("th"),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         assert!(analyzed.inner.analysis.phrases.phrases.is_empty());
         assert!(
             analyzed

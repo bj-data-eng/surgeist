@@ -349,8 +349,11 @@ fn source(before: bool, direction: layout::Direction) -> text::ContextualSourceI
     }
 }
 fn normal_prepare(processed: &Arc<text::ProcessedSource>) -> text::PreparedText {
-    let a = text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-        .unwrap();
+    let a = text::AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let missing = a
         .wrapping_relations()
         .filter(|r| r.ancestor_wrap().is_none())

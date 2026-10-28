@@ -32,7 +32,9 @@ fn input(text: &str, overflow_wrap: OverflowWrap) -> ParagraphInput {
 
 fn prepare(system: &mut System, input: ParagraphInput) -> PreparedText {
     let ancestor_wrap = input.base_style.wrap;
-    let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+    let analyzed =
+        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     // These fixtures explicitly describe one flat containing box. The producer
     // binds that actual fact to Text's processed pairs, without deriving them.
     let policies = analyzed
@@ -465,7 +467,11 @@ fn conditional_termination_cannot_select_failed_ordinary_replacement() {
 #[test]
 fn wrapping_binding_has_new_context_identity_and_preserves_the_executed_core() {
     let mut system = system();
-    let raw = AnalyzedSource::from_paragraph(input("AAA", OverflowWrap::Anywhere)).unwrap();
+    let raw = AnalyzedSource::from_paragraph(
+        input("AAA", OverflowWrap::Anywhere),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let old_identity = raw.identity();
     let old_graphemes: Vec<_> = raw.graphemes().collect();
     let policies: Vec<_> = raw
@@ -566,7 +572,11 @@ fn wrapping_binding_has_new_context_identity_and_preserves_the_executed_core() {
 #[cfg(feature = "text-accessibility")]
 #[test]
 fn bound_wrapping_keeps_source_only_ax_content_and_separate_context_custody() {
-    let raw = AnalyzedSource::from_paragraph(input("AAA", OverflowWrap::Anywhere)).unwrap();
+    let raw = AnalyzedSource::from_paragraph(
+        input("AAA", OverflowWrap::Anywhere),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let policies = raw
         .wrapping_relations()
         .map(|view| crate::WrappingPolicy {
@@ -616,7 +626,11 @@ fn bound_wrapping_keeps_source_only_ax_content_and_separate_context_custody() {
 #[test]
 fn missing_wrapping_fact_is_refused_only_on_the_path_that_consumes_it() {
     let mut system = system();
-    let raw = AnalyzedSource::from_paragraph(input("AAA", OverflowWrap::Anywhere)).unwrap();
+    let raw = AnalyzedSource::from_paragraph(
+        input("AAA", OverflowWrap::Anywhere),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let prepared = system.prepare(&raw, PreparationOptions::default()).unwrap();
     let start = prepared.boundary_views().next().unwrap().handle();
     assert!(matches!(
@@ -647,7 +661,11 @@ fn missing_wrapping_fact_is_refused_only_on_the_path_that_consumes_it() {
             .advance,
         60.0
     );
-    let raw = AnalyzedSource::from_paragraph(input("A\nA", OverflowWrap::Normal)).unwrap();
+    let raw = AnalyzedSource::from_paragraph(
+        input("A\nA", OverflowWrap::Normal),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let prepared = system.prepare(&raw, PreparationOptions::default()).unwrap();
     assert_eq!(
         prepared
@@ -657,7 +675,11 @@ fn missing_wrapping_fact_is_refused_only_on_the_path_that_consumes_it() {
         [PreparedBreakKind::Forced, PreparedBreakKind::ParagraphEnd]
     );
     assert!(offers(&prepared, ConditionalPurpose::Overflow).is_empty());
-    let raw = AnalyzedSource::from_paragraph(input("A A", OverflowWrap::Normal)).unwrap();
+    let raw = AnalyzedSource::from_paragraph(
+        input("A A", OverflowWrap::Normal),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert!(matches!(
         reason(
             &system
@@ -668,7 +690,9 @@ fn missing_wrapping_fact_is_refused_only_on_the_path_that_consumes_it() {
     ));
     let mut collapsed = input("A A", OverflowWrap::Normal);
     collapsed.base_style.white_space = WhiteSpace::Collapse;
-    let raw = AnalyzedSource::from_paragraph(collapsed).unwrap();
+    let raw =
+        AnalyzedSource::from_paragraph(collapsed, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     assert!(system.prepare(&raw, PreparationOptions::default()).is_ok());
 }
 
@@ -1059,7 +1083,13 @@ fn phantom_frontier_requires_every_real_discretionary_variant() {
     let mut invalid = value.clone();
     invalid.controls[0].kind = ParagraphControlKind::OptionalBreak { wrap: Wrap::Word };
     assert!(matches!(
-        reason(&AnalyzedSource::from_paragraph(invalid).unwrap_err()),
+        reason(
+            &AnalyzedSource::from_paragraph(
+                invalid,
+                crate::AnalysisTypography::HorizontalComposition
+            )
+            .unwrap_err()
+        ),
         ProtocolError::InvalidReplacement { .. }
     ));
     let prepared = prepare(&mut system, value);
@@ -1205,7 +1235,9 @@ fn true_outer_permission_does_not_vote_immediate_empty_chain_facts_or_collapse_c
         affinity: crate::Affinity::Before,
     })
     .to_vec();
-    let raw = AnalyzedSource::from_paragraph(value).unwrap();
+    let raw =
+        AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     let relation = raw.wrapping_relations().next().unwrap();
     assert_eq!(raw.wrapping_relations().len(), 1);
     assert_eq!(
@@ -1289,7 +1321,9 @@ fn deleted_bridge_relations_keep_real_original_endpoints_and_logical_before_styl
             ancestor_wrap,
         })
         .collect();
-    let raw = AnalyzedSource::from_paragraph(value).unwrap();
+    let raw =
+        AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     let view = raw.wrapping_relations().next().unwrap();
     assert_eq!(
         view.before(),
@@ -1476,6 +1510,7 @@ fn raw_analysis_keeps_its_ordinary_model_without_additional_native_cuts() {
                 overflow_wrap,
                 ..style()
             },
+            crate::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let prepared = system.prepare(&raw, PreparationOptions::default()).unwrap();
@@ -1621,8 +1656,11 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
         ],
     };
     let processed = std::sync::Arc::new(process_contextual_source(capture).unwrap());
-    let parent =
-        AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap()).unwrap();
+    let parent = AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let mut system = system();
     let prepared = system
         .prepare(&parent, PreparationOptions::default())

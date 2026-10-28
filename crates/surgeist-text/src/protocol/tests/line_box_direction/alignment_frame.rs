@@ -348,60 +348,63 @@ fn real_atomic_and_positive_endpoint_allocations_follow_the_same_alignment_trans
         white_space: WhiteSpace::Preserve,
         ..Style::default()
     };
-    let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
-        source: source.clone(),
-        base_style: base,
-        paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: BODIES[0],
-        origins: vec![ParagraphOrigin {
-            text_node: None,
-            source,
-            local: Range::new(0, 2),
-            aggregate: Range::new(0, 2),
-            kind: ParagraphOriginKind::Authored,
-        }],
-        connections: vec![],
-        replacements: vec![],
-        controls: vec![
-            ParagraphControl {
-                at: 0,
-                kind: ParagraphControlKind::InlineBoundaryStart,
-            },
-            ParagraphControl {
-                at: 2,
-                kind: ParagraphControlKind::InlineBoundaryEnd,
-            },
-        ],
-        anchor_order: vec![
-            ParagraphAnchor {
-                item: ParagraphAnchorItem::Control(0),
-                affinity: Affinity::After,
-            },
-            ParagraphAnchor {
-                item: ParagraphAnchorItem::Atomic(0),
-                affinity: Affinity::After,
-            },
-            ParagraphAnchor {
-                item: ParagraphAnchorItem::Control(1),
-                affinity: Affinity::After,
-            },
-        ],
-        boundary_policies: [
-            ParagraphBoundaryDefinition::AtomicBefore(0),
-            ParagraphBoundaryDefinition::AtomicAfter(0),
-        ]
-        .into_iter()
-        .map(|definition| ParagraphBoundaryPolicy {
-            definition,
-            preceding_wrap: Wrap::Word,
-            following_wrap: Wrap::Word,
-            ancestor_wrap: Wrap::Word,
-        })
-        .collect(),
-    })
+    let analyzed = AnalyzedSource::from_paragraph(
+        ParagraphInput {
+            source: source.clone(),
+            base_style: base,
+            paragraph_strut: ParagraphStrut::DefaultFont,
+            terminal_edge: ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: BODIES[0],
+            origins: vec![ParagraphOrigin {
+                text_node: None,
+                source,
+                local: Range::new(0, 2),
+                aggregate: Range::new(0, 2),
+                kind: ParagraphOriginKind::Authored,
+            }],
+            connections: vec![],
+            replacements: vec![],
+            controls: vec![
+                ParagraphControl {
+                    at: 0,
+                    kind: ParagraphControlKind::InlineBoundaryStart,
+                },
+                ParagraphControl {
+                    at: 2,
+                    kind: ParagraphControlKind::InlineBoundaryEnd,
+                },
+            ],
+            anchor_order: vec![
+                ParagraphAnchor {
+                    item: ParagraphAnchorItem::Control(0),
+                    affinity: Affinity::After,
+                },
+                ParagraphAnchor {
+                    item: ParagraphAnchorItem::Atomic(0),
+                    affinity: Affinity::After,
+                },
+                ParagraphAnchor {
+                    item: ParagraphAnchorItem::Control(1),
+                    affinity: Affinity::After,
+                },
+            ],
+            boundary_policies: [
+                ParagraphBoundaryDefinition::AtomicBefore(0),
+                ParagraphBoundaryDefinition::AtomicAfter(0),
+            ]
+            .into_iter()
+            .map(|definition| ParagraphBoundaryPolicy {
+                definition,
+                preceding_wrap: Wrap::Word,
+                following_wrap: Wrap::Word,
+                ancestor_wrap: Wrap::Word,
+            })
+            .collect(),
+        },
+        crate::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::Word);
     let mut system = system();

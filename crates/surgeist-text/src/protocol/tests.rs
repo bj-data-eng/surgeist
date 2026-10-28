@@ -95,7 +95,11 @@ fn prepared(system: &mut System, text: &str, whitespace: WhiteSpace) -> Prepared
     system
         .prepare(
             &crate::test_wrapping::bind_missing(
-                &AnalyzedSource::from_paragraph(input).unwrap(),
+                &AnalyzedSource::from_paragraph(
+                    input,
+                    crate::AnalysisTypography::HorizontalComposition,
+                )
+                .unwrap(),
                 crate::Wrap::Word,
             ),
             PreparationOptions::default(),
@@ -396,36 +400,39 @@ fn selected_empty_control(policy: ParagraphStrut) -> SelectedLine {
             ..style()
         },
     );
-    let analysis = AnalyzedSource::from_paragraph(ParagraphInput {
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        source: source.clone(),
-        base_style: Style {
-            size: 10.0,
-            ..style()
+    let analysis = AnalyzedSource::from_paragraph(
+        ParagraphInput {
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            source: source.clone(),
+            base_style: Style {
+                size: 10.0,
+                ..style()
+            },
+            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            paragraph_strut: policy,
+            base_direction: ParagraphBaseDirection::LeftToRight,
+            origins: vec![paragraph::ParagraphOrigin {
+                text_node: None,
+                source,
+                local: crate::Range::new(0, 1),
+                aggregate: crate::Range::new(0, 1),
+                kind: paragraph::ParagraphOriginKind::Authored,
+            }],
+            connections: vec![],
+            controls: vec![paragraph::ParagraphControl {
+                at: 0,
+                kind: paragraph::ParagraphControlKind::ForcedBreak,
+            }],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: vec![paragraph::ParagraphAnchor {
+                item: paragraph::ParagraphAnchorItem::Control(0),
+                affinity: crate::Affinity::Before,
+            }],
         },
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-        paragraph_strut: policy,
-        base_direction: ParagraphBaseDirection::LeftToRight,
-        origins: vec![paragraph::ParagraphOrigin {
-            text_node: None,
-            source,
-            local: crate::Range::new(0, 1),
-            aggregate: crate::Range::new(0, 1),
-            kind: paragraph::ParagraphOriginKind::Authored,
-        }],
-        connections: vec![],
-        controls: vec![paragraph::ParagraphControl {
-            at: 0,
-            kind: paragraph::ParagraphControlKind::ForcedBreak,
-        }],
-        boundary_policies: vec![],
-        replacements: vec![],
-        anchor_order: vec![paragraph::ParagraphAnchor {
-            item: paragraph::ParagraphAnchorItem::Control(0),
-            affinity: crate::Affinity::Before,
-        }],
-    })
+        crate::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let p = system
         .prepare(&analysis, PreparationOptions::default())
@@ -623,30 +630,33 @@ fn native_unforced_break_keeps_arabic_joining_on_both_sides() {
     .unwrap();
     system.register_fonts(fixture.clone()).unwrap();
     let source = Source::new("\u{628}\u{628}\u{628}");
-    let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        source: source.clone(),
-        base_style: Style {
-            word_break: crate::WordBreak::BreakAll,
-            ..style()
+    let analyzed = AnalyzedSource::from_paragraph(
+        ParagraphInput {
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            source: source.clone(),
+            base_style: Style {
+                word_break: crate::WordBreak::BreakAll,
+                ..style()
+            },
+            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: ParagraphBaseDirection::RightToLeft,
+            paragraph_strut: ParagraphStrut::DefaultFont,
+            origins: vec![paragraph::ParagraphOrigin {
+                text_node: None,
+                source,
+                local: crate::Range::new(0, 3),
+                aggregate: crate::Range::new(0, 3),
+                kind: paragraph::ParagraphOriginKind::Authored,
+            }],
+            connections: vec![],
+            controls: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: vec![],
         },
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: ParagraphBaseDirection::RightToLeft,
-        paragraph_strut: ParagraphStrut::DefaultFont,
-        origins: vec![paragraph::ParagraphOrigin {
-            text_node: None,
-            source,
-            local: crate::Range::new(0, 3),
-            aggregate: crate::Range::new(0, 3),
-            kind: paragraph::ParagraphOriginKind::Authored,
-        }],
-        connections: vec![],
-        controls: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-        anchor_order: vec![],
-    })
+        crate::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     assert_eq!(
         analyzed.graphemes().collect::<Vec<_>>(),

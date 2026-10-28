@@ -3,33 +3,36 @@ use super::*;
 fn with_forced_control(text: &str, at: usize) -> PreparedText {
     let mut system = system();
     let source = Source::new(text);
-    let analysis = AnalyzedSource::from_paragraph(ParagraphInput {
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        source: source.clone(),
-        base_style: style(),
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: ParagraphStrut::DefaultFont,
-        origins: vec![paragraph::ParagraphOrigin {
-            text_node: None,
-            source,
-            local: crate::Range::new(0, text.encode_utf16().count()),
-            aggregate: crate::Range::new(0, text.encode_utf16().count()),
-            kind: paragraph::ParagraphOriginKind::Authored,
-        }],
-        connections: vec![],
-        controls: vec![paragraph::ParagraphControl {
-            at,
-            kind: paragraph::ParagraphControlKind::ForcedBreak,
-        }],
-        boundary_policies: vec![],
-        replacements: vec![],
-        anchor_order: vec![paragraph::ParagraphAnchor {
-            item: paragraph::ParagraphAnchorItem::Control(0),
-            affinity: crate::Affinity::After,
-        }],
-    })
+    let analysis = AnalyzedSource::from_paragraph(
+        ParagraphInput {
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            source: source.clone(),
+            base_style: style(),
+            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: ParagraphStrut::DefaultFont,
+            origins: vec![paragraph::ParagraphOrigin {
+                text_node: None,
+                source,
+                local: crate::Range::new(0, text.encode_utf16().count()),
+                aggregate: crate::Range::new(0, text.encode_utf16().count()),
+                kind: paragraph::ParagraphOriginKind::Authored,
+            }],
+            connections: vec![],
+            controls: vec![paragraph::ParagraphControl {
+                at,
+                kind: paragraph::ParagraphControlKind::ForcedBreak,
+            }],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: vec![paragraph::ParagraphAnchor {
+                item: paragraph::ParagraphAnchorItem::Control(0),
+                affinity: crate::Affinity::After,
+            }],
+        },
+        crate::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     system
         .prepare(&analysis, PreparationOptions::default())
@@ -228,42 +231,45 @@ fn authored_forced_break_stops_rtl_receiver_neutral_context() {
     const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
     fn prepare_rtl(forced: bool) -> PreparedText {
         let source = Source::new("A.A");
-        let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-            tab_reference: None,
-            source: source.clone(),
-            base_style: Style {
-                white_space: WhiteSpace::Preserve,
-                ..style()
+        let analyzed = AnalyzedSource::from_paragraph(
+            ParagraphInput {
+                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                tab_reference: None,
+                source: source.clone(),
+                base_style: Style {
+                    white_space: WhiteSpace::Preserve,
+                    ..style()
+                },
+                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                base_direction: ParagraphBaseDirection::RightToLeft,
+                paragraph_strut: ParagraphStrut::DefaultFont,
+                origins: vec![paragraph::ParagraphOrigin {
+                    text_node: None,
+                    source,
+                    local: crate::Range::new(0, 3),
+                    aggregate: crate::Range::new(0, 3),
+                    kind: paragraph::ParagraphOriginKind::Authored,
+                }],
+                connections: Vec::new(),
+                controls: forced
+                    .then_some(paragraph::ParagraphControl {
+                        at: 1,
+                        kind: paragraph::ParagraphControlKind::ForcedBreak,
+                    })
+                    .into_iter()
+                    .collect(),
+                boundary_policies: Vec::new(),
+                replacements: Vec::new(),
+                anchor_order: forced
+                    .then_some(paragraph::ParagraphAnchor {
+                        item: paragraph::ParagraphAnchorItem::Control(0),
+                        affinity: crate::Affinity::After,
+                    })
+                    .into_iter()
+                    .collect(),
             },
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: ParagraphBaseDirection::RightToLeft,
-            paragraph_strut: ParagraphStrut::DefaultFont,
-            origins: vec![paragraph::ParagraphOrigin {
-                text_node: None,
-                source,
-                local: crate::Range::new(0, 3),
-                aggregate: crate::Range::new(0, 3),
-                kind: paragraph::ParagraphOriginKind::Authored,
-            }],
-            connections: Vec::new(),
-            controls: forced
-                .then_some(paragraph::ParagraphControl {
-                    at: 1,
-                    kind: paragraph::ParagraphControlKind::ForcedBreak,
-                })
-                .into_iter()
-                .collect(),
-            boundary_policies: Vec::new(),
-            replacements: Vec::new(),
-            anchor_order: forced
-                .then_some(paragraph::ParagraphAnchor {
-                    item: paragraph::ParagraphAnchorItem::Control(0),
-                    affinity: crate::Affinity::After,
-                })
-                .into_iter()
-                .collect(),
-        })
+            crate::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap();
         system()
             .prepare(&analyzed, PreparationOptions::default())

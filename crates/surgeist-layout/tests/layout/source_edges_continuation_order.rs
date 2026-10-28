@@ -205,7 +205,11 @@ fn fixture<S: l::LayoutScalar>() -> (
         .enumerate()
         .map(|(i, p)| {
             assert!(Arc::ptr_eq(p.processed_source(), &capture));
-            let a = t::AnalyzedSource::from_processed_paragraph(p).unwrap();
+            let a = t::AnalyzedSource::from_processed_paragraph(
+                p,
+                t::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap();
             let missing = a
                 .wrapping_relations()
                 .filter(|r| r.ancestor_wrap().is_none())

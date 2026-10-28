@@ -24,7 +24,8 @@ fn style(mode: WordBreak, indication: &str) -> Style {
 
 fn prepare(input: ParagraphInput, ancestor: Wrap) -> PreparedText {
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(input).unwrap(),
+        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap(),
         ancestor,
     );
     let mut system = System::new(SystemOptions {
@@ -385,8 +386,12 @@ fn standalone_atomic_fallback_does_not_lend_the_source_shy_an_oof_permission() {
             2,
             Size::new(3.0, 4.0),
         ));
-        let analyzed =
-            AnalyzedSource::new(source.clone(), style(WordBreak::BreakAll, "X")).unwrap();
+        let analyzed = AnalyzedSource::new(
+            source.clone(),
+            style(WordBreak::BreakAll, "X"),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let p = system()
             .prepare(&analyzed, PreparationOptions::default())
             .unwrap();

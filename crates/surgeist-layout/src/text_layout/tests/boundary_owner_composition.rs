@@ -186,9 +186,11 @@ fn capture(
         })
         .unwrap(),
     );
-    let analyzed =
-        text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-            .unwrap();
+    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     // The only cross-origin NCA is the captured outer inline (nested) or block
     // (siblings). Same-origin pairs remain in their own Word-wrapping child.
     let policies = analyzed

@@ -59,8 +59,11 @@ fn nf_input(raw: &str, mode: WhiteSpace) -> crate::ContextualSourceInput {
 }
 fn nf_prepare(value: crate::ContextualSourceInput) -> PreparedText {
     let processed = Arc::new(crate::process_contextual_source(value).unwrap());
-    let a =
-        AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap()).unwrap();
+    let a = AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let policies = a
         .wrapping_relations()
         .filter(|r| r.ancestor_wrap().is_none())

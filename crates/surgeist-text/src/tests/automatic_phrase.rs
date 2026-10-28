@@ -102,7 +102,10 @@ fn base(input: &mut ContextualSourceInput) -> &mut Style {
 
 fn analyze(input: ContextualSourceInput) -> Result<AnalyzedSource> {
     let owner = Arc::new(process_contextual_source(input)?);
-    AnalyzedSource::from_processed_paragraph(owner.paragraphs().next().unwrap())
+    AnalyzedSource::from_processed_paragraph(
+        owner.paragraphs().next().unwrap(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
 }
 
 fn prepare(analyzed: &AnalyzedSource) -> PreparedText {
@@ -992,7 +995,11 @@ fn out_of_flow_child_interiors_do_not_split_parent_analysis_but_in_flow_atomics_
         ];
         let processed = Arc::new(process_contextual_source(capture).unwrap());
         let views: Vec<_> = processed.paragraphs().collect();
-        let parent = AnalyzedSource::from_processed_paragraph(views[0].clone()).unwrap();
+        let parent = AnalyzedSource::from_processed_paragraph(
+            views[0].clone(),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         assert_eq!(
             parent.inner.projection.text,
             if kind == InlineBoxKind::OutOfFlow {
@@ -1002,11 +1009,14 @@ fn out_of_flow_child_interiors_do_not_split_parent_analysis_but_in_flow_atomics_
             }
         );
         assert_eq!(
-            AnalyzedSource::from_processed_paragraph(views[1].clone())
-                .unwrap()
-                .inner
-                .projection
-                .text,
+            AnalyzedSource::from_processed_paragraph(
+                views[1].clone(),
+                crate::AnalysisTypography::HorizontalComposition
+            )
+            .unwrap()
+            .inner
+            .projection
+            .text,
             "X"
         );
         assert_eq!(parent.source().text(), &Text::from("今日はX天気です。"));

@@ -123,7 +123,11 @@ fn continuation(
     let prepared: Vec<_> = processed
         .paragraphs()
         .map(|paragraph| {
-            let analyzed = text::AnalyzedSource::from_processed_paragraph(paragraph).unwrap();
+            let analyzed = text::AnalyzedSource::from_processed_paragraph(
+                paragraph,
+                text::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap();
             let analyzed =
                 crate::test_support::text::in_flat_wrapping_context(analyzed, Wrap::Word);
             system
@@ -599,7 +603,11 @@ fn segmented_fixture(
     let mut source_node = origin_nodes.into_iter();
     let mut bindings = Vec::new();
     for (processed, (container, nodes)) in processed.paragraphs().zip(runs) {
-        let analyzed = text::AnalyzedSource::from_processed_paragraph(processed).unwrap();
+        let analyzed = text::AnalyzedSource::from_processed_paragraph(
+            processed,
+            text::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, Wrap::Word);
         let prepared = system
             .prepare(&analyzed, text::PreparationOptions::default())

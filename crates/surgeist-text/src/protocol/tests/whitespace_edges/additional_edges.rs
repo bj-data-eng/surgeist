@@ -41,7 +41,11 @@ fn prepare_direction(
     system
         .prepare(
             &crate::test_wrapping::bind_missing(
-                &AnalyzedSource::from_paragraph(input).unwrap(),
+                &AnalyzedSource::from_paragraph(
+                    input,
+                    crate::AnalysisTypography::HorizontalComposition,
+                )
+                .unwrap(),
                 crate::Wrap::Word,
             ),
             PreparationOptions::default(),
@@ -783,7 +787,9 @@ fn prepared_discard_separator(
         replacements: vec![],
         anchor_order: vec![],
     };
-    let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+    let analyzed =
+        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     assert_eq!(analyzed.source().text().code_units(), [0x41, 0x3000]);
     assert_eq!(analyzed.source().id(), Some(crate::Id::from_u64(7401)));
     assert_eq!(analyzed.source().revision(), 7);
@@ -934,7 +940,11 @@ fn discard_edge_capture(
     system
         .prepare(
             &crate::test_wrapping::bind_missing(
-                &AnalyzedSource::from_paragraph(input).unwrap(),
+                &AnalyzedSource::from_paragraph(
+                    input,
+                    crate::AnalysisTypography::HorizontalComposition,
+                )
+                .unwrap(),
                 crate::Wrap::Word,
             ),
             PreparationOptions::default(),

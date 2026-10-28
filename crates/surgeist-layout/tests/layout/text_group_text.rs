@@ -435,9 +435,11 @@ impl Paragraph {
             })
             .unwrap(),
         );
-        let analyzed =
-            t::AnalyzedSource::from_processed_paragraph(capture.paragraphs().next().unwrap())
-                .unwrap();
+        let analyzed = t::AnalyzedSource::from_processed_paragraph(
+            capture.paragraphs().next().unwrap(),
+            t::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let wrapping = analyzed
             .wrapping_relations()
             .filter(|row| row.ancestor_wrap().is_none())
