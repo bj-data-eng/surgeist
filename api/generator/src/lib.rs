@@ -84,6 +84,7 @@ pub struct ApiTarget {
 enum ApiProfile {
     Default,
     CssCorpus,
+    RenderText,
 }
 
 impl ApiTarget {
@@ -109,10 +110,20 @@ impl ApiTarget {
         }
     }
 
+    fn render_text(root: PathBuf, artifact: PathBuf) -> Self {
+        Self {
+            name: "surgeist-render".to_owned(),
+            root,
+            artifact,
+            profile: ApiProfile::RenderText,
+        }
+    }
+
     fn audit_name(&self) -> String {
         match self.profile {
             ApiProfile::Default => self.name.clone(),
             ApiProfile::CssCorpus => format!("{} [css-corpus]", self.name),
+            ApiProfile::RenderText => format!("{} [render-text]", self.name),
         }
     }
 
@@ -176,6 +187,12 @@ pub fn discover_targets(root: &Path) -> Result<Vec<ApiTarget>, String> {
                 crate_targets.push(ApiTarget::css_corpus(
                     path.clone(),
                     root.join("api/crates/surgeist-generator.css-corpus.txt"),
+                ));
+            }
+            if name == "surgeist-render" {
+                crate_targets.push(ApiTarget::render_text(
+                    path.clone(),
+                    root.join("api/crates/surgeist-render.render-text.txt"),
                 ));
             }
             crate_targets.push(ApiTarget::new(name, path, artifact));
@@ -285,6 +302,7 @@ pub fn generate_target_artifact(target: &ApiTarget) -> Result<String, String> {
     let builder = match target.profile {
         ApiProfile::Default => builder,
         ApiProfile::CssCorpus => builder.no_default_features(true).features(["css-corpus"]),
+        ApiProfile::RenderText => builder.no_default_features(true).features(["render-text"]),
     };
     let rustdoc_json = builder
         .build()
@@ -632,6 +650,174 @@ mod tests {
         );
         assert!(
             !css_path.exists(),
+            "check must not recreate the missing audit"
+        );
+        assert_eq!(
+            std::fs::read_to_string(default_path).unwrap(),
+            default_artifact,
+        );
+    }
+
+    #[test]
+    fn render_selection_includes_default_and_render_text_artifacts() {
+        let fixture = TempFixture::new("surgeist-api-render-profiles");
+        fixture.file("Cargo.toml", "[package]\nname = \"surgeist\"\n");
+        fixture.file(
+            "crates/surgeist-render/Cargo.toml",
+            "[package]\nname = \"surgeist-render\"\n[features]\nrender-text = []\n",
+        );
+
+        for args in [
+            vec!["generator", "--crate", "surgeist-render"],
+            vec!["generator", "--all"],
+        ] {
+            let cli = Cli::parse(args).unwrap();
+            let targets = select_targets(fixture.path(), cli.selection).unwrap();
+            let render_targets = targets
+                .iter()
+                .filter(|target| target.name() == "surgeist-render")
+                .collect::<Vec<_>>();
+            assert_eq!(
+                render_targets
+                    .iter()
+                    .map(|target| target.artifact_path())
+                    .collect::<Vec<_>>(),
+                [
+                    fixture.path().join("api/crates/surgeist-render.txt"),
+                    fixture
+                        .path()
+                        .join("api/crates/surgeist-render.render-text.txt"),
+                ],
+                "Render selection must audit its default and optional Text adapter surfaces",
+            );
+            assert_eq!(
+                render_targets
+                    .iter()
+                    .map(|target| render_list_line(fixture.path(), target))
+                    .collect::<Vec<_>>(),
+                [
+                    "surgeist-render crates/surgeist-render",
+                    "surgeist-render [render-text] crates/surgeist-render",
+                ],
+            );
+        }
+    }
+
+    #[test]
+    fn configured_render_profile_preserves_root_and_other_target_selections() {
+        let fixture = TempFixture::new("surgeist-api-render-selection");
+        fixture.file("Cargo.toml", "[package]\nname = \"surgeist\"\n");
+        for name in ["surgeist-render", "surgeist-generator", "surgeist-task"] {
+            fixture.file(
+                &format!("crates/{name}/Cargo.toml"),
+                &format!("[package]\nname = \"{name}\"\n[features]\nrender-text = []\n"),
+            );
+        }
+        let targets = discover_targets(fixture.path()).unwrap();
+        assert_eq!(
+            targets
+                .iter()
+                .map(|target| render_list_line(fixture.path(), target))
+                .collect::<Vec<_>>(),
+            [
+                "surgeist .",
+                "surgeist-generator crates/surgeist-generator",
+                "surgeist-generator [css-corpus] crates/surgeist-generator",
+                "surgeist-render crates/surgeist-render",
+                "surgeist-render [render-text] crates/surgeist-render",
+                "surgeist-task crates/surgeist-task",
+            ],
+        );
+        assert_eq!(
+            select_targets(fixture.path(), TargetSelection::Root).unwrap(),
+            [ApiTarget::new(
+                "surgeist",
+                fixture.path(),
+                fixture.path().join("api/public-api.txt"),
+            )],
+        );
+        assert_eq!(
+            select_targets(
+                fixture.path(),
+                TargetSelection::Crate("surgeist-task".to_owned()),
+            )
+            .unwrap(),
+            [ApiTarget::new(
+                "surgeist-task",
+                fixture.path().join("crates/surgeist-task"),
+                fixture.path().join("api/crates/surgeist-task.txt"),
+            )],
+        );
+        assert_eq!(
+            select_targets(
+                fixture.path(),
+                TargetSelection::Crate("missing".to_owned()),
+            )
+            .unwrap_err(),
+            "unknown API target missing; available targets: surgeist, surgeist-generator, surgeist-render, surgeist-task",
+        );
+    }
+
+    #[test]
+    #[ignore = "runs pinned nightly rustdoc on an isolated feature fixture; select explicitly with offline Cargo and one build job"]
+    fn render_text_audit_uses_only_requested_features_and_reports_its_missing_artifact() {
+        let fixture = TempFixture::new("surgeist-api-render-rustdoc");
+        fixture.file(
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"crates/surgeist-render\"]\nresolver = \"2\"\n",
+        );
+        fixture.file(
+            "crates/surgeist-render/Cargo.toml",
+            concat!(
+                "[package]\nname = \"surgeist-render\"\nversion = \"0.0.0\"\nedition = \"2021\"\n",
+                "[features]\ndefault = [\"hostile-default\"]\nhostile-default = []\nrender-text = []\nunrequested = []\n",
+            ),
+        );
+        fixture.file(
+            "crates/surgeist-render/src/lib.rs",
+            concat!(
+                "#![forbid(unsafe_code)]\n",
+                "pub struct Shared;\n",
+                "#[cfg(feature = \"hostile-default\")]\npub struct HostileDefaultOnly;\n",
+                "#[cfg(feature = \"render-text\")]\npub struct RenderTextOnly;\n",
+                "#[cfg(feature = \"unrequested\")]\npub struct UnrequestedOnly;\n",
+            ),
+        );
+
+        run(fixture.path(), ["generator", "--crate", "surgeist-render"]).unwrap();
+
+        let default_path = fixture.path().join("api/crates/surgeist-render.txt");
+        let text_path = fixture
+            .path()
+            .join("api/crates/surgeist-render.render-text.txt");
+        let default_artifact = std::fs::read_to_string(&default_path).unwrap();
+        let text_artifact = std::fs::read_to_string(&text_path).unwrap();
+        assert!(default_artifact.starts_with("# surgeist-render public API\n"));
+        assert!(text_artifact.starts_with("# surgeist-render [render-text] public API\n"));
+        for artifact in [&default_artifact, &text_artifact] {
+            assert!(artifact
+                .lines()
+                .any(|line| line == "pub struct surgeist_render::Shared"));
+            assert!(!artifact.contains("UnrequestedOnly"));
+        }
+        assert!(default_artifact
+            .lines()
+            .any(|line| line == "pub struct surgeist_render::HostileDefaultOnly"));
+        assert!(!default_artifact.contains("RenderTextOnly"));
+        assert!(text_artifact
+            .lines()
+            .any(|line| line == "pub struct surgeist_render::RenderTextOnly"));
+        assert!(!text_artifact.contains("HostileDefaultOnly"));
+
+        std::fs::remove_file(&text_path).unwrap();
+        let error = run(
+            fixture.path(),
+            ["generator", "--check", "--crate", "surgeist-render"],
+        )
+        .unwrap_err();
+        assert_eq!(error, "stale API artifacts: surgeist-render [render-text]");
+        assert!(
+            !text_path.exists(),
             "check must not recreate the missing audit"
         );
         assert_eq!(

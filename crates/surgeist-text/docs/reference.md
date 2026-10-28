@@ -795,9 +795,11 @@ outer diagnostic. No refused path publishes an admitted partial paragraph.
 source-free tab measurements; script diagnostics retain canonical `TextScript`
 candidates and actual style/locale contexts. These readbacks grant no new source
 or phase capability. Physical geometry uses the separate [glyph and cell
-frames](#borrowed-paint-readback). Layout's composition adapter and Render's paint
-adapter still refuse Vertical; broader mixed/intrinsic typography and downstream
-adoption remain outside this native Text profile.
+frames](#borrowed-paint-readback). Render's [direct paint
+adapter](../../surgeist-render/docs/reference.md#glyph-admission) consumes this
+native glyph basis. Layout's composition adapter retains its own admission
+limits; broader mixed/intrinsic typography and Layout adoption remain outside
+this native Text profile.
 
 ## Defaults and validation
 

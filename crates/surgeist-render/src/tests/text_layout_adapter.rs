@@ -5,6 +5,7 @@ mod composed;
 mod control_paint;
 mod endpoint_paint;
 mod sideways;
+mod upright;
 
 use surgeist_text as text;
 

@@ -68,6 +68,13 @@ CSS corpus API. The companion `surgeist-generator.css-corpus.txt` artifact uses
 diagnostic identify it as `surgeist-generator [css-corpus]`; the browser feature
 is disabled for this profile.
 
+Use `--check --crate surgeist-render` to check both its default API and its
+optional Text adapter API. The companion `surgeist-render.render-text.txt`
+artifact uses `--no-default-features --features render-text`; its listing,
+header and stale diagnostic identify it as `surgeist-render [render-text]`.
+Generation with `--crate surgeist-render` and selection with `--all` include both
+artifacts. Other Render features are not requested by this named profile.
+
 ### Check The API Tool
 
 API-tool commands use its separate workspace. The environment also limits nested
@@ -80,11 +87,15 @@ CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true cargo run --offline -j 1 --manifest-pa
 CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true cargo run --offline -j 1 --manifest-path api/generator/Cargo.toml -- --check
 ```
 
-When profile handling changes, select the ignored real rustdoc fixture
-separately. Unset `CARGO_TARGET_DIR` so it owns/removes its nested output.
+When profile handling changes, select the relevant ignored real rustdoc fixture
+separately. Each fixture generates default and named artifacts, checks actual
+feature-specific symbols, then checks the missing named artifact diagnostic
+without recreating it. Unset `CARGO_TARGET_DIR` so the fixture owns/removes its
+nested output; retain offline mode and one build job for nested rustdoc commands.
 
 ```sh
 env -u CARGO_TARGET_DIR CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true cargo test --offline -j 1 --manifest-path api/generator/Cargo.toml --lib tests::css_corpus_audit_uses_only_requested_features_and_reports_its_missing_artifact -- --ignored --exact
+env -u CARGO_TARGET_DIR CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true cargo test --offline -j 1 --manifest-path api/generator/Cargo.toml --lib tests::render_text_audit_uses_only_requested_features_and_reports_its_missing_artifact -- --ignored --exact
 ```
 
 ## Refresh Audits After An Authorized Source Change
