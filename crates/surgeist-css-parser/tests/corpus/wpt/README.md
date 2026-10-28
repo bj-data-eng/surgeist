@@ -60,7 +60,9 @@ in the case's `remainder`, or the whole case is deferred, and is claimed nowhere
 | [consecutive-tokens.json](consecutive-tokens.json) | 65 cases: two tokens written one after the other keep a comment between them and read back as the same two tokens |
 | [escaped-identifier-round-trips.json](escaped-identifier-round-trips.json) | 11 cases: escaped names decode to the expected tokens and read back as the same tokens once written |
 | [unclosed-constructs.json](unclosed-constructs.json) | 2 cases: an unclosed group holds what the closed group holds |
-| [deferred.json](deferred.json) | 40 cases, none exercised (below) |
+| [preprocessing.json](preprocessing.json) | 11 cases (`input-preprocessing`, and the lone surrogate of `non-ascii-codepoints`): preprocessing the UTF-16 input gives the expected text, which is one ident token with the expected value |
+| [profile-expectations.json](profile-expectations.json) | 1 case in which upstream and the pinned edition disagree and the edition governs (below) |
+| [deferred.json](deferred.json) | 29 cases, none exercised (below) |
 
 The unit vectors describe what the algorithms return. The crate also reports a
 construct that an algorithm drops ("return nothing") as a failed unit so that a
@@ -73,7 +75,6 @@ input of a case (`grammar`), because validity is not a Syntax 3 result.
 
 | Disposition | Cases | Why |
 | --- | --- | --- |
-| `adapted-at-step-8a` | 11 | The 10 cases of `input-preprocessing.html` and the lone-surrogate case of `non-ascii-codepoints.html` need section 3.3 preprocessing as a function and UTF-16 input, which the crate's input module adds at step 8a |
 | `pending-step-15` | 22 | The cases of `non-ascii-codepoints.html` whose code point is not a non-ASCII ident code point in section 4.2 of the pinned edition. The lexer still applies the 2021 rule until step 15 replaces it with the pinned ranges; the 35 cases whose code point is listed are claimed now |
 | `computed-value-substitution` | 7 | The comment and empty-fallback cases of `serialize-consecutive-tokens.html` observe a computed custom property after `var()` substitution |
 
@@ -85,9 +86,19 @@ upstream at this pin. The lone-surrogate expectation is therefore one upstream
 has never exercised. The vectors adapt each range the file lists, as written in
 the array.
 
-No case disagrees with the pinned edition for a reason that needs a profile
-file. The one possible disagreement, the lone surrogate of `non-ascii-codepoints.html`,
-depends on preprocessing and is decided at step 8a.
+### The one disagreement with the edition
+
+The upstream test `non-ascii-codepoints.html` lists the code point after each
+range as invalid, and U+D800 follows the range that ends at U+D7FF. The pinned
+edition replaces a surrogate by U+FFFD when it preprocesses the input (section
+3.3), and lists U+FFFD among the non-ASCII ident code points (section 4.2), so
+an identifier that holds an unpaired UTF-16 surrogate unit is accepted. The
+edition governs: [preprocessing.json](preprocessing.json) claims the accepted
+reading for that case (`non-ascii-invalid-0d800`), and
+[profile-expectations.json](profile-expectations.json) records the selected
+expectation, the upstream expectation, the sections of the edition and the
+reason. Upstream has never run this expectation at the pin (the missing comma
+described above), which the harness checks against the imported file.
 
 ## Verification and maintenance
 

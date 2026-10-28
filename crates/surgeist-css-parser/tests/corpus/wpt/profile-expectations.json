@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "source_revision": "ddcca5943fd41232d42149aaa19d9a04c5651b18",
+  "profile_id": "surgeist-css-syntax-3-2026-10-01",
+  "assertion_kind": "syntax-3-edition-versus-upstream",
+  "standards": [
+    {
+      "module_id": "css-syntax-3",
+      "publication_url": "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/",
+      "publication_sha256": "8dc3adcc2b4e8fd8fa73c0be85cec67f006874ab42010cdf4528af4aa83f2878",
+      "sections": [
+        "input-preprocessing",
+        "non-ascii-ident-code-point"
+      ]
+    }
+  ],
+  "rationale": "The pinned edition defines the input stream after section 3.3: a surrogate code point is replaced by U+FFFD, and section 4.2 lists U+FFFD (between U+FDF0 and U+FFFD) as a non-ASCII ident code point. A UTF-16 unit that is not part of a pair is therefore an ident code point once the input is preprocessed, so an identifier that holds one is accepted. The upstream test lists the code points that follow its ranges as invalid, and U+D800 follows the range ending at U+D7FF. The selected profile follows the edition; upstream's expectation is preserved independently.",
+  "cases": [
+    {
+      "id": "non-ascii-invalid-0d800",
+      "source": {
+        "path": "css/css-syntax/non-ascii-codepoints.html",
+        "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+        "line": 76,
+        "case": "[0x3001, 0xd7ff],"
+      },
+      "input": "f U+D800 oo (a JavaScript string holding a lone surrogate)",
+      "input_units": [
+        102,
+        55296,
+        111,
+        111
+      ],
+      "upstream_expected": "invalid: the value is not a valid ident, so the property keeps its previous value",
+      "selected_profile_expected": "valid: the preprocessed text is f U+FFFD oo, one ident token",
+      "edition_sections": [
+        "3.3 Preprocessing the input stream: replace surrogate code points with U+FFFD",
+        "4.2 Definitions: non-ASCII ident code point, which includes the range ending at U+FFFD"
+      ],
+      "never_executed_upstream": "non-ascii-codepoints.html omits the comma after the [0x203f, 0x2040] line, so JavaScript reads the next line as an index into that array and the file's first loop throws at undefined[0]. Every later range and every testInvalid call, including this one, never runs at the pin, so the upstream expectation has never been exercised.",
+      "reason": "Both the preprocessing and the ident classification are Syntax 3 results, so the edition decides. The vector in preprocessing.json claims the selected expectation."
+    }
+  ]
+}

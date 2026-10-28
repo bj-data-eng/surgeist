@@ -10,7 +10,7 @@
 //!
 //! A vector claims only the Syntax 3 observable of its upstream case (tokens
 //! and their source, rule and declaration units, `An+B` values, the way tokens
-//! are written back). What the upstream test asserts through the CSS object
+//! are written back, the text that preprocessing UTF-16 input gives). What the upstream test asserts through the CSS object
 //! model, selector matching, property validity or `var()` substitution is not a
 //! Syntax 3 result; it is stated in the vector's `remainder` or kept as a
 //! deferred disposition, and is claimed nowhere.
@@ -27,7 +27,9 @@ use surgeist_css_parser::anb;
 use surgeist_css_parser::grammar::{
     AtRule, BlockGrammar, Declaration, Failed, QualifiedRule, RuleGrammar, UnitKind,
 };
+use surgeist_css_parser::input::{PreprocessLimits, filter_code_points, preprocess_utf16};
 use surgeist_css_parser::lexer::{Lexer, Options};
+use surgeist_css_parser::limits::{Failure, Meter, Refused};
 use surgeist_css_parser::serialize::Writer;
 use surgeist_css_parser::{Stream, SyntaxError, Token};
 
@@ -47,6 +49,8 @@ const CONSECUTIVE: &str = include_str!("corpus/wpt/consecutive-tokens.json");
 const ROUND_TRIPS: &str = include_str!("corpus/wpt/escaped-identifier-round-trips.json");
 const UNCLOSED: &str = include_str!("corpus/wpt/unclosed-constructs.json");
 const DEFERRED: &str = include_str!("corpus/wpt/deferred.json");
+const PREPROCESSING: &str = include_str!("corpus/wpt/preprocessing.json");
+const PROFILE: &str = include_str!("corpus/wpt/profile-expectations.json");
 
 /// The 23 tests the edition cites outside `css/css-syntax/charset/`.
 const CITED: [&str; 23] = [
@@ -75,11 +79,7 @@ const CITED: [&str; 23] = [
     "whitespace",
 ];
 
-const DISPOSITIONS: [&str; 3] = [
-    "adapted-at-step-8a",
-    "pending-step-15",
-    "computed-value-substitution",
-];
+const DISPOSITIONS: [&str; 2] = ["pending-step-15", "computed-value-substitution"];
 
 // ------------------------------------------------------------------ the data
 
@@ -208,6 +208,61 @@ struct UnclosedCase {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct PreprocessingCase {
+    id: String,
+    source: Binding,
+    /// The JavaScript literal of the input as the upstream line spells it.
+    input_js: Option<String>,
+    /// The JavaScript literal of the expectation as the upstream line spells it.
+    expected_js: Option<String>,
+    /// How a case that has no literal gets its input from the upstream line.
+    derivation: Option<String>,
+    /// The profile file that records a disagreement with the edition.
+    profile: Option<String>,
+    input_units: Vec<u16>,
+    text: String,
+    ident: String,
+    #[allow(dead_code)]
+    remainder: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Profile {
+    schema_version: u8,
+    source_revision: String,
+    profile_id: String,
+    assertion_kind: String,
+    standards: Vec<ProfileStandard>,
+    rationale: String,
+    cases: Vec<ProfileCase>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProfileStandard {
+    module_id: String,
+    publication_url: String,
+    publication_sha256: String,
+    sections: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProfileCase {
+    id: String,
+    source: Binding,
+    input: String,
+    input_units: Vec<u16>,
+    upstream_expected: String,
+    selected_profile_expected: String,
+    edition_sections: Vec<String>,
+    never_executed_upstream: String,
+    reason: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct DeferredCase {
     id: String,
     source: Binding,
@@ -325,6 +380,7 @@ fn all_bindings() -> Vec<(String, Binding)> {
     all.extend(take(pair_cases(), |c| (c.id, c.source)));
     all.extend(take(round_trip_cases(), |c| (c.id, c.source)));
     all.extend(take(unclosed_cases(), |c| (c.id, c.source)));
+    all.extend(take(preprocessing_cases(), |c| (c.id, c.source)));
     all.extend(take(deferred_cases(), |c| (c.id, c.source)));
     all
 }
@@ -352,6 +408,9 @@ fn unclosed_cases() -> Vec<UnclosedCase> {
 }
 fn deferred_cases() -> Vec<DeferredCase> {
     vectors(DEFERRED, "deferred-dispositions")
+}
+fn preprocessing_cases() -> Vec<PreprocessingCase> {
+    vectors(PREPROCESSING, "utf16-preprocessing-reads-as-one-ident")
 }
 
 /// Panics with every failure at once, so one bad vector hides no other.
@@ -1003,4 +1062,237 @@ fn an_unclosed_group_holds_what_the_closed_group_holds() {
         }
     }
     assert_no_failures("unclosed-group", failures);
+}
+
+// ------------------------------------------------------------ preprocessing
+
+/// A meter that admits everything: the vectors observe text, not charges.
+struct Free;
+
+impl Meter for Free {
+    fn step(&self) -> Result<(), Refused> {
+        Ok(())
+    }
+    fn add(&self, _: usize) -> Result<(), Refused> {
+        Ok(())
+    }
+    fn released(&self, _: usize) {}
+    fn note(&self, _: Failure) -> Refused {
+        Refused
+    }
+}
+
+/// The UTF-16 units of a JavaScript string literal that uses only plain
+/// characters, `\xHH` and `\uHHHH`, as the upstream lines write them.
+fn javascript_units(literal: &str) -> Vec<u16> {
+    let body = literal
+        .strip_prefix('"')
+        .and_then(|rest| rest.strip_suffix('"'))
+        .unwrap_or_else(|| panic!("{literal} is not a double-quoted literal"));
+    let mut units = Vec::new();
+    let mut points = body.chars();
+    while let Some(point) = points.next() {
+        if point != '\\' {
+            let mut buffer = [0_u16; 2];
+            units.extend_from_slice(point.encode_utf16(&mut buffer));
+            continue;
+        }
+        let digits = match points.next() {
+            Some('x') => 2,
+            Some('u') => 4,
+            other => panic!("{literal}: unsupported escape {other:?}"),
+        };
+        let hex: String = points.by_ref().take(digits).collect();
+        units.push(u16::from_str_radix(&hex, 16).expect("hexadecimal digits"));
+    }
+    units
+}
+
+fn preprocessed(units: &[u16]) -> String {
+    preprocess_utf16(units, &PreprocessLimits::default(), &Free)
+        .expect("preprocessing within the default limits")
+        .text()
+        .to_owned()
+}
+
+#[test]
+fn a_preprocessing_vector_takes_its_input_and_expectation_from_its_upstream_line() {
+    let mut failures = Vec::new();
+    let mut literal = 0;
+    for case in preprocessing_cases() {
+        match (
+            &case.input_js,
+            &case.expected_js,
+            case.derivation.as_deref(),
+        ) {
+            (Some(input), Some(expected), None) => {
+                literal += 1;
+                let line = format!("testParsing({input}, {expected});");
+                if case.source.case != line {
+                    failures.push(format!(
+                        "{}: line {:?} is not {line:?}",
+                        case.id, case.source.case
+                    ));
+                }
+                if javascript_units(input) != case.input_units {
+                    failures.push(format!("{}: input units differ from {input}", case.id));
+                }
+                if javascript_units(expected) != case.text.encode_utf16().collect::<Vec<_>>() {
+                    failures.push(format!("{}: text differs from {expected}", case.id));
+                }
+            }
+            // `validIdentChar(cp)` sets `"f" + String.fromCodePoint(cp) + "oo"`,
+            // and `testInvalid(range[1] + 1)` runs for the range ending at
+            // 0xd7ff.
+            (None, None, Some("range-end-plus-one")) => {
+                let end = 0xd7ff_u16;
+                if !case.source.case.contains("0xd7ff") {
+                    failures.push(format!("{}: the line names no range end 0xd7ff", case.id));
+                }
+                if case.input_units != [0x66, end + 1, 0x6f, 0x6f] {
+                    failures.push(format!("{}: units are not f, U+D800, o, o", case.id));
+                }
+            }
+            other => failures.push(format!("{}: unsupported derivation {other:?}", case.id)),
+        }
+    }
+    assert_eq!(
+        literal, 10,
+        "the ten testParsing lines of input-preprocessing.html"
+    );
+    assert_no_failures("preprocessing binding", failures);
+}
+
+#[test]
+fn preprocessing_vectors_give_the_text_and_the_one_ident_the_edition_says() {
+    let mut failures = Vec::new();
+    for case in preprocessing_cases() {
+        // Section 3.3 over the UTF-16 units, with the original units kept.
+        let result = preprocess_utf16(&case.input_units, &PreprocessLimits::default(), &Free)
+            .expect("preprocessing within the default limits");
+        if result.text() != case.text {
+            failures.push(format!(
+                "{}: {:x?} became {:?}, expected {:?}",
+                case.id,
+                case.input_units,
+                result.text(),
+                case.text
+            ));
+            continue;
+        }
+        if result.map().original_utf16(0..result.text().len()) != Some(0..case.input_units.len()) {
+            failures.push(format!("{}: the map does not cover the input", case.id));
+        }
+        // The text is one ident token with the expected value, and no parse error.
+        assert_tiles(&case.text);
+        let (items, errors) = lex_all(&case.text);
+        let tokens: Vec<&str> = items.iter().map(|item| item.token.as_str()).collect();
+        let expected = render(Token::Ident(&case.ident));
+        if tokens != [expected.as_str()] || !errors.is_empty() {
+            failures.push(format!(
+                "{}: {:?} lexed to {tokens:?} with {errors:?}, expected one {expected}",
+                case.id, case.text
+            ));
+        }
+        // What upstream reads back from the rule: the ident written as it would
+        // be in a selector.
+        let mut written = String::new();
+        surgeist_css_parser::serialize::identifier(&case.ident, &mut written)
+            .expect("writing to a string");
+        if written != case.text {
+            failures.push(format!("{}: ident written as {written:?}", case.id));
+        }
+        // Over text, the string filter gives the same text where the units are
+        // text at all (an unpaired surrogate is not).
+        if let Ok(text) = String::from_utf16(&case.input_units)
+            && filter_code_points(&text) != case.text
+        {
+            failures.push(format!(
+                "{}: filter_code_points gave {:?}",
+                case.id,
+                filter_code_points(&text)
+            ));
+        }
+    }
+    assert_no_failures("preprocessing", failures);
+}
+
+#[test]
+fn the_lone_surrogate_vector_follows_the_edition_and_the_profile_records_the_disagreement() {
+    let profile: Profile = serde_json::from_str(PROFILE).expect("profile schema");
+    assert_eq!(profile.schema_version, 1);
+    assert_eq!(profile.source_revision, REVISION);
+    assert_eq!(profile.profile_id, "surgeist-css-syntax-3-2026-10-01");
+    assert_eq!(profile.assertion_kind, "syntax-3-edition-versus-upstream");
+    assert!(profile.rationale.len() > 100);
+    let [standard] = profile.standards.as_slice() else {
+        panic!("one standard");
+    };
+    assert_eq!(standard.module_id, "css-syntax-3");
+    assert_eq!(
+        standard.publication_url,
+        "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/"
+    );
+    // The retained copy of the edition is named by the start of this digest.
+    assert!(standard.publication_sha256.starts_with("8dc3adcc2b4e"));
+    assert_eq!(standard.publication_sha256.len(), 64);
+    assert_eq!(
+        standard.sections,
+        ["input-preprocessing", "non-ascii-ident-code-point"]
+    );
+
+    let [case] = profile.cases.as_slice() else {
+        panic!("one profile case");
+    };
+    assert_eq!(case.id, "non-ascii-invalid-0d800");
+    assert!(case.upstream_expected.starts_with("invalid"));
+    assert!(case.selected_profile_expected.starts_with("valid"));
+    assert_eq!(case.edition_sections.len(), 2);
+    assert!(case.reason.len() > 40 && case.input.contains("lone surrogate"));
+    // The note that upstream never ran the call is checked by
+    // `upstream_never_ran_the_lone_surrogate_expectation_at_the_pin`.
+    assert!(case.never_executed_upstream.contains("omits the comma"));
+    if let Some(problem) = binding_problem(&case.source) {
+        panic!("{problem}");
+    }
+
+    // The vector that claims the selected expectation names this profile.
+    let vector = preprocessing_cases()
+        .into_iter()
+        .find(|vector| vector.id == case.id)
+        .expect("a vector for the profile case");
+    assert_eq!(vector.profile.as_deref(), Some("profile-expectations.json"));
+    assert_eq!(vector.input_units, case.input_units);
+    assert_eq!(vector.source.line, case.source.line);
+    assert_eq!(vector.source.sha256, case.source.sha256);
+
+    // The selected expectation: the edition replaces the surrogate with U+FFFD
+    // (3.3), and U+FFFD is a non-ASCII ident code point (4.2, "between U+FDF0
+    // and U+FFFD"), so the text is one ident. Upstream expected otherwise.
+    assert_eq!(preprocessed(&case.input_units), "f\u{fffd}oo");
+    assert!(surgeist_css_parser::lexical::is_ident_code_point(
+        '\u{fffd}'
+    ));
+    assert_eq!(token_sources("f\u{fffd}oo").len(), 1);
+}
+
+#[test]
+fn upstream_never_ran_the_lone_surrogate_expectation_at_the_pin() {
+    // The profile's note, checked against the imported file: the line that ends
+    // the `[0x203f, 0x2040]` range has no comma, so JavaScript indexes that
+    // array with the next line and the first loop throws before any range or
+    // `testInvalid` call that follows.
+    let upstream = &archive()["css/css-syntax/non-ascii-codepoints.html"].text;
+    let lines: Vec<&str> = upstream.lines().map(str::trim).collect();
+    let at = lines
+        .iter()
+        .position(|line| *line == "[0x203f, 0x2040]")
+        .expect("the range line is present without a trailing comma");
+    assert!(lines[at + 1].starts_with("[0x2070, 0x218f]"));
+    assert!(
+        lines[..at].iter().all(|line| *line != "[0x203f, 0x2040],"),
+        "no copy of the line with a comma"
+    );
+    // The expectation is for the call that follows the range ending at U+D7FF.
+    assert!(lines.contains(&"[0x3001, 0xd7ff],"));
 }

@@ -195,6 +195,12 @@ pub fn surgeist_css_parser::grammar::RuleGrammar::at_rule(&mut self, rule: surge
 pub fn surgeist_css_parser::grammar::RuleGrammar::qualified_rule(&mut self, rule: surgeist_css_parser::grammar::QualifiedRule<'i, P>) -> core::result::Result<Self::Item, surgeist_css_parser::SyntaxError<'i, Self::Error, P>>
 pub type surgeist_css_parser::grammar::Unit<'i, T, E, P> = core::result::Result<T, surgeist_css_parser::grammar::Failed<'i, E, P>>
 pub mod surgeist_css_parser::input
+#[non_exhaustive] pub enum surgeist_css_parser::input::EncodingSelection
+pub surgeist_css_parser::input::EncodingSelection::ByteOrderMark
+pub surgeist_css_parser::input::EncodingSelection::CharsetPrefix
+pub surgeist_css_parser::input::EncodingSelection::DefaultUtf8
+pub surgeist_css_parser::input::EncodingSelection::Environment
+pub surgeist_css_parser::input::EncodingSelection::Protocol
 pub enum surgeist_css_parser::input::InputKind
 pub surgeist_css_parser::input::InputKind::Utf16
 pub surgeist_css_parser::input::InputKind::Utf8
@@ -204,6 +210,45 @@ pub surgeist_css_parser::input::InputRequest::End
 pub surgeist_css_parser::input::InputRequest::HeldUnit
 pub surgeist_css_parser::input::InputRequest::Read
 pub surgeist_css_parser::input::InputRequest::Read::index: usize
+#[non_exhaustive] pub enum surgeist_css_parser::input::PreprocessResource
+pub surgeist_css_parser::input::PreprocessResource::InputUnits
+pub surgeist_css_parser::input::PreprocessResource::MapEntries
+pub surgeist_css_parser::input::PreprocessResource::OutputBytes
+pub surgeist_css_parser::input::PreprocessResource::RetainedBytes
+pub surgeist_css_parser::input::PreprocessResource::ScratchBytes
+pub surgeist_css_parser::input::PreprocessResource::Work
+impl surgeist_css_parser::input::PreprocessResource
+pub const fn surgeist_css_parser::input::PreprocessResource::as_str(self) -> &'static str
+pub struct surgeist_css_parser::input::DecodeError
+impl surgeist_css_parser::input::DecodeError
+pub const fn surgeist_css_parser::input::DecodeError::is_allocation_failure(&self) -> bool
+pub const fn surgeist_css_parser::input::DecodeError::is_capacity_overflow(&self) -> bool
+pub const fn surgeist_css_parser::input::DecodeError::is_decoded_utf8_byte_limit(&self) -> bool
+pub const fn surgeist_css_parser::input::DecodeError::is_original_byte_limit(&self) -> bool
+impl core::error::Error for surgeist_css_parser::input::DecodeError
+impl core::fmt::Display for surgeist_css_parser::input::DecodeError
+pub fn surgeist_css_parser::input::DecodeError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_css_parser::input::DecodeHints<'a>
+pub surgeist_css_parser::input::DecodeHints::environment_encoding: core::option::Option<surgeist_css_parser::input::Encoding>
+pub surgeist_css_parser::input::DecodeHints::protocol_label: core::option::Option<&'a str>
+pub struct surgeist_css_parser::input::DecodeLimits
+impl surgeist_css_parser::input::DecodeLimits
+pub const fn surgeist_css_parser::input::DecodeLimits::max_decoded_utf8_bytes(self) -> usize
+pub const fn surgeist_css_parser::input::DecodeLimits::max_original_bytes(self) -> usize
+pub const fn surgeist_css_parser::input::DecodeLimits::new(original_bytes: usize, decoded_utf8_bytes: usize) -> Self
+impl core::default::Default for surgeist_css_parser::input::DecodeLimits
+pub fn surgeist_css_parser::input::DecodeLimits::default() -> Self
+pub struct surgeist_css_parser::input::Decoded
+impl surgeist_css_parser::input::Decoded
+pub const fn surgeist_css_parser::input::Decoded::encoding(&self) -> surgeist_css_parser::input::Encoding
+pub const fn surgeist_css_parser::input::Decoded::had_replacements(&self) -> bool
+pub fn surgeist_css_parser::input::Decoded::into_text(self) -> alloc::string::String
+pub const fn surgeist_css_parser::input::Decoded::selection(&self) -> surgeist_css_parser::input::EncodingSelection
+pub fn surgeist_css_parser::input::Decoded::text(&self) -> &str
+pub struct surgeist_css_parser::input::Encoding(_)
+impl surgeist_css_parser::input::Encoding
+pub fn surgeist_css_parser::input::Encoding::for_label(label: &str) -> core::option::Option<Self>
+pub fn surgeist_css_parser::input::Encoding::name(self) -> &'static str
 pub struct surgeist_css_parser::input::InputCursor
 impl surgeist_css_parser::input::InputCursor
 pub fn surgeist_css_parser::input::InputCursor::emitted(&mut self) -> core::result::Result<(), surgeist_css_parser::input::InputError>
@@ -222,10 +267,53 @@ pub const fn surgeist_css_parser::input::InputError::is_wrong_unit(&self) -> boo
 impl core::error::Error for surgeist_css_parser::input::InputError
 impl core::fmt::Display for surgeist_css_parser::input::InputError
 pub fn surgeist_css_parser::input::InputError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_css_parser::input::PreprocessError
+impl surgeist_css_parser::input::PreprocessError
+pub const fn surgeist_css_parser::input::PreprocessError::exhausted_limit(&self) -> core::option::Option<surgeist_css_parser::input::PreprocessResource>
+pub const fn surgeist_css_parser::input::PreprocessError::is_allocation_failure(&self) -> bool
+pub const fn surgeist_css_parser::input::PreprocessError::is_capacity_overflow(&self) -> bool
+pub const fn surgeist_css_parser::input::PreprocessError::is_limit(&self) -> bool
+pub const fn surgeist_css_parser::input::PreprocessError::is_refused(&self) -> bool
+impl core::error::Error for surgeist_css_parser::input::PreprocessError
+impl core::fmt::Display for surgeist_css_parser::input::PreprocessError
+pub fn surgeist_css_parser::input::PreprocessError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_css_parser::input::PreprocessLimits
+impl surgeist_css_parser::input::PreprocessLimits
+pub const surgeist_css_parser::input::PreprocessLimits::SCRATCH_BYTES: usize
+pub const fn surgeist_css_parser::input::PreprocessLimits::max_input_units(self) -> usize
+pub const fn surgeist_css_parser::input::PreprocessLimits::max_map_entries(self) -> usize
+pub const fn surgeist_css_parser::input::PreprocessLimits::max_output_bytes(self) -> usize
+pub const fn surgeist_css_parser::input::PreprocessLimits::max_retained_bytes(self) -> usize
+pub const fn surgeist_css_parser::input::PreprocessLimits::max_scratch_bytes(self) -> usize
+pub const fn surgeist_css_parser::input::PreprocessLimits::max_work(self) -> usize
+pub const fn surgeist_css_parser::input::PreprocessLimits::with_max_input_units(self, units: usize) -> Self
+pub const fn surgeist_css_parser::input::PreprocessLimits::with_max_map_entries(self, entries: usize) -> Self
+pub const fn surgeist_css_parser::input::PreprocessLimits::with_max_output_bytes(self, bytes: usize) -> Self
+pub const fn surgeist_css_parser::input::PreprocessLimits::with_max_retained_bytes(self, bytes: usize) -> Self
+pub const fn surgeist_css_parser::input::PreprocessLimits::with_max_scratch_bytes(self, bytes: usize) -> Self
+pub const fn surgeist_css_parser::input::PreprocessLimits::with_max_work(self, steps: usize) -> Self
+impl core::default::Default for surgeist_css_parser::input::PreprocessLimits
+pub fn surgeist_css_parser::input::PreprocessLimits::default() -> Self
+pub struct surgeist_css_parser::input::Preprocessed
+impl surgeist_css_parser::input::Preprocessed
+pub fn surgeist_css_parser::input::Preprocessed::charged_bytes(&self) -> usize
+pub fn surgeist_css_parser::input::Preprocessed::into_parts(self) -> (alloc::string::String, surgeist_css_parser::input::SourceMap)
+pub const fn surgeist_css_parser::input::Preprocessed::map(&self) -> &surgeist_css_parser::input::SourceMap
+pub fn surgeist_css_parser::input::Preprocessed::text(&self) -> &str
+pub fn surgeist_css_parser::input::Preprocessed::text_capacity(&self) -> usize
 pub struct surgeist_css_parser::input::Scalar
 pub surgeist_css_parser::input::Scalar::end: usize
 pub surgeist_css_parser::input::Scalar::start: usize
 pub surgeist_css_parser::input::Scalar::value: char
+pub struct surgeist_css_parser::input::SourceMap
+impl surgeist_css_parser::input::SourceMap
+pub fn surgeist_css_parser::input::SourceMap::capacity(&self) -> usize
+pub const fn surgeist_css_parser::input::SourceMap::original_units(&self) -> usize
+pub fn surgeist_css_parser::input::SourceMap::original_utf16(&self, normalized: core::ops::range::Range<usize>) -> core::option::Option<core::ops::range::Range<usize>>
+pub fn surgeist_css_parser::input::SourceMap::scalar_count(&self) -> usize
+pub fn surgeist_css_parser::input::decode(bytes: &[u8], hints: surgeist_css_parser::input::DecodeHints<'_>, limits: surgeist_css_parser::input::DecodeLimits) -> core::result::Result<surgeist_css_parser::input::Decoded, surgeist_css_parser::input::DecodeError>
+pub fn surgeist_css_parser::input::filter_code_points(text: &str) -> alloc::borrow::Cow<'_, str>
+pub fn surgeist_css_parser::input::preprocess_utf16(units: &[u16], limits: &surgeist_css_parser::input::PreprocessLimits, meter: &dyn surgeist_css_parser::limits::Meter) -> core::result::Result<surgeist_css_parser::input::Preprocessed, surgeist_css_parser::input::PreprocessError>
 pub mod surgeist_css_parser::lexer
 pub mod surgeist_css_parser::lexer::protocol
 pub enum surgeist_css_parser::lexer::protocol::NameKind

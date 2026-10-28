@@ -12,6 +12,9 @@ readme = "README.md"
 name = "surgeist_css_parser"
 path = "src/lib.rs"
 
+[dependencies]
+encoding_rs = "=0.8.35"
+
 [dev-dependencies]
 cssparser = "=0.37.0"
 serde = { version = "=1.0.228", features = ["derive"] }

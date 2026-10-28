@@ -11,8 +11,11 @@ algorithms, the `An+B` microsyntax and token serialization. It gives syntax no
 CSS meaning. [surgeist-css](../surgeist-css/AGENTS.md) owns grammars, property
 and descriptor values, rules, selectors, queries and recovery diagnostics, and
 depends on this crate. This crate depends on no Surgeist crate; do not add one.
-(Its tests use `surgeist-fuzz` for the property runner and `cssparser` as a
-black-box comparison; both are dev-dependencies and ship nowhere.) Behavior
+Its one runtime dependency is `encoding_rs` (pinned exactly, with its license
+files in [licenses/encoding-rs](licenses/encoding-rs)), which implements the
+Encoding Standard's decoders for `input::decode`. (Its tests use
+`surgeist-fuzz` for the property runner and `cssparser` as a black-box
+comparison; both are dev-dependencies and ship nowhere.) Behavior
 follows the
 [pinned CSS Syntax 3 edition](../../references/SOURCE-EDITIONS.md#css-syntax-3-edition),
 not the conventions of another implementation.
@@ -41,6 +44,24 @@ The cursors read preprocessed scalars (Syntax 3 section 3.3) and use the
 [lexical](src/lexical.rs) predicates, which describe preprocessed input. Text
 that has not been preprocessed is preprocessed per code point before asking a
 predicate.
+
+## Input Facts
+
+[src/input/](src/input/) holds section 3.2 (`decode.rs`) and section 3.3
+(`cursor.rs`, `filter.rs`, `preprocess.rs`). `decode` is the fallback-encoding
+algorithm in the clause's order followed by the Encoding Standard's decode;
+the decoded text is unfiltered. The `@charset` prefix is the exact byte
+sequence of the clause, and its tests are the whole evidence for section 3.2
+(the WPT `charset/*` tests are not in the corpus). `preprocess_utf16` loops the
+`InputCursor` and charges a `Meter` with the growth model of the UTF-16
+preparation it was moved from: capacities double from one entry (not the
+four-entry floor of `limits::grow`), growth takes no opening step, and the text
+moves one step per scalar. `limits::grow` charges differently, so it cannot
+stand in without changing the work and bytes that hosts compare; the literal
+values in [tests/receipts/utf16-preprocessing.tsv](tests/receipts/utf16-preprocessing.tsv)
+were recorded from the old function and are checked by
+[tests/input_receipts.rs](tests/input_receipts.rs). Do not regenerate them from
+this crate. A failed preprocessing releases everything it charged.
 
 ## Lexer Facts
 

@@ -23,7 +23,10 @@ use std::mem::{align_of, size_of};
 use surgeist_css_parser::anb::{AnPlusB, AnPlusBError};
 use surgeist_css_parser::document::{Component, ListId, Metrics, NodeId};
 use surgeist_css_parser::grammar::{AtRule, Declaration, Failed, QualifiedRule, RuleEnd, UnitKind};
-use surgeist_css_parser::input::{InputCursor, InputError, InputKind, InputRequest, Scalar};
+use surgeist_css_parser::input::{
+    DecodeError, DecodeHints, DecodeLimits, Encoding, EncodingSelection, InputCursor, InputError,
+    InputKind, InputRequest, PreprocessError, PreprocessLimits, PreprocessResource, Scalar,
+};
 use surgeist_css_parser::lexer::protocol::{
     NameKind, NumberCursor, NumberKind, NumberLayout, NumberOverflow, NumberPart, NumberStep,
     ProtocolError, RawToken, RawTokenKind, Record, Span, TokenCursor, TokenRequest,
@@ -96,4 +99,16 @@ fn the_parser_entry_point_types_keep_their_measured_layouts() {
     pinned::<QualifiedRule<'static>>("QualifiedRule", 176, 8);
     pinned::<Declaration<'static>>("Declaration", 160, 8);
     pinned::<Adjacency>("Adjacency", 4, 4);
+}
+
+#[test]
+fn the_decoding_and_preprocessing_types_keep_their_measured_layouts() {
+    pinned::<Encoding>("Encoding", 8, 8);
+    pinned::<EncodingSelection>("EncodingSelection", 1, 1);
+    pinned::<DecodeHints<'static>>("DecodeHints", 24, 8);
+    pinned::<DecodeLimits>("DecodeLimits", 16, 8);
+    pinned::<DecodeError>("DecodeError", 1, 1);
+    pinned::<PreprocessLimits>("PreprocessLimits", 48, 8);
+    pinned::<PreprocessResource>("PreprocessResource", 1, 1);
+    pinned::<PreprocessError>("PreprocessError", 1, 1);
 }

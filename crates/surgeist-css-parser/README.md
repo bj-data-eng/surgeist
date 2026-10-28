@@ -25,9 +25,18 @@ tests for the clauses it implements. It currently offers:
 - `Token`, with `token::TokenKind`, `token::HashKind`, `token::Number` (exact
   spelling, sign and type flag, converted only on request) and
   `unicode_range::CodePointRange`.
-- `input`: the stepwise `InputCursor` for section 3.3. It decodes UTF-8 bytes
-  or UTF-16 units, applies the preprocessing, and reports each scalar with the
-  interval of original units it came from.
+- `input`: sections 3.2 and 3.3. `input::decode` determines the fallback
+  encoding of a style sheet's bytes (a protocol label, an `@charset "label";`
+  declaration at the start of the first 1024 bytes, the environment encoding,
+  then UTF-8) from the host's `DecodeHints` and decodes with the Encoding
+  Standard's decoders, a byte order mark taking precedence; `Encoding` is a
+  validated label lookup. `input::filter_code_points` filters a string and
+  `input::preprocess_utf16` preprocesses UTF-16 units, which may hold lone
+  surrogates, into normalized text and a `SourceMap` that keeps each scalar's
+  original units, charging a `limits::Meter` for its work and storage. The
+  stepwise `InputCursor` is section 3.3 as a host protocol: it decodes UTF-8
+  bytes or UTF-16 units, applies the preprocessing, and reports each scalar with
+  the interval of original units it came from.
 - `lexical`: the code-point classes of Syntax 3 section 4.2 and the checks of
   sections 4.3.8 to 4.3.11 (valid escape, would start an ident sequence, a
   number or a unicode-range) as `const fn`s. The non-ASCII ident code point
@@ -84,9 +93,9 @@ tests for the clauses it implements. It currently offers:
 - `match_ignore_ascii_case!`: ASCII case-insensitive matching of a string
   against lowercase literal arms.
 
-Sections 3.2 (decoding bytes) and 5.4.3 (the stylesheet object) are not here
-yet. The [coverage map](docs/conformance-coverage.md) lists the clauses of the
-pinned edition with their tests and claims only what those tests establish.
+Section 5.4.3 (the stylesheet object) is not here yet. The
+[coverage map](docs/conformance-coverage.md) lists the clauses of the pinned
+edition with their tests and claims only what those tests establish.
 
 ## Edition
 
@@ -99,6 +108,9 @@ A new edition is adopted deliberately and recorded there.
 ## Dependencies
 
 The crate depends on no other Surgeist crate, and `surgeist-css` depends on it.
+Its one external runtime dependency is `encoding_rs`, whose decoders implement
+the Encoding Standard for `input::decode`; its license files ship with the
+crate and the [notice](NOTICE.md) links them.
 The direction differs from
 [surgeist-html-parser](../surgeist-html-parser/README.md), which sits above the
 HTML values it constructs: CSS Syntax 3 is a language-independent layer below
@@ -119,6 +131,12 @@ cargo fmt -p surgeist-css-parser -- --check
 The WPT `css/css-syntax` tests that the edition cites are kept as test fixtures
 with reviewed vectors adapted from them ([corpus](tests/corpus/wpt/README.md));
 their license is in the [notice](NOTICE.md).
+
+Section 3.2 has no WPT backing (the `charset/*` tests observe HTTP headers and
+HTML documents), so its tests in `tests/input_decode.rs` are written from the
+clause and the Encoding Standard. `tests/input_receipts.rs` checks that
+`input::preprocess_utf16` charges the same work and live bytes as the loop it
+replaced, against values recorded from the old function.
 
 ## Performance gate
 

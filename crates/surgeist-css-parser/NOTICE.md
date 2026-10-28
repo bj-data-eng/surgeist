@@ -5,12 +5,20 @@ License. This notice records third-party attribution only.
 
 ## Dependencies
 
-This notice covers the third-party material packaged with this crate: the
-Web Platform Tests files that ship as test fixtures. The library has no
-third-party dependency at present; its manifest lists none. Cargo development
+This notice covers the third-party material that ships with this crate: the
+`encoding_rs` runtime dependency, which is compiled into the library, and the
+Web Platform Tests files that ship as test fixtures. Cargo development
 dependencies build and run the tests, are not distributed with the crate, and
 are not part of this inventory. This is an attribution set for the package, not
 a complete transitive inventory of a binary release.
+
+This product depends on `encoding_rs` 0.8.35 for CSS stylesheet byte decoding,
+copyright Mozilla Foundation, authored by Henri Sivonen. It is a runtime
+dependency compiled into the library. Its included WHATWG Encoding Standard
+data carries the additional BSD license:
+
+* License: ([Apache-2.0](licenses/encoding-rs/LICENSE-APACHE) OR [MIT](licenses/encoding-rs/LICENSE-MIT)) AND [BSD-3-Clause](licenses/encoding-rs/LICENSE-WHATWG); [upstream copyright and declaration](licenses/encoding-rs/COPYRIGHT)
+* Homepage: [encoding_rs](https://github.com/hsivonen/encoding_rs)
 
 This product includes Web Platform Tests (WPT) `css/css-syntax` test files as
 packaged test fixtures, distributed by the web-platform-tests contributors. The
