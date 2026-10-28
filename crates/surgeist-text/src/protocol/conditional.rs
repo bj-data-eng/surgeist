@@ -702,8 +702,8 @@ fn policy_context(line: &FinalizedLine) -> Vec<u64> {
     let selected = line.selected_line();
     let mut values = request_context(selected.request().into());
     number(&mut values, line.feedback().advance);
-    for slot in line.spacing_slots() {
-        number(&mut values, slot.advance);
+    for &amount in &line.inner.data.spacing_amounts {
+        number(&mut values, amount);
     }
     values
 }

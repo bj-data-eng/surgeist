@@ -129,6 +129,10 @@ pub(super) fn finalize(
     let mut data = FinalizedLineData {
         measurements: Some(measurements),
         spacing_slots,
+        spacing_amounts: amounts
+            .iter()
+            .map(|&amount| if amount == 0.0 { 0.0 } else { amount })
+            .collect(),
         prefix,
         clusters: shaped
             .clusters

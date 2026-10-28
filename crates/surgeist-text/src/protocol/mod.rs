@@ -684,11 +684,7 @@ impl PartialEq for NonFormattedLine {
     fn eq(&self, other: &Self) -> bool {
         self.line.inner.selected.metric_policy == other.line.inner.selected.metric_policy
             && self.line.inner.selected.request == other.line.inner.selected.request
-            && self
-                .line
-                .spacing_slots()
-                .map(|slot| slot.advance)
-                .eq(other.line.spacing_slots().map(|slot| slot.advance))
+            && self.line.inner.data.spacing_amounts == other.line.inner.data.spacing_amounts
     }
 }
 

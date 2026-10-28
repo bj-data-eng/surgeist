@@ -331,6 +331,9 @@ pub(crate) struct FinalizedLineData {
     pub(crate) visual_order: Vec<FinalizedVisualItem>,
     pub(crate) anchors: Vec<FinalizedAnchor>,
     pub(crate) spacing_slots: Vec<FinalizedSpacingSlot>,
+    /// Complete executed allocation amounts, before rounded cluster addition.
+    /// Signed zero is canonicalized only for semantic identity.
+    pub(crate) spacing_amounts: Vec<f64>,
     pub(crate) metrics: LineMetrics,
     pub(crate) prefix: crate::protocol::prefix::PrefixData,
     pub(crate) fragments: Vec<FinalizedFragmentData>,
