@@ -642,8 +642,12 @@ Absent synthesis, Unknown refusal and axis checks. Numeric participants retain
 their distance from flow block-start; Text needs distance from line-over, so
 VerticalLr converts that reference through the child's physical width.
 Baseline, Top and Bottom keep their existing alignment roles. Out-of-flow
-upright atomics remain an explicit Text preparation refusal; this capability
-does not introduce positioned-atomic composition or offset-valued alignment.
+upright occurrences retain zero line-flow contribution. Their static anchors
+use the actual flow block-start edge, which differs from line-over in
+VerticalLr. The ordinary absolute-box operation supplies final physical
+border/content rectangles and a physical x baseline; it does not align that
+child to the parent's Central baseline. Nonformatted completion retains its
+zero-height anchor. Offset-valued alignment remains separate.
 
 The box/control-only numeric fitter uses Text's canonical `BidiLevel` and
 borrowed [`SuppliedLine`](../../surgeist-text/src/supplied_line.rs) for ordering.
