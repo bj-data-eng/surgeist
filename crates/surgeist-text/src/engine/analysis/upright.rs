@@ -6,21 +6,24 @@
 use std::{collections::BTreeSet, ops::Range as IndexRange};
 
 use icu_properties::{
-    CodePointMapData, PropertyNamesShort, PropertyParser,
-    props::{EastAsianWidth, GeneralCategory, GeneralCategoryGroup, GraphemeClusterBreak, Script},
-    script::ScriptWithExtensions,
+    PropertyNamesShort, PropertyParser,
+    props::{EastAsianWidth, Script},
 };
 
-use super::{Analysis, capacity, is_hard_separator, unit_properties};
+#[cfg(test)]
+use super::unit_properties::{self, resolve_properties, scalar_properties};
+use super::{
+    Analysis, capacity, is_hard_separator,
+    unit_properties::{Properties, base, properties},
+};
 use crate::{
     Error, ErrorCode, ErrorDetail, Result, TextScript, TextStyleOwner, UprightContent,
     UprightScriptContext, UprightScriptContextFailure, UprightScriptFailure,
-    engine::{
-        OriginalAtom,
-        resolve::{AnalyzedStyleOwner, AnalyzedStyleRun},
-    },
+    engine::resolve::{AnalyzedStyleOwner, AnalyzedStyleRun},
     projection::SourceProjection,
 };
+#[cfg(test)]
+use icu_properties::{CodePointMapData, props::GeneralCategory};
 
 #[cfg(test)]
 mod tests;
@@ -149,84 +152,6 @@ fn arrangement_ranges(
 
 const fn tibetan_follower(cp: u32) -> bool {
     matches!(cp, 0x0f08 | 0x0f0b | 0x0f0c | 0x0f0d..=0x0f12 | 0x0f14)
-}
-
-fn base(atoms: &[OriginalAtom]) -> Option<&OriginalAtom> {
-    let category = CodePointMapData::<GeneralCategory>::new();
-    let grapheme = CodePointMapData::<GraphemeClusterBreak>::new();
-    atoms
-        .iter()
-        .find(|atom| {
-            category.get32(atom.code_point) != GeneralCategory::Format
-                && grapheme.get32(atom.code_point) != GraphemeClusterBreak::Prepend
-        })
-        .or_else(|| unit_properties::first_non_format(atoms))
-        .or_else(|| atoms.first())
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct Properties {
-    category: GeneralCategory,
-    width: EastAsianWidth,
-    scripts: Vec<Script>,
-}
-
-fn scalar_properties(cp: u32) -> Result<Properties> {
-    let set = ScriptWithExtensions::new().get_script_extensions_val32(cp);
-    let mut scripts = Vec::new();
-    for script in set.iter() {
-        scripts.try_reserve(1).map_err(|_| capacity())?;
-        scripts.push(script);
-    }
-    if scripts.is_empty() {
-        scripts.try_reserve(1).map_err(|_| capacity())?;
-        scripts.push(CodePointMapData::<Script>::new().get32(cp));
-    }
-    Ok(Properties {
-        category: CodePointMapData::<GeneralCategory>::new().get32(cp),
-        width: CodePointMapData::<EastAsianWidth>::new().get32(cp),
-        scripts,
-    })
-}
-
-fn properties(atoms: &[OriginalAtom]) -> Result<Properties> {
-    let base = base(atoms).expect("a nonempty EGC has an actual scalar or opaque source unit");
-    let base_index = atoms
-        .iter()
-        .position(|atom| std::ptr::eq(atom, base))
-        .expect("actual EGC base");
-    let base = scalar_properties(base.code_point)?;
-    let common_enclosing = unit_properties::has_common_enclosing_mark(atoms);
-    let first_mark = if !common_enclosing && base.category == GeneralCategory::SpaceSeparator {
-        let categories = CodePointMapData::<GeneralCategory>::new();
-        atoms[base_index + 1..]
-            .iter()
-            .find(|atom| GeneralCategoryGroup::Mark.contains(categories.get32(atom.code_point)))
-            .map(|atom| scalar_properties(atom.code_point))
-            .transpose()?
-    } else {
-        None
-    };
-    resolve_properties(base, common_enclosing, first_mark)
-}
-
-/// Pure Appendix E mapping; fact qualification remains in `properties`.
-fn resolve_properties(
-    base: Properties,
-    common_enclosing: bool,
-    first_mark: Option<Properties>,
-) -> Result<Properties> {
-    if common_enclosing {
-        return scalar_properties(0xfffd);
-    }
-    if base.category == GeneralCategory::SpaceSeparator
-        && let Some(mut mark) = first_mark
-    {
-        mark.category = GeneralCategory::ModifierSymbol;
-        mark.width = base.width;
-        return Ok(mark);
-    }
-    Ok(base)
 }
 
 fn style_indices(analysis: &Analysis, atoms: IndexRange<usize>) -> Result<Vec<usize>> {

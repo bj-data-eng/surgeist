@@ -462,13 +462,19 @@ fn intrinsic<S: LayoutScalar>(
     p: &PreparedParagraph,
     available: AvailableOf<S>,
 ) -> super::super::run::Output<u32, S> {
+    let binding = p.binding(0);
     let size = Size::new(S::from_f64(100.0), S::from_f64(10.0));
     super::super::run::layout(
-        &p.binding(0),
+        &binding,
         &Default::default(),
         &[],
         &[],
         super::super::run::Context {
+            orientation: super::super::run::text_orientation(
+                WritingMode::HorizontalTb,
+                &binding.prepared,
+            )
+            .unwrap_or_else(|_| panic!("horizontal fixture must resolve its Text orientation")),
             inline_baseline_context: crate::InlineBaselineContext::Physical,
             groups: crate::group_alignment::Snapshot::default(),
             wrap_style: crate::TextWrapStyle::Auto,
