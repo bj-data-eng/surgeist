@@ -93,6 +93,8 @@ pub fn surgeist_css_parser::document::BuildError::fmt(&self, formatter: &mut cor
 pub struct surgeist_css_parser::document::ListId(_)
 impl surgeist_css_parser::document::ListId
 pub const fn surgeist_css_parser::document::ListId::index(self) -> usize
+impl core::fmt::Debug for surgeist_css_parser::document::ListId
+pub fn surgeist_css_parser::document::ListId::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css_parser::document::Metrics
 impl surgeist_css_parser::document::Metrics
 pub const fn surgeist_css_parser::document::Metrics::components(self) -> usize

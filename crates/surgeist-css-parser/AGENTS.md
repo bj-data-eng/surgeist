@@ -109,10 +109,26 @@ not the algorithm of section 5.4.2. The first meter refusal is latched on the
 that cannot report a failure must never be the only check of an end condition (use
 the fallible form, as `comma_segments` does).
 
+A node holds only what every node has (a `Stored` token, its interval, the list
+and place that hold it, the list it owns, the payload), 72 bytes for `P = ()`;
+what only a function or simple block has (its kind, how it ended, where its
+opening token ends) lives in the `List` the group owns, so a leaf pays nothing
+for it, and `list_end` is derived from how the group ended, never stored twice.
+`NodeId` and `ListId` are `u32`: a document holds at most 2^32 nodes (`NodeId`
+positions `0` through `u32::MAX`, and the same bound on a list's nodes) and at
+most `u32::MAX` lists (`ListId` is a `NonZeroU32` of position plus one), and a
+pooled text is two `u32` positions, so the decode pool of `Document::parse`
+holds at most `u32::MAX` bytes. Going past any of these fails the build with a
+capacity overflow. Every charge is the
+`size_of` of what is stored (`tests` in [src/document/tree.rs](src/document/tree.rs)
+check it), so a layout change moves the byte totals hosts compare, never the
+step counts.
+
 The sizes of the public handles (`Site`, `Mark`, `Stream`, `Component`, the errors, `Token`) are pinned in
 [tests/layout_pins.rs](tests/layout_pins.rs), and those of the private per-node storage
-(`Node`, `List`; 168 and 64 bytes at step 6) in the unit test of
-[src/document/store.rs](src/document/store.rs); a change is a decision, not an accident.
+(`Text`, `Stored`, `Node`, `List`; 16, 40, 72 and 88 bytes, `Node` 88 with a one-word payload)
+in the unit test of [src/document/store.rs](src/document/store.rs); a change is a
+decision, not an accident.
 
 Tests: [tests/document.rs](tests/document.rs) (tree and navigation),
 [tests/stream.rs](tests/stream.rs), [tests/metering.rs](tests/metering.rs) and

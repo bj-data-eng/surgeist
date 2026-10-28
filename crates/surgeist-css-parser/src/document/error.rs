@@ -58,7 +58,11 @@ impl BuildError {
         /// Whether the admitted tokens would span more bytes than
         /// [`Limits::max_bytes`](crate::limits::Limits::max_bytes).
         is_byte_limit => BuildErrorKind::ByteLimit,
-        /// Whether a count or size could not be represented.
+        /// Whether a count or size could not be represented: a size or count
+        /// that overflows `usize`, more than 2^32 nodes (or nodes in one
+        /// list), more than `u32::MAX` lists, or, for a document built from
+        /// text, a pool of decoded names and strings of more than `u32::MAX`
+        /// bytes.
         is_capacity_overflow => BuildErrorKind::CapacityOverflow,
         /// Whether the allocator could not provide the storage.
         is_allocation_failure => BuildErrorKind::AllocationFailure,

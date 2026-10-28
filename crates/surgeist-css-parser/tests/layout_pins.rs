@@ -85,29 +85,29 @@ fn the_number_cursor_and_its_steps_keep_their_measured_layouts() {
 
 #[test]
 fn the_document_handles_keep_their_measured_layouts() {
-    pinned::<NodeId>("NodeId", 8, 8);
-    pinned::<ListId>("ListId", 8, 8);
+    pinned::<NodeId>("NodeId", 4, 4);
+    pinned::<ListId>("ListId", 4, 4);
     pinned::<Offset>("Offset", 8, 8);
     pinned::<Metrics>("Metrics", 24, 8);
     pinned::<Token<'static>>("Token", 40, 8);
-    pinned::<Site<'static>>("Site", 32, 8);
-    pinned::<Mark<'static>>("Mark", 64, 8);
-    pinned::<Stream<'static>>("Stream", 56, 8);
+    pinned::<Site<'static>>("Site", 24, 8);
+    pinned::<Mark<'static>>("Mark", 48, 8);
+    pinned::<Stream<'static>>("Stream", 48, 8);
     pinned::<Component<'static>>("Component", 56, 8);
-    pinned::<StreamError<'static>>("StreamError", 72, 8);
-    pinned::<SyntaxError<'static, ()>>("SyntaxError", 72, 8);
+    pinned::<StreamError<'static>>("StreamError", 64, 8);
+    pinned::<SyntaxError<'static, ()>>("SyntaxError", 64, 8);
 }
 
 #[test]
 fn the_parser_entry_point_types_keep_their_measured_layouts() {
     pinned::<AnPlusB>("AnPlusB", 8, 4);
-    pinned::<AnPlusBError<'static>>("AnPlusBError", 72, 8);
+    pinned::<AnPlusBError<'static>>("AnPlusBError", 64, 8);
     pinned::<RuleEnd>("RuleEnd", 1, 1);
     pinned::<UnitKind>("UnitKind", 1, 1);
     pinned::<Failed<'static, ()>>("Failed", 8, 8);
-    pinned::<AtRule<'static>>("AtRule", 200, 8);
-    pinned::<QualifiedRule<'static>>("QualifiedRule", 176, 8);
-    pinned::<Declaration<'static>>("Declaration", 160, 8);
+    pinned::<AtRule<'static>>("AtRule", 168, 8);
+    pinned::<QualifiedRule<'static>>("QualifiedRule", 144, 8);
+    pinned::<Declaration<'static>>("Declaration", 136, 8);
     pinned::<Adjacency>("Adjacency", 4, 4);
 }
 
