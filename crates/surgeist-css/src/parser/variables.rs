@@ -1,4 +1,4 @@
-use super::property_input::{Site, Stream};
+use super::syntax_types::{Site, Stream};
 use crate::component::CssComponentValueRef as Component;
 use crate::component::CssValueTokenRef as ValueToken;
 use crate::component::values::CssComponentValueErrorKind;
@@ -6,10 +6,11 @@ use crate::component::{
     CssComponentValue, CssComponentValueError, CssComponentValues, CssNumericTokenKind,
     CssValueOrigin,
 };
-use crate::diagnostic::error::property::SyntaxError;
 use crate::numeric::expression::NumericInputContext;
+use crate::parser::property_input::{SiteExt, StreamExt};
+use crate::parser::syntax_types::SyntaxError;
 use crate::values::color_adjust::utf16_value::Control;
-use cssparser::Token;
+use surgeist_css_parser::Token;
 
 use crate::declaration::{
     CssAuthoredDeclarationValue, CssCustomPropertyDeclaredValue, CssCustomPropertyName,
@@ -94,7 +95,7 @@ pub(crate) fn parse_custom_property_value<'i>(
 ) -> Result<CssCustomPropertyDeclaredValue, SyntaxError<'i, Error>> {
     let state = input.mark();
     if let Ok(ident) = input.consume_ident()
-        && let Some(keyword) = parse_global_keyword(&ident)
+        && let Some(keyword) = parse_global_keyword(ident)
         && input.only_whitespace_remains()
     {
         return Ok(CssCustomPropertyDeclaredValue::Global(keyword));
@@ -122,31 +123,25 @@ pub(crate) fn collect_authored_declaration_value<'i>(
         let state = input.mark();
         let offset = input.site();
         let location = input.site();
-        let group = if input.control().is_some() {
-            match input.next_kind(false) {
-                Ok(
-                    crate::syntax_consumption::TokenKind::Function(_)
-                    | crate::syntax_consumption::TokenKind::Opening(_),
-                ) => true,
-                Ok(_) => false,
-                Err(error) if error.is_end_of_stream() => break,
-                Err(error) => return Err(basic(error)),
-            }
-        } else {
+        let group = {
             let token = match input.consume_after_whitespace() {
-                Ok(token) => token.clone(),
+                Ok(token) => token,
                 Err(error) if error.is_end_of_stream() => break,
                 Err(error) => return Err(basic(error)),
             };
-            if token.is_parse_error() {
+            if matches!(
+                token,
+                Token::BadUrl
+                    | Token::BadString
+                    | Token::CloseParen
+                    | Token::CloseSquare
+                    | Token::CloseCurly
+            ) {
                 return Err(location.unexpected(token));
             }
             matches!(
                 token,
-                Token::Function(_)
-                    | Token::ParenthesisBlock
-                    | Token::SquareBracketBlock
-                    | Token::CurlyBracketBlock
+                Token::Function(_) | Token::OpenParen | Token::OpenSquare | Token::OpenCurly
             )
         };
         if group {
@@ -238,7 +233,7 @@ pub(crate) fn collect_authored_declaration_value<'i>(
         release(input.control(), issue.path);
     }
     Ok((
-        CssAuthoredDeclarationValue::new(input.text_between(start, end)),
+        CssAuthoredDeclarationValue::new(input.authored_text_between(start, end)),
         qualifies,
     ))
 }

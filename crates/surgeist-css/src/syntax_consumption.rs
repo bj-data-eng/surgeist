@@ -1,77 +1,26 @@
 //! Private CSS Syntax 3 input normalization and generic structural consumption.
 //!
-//! Checked feature grammar remains a later admission phase. This arena retains
-//! errors in input order, and accepts supplied items without serialization.
+//! Checked feature grammar remains a later admission phase. This module builds
+//! the token tree (the parser crate's [`Document`], closed over CSS's payload)
+//! of source text or of checked components, and keeps the generic rule-unit
+//! consumers that recovery reads it with.
 
-use std::{borrow::Cow, ops::Range};
+use std::ops::Range;
+
+use surgeist_css_parser::document::{BlockKind, Component, GroupEnd, ListId, NodeId};
+use surgeist_css_parser::lexer::{Lexer, Options};
+use surgeist_css_parser::limits::{DepthExcess, Limits, Meter};
+use surgeist_css_parser::token::{HashKind, Number};
+use surgeist_css_parser::{Offset, Token};
 
 use crate::component::values::CssComponentValueErrorKind;
 use crate::component::{
-    CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueRef, CssValueOrigin,
-    CssValueTokenRef,
+    CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueRef, CssHashFlag,
+    CssValueOrigin, CssValueTokenRef,
 };
+use crate::parser::syntax_types::{Attached, Document, Host, Site};
 use crate::source::{CssParsedOrigin, CssSourceSnapshot};
 use crate::values::color_adjust::utf16_value::Control;
-use cssparser::Token;
-
-pub(crate) type NodeId = usize;
-pub(crate) type ListId = usize;
-
-pub(crate) enum SyntaxInput<'a> {
-    Source(SourceWindow<'a>),
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "private supplied-token normalization contract, exercised by direct-input tests"
-        )
-    )]
-    Tokens(&'a [SyntaxToken<'a>]),
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "private error-bearing grouped-input normalization contract, exercised by direct-input tests"
-        )
-    )]
-    Components {
-        document: &'a SyntaxDocument<'a>,
-        list: ListId,
-    },
-    CheckedComponents(&'a [CssComponentValue]),
-}
-
-#[derive(Clone)]
-pub(crate) struct SourceWindow<'a> {
-    pub(crate) text: Cow<'a, str>,
-    pub(crate) range: Range<usize>,
-    pub(crate) original: CssSourceSnapshot,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum CheckedLexeme {
-    Leaf,
-    Opening,
-    Closing,
-}
-
-#[derive(Clone, Debug)]
-pub(crate) enum TokenPayload<'a> {
-    Native(Token<'a>),
-    Whitespace(Box<str>),
-    Comment(Box<str>),
-    Checked {
-        component: &'a CssComponentValue,
-        lexeme: CheckedLexeme,
-    },
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct SyntaxToken<'a> {
-    pub(crate) payload: TokenPayload<'a>,
-    pub(crate) spelling: Option<Cow<'a, str>>,
-    pub(crate) origin: Cow<'a, CssValueOrigin>,
-}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum TokenKind<'a> {
@@ -93,27 +42,62 @@ pub(crate) enum TokenKind<'a> {
     Other,
 }
 
-pub(crate) fn native_token_kind<'a>(token: &'a Token<'_>) -> TokenKind<'a> {
+/// The rule-driver's reading of a token of the tree.
+pub(crate) fn token_kind<'a>(token: Token<'a>) -> TokenKind<'a> {
     match token {
         Token::Ident(name) => TokenKind::Ident(name),
         Token::AtKeyword(name) => TokenKind::AtKeyword(name),
         Token::Function(name) => TokenKind::Function(name),
-        Token::ParenthesisBlock => TokenKind::Opening(CssBlockKind::Parenthesis),
-        Token::SquareBracketBlock => TokenKind::Opening(CssBlockKind::SquareBracket),
-        Token::CurlyBracketBlock => TokenKind::Opening(CssBlockKind::CurlyBracket),
-        Token::CloseParenthesis => TokenKind::Closing(CssBlockKind::Parenthesis),
-        Token::CloseSquareBracket => TokenKind::Closing(CssBlockKind::SquareBracket),
-        Token::CloseCurlyBracket => TokenKind::Closing(CssBlockKind::CurlyBracket),
-        Token::WhiteSpace(_) => TokenKind::Whitespace,
-        Token::Comment(_) => TokenKind::Comment,
+        Token::OpenParen => TokenKind::Opening(CssBlockKind::Parenthesis),
+        Token::OpenSquare => TokenKind::Opening(CssBlockKind::SquareBracket),
+        Token::OpenCurly => TokenKind::Opening(CssBlockKind::CurlyBracket),
+        Token::CloseParen => TokenKind::Closing(CssBlockKind::Parenthesis),
+        Token::CloseSquare => TokenKind::Closing(CssBlockKind::SquareBracket),
+        Token::CloseCurly => TokenKind::Closing(CssBlockKind::CurlyBracket),
+        Token::Whitespace => TokenKind::Whitespace,
+        Token::Comment => TokenKind::Comment,
         Token::Semicolon => TokenKind::Semicolon,
         Token::Comma => TokenKind::Comma,
         Token::Colon => TokenKind::Colon,
-        Token::CDO => TokenKind::Cdo,
-        Token::CDC => TokenKind::Cdc,
-        Token::Delim(value) => TokenKind::Delim(*value),
-        Token::BadString(_) => TokenKind::BadString,
-        Token::BadUrl(_) => TokenKind::BadUrl,
+        Token::Cdo => TokenKind::Cdo,
+        Token::Cdc => TokenKind::Cdc,
+        Token::Delim(value) => TokenKind::Delim(value),
+        Token::BadString => TokenKind::BadString,
+        Token::BadUrl => TokenKind::BadUrl,
+        Token::Hash { .. }
+        | Token::String(_)
+        | Token::Url(_)
+        | Token::Number(_)
+        | Token::Percentage(_)
+        | Token::Dimension { .. }
+        | Token::UnicodeRange(_) => TokenKind::Other,
+    }
+}
+
+/// The rule-driver's reading of a token produced by the native provider, for
+/// the recovery code that still drives it.
+pub(crate) fn native_token_kind<'a>(token: &'a cssparser::Token<'_>) -> TokenKind<'a> {
+    use cssparser::Token as Native;
+    match token {
+        Native::Ident(name) => TokenKind::Ident(name),
+        Native::AtKeyword(name) => TokenKind::AtKeyword(name),
+        Native::Function(name) => TokenKind::Function(name),
+        Native::ParenthesisBlock => TokenKind::Opening(CssBlockKind::Parenthesis),
+        Native::SquareBracketBlock => TokenKind::Opening(CssBlockKind::SquareBracket),
+        Native::CurlyBracketBlock => TokenKind::Opening(CssBlockKind::CurlyBracket),
+        Native::CloseParenthesis => TokenKind::Closing(CssBlockKind::Parenthesis),
+        Native::CloseSquareBracket => TokenKind::Closing(CssBlockKind::SquareBracket),
+        Native::CloseCurlyBracket => TokenKind::Closing(CssBlockKind::CurlyBracket),
+        Native::WhiteSpace(_) => TokenKind::Whitespace,
+        Native::Comment(_) => TokenKind::Comment,
+        Native::Semicolon => TokenKind::Semicolon,
+        Native::Comma => TokenKind::Comma,
+        Native::Colon => TokenKind::Colon,
+        Native::CDO => TokenKind::Cdo,
+        Native::CDC => TokenKind::Cdc,
+        Native::Delim(value) => TokenKind::Delim(*value),
+        Native::BadString(_) => TokenKind::BadString,
+        Native::BadUrl(_) => TokenKind::BadUrl,
         _ => TokenKind::Other,
     }
 }
@@ -161,291 +145,14 @@ pub(crate) fn semicolon_terminates_rule(dispatch: GenericRuleDispatch) -> bool {
     matches!(dispatch, GenericRuleDispatch::At)
 }
 
-impl SyntaxToken<'_> {
-    pub(crate) fn kind(&self) -> TokenKind<'_> {
-        match &self.payload {
-            TokenPayload::Whitespace(_) => TokenKind::Whitespace,
-            TokenPayload::Comment(_) => TokenKind::Comment,
-            TokenPayload::Native(token) => native_token_kind(token),
-            TokenPayload::Checked { component, lexeme } => match (lexeme, component.view()) {
-                (CheckedLexeme::Opening, CssComponentValueRef::Function(value)) => {
-                    TokenKind::Function(value.name())
-                }
-                (CheckedLexeme::Opening, CssComponentValueRef::Block(value)) => {
-                    TokenKind::Opening(value.kind())
-                }
-                (CheckedLexeme::Closing, CssComponentValueRef::Function(_)) => {
-                    TokenKind::Closing(CssBlockKind::Parenthesis)
-                }
-                (CheckedLexeme::Closing, CssComponentValueRef::Block(value)) => {
-                    TokenKind::Closing(value.kind())
-                }
-                (CheckedLexeme::Leaf, CssComponentValueRef::Comment(_)) => TokenKind::Comment,
-                (CheckedLexeme::Leaf, CssComponentValueRef::Token(value)) => match value {
-                    CssValueTokenRef::Ident(name) => TokenKind::Ident(name),
-                    CssValueTokenRef::AtKeyword(name) => TokenKind::AtKeyword(name),
-                    CssValueTokenRef::Whitespace(_) => TokenKind::Whitespace,
-                    CssValueTokenRef::Semicolon => TokenKind::Semicolon,
-                    CssValueTokenRef::Comma => TokenKind::Comma,
-                    CssValueTokenRef::Colon => TokenKind::Colon,
-                    CssValueTokenRef::Cdo => TokenKind::Cdo,
-                    CssValueTokenRef::Cdc => TokenKind::Cdc,
-                    CssValueTokenRef::Delim(value) => TokenKind::Delim(value),
-                    _ => TokenKind::Other,
-                },
-                _ => unreachable!("private checked lexeme role matches its component"),
-            },
-        }
-    }
-
-    fn checked(component: &CssComponentValue, lexeme: CheckedLexeme) -> SyntaxToken<'_> {
-        let (text, origin) = component
-            .structural_lexeme(lexeme == CheckedLexeme::Closing)
-            .expect("private checked lexeme exists");
-        SyntaxToken {
-            payload: TokenPayload::Checked { component, lexeme },
-            spelling: Some(Cow::Borrowed(text)),
-            origin: Cow::Borrowed(origin),
-        }
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct SourceSite {
-    pub(crate) snapshot: CssSourceSnapshot,
-    pub(crate) offset: usize,
-}
-
+/// A real boundary of a document, and where it is in the document's text.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct SyntaxBoundary {
     pub(crate) list: ListId,
     pub(crate) index: usize,
-    pub(crate) source: Option<SourceSite>,
-}
-
-#[derive(Clone, Debug)]
-pub(crate) enum GroupEnd<'a> {
-    Explicit(SyntaxToken<'a>),
-    Implicit {
-        opening: Cow<'a, CssValueOrigin>,
-        at: SyntaxBoundary,
-    },
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum SyntaxTokenFault {
-    BadString,
-    BadUrl,
-    UnexpectedCloser,
-}
-
-#[derive(Clone, Debug)]
-pub(crate) enum SyntaxNode<'a> {
-    Token(SyntaxToken<'a>),
-    Comment(SyntaxToken<'a>),
-    Error {
-        token: SyntaxToken<'a>,
-        cause: SyntaxTokenFault,
-    },
-    Function {
-        opening: SyntaxToken<'a>,
-        children: ListId,
-        end: GroupEnd<'a>,
-    },
-    Block {
-        kind: CssBlockKind,
-        opening: SyntaxToken<'a>,
-        children: ListId,
-        end: GroupEnd<'a>,
-    },
-    // Source recovery only: the scanner denied this complete Curly component.
-    // Its actual opening and document range remain available for unit selection,
-    // but no child list or checked payload has been admitted.
-    DeniedCurlyBlock {
-        opening: SyntaxToken<'a>,
-    },
-}
-
-impl<'a> SyntaxNode<'a> {
-    pub(crate) fn token(&self) -> &SyntaxToken<'a> {
-        match self {
-            Self::Token(token) | Self::Comment(token) | Self::Error { token, .. } => token,
-            Self::Function { opening, .. }
-            | Self::Block { opening, .. }
-            | Self::DeniedCurlyBlock { opening } => opening,
-        }
-    }
-    pub(crate) fn children(&self) -> Option<ListId> {
-        match self {
-            Self::Function { children, .. } | Self::Block { children, .. } => Some(*children),
-            _ => None,
-        }
-    }
-    pub(crate) fn end(&self) -> Option<&GroupEnd<'a>> {
-        match self {
-            Self::Function { end, .. } | Self::Block { end, .. } => Some(end),
-            _ => None,
-        }
-    }
-    pub(crate) fn is_trivia(&self) -> bool {
-        matches!(
-            self.token().kind(),
-            TokenKind::Whitespace | TokenKind::Comment
-        )
-    }
-    fn is_curly_block(&self) -> bool {
-        matches!(
-            self,
-            Self::Block {
-                kind: CssBlockKind::CurlyBracket,
-                ..
-            } | Self::DeniedCurlyBlock { .. }
-        )
-    }
-    pub(crate) fn denied_error(&self) -> Option<CssComponentValueError> {
-        match self {
-            Self::DeniedCurlyBlock { opening } => Some(CssComponentValueError::new(
-                CssComponentValueErrorKind::NestingLimit,
-                opening.origin.clone().into_owned(),
-            )),
-            _ => None,
-        }
-    }
-}
-
-pub(crate) struct SyntaxDocument<'a> {
-    pub(crate) nodes: Vec<SyntaxNode<'a>>,
-    pub(crate) lists: Vec<Vec<NodeId>>,
-    ends: Vec<Option<SourceSite>>,
-    pub(crate) root: ListId,
-    pub(crate) metrics: SyntaxInputMetrics,
-    pub(crate) source: Option<SourceWindow<'a>>,
-    ranges: Vec<Option<Range<usize>>>,
-    pub(crate) control: Option<&'a Control<'a>>,
-}
-
-impl<'a> SyntaxDocument<'a> {
-    /// Only the private controlled front may bind its own single-source graph.
-    pub(crate) fn bind_controlled_source(
-        &mut self,
-        source: &'a CssSourceSnapshot,
-    ) -> Result<(), ()> {
-        let Some(control) = self.control else {
-            unreachable!("controlled source binding")
-        };
-        control.step()?;
-        self.source = Some(SourceWindow {
-            text: Cow::Borrowed(source.as_str()),
-            range: 0..source.as_str().len(),
-            original: source.clone(),
-        });
-        self.ends[self.root] = Some(SourceSite {
-            snapshot: source.clone(),
-            offset: source.as_str().len(),
-        });
-        for index in 0..self.nodes.len() {
-            control.step()?;
-            let TokenPayload::Checked { component, .. } = self.nodes[index].token().payload else {
-                unreachable!("controlled graph borrows checked input")
-            };
-            let Some(origin) = component.parsed_origin() else {
-                unreachable!("controlled components retain their source spans")
-            };
-            self.ranges[index] = Some(
-                origin.span().start().byte_offset().value()
-                    ..origin.span().end().byte_offset().value(),
-            );
-            if let Some(children) = self.nodes[index].children() {
-                control.step()?;
-                let closing = match component.view() {
-                    CssComponentValueRef::Function(function) => function.closing_origin(),
-                    CssComponentValueRef::Block(block) => block.closing_origin(),
-                    _ => unreachable!("actual checked group"),
-                };
-                let at = match closing {
-                    CssValueOrigin::Parsed(origin) => origin,
-                    CssValueOrigin::ImplicitClosure { at, .. } => at,
-                    _ => unreachable!("controlled group retains its closing source boundary"),
-                };
-                self.ends[children] = Some(SourceSite {
-                    snapshot: at.source().clone(),
-                    offset: at.span().start().byte_offset().value(),
-                });
-            }
-        }
-        Ok(())
-    }
-
-    pub(crate) fn cursor(&self, list: ListId) -> SyntaxCursor<'_> {
-        SyntaxCursor {
-            document: self,
-            list,
-            next: 0,
-            end: self.lists[list].len(),
-            current: None,
-            reconsume: false,
-        }
-    }
-    pub(crate) fn cursor_range(&self, range: &SyntaxRange) -> SyntaxCursor<'_> {
-        assert!(range.start <= range.end && range.end <= self.lists[range.list].len());
-        SyntaxCursor {
-            document: self,
-            list: range.list,
-            next: range.start,
-            end: range.end,
-            current: None,
-            reconsume: false,
-        }
-    }
-    pub(crate) fn range(&self, node: NodeId) -> Option<Range<usize>> {
-        self.ranges[node].clone()
-    }
-    pub(crate) fn boundary(&self, list: ListId, index: usize) -> SyntaxBoundary {
-        let source = if let Some(node) = self.lists[list].get(index) {
-            self.range(*node).and_then(|range| {
-                self.source.as_ref().map(|window| SourceSite {
-                    snapshot: window.original.clone(),
-                    offset: range.start,
-                })
-            })
-        } else {
-            self.ends[list].clone()
-        };
-        SyntaxBoundary {
-            list,
-            index,
-            source,
-        }
-    }
-    pub(crate) fn list_at_source_start(&self, offset: usize) -> Option<ListId> {
-        if self
-            .source
-            .as_ref()
-            .is_some_and(|source| source.range.start == offset)
-        {
-            return Some(self.root);
-        }
-        self.nodes.iter().enumerate().find_map(|(id, node)| {
-            let children = node.children()?;
-            let range = self.range(id)?;
-            (range.start + node.token().spelling.as_ref()?.len() == offset).then_some(children)
-        })
-    }
-    pub(crate) fn cursor_at_source(&self, offset: usize) -> Option<SyntaxCursor<'_>> {
-        self.lists.iter().enumerate().find_map(|(list, nodes)| {
-            let next = nodes
-                .iter()
-                .position(|node| self.range(*node).is_some_and(|range| range.start == offset))?;
-            Some(SyntaxCursor {
-                document: self,
-                list,
-                next,
-                end: nodes.len(),
-                current: None,
-                reconsume: false,
-            })
-        })
-    }
+    /// The byte offset of the boundary in the text the document was built
+    /// over; none for a boundary of checked components that carry no text.
+    pub(crate) offset: Option<usize>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -463,217 +170,20 @@ impl Default for SyntaxInputLimits {
         }
     }
 }
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) struct SyntaxInputMetrics {
-    pub(crate) components: usize,
-    pub(crate) maximum_depth: u32,
-    pub(crate) known_spelling_bytes: usize,
-    pub(crate) unspelled_tokens: usize,
+impl SyntaxInputLimits {
+    /// The parser crate's limits for a build that starts `base_depth` deep: it
+    /// counts depth from zero, so the room left under the ceiling is what it
+    /// is given.
+    fn limits(self, base_depth: u32) -> Limits {
+        Limits::new(
+            self.max_depth.min(256).saturating_sub(base_depth),
+            self.max_components,
+            self.max_known_spelling_bytes,
+        )
+    }
 }
 
-struct Builder<'a> {
-    document: SyntaxDocument<'a>,
-    limits: SyntaxInputLimits,
-    base_depth: u32,
-}
-
-impl<'a> Builder<'a> {
-    fn controlled(
-        limits: SyntaxInputLimits,
-        base_depth: u32,
-        control: &'a Control<'a>,
-    ) -> Result<Self, CssComponentValueError> {
-        let mut lists = Vec::new();
-        reserve_controlled(Some(control), &mut lists, 1)?;
-        lists.push(Vec::new());
-        let mut ends = Vec::new();
-        reserve_controlled(Some(control), &mut ends, 1)?;
-        ends.push(None);
-        Ok(Self {
-            document: SyntaxDocument {
-                nodes: Vec::new(),
-                lists,
-                ends,
-                root: 0,
-                metrics: SyntaxInputMetrics::default(),
-                source: None,
-                ranges: Vec::new(),
-                control: Some(control),
-            },
-            limits,
-            base_depth,
-        })
-    }
-    fn new(limits: SyntaxInputLimits, base_depth: u32) -> Self {
-        Self {
-            document: SyntaxDocument {
-                nodes: Vec::new(),
-                lists: vec![Vec::new()],
-                ends: vec![None],
-                root: 0,
-                metrics: SyntaxInputMetrics::default(),
-                source: None,
-                ranges: Vec::new(),
-                control: None,
-            },
-            limits,
-            base_depth,
-        }
-    }
-    fn charge(
-        &mut self,
-        token: &SyntaxToken<'_>,
-        component: bool,
-        depth: u32,
-    ) -> Result<(), CssComponentValueError> {
-        control_step(self.document.control)?;
-        let error = |kind| CssComponentValueError::new(kind, token.origin.clone().into_owned());
-        let metrics = &mut self.document.metrics;
-        if component {
-            metrics.components = metrics
-                .components
-                .checked_add(1)
-                .ok_or_else(|| error(CssComponentValueErrorKind::CapacityOverflow))?;
-            if metrics.components > self.limits.max_components {
-                return Err(error(CssComponentValueErrorKind::ComponentLimit));
-            }
-        }
-        let depth = self
-            .base_depth
-            .checked_add(depth)
-            .ok_or_else(|| error(CssComponentValueErrorKind::CapacityOverflow))?;
-        if depth > self.limits.max_depth.min(256) {
-            return Err(error(CssComponentValueErrorKind::NestingLimit));
-        }
-        metrics.maximum_depth = metrics.maximum_depth.max(depth);
-        if !matches!(
-            token.origin.as_ref(),
-            CssValueOrigin::ImplicitClosure { .. }
-        ) {
-            if let Some(spelling) = &token.spelling {
-                return self.charge_known_spelling(token, spelling.len());
-            } else {
-                metrics.unspelled_tokens = metrics
-                    .unspelled_tokens
-                    .checked_add(1)
-                    .ok_or_else(|| error(CssComponentValueErrorKind::CapacityOverflow))?;
-            }
-        }
-        Ok(())
-    }
-    fn charge_known_spelling(
-        &mut self,
-        token: &SyntaxToken<'_>,
-        bytes: usize,
-    ) -> Result<(), CssComponentValueError> {
-        let error = |kind| CssComponentValueError::new(kind, token.origin.clone().into_owned());
-        let metrics = &mut self.document.metrics;
-        metrics.known_spelling_bytes = metrics
-            .known_spelling_bytes
-            .checked_add(bytes)
-            .ok_or_else(|| error(CssComponentValueErrorKind::CapacityOverflow))?;
-        if metrics.known_spelling_bytes > self.limits.max_known_spelling_bytes {
-            return Err(error(CssComponentValueErrorKind::ByteLimit));
-        }
-        Ok(())
-    }
-    fn list(&mut self, end: Option<SourceSite>) -> Result<ListId, CssComponentValueError> {
-        reserve_controlled(self.document.control, &mut self.document.lists, 1)?;
-        reserve_controlled(self.document.control, &mut self.document.ends, 1)?;
-        let id = self.document.lists.len();
-        self.document.lists.push(Vec::new());
-        self.document.ends.push(end);
-        Ok(id)
-    }
-    fn push(
-        &mut self,
-        list: ListId,
-        node: SyntaxNode<'a>,
-        range: Option<Range<usize>>,
-    ) -> Result<NodeId, CssComponentValueError> {
-        reserve_controlled(self.document.control, &mut self.document.nodes, 1)?;
-        reserve_controlled(self.document.control, &mut self.document.ranges, 1)?;
-        reserve_controlled(self.document.control, &mut self.document.lists[list], 1)?;
-        let id = self.document.nodes.len();
-        self.document.nodes.push(node);
-        self.document.ranges.push(range);
-        self.document.lists[list].push(id);
-        Ok(id)
-    }
-    fn leaf(
-        &mut self,
-        list: ListId,
-        token: SyntaxToken<'a>,
-        range: Option<Range<usize>>,
-        depth: u32,
-    ) -> Result<(), CssComponentValueError> {
-        self.charge(&token, true, depth)?;
-        let node = match token.kind() {
-            TokenKind::BadString => SyntaxNode::Error {
-                token,
-                cause: SyntaxTokenFault::BadString,
-            },
-            TokenKind::BadUrl => SyntaxNode::Error {
-                token,
-                cause: SyntaxTokenFault::BadUrl,
-            },
-            TokenKind::Closing(_) => SyntaxNode::Error {
-                token,
-                cause: SyntaxTokenFault::UnexpectedCloser,
-            },
-            TokenKind::Comment => SyntaxNode::Comment(token),
-            _ => SyntaxNode::Token(token),
-        };
-        self.push(list, node, range)?;
-        Ok(())
-    }
-    fn opening(
-        &mut self,
-        parent: ListId,
-        token: SyntaxToken<'a>,
-        range: Option<Range<usize>>,
-        depth: u32,
-        end: Option<SourceSite>,
-    ) -> Result<(NodeId, ListId), CssComponentValueError> {
-        self.charge(&token, true, depth)?;
-        let children = self.list(end)?;
-        let implicit = GroupEnd::Implicit {
-            opening: token.origin.clone(),
-            at: SyntaxBoundary {
-                list: children,
-                index: 0,
-                source: None,
-            },
-        };
-        let node = match token.kind() {
-            TokenKind::Function(_) => SyntaxNode::Function {
-                opening: token,
-                children,
-                end: implicit,
-            },
-            TokenKind::Opening(kind) => SyntaxNode::Block {
-                kind,
-                opening: token,
-                children,
-                end: implicit,
-            },
-            _ => unreachable!("private opening dispatch"),
-        };
-        let id = self.push(parent, node, range)?;
-        Ok((id, children))
-    }
-    fn close(&mut self, node: NodeId, end: GroupEnd<'a>, source_end: Option<usize>) {
-        match &mut self.document.nodes[node] {
-            SyntaxNode::Function { end: actual, .. } | SyntaxNode::Block { end: actual, .. } => {
-                *actual = end
-            }
-            _ => unreachable!("only groups have an end"),
-        }
-        if let (Some(range), Some(end)) = (&mut self.document.ranges[node], source_end) {
-            range.end = end;
-        }
-    }
-}
+// ----- building a document
 
 fn capacity() -> CssComponentValueError {
     CssComponentValueError::new(
@@ -682,124 +192,158 @@ fn capacity() -> CssComponentValueError {
     )
 }
 
-// Own provider string payloads without retokenization. Provider whitespace and
-// comments alone use borrowed &str rather than CowRcStr, so retain those two
-// payloads in explicitly owned private variants.
-fn own_payload(token: Token<'_>) -> TokenPayload<'static> {
-    let token = match token {
-        Token::Ident(value) => Token::Ident(value.as_ref().to_owned().into()),
-        Token::AtKeyword(value) => Token::AtKeyword(value.as_ref().to_owned().into()),
-        Token::Hash(value) => Token::Hash(value.as_ref().to_owned().into()),
-        Token::IDHash(value) => Token::IDHash(value.as_ref().to_owned().into()),
-        Token::QuotedString(value) => Token::QuotedString(value.as_ref().to_owned().into()),
-        Token::UnquotedUrl(value) => Token::UnquotedUrl(value.as_ref().to_owned().into()),
-        Token::Function(value) => Token::Function(value.as_ref().to_owned().into()),
-        Token::BadUrl(value) => Token::BadUrl(value.as_ref().to_owned().into()),
-        Token::BadString(value) => Token::BadString(value.as_ref().to_owned().into()),
-        Token::Dimension {
-            has_sign,
-            value,
-            int_value,
-            unit,
-        } => Token::Dimension {
-            has_sign,
-            value,
-            int_value,
-            unit: unit.as_ref().to_owned().into(),
-        },
-        Token::WhiteSpace(value) => return TokenPayload::Whitespace(value.into()),
-        Token::Comment(value) => return TokenPayload::Comment(value.into()),
-        Token::Delim(value) => Token::Delim(value),
-        Token::Number {
-            has_sign,
-            value,
-            int_value,
-        } => Token::Number {
-            has_sign,
-            value,
-            int_value,
-        },
-        Token::Percentage {
-            has_sign,
-            unit_value,
-            int_value,
-        } => Token::Percentage {
-            has_sign,
-            unit_value,
-            int_value,
-        },
-        Token::Colon => Token::Colon,
-        Token::Semicolon => Token::Semicolon,
-        Token::Comma => Token::Comma,
-        Token::IncludeMatch => Token::IncludeMatch,
-        Token::DashMatch => Token::DashMatch,
-        Token::PrefixMatch => Token::PrefixMatch,
-        Token::SuffixMatch => Token::SuffixMatch,
-        Token::SubstringMatch => Token::SubstringMatch,
-        Token::CDO => Token::CDO,
-        Token::CDC => Token::CDC,
-        Token::ParenthesisBlock => Token::ParenthesisBlock,
-        Token::SquareBracketBlock => Token::SquareBracketBlock,
-        Token::CurlyBracketBlock => Token::CurlyBracketBlock,
-        Token::CloseParenthesis => Token::CloseParenthesis,
-        Token::CloseSquareBracket => Token::CloseSquareBracket,
-        Token::CloseCurlyBracket => Token::CloseCurlyBracket,
-    };
-    TokenPayload::Native(token)
+fn failure_kind(error: &surgeist_css_parser::document::BuildError) -> CssComponentValueErrorKind {
+    if error.is_depth_limit() {
+        CssComponentValueErrorKind::NestingLimit
+    } else if error.is_node_limit() {
+        CssComponentValueErrorKind::ComponentLimit
+    } else if error.is_byte_limit() {
+        CssComponentValueErrorKind::ByteLimit
+    } else {
+        CssComponentValueErrorKind::CapacityOverflow
+    }
 }
 
-pub(crate) fn source_document(
+/// Maps the failure to build over `text` (which starts at `window` in
+/// `original`) to the error CSS reports: the kind, and the origin of the token
+/// the build stopped at, which is read again from the text.
+fn source_failure(
+    error: &surgeist_css_parser::document::BuildError,
     text: &str,
+    window: usize,
+    original: &CssSourceSnapshot,
+) -> CssComponentValueError {
+    let kind = failure_kind(error);
+    let origin = error
+        .offset()
+        .and_then(|at| {
+            let start = at.value();
+            let local = text.get(start.checked_sub(window)?..)?;
+            let options = Options::default().origin(at);
+            let end = Lexer::new(local, &options)
+                .next_lexeme()?
+                .range()
+                .end
+                .value();
+            let origin = CssParsedOrigin::from_range(original, start..end)?;
+            Some(CssValueOrigin::Parsed(origin))
+        })
+        .unwrap_or(CssValueOrigin::Programmatic);
+    CssComponentValueError::new(kind, origin)
+}
+
+fn too_long(length: usize) -> CssComponentValueError {
+    CssComponentValueError::new(
+        CssComponentValueErrorKind::ByteLimit,
+        CssValueOrigin::UnretainedInput {
+            byte_length: length,
+        },
+    )
+}
+
+/// Parses `text`, which is `original`'s text from `window` on, and attaches
+/// the host that knows `original`.
+fn build_source<'a>(
+    text: &'a str,
+    window: usize,
+    original: &CssSourceSnapshot,
+    limits: SyntaxInputLimits,
+    base_depth: u32,
+) -> Result<Document<'a>, CssComponentValueError> {
+    if text.len() > limits.max_known_spelling_bytes {
+        return Err(too_long(text.len()));
+    }
+    let options = Options::default().origin(Offset::new(window));
+    let mut document =
+        Document::parse(text, &options, limits.limits(base_depth), DepthExcess::Fail)
+            .map_err(|error| source_failure(&error, text, window, original))?;
+    document.attach(Host::source(original).into_attached());
+    Ok(document)
+}
+
+pub(crate) fn source_document<'a>(
+    text: &'a str,
     original: &CssSourceSnapshot,
     base_depth: u32,
-) -> Result<SyntaxDocument<'static>, CssComponentValueError> {
-    normalize(
-        SyntaxInput::Source(SourceWindow {
-            text: Cow::Owned(text.to_owned()),
-            range: 0..text.len(),
-            original: original.clone(),
-        }),
-        SyntaxInputLimits::default(),
-        base_depth,
+) -> Result<Document<'a>, CssComponentValueError> {
+    build_source(text, 0, original, SyntaxInputLimits::default(), base_depth)
+}
+
+/// The tree of the window `range` of the text `original` holds, whose
+/// positions are those of `original`.
+pub(crate) fn source_window_document(
+    original: &CssSourceSnapshot,
+    range: Range<usize>,
+) -> Result<Document<'_>, CssComponentValueError> {
+    let text = original
+        .as_str()
+        .get(range.clone())
+        .expect("bounded source range");
+    build_source(text, range.start, original, SyntaxInputLimits::default(), 0)
+}
+
+/// How far past a token the lexer looks to decide where the token ends, in
+/// scalars (the machine's lookahead window).
+const LEXER_LOOKAHEAD: usize = 4;
+
+/// The tree of the first `end` bytes of `original`'s text and the few scalars
+/// after them that the lexer reads to end the tokens before `end`, under no
+/// limit of its own: for a reader that wants to know what a build cut short at
+/// `end` had admitted. The text it reads is bounded by `end`, so the tree is no
+/// larger than what the limited build held; an `end` that is not a character
+/// boundary reads nothing.
+pub(crate) fn source_prefix_unlimited(
+    original: &CssSourceSnapshot,
+    end: usize,
+) -> Result<Document<'_>, CssComponentValueError> {
+    let text = original.as_str();
+    let head = text.get(..end).unwrap_or_default();
+    let slack: usize = text[head.len()..]
+        .chars()
+        .take(LEXER_LOOKAHEAD)
+        .map(char::len_utf8)
+        .sum();
+    let window = &text[..head.len() + slack];
+    let mut document = Document::parse(
+        window,
+        &Options::default(),
+        Limits::new(u32::MAX, usize::MAX, usize::MAX),
+        DepthExcess::Fail,
     )
+    .map_err(|error| source_failure(&error, window, 0, original))?;
+    document.attach(Host::source(original).into_attached());
+    Ok(document)
 }
 
 pub(crate) fn source_document_with_limits(
     text: &str,
     limits: crate::component::CssComponentValueLimits,
-) -> Result<SyntaxDocument<'static>, CssComponentValueError> {
+) -> Result<Document<'_>, CssComponentValueError> {
     source_document_with_optional_snapshot(text, None, limits)
 }
 
 pub(crate) fn source_document_snapshot_with_limits(
     original: &CssSourceSnapshot,
     limits: crate::component::CssComponentValueLimits,
-) -> Result<SyntaxDocument<'static>, CssComponentValueError> {
+) -> Result<Document<'_>, CssComponentValueError> {
     source_document_with_optional_snapshot(original.as_str(), Some(original), limits)
 }
 
-fn source_document_with_optional_snapshot(
-    text: &str,
+fn source_document_with_optional_snapshot<'a>(
+    text: &'a str,
     original: Option<&CssSourceSnapshot>,
     limits: crate::component::CssComponentValueLimits,
-) -> Result<SyntaxDocument<'static>, CssComponentValueError> {
+) -> Result<Document<'a>, CssComponentValueError> {
     if text.len() > limits.max_css_bytes() {
-        return Err(CssComponentValueError::new(
-            CssComponentValueErrorKind::ByteLimit,
-            CssValueOrigin::UnretainedInput {
-                byte_length: text.len(),
-            },
-        ));
+        return Err(too_long(text.len()));
     }
     let original = original
         .cloned()
         .unwrap_or_else(|| CssSourceSnapshot::new(text));
-    normalize(
-        SyntaxInput::Source(SourceWindow {
-            text: Cow::Owned(text.to_owned()),
-            range: 0..text.len(),
-            original,
-        }),
+    build_source(
+        text,
+        0,
+        &original,
         SyntaxInputLimits {
             max_depth: limits.max_nesting_depth(),
             max_components: limits.max_components(),
@@ -809,359 +353,490 @@ fn source_document_with_optional_snapshot(
     )
 }
 
-// Only the native source resource owner supplies these scanner-proved ranges.
-// Direct Source/Tokens/Components/CheckedComponents admission remains strict.
+/// The tree recovery reads a whole source with, which outlives the call that
+/// built it and owns `text`, the allocation it is given. Nesting past the
+/// structural limit is denied block by block, as the structural scan found it:
+/// `text` is the scan's view of the source.
 pub(crate) fn recovery_source_document(
-    text: &str,
+    text: impl Into<String>,
     original: &CssSourceSnapshot,
     base_depth: u32,
-    denied_curly: &[Range<usize>],
-) -> Result<SyntaxDocument<'static>, CssComponentValueError> {
-    if denied_curly.is_empty() {
-        return source_document(text, original, base_depth);
+) -> Result<Document<'static>, CssComponentValueError> {
+    let limits = SyntaxInputLimits::default();
+    let text: String = text.into();
+    if text.len() > limits.max_known_spelling_bytes {
+        return Err(too_long(text.len()));
     }
-    let mut builder = Builder::new(SyntaxInputLimits::default(), base_depth);
-    normalize_source(
-        &mut builder,
-        SourceWindow {
-            text: Cow::Owned(text.to_owned()),
-            range: 0..text.len(),
-            original: original.clone(),
+    // The view differs from the original only in bytes the scan masked, never
+    // in where a token starts, so the original answers for the failing token.
+    let mut document = Document::parse_owned(
+        text,
+        &Options::default(),
+        limits.limits(base_depth),
+        DepthExcess::DenyBlock,
+    )
+    .map_err(|error| source_failure(&error, original.as_str(), 0, original))?;
+    document.attach(Host::source(original).into_attached());
+    Ok(document)
+}
+
+/// The token of a checked component's leaf or opening lexeme.
+fn checked_token(component: &CssComponentValue) -> Token<'_> {
+    match component.view() {
+        CssComponentValueRef::Function(value) => Token::Function(value.name()),
+        CssComponentValueRef::Block(value) => match value.kind() {
+            CssBlockKind::Parenthesis => Token::OpenParen,
+            CssBlockKind::SquareBracket => Token::OpenSquare,
+            CssBlockKind::CurlyBracket => Token::OpenCurly,
         },
-        denied_curly,
-    )?;
-    Ok(builder.document)
-}
-
-fn normalize_source<'a>(
-    builder: &mut Builder<'a>,
-    window: SourceWindow<'a>,
-    denied_curly: &[Range<usize>],
-) -> Result<(), CssComponentValueError> {
-    let text = window
-        .text
-        .get(..window.range.end)
-        .expect("bounded source range");
-    if window.range.len() > builder.limits.max_known_spelling_bytes {
-        return Err(CssComponentValueError::new(
-            CssComponentValueErrorKind::ByteLimit,
-            CssValueOrigin::UnretainedInput {
-                byte_length: window.range.len(),
-            },
-        ));
-    }
-    builder.document.ends[0] = Some(SourceSite {
-        snapshot: window.original.clone(),
-        offset: window.range.end,
-    });
-    let mut frames = Vec::new();
-    let mut denied = denied_curly.iter().peekable();
-    let mut offset = window.range.start;
-    while offset < window.range.end {
-        let (_, end, token) = crate::tokenization::next_source_token(text, offset)
-            .expect("nonempty token-boundary source window");
-        if let Some(range) = denied.peek()
-            && range.start == offset
-        {
-            assert!(
-                matches!(token, Token::CurlyBracketBlock),
-                "scanner denied a real Curly opening"
-            );
-            let opening = SyntaxToken {
-                payload: own_payload(token),
-                spelling: Some(Cow::Owned(text[offset..end].to_owned())),
-                origin: Cow::Owned(CssValueOrigin::Parsed(
-                    CssParsedOrigin::from_range(&window.original, offset..end)
-                        .expect("actual denied opening"),
-                )),
-            };
-            // The denial is one boundary at its admitted parent depth. Its
-            // complete known source spelling is charged once without tokenizing
-            // or admitting any child, including the depth-257 opening.
-            builder.charge(&opening, true, frames.len() as u32)?;
-            builder.charge_known_spelling(&opening, range.len() - (end - offset))?;
-            let parent = frames.last().map_or(0, |frame: &RawFrame| frame.list);
-            builder.push(
-                parent,
-                SyntaxNode::DeniedCurlyBlock { opening },
-                Some((*range).clone()),
-            )?;
-            offset = range.end;
-            denied.next();
-            continue;
-        }
-        for (token, range) in crate::tokenization::source_token_parts(text, token, offset..end)
-            .into_iter()
-            .flatten()
-        {
-            let origin = if window.original.as_str().get(range.clone()) == text.get(range.clone()) {
-                CssValueOrigin::Parsed(
-                    CssParsedOrigin::from_range(&window.original, range.clone())
-                        .expect("original token range"),
-                )
-            } else {
-                CssValueOrigin::Programmatic
-            };
-            raw_token(
-                builder,
-                &mut frames,
-                SyntaxToken {
-                    payload: own_payload(token),
-                    spelling: Some(Cow::Owned(text[range.clone()].to_owned())),
-                    origin: Cow::Owned(origin),
+        CssComponentValueRef::Comment(_) => Token::Comment,
+        CssComponentValueRef::Token(value) => match value {
+            CssValueTokenRef::Ident(value) => Token::Ident(value),
+            CssValueTokenRef::AtKeyword(value) => Token::AtKeyword(value),
+            CssValueTokenRef::Hash { value, flag } => Token::Hash {
+                value,
+                kind: match flag {
+                    CssHashFlag::Id => HashKind::Id,
+                    CssHashFlag::Unrestricted => HashKind::Unrestricted,
                 },
-                Some(range),
-                Some(&window.original),
-            )?;
-        }
-        offset = end;
+            },
+            CssValueTokenRef::String(value) => Token::String(value),
+            CssValueTokenRef::Url(value) => Token::Url(value),
+            CssValueTokenRef::Delim(value) => Token::Delim(value),
+            CssValueTokenRef::Number(number) => {
+                Token::Number(checked_number(number.representation()))
+            }
+            CssValueTokenRef::Percentage(number) => {
+                Token::Percentage(checked_number(number.representation()))
+            }
+            CssValueTokenRef::Dimension { number, unit } => Token::Dimension {
+                number: checked_number(number.representation()),
+                unit,
+            },
+            CssValueTokenRef::Whitespace(_) => Token::Whitespace,
+            CssValueTokenRef::Colon => Token::Colon,
+            CssValueTokenRef::Semicolon => Token::Semicolon,
+            CssValueTokenRef::Comma => Token::Comma,
+            CssValueTokenRef::Cdo => Token::Cdo,
+            CssValueTokenRef::Cdc => Token::Cdc,
+        },
     }
-    assert!(
-        denied.next().is_none(),
-        "all scanner-proved denied boundaries were consumed"
-    );
-    finish_raw(builder, frames);
-    builder.document.source = Some(window);
-    Ok(())
 }
 
-struct RawFrame {
-    node: NodeId,
-    list: ListId,
-    kind: CssBlockKind,
+fn checked_number(representation: &str) -> Number<'_> {
+    Number::parse(representation).expect("a checked numeric token spells a number")
 }
 
-pub(crate) fn normalize<'a>(
-    input: SyntaxInput<'a>,
+/// The interval of a checked component's lexeme in the source it was parsed
+/// from, when it has one.
+fn lexeme_range(origin: &CssValueOrigin) -> Option<Range<Offset>> {
+    match origin {
+        CssValueOrigin::Parsed(origin) => Some(
+            Offset::new(origin.span().start().byte_offset().value())
+                ..Offset::new(origin.span().end().byte_offset().value()),
+        ),
+        _ => None,
+    }
+}
+
+/// Builds the tree of checked `values`, which start `base_depth` deep.
+///
+/// Components that were parsed keep the intervals they were parsed at, in the
+/// text of their snapshot; a metered build (`control`) also keeps that text.
+fn build_checked<'a>(
+    values: &'a [CssComponentValue],
     limits: SyntaxInputLimits,
     base_depth: u32,
-) -> Result<SyntaxDocument<'a>, CssComponentValueError> {
-    normalize_with_control(input, limits, base_depth, None)
+    control: Option<(&'a Control<'a>, &'a CssSourceSnapshot)>,
+) -> Result<Document<'a>, CssComponentValueError> {
+    use crate::parser::syntax_types::TreeBuilder;
+    enum Work<'a> {
+        Value(&'a CssComponentValue, ListId),
+        Close(NodeId, &'a CssComponentValue),
+    }
+    let meter = control.map(|(control, _)| control);
+    let control_step = || meter.map_or(Ok(()), |control| control.step().map_err(|()| capacity()));
+    let reserve = |pending: &mut Vec<Work<'a>>| match meter {
+        Some(control) => control.reserve(pending, 1).map_err(|()| capacity()),
+        None => pending.try_reserve(1).map_err(|_| capacity()),
+    };
+    // The builder counts the base depth itself, so the ceiling is the whole one.
+    let mut builder: TreeBuilder<'a> = Document::builder(
+        limits.limits(0),
+        base_depth,
+        meter.map(|control| control as &dyn Meter),
+    )
+    .map_err(|_| capacity())?;
+    let mut pending = Vec::new();
+    let root = builder.root();
+    for value in values.iter().rev() {
+        control_step()?;
+        reserve(&mut pending)?;
+        pending.push(Work::Value(value, root));
+    }
+    while !pending.is_empty() {
+        control_step()?;
+        let Some(work) = pending.pop() else { break };
+        match work {
+            Work::Value(value, list) => {
+                let (_, origin) = value
+                    .structural_lexeme(false)
+                    .expect("a component owns its leaf or opening lexeme");
+                let fail = |error: surgeist_css_parser::document::BuildError| {
+                    CssComponentValueError::new(failure_kind(&error), origin.clone())
+                };
+                let range = lexeme_range(origin);
+                let attached = Some(Attached::Component(value));
+                let children = match value.view() {
+                    CssComponentValueRef::Function(value) => Some(value.values().items()),
+                    CssComponentValueRef::Block(value) => Some(value.values().items()),
+                    _ => None,
+                };
+                let spelled = range.is_some();
+                if let Some(children) = children {
+                    let (node, child) = builder
+                        .open(list, checked_token(value), range, attached)
+                        .map_err(fail)?;
+                    if !spelled {
+                        let (text, _) = value.structural_lexeme(false).expect("opening lexeme");
+                        builder.charge_spelling(text.len()).map_err(fail)?;
+                    }
+                    reserve(&mut pending)?;
+                    pending.push(Work::Close(node, value));
+                    for value in children.iter().rev() {
+                        control_step()?;
+                        reserve(&mut pending)?;
+                        pending.push(Work::Value(value, child));
+                    }
+                } else {
+                    builder
+                        .leaf(list, checked_token(value), range, attached)
+                        .map_err(fail)?;
+                    if !spelled {
+                        let (text, _) = value.structural_lexeme(false).expect("leaf lexeme");
+                        builder.charge_spelling(text.len()).map_err(fail)?;
+                    }
+                }
+            }
+            Work::Close(node, value) => {
+                let (text, origin) = value
+                    .structural_lexeme(true)
+                    .expect("a group owns its closing lexeme");
+                let fail = |error: surgeist_css_parser::document::BuildError| {
+                    CssComponentValueError::new(failure_kind(&error), origin.clone())
+                };
+                if let CssValueOrigin::ImplicitClosure { at, .. } = origin {
+                    let at = Some(Offset::new(at.span().start().byte_offset().value()));
+                    builder.close(node, GroupEnd::Eof { at }).map_err(fail)?;
+                } else {
+                    let range = lexeme_range(origin);
+                    let spelled = range.is_some();
+                    builder
+                        .close(
+                            node,
+                            GroupEnd::Closed {
+                                range,
+                                payload: Some(Attached::Component(value)),
+                            },
+                        )
+                        .map_err(fail)?;
+                    if !spelled {
+                        builder.charge_spelling(text.len()).map_err(fail)?;
+                    }
+                }
+            }
+        }
+    }
+    if let Some(control) = meter {
+        let bytes = pending.capacity() * std::mem::size_of::<Work<'a>>();
+        drop(pending);
+        control.released(bytes);
+    }
+    let source = control.map(|(_, source)| source);
+    let mut document = builder.finish(source.map(CssSourceSnapshot::as_str));
+    document.attach(Host::checked(source, meter).into_attached());
+    Ok(document)
 }
 
-pub(crate) fn normalize_checked_controlled<'a>(
+/// One token of a test document of supplied tokens: a checked component's
+/// leaf, or a lexical fault no checked component can hold.
+#[cfg(test)]
+pub(crate) enum Supplied<'a> {
+    Checked(&'a CssComponentValue),
+    /// A fault with no interval: programmatic.
+    Fault(Token<'a>),
+    /// A fault at an interval of the document's text.
+    FaultAt(Token<'a>, Range<usize>),
+}
+
+/// A root list of supplied tokens, as a host that holds a mixture of checked
+/// components and error tokens would build it. A fault has no payload, and no
+/// interval unless it is [`Supplied::FaultAt`] one of `text`, which the faults
+/// positions then belong to; a fault with none is programmatic.
+#[cfg(test)]
+pub(crate) fn supplied_document<'a>(
+    items: &[Supplied<'a>],
+    text: Option<&'a CssSourceSnapshot>,
+) -> Document<'a> {
+    let mut builder: crate::parser::syntax_types::TreeBuilder<'a> =
+        Document::builder(Limits::default(), 0, None).unwrap();
+    let root = builder.root();
+    for item in items {
+        match item {
+            Supplied::Checked(component) => {
+                let (_, origin) = component.structural_lexeme(false).unwrap();
+                builder
+                    .leaf(
+                        root,
+                        checked_token(component),
+                        lexeme_range(origin),
+                        Some(Attached::Component(component)),
+                    )
+                    .unwrap();
+            }
+            Supplied::Fault(token) => {
+                builder.leaf(root, *token, None, None).unwrap();
+            }
+            Supplied::FaultAt(token, range) => {
+                builder
+                    .leaf(
+                        root,
+                        *token,
+                        Some(Offset::new(range.start)..Offset::new(range.end)),
+                        None,
+                    )
+                    .unwrap();
+            }
+        }
+    }
+    let mut document = builder.finish(text.map(CssSourceSnapshot::as_str));
+    document.attach(Host::checked(text, None).into_attached());
+    document
+}
+
+pub(crate) fn checked_document<'a>(
+    values: &'a [CssComponentValue],
+    limits: SyntaxInputLimits,
+    base_depth: u32,
+) -> Result<Document<'a>, CssComponentValueError> {
+    build_checked(values, limits, base_depth, None)
+}
+
+/// The tree of the checked components of one controlled front, whose text is
+/// `source`: metered by `control`, with the intervals the components were parsed
+/// at.
+pub(crate) fn checked_document_controlled<'a>(
     values: &'a [CssComponentValue],
     limits: SyntaxInputLimits,
     base_depth: u32,
     control: &'a Control<'a>,
-) -> Result<SyntaxDocument<'a>, CssComponentValueError> {
-    normalize_with_control(
-        SyntaxInput::CheckedComponents(values),
-        limits,
-        base_depth,
-        Some(control),
-    )
+    source: &'a CssSourceSnapshot,
+) -> Result<Document<'a>, CssComponentValueError> {
+    build_checked(values, limits, base_depth, Some((control, source)))
 }
 
-fn normalize_with_control<'a>(
-    input: SyntaxInput<'a>,
-    limits: SyntaxInputLimits,
-    base_depth: u32,
-    control: Option<&'a Control<'a>>,
-) -> Result<SyntaxDocument<'a>, CssComponentValueError> {
-    let mut builder = match control {
-        Some(control) => Builder::controlled(limits, base_depth, control)?,
-        None => Builder::new(limits, base_depth),
-    };
-    match input {
-        SyntaxInput::Source(window) => {
-            normalize_source(&mut builder, window, &[])?;
+// ----- reading a document
+
+/// What the rule-unit consumers and recovery read of a document, on top of
+/// the parser crate's own navigation.
+pub(crate) trait DocumentExt {
+    /// The rule driver's reading of the token the node holds; for a group, its
+    /// opening token.
+    fn kind(&self, node: NodeId) -> TokenKind<'_>;
+    fn is_trivia(&self, node: NodeId) -> bool;
+    /// Whether the node is a `{}`-block, denied or not.
+    fn is_curly_block(&self, node: NodeId) -> bool;
+    /// The error of a `{}`-block denied for nesting too deep.
+    fn denied_error(&self, node: NodeId) -> Option<CssComponentValueError>;
+    /// The snapshot the document's text belongs to.
+    fn snapshot(&self) -> Option<&CssSourceSnapshot>;
+    /// Where the node's own token came from: for a group, its opening token.
+    fn origin(&self, node: NodeId) -> CssValueOrigin;
+    /// Where the closing token of the group `node` came from, when it has one.
+    fn closing_origin(&self, node: NodeId) -> CssValueOrigin;
+    fn boundary(&self, list: ListId, index: usize) -> SyntaxBoundary;
+    fn cursor(&self, list: ListId) -> SyntaxCursor<'_>;
+    fn cursor_range(&self, range: &SyntaxRange) -> SyntaxCursor<'_>;
+    fn cursor_at_source(&self, offset: usize) -> Option<SyntaxCursor<'_>>;
+    fn list_at_source_start(&self, offset: usize) -> Option<ListId>;
+}
+
+impl DocumentExt for Document<'_> {
+    fn kind(&self, node: NodeId) -> TokenKind<'_> {
+        token_kind(self.token(node))
+    }
+
+    fn is_trivia(&self, node: NodeId) -> bool {
+        self.token(node).is_trivia()
+    }
+
+    fn is_curly_block(&self, node: NodeId) -> bool {
+        matches!(
+            self.component(node),
+            Component::Block {
+                kind: BlockKind::Curly,
+                ..
+            } | Component::Denied { .. }
+        )
+    }
+
+    fn denied_error(&self, node: NodeId) -> Option<CssComponentValueError> {
+        matches!(self.component(node), Component::Denied { .. }).then(|| {
+            CssComponentValueError::new(CssComponentValueErrorKind::NestingLimit, self.origin(node))
+        })
+    }
+
+    fn snapshot(&self) -> Option<&CssSourceSnapshot> {
+        crate::parser::syntax_types::host(self)?.snapshot()
+    }
+
+    fn origin(&self, node: NodeId) -> CssValueOrigin {
+        if let Some(Attached::Component(component)) = self.payload(node) {
+            let (_, origin) = component
+                .structural_lexeme(false)
+                .expect("a component owns its leaf or opening lexeme");
+            return origin.clone();
         }
-        SyntaxInput::Tokens(tokens) => {
-            let mut frames = Vec::new();
-            for token in tokens {
-                raw_token(&mut builder, &mut frames, token.clone(), None, None)?;
-            }
-            finish_raw(&mut builder, frames);
+        let (Some(snapshot), Some(range), Some(spelling)) =
+            (self.snapshot(), self.range(node), self.spelling(node))
+        else {
+            return CssValueOrigin::Programmatic;
+        };
+        // A denied block spells its whole extent; its token is the opening.
+        let spelling = if matches!(self.component(node), Component::Denied { .. }) {
+            spelling.get(..1).unwrap_or(spelling)
+        } else {
+            spelling
+        };
+        let start = range.start.value();
+        let end = start + spelling.len();
+        if snapshot.as_str().get(start..end) == Some(spelling)
+            && let Some(origin) = CssParsedOrigin::from_range(snapshot, start..end)
+        {
+            CssValueOrigin::Parsed(origin)
+        } else {
+            CssValueOrigin::Programmatic
         }
-        SyntaxInput::CheckedComponents(values) => {
-            enum Work<'a> {
-                Value(&'a CssComponentValue, ListId, u32),
-                Close(NodeId, &'a CssComponentValue, u32),
-            }
-            let mut pending = Vec::new();
-            for value in values.iter().rev() {
-                control_step(control)?;
-                reserve_controlled(control, &mut pending, 1)?;
-                pending.push(Work::Value(value, 0, 0));
-            }
-            while !pending.is_empty() {
-                control_step(control)?;
-                let Some(work) = pending.pop() else { break };
-                match work {
-                    Work::Value(value, list, depth) => {
-                        let children = match value.view() {
-                            CssComponentValueRef::Function(value) => Some(value.values().items()),
-                            CssComponentValueRef::Block(value) => Some(value.values().items()),
-                            _ => None,
-                        };
-                        if let Some(children) = children {
-                            let opening = SyntaxToken::checked(value, CheckedLexeme::Opening);
-                            let (node, child) =
-                                builder.opening(list, opening, None, depth + 1, None)?;
-                            reserve_controlled(control, &mut pending, 1)?;
-                            pending.push(Work::Close(node, value, depth + 1));
-                            for value in children.iter().rev() {
-                                control_step(control)?;
-                                reserve_controlled(control, &mut pending, 1)?;
-                                pending.push(Work::Value(value, child, depth + 1));
-                            }
-                        } else {
-                            builder.leaf(
-                                list,
-                                SyntaxToken::checked(value, CheckedLexeme::Leaf),
-                                None,
-                                depth,
-                            )?;
-                        }
+    }
+
+    fn closing_origin(&self, node: NodeId) -> CssValueOrigin {
+        if let Some(Attached::Component(component)) = self.payload(node) {
+            let closing = match component.view() {
+                CssComponentValueRef::Function(function) => function.closing_origin(),
+                CssComponentValueRef::Block(block) => block.closing_origin(),
+                _ => unreachable!("a group owns its closing origin"),
+            };
+            return closing.clone();
+        }
+        let range = match self.group_end(node) {
+            Some(GroupEnd::Closed {
+                range: Some(range), ..
+            }) => range,
+            // A group the input ended instead of closing is closed implicitly,
+            // at the end of its input.
+            Some(GroupEnd::Eof { at: Some(at) }) => {
+                let at = at.value();
+                return match (self.origin(node), self.snapshot()) {
+                    (CssValueOrigin::Parsed(opening), Some(snapshot)) => {
+                        CssParsedOrigin::from_range(snapshot, at..at)
+                            .map(|at| CssValueOrigin::ImplicitClosure { opening, at })
+                            .expect("actual child EOF")
                     }
-                    Work::Close(node, value, depth) => {
-                        let closing = SyntaxToken::checked(value, CheckedLexeme::Closing);
-                        let child = builder.document.nodes[node]
-                            .children()
-                            .expect("group children");
-                        let end = if let CssValueOrigin::ImplicitClosure { at, .. } =
-                            closing.origin.as_ref()
-                        {
-                            builder.document.ends[child] = Some(SourceSite {
-                                snapshot: at.source().clone(),
-                                offset: at.span().start().byte_offset().value(),
-                            });
-                            GroupEnd::Implicit {
-                                opening: Cow::Borrowed(value.origin()),
-                                at: builder
-                                    .document
-                                    .boundary(child, builder.document.lists[child].len()),
-                            }
-                        } else {
-                            builder.charge(&closing, false, depth)?;
-                            if let CssValueOrigin::Parsed(origin) = closing.origin.as_ref() {
-                                builder.document.ends[child] = Some(SourceSite {
-                                    snapshot: origin.source().clone(),
-                                    offset: origin.span().start().byte_offset().value(),
-                                });
-                            }
-                            GroupEnd::Explicit(closing)
-                        };
-                        builder.close(node, end, None);
-                    }
+                    _ => CssValueOrigin::Programmatic,
+                };
+            }
+            _ => return CssValueOrigin::Programmatic,
+        };
+        let (Some(snapshot), Some(spelling)) = (
+            self.snapshot(),
+            self.closing_site(node).and_then(Site::spelling),
+        ) else {
+            return CssValueOrigin::Programmatic;
+        };
+        let (start, end) = (range.start.value(), range.end.value());
+        if snapshot.as_str().get(start..end) == Some(spelling)
+            && let Some(origin) = CssParsedOrigin::from_range(snapshot, start..end)
+        {
+            CssValueOrigin::Parsed(origin)
+        } else {
+            CssValueOrigin::Programmatic
+        }
+    }
+
+    fn boundary(&self, list: ListId, index: usize) -> SyntaxBoundary {
+        let offset = match self.list(list).get(index) {
+            Some(node) => self.range(*node).map(|range| range.start.value()),
+            None => self.list_end(list).map(Offset::value),
+        };
+        SyntaxBoundary {
+            list,
+            index,
+            offset,
+        }
+    }
+
+    fn cursor(&self, list: ListId) -> SyntaxCursor<'_> {
+        SyntaxCursor {
+            document: self,
+            list,
+            next: 0,
+            end: self.list(list).len(),
+            current: None,
+            reconsume: false,
+        }
+    }
+
+    fn cursor_range(&self, range: &SyntaxRange) -> SyntaxCursor<'_> {
+        assert!(range.start <= range.end && range.end <= self.list(range.list).len());
+        SyntaxCursor {
+            document: self,
+            list: range.list,
+            next: range.start,
+            end: range.end,
+            current: None,
+            reconsume: false,
+        }
+    }
+
+    fn cursor_at_source(&self, offset: usize) -> Option<SyntaxCursor<'_>> {
+        let site = self.node_at_offset(Offset::new(offset))?;
+        if site.is_closing() {
+            return None;
+        }
+        Some(SyntaxCursor {
+            document: self,
+            list: site.list(),
+            next: site.index(),
+            end: self.list(site.list()).len(),
+            current: None,
+            reconsume: false,
+        })
+    }
+
+    fn list_at_source_start(&self, offset: usize) -> Option<ListId> {
+        let start = self
+            .list_end(self.root_list())?
+            .value()
+            .checked_sub(self.source().map_or(0, str::len))?;
+        if start == offset {
+            return Some(self.root_list());
+        }
+        // The contents of a group start where its opening token ends.
+        let mut pending = vec![self.root_list()];
+        while let Some(list) = pending.pop() {
+            for &node in self.list(list) {
+                let Some(children) = self.children(node) else {
+                    continue;
+                };
+                if let (Some(range), Some(spelling)) = (self.range(node), self.spelling(node))
+                    && range.start.value() + spelling.len() == offset
+                {
+                    return Some(children);
                 }
-            }
-            release_controlled_vec(control, pending);
-        }
-        SyntaxInput::Components { document, list } => {
-            enum Work {
-                Node(NodeId, ListId, u32),
-                Close(NodeId, NodeId, u32),
-            }
-            let mut pending = Vec::new();
-            for node in document.lists[list].iter().rev() {
-                pending.push(Work::Node(*node, 0, 0));
-            }
-            // Root EOF belongs to this supplied list only if it was really supplied.
-            builder.document.ends[0] = document.ends[list].clone();
-            while let Some(work) = pending.pop() {
-                match work {
-                    Work::Node(old, list, depth) => {
-                        let value = &document.nodes[old];
-                        if let Some(error) = value.denied_error() {
-                            return Err(error);
-                        }
-                        if let Some(children) = value.children() {
-                            let (new, child) = builder.opening(
-                                list,
-                                value.token().clone(),
-                                None,
-                                depth + 1,
-                                document.ends[children].clone(),
-                            )?;
-                            pending.push(Work::Close(new, old, depth + 1));
-                            for node in document.lists[children].iter().rev() {
-                                pending.push(Work::Node(*node, child, depth + 1));
-                            }
-                        } else {
-                            builder.leaf(list, value.token().clone(), None, depth)?;
-                        }
-                    }
-                    Work::Close(new, old, depth) => {
-                        let end = document.nodes[old].end().expect("group end").clone();
-                        if let GroupEnd::Explicit(token) = &end {
-                            builder.charge(token, false, depth)?;
-                        }
-                        let end = match end {
-                            GroupEnd::Implicit { opening, .. } => {
-                                let child = builder.document.nodes[new]
-                                    .children()
-                                    .expect("group children");
-                                GroupEnd::Implicit {
-                                    opening,
-                                    at: builder
-                                        .document
-                                        .boundary(child, builder.document.lists[child].len()),
-                                }
-                            }
-                            end => end,
-                        };
-                        builder.close(new, end, None);
-                    }
-                }
+                pending.push(children);
             }
         }
-    }
-    Ok(builder.document)
-}
-
-fn raw_token<'a>(
-    builder: &mut Builder<'a>,
-    frames: &mut Vec<RawFrame>,
-    token: SyntaxToken<'a>,
-    range: Option<Range<usize>>,
-    original: Option<&CssSourceSnapshot>,
-) -> Result<(), CssComponentValueError> {
-    let kind = token.kind();
-    if let TokenKind::Closing(kind) = kind
-        && let Some(frame) = frames.pop_if(|frame| frame.kind == kind)
-    {
-        builder.charge(&token, false, frames.len() as u32 + 1)?;
-        builder.document.ends[frame.list] = range.as_ref().and_then(|range| {
-            original.map(|snapshot| SourceSite {
-                snapshot: snapshot.clone(),
-                offset: range.start,
-            })
-        });
-        let end = range.map(|range| range.end);
-        builder.close(frame.node, GroupEnd::Explicit(token), end);
-        return Ok(());
-    }
-    let parent = frames.last().map_or(0, |frame| frame.list);
-    let block = match kind {
-        TokenKind::Function(_) => Some(CssBlockKind::Parenthesis),
-        TokenKind::Opening(kind) => Some(kind),
-        _ => None,
-    };
-    if let Some(kind) = block {
-        let (node, list) = builder.opening(parent, token, range, frames.len() as u32 + 1, None)?;
-        frames.try_reserve(1).map_err(|_| capacity())?;
-        frames.push(RawFrame { node, list, kind });
-    } else {
-        builder.leaf(parent, token, range, frames.len() as u32)?;
-    }
-    Ok(())
-}
-
-fn finish_raw(builder: &mut Builder<'_>, mut frames: Vec<RawFrame>) {
-    while let Some(frame) = frames.pop() {
-        let source = builder.document.ends[0].clone();
-        builder.document.ends[frame.list] = source.clone();
-        let at = builder
-            .document
-            .boundary(frame.list, builder.document.lists[frame.list].len());
-        let opening = builder.document.nodes[frame.node].token().origin.clone();
-        builder.close(
-            frame.node,
-            GroupEnd::Implicit { opening, at },
-            source.map(|source| source.offset),
-        );
+        None
     }
 }
 
@@ -1173,7 +848,7 @@ pub(crate) enum CursorItem {
 
 #[derive(Clone)]
 pub(crate) struct SyntaxCursor<'a> {
-    pub(crate) document: &'a SyntaxDocument<'a>,
+    pub(crate) document: &'a Document<'a>,
     pub(crate) list: ListId,
     next: usize,
     end: usize,
@@ -1189,7 +864,8 @@ impl SyntaxCursor<'_> {
         }
     }
     pub(crate) fn peek(&self) -> CursorItem {
-        self.document.lists[self.list]
+        self.document
+            .list(self.list)
             .get(self.position())
             .filter(|_| self.position() < self.end)
             .copied()
@@ -1220,7 +896,7 @@ impl SyntaxCursor<'_> {
     }
     pub(crate) fn skip_trivia(&mut self) {
         while let CursorItem::Node(node) = self.peek() {
-            if !self.document.nodes[node].is_trivia() {
+            if !self.document.is_trivia(node) {
                 break;
             }
             self.consume();
@@ -1284,18 +960,11 @@ pub(crate) enum GenericRule {
     Qualified(GenericQualifiedRule),
 }
 
-pub(crate) fn custom_property_rule_prelude(
-    document: &SyntaxDocument<'_>,
-    prelude: &[NodeId],
-) -> bool {
-    let mut meaningful = prelude
-        .iter()
-        .filter(|node| !document.nodes[**node].is_trivia());
-    matches!(meaningful.next().map(|node| document.nodes[*node].token().kind()), Some(TokenKind::Ident(name)) if name.starts_with("--"))
+pub(crate) fn custom_property_rule_prelude(document: &Document<'_>, prelude: &[NodeId]) -> bool {
+    let mut meaningful = prelude.iter().filter(|node| !document.is_trivia(**node));
+    matches!(meaningful.next().map(|node| document.kind(*node)), Some(TokenKind::Ident(name)) if name.starts_with("--"))
         && matches!(
-            meaningful
-                .next()
-                .map(|node| document.nodes[*node].token().kind()),
+            meaningful.next().map(|node| document.kind(*node)),
             Some(TokenKind::Colon)
         )
 }
@@ -1340,9 +1009,7 @@ pub(crate) fn consume_comma_separated_components(
     loop {
         let before = cursor.position();
         match cursor.consume() {
-            CursorItem::Node(node)
-                if cursor.document.nodes[node].token().kind() == TokenKind::Comma =>
-            {
+            CursorItem::Node(node) if cursor.document.kind(node) == TokenKind::Comma => {
                 ranges.push(SyntaxRange {
                     list: cursor.list,
                     start,
@@ -1376,7 +1043,7 @@ pub(crate) fn consume_at_rule_context(
         unreachable!("at-keyword dispatch")
     };
     debug_assert!(matches!(
-        cursor.document.nodes[name].token().kind(),
+        cursor.document.kind(name),
         TokenKind::AtKeyword(_)
     ));
     let mut prelude = Vec::new();
@@ -1396,20 +1063,17 @@ pub(crate) fn consume_at_rule_context(
                     Some(fault(cursor, start, GenericFaultKind::AtRuleEndOfInput)),
                 );
             }
-            CursorItem::Node(node) => match &cursor.document.nodes[node] {
-                value if value.is_curly_block() => {
+            CursorItem::Node(node) => {
+                if cursor.document.is_curly_block(node) {
                     break (RuleTermination::Block, Some(node), None);
                 }
-                value
-                    if value.token().kind() == TokenKind::Semicolon
-                        && semicolon_terminates_rule(rule_dispatch(
-                            cursor.document.nodes[name].token().kind(),
-                        )) =>
+                if cursor.document.kind(node) == TokenKind::Semicolon
+                    && semicolon_terminates_rule(rule_dispatch(cursor.document.kind(name)))
                 {
                     break (RuleTermination::Semicolon(node), None, None);
                 }
-                _ => prelude.push(node),
-            },
+                prelude.push(node);
+            }
         }
     };
     GenericAtRule {
@@ -1461,7 +1125,7 @@ pub(crate) fn consume_qualified_rule_context(
                 ));
             }
             CursorItem::Node(node) => {
-                if cursor.document.nodes[node].is_curly_block() {
+                if cursor.document.is_curly_block(node) {
                     return Ok(GenericQualifiedRule {
                         prelude,
                         block: node,
@@ -1478,7 +1142,7 @@ pub(crate) fn consume_qualified_rule_context(
     }
 }
 fn next_is_semicolon(cursor: &SyntaxCursor<'_>) -> bool {
-    matches!(cursor.peek(), CursorItem::Node(node) if cursor.document.nodes[node].token().kind() == TokenKind::Semicolon)
+    matches!(cursor.peek(), CursorItem::Node(node) if cursor.document.kind(node) == TokenKind::Semicolon)
 }
 
 /// Selects every rule unit of one list, in source order.
@@ -1497,7 +1161,7 @@ pub(crate) fn consume_rules(
         let CursorItem::Node(node) = cursor.consume() else {
             break;
         };
-        let kind = cursor.document.nodes[node].token().kind();
+        let kind = cursor.document.kind(node);
         if ignored_rule_list_prefix(kind, list) {
             continue;
         }
@@ -1553,12 +1217,11 @@ pub(crate) fn consume_one_rule(cursor: &mut SyntaxCursor<'_>) -> GenericRuleResu
     let CursorItem::Node(node) = cursor.peek() else {
         return Err(fault(cursor, start, GenericFaultKind::EmptyInput));
     };
-    let rule =
-        if rule_dispatch(cursor.document.nodes[node].token().kind()) == GenericRuleDispatch::At {
-            GenericRule::At(consume_at_rule(cursor))
-        } else {
-            GenericRule::Qualified(consume_qualified_rule(cursor)?)
-        };
+    let rule = if rule_dispatch(cursor.document.kind(node)) == GenericRuleDispatch::At {
+        GenericRule::At(consume_at_rule(cursor))
+    } else {
+        GenericRule::Qualified(consume_qualified_rule(cursor)?)
+    };
     cursor.skip_trivia();
     if matches!(cursor.peek(), CursorItem::Node(_)) {
         return Err(fault(cursor, start, GenericFaultKind::TrailingInput));
@@ -1583,15 +1246,12 @@ pub(crate) fn consume_declaration(
     let CursorItem::Node(name) = cursor.consume() else {
         return Err(fault(cursor, start, GenericFaultKind::InvalidDeclaration));
     };
-    if !matches!(
-        cursor.document.nodes[name].token().kind(),
-        TokenKind::Ident(_)
-    ) {
+    if !matches!(cursor.document.kind(name), TokenKind::Ident(_)) {
         return Err(fault(cursor, start, GenericFaultKind::InvalidDeclaration));
     }
     cursor.skip_trivia();
     let colon = cursor.position();
-    if !matches!(cursor.consume(), CursorItem::Node(node) if cursor.document.nodes[node].token().kind() == TokenKind::Colon)
+    if !matches!(cursor.consume(), CursorItem::Node(node) if cursor.document.kind(node) == TokenKind::Colon)
     {
         return Err(fault(cursor, start, GenericFaultKind::InvalidDeclaration));
     }
@@ -1606,11 +1266,11 @@ pub(crate) fn consume_declaration(
     let mut value_end = cursor.position();
     if let Some((bang, word)) = crate::parser::trailing_importance(
         &value,
-        |node| cursor.document.nodes[*node].is_trivia(),
-        |node| cursor.document.nodes[*node].token().kind() == TokenKind::Delim('!'),
-        |node| matches!(cursor.document.nodes[*node].token().kind(), TokenKind::Ident(name) if name.eq_ignore_ascii_case("important")),
+        |node| cursor.document.is_trivia(*node),
+        |node| cursor.document.kind(*node) == TokenKind::Delim('!'),
+        |node| matches!(cursor.document.kind(*node), TokenKind::Ident(name) if name.eq_ignore_ascii_case("important")),
     ) {
-        let bang_index = cursor.document.lists[cursor.list][value_start..cursor.position()]
+        let bang_index = cursor.document.list(cursor.list)[value_start..cursor.position()]
             .iter()
             .position(|node| *node == value[bang])
             .expect("value node belongs to candidate")
@@ -1626,13 +1286,15 @@ pub(crate) fn consume_declaration(
         important = true;
     }
     while value_end > value_start
-        && cursor.document.nodes[cursor.document.lists[cursor.list][value_end - 1]].is_trivia()
+        && cursor
+            .document
+            .is_trivia(cursor.document.list(cursor.list)[value_end - 1])
     {
         value_end -= 1;
     }
     while value
         .last()
-        .is_some_and(|node| cursor.document.nodes[*node].is_trivia())
+        .is_some_and(|node| cursor.document.is_trivia(*node))
     {
         value.pop();
     }
@@ -1663,18 +1325,17 @@ pub(crate) fn consume_block_declaration(
 ) -> Result<GenericDeclaration, GenericSyntaxFault> {
     let start = cursor.position();
     let declaration = consume_declaration(cursor)?;
-    let custom = matches!(cursor.document.nodes[declaration.name].token().kind(), TokenKind::Ident(name) if name.starts_with("--"));
+    let custom = matches!(cursor.document.kind(declaration.name), TokenKind::Ident(name) if name.starts_with("--"));
     if !custom {
         let mut components = 0_usize;
         let mut has_curly_block = false;
         for node in &declaration.value {
-            let node = &cursor.document.nodes[*node];
-            if node.is_trivia() {
+            if cursor.document.is_trivia(*node) {
                 continue;
             }
             components += 1;
             has_curly_block |=
-                node.token().kind() == TokenKind::Opening(CssBlockKind::CurlyBracket);
+                cursor.document.kind(*node) == TokenKind::Opening(CssBlockKind::CurlyBracket);
         }
         if has_curly_block && components > 1 {
             return Err(fault(cursor, start, GenericFaultKind::InvalidDeclaration));
@@ -1688,7 +1349,7 @@ pub(crate) fn consume_block_declaration(
 pub(crate) fn consume_declaration_candidate(cursor: &mut SyntaxCursor<'_>) -> SyntaxRange {
     let start = cursor.position();
     while let CursorItem::Node(node) = cursor.peek() {
-        if cursor.document.nodes[node].token().kind() == TokenKind::Semicolon {
+        if cursor.document.kind(node) == TokenKind::Semicolon {
             break;
         }
         cursor.consume();
@@ -1705,8 +1366,7 @@ pub(crate) fn block_contents_end(cursor: &SyntaxCursor<'_>) -> bool {
     match cursor.peek() {
         CursorItem::EndOfInput(_) => true,
         CursorItem::Node(node) => {
-            cursor.document.nodes[node].token().kind()
-                == TokenKind::Closing(CssBlockKind::CurlyBracket)
+            cursor.document.kind(node) == TokenKind::Closing(CssBlockKind::CurlyBracket)
         }
     }
 }
@@ -1714,7 +1374,7 @@ pub(crate) fn block_contents_end(cursor: &SyntaxCursor<'_>) -> bool {
 pub(crate) fn consume_block_declaration_candidate(cursor: &mut SyntaxCursor<'_>) -> SyntaxRange {
     let start = cursor.position();
     while !block_contents_end(cursor) {
-        if matches!(cursor.peek(), CursorItem::Node(node) if cursor.document.nodes[node].token().kind() == TokenKind::Semicolon)
+        if matches!(cursor.peek(), CursorItem::Node(node) if cursor.document.kind(node) == TokenKind::Semicolon)
         {
             break;
         }
@@ -1744,75 +1404,3 @@ pub(crate) mod declaration_boundary_tests;
 
 #[cfg(test)]
 pub(crate) mod raw_component_boundaries;
-
-// The controlled entry borrows checked components, so these are the only owned
-// normalization allocations. Other normalization fronts retain their old owner.
-impl Drop for SyntaxDocument<'_> {
-    fn drop(&mut self) {
-        if let Some(control) = self.control {
-            let mut bytes = 0usize;
-            for part in [
-                self.nodes
-                    .capacity()
-                    .checked_mul(std::mem::size_of::<SyntaxNode<'_>>()),
-                self.lists
-                    .capacity()
-                    .checked_mul(std::mem::size_of::<Vec<NodeId>>()),
-                self.ends
-                    .capacity()
-                    .checked_mul(std::mem::size_of::<Option<SourceSite>>()),
-                self.ranges
-                    .capacity()
-                    .checked_mul(std::mem::size_of::<Option<Range<usize>>>()),
-            ] {
-                let Some(part) = part else {
-                    unreachable!("admitted normalization backing")
-                };
-                let Some(total) = bytes.checked_add(part) else {
-                    unreachable!("admitted normalization backing")
-                };
-                bytes = total;
-            }
-            for list in &self.lists {
-                let Some(part) = list.capacity().checked_mul(std::mem::size_of::<NodeId>()) else {
-                    unreachable!("admitted normalization list")
-                };
-                let Some(total) = bytes.checked_add(part) else {
-                    unreachable!("admitted normalization lists")
-                };
-                bytes = total;
-            }
-            drop((
-                std::mem::take(&mut self.nodes),
-                std::mem::take(&mut self.lists),
-                std::mem::take(&mut self.ends),
-                std::mem::take(&mut self.ranges),
-            ));
-            control.released(bytes);
-        }
-    }
-}
-
-fn control_step(control: Option<&Control<'_>>) -> Result<(), CssComponentValueError> {
-    control.map_or(Ok(()), |control| control.step().map_err(|_| capacity()))
-}
-fn reserve_controlled<T>(
-    control: Option<&Control<'_>>,
-    values: &mut Vec<T>,
-    additional: usize,
-) -> Result<(), CssComponentValueError> {
-    match control {
-        Some(control) => control.reserve(values, additional).map_err(|_| capacity()),
-        None => values.try_reserve(additional).map_err(|_| capacity()),
-    }
-}
-fn release_controlled_vec<T>(control: Option<&Control<'_>>, values: Vec<T>) {
-    let bytes = values.capacity().checked_mul(std::mem::size_of::<T>());
-    drop(values);
-    if let Some(control) = control {
-        let Some(bytes) = bytes else {
-            unreachable!("admitted normalization temporary")
-        };
-        control.released(bytes);
-    }
-}

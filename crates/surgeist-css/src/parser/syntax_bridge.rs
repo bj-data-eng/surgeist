@@ -3,9 +3,10 @@ use crate::diagnostic::CssError;
 use crate::diagnostic::error::from_parse_error;
 use crate::parser::consume_failed_rule_block;
 use crate::parser::recovery::{RecoveryState, recovery_action_for_error};
+use crate::parser::syntax_types::Document;
 use crate::syntax_consumption::{
-    self as syntax, GenericFaultKind, GenericRule, GenericRuleResult, RuleListSyntax,
-    RuleTermination, SyntaxDocument,
+    self as syntax, DocumentExt, GenericFaultKind, GenericRule, GenericRuleResult, RuleListSyntax,
+    RuleTermination,
 };
 use cssparser::{
     AtRuleParser, Delimiter, ParseError, Parser, ParserState, QualifiedRuleParser, Token,
@@ -17,7 +18,7 @@ pub(super) fn rules(
     recovery: &RecoveryState,
     list: RuleListSyntax,
 ) -> Result<
-    (std::rc::Rc<SyntaxDocument<'static>>, Vec<GenericRuleResult>),
+    (std::rc::Rc<Document<'static>>, Vec<GenericRuleResult>),
     crate::component::CssComponentValueError,
 > {
     let document = recovery.syntax_document(source)?;
@@ -56,7 +57,7 @@ where
     let document = recovery.syntax_document(source).map_err(|error| {
         crate::diagnostic::error::invalid_component_value(input.current_source_location(), error)
     })?;
-    let selected = syntax::consume_one_rule(&mut document.cursor(document.root));
+    let selected = syntax::consume_one_rule(&mut document.cursor(document.root_list()));
     let selected = match selected {
         Err(error) if error.kind == GenericFaultKind::EmptyInput => {
             return Err(input.new_error(cssparser::BasicParseErrorKind::EndOfInput));
@@ -64,15 +65,12 @@ where
         Err(error) if error.kind == GenericFaultKind::TrailingInput => {
             // Preserve contextual first-unit failure precedence. This reuses
             // the already charged arena; it never consumes the second unit.
-            let mut cursor = document.cursor(document.root);
+            let mut cursor = document.cursor(document.root_list());
             cursor.skip_trivia();
             let syntax::CursorItem::Node(node) = cursor.peek() else {
                 unreachable!("nonempty first unit")
             };
-            if matches!(
-                document.nodes[node].token().kind(),
-                syntax::TokenKind::AtKeyword(_)
-            ) {
+            if matches!(document.kind(node), syntax::TokenKind::AtKeyword(_)) {
                 Ok(GenericRule::At(syntax::consume_at_rule(&mut cursor)))
             } else {
                 syntax::consume_qualified_rule(&mut cursor).map(GenericRule::Qualified)
@@ -99,7 +97,7 @@ pub(super) fn parse_selected<'i, 't, P, R>(
     input: &mut Parser<'i, 't>,
     parser: &mut P,
     recovery: &RecoveryState,
-    document: &SyntaxDocument<'_>,
+    document: &Document<'_>,
     selected: &GenericRuleResult,
 ) -> (usize, SelectedAdmission<'i, R>)
 where
@@ -113,9 +111,8 @@ where
     };
     let start_offset = document
         .boundary(range.list, range.start)
-        .source
-        .expect("source candidate has its original boundary")
-        .offset;
+        .offset
+        .expect("source candidate has its original boundary");
     while input.position().byte_index() < start_offset {
         if input.next_including_whitespace_and_comments().is_err() {
             break;
@@ -194,10 +191,8 @@ where
 fn document_offset(error: &syntax::GenericSyntaxFault) -> usize {
     error
         .at
-        .source
-        .as_ref()
-        .expect("source rule-list fault has its original boundary")
         .offset
+        .expect("source rule-list fault has its original boundary")
 }
 
 // Syntax 3 (2026 CRD) §5.5.3: a nested qualified rule that meets its `;`
@@ -401,10 +396,7 @@ pub(super) fn rejected_at_rule_error<'i>(
     let syntax::CursorItem::Node(node) = cursor.peek() else {
         return error;
     };
-    if !matches!(
-        document.nodes[node].token().kind(),
-        syntax::TokenKind::AtKeyword(_)
-    ) {
+    if !matches!(document.kind(node), syntax::TokenKind::AtKeyword(_)) {
         return error;
     }
     if matches!(
@@ -432,13 +424,11 @@ pub(super) fn retain_statement_eof(
     if let (Some(problem), RuleTermination::EndOfInput(at)) = (rule.fault, rule.termination) {
         let error_end = problem
             .at
-            .source
-            .expect("source statement fault has its responsible EOF point")
-            .offset;
+            .offset
+            .expect("source statement fault has its responsible EOF point");
         let end = at
-            .source
-            .expect("source statement EOF has a bounded source point")
-            .offset;
+            .offset
+            .expect("source statement EOF has a bounded source point");
         let span = crate::source::CssSourceSpan::new(
             crate::source::CssSourcePosition::from_byte_offset_in(
                 source,

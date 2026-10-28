@@ -1,6 +1,9 @@
-use super::property_input::{Mark, Site, Stream};
-use crate::diagnostic::error::property::SyntaxError;
-use cssparser::Token;
+use super::syntax_types::{Mark, Site, Stream};
+#[cfg(test)]
+use crate::diagnostic::error::property::SyntaxErrorExt;
+use crate::parser::property_input::{SiteExt, StreamExt};
+use crate::parser::syntax_types::SyntaxError;
+use surgeist_css_parser::Token;
 
 use crate::diagnostic::CssFeatureId;
 use crate::diagnostic::error::property::{Error, basic, unexpected_at};
@@ -106,14 +109,14 @@ pub(super) enum LiteralTokens {
 }
 
 impl LiteralTokens {
-    fn admit(self, token: &Token<'_>) -> bool {
+    fn admit(self, token: Token<'_>) -> bool {
         match self {
-            Self::Number => matches!(token, Token::Number { .. }),
-            Self::Percentage => matches!(token, Token::Percentage { .. }),
+            Self::Number => matches!(token, Token::Number(_)),
+            Self::Percentage => matches!(token, Token::Percentage(_)),
             Self::Dimension => matches!(token, Token::Dimension { .. }),
             Self::Numeric => matches!(
                 token,
-                Token::Number { .. } | Token::Percentage { .. } | Token::Dimension { .. }
+                Token::Number(_) | Token::Percentage(_) | Token::Dimension { .. }
             ),
         }
     }
@@ -159,7 +162,7 @@ pub(super) fn parse_numeric_type<'i, T>(
             let expression = parse_numeric_function(input, &state, numeric, ty.root)?;
             (ty.calculation)(expression)
         }
-        token => return Err(location.unexpected::<Error>(token.clone())),
+        token => return Err(location.unexpected::<Error>(token)),
     };
     value.map_err(|error| {
         unexpected_at(numeric.property_error_location(&error, location, root_offset))
@@ -233,7 +236,7 @@ pub(super) fn parse_hinted_number_calculation<'i>(
             parse_numeric_function(input, &start, numeric, CalculationRoot::HintedNumber)
                 .map(CssCalculation::<CssHintedNumber>::from_expression)
         }
-        token => Err(location.unexpected::<Error>(token.clone())),
+        token => Err(location.unexpected::<Error>(token)),
     }
 }
 
@@ -493,7 +496,7 @@ mod typed_calculation_tests {
                     }),
                 )
             })?;
-        let mut parser = Stream::new(&document);
+        let mut parser = document.root();
         let before = parser.mark();
         parser
             .parse_complete(|input| parse_numeric_function(input, &before, &numeric, root))

@@ -7,6 +7,7 @@ use crate::diagnostic::CssRecoveryAction;
 use crate::parser::recovery::StyleContextCaptures;
 use crate::rule::font_feature_values::CssFontFeatureValuesFamilyList;
 use crate::source::CssParsedOrigin;
+use crate::syntax_consumption::DocumentExt;
 use crate::{CssParseReport, CssParserContext};
 use cssparser::{Parser, ParserInput};
 
@@ -24,10 +25,8 @@ pub(crate) fn parse_with_context(
             }
         };
         let snapshot = document
-            .source
-            .as_ref()
+            .snapshot()
             .expect("original source document")
-            .original
             .clone();
         let state = RecoveryState::at_depth_with_snapshot(
             source,

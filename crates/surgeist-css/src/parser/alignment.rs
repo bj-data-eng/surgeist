@@ -1,7 +1,8 @@
 //! Box Alignment 3 grammar for the selected six longhands and three shorthands.
 
-use super::property_input::Stream;
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
+use super::syntax_types::Stream;
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::parser::syntax_types::SyntaxError;
 
 use crate::values::layout::alignment::*;
 
@@ -42,7 +43,7 @@ fn legacy(name: &str) -> Option<CssLegacyAlignment> {
 fn parse_value<'i>(
     input: &mut Stream<'i>,
     justify_items: bool,
-) -> Result<(CssAlignmentValue, super::property_input::Site<'i>), SyntaxError<'i, Error>> {
+) -> Result<(CssAlignmentValue, super::syntax_types::Site<'i>), SyntaxError<'i, Error>> {
     let mut word_location = input.site();
     let first = keyword(input)?;
     let overflow = match first.as_str() {

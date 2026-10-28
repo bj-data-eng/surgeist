@@ -1,7 +1,8 @@
 //! Checked border-corner radii and physical border-radius shorthand.
 
-use super::property_input::Stream;
-use crate::diagnostic::error::property::{Error, SyntaxError, unexpected_at};
+use super::syntax_types::Stream;
+use crate::diagnostic::error::property::{Error, unexpected_at};
+use crate::parser::syntax_types::SyntaxError;
 
 use super::side_shapes::parse_side_pair;
 use super::values::parse_nonnegative_length_percentage;

@@ -8,6 +8,7 @@ use crate::component::{
 };
 use crate::numeric::CssLengthUnit;
 use crate::numeric::{controlled_check, ordinary_expression, projection, units};
+use crate::parser::property_input::SiteExt;
 use std::{borrow::Cow, fmt};
 
 #[cfg(test)]
@@ -112,9 +113,9 @@ impl<'a> NumericInputContext<'a> {
     pub(crate) fn property_error_location<'i>(
         &self,
         error: &CssNumericConstructionError,
-        fallback: crate::parser::property_input::Site<'i>,
-        root: crate::parser::property_input::Site<'i>,
-    ) -> crate::parser::property_input::Site<'i> {
+        fallback: crate::parser::syntax_types::Site<'i>,
+        root: crate::parser::syntax_types::Site<'i>,
+    ) -> crate::parser::syntax_types::Site<'i> {
         let truncated = matches!(
             error.kind(),
             CssNumericConstructionErrorKind::MalformedExpression

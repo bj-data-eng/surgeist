@@ -1,15 +1,16 @@
 //! Motion Path authored grammar composed over the shared numeric, position,
 //! URL and complete BasicShape owners.
 use super::combinators::{Combinator, Tail, commit, fill, keyword, parse_group};
-use super::property_input::Stream;
+use super::syntax_types::Stream;
 use super::values::{next_is_delim, next_is_ident, parse_angle_value, parse_length_percentage};
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
 use crate::numeric::expression::NumericInputContext;
+use crate::parser::syntax_types::SyntaxError;
 use crate::values::transform::{
     CssCoordBox, CssOffset, CssOffsetAnchor, CssOffsetPath, CssOffsetPathKind, CssOffsetPathValue,
     CssOffsetPosition, CssOffsetRotate, CssOffsetRotateModifier, CssRay, CssRaySize,
 };
-use cssparser::Token;
+use surgeist_css_parser::Token;
 
 fn next_keyword<'i>(input: &mut Stream<'i>) -> Option<String> {
     let state = input.mark();
@@ -23,7 +24,7 @@ fn next_keyword<'i>(input: &mut Stream<'i>) -> Option<String> {
 fn next_path_kind<'i>(input: &mut Stream<'i>) -> bool {
     let state = input.mark();
     let result = match input.consume_after_whitespace() {
-        Ok(Token::UnquotedUrl(_)) => true,
+        Ok(Token::Url(_)) => true,
         Ok(Token::Function(name)) => {
             name.eq_ignore_ascii_case("ray")
                 || name.eq_ignore_ascii_case("url")
@@ -66,7 +67,7 @@ pub(crate) fn parse_offset_path<'i>(
             name.eq_ignore_ascii_case("ray"),
             name.eq_ignore_ascii_case("url") || name.eq_ignore_ascii_case("src"),
         ),
-        Ok(Token::UnquotedUrl(_)) => (false, true),
+        Ok(Token::Url(_)) => (false, true),
         _ => (false, false),
     };
     input.restore(state);

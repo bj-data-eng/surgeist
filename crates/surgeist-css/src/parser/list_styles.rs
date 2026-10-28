@@ -1,10 +1,11 @@
 //! Lists 3 longhands and shorthand, sharing the Content 3 style grammar.
 
 use super::combinators::{Combinator, Tail, commit, fill, keyword, parse_group};
-use super::property_input::Stream;
+use super::syntax_types::Stream;
 use super::values::next_is_ident;
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
-use cssparser::Token;
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::parser::syntax_types::SyntaxError;
+use surgeist_css_parser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::background::parse_image_value;
@@ -62,7 +63,7 @@ pub(super) fn parse_list_style_image<'i>(
 fn starts_image(input: &mut Stream<'_>) -> bool {
     let state = input.mark();
     let starts = match input.consume_after_whitespace() {
-        Ok(Token::UnquotedUrl(_)) => true,
+        Ok(Token::Url(_)) => true,
         Ok(Token::Function(name)) => !name.eq_ignore_ascii_case("symbols"),
         _ => false,
     };

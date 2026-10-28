@@ -1,9 +1,10 @@
 //! Shared exact line-width and unordered width/style/color grammar for borders and column rules.
 
 use super::combinators::{Combinator, Tail, fill, parse_group};
-use super::property_input::Stream;
 use super::side_shapes::{parse_four_sides, parse_side_pair};
-use crate::diagnostic::error::property::{Error, SyntaxError, unexpected_at};
+use super::syntax_types::Stream;
+use crate::diagnostic::error::property::{Error, unexpected_at};
+use crate::parser::syntax_types::SyntaxError;
 
 use super::border_style::parse_border_style;
 use crate::numeric::expression::NumericInputContext;

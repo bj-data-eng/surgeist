@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 use super::*;
 use crate::component::{CssComponentValueLimits, CssHashFlag, CssNumericTokenKind};
+use surgeist_css_parser::document::Fault;
 
 fn origin_identity(actual: &CssValueOrigin, expected: &CssValueOrigin) {
     assert_eq!(actual, expected);
@@ -45,15 +46,15 @@ fn direct_checked_and_native_promotion_preserves_payload_groups_and_origin_ident
         first.items()[0].clone(),
         implicit_function.items()[0].clone(),
     ];
-    let document = normalize(
-        SyntaxInput::CheckedComponents(&values),
-        SyntaxInputLimits::default(),
+    let document = crate::syntax_consumption::checked_document(
+        &values,
+        crate::syntax_consumption::SyntaxInputLimits::default(),
         0,
     )
     .unwrap();
     let promoted = crate::component::values::parse::promote_nodes(
         &document,
-        &document.lists[document.root],
+        document.list(document.root_list()),
         CssComponentValueLimits::default(),
     )
     .unwrap();
@@ -151,7 +152,7 @@ fn direct_checked_and_native_promotion_preserves_payload_groups_and_origin_ident
         let document = source_document(text, &snapshot, 0).unwrap();
         let promoted = crate::component::values::parse::promote_nodes(
             &document,
-            &document.lists[document.root],
+            document.list(document.root_list()),
             CssComponentValueLimits::default(),
         )
         .unwrap();
@@ -217,17 +218,8 @@ fn direct_checked_and_native_promotion_preserves_payload_groups_and_origin_ident
     let snapshot = CssSourceSnapshot::new("\"broken\n");
     let document = source_document(snapshot.as_str(), &snapshot, 0).unwrap();
     let error_node = document
-        .nodes
-        .iter()
-        .position(|node| {
-            matches!(
-                node,
-                SyntaxNode::Error {
-                    cause: SyntaxTokenFault::BadString,
-                    ..
-                }
-            )
-        })
+        .nodes()
+        .find(|node| document.component(*node).fault() == Some(Fault::BadString))
         .unwrap();
     let failure = crate::component::values::parse::promote_nodes(
         &document,
@@ -235,8 +227,5 @@ fn direct_checked_and_native_promotion_preserves_payload_groups_and_origin_ident
         CssComponentValueLimits::default(),
     )
     .unwrap_err();
-    origin_identity(
-        failure.origin(),
-        document.nodes[error_node].token().origin.as_ref(),
-    );
+    origin_identity(failure.origin(), &document.origin(error_node));
 }

@@ -26,6 +26,7 @@ use crate::parser::selectors::{
     SelectorRecovery, parse_rule_selector_list, parse_scoped_style_selector_list,
 };
 use crate::parser::supports::{parse_supports_condition, with_supports_prelude_context};
+use crate::parser::syntax_types::Document;
 use crate::parser::{
     CssNamespacePrelude, CssScopePrelude, CustomMediaPrelude, ScopedBodyKind,
     StrictDeclarationParser, TopLevelPreludePhase, block_item_diagnostic, color_profile,
@@ -55,8 +56,8 @@ use crate::rule::{
     CssNestedDeclarationsRule, CssRule, CssScopeRule, CssSheet, CssSupportsRule,
 };
 use crate::selector::CssStyleSelectorList;
+use crate::syntax_consumption::GenericRuleResult;
 use crate::syntax_consumption::RuleListSyntax;
-use crate::syntax_consumption::{GenericRuleResult, SyntaxDocument};
 use cssparser::{
     AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, ParserInput, ParserState,
     QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser, Token,
@@ -476,7 +477,7 @@ pub(crate) enum RuleListUnits {
     /// Units selected by the generic Syntax 3 consumer; declarations are not
     /// admitted in this list.
     Selected {
-        document: std::rc::Rc<SyntaxDocument<'static>>,
+        document: std::rc::Rc<Document<'static>>,
         selected: Vec<GenericRuleResult>,
     },
     /// Native block contents that try each ident-started unit as a

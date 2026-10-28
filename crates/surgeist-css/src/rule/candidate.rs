@@ -9,7 +9,6 @@ use crate::rule::CssRule;
 use crate::rule::CssStyleAncestor;
 use crate::selector::CssNamespaceContext;
 use crate::source::CssParsedOrigin;
-use crate::syntax_consumption::{self as syntax};
 use crate::{CssParseReport, CssParserContext};
 
 /// Preliminary generic rule classification, independent of supported grammar.
@@ -58,7 +57,7 @@ pub struct CssRuleSyntax {
     pub(crate) name: Option<Box<str>>,
     pub(crate) envelope: RuleEnvelope,
     pub(crate) limits: CssComponentValueLimits,
-    pub(crate) metrics: syntax::SyntaxInputMetrics,
+    pub(crate) metrics: surgeist_css_parser::document::Metrics,
     pub(crate) diagnostics: Vec<CssRecoveryDiagnostic>,
 }
 impl CssRuleSyntax {
@@ -89,7 +88,7 @@ impl CssRuleSyntax {
     /// Returns the cumulatively charged component count, including descendants/trivia.
     #[must_use]
     pub const fn component_count(&self) -> usize {
-        self.metrics.components
+        self.metrics.components()
     }
     /// Returns preliminary recovery independently of later semantic retention.
     #[must_use]

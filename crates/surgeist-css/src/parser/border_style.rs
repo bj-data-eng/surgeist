@@ -1,7 +1,8 @@
 //! Border style grammar shared by longhands, pairs, four-side shorthand and triples.
 
-use super::property_input::Stream;
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
+use super::syntax_types::Stream;
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::parser::syntax_types::SyntaxError;
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::side_shapes::{parse_four_sides, parse_side_pair};

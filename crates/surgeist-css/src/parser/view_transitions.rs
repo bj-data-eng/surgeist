@@ -1,7 +1,8 @@
 //! CSS View Transitions 1 authored property grammar.
 
-use super::property_input::Stream;
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
+use super::syntax_types::Stream;
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::parser::syntax_types::SyntaxError;
 use crate::values::common::CssCustomIdent;
 use crate::values::view_transition::{CssViewTransitionIdent, CssViewTransitionName};
 

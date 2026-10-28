@@ -1,7 +1,7 @@
 //! CSS Scrollbars 1 terminal color grammar.
 
-use super::property_input::Stream;
-use crate::diagnostic::error::property::SyntaxError;
+use super::syntax_types::Stream;
+use crate::parser::syntax_types::SyntaxError;
 
 use super::color::parse_color;
 use crate::diagnostic::error::property::Error;

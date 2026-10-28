@@ -1,8 +1,10 @@
 use super::combinators::{Combinator, Operand, Tail, commit, fill, parse_group};
-use super::property_input::Stream;
+use super::syntax_types::Stream;
 use crate::diagnostic::CssFeatureId;
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
-use cssparser::Token;
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::parser::property_input::StreamExt;
+use crate::parser::syntax_types::SyntaxError;
+use surgeist_css_parser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::values::{parse_custom_ident_from_str_at, parse_nonnegative_number};
@@ -70,8 +72,8 @@ pub(super) fn parse_delay<'i>(
 fn time_error<'i>(
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
     error: &crate::numeric::CssNumericConstructionError,
-    fallback: super::property_input::Site<'i>,
-    offset: super::property_input::Site<'i>,
+    fallback: super::syntax_types::Site<'i>,
+    offset: super::syntax_types::Site<'i>,
 ) -> SyntaxError<'i, Error> {
     let location = numeric.property_error_location(error, fallback, offset);
     if let Some(component) = error.component_error()
@@ -113,10 +115,10 @@ pub(super) fn parse_easing<'i>(
     }
     let location = input.site();
     let name = match input.consume_after_whitespace().map_err(basic)? {
-        Token::Function(name) => name.clone(),
-        token => return Err(location.unexpected::<Error>(token.clone())),
+        Token::Function(name) => name,
+        token => return Err(location.unexpected::<Error>(token)),
     };
-    let Some(kind) = easing_function_kind(&name) else {
+    let Some(kind) = easing_function_kind(name) else {
         // Easing 2 §2: an unknown function is itself responsible.
         return Err(location.unexpected::<Error>(Token::Function(name)));
     };
@@ -297,7 +299,7 @@ pub(super) fn parse_transition_property<'i>(
     match_ignore_ascii_case! { &ident,
         "all" => Ok(CssTransitionProperty::All),
         "none" => Ok(CssTransitionProperty::None),
-        _ => parse_custom_ident_from_str_at(ident.as_ref(), location)
+        _ => parse_custom_ident_from_str_at(ident, location)
             .and_then(|name| {
                 CssTransitionPropertyName::try_new(name).ok_or_else(|| {
                     unexpected_at(location)
@@ -336,7 +338,7 @@ pub(super) fn parse_single_transition_value<'i>(
     input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<
-    (CssTransition, Option<super::property_input::Site<'i>>),
+    (CssTransition, Option<super::syntax_types::Site<'i>>),
     SyntaxError<'i, Error>,
 > {
     // `[ none | <single-transition-property> ] || <time> || <easing-function>
@@ -390,7 +392,7 @@ pub(super) fn parse_animation_name<'i>(
     if ident.eq_ignore_ascii_case("none") {
         Ok(CssAnimationName::None)
     } else {
-        parse_custom_ident_from_str_at(ident.as_ref(), location)
+        parse_custom_ident_from_str_at(ident, location)
             .and_then(|name| {
                 CssKeyframesIdent::try_new(name).ok_or_else(|| unexpected_at(location))
             })

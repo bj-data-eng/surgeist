@@ -1,5 +1,6 @@
-use super::property_input::Stream;
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
+use super::syntax_types::Stream;
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::parser::syntax_types::SyntaxError;
 use crate::query::container::{
     CssContainer, CssContainerName, CssContainerNameList, CssContainerNames, CssContainerType,
 };

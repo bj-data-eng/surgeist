@@ -7,8 +7,9 @@ use super::background::{
 };
 use super::combinators::{Combinator, Tail, attempt, commit, fill, parse_group};
 use super::position::parse_position_prefix;
-use super::property_input::Stream;
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
+use super::syntax_types::Stream;
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::parser::syntax_types::SyntaxError;
 use crate::values::border::CssBorderImageSlice;
 use crate::values::effects::{
     CssClipRule, CssMaskBorder, CssMaskBoxList, CssMaskClip, CssMaskClipList, CssMaskComposite,
@@ -39,7 +40,7 @@ pub(super) fn parse_mask_box<'i>(
 ) -> Result<CssCoordBox, SyntaxError<'i, Error>> {
     let keyword_location = input.site();
     let ident = input.consume_ident().map_err(basic)?;
-    CssCoordBox::from_keyword(&ident).ok_or_else(|| unexpected_at(keyword_location))
+    CssCoordBox::from_keyword(ident).ok_or_else(|| unexpected_at(keyword_location))
 }
 pub(super) fn parse_mask_clip<'i>(
     input: &mut Stream<'i>,

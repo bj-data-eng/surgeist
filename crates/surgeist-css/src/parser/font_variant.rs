@@ -5,11 +5,12 @@
 //! are significant, so a group's values stay contiguous in the shorthand while
 //! their internal order stays free.
 use super::combinators::{Combinator, Operand, Tail, group_operand, keyword, parse_group};
-use super::property_input::Stream;
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
+use super::syntax_types::Stream;
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::parser::syntax_types::SyntaxError;
 use crate::rule::font_feature_values::CssFontFeatureValueName;
 use crate::values::font::font_variant::*;
-use cssparser::Token;
+use surgeist_css_parser::Token;
 
 const LIGATURES: [[(&str, CssFontVariantLigatureState); 2]; 4] = [
     [
@@ -227,8 +228,8 @@ fn feature_names<'i>(
                 nested.discard_whitespace();
                 let location = nested.site();
                 let ident = nested.consume_ident().map_err(basic)?;
-                let name = CssFontFeatureValueName::try_new(ident.as_ref())
-                    .map_err(|_| unexpected_at(location))?;
+                let name =
+                    CssFontFeatureValueName::try_new(ident).map_err(|_| unexpected_at(location))?;
                 names.push(name);
                 if nested.only_whitespace_remains() {
                     break;
@@ -271,17 +272,17 @@ fn name_list<'i>(
 
 fn next_font_variant_ident<'i>(
     input: &mut Stream<'i>,
-) -> std::result::Result<(super::property_input::Site<'i>, String), SyntaxError<'i, Error>> {
+) -> std::result::Result<(super::syntax_types::Site<'i>, &'i str), SyntaxError<'i, Error>> {
     let location = input.site();
     let ident = input.consume_ident().map_err(basic)?;
-    Ok((location, ident.as_ref().to_owned()))
+    Ok((location, ident))
 }
 
 fn invalid_font_variant_keyword<'i>(
-    location: super::property_input::Site<'i>,
-    ident: String,
+    location: super::syntax_types::Site<'i>,
+    ident: &'i str,
 ) -> SyntaxError<'i, Error> {
-    location.unexpected::<Error>(Token::Ident(ident.into()))
+    location.unexpected::<Error>(Token::Ident(ident))
 }
 
 fn keyword_or_normal<'i, T: Copy>(

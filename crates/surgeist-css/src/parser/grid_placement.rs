@@ -1,7 +1,8 @@
 use super::combinators::{Combinator, Tail, commit, fill, group_operand, parse_group};
-use super::property_input::Stream;
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
-use cssparser::Token;
+use super::syntax_types::Stream;
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::parser::syntax_types::SyntaxError;
+use surgeist_css_parser::Token;
 
 use super::values::{next_is_delim, parse_integer_value};
 use crate::numeric::expression::NumericInputContext;
@@ -69,7 +70,7 @@ fn next_starts_integer(input: &mut Stream<'_>) -> bool {
     let state = input.mark();
     let starts = matches!(
         input.consume_after_whitespace(),
-        Ok(Token::Number { .. } | Token::Function(_))
+        Ok(Token::Number(_) | Token::Function(_))
     );
     input.restore(state);
     starts
@@ -80,7 +81,7 @@ fn parse_grid_line_name<'i>(
 ) -> Result<CssGridLineName, SyntaxError<'i, Error>> {
     let location = input.site();
     let ident = input.consume_ident().map_err(basic)?;
-    CssGridLineName::try_new(CssIdent::new(ident.as_ref())).ok_or_else(|| unexpected_at(location))
+    CssGridLineName::try_new(CssIdent::new(ident)).ok_or_else(|| unexpected_at(location))
 }
 
 pub(crate) fn parse_grid_line_range<'i>(

@@ -1,6 +1,8 @@
-use super::property_input::Stream;
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
-use cssparser::Token;
+use super::syntax_types::Stream;
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::parser::property_input::StreamExt;
+use crate::parser::syntax_types::SyntaxError;
+use surgeist_css_parser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::values::parse_numeric_function;
@@ -69,7 +71,7 @@ fn parse_feature_index<'i>(
     let location = input.site();
     let root_site = input.site();
     let value = match input.consume_after_whitespace().map_err(basic)? {
-        Token::Number { .. } => {
+        Token::Number(_) => {
             input.restore(start);
             let component = input
                 .collect_numeric_component(numeric)
@@ -85,7 +87,7 @@ fn parse_feature_index<'i>(
                 expression
             ))
         }
-        token => return Err(location.unexpected::<Error>(token.clone())),
+        token => return Err(location.unexpected::<Error>(token)),
     };
     value.map_err(|error| {
         unexpected_at(numeric.property_error_location(&error, location, root_site))

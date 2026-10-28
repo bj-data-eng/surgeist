@@ -1,6 +1,4 @@
-use cssparser::{
-    BasicParseErrorKind, ParseError, ParseErrorKind, Parser, ParserInput, ParserState,
-};
+use cssparser::{BasicParseErrorKind, ParseError, ParseErrorKind, Parser, ParserState};
 
 use crate::component::values::{
     ComponentData, CssComponentValueErrorKind, Lexeme, NumericToken, TokenData, ValueToken,
@@ -33,10 +31,57 @@ pub(super) fn parse(
         ));
     }
     let snapshot = CssSourceSnapshot::new(source);
-    let working_source = crate::tokenization::prepare(source);
-    let mut input = ParserInput::new(&working_source);
-    let mut parser = Parser::new(&mut input);
-    collect(&mut parser, &snapshot, limits)
+    let document =
+        match crate::syntax_consumption::source_document_snapshot_with_limits(&snapshot, limits) {
+            Ok(document) => document,
+            Err(error) => return Err(earlier_fault(&snapshot, error)),
+        };
+    let values = promote_nodes(&document, document.list(document.root_list()), limits)?;
+    serialize::validate(&values, limits.max_css_bytes)?;
+    Ok(values)
+}
+
+/// The tokens are consumed in order: a lexical fault before the token that
+/// exhausted a limit is the failure, and the limit only a failure when
+/// nothing before the token is faulty. The tree is built whole before its
+/// tokens are promoted, so `limit` is the failure of a build that has seen the
+/// whole text; this reads again only the text up to the end of the responsible
+/// token (a bad string is bad because of the newline that ends it, which may be
+/// that token), under no limit, for a fault that begins before the token.
+fn earlier_fault(
+    snapshot: &CssSourceSnapshot,
+    limit: CssComponentValueError,
+) -> CssComponentValueError {
+    earlier_fault_scan(snapshot, limit).0
+}
+
+/// [`earlier_fault`], and how many nodes it read.
+fn earlier_fault_scan(
+    snapshot: &CssSourceSnapshot,
+    limit: CssComponentValueError,
+) -> (CssComponentValueError, usize) {
+    let CssValueOrigin::Parsed(origin) = limit.origin() else {
+        return (limit, 0);
+    };
+    let start = origin.span().start().byte_offset().value();
+    let end = origin.span().end().byte_offset().value();
+    let Ok(document) = crate::syntax_consumption::source_prefix_unlimited(snapshot, end) else {
+        return (limit, 0);
+    };
+    let read = document.node_count();
+    let fault = document.nodes().find(|node| {
+        document.component(*node).fault().is_some()
+            && document
+                .range(*node)
+                .is_some_and(|range| range.start.value() < start)
+    });
+    let failure = match fault {
+        Some(node) => promote_nodes(&document, &[node], CssComponentValueLimits::default())
+            .err()
+            .unwrap_or(limit),
+        None => limit,
+    };
+    (failure, read)
 }
 
 pub(super) fn collect(
@@ -86,39 +131,41 @@ pub(super) fn collect_one(
     })
 }
 
-// Promote only an admitted, error-free generic candidate. Provider payloads and
-// checked input values are reused directly; no serialization or tokenization is
-// needed to reconstruct these lexical owners.
+// Promote only an admitted, error-free generic candidate. Checked input values
+// are reused directly; no serialization or tokenization is needed to
+// reconstruct these lexical owners.
 pub(crate) fn promote_nodes(
-    document: &crate::syntax_consumption::SyntaxDocument<'_>,
-    nodes: &[crate::syntax_consumption::NodeId],
+    document: &crate::parser::syntax_types::Document<'_>,
+    nodes: &[surgeist_css_parser::document::NodeId],
     limits: CssComponentValueLimits,
 ) -> Result<CssComponentValues, CssComponentValueError> {
-    use crate::syntax_consumption::{GroupEnd, SyntaxNode, TokenPayload};
+    use crate::parser::syntax_types::Attached;
+    use crate::syntax_consumption::DocumentExt;
+    use surgeist_css_parser::document::{BlockKind, GroupEnd, GroupKind, NodeId};
     enum Work {
-        Node(usize),
-        Finish(usize),
+        Node(NodeId),
+        Finish(NodeId),
     }
     let mut work: Vec<_> = nodes.iter().rev().copied().map(Work::Node).collect();
     let mut frames = vec![Vec::new()];
     while let Some(item) = work.pop() {
         match item {
             Work::Node(id) => {
-                let node = &document.nodes[id];
-                if let Some(error) = node.denied_error() {
+                if let Some(error) = document.denied_error(id) {
                     return Err(error);
                 }
-                if let TokenPayload::Checked { component, .. } = &node.token().payload {
+                if let Some(Attached::Component(component)) = document.payload(id) {
                     frames
                         .last_mut()
                         .expect("promotion frame")
                         .push((*component).clone());
                     continue;
                 }
-                if let Some(children) = node.children() {
+                if let Some(children) = document.children(id) {
                     work.push(Work::Finish(id));
                     work.extend(
-                        document.lists[children]
+                        document
+                            .list(children)
                             .iter()
                             .rev()
                             .copied()
@@ -127,102 +174,243 @@ pub(crate) fn promote_nodes(
                     frames.push(Vec::new());
                     continue;
                 }
-                let token = node.token();
-                if let TokenPayload::Native(native) = &token.payload
-                    && crate::tokenization::combined_operator_prefix(native).is_some()
-                {
+                let origin = document.origin(id);
+                let CssValueOrigin::Parsed(parsed) = &origin else {
                     return Err(CssComponentValueError::new(
                         CssComponentValueErrorKind::InvalidToken,
-                        token.origin.clone().into_owned(),
+                        origin,
                     ));
-                }
-                let CssValueOrigin::Parsed(origin) = token.origin.as_ref() else {
-                    return Err(CssComponentValueError::new(
-                        CssComponentValueErrorKind::InvalidToken,
-                        token.origin.clone().into_owned(),
-                    ));
-                };
-                let native = match &token.payload {
-                    TokenPayload::Native(token) => token.clone(),
-                    TokenPayload::Whitespace(value) => Token::WhiteSpace(value),
-                    TokenPayload::Comment(value) => Token::Comment(value),
-                    TokenPayload::Checked { .. } => unreachable!("checked input handled above"),
                 };
                 let spelling = Lexeme {
-                    text: token
-                        .spelling
-                        .as_ref()
-                        .expect("source lexeme")
-                        .as_ref()
-                        .into(),
-                    origin: token.origin.clone().into_owned(),
+                    text: document.spelling(id).expect("source lexeme").into(),
+                    origin: origin.clone(),
                 };
-                let value = leaf(
-                    origin.source(),
-                    native,
+                let value = syntax_leaf(
+                    parsed.source(),
+                    document.token(id),
                     spelling,
-                    origin.clone(),
-                    origin.span().end().byte_offset().value(),
+                    parsed.clone(),
+                    parsed.span().end().byte_offset().value(),
                 )?;
                 frames.last_mut().expect("promotion frame").push(value);
             }
             Work::Finish(id) => {
-                let node = &document.nodes[id];
-                let token = node.token();
-                let CssValueOrigin::Parsed(origin) = token.origin.as_ref() else {
+                let origin = document.origin(id);
+                let CssValueOrigin::Parsed(parsed) = &origin else {
                     return Err(CssComponentValueError::new(
                         CssComponentValueErrorKind::InvalidToken,
-                        token.origin.clone().into_owned(),
+                        origin,
                     ));
                 };
-                let (kind, name) = match node {
-                    SyntaxNode::Function { opening, .. } => {
-                        let crate::syntax_consumption::TokenKind::Function(name) = opening.kind()
-                        else {
+                let (kind, name) = match document.group_kind(id).expect("group continuation") {
+                    GroupKind::Function => {
+                        let surgeist_css_parser::Token::Function(name) = document.token(id) else {
                             unreachable!("function opening");
                         };
                         (CssBlockKind::Parenthesis, Some(name.into()))
                     }
-                    SyntaxNode::Block { kind, .. } => (*kind, None),
-                    _ => unreachable!("group continuation"),
+                    GroupKind::Block(BlockKind::Paren) => (CssBlockKind::Parenthesis, None),
+                    GroupKind::Block(BlockKind::Square) => (CssBlockKind::SquareBracket, None),
+                    GroupKind::Block(BlockKind::Curly) => (CssBlockKind::CurlyBracket, None),
                 };
-                let closing = match node.end().expect("group end") {
-                    GroupEnd::Explicit(token) => {
-                        let CssValueOrigin::Parsed(parsed) = token.origin.as_ref() else {
+                let closing = match document.group_end(id).expect("group end") {
+                    GroupEnd::Closed { .. } => {
+                        let closing = document.closing_origin(id);
+                        let CssValueOrigin::Parsed(parsed) = &closing else {
                             return Err(CssComponentValueError::new(
                                 CssComponentValueErrorKind::InvalidToken,
-                                token.origin.clone().into_owned(),
+                                closing,
                             ));
                         };
                         parsed.span().start().byte_offset().value()
                             ..parsed.span().end().byte_offset().value()
                     }
-                    GroupEnd::Implicit { at, .. } => {
-                        let at = at.source.as_ref().expect("source group EOF").offset;
+                    GroupEnd::Eof { at } => {
+                        let at = at.expect("source group EOF").value();
                         at..at
+                    }
+                    _ => {
+                        return Err(CssComponentValueError::new(
+                            CssComponentValueErrorKind::InvalidToken,
+                            origin.clone(),
+                        ));
                     }
                 };
                 let frame = OpenFrame {
                     kind,
                     name,
                     opening: Lexeme {
-                        text: token
-                            .spelling
-                            .as_ref()
-                            .expect("source opening")
-                            .as_ref()
-                            .into(),
-                        origin: token.origin.clone().into_owned(),
+                        text: document.spelling(id).expect("source opening").into(),
+                        origin: origin.clone(),
                     },
-                    origin: origin.clone(),
+                    origin: parsed.clone(),
                     children: frames.pop().expect("child promotion frame"),
                 };
-                let value = frame.finish(origin.source(), closing, limits, None)?;
+                let value = frame.finish(parsed.source(), closing, limits, None)?;
                 frames.last_mut().expect("promotion frame").push(value);
             }
         }
     }
     CssComponentValues::from_items(frames.pop().expect("root promotion frame"), limits)
+}
+
+/// The leaf of a token of the parser crate's token tree, as `leaf` makes one
+/// of a token of the native provider.
+fn syntax_leaf(
+    source: &CssSourceSnapshot,
+    token: surgeist_css_parser::Token<'_>,
+    spelling: Lexeme,
+    origin: CssParsedOrigin,
+    end: usize,
+) -> Result<CssComponentValue, CssComponentValueError> {
+    use surgeist_css_parser::Token as Syntax;
+    let invalid = match &token {
+        Syntax::BadString => Some(CssComponentValueErrorKind::BadString),
+        Syntax::BadUrl => Some(CssComponentValueErrorKind::BadUrl),
+        Syntax::CloseParen | Syntax::CloseSquare | Syntax::CloseCurly => {
+            Some(CssComponentValueErrorKind::UnmatchedClosingDelimiter)
+        }
+        _ => None,
+    };
+    if let Some(kind) = invalid {
+        return Err(CssComponentValueError::new(kind, spelling.origin.clone()));
+    }
+    let implicit_end = syntax_termination(&token, &spelling.text).map(|text| Lexeme {
+        text: text.into_boxed_str(),
+        origin: CssValueOrigin::ImplicitClosure {
+            opening: origin.clone(),
+            at: range_origin(source, end..end),
+        },
+    });
+    let data = if token == Syntax::Comment {
+        let text = &*spelling.text;
+        let closed = text.len() >= 4 && text.ends_with("*/");
+        let content = if closed {
+            &text[2..text.len() - 2]
+        } else {
+            &text[2..]
+        };
+        ComponentData::Comment {
+            content: content.into(),
+            spelling,
+            implicit_end,
+        }
+    } else {
+        let data = syntax_token_data(&token).ok_or_else(|| {
+            CssComponentValueError::new(
+                CssComponentValueErrorKind::InvalidToken,
+                spelling.origin.clone(),
+            )
+        })?;
+        ComponentData::Token(ValueToken {
+            data,
+            spelling,
+            implicit_end,
+        })
+    };
+    Ok(CssComponentValue {
+        data,
+        parsed: Some(origin),
+    })
+}
+
+fn syntax_numeric(number: surgeist_css_parser::token::Number<'_>) -> NumericToken {
+    NumericToken {
+        representation: number.representation().into(),
+        kind: match number.kind() {
+            surgeist_css_parser::token::NumberKind::Integer => CssNumericTokenKind::Integer,
+            surgeist_css_parser::token::NumberKind::Number => CssNumericTokenKind::Number,
+        },
+        has_sign: number.sign().is_some(),
+    }
+}
+
+fn syntax_token_data(token: &surgeist_css_parser::Token<'_>) -> Option<TokenData> {
+    use surgeist_css_parser::Token as Syntax;
+    use surgeist_css_parser::token::HashKind;
+    Some(match *token {
+        Syntax::Ident(value) => TokenData::Ident(value.into()),
+        Syntax::AtKeyword(value) => TokenData::AtKeyword(value.into()),
+        Syntax::Hash { value, kind } => TokenData::Hash {
+            value: value.into(),
+            flag: match kind {
+                HashKind::Id => CssHashFlag::Id,
+                HashKind::Unrestricted => CssHashFlag::Unrestricted,
+            },
+        },
+        Syntax::String(value) => TokenData::String(value.into()),
+        Syntax::Url(value) => TokenData::Url(value.into()),
+        Syntax::Delim(value) => TokenData::Delim(value),
+        Syntax::Number(number) => TokenData::Number(syntax_numeric(number)),
+        Syntax::Percentage(number) => TokenData::Percentage(syntax_numeric(number)),
+        Syntax::Dimension { number, unit } => TokenData::Dimension {
+            number: syntax_numeric(number),
+            unit: unit.into(),
+        },
+        Syntax::Whitespace => TokenData::Whitespace,
+        Syntax::Colon => TokenData::Colon,
+        Syntax::Semicolon => TokenData::Semicolon,
+        Syntax::Comma => TokenData::Comma,
+        Syntax::Cdo => TokenData::Cdo,
+        Syntax::Cdc => TokenData::Cdc,
+        Syntax::Comment
+        | Syntax::Function(_)
+        | Syntax::OpenParen
+        | Syntax::OpenSquare
+        | Syntax::OpenCurly
+        | Syntax::BadUrl
+        | Syntax::BadString
+        | Syntax::CloseParen
+        | Syntax::CloseSquare
+        | Syntax::CloseCurly
+        | Syntax::UnicodeRange(_) => return None,
+    })
+}
+
+fn syntax_termination(token: &surgeist_css_parser::Token<'_>, text: &str) -> Option<String> {
+    use surgeist_css_parser::Token as Syntax;
+    match token {
+        Syntax::String(_) => {
+            let quote = text.as_bytes()[0];
+            if has_unescaped_final(text, quote) {
+                None
+            } else {
+                let mut suffix = String::new();
+                // An escaped EOF contributes no code point inside a string.
+                // An escaped newline preserves that effect before the new quote.
+                if odd_trailing_backslashes(text) {
+                    suffix.push('\n');
+                }
+                suffix.push(char::from(quote));
+                Some(suffix)
+            }
+        }
+        Syntax::Url(_) => {
+            if has_unescaped_final(text, b')') {
+                None
+            } else {
+                // Outside strings, an escaped EOF contributes U+FFFD.
+                Some(
+                    if odd_trailing_backslashes(text) {
+                        "fffd )"
+                    } else {
+                        ")"
+                    }
+                    .to_owned(),
+                )
+            }
+        }
+        Syntax::Comment if text.len() < 4 || !text.ends_with("*/") => Some("*/".to_owned()),
+        Syntax::Ident(_)
+        | Syntax::AtKeyword(_)
+        | Syntax::Hash { .. }
+        | Syntax::Dimension { .. }
+            if odd_trailing_backslashes(text) =>
+        {
+            Some("fffd ".to_owned())
+        }
+        _ => None,
+    }
 }
 
 fn consume_values<'i, 't>(
@@ -865,6 +1053,7 @@ pub(super) fn programmatic_token(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cssparser::ParserInput;
 
     #[test]
     fn single_operator_capture_rejection_preserves_the_following_native_cursor() {
@@ -886,61 +1075,60 @@ mod tests {
     }
 
     #[test]
-    fn supplied_native_operators_reject_checked_promotion_without_inventing_tokens() {
-        use crate::syntax_consumption::{
-            SyntaxInput, SyntaxInputLimits, SyntaxToken, TokenPayload, normalize,
+    fn a_fault_before_the_token_that_exhausts_a_limit_is_the_failure_and_one_after_it_is_not() {
+        let limits = CssComponentValueLimits::try_new(256, 2, 100).unwrap();
+        // The bad string is the first token; the limit runs out at the third.
+        let error = parse("\"x\n a b c", limits).unwrap_err();
+        assert_eq!(error.kind(), CssComponentValueErrorKind::BadString);
+        let CssValueOrigin::Parsed(origin) = error.origin() else {
+            panic!("the bad string retains its source origin");
         };
-        use std::borrow::Cow;
+        assert_eq!(origin.span().start().byte_offset().value(), 0);
+        assert_eq!(origin.span().end().byte_offset().value(), 2);
+        // The limit runs out at the third token, before the bad string.
+        let error = parse("a b \"x\n", limits).unwrap_err();
+        assert_eq!(error.kind(), CssComponentValueErrorKind::ComponentLimit);
+        let CssValueOrigin::Parsed(origin) = error.origin() else {
+            panic!("the third token retains its source origin");
+        };
+        assert_eq!(origin.span().start().byte_offset().value(), 2);
+    }
 
-        for (operator, native) in [
-            ("~=", Token::IncludeMatch),
-            ("|=", Token::DashMatch),
-            ("^=", Token::PrefixMatch),
-            ("$=", Token::SuffixMatch),
-            ("*=", Token::SubstringMatch),
+    /// The second look is bounded by what the limited build admitted: a huge
+    /// text with a tiny limit reads a handful of nodes, never the text.
+    #[test]
+    fn the_second_look_at_a_limit_failure_reads_only_what_the_build_admitted() {
+        let limits = CssComponentValueLimits::try_new(256, 4, 100_000_000).unwrap();
+        for text in [
+            "a ".repeat(1_000_000),
+            // A bad string needs its newline: the fault is found before the
+            // limit token even though the newline ends it.
+            format!("\"x\n{}", "a ".repeat(1_000_000)),
         ] {
-            let snapshot = CssSourceSnapshot::new(operator);
-            for origin in [
-                CssValueOrigin::Programmatic,
-                CssValueOrigin::Parsed(CssParsedOrigin::from_range(&snapshot, 0..2).unwrap()),
-            ] {
-                for spelling in [None, Some(Cow::Borrowed(operator))] {
-                    let tokens = [SyntaxToken {
-                        payload: TokenPayload::Native(native.clone()),
-                        spelling: spelling.clone(),
-                        origin: Cow::Borrowed(&origin),
-                    }];
-                    let document = normalize(
-                        SyntaxInput::Tokens(&tokens),
-                        SyntaxInputLimits::default(),
-                        0,
-                    )
-                    .unwrap();
-                    let nodes = &document.lists[document.root];
-                    assert_eq!(nodes.len(), 1);
-                    assert_eq!(document.metrics.components, 1);
-                    assert_eq!(
-                        document.metrics.known_spelling_bytes,
-                        spelling.as_ref().map_or(0, |text| text.len())
-                    );
-                    assert_eq!(
-                        document.metrics.unspelled_tokens,
-                        usize::from(spelling.is_none())
-                    );
-                    let token = document.nodes[nodes[0]].token();
-                    let TokenPayload::Native(payload) = &token.payload else {
-                        panic!("supplied native payload remains native");
-                    };
-                    assert_eq!(payload, &native);
-                    assert_eq!(token.spelling, spelling);
-                    assert_eq!(token.origin.as_ref(), &origin);
-                    let error = promote_nodes(&document, nodes, CssComponentValueLimits::default())
-                        .unwrap_err();
-                    assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
-                    assert_eq!(error.origin(), &origin);
-                }
+            let snapshot = CssSourceSnapshot::new(&text);
+            let document =
+                crate::syntax_consumption::source_document_snapshot_with_limits(&snapshot, limits);
+            let limit = document.expect_err("the fifth component is refused");
+            assert_eq!(limit.kind(), CssComponentValueErrorKind::ComponentLimit);
+            let (failure, read) = earlier_fault_scan(&snapshot, limit);
+            assert!(read <= 16, "{read} nodes read for a tiny limit");
+            if text.starts_with('"') {
+                assert_eq!(failure.kind(), CssComponentValueErrorKind::BadString);
+            } else {
+                assert_eq!(failure.kind(), CssComponentValueErrorKind::ComponentLimit);
             }
         }
+        // Depth: the nodes read are the levels admitted, not the input.
+        let deep = "(".repeat(2_000_000);
+        let snapshot = CssSourceSnapshot::new(&deep);
+        let limit = crate::syntax_consumption::source_document_snapshot_with_limits(
+            &snapshot,
+            CssComponentValueLimits::default(),
+        )
+        .expect_err("nesting past the ceiling is refused");
+        assert_eq!(limit.kind(), CssComponentValueErrorKind::NestingLimit);
+        let (_, read) = earlier_fault_scan(&snapshot, limit);
+        assert!(read <= 300, "{read} nodes read for the depth ceiling");
     }
 
     #[test]

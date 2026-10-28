@@ -1,8 +1,9 @@
 //! Wrapping, whitespace, and line-breaking grammar.
 use super::combinators::{Combinator, Tail, commit, fill, parse_group};
-use super::property_input::Stream;
+use super::syntax_types::Stream;
 use super::values::next_is_ident;
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::parser::syntax_types::SyntaxError;
 use crate::values::text::{
     CssOverflowWrap, CssTextOverflow, CssTextWrap, CssTextWrapMode, CssTextWrapStyle,
     CssWhiteSpace, CssWhiteSpaceCollapse, CssWhiteSpaceKeyword, CssWhiteSpaceTrim, CssWordBreak,
@@ -36,21 +37,21 @@ pub(crate) fn parse_text_wrap_mode<'i>(
 ) -> std::result::Result<CssTextWrapMode, SyntaxError<'i, Error>> {
     let keyword_location = input.site();
     let ident = input.consume_ident().map_err(basic)?;
-    text_wrap_mode_keyword(&ident).ok_or_else(|| unexpected_at(keyword_location))
+    text_wrap_mode_keyword(ident).ok_or_else(|| unexpected_at(keyword_location))
 }
 pub(crate) fn parse_text_wrap_style<'i>(
     input: &mut Stream<'i>,
 ) -> std::result::Result<CssTextWrapStyle, SyntaxError<'i, Error>> {
     let keyword_location = input.site();
     let ident = input.consume_ident().map_err(basic)?;
-    text_wrap_style_keyword(&ident).ok_or_else(|| unexpected_at(keyword_location))
+    text_wrap_style_keyword(ident).ok_or_else(|| unexpected_at(keyword_location))
 }
 pub(crate) fn parse_white_space_collapse<'i>(
     input: &mut Stream<'i>,
 ) -> std::result::Result<CssWhiteSpaceCollapse, SyntaxError<'i, Error>> {
     let keyword_location = input.site();
     let ident = input.consume_ident().map_err(basic)?;
-    white_space_collapse_keyword(&ident).ok_or_else(|| unexpected_at(keyword_location))
+    white_space_collapse_keyword(ident).ok_or_else(|| unexpected_at(keyword_location))
 }
 
 pub(crate) fn parse_white_space_trim<'i>(

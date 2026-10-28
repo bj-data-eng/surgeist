@@ -1,8 +1,9 @@
 use super::color::parse_color;
 use super::combinators::{Combinator, Tail, commit, fill, keyword, parse_group};
-use super::property_input::Stream;
+use super::syntax_types::Stream;
 use crate::diagnostic::CssFeatureId;
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::parser::syntax_types::SyntaxError;
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::values::{parse_shadow_length, parse_shadow_nonnegative_length};

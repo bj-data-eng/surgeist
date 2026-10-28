@@ -1,6 +1,7 @@
-use super::property_input::Stream;
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
-use cssparser::Token;
+use super::syntax_types::Stream;
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::parser::syntax_types::SyntaxError;
+use surgeist_css_parser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use crate::values::content::{CssContentString, CssQuotePair, CssQuotePairList, CssQuotes};
@@ -145,7 +146,7 @@ pub(crate) fn parse_bookmark_state<'i>(
 fn starts_integer(input: &mut Stream<'_>) -> bool {
     let state = input.mark();
     let starts = match input.consume_after_whitespace() {
-        Ok(Token::Number { .. }) => true,
+        Ok(Token::Number(_)) => true,
         Ok(Token::Function(name)) => crate::numeric::expression::is_math_function(name),
         _ => false,
     };

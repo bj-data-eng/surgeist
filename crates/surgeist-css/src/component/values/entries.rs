@@ -8,14 +8,14 @@ use crate::component::{
     CssComponentValues, CssValueOrigin, CssValueTokenRef,
 };
 use crate::diagnostic::{CssRecoveryAction, CssRecoveryDiagnostic};
-use crate::source::{CssParsedOrigin, CssSourcePosition, CssSourceSnapshot, CssSourceSpan};
+use crate::parser::syntax_types::Document;
+use crate::source::{CssParsedOrigin, CssSourcePosition, CssSourceSpan};
 use crate::syntax_consumption::{
-    GenericFaultKind, GenericSyntaxFault, SourceWindow, SyntaxDocument, SyntaxInput,
-    SyntaxInputLimits, SyntaxRange, consume_comma_separated_components, consume_one_component,
-    normalize,
+    DocumentExt, GenericFaultKind, GenericSyntaxFault, SyntaxRange,
+    consume_comma_separated_components, consume_one_component, source_document_with_limits,
 };
-use std::borrow::Cow;
 use std::ops::Range;
+use surgeist_css_parser::document::NodeId;
 
 #[must_use]
 pub(crate) fn parse_component_value_with_limits(
@@ -24,7 +24,7 @@ pub(crate) fn parse_component_value_with_limits(
 ) -> CssParseReport<Option<CssComponentValue>> {
     let report = match document(source, limits) {
         Err(error) => rejected(source, error, None),
-        Ok(document) => match consume_one_component(&mut document.cursor(document.root)) {
+        Ok(document) => match consume_one_component(&mut document.cursor(document.root_list())) {
             Err(fault) => rejected(source, count_error(&document, fault), None),
             Ok(node) => match promote(&document, &[node], limits.max_css_bytes) {
                 Err(error) => rejected(source, error, None),
@@ -59,34 +59,14 @@ pub(crate) fn parse_comma_separated_component_values_with_limits(
 fn document(
     source: &str,
     limits: CssComponentValueLimits,
-) -> Result<SyntaxDocument<'_>, CssComponentValueError> {
-    // Deny excessive input before retaining a source snapshot.
-    if source.len() > limits.max_css_bytes {
-        return Err(CssComponentValueError::new(
-            CssComponentValueErrorKind::ByteLimit,
-            CssValueOrigin::UnretainedInput {
-                byte_length: source.len(),
-            },
-        ));
-    }
-    normalize(
-        SyntaxInput::Source(SourceWindow {
-            text: Cow::Borrowed(source),
-            range: 0..source.len(),
-            original: CssSourceSnapshot::new(source),
-        }),
-        SyntaxInputLimits {
-            max_depth: limits.max_depth,
-            max_components: limits.max_components,
-            max_known_spelling_bytes: limits.max_css_bytes,
-        },
-        0,
-    )
+) -> Result<Document<'_>, CssComponentValueError> {
+    // Denies excessive input before retaining a source snapshot.
+    source_document_with_limits(source, limits)
 }
 
 fn promote(
-    document: &SyntaxDocument<'_>,
-    nodes: &[crate::syntax_consumption::NodeId],
+    document: &Document<'_>,
+    nodes: &[NodeId],
     max_css_bytes: usize,
 ) -> Result<CssComponentValues, CssComponentValueError> {
     // Whole-input admission already charged count and depth, including nodes
@@ -99,15 +79,15 @@ fn promote(
 
 fn comma_lists(
     source: &str,
-    document: &SyntaxDocument<'_>,
+    document: &Document<'_>,
     limits: CssComponentValueLimits,
 ) -> CssParseReport<Vec<Option<CssComponentValues>>> {
-    let ranges = consume_comma_separated_components(&mut document.cursor(document.root));
+    let ranges = consume_comma_separated_components(&mut document.cursor(document.root_list()));
     let mut lists = Vec::with_capacity(ranges.len());
     let mut diagnostics = Vec::new();
     let mut output = CssCanonicalBuilder::counting(limits.max_css_bytes);
     for range in ranges {
-        let nodes = &document.lists[range.list][range.start..range.end];
+        let nodes = &document.list(range.list)[range.start..range.end];
         match promote(document, nodes, usize::MAX) {
             Ok(values) => {
                 if let Err(error) = output.push_components(values.items()) {
@@ -126,7 +106,7 @@ fn comma_lists(
         }
         // The selected range excludes its actual separator. Reuse that source
         // payload through canonical promotion rather than inventing a token.
-        if let Some(&comma) = document.lists[range.list].get(range.end) {
+        if let Some(&comma) = document.list(range.list).get(range.end) {
             let separator =
                 parse::promote_nodes(document, &[comma], CssComponentValueLimits::default())
                     .expect("range selector ends only at an admitted comma");
@@ -138,32 +118,25 @@ fn comma_lists(
     CssParseReport::new(lists, diagnostics)
 }
 
-fn source_range(document: &SyntaxDocument<'_>, range: &SyntaxRange) -> Range<usize> {
-    let start = document
-        .boundary(range.list, range.start)
-        .source
-        .unwrap()
-        .offset;
-    let end = document
-        .boundary(range.list, range.end)
-        .source
-        .unwrap()
-        .offset;
+fn source_range(document: &Document<'_>, range: &SyntaxRange) -> Range<usize> {
+    let start = document.boundary(range.list, range.start).offset.unwrap();
+    let end = document.boundary(range.list, range.end).offset.unwrap();
     start..end
 }
 
-fn count_error(document: &SyntaxDocument<'_>, fault: GenericSyntaxFault) -> CssComponentValueError {
+fn count_error(document: &Document<'_>, fault: GenericSyntaxFault) -> CssComponentValueError {
     let kind = match fault.kind {
         GenericFaultKind::EmptyInput => CssComponentValueErrorKind::EmptyInput,
         GenericFaultKind::TrailingInput => CssComponentValueErrorKind::TrailingInput,
         _ => unreachable!("single-component selector only reports count faults"),
     };
-    let origin = if let Some(&node) = document.lists[fault.at.list].get(fault.at.index) {
-        document.nodes[node].token().origin.clone().into_owned()
+    let origin = if let Some(&node) = document.list(fault.at.list).get(fault.at.index) {
+        document.origin(node)
     } else {
-        let at = fault.at.source.expect("source entry has real EOF");
+        let at = fault.at.offset.expect("source entry has real EOF");
+        let snapshot = document.snapshot().expect("source entry has its snapshot");
         CssValueOrigin::Parsed(
-            CssParsedOrigin::from_range(&at.snapshot, at.offset..at.offset)
+            CssParsedOrigin::from_range(snapshot, at..at)
                 .expect("actual EOF is an original-source boundary"),
         )
     };

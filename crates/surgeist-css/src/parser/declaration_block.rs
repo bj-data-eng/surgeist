@@ -11,6 +11,7 @@ use crate::parser::{
 };
 use crate::property::properties::resolve_property_name;
 use crate::source::CssSourceSnapshot;
+use crate::syntax_consumption::DocumentExt;
 use crate::syntax_consumption::{self as syntax, CursorItem, TokenKind};
 use crate::{CssParseReport, CssParserContext};
 use cssparser::{CowRcStr, Delimiter, ParseError, Parser, ParserInput, ParserState};
@@ -149,10 +150,8 @@ fn parse_contents_with_snapshot<R: Receiver>(
             }
         };
         let snapshot = document
-            .source
-            .as_ref()
+            .snapshot()
             .expect("original source document")
-            .original
             .clone();
         let recovery = RecoveryState::at_depth_with_snapshot(
             source,
@@ -163,17 +162,18 @@ fn parse_contents_with_snapshot<R: Receiver>(
         .with_parser_context(parser_context);
         let mut receiver = make_receiver(recovery.clone());
         let working_source = crate::tokenization::prepare(source);
-        let stop = document.lists[document.root]
+        let stop = document
+            .list(document.root_list())
             .iter()
             .find_map(|node| {
-                (document.nodes[*node].token().kind()
+                (document.kind(*node)
                     == TokenKind::Closing(crate::component::CssBlockKind::CurlyBracket))
-                .then(|| document.range(*node).expect("source closer").start)
+                .then(|| document.range(*node).expect("source closer").start.value())
             })
             .unwrap_or(source.len());
         let mut parser_input = ParserInput::new(&working_source[..stop]);
         let mut input = Parser::new(&mut parser_input);
-        let mut cursor = document.cursor(document.root);
+        let mut cursor = document.cursor(document.root_list());
         let mut declarations = Vec::new();
         let mut diagnostics = Vec::new();
         let mut resource_failure = false;
@@ -185,7 +185,7 @@ fn parse_contents_with_snapshot<R: Receiver>(
             let CursorItem::Node(node) = cursor.peek() else {
                 unreachable!("nonterminal")
             };
-            if document.nodes[node].token().kind() == TokenKind::Semicolon {
+            if document.kind(node) == TokenKind::Semicolon {
                 cursor.consume();
                 continue;
             }
@@ -198,7 +198,7 @@ fn parse_contents_with_snapshot<R: Receiver>(
                 .expect("selected source unit")
                 .clone();
             input.reset(&start);
-            if matches!(document.nodes[node].token().kind(), TokenKind::AtKeyword(_)) {
+            if matches!(document.kind(node), TokenKind::AtKeyword(_)) {
                 let _ = syntax::consume_at_rule_context(&mut cursor, true);
                 let end_byte = offset(&cursor);
                 advance_to(&mut input, end_byte);
@@ -269,7 +269,7 @@ fn parse_contents_with_snapshot<R: Receiver>(
                 Err(error) => error,
             };
             let custom = generic.is_ok()
-                && matches!(document.nodes[node].token().kind(), TokenKind::Ident(name) if name.starts_with("--"));
+                && matches!(document.kind(node), TokenKind::Ident(name) if name.starts_with("--"));
             let action = if custom || crate::diagnostic::error::is_resource_parse_error(&error) {
                 cursor = declaration_cursor;
                 CssRecoveryAction::DropDeclaration
@@ -342,7 +342,7 @@ fn dropped_end(
     let terminated = matches!(
         cursor.peek(),
         CursorItem::Node(node)
-            if cursor.document.nodes[node].token().kind() == TokenKind::Semicolon
+            if cursor.document.kind(node) == TokenKind::Semicolon
     );
     if action == CssRecoveryAction::DropDeclaration && terminated {
         end_byte + 1
@@ -352,11 +352,7 @@ fn dropped_end(
 }
 
 fn offset(cursor: &syntax::SyntaxCursor<'_>) -> usize {
-    cursor
-        .boundary()
-        .source
-        .expect("original source boundary")
-        .offset
+    cursor.boundary().offset.expect("original source boundary")
 }
 fn advance_to(input: &mut Parser<'_, '_>, end: usize) {
     while input.position().byte_index() < end {

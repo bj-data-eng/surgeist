@@ -1,7 +1,7 @@
 //! Selected Color4 Appendix B fallback, confined to direct property color slots.
 use super::color::parse_color;
-use super::property_input::Stream;
 use super::side_shapes::parse_four_sides;
+use super::syntax_types::Stream;
 use crate::color::{CssColor, CssHexColor};
 use crate::component::{
     CssComponentValue, CssComponentValueRef, CssNumericTokenKind, CssNumericTokenRef,
@@ -11,8 +11,10 @@ use crate::declaration::CssAuthoredDeclarationValue;
 use crate::declaration::syntax::CssDeclaredValue;
 use crate::diagnostic::CssFeatureId;
 use crate::diagnostic::error::ErrorKind;
-use crate::diagnostic::error::property::{Error, SyntaxError, unexpected_at};
+use crate::diagnostic::error::property::{Error, unexpected_at};
 use crate::numeric::expression::NumericInputContext;
+use crate::parser::property_input::StreamExt;
+use crate::parser::syntax_types::SyntaxError;
 use crate::property::properties::CssKnownDeclarationValue;
 use crate::property::{CssKnownDeclaration, CssKnownProperty, CssPropertyValue};
 use crate::{CssParserContext, CssParserMode};

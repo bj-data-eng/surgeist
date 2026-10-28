@@ -1,9 +1,10 @@
 //! CSS Overflow 3 terminal controls.
 
 use super::combinators::{Combinator, Tail, commit, parse_group};
-use super::property_input::Stream;
-use crate::diagnostic::error::property::{Error, SyntaxError, basic, unexpected_at};
-use cssparser::Token;
+use super::syntax_types::Stream;
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::parser::syntax_types::SyntaxError;
+use surgeist_css_parser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::values::parse_nonnegative_length;
@@ -17,7 +18,7 @@ pub(super) fn parse_overflow_clip_margin<'i>(
 ) -> Result<CssOverflowClipMargin, SyntaxError<'i, Error>> {
     // `<visual-box> || <length [0,∞]>`: an identifier commits the box and a
     // numeric token or function commits the length.
-    fn next_token_is<'i>(input: &mut Stream<'i>, admit: fn(&Token<'i>) -> bool) -> bool {
+    fn next_token_is<'i>(input: &mut Stream<'i>, admit: fn(Token<'i>) -> bool) -> bool {
         let state = input.mark();
         let starts = input.consume_after_whitespace().is_ok_and(admit);
         input.restore(state);
@@ -38,7 +39,7 @@ pub(super) fn parse_overflow_clip_margin<'i>(
                     input.discard_whitespace();
                     let location = input.site();
                     let ident = input.consume_ident().map_err(basic)?;
-                    CssBoxEdgeKeyword::from_keyword(&ident).ok_or_else(|| unexpected_at(location))
+                    CssBoxEdgeKeyword::from_keyword(ident).ok_or_else(|| unexpected_at(location))
                 },
             ),
             1 => commit(
@@ -48,9 +49,9 @@ pub(super) fn parse_overflow_clip_margin<'i>(
                     next_token_is(input, |token| {
                         matches!(
                             token,
-                            Token::Number { .. }
+                            Token::Number(_)
                                 | Token::Dimension { .. }
-                                | Token::Percentage { .. }
+                                | Token::Percentage(_)
                                 | Token::Function(_)
                         )
                     })
