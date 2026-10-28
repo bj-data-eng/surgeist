@@ -1,6 +1,8 @@
 //! Actual clockwise parent text and independently horizontal atomic child text.
 //! Render borrows each exact Layout result; it does not rotate child contents.
 use super::*;
+#[path = "sideways_atomics/vertical_writing_modes.rs"]
+mod vertical_writing_modes;
 
 const AHEM: &[u8] = include_bytes!("../../crates/surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
 const ATOMIC_NODE: usize = 2;

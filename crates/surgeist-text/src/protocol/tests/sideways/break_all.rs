@@ -1,5 +1,6 @@
 //! CSS Text3 BreakAll applies to Hebrew typographic letters, not only AL/NU/SA.
 use super::*;
+mod constraints;
 use icu_properties::{
     CodePointMapData,
     props::{GeneralCategory, LineBreak as UnicodeLineBreak},
