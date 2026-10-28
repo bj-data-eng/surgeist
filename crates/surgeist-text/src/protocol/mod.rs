@@ -894,11 +894,6 @@ pub enum ProtocolError {
         /// Actual original box occurrence in this paragraph, including out-of-flow.
         occurrence: usize,
     },
-    /// The unrotated upright profile cannot place out-of-flow boxes.
-    UnsupportedUprightAtomic {
-        /// Actual original out-of-flow box occurrence in this paragraph.
-        occurrence: usize,
-    },
     InvalidAtomicGeometry {
         occurrence: usize,
     },

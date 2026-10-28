@@ -885,8 +885,6 @@ pub surgeist_text::ProtocolError::UnsupportedContext::field: surgeist_text::Prot
 pub surgeist_text::ProtocolError::UnsupportedSidewaysAtomic
 pub surgeist_text::ProtocolError::UnsupportedSidewaysAtomic::occurrence: usize
 pub surgeist_text::ProtocolError::UnsupportedStandaloneAnalysis
-pub surgeist_text::ProtocolError::UnsupportedUprightAtomic
-pub surgeist_text::ProtocolError::UnsupportedUprightAtomic::occurrence: usize
 pub surgeist_text::ProtocolError::UnsupportedWrappingAnalysis
 pub surgeist_text::ProtocolError::WrappingScopeQuery
 pub surgeist_text::ProtocolError::WrappingScopeQuery::reason: surgeist_text::WrappingScopeQueryError
