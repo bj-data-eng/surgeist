@@ -4,6 +4,7 @@
 use super::*;
 mod atomics;
 mod constraints;
+mod positioned;
 mod supplemental;
 
 const AHEM: &[u8] = include_bytes!(concat!(
