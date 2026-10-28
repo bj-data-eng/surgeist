@@ -26,6 +26,7 @@ use surgeist_css_parser::grammar::{AtRule, Declaration, Failed, QualifiedRule, R
 use surgeist_css_parser::input::{
     DecodeError, DecodeHints, DecodeLimits, Encoding, EncodingSelection, InputCursor, InputError,
     InputKind, InputRequest, PreprocessError, PreprocessLimits, PreprocessResource, Scalar,
+    SourceMap,
 };
 use surgeist_css_parser::lexer::protocol::{
     NameKind, NumberCursor, NumberKind, NumberLayout, NumberOverflow, NumberPart, NumberStep,
@@ -49,6 +50,15 @@ fn the_input_cursor_and_its_vocabulary_keep_their_measured_layouts() {
     pinned::<InputRequest>("InputRequest", 24, 8);
     pinned::<InputKind>("InputKind", 1, 1);
     pinned::<InputError>("InputError", 1, 1);
+}
+
+/// A host that keeps the map inside a payload of its own charges the map's size
+/// as a fixed header, so the map is no larger than the vector of its 16-byte
+/// entries: it stores nothing else.
+#[test]
+fn the_source_map_is_no_larger_than_the_vector_of_its_entries() {
+    pinned::<SourceMap>("SourceMap", size_of::<Vec<(usize, usize)>>(), 8);
+    assert_eq!(size_of::<SourceMap>(), 24);
 }
 
 #[test]

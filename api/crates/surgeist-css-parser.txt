@@ -308,7 +308,8 @@ pub surgeist_css_parser::input::Scalar::value: char
 pub struct surgeist_css_parser::input::SourceMap
 impl surgeist_css_parser::input::SourceMap
 pub fn surgeist_css_parser::input::SourceMap::capacity(&self) -> usize
-pub const fn surgeist_css_parser::input::SourceMap::original_units(&self) -> usize
+pub fn surgeist_css_parser::input::SourceMap::capacity_bytes(&self) -> usize
+pub fn surgeist_css_parser::input::SourceMap::original_units(&self) -> usize
 pub fn surgeist_css_parser::input::SourceMap::original_utf16(&self, normalized: core::ops::range::Range<usize>) -> core::option::Option<core::ops::range::Range<usize>>
 pub fn surgeist_css_parser::input::SourceMap::scalar_count(&self) -> usize
 pub fn surgeist_css_parser::input::decode(bytes: &[u8], hints: surgeist_css_parser::input::DecodeHints<'_>, limits: surgeist_css_parser::input::DecodeLimits) -> core::result::Result<surgeist_css_parser::input::Decoded, surgeist_css_parser::input::DecodeError>
