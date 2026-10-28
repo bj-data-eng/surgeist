@@ -98,6 +98,13 @@ charge order of `TreeBuilder` and the step count per observation of `Stream`
 (the metering section of the `Stream` docs and `tests/metering.rs`) unchanged: hosts
 compare receipts across versions.
 
+`Document::parse_owned` builds the same tree and keeps the text, so a host whose
+document outlives the caller's text (surgeist-css's recovery) needs no lifetime;
+the `String` is moved, not copied, and only a text an escape or NUL decoded is
+appended after it. `Document::attach` gives a
+document one payload of its own (`Document::attached`), for what a reader of a
+`Site` or `Stream` needs and no node says, such as where the text came from.
+
 `Site`, `Mark` and `Stream` implement `Clone`, `Debug` and, for the first two,
 `Copy`, `PartialEq` and `Eq` by hand so that the payload type `P` needs no
 bounds; do not replace them with derives. The depth policy is applied by

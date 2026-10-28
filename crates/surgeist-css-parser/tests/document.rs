@@ -23,7 +23,7 @@ use surgeist_css_parser::document::{
 };
 use surgeist_css_parser::lexer::Options;
 use surgeist_css_parser::limits::{DepthExcess, Limits};
-use surgeist_css_parser::token::{NumberKind, Sign, TokenKind};
+use surgeist_css_parser::token::{Number, NumberKind, Sign, TokenKind};
 use surgeist_css_parser::{Document, Offset, Token};
 
 fn parse_with<'a>(
@@ -1479,4 +1479,241 @@ fn a_builder_group_ends_its_interval_and_its_list_where_the_caller_says() {
         document.group_kind(by_eof),
         Some(GroupKind::Block(BlockKind::Square))
     );
+}
+
+/// A document that owns its text reads as the document over borrowed text
+/// does: the same tokens, tree, intervals, spellings and lexical errors, for
+/// texts with escapes (whose decoded values differ from their spelling), strings,
+/// urls, groups, an unclosed group and a stray closer.
+#[test]
+fn a_document_that_owns_its_text_reads_as_one_over_borrowed_text() {
+    let texts = [
+        "",
+        "a b",
+        "\\66 oo(\\62 ar) \"str\\\"ing\" url(x\\29 y)",
+        "f(a, [b {c: d}], g(",
+        "a ) ] } b",
+        "color: red; /* c */ \u{e9}t\u{e9}",
+        "10px 1e3 -.5% 0\\0 x",
+    ];
+    for text in texts {
+        let borrowed = parse(text);
+        let owned = {
+            let copy = text.to_owned();
+            Document::parse_owned(
+                copy,
+                &Options::default(),
+                Limits::default(),
+                DepthExcess::Fail,
+            )
+            .expect("the default limits admit the text")
+        };
+        let list = owned.root_list();
+        assert_eq!(
+            outline(&owned, list),
+            outline(&borrowed, borrowed.root_list()),
+            "tree of {text:?}"
+        );
+        assert_eq!(owned.source(), Some(text));
+        assert_eq!(owned.node_count(), borrowed.node_count());
+        assert_eq!(
+            owned.lexical_errors().len(),
+            borrowed.lexical_errors().len()
+        );
+        for (own, base) in owned.list(list).iter().zip(borrowed.list(list)) {
+            assert_eq!(
+                owned.range(*own),
+                borrowed.range(*base),
+                "range in {text:?}"
+            );
+            assert_eq!(
+                owned.spelling(*own),
+                borrowed.spelling(*base),
+                "spelling in {text:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn an_owned_document_keeps_the_depth_policy_of_a_borrowed_one() {
+    let limits = Limits::new(2, usize::MAX, usize::MAX);
+    let text = "{ { { a } } } b";
+    let owned =
+        Document::<()>::parse_owned(text, &Options::default(), limits, DepthExcess::DenyBlock)
+            .unwrap();
+    let borrowed = parse_with(text, &Options::default(), limits, DepthExcess::DenyBlock).unwrap();
+    assert_eq!(
+        outline(&owned, owned.root_list()),
+        outline(&borrowed, borrowed.root_list())
+    );
+    assert_eq!(owned.metrics(), borrowed.metrics());
+    let refused = Document::<()>::parse_owned(text, &Options::default(), limits, DepthExcess::Fail);
+    assert!(refused.is_err_and(|error| error.is_depth_limit()));
+}
+
+/// What the host attaches to the document as a whole is reachable from a
+/// site or a stream, where a node's own payload is not.
+#[test]
+fn a_payload_attached_to_the_document_is_reachable_from_any_site() {
+    let mut document: Document<&str> = Document::parse(
+        "a f(b)",
+        &Options::default(),
+        Limits::default(),
+        DepthExcess::Fail,
+    )
+    .unwrap();
+    assert_eq!(document.attached(), None);
+    assert_eq!(document.attach("first"), None);
+    assert_eq!(document.attach("second"), Some("first"));
+    let mut stream = document.root();
+    stream.consume_ident().unwrap();
+    assert_eq!(stream.site().document().attached(), Some(&"second"));
+    let end = stream.end_site();
+    assert_eq!(end.document().attached(), Some(&"second"));
+    // Node payloads are separate: a parsed text has none.
+    assert_eq!(stream.site().payload(), None);
+}
+
+/// A host that builds its own positions asks the document for a boundary of
+/// any place in a list, and for the closing boundary of a group.
+#[test]
+fn a_site_of_any_place_in_a_list_is_made_by_the_document() {
+    let document = parse("a (b) c");
+    let root = document.root_list();
+    let nodes = root_nodes(&document);
+    assert_eq!(nodes.len(), 5);
+    for (index, node) in nodes.iter().enumerate() {
+        let site = document.site(root, index).unwrap();
+        assert_eq!(
+            (site.list(), site.index(), site.is_closing()),
+            (root, index, false)
+        );
+        assert_eq!(site.node(), Some(*node));
+        assert_eq!(site.token(), Some(document.token(*node)));
+    }
+    let end = document.site(root, 5).unwrap();
+    assert_eq!(end.node(), None);
+    assert_eq!(end.offset(), Some(Offset::new(7)));
+    assert!(document.site(root, 6).is_none());
+
+    let group = nodes[2];
+    let closing = document.closing_site(group).unwrap();
+    assert!(closing.is_closing());
+    assert_eq!(closing.node(), Some(group));
+    assert_eq!(closing.token(), Some(Token::CloseParen));
+    assert_eq!(closing.offset(), Some(Offset::new(4)));
+    assert_eq!(closing.spelling(), Some(")"));
+    assert!(document.closing_site(nodes[0]).is_none());
+
+    let inside = document.children(group).unwrap();
+    assert_eq!(
+        document.site(inside, 0).unwrap().token(),
+        Some(Token::Ident("b"))
+    );
+    assert!(document.site(inside, 1).unwrap().node().is_none());
+    assert!(document.site(inside, 2).is_none());
+}
+
+#[test]
+fn every_node_is_listed_in_the_order_it_was_added() {
+    let document = parse("f(a, [b]) c");
+    let nodes: Vec<_> = document.nodes().collect();
+    assert_eq!(nodes.len(), document.node_count());
+    assert_eq!(document.nodes().len(), document.node_count());
+    assert_eq!(
+        nodes
+            .iter()
+            .map(|node| document.token(*node))
+            .collect::<Vec<_>>(),
+        [
+            Token::Function("f"),
+            Token::Ident("a"),
+            Token::Comma,
+            Token::Whitespace,
+            Token::OpenSquare,
+            Token::Ident("b"),
+            Token::Whitespace,
+            Token::Ident("c"),
+        ]
+    );
+    for (index, node) in nodes.iter().enumerate() {
+        assert_eq!(node.index(), index);
+    }
+}
+
+/// An error at a boundary the grammar passed earlier is the error the stream
+/// would have made there.
+#[test]
+fn an_error_is_made_at_any_site_as_the_stream_makes_it_at_its_own() {
+    let document = parse("a b");
+    let mut stream = document.root();
+    let before = stream.site();
+    let again = stream.clone();
+    stream.consume_ident().unwrap();
+    let error = before.unexpected::<()>(Token::Comma);
+    assert!(error.is_unexpected_token());
+    assert_eq!(error.unexpected_token(), Some(Token::Comma));
+    assert_eq!(error.at(), before);
+    assert_eq!(error.at(), again.unexpected::<()>(Token::Comma).at());
+    let end = before.end_of_stream::<()>();
+    assert!(end.is_end_of_stream());
+    assert_eq!(end.at(), before);
+    let custom = before.grammar_error::<u8, u32>(7);
+    assert_eq!(custom.custom_value(), Some(&7_u32));
+    assert_eq!(custom.at(), before);
+}
+
+#[test]
+fn a_number_spelled_by_text_is_the_number_the_lexer_makes_of_it() {
+    for text in [
+        "0", "-0", "+1", "12", "1.5", "-1.5", "1e3", "1E+3", "1e-3", ".5", "-.5e-2", "1.5E10",
+        "+007", "0.0",
+    ] {
+        let parsed = Number::parse(text).unwrap_or_else(|| panic!("{text:?} spells a number"));
+        let document = parse(text);
+        let [node] = document.list(document.root_list()) else {
+            panic!("{text:?} lexes as one token")
+        };
+        let Token::Number(lexed) = document.token(*node) else {
+            panic!("{text:?} lexes as a number")
+        };
+        assert_eq!(parsed, lexed, "{text:?}");
+        assert_eq!(parsed.representation(), text);
+    }
+    for text in [
+        "", "+", "-", ".", "1.", "1e", "1e+", "e1", "1x", " 1", "1 ", "--1", "1.5.5", "+-1",
+        "1e1.5", "١",
+    ] {
+        assert!(Number::parse(text).is_none(), "{text:?} is not a number");
+    }
+}
+
+/// A text that needs no decoding is moved into the document, not copied: the
+/// document reads the allocation the caller gave it.
+#[test]
+fn an_owned_document_keeps_the_allocation_of_a_text_that_needs_no_decoding() {
+    let text = String::from("a f(b) \"s\" 1px #id /* c */ url(x)");
+    let pointer = text.as_ptr();
+    let length = text.len();
+    let document = Document::<()>::parse_owned(
+        text,
+        &Options::default(),
+        Limits::default(),
+        DepthExcess::Fail,
+    )
+    .unwrap();
+    let kept = document.source().unwrap();
+    assert_eq!(kept.as_ptr(), pointer);
+    assert_eq!(kept.len(), length);
+    // A text with an escape decodes after the source, and still reads back.
+    let escaped = Document::<()>::parse_owned(
+        "\\66 oo(b)",
+        &Options::default(),
+        Limits::default(),
+        DepthExcess::Fail,
+    )
+    .unwrap();
+    assert_eq!(escaped.source(), Some("\\66 oo(b)"));
+    assert_eq!(escaped.root().consume_function_name().ok(), Some("foo"));
 }

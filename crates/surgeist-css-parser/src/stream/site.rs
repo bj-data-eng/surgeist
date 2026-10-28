@@ -1,8 +1,10 @@
 //! A boundary in a document.
 
 use std::fmt;
+use std::mem::size_of;
 use std::ptr;
 
+use super::{StreamError, SyntaxError};
 use crate::document::{GroupEnd, ListId, NodeId};
 use crate::{Document, Offset, Token};
 
@@ -188,5 +190,39 @@ impl<'i, P> Site<'i, P> {
             };
         }
         document.spelling(node)
+    }
+
+    // ----- errors at the site
+
+    /// Returns the error for a token the grammar did not expect at this site.
+    ///
+    /// [`Stream::unexpected`](crate::Stream::unexpected) is this at the
+    /// stream's current site; a grammar that reports a failure at a boundary it
+    /// passed earlier asks the site.
+    #[must_use]
+    pub fn unexpected<E>(self, token: Token<'i>) -> SyntaxError<'i, E, P> {
+        StreamError::unexpected(self, token).into()
+    }
+
+    /// Returns the error for a stream that is empty at this site where the
+    /// grammar needs a token.
+    #[must_use]
+    pub fn end_of_stream<E>(self) -> SyntaxError<'i, E, P> {
+        StreamError::end_of_stream(self).into()
+    }
+
+    /// Returns the grammar's own error `error`, converted into the grammar's
+    /// error type `F`, at this site.
+    ///
+    /// When the document is metered, the boxed error is charged to the meter
+    /// as the size of `F`, and a refusal (a latched one included) becomes an
+    /// error for which `is_refused()` holds instead. The charge is not
+    /// returned: an error is a result the host reports and then discards.
+    #[must_use]
+    pub fn grammar_error<E, F: From<E>>(self, error: E) -> SyntaxError<'i, F, P> {
+        if !self.document.admit_add(size_of::<F>()) {
+            return StreamError::refused(self).into();
+        }
+        SyntaxError::custom(self, F::from(error))
     }
 }

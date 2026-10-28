@@ -50,6 +50,11 @@ use crate::{Offset, Site, Stream, Token};
 /// ```
 pub struct Document<'s, P = ()> {
     pub(super) source: Option<&'s str>,
+    /// How many bytes at the start of the pool are the text of a document that
+    /// owns it, [`Document::parse_owned`].
+    pub(super) owned_len: Option<usize>,
+    /// What the host attached to the document as a whole.
+    pub(super) payload: Option<P>,
     /// The offset at which the source begins in a larger text.
     pub(super) origin: usize,
     pub(super) nodes: Vec<Node<'s, P>>,
@@ -73,7 +78,10 @@ impl<P> fmt::Debug for Document<'_, P> {
             .debug_struct("Document")
             .field("nodes", &self.nodes.len())
             .field("lists", &self.lists.len())
-            .field("has_source", &self.source.is_some())
+            .field(
+                "has_source",
+                &(self.source.is_some() || self.owned_len.is_some()),
+            )
             .field("metered", &self.meter.is_some())
             .field("metrics", &self.metrics)
             .finish()
@@ -121,8 +129,40 @@ impl<'s, P> Document<'s, P> {
     /// Returns the text the document was built over, or `None` for a document
     /// built from components.
     #[must_use]
-    pub const fn source(&self) -> Option<&'s str> {
+    pub fn source(&self) -> Option<&str> {
         self.source
+            .or_else(|| self.owned_len.and_then(|length| self.pool.get(..length)))
+    }
+
+    /// Returns the payload the host attached to the document as a whole with
+    /// [`attach`](Self::attach), if it did.
+    ///
+    /// A node's payload is data about that node; this is data about the
+    /// document, which a host that reads nodes through a
+    /// [`Stream`](crate::Stream) or a [`Site`](crate::Site) otherwise has no
+    /// way to reach, for example where the text came from.
+    #[must_use]
+    pub const fn attached(&self) -> Option<&P> {
+        self.payload.as_ref()
+    }
+
+    /// Attaches `payload` to the document as a whole, and returns the one it
+    /// replaces.
+    ///
+    /// ```
+    /// use surgeist_css_parser::lexer::Options;
+    /// use surgeist_css_parser::limits::{DepthExcess, Limits};
+    /// use surgeist_css_parser::Document;
+    ///
+    /// let mut document: Document<&str> =
+    ///     Document::parse("a", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+    /// assert_eq!(document.attached(), None);
+    /// assert_eq!(document.attach("the host"), None);
+    /// assert_eq!(document.attached(), Some(&"the host"));
+    /// # Ok::<(), surgeist_css_parser::document::BuildError>(())
+    /// ```
+    pub fn attach(&mut self, payload: P) -> Option<P> {
+        self.payload.replace(payload)
     }
 
     /// Returns the meter the document was built with, if any. A stream over the
@@ -278,6 +318,28 @@ impl<'s, P> Document<'s, P> {
         self.nodes.len()
     }
 
+    /// Returns every node, in the order they were added; for a document built
+    /// from text, the order of the source.
+    ///
+    /// ```
+    /// use surgeist_css_parser::lexer::Options;
+    /// use surgeist_css_parser::limits::{DepthExcess, Limits};
+    /// use surgeist_css_parser::{Document, Token};
+    ///
+    /// let document: Document =
+    ///     Document::parse("f(a) b", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+    /// let tokens: Vec<_> = document.nodes().map(|node| document.token(node)).collect();
+    /// assert_eq!(
+    ///     tokens,
+    ///     [Token::Function("f"), Token::Ident("a"), Token::Whitespace, Token::Ident("b")]
+    /// );
+    /// # Ok::<(), surgeist_css_parser::document::BuildError>(())
+    /// ```
+    pub fn nodes(&self) -> impl ExactSizeIterator<Item = NodeId> + use<'s, P> {
+        (0..self.nodes.len())
+            .map(|index| NodeId::from_index(index).expect("a document holds at most 2^32 nodes"))
+    }
+
     /// Returns the number of lists, the root list included.
     #[must_use]
     pub fn list_count(&self) -> usize {
@@ -316,6 +378,37 @@ impl<'s, P> Document<'s, P> {
     #[must_use]
     pub fn list_end(&self, list: ListId) -> Option<Offset> {
         self.lists[list.index()].end()
+    }
+
+    /// Returns the boundary before the node at `index` of `list`, which is the
+    /// end of the list when `index` is the list's length. `None` when `index`
+    /// is past the end.
+    ///
+    /// ```
+    /// use surgeist_css_parser::lexer::Options;
+    /// use surgeist_css_parser::limits::{DepthExcess, Limits};
+    /// use surgeist_css_parser::Document;
+    ///
+    /// let document: Document =
+    ///     Document::parse("a b", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+    /// let root = document.root_list();
+    /// assert_eq!(document.site(root, 2).and_then(|site| site.token()), Some(surgeist_css_parser::Token::Ident("b")));
+    /// assert!(document.site(root, 3).is_some_and(|site| site.node().is_none()));
+    /// assert!(document.site(root, 4).is_none());
+    /// # Ok::<(), surgeist_css_parser::document::BuildError>(())
+    /// ```
+    #[must_use]
+    pub fn site(&self, list: ListId, index: usize) -> Option<Site<'_, P>> {
+        (index <= self.lists[list.index()].nodes.len()).then(|| Site::new(self, list, index, false))
+    }
+
+    /// Returns the closing boundary of the group `group`, or `None` when the
+    /// node is not a function or a simple block.
+    #[must_use]
+    pub fn closing_site(&self, group: NodeId) -> Option<Site<'_, P>> {
+        let node = self.node(group);
+        node.children?;
+        Some(Site::new(self, node.list, node.index as usize, true))
     }
 
     /// Returns the boundary that sits at `offset`: the node whose token starts
@@ -426,10 +519,10 @@ impl<'s, P> Document<'s, P> {
 
     /// The text of the source between two offsets, which are in the coordinates
     /// the build reported (its origin included).
-    pub(crate) fn slice(&self, from: Offset, to: Offset) -> Option<&'s str> {
+    pub(crate) fn slice(&self, from: Offset, to: Offset) -> Option<&str> {
         let from = from.value().checked_sub(self.origin)?;
         let to = to.value().checked_sub(self.origin)?;
-        self.source?.get(from..to)
+        self.source().and_then(|text| text.get(from..to))
     }
 }
 

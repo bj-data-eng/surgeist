@@ -618,6 +618,7 @@ pub struct surgeist_css_parser::token::Number<'i>
 impl<'i> surgeist_css_parser::token::Number<'i>
 pub fn surgeist_css_parser::token::Number<'i>::integer(self) -> core::option::Option<i64>
 pub const fn surgeist_css_parser::token::Number<'i>::kind(self) -> surgeist_css_parser::token::NumberKind
+pub fn surgeist_css_parser::token::Number<'i>::parse(representation: &'i str) -> core::option::Option<Self>
 pub const fn surgeist_css_parser::token::Number<'i>::representation(self) -> &'i str
 pub fn surgeist_css_parser::token::Number<'i>::sign(self) -> core::option::Option<surgeist_css_parser::token::Sign>
 pub fn surgeist_css_parser::token::Number<'i>::to_f64(self) -> f64
@@ -670,10 +671,10 @@ impl core::fmt::Display for surgeist_css_parser::Token<'_>
 pub fn surgeist_css_parser::Token<'_>::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css_parser::Document<'s, P>
 impl<'s, P> surgeist_css_parser::Document<'s, P>
-pub fn surgeist_css_parser::Document<'s, P>::builder(limits: surgeist_css_parser::limits::Limits, base_depth: u32, meter: core::option::Option<&'s dyn surgeist_css_parser::limits::Meter>) -> core::result::Result<surgeist_css_parser::document::TreeBuilder<'s, P>, surgeist_css_parser::document::BuildError>
-pub fn surgeist_css_parser::Document<'s, P>::parse(source: &'s str, options: &surgeist_css_parser::lexer::Options, limits: surgeist_css_parser::limits::Limits, depth_excess: surgeist_css_parser::limits::DepthExcess) -> core::result::Result<Self, surgeist_css_parser::document::BuildError>
-impl<'s, P> surgeist_css_parser::Document<'s, P>
+pub fn surgeist_css_parser::Document<'s, P>::attach(&mut self, payload: P) -> core::option::Option<P>
+pub const fn surgeist_css_parser::Document<'s, P>::attached(&self) -> core::option::Option<&P>
 pub fn surgeist_css_parser::Document<'s, P>::children(&self, node: surgeist_css_parser::document::NodeId) -> core::option::Option<surgeist_css_parser::document::ListId>
+pub fn surgeist_css_parser::Document<'s, P>::closing_site(&self, group: surgeist_css_parser::document::NodeId) -> core::option::Option<surgeist_css_parser::Site<'_, P>>
 pub fn surgeist_css_parser::Document<'s, P>::component(&self, node: surgeist_css_parser::document::NodeId) -> surgeist_css_parser::document::Component<'_, P>
 pub fn surgeist_css_parser::Document<'s, P>::group_end(&self, node: surgeist_css_parser::document::NodeId) -> core::option::Option<&surgeist_css_parser::document::GroupEnd<P>>
 pub fn surgeist_css_parser::Document<'s, P>::group_kind(&self, node: surgeist_css_parser::document::NodeId) -> core::option::Option<surgeist_css_parser::document::GroupKind>
@@ -688,15 +689,22 @@ pub fn surgeist_css_parser::Document<'s, P>::meter(&self) -> core::option::Optio
 pub const fn surgeist_css_parser::Document<'s, P>::metrics(&self) -> surgeist_css_parser::document::Metrics
 pub fn surgeist_css_parser::Document<'s, P>::node_at_offset(&self, offset: surgeist_css_parser::Offset) -> core::option::Option<surgeist_css_parser::Site<'_, P>>
 pub fn surgeist_css_parser::Document<'s, P>::node_count(&self) -> usize
+pub fn surgeist_css_parser::Document<'s, P>::nodes(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_css_parser::document::NodeId> + use<'s, P>
 pub fn surgeist_css_parser::Document<'s, P>::parent_group(&self, list: surgeist_css_parser::document::ListId) -> core::option::Option<surgeist_css_parser::document::NodeId>
 pub fn surgeist_css_parser::Document<'s, P>::payload(&self, node: surgeist_css_parser::document::NodeId) -> core::option::Option<&P>
 pub fn surgeist_css_parser::Document<'s, P>::range(&self, node: surgeist_css_parser::document::NodeId) -> core::option::Option<core::ops::range::Range<surgeist_css_parser::Offset>>
 pub fn surgeist_css_parser::Document<'s, P>::root(&self) -> surgeist_css_parser::Stream<'_, P>
 pub const fn surgeist_css_parser::Document<'s, P>::root_list(&self) -> surgeist_css_parser::document::ListId
-pub const fn surgeist_css_parser::Document<'s, P>::source(&self) -> core::option::Option<&'s str>
+pub fn surgeist_css_parser::Document<'s, P>::site(&self, list: surgeist_css_parser::document::ListId, index: usize) -> core::option::Option<surgeist_css_parser::Site<'_, P>>
+pub fn surgeist_css_parser::Document<'s, P>::source(&self) -> core::option::Option<&str>
 pub fn surgeist_css_parser::Document<'s, P>::spelling(&self, node: surgeist_css_parser::document::NodeId) -> core::option::Option<&str>
 pub fn surgeist_css_parser::Document<'s, P>::stream(&self, list: surgeist_css_parser::document::ListId) -> surgeist_css_parser::Stream<'_, P>
 pub fn surgeist_css_parser::Document<'s, P>::token(&self, node: surgeist_css_parser::document::NodeId) -> surgeist_css_parser::Token<'_>
+impl<'s, P> surgeist_css_parser::Document<'s, P>
+pub fn surgeist_css_parser::Document<'s, P>::builder(limits: surgeist_css_parser::limits::Limits, base_depth: u32, meter: core::option::Option<&'s dyn surgeist_css_parser::limits::Meter>) -> core::result::Result<surgeist_css_parser::document::TreeBuilder<'s, P>, surgeist_css_parser::document::BuildError>
+pub fn surgeist_css_parser::Document<'s, P>::parse(source: &'s str, options: &surgeist_css_parser::lexer::Options, limits: surgeist_css_parser::limits::Limits, depth_excess: surgeist_css_parser::limits::DepthExcess) -> core::result::Result<Self, surgeist_css_parser::document::BuildError>
+impl<P> surgeist_css_parser::Document<'static, P>
+pub fn surgeist_css_parser::Document<'static, P>::parse_owned(source: impl core::convert::Into<alloc::string::String>, options: &surgeist_css_parser::lexer::Options, limits: surgeist_css_parser::limits::Limits, depth_excess: surgeist_css_parser::limits::DepthExcess) -> core::result::Result<Self, surgeist_css_parser::document::BuildError>
 impl<P> core::fmt::Debug for surgeist_css_parser::Document<'_, P>
 pub fn surgeist_css_parser::Document<'_, P>::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<P> core::ops::drop::Drop for surgeist_css_parser::Document<'_, P>
@@ -708,6 +716,8 @@ pub const fn surgeist_css_parser::Offset::value(self) -> usize
 pub struct surgeist_css_parser::Site<'i, P>
 impl<'i, P> surgeist_css_parser::Site<'i, P>
 pub const fn surgeist_css_parser::Site<'i, P>::document(self) -> &'i surgeist_css_parser::Document<'i, P>
+pub fn surgeist_css_parser::Site<'i, P>::end_of_stream<E>(self) -> surgeist_css_parser::SyntaxError<'i, E, P>
+pub fn surgeist_css_parser::Site<'i, P>::grammar_error<E, F: core::convert::From<E>>(self, error: E) -> surgeist_css_parser::SyntaxError<'i, F, P>
 pub const fn surgeist_css_parser::Site<'i, P>::index(self) -> usize
 pub const fn surgeist_css_parser::Site<'i, P>::is_closing(self) -> bool
 pub const fn surgeist_css_parser::Site<'i, P>::list(self) -> surgeist_css_parser::document::ListId
@@ -716,6 +726,7 @@ pub fn surgeist_css_parser::Site<'i, P>::offset(self) -> core::option::Option<su
 pub fn surgeist_css_parser::Site<'i, P>::payload(self) -> core::option::Option<&'i P>
 pub fn surgeist_css_parser::Site<'i, P>::spelling(self) -> core::option::Option<&'i str>
 pub fn surgeist_css_parser::Site<'i, P>::token(self) -> core::option::Option<surgeist_css_parser::Token<'i>>
+pub fn surgeist_css_parser::Site<'i, P>::unexpected<E>(self, token: surgeist_css_parser::Token<'i>) -> surgeist_css_parser::SyntaxError<'i, E, P>
 impl<P> core::clone::Clone for surgeist_css_parser::Site<'_, P>
 pub fn surgeist_css_parser::Site<'_, P>::clone(&self) -> Self
 impl<P> core::cmp::Eq for surgeist_css_parser::Site<'_, P>
