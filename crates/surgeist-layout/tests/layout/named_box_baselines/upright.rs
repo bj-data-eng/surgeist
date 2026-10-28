@@ -2,6 +2,7 @@
 //! Font sides2/2 are genuine. The separately supplied line strut8/2 establishes
 //! finalized B8/H10, distinguishing line-over from vertical block progression.
 use super::*;
+mod supplemental;
 
 const AHEM: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -129,6 +130,16 @@ fn select_line(
     offer: t::PreparedOpportunity,
     available: Option<f64>,
 ) -> t::FinalizedLine {
+    select_line_in_direction(prepared, start, offer, available, l::Direction::Ltr)
+}
+
+fn select_line_in_direction(
+    prepared: &t::PreparedText,
+    start: t::PreparedBoundary,
+    offer: t::PreparedOpportunity,
+    available: Option<f64>,
+    direction: l::Direction,
+) -> t::FinalizedLine {
     let from = start.view().participant_offset();
     let end = offer.view().boundary();
     let to = end.view().participant_offset();
@@ -150,7 +161,11 @@ fn select_line(
                 alignment_insets: t::LineAlignmentInsets::ZERO,
                 formatted_line: t::FormattedLineContext::default(),
                 base_direction: t::ParagraphBaseDirection::LeftToRight,
-                line_box_direction: t::LineBoxDirection::LeftToRight,
+                line_box_direction: if direction == l::Direction::Ltr {
+                    t::LineBoxDirection::LeftToRight
+                } else {
+                    t::LineBoxDirection::RightToLeft
+                },
                 orientation: t::LineOrientation::Vertical,
                 start: if from == 0 {
                     t::LineStart::Paragraph
@@ -181,6 +196,10 @@ struct Fixture {
 }
 
 fn fixture() -> Fixture {
+    fixture_in_direction(l::Direction::Ltr)
+}
+
+fn fixture_in_direction(direction: l::Direction) -> Fixture {
     let bytes = chi_font();
     qualify_font(&bytes);
     let mut system = t::System::new(t::SystemOptions {
@@ -249,7 +268,11 @@ fn fixture() -> Fixture {
                 topology: t::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
-                used_direction: t::ParagraphBaseDirection::LeftToRight,
+                used_direction: if direction == l::Direction::Ltr {
+                    t::ParagraphBaseDirection::LeftToRight
+                } else {
+                    t::ParagraphBaseDirection::RightToLeft
+                },
             }],
             paragraphs: vec![t::SourceProcessingParagraph {
                 base_direction: t::ParagraphBaseDirection::LeftToRight,
@@ -307,7 +330,11 @@ fn fixture() -> Fixture {
         .find(|o| o.kind() == t::PreparedBreakKind::ParagraphEnd)
         .unwrap()
         .handle();
-    let whole = select_line(&prepared, first.clone(), terminal.clone(), None);
+    let whole = if direction == l::Direction::Ltr {
+        select_line(&prepared, first.clone(), terminal.clone(), None)
+    } else {
+        select_line_in_direction(&prepared, first.clone(), terminal.clone(), None, direction)
+    };
     assert_eq!(
         (
             whole.feedback().baseline,
@@ -343,8 +370,8 @@ fn fixture() -> Fixture {
         .handle();
     let next = soft.view().boundary();
     for line in [
-        select_line(&prepared, first, soft, Some(4.0)),
-        select_line(&prepared, next, terminal, Some(4.0)),
+        select_line_in_direction(&prepared, first, soft, Some(4.0), direction),
+        select_line_in_direction(&prepared, next, terminal, Some(4.0), direction),
     ] {
         // The actual allocation8/2 combines with genuine font2/2 as max8/max2.
         assert_eq!(
