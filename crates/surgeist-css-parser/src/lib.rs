@@ -36,8 +36,14 @@
 //!   general lexer API;
 //! - [`Token`], and in [`token`] its kind, hash type flag and [`Number`]; and in
 //!   [`unicode_range`] the value of the `<unicode-range-token>`;
-//! - [`input`]: the stepwise [`InputCursor`](input::InputCursor), which decodes
-//!   UTF-8 or UTF-16 units and applies the preprocessing of section 3.3 while
+//! - [`input`]: [`input::decode`], which decodes a style sheet's bytes as
+//!   section 3.2 says (the fallback encoding from a protocol label, an
+//!   `@charset` declaration or the environment, then the Encoding Standard's
+//!   decoders); [`input::filter_code_points`] and [`input::preprocess_utf16`],
+//!   which apply the preprocessing of section 3.3 to a string and to UTF-16
+//!   units, the latter with a [`SourceMap`](input::SourceMap) back to the
+//!   original units; and the stepwise [`InputCursor`](input::InputCursor), which
+//!   decodes UTF-8 or UTF-16 units and applies the same preprocessing while
 //!   keeping each scalar's original unit interval;
 //! - [`lexical`]: the code-point classes of Syntax 3 section 4.2 and the
 //!   checks of sections 4.3.8 to 4.3.11, as `const fn`s;
