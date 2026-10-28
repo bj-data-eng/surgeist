@@ -154,6 +154,11 @@ their verification or packaging consumers finish. A target outside a worktree
 survives archiving that worktree; account for it explicitly. Preserve useful
 shared caches and respect active process ownership.
 
+At verification completion and pause points, review which owned caches still
+have a concrete upcoming consumer, including worktree and external targets.
+Promptly remove unused caches within cleanup authority; retain useful caches
+regardless of size. Never delete active or other-owned caches.
+
 After publication or a settled operation, retire consumed owned scratch inputs,
 duplicate source copies, and intermediate captures within cleanup authority.
 Before relying on Git recovery, establish the source commit/blob and account for
