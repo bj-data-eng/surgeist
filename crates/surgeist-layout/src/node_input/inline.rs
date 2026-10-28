@@ -196,7 +196,7 @@ pub enum VerticalAlign {
 ///
 /// The five supported values are `HorizontalTb`, `VerticalRl`, `VerticalLr`,
 /// `SidewaysRl`, and `SidewaysLr`.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub enum WritingMode {
     #[default]
     HorizontalTb,

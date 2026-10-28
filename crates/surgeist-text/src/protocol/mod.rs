@@ -144,7 +144,7 @@ impl Hash for PreparedText {
     }
 }
 impl PreparedText {
-    /// Admitted horizontal or clockwise sideways composition/placement basis.
+    /// Actual admitted horizontal, native upright, or clockwise sideways basis.
     #[must_use]
     pub fn orientation(&self) -> LineOrientation {
         self.inner.options.orientation()
@@ -238,7 +238,7 @@ pub enum PreparedParticipant {
 pub enum LineOrientation {
     /// Horizontal shaping and physical x-right/y-down placement.
     Horizontal,
-    /// Upright vertical typography, currently unsupported.
+    /// Native unrotated upright typography from matching Upright analysis.
     Vertical,
     /// Horizontal composition physically rotated 90 degrees clockwise.
     /// This does not denote CSS sideways-lr or mixed/upright typography.
@@ -703,6 +703,9 @@ pub struct LineFeedback {
     pub ascent: f64,
     pub descent: f64,
     pub line_height: f64,
+    /// Line-local distance from the line-over edge to the shared baseline.
+    /// Native Vertical uses its resolved Central reference; Horizontal and
+    /// clockwise Sideways use their horizontal composition baseline.
     pub baseline: f64,
 }
 #[derive(Clone, Debug, PartialEq)]
