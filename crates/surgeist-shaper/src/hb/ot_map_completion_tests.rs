@@ -1,4 +1,6 @@
 use super::*;
+#[path = "feature_range_tests.rs"]
+mod feature_ranges;
 use crate::hb::completion_fixture::{gsub_lookup, with_font, with_gsub, with_tables, words};
 use crate::{Feature, ShapingRefusal, ShapingStatus, UnicodeBuffer};
 
