@@ -39,15 +39,13 @@ pub struct LookupData<'a> {
 }
 
 pub trait LookupHost<'a> {
-    fn lookup_count(&self) -> u16;
+    fn lookup_count(&self) -> Result<u16, ReadError>;
     fn lookup_data(&self, index: u16) -> Result<LookupData<'a>, ReadError>;
 }
 
 impl<'a> LookupHost<'a> for Gsub<'a> {
-    fn lookup_count(&self) -> u16 {
-        self.lookup_list()
-            .map(|list| list.lookup_count())
-            .unwrap_or_default()
+    fn lookup_count(&self) -> Result<u16, ReadError> {
+        self.lookup_list().map(|list| list.lookup_count())
     }
 
     fn lookup_data(&self, index: u16) -> Result<LookupData<'a>, ReadError> {
@@ -68,10 +66,8 @@ impl<'a> LookupHost<'a> for Gsub<'a> {
 }
 
 impl<'a> LookupHost<'a> for Gpos<'a> {
-    fn lookup_count(&self) -> u16 {
-        self.lookup_list()
-            .map(|list| list.lookup_count())
-            .unwrap_or_default()
+    fn lookup_count(&self) -> Result<u16, ReadError> {
+        self.lookup_list().map(|list| list.lookup_count())
     }
 
     fn lookup_data(&self, index: u16) -> Result<LookupData<'a>, ReadError> {
@@ -99,13 +95,21 @@ mod cache {
     #[derive(Default)]
     pub(crate) struct LookupCache {
         lookups: Vec<OnceLock<Option<Box<LookupInfo>>>>,
+        list_admitted: bool,
     }
 
     impl LookupCache {
         pub fn new<'a>(host: &impl LookupHost<'a>) -> Self {
             let mut lookups = Vec::new();
-            lookups.resize_with(host.lookup_count() as usize, Default::default);
-            Self { lookups }
+            let count = host.lookup_count();
+            lookups.resize_with(
+                count.as_ref().copied().unwrap_or_default() as usize,
+                Default::default,
+            );
+            Self {
+                lookups,
+                list_admitted: count.is_ok(),
+            }
         }
 
         pub fn get<'a>(&self, host: &impl LookupHost<'a>, index: u16) -> Option<&LookupInfo> {
@@ -120,6 +124,17 @@ mod cache {
                 .as_ref()
                 .map(|v| &**v)
         }
+        pub(crate) fn admission<'a>(
+            &self,
+            host: &impl LookupHost<'a>,
+            index: u16,
+        ) -> super::LookupAdmission {
+            if !self.list_admitted {
+                return super::LookupAdmission::Failed;
+            }
+            self.get(host, index)
+                .map_or(super::LookupAdmission::Failed, |lookup| lookup.admission)
+        }
     }
 }
 
@@ -130,11 +145,14 @@ mod cache {
     #[derive(Default)]
     pub(crate) struct LookupCache {
         lookups: Vec<Option<LookupInfo>>,
+        list_admitted: bool,
     }
 
     impl LookupCache {
         pub fn new<'a>(host: &impl LookupHost<'a>) -> Self {
             let count = host.lookup_count();
+            let list_admitted = count.is_ok();
+            let count = count.unwrap_or_default();
             let mut lookups = Vec::with_capacity(count as usize);
             for i in 0..count {
                 lookups.push(
@@ -143,11 +161,25 @@ mod cache {
                         .and_then(|data| LookupInfo::new(&data)),
                 );
             }
-            Self { lookups }
+            Self {
+                lookups,
+                list_admitted,
+            }
         }
 
         pub fn get<'a>(&self, _host: &impl LookupHost<'a>, index: u16) -> Option<&LookupInfo> {
             self.lookups.get(index as usize)?.as_ref()
+        }
+        pub(crate) fn admission<'a>(
+            &self,
+            host: &impl LookupHost<'a>,
+            index: u16,
+        ) -> super::LookupAdmission {
+            if !self.list_admitted {
+                return super::LookupAdmission::Failed;
+            }
+            self.get(host, index)
+                .map_or(super::LookupAdmission::Failed, |lookup| lookup.admission)
         }
     }
 }
@@ -170,8 +202,18 @@ fn is_reversed(table_data: FontData, lookup: &Lookup<()>, lookup_offset: usize) 
 }
 
 /// Cached information about a lookup.
+#[derive(Clone, Copy, Default, Eq, PartialEq)]
+pub(crate) enum LookupAdmission {
+    #[default]
+    Admitted,
+    RejectedContent,
+    Failed,
+}
+
+/// Cached information about a lookup.
 #[derive(Default)]
 pub struct LookupInfo {
+    admission: LookupAdmission,
     pub props: u32,
     pub is_subst: bool,
     pub is_reversed: bool,
@@ -199,6 +241,7 @@ impl LookupInfo {
                 is_reversed(data.table_data, &lookup, data.offset).unwrap_or_default();
         }
         let mut subtable_cache_user_cost = 0;
+        let mut rejected_before = false;
         info.subtables.reserve(lookup.sub_table_count() as usize);
         for (idx, subtable_offset) in lookup.subtable_offsets().iter().enumerate() {
             let cache_mode = if idx < 8 {
@@ -207,19 +250,27 @@ impl LookupInfo {
                 SubtableExternalCacheMode::Small
             };
             let subtable_offset = subtable_offset.get().to_usize() + data.offset;
-            if let Some((subtable_info, cache_cost)) = SubtableInfo::new(
+            if let Some((mut subtable_info, cache_cost)) = SubtableInfo::new(
                 data.table_data,
                 subtable_offset as u32,
                 data.is_subst,
                 lookup_type as u8,
                 cache_mode,
             ) {
+                subtable_info.prior_rejected = rejected_before;
                 info.digest.union(&subtable_info.digest);
+                if subtable_info.recovered {
+                    info.admission = LookupAdmission::RejectedContent;
+                    rejected_before = true;
+                }
                 if cache_cost > subtable_cache_user_cost {
                     info.subtable_cache_user_idx = Some(info.subtables.len());
                     subtable_cache_user_cost = cache_cost;
                 }
                 info.subtables.push(subtable_info);
+            } else {
+                info.admission = LookupAdmission::RejectedContent;
+                rejected_before = true;
             }
         }
         info.subtables.shrink_to_fit();
@@ -247,18 +298,27 @@ impl LookupInfo {
         table_data: &[u8],
         use_hot_subtable_cache: bool,
     ) -> Option<()> {
-        let glyph = ctx.buffer.cur(0).glyph_id;
-        for (subtable_idx, subtable_info) in self.subtables.iter().enumerate() {
-            if !subtable_info.digest.may_have(glyph) {
-                continue;
+        ctx.with_removal_lookup(|ctx| {
+            ctx.observe_match_info(ctx.buffer.cur(0));
+            let glyph = ctx.buffer.cur(0).glyph_id;
+            for (subtable_idx, subtable_info) in self.subtables.iter().enumerate() {
+                if !subtable_info.digest.may_have(glyph) {
+                    continue;
+                }
+                let is_cached =
+                    use_hot_subtable_cache && (self.subtable_cache_user_idx == Some(subtable_idx));
+                let dependency = subtable_info.prior_rejected || ctx.lookup_read_recovery;
+                if ctx
+                    .with_removal_dependency(dependency, |ctx| {
+                        subtable_info.apply(ctx, table_data, is_cached)
+                    })
+                    .is_some()
+                {
+                    return Some(());
+                }
             }
-            let is_cached =
-                use_hot_subtable_cache && (self.subtable_cache_user_idx == Some(subtable_idx));
-            if subtable_info.apply(ctx, table_data, is_cached).is_some() {
-                return Some(());
-            }
-        }
-        None
+            None
+        })
     }
 
     pub(crate) fn cache_enter(&self, ctx: &mut hb_ot_apply_context_t) -> bool {
@@ -362,6 +422,8 @@ impl LookupInfo {
 
 /// Cached information about a subtable.
 pub struct SubtableInfo {
+    recovered: bool,
+    prior_rejected: bool,
     /// The fully resolved type of the subtable.
     pub kind: SubtableKind,
     /// Byte offset to the subtable from the base of the GSUB or GPOS
@@ -395,8 +457,10 @@ macro_rules! apply_fns {
             external_cache: &SubtableExternalCache,
             table_data: &[u8],
         ) -> Option<()> {
-            let t = $ty::read(FontData::new(table_data)).ok()?;
-            t.apply_with_external_cache(ctx, external_cache)
+            ctx.with_width_reads(false, |ctx, reads| {
+                let t = reads.read($ty::read(FontData::new(table_data)))?;
+                t.apply_with_external_cache(ctx, external_cache)
+            })
         }
 
         fn $apply_cached(
@@ -404,8 +468,10 @@ macro_rules! apply_fns {
             external_cache: &SubtableExternalCache,
             table_data: &[u8],
         ) -> Option<()> {
-            let t = $ty::read(FontData::new(table_data)).ok()?;
-            t.apply_cached(ctx, external_cache)
+            ctx.with_width_reads(false, |ctx, reads| {
+                let t = reads.read($ty::read(FontData::new(table_data)))?;
+                t.apply_cached(ctx, external_cache)
+            })
         }
     };
 }
@@ -662,9 +728,16 @@ impl SubtableInfo {
             _ => return None,
         };
         let mut digest = hb_set_digest_t::new();
+        let reads = super::read_observation::Reads::new(true);
+        reads.coverage(Ok(coverage.clone()));
+        // Only failed primary coverage defeats this exclusion digest. Secondary
+        // cache recovery is qualified at its actual use after primary matching.
+        let recovered = reads.failed();
         digest.add_coverage(&coverage);
         Some((
             SubtableInfo {
+                recovered,
+                prior_rejected: false,
                 kind,
                 offset: subtable_offset,
                 digest,

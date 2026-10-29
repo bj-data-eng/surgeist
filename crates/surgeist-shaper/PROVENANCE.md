@@ -408,6 +408,92 @@ unit semantics. CSS units, spacing opportunities and required-unit policy remain
 with consuming Text.
 
 
+## Selected Width-Feature Action Observation
+
+The maintained `src/hb/width_observation.rs` and action hooks in handwritten
+`buffer`, `components`, `face`, `vertical_position`, `ot_layout`,
+`ot_layout_gsubgpos` and `ot/{mod,gpos}` implement an opt-in observation of one
+registered `hwid`, `twid` or `qwid` feature. The request enables observation only;
+the existing selected feature plan and actual requests still govern execution.
+Both ordinary and supplied-vertical results lend the same receipt. Refusal admits
+no receipt, first refusal remains sticky, and explicit clear disposes demand,
+private state and evidence. Undemanded shaping has no width-observation arena.
+
+Private immutable carriers retain any/all acted-on state for each actual original
+root in a live glyph. A split copies that state, actual operand merges combine
+duplicate-root any by union and all by intersection, and an actual later action
+covers all ancestry carried by its operands. Reconvergence cannot erase an
+uncovered sibling. Canonical component membership remains independently interned;
+movement constraints do not split merely because action evidence differs.
+Generated repair output has no invented source roots. Unqualified generated/source
+combinations and actual AAT paths retain the component owner's qualification.
+Final reduction excludes qualified native residual/default-ignorable output and
+accounts for inputs with no ordinary survivor without claiming an action.
+
+Immutable std/alloc lookup caches retain admitted-clean, rejected-content and
+failed-lookup facts, including lookup-list read failure. Valid empty coverage is
+admitted no-match. Observation-only rejected feature references remain distinct
+from the component owner's filtered provenance and native lookup maps. At each
+actual stage, a metered ordered visit checks effectively enabled selected-width
+references before surviving digest exclusion. Unknown rejected coverage cannot
+prove exclusion. Contextual children consult admission only when actually reached
+under the inherited width route. Irrelevant/disabled scopes do not taint evidence;
+relevant rejection yields LookupAdmission qualification without resetting actual
+positive history. This adds no font-wide validator or static child-lookup walk.
+
+Enabling provenance comes from the actual top-level lookup entry and its effective
+mask, captured mask-assignment cluster and selected plan. Capture follows native
+grapheme grouping and normalization; later GSUB cluster merges do not rewrite this
+private custody. Copies retain it and operand unions inherit the first native
+mask operand, independently of canonical original-root membership. Contextual
+children inherit the actual launching route;
+their static feature references and context observers do not independently grant
+width credit. Actual GSUB identity and successful substitution operands count.
+GPOS Single/Pair ValueRecord actions count only successfully applied present active
+fields: both placements, horizontal XAdvance or vertical YAdvance. Literal zero
+is an action independently of native changed flags. Empty/inapplicable fields,
+null adjustment offsets and unresolved native default zeros are not witnesses.
+Matched unresolved adjustment/decode facts retain diagnostic partial evidence and
+unqualified ValueRecord coverage. Actual mark positioning credits the dependent;
+actual cursive positioning credits both direct operands, excluding skipped marks.
+Attachment propagation is not a new selected-feature action. Native arithmetic,
+traversal and changed flags remain owned by their existing execution paths.
+
+Handwritten lookup read hooks retain actual demanded lazy decode errors and
+declared-array recovery without changing tolerant native results. Nullable
+absence, valid empty data and ordinary matching misses remain distinct. Relevant
+cache recovery travels with the existing matching/exclusion fact; a proven
+primary miss does not demand unrelated secondary data. This includes cache reuse
+from observation-off to observation-on and introduces no additional font walk.
+
+An ancestry exclusion also depends on its actual enabling route when a different
+feature performs the removal. A private carrier bit retains recovered read or
+admission dependencies on actual rewrites, across copies, splits, operand unions
+and later lookups. Source-bearing discard consumes that dependency into width
+qualification. Actual matching reads also retain the dependency of consulted
+primary, input, skipped and backtrack/lookahead carriers, including native cache
+hits. This scoped quality reaches child dispatch and direct mutations without
+granting observer roots, action credit or feature provenance. It is separate from
+decode failure; unrelated misses, surviving non-removing rewrites and unreachable
+later siblings do not globally poison the receipt. Existing traversal supplies
+these reads, and the additional work is charged. Native deletion and positioning
+results remain unchanged.
+
+Per-input NoAction/Partial/Covered summaries are proof only with Complete
+observation coverage; unqualified outcomes remain diagnostic. These facts describe
+admitted native execution, not font-wide validity or geometric width. Text owns
+CSS source units, unit-wide reduction and attached-source-mark exemptions. In
+particular, a body scalar decomposed into base and mark keeps both ancestry
+branches; a final mark class cannot turn that body root into an exempt authored
+source mark. No public execution transcript or branch identifier is exposed.
+
+Carrier, lineage, provenance and final-reduction allocations and work share the
+existing checked logical allowance and operation budget. The new functional
+`width_observation_tests`, `width_feature_qualification` and
+its lazy/data children, and `width_feature_scope_qualification` use the retained
+Ahem fixture with authored real SFNT rules; they claim no historical compiler/stub
+RED for this new operation.
+
 ## Completed Joining-Context Mechanism Observation
 
 `ComponentReceipt::joining_context_use` adds one invocation-local scalar fact to

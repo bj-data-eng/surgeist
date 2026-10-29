@@ -363,6 +363,7 @@ impl<'a> crate::Shaper<'a> {
         if !metrics.is_some_and(|source| source.failed) && buffer.position_math.failure.is_none() {
             super::default_ignorable::finish(&mut buffer);
             super::components::finish(&mut buffer);
+            super::width_observation::finish(&mut buffer);
         }
         buffer.leave();
 

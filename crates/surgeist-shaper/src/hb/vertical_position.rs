@@ -241,6 +241,16 @@ pub struct VerticalGlyphPosition {
 /// GlyphBuffer; all coordinate views decode exactly to design units.
 pub struct VerticalGlyphBuffer(GlyphBuffer);
 impl VerticalGlyphBuffer {
+    /// Borrow the same requested width-action observation as ordinary shaping.
+    /// Inspect its qualification before treating per-input outcomes as proof.
+    ///
+    /// # Errors
+    /// Returns the original refusal rather than admitting a partial receipt.
+    pub fn width_feature_receipt(
+        &self,
+    ) -> Result<Option<crate::WidthFeatureReceipt<'_>>, ShapingRefusal> {
+        self.0.width_feature_receipt()
+    }
     /// Number of actual final glyphs.
     pub fn len(&self) -> usize {
         self.0.len()

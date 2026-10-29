@@ -42,6 +42,10 @@ pub use hb::vertical_position::{
     VerticalOriginReferenceError, VerticalPositionStage, VerticalShapeContextError,
     VerticalShapeError,
 };
+pub use hb::width_observation::{
+    WidthFeature, WidthFeatureReceipt, WidthInputEvidence, WidthInputOutcome,
+    WidthObservationCoverage, WidthObservationPath,
+};
 
 /// Type alias for a normalized variation coordinate.
 pub type NormalizedCoord = read_fonts::types::F2Dot14;

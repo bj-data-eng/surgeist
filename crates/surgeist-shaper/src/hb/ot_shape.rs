@@ -431,6 +431,11 @@ fn hb_ot_substitute_default(ctx: &mut hb_ot_shape_context_t) -> bool {
     ot_shape_normalize::_hb_ot_shape_normalize(ctx.plan, ctx.buffer, ctx.face);
 
     setup_masks(ctx);
+    if !width_observation::capture_masks(ctx.buffer) {
+        ctx.buffer
+            .deallocate_var(GlyphInfo::NORMALIZER_GLYPH_INDEX_VAR);
+        return false;
+    }
     original_joining::finish_masks(ctx.buffer);
     if !ctx.buffer.successful && ctx.buffer.joining.request.is_some() {
         ctx.buffer

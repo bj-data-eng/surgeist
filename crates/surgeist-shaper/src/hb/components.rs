@@ -268,6 +268,7 @@ pub(crate) struct State {
     indices: Vec<u32>,
     deleted: Span,
     finalized: bool,
+    pub(crate) width: super::width_observation::State,
 }
 impl Default for State {
     fn default() -> Self {
@@ -287,10 +288,25 @@ impl Default for State {
             indices: Vec::new(),
             deleted: Span::default(),
             finalized: false,
+            width: super::width_observation::State::default(),
         }
     }
 }
 impl State {
+    pub(crate) fn coverage(&self) -> ComponentCoverage {
+        self.coverage
+    }
+    fn same_members(&self, a: u32, b: u32) -> bool {
+        if a == b {
+            return true;
+        }
+        if a == 0 || b == 0 || a & GENERATED != 0 || b & GENERATED != 0 {
+            return false;
+        }
+        let a = self.sets[a as usize - 1];
+        let b = self.sets[b as usize - 1];
+        a.start == b.start && a.len == b.len
+    }
     pub(crate) fn active(&self) -> bool {
         self.active
     }
@@ -319,7 +335,8 @@ impl State {
                     .capacity()
                     .checked_mul(size_of::<DefaultFeature>())?,
             )?
-            .checked_add(self.indices.capacity().checked_mul(4)?)
+            .checked_add(self.indices.capacity().checked_mul(4)?)?
+            .checked_add(self.width.bytes()?)
     }
     pub(crate) fn members(&self, id: u32) -> &[u32] {
         if id == 0 || id & GENERATED != 0 {
@@ -443,7 +460,7 @@ pub(crate) fn begin(
         s.indices.push(buffer.info[i].cluster);
         buffer.info[i].component_set = (i + 1) as u32;
     }
-    set_defaults(buffer, plan.ot_map.default_features())
+    set_defaults(buffer, plan.ot_map.default_features()) && super::width_observation::begin(buffer)
 }
 pub(crate) fn unqualify(buffer: &mut hb_buffer_t, path: ComponentPath) {
     if buffer.components.active && buffer.components.coverage == ComponentCoverage::Complete {
@@ -462,12 +479,25 @@ pub(crate) fn union(buffer: &mut hb_buffer_t, a: u32, b: u32) -> Option<u32> {
     }
     if a & GENERATED != 0 || b & GENERATED != 0 {
         unqualify(buffer, ComponentPath::GeneratedRepair);
-        return Some(if a & GENERATED != 0 && b & GENERATED == 0 {
+        let component = if a & GENERATED != 0 && b & GENERATED == 0 {
             b
         } else {
             a
-        });
+        };
+        let width = super::width_observation::carrier(buffer, component & !GENERATED);
+        return with_width_dependency(
+            buffer,
+            component,
+            width,
+            super::width_observation::mask_cluster(buffer, a),
+            super::width_observation::removal_dependency_failed(buffer, a)
+                || super::width_observation::removal_dependency_failed(buffer, b),
+        );
     }
+    let mask_cluster = super::width_observation::mask_cluster(buffer, a);
+    let removal_dependency = super::width_observation::removal_dependency_failed(buffer, a)
+        || super::width_observation::removal_dependency_failed(buffer, b);
+    let width = super::width_observation::merge(buffer, a, b)?;
     let Some(size) = buffer
         .components
         .members(a)
@@ -516,18 +546,112 @@ pub(crate) fn union(buffer: &mut hb_buffer_t, a: u32, b: u32) -> Option<u32> {
     }
     let len = s.members.len() - start;
     // Intern exact sets so canonical constraints have stable compact identity.
-    for (i, old) in s.sets.iter().enumerate() {
-        if old.len == len && s.members[old.start..old.start + len] == s.members[start..] {
-            s.members.truncate(start);
-            return Some(i as u32 + 1);
+    let mut membership = Span { start, len };
+    for i in 0..buffer.components.sets.len() {
+        let old = buffer.components.sets[i];
+        if old.len == len
+            && buffer.components.members[old.start..old.start + len]
+                == buffer.components.members[start..]
+        {
+            membership = old;
+            if super::width_observation::binding_matches(
+                buffer,
+                i as u32 + 1,
+                width,
+                mask_cluster,
+                removal_dependency,
+            ) {
+                buffer.components.members.truncate(start);
+                return Some(i as u32 + 1);
+            }
         }
     }
-    if s.sets.len() >= GENERATED as usize - 1 {
+    if membership.start != start {
+        buffer.components.members.truncate(start);
+    }
+    if buffer.components.sets.len() >= GENERATED as usize - 1 {
         fail(buffer, ShapingRefusal::GrowthLimit);
         return None;
     }
-    s.sets.push(Span { start, len });
-    Some(s.sets.len() as u32)
+    if !super::width_observation::bind(buffer, width, mask_cluster, removal_dependency) {
+        return None;
+    }
+    buffer.components.sets.push(membership);
+    Some(buffer.components.sets.len() as u32)
+}
+pub(crate) fn with_width(buffer: &mut hb_buffer_t, component: u32, width: u32) -> Option<u32> {
+    with_width_custody(
+        buffer,
+        component,
+        width,
+        super::width_observation::mask_cluster(buffer, component),
+    )
+}
+pub(crate) fn with_width_custody(
+    buffer: &mut hb_buffer_t,
+    component: u32,
+    width: u32,
+    mask_cluster: Option<u32>,
+) -> Option<u32> {
+    with_width_dependency(
+        buffer,
+        component,
+        width,
+        mask_cluster,
+        super::width_observation::removal_dependency_failed(buffer, component),
+    )
+}
+pub(crate) fn with_width_dependency(
+    buffer: &mut hb_buffer_t,
+    component: u32,
+    width: u32,
+    mask_cluster: Option<u32>,
+    removal_dependency: bool,
+) -> Option<u32> {
+    if buffer.components.width.requested.is_none() {
+        return Some(component);
+    }
+    let generated = component & GENERATED;
+    let context = component & !GENERATED;
+    let membership = if context == 0 {
+        Span { start: 0, len: 0 }
+    } else {
+        buffer.components.sets[context as usize - 1]
+    };
+    for i in 0..buffer.components.sets.len() {
+        if !super::original_joining::work(buffer, membership.len.saturating_add(1)) {
+            return None;
+        }
+        let old = buffer.components.sets[i];
+        if old.len == membership.len
+            && buffer.components.members[old.start..old.start + old.len]
+                == buffer.components.members[membership.start..membership.start + membership.len]
+            && super::width_observation::binding_matches(
+                buffer,
+                i as u32 + 1,
+                width,
+                mask_cluster,
+                removal_dependency,
+            )
+        {
+            return Some((i as u32 + 1) | generated);
+        }
+    }
+    if buffer.components.sets.len() >= GENERATED as usize - 1 {
+        fail(buffer, ShapingRefusal::GrowthLimit);
+        return None;
+    }
+    if !reserve(buffer, [1, 0, 0, 0, 0, 0, 0])
+        || !super::width_observation::bind(buffer, width, mask_cluster, removal_dependency)
+    {
+        return None;
+    }
+    buffer.components.sets.push(membership);
+    Some((buffer.components.sets.len() as u32) | generated)
+}
+pub(crate) fn provenance(buffer: &hb_buffer_t, set: ProvenanceSet) -> &[FeatureProvenance] {
+    let span = set.0;
+    &buffer.components.provenance[span.start..span.start + span.len]
 }
 pub(crate) fn generated(buffer: &hb_buffer_t, context: u32) -> u32 {
     if buffer.components.active {
@@ -616,7 +740,7 @@ pub(crate) fn ligature(buffer: &mut hb_buffer_t, set: u32, provenance: Provenanc
         .components
         .ligatures
         .iter()
-        .position(|r| r.set == set);
+        .position(|r| buffer.components.same_members(r.set, set));
     let merged = if let Some(i) = existing {
         let old = buffer.components.ligatures[i].provenance;
         let mut merged = provenance;
@@ -657,7 +781,7 @@ pub(crate) fn attachment(
     }
     let dependent = buffer.info[dependent].component_set;
     let base = buffer.info[base].component_set;
-    if dependent == base {
+    if buffer.components.same_members(dependent, base) {
         return true;
     }
     let row = Attachment {
@@ -668,12 +792,11 @@ pub(crate) fn attachment(
     if !super::original_joining::work(buffer, buffer.components.attachments.len()) {
         return false;
     }
-    if buffer
-        .components
-        .attachments
-        .iter()
-        .any(|r| r.dependent == dependent && r.base == base && r.kind == kind)
-    {
+    if buffer.components.attachments.iter().any(|r| {
+        buffer.components.same_members(r.dependent, dependent)
+            && buffer.components.same_members(r.base, base)
+            && r.kind == kind
+    }) {
         return true;
     }
     if !reserve(buffer, [0, 0, 0, 1, 0, 0, 0]) {

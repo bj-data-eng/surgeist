@@ -40,6 +40,16 @@ independence. Actual unqualified provider paths retain `Unqualified(path)`.
 Consumers own genuine external source/context and boundary policy. Ordinary USE's
 body-syllable masks do not claim external Unicode joining use.
 
+`UnicodeBuffer::observe_width_feature(WidthFeature::HalfWidth)` requests actual
+`hwid` action evidence without enabling that feature; ThirdWidth and QuarterWidth
+select `twid` and `qwid`. The completed buffer's `width_feature_receipt()` reports
+per-input surviving ancestry coverage and effective enabling provenance. Inspect
+its separate observation coverage first: unqualified summaries are diagnostic,
+including a diagnostic Covered outcome. Identity substitutions and applicable
+present zero positioning fields count; context matching and unresolved default
+zero adjustments do not. Text owns CSS units, source-attached mark exemptions,
+unit-wide reduction and geometric fit. Clear resets the request and evidence.
+
 `Feature::new` and feature parsing create explicit requests.
 `Feature::optional_default` requests a soft override only for a feature the
 selected plan affirmatively identifies as optional. Required and unclassified
