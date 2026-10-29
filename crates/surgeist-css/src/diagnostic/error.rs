@@ -2443,6 +2443,22 @@ pub(crate) fn invalid_descriptor_token_at<'i>(
     )
 }
 
+/// A descriptor value that a token of the parser crate's token tree ends.
+pub(crate) fn invalid_descriptor_syntax_token_at<'i>(
+    location: cssparser::SourceLocation,
+    at_rule: &str,
+    descriptor: &str,
+    token: surgeist_css_parser::Token<'_>,
+) -> ParseError<'i, CssError> {
+    explicit_descriptor_error(
+        location,
+        at_rule,
+        descriptor,
+        Some(CssTokenSummary::from_syntax_token(token)),
+        DiagnosticOrigin::Token,
+    )
+}
+
 pub(crate) fn incomplete_descriptor_at<'i>(
     location: cssparser::SourceLocation,
     at_rule: &str,

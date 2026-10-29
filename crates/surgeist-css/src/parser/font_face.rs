@@ -850,6 +850,23 @@ fn parse_font_face_width<'i, 't>(
     Ok(CssFontFaceWidth::Range { start, end })
 }
 
+/// `<font-display>` read from a token stream.
+pub(super) fn parse_font_display_value<'i>(
+    input: &mut super::syntax_types::Stream<'i>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
+) -> Result<CssFontDisplay, super::descriptor_stream::ValueError<'i>> {
+    let location = input.site();
+    let ident = input.consume_ident()?;
+    match_ignore_ascii_case! { ident,
+        "auto" => Ok(CssFontDisplay::Auto),
+        "block" => Ok(CssFontDisplay::Block),
+        "swap" => Ok(CssFontDisplay::Swap),
+        "fallback" => Ok(CssFontDisplay::Fallback),
+        "optional" => Ok(CssFontDisplay::Optional),
+        _ => Err(super::descriptor_stream::fail(numeric, location, unexpected_at)),
+    }
+}
+
 pub(super) fn parse_font_display<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontDisplay, ParseError<'i, CssError>> {

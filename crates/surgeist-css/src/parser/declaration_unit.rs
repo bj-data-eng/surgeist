@@ -52,6 +52,11 @@ impl DeclarationText {
         self.name.start
     }
 
+    /// The bytes of the declaration's name.
+    pub(super) fn name_range(&self) -> Range<usize> {
+        self.name.clone()
+    }
+
     /// Reads the parts of `declaration` from the token tree it was consumed
     /// from, which is a document of source text.
     pub(super) fn of(declaration: &DeclarationUnit<'_>) -> Self {

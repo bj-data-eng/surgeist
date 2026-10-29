@@ -618,7 +618,21 @@ impl RecoveryState {
         input: &Parser<'i, '_>,
         enclosing_production: &'static str,
     ) -> Result<Vec<usize>, ParseError<'i, CssError>> {
-        let start = input.position().byte_index();
+        self.check_specialized_components_from(
+            source,
+            input.position().byte_index(),
+            enclosing_production,
+        )
+    }
+
+    /// [`check_specialized_components`](Self::check_specialized_components) for
+    /// a prelude that starts at the byte `start`.
+    pub(super) fn check_specialized_components_from<'i>(
+        &self,
+        source: &str,
+        start: usize,
+        enclosing_production: &'static str,
+    ) -> Result<Vec<usize>, ParseError<'i, CssError>> {
         let end = scan_nested_tokens(
             source,
             start,
