@@ -2127,6 +2127,14 @@ impl UnicodeBuffer {
         self.0.components.requested = true;
     }
 
+    /// Observe one width feature without enabling it. The last request selects
+    /// the next invocation's tag; clear resets it. This also requests component
+    /// observations. Input may be appended before or after the request.
+    pub fn observe_width_feature(&mut self, feature: crate::WidthFeature) {
+        self.0.components.requested = true;
+        self.0.components.width.requested = Some(feature);
+    }
+
     /// Present selected nonexempt Cc scalars as ordinary nonjoining symbols.
     ///
     /// Positions are strictly increasing scalar indices in this complete input,
@@ -2364,6 +2372,20 @@ impl Default for UnicodeBuffer {
 pub struct GlyphBuffer(pub(crate) hb_buffer_t);
 
 impl GlyphBuffer {
+    /// Borrow requested width-action evidence for this completed invocation.
+    /// None means not requested, never absence. Inspect receipt coverage before
+    /// treating per-input summaries as proof; unqualified summaries are diagnostic.
+    ///
+    /// # Errors
+    /// Returns the first original refusal, including demanded observer work.
+    pub fn width_feature_receipt(
+        &self,
+    ) -> Result<Option<crate::WidthFeatureReceipt<'_>>, ShapingRefusal> {
+        match self.shaping_status() {
+            ShapingStatus::Refused(reason) => Err(reason),
+            ShapingStatus::Complete => Ok(super::width_observation::receipt(&self.0)),
+        }
+    }
     /// Borrow the actual completed invocation's component constraints, if requested.
     /// Absence is not proof of independent movement; inspect receipt coverage.
     ///

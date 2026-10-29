@@ -133,6 +133,7 @@ pub trait LayoutTable {
 
     /// Get the lookup at the specified index.
     fn get_lookup(&self, index: u16) -> Option<&LookupInfo>;
+    fn lookup_admission(&self, index: u16) -> super::ot::lookup::LookupAdmission;
 }
 
 /// Called before substitution lookups are performed, to ensure that glyph
@@ -154,7 +155,20 @@ pub fn apply_layout_table<T: LayoutTable>(
     for (stage_index, stage) in plan.ot_map.stages(T::INDEX).iter().enumerate() {
         ctx.component_stage = stage_index;
         if let Some(table) = table {
+            let mut next_width = ctx.next_width_lookup(None);
+            if ctx.buffer.components.width.requested.is_some() && !ctx.buffer.successful {
+                return;
+            }
             for lookup_map in plan.ot_map.stage_lookups(T::INDEX, stage_index) {
+                while let Some(index) = next_width.filter(|index| *index <= lookup_map.index) {
+                    if !ctx.qualify_width_lookup(table.lookup_admission(index), index, false) {
+                        return;
+                    }
+                    next_width = ctx.next_width_lookup(Some(index));
+                    if !ctx.buffer.successful {
+                        return;
+                    }
+                }
                 let Some(lookup) = table.get_lookup(lookup_map.index) else {
                     continue;
                 };
@@ -172,6 +186,15 @@ pub fn apply_layout_table<T: LayoutTable>(
                     if ctx.buffer.position_math.failure.is_some() {
                         return;
                     }
+                }
+            }
+            while let Some(index) = next_width {
+                if !ctx.qualify_width_lookup(table.lookup_admission(index), index, false) {
+                    return;
+                }
+                next_width = ctx.next_width_lookup(Some(index));
+                if !ctx.buffer.successful {
+                    return;
                 }
             }
         }
@@ -237,6 +260,9 @@ fn apply_forward(ctx: &mut OT::hb_ot_apply_context_t, lookup: &LookupInfo) -> bo
             break;
         }
 
+        if !ctx.begin_width_application() {
+            break;
+        }
         let applied = lookup
             .apply(ctx, table_data, use_hot_subtable_cache)
             .is_some();
@@ -267,9 +293,13 @@ fn apply_backward(ctx: &mut OT::hb_ot_apply_context_t, lookup: &LookupInfo) -> b
         ret |= lookup.digest.may_have(cur.glyph_id)
             && (cur.mask & ctx.lookup_mask()) != 0
             && check_glyph_property(ctx.face, cur, ctx.lookup_props)
+            && ctx.begin_width_application()
             && lookup.apply(ctx, table_data, false).is_some();
 
-        if ctx.buffer.idx == 0 || ctx.buffer.position_math.failure.is_some() {
+        if ctx.buffer.idx == 0
+            || ctx.buffer.position_math.failure.is_some()
+            || (ctx.buffer.components.width.requested.is_some() && !ctx.buffer.successful)
+        {
             break;
         }
 

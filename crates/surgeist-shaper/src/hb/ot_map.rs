@@ -36,6 +36,7 @@ struct LookupFeature {
     source: FeatureSource,
     mask: hb_mask_t,
     lookups: Vec<u16>,
+    width_rejected: Vec<u16>,
     fixed: bool,
 }
 
@@ -143,9 +144,32 @@ impl hb_ot_map_t {
         lookup: u16,
         inputs: &'a [(hb_mask_t, u32)],
     ) -> impl Iterator<Item = FeatureProvenance> + 'a {
+        self.lookup_provenance_inner(table, stage, lookup, inputs, false)
+    }
+    pub(crate) fn width_lookup_provenance<'a>(
+        &'a self,
+        table: TableIndex,
+        stage: usize,
+        lookup: u16,
+        inputs: &'a [(hb_mask_t, u32)],
+    ) -> impl Iterator<Item = FeatureProvenance> + 'a {
+        self.lookup_provenance_inner(table, stage, lookup, inputs, true)
+    }
+    fn lookup_provenance_inner<'a>(
+        &'a self,
+        table: TableIndex,
+        stage: usize,
+        lookup: u16,
+        inputs: &'a [(hb_mask_t, u32)],
+        rejected: bool,
+    ) -> impl Iterator<Item = FeatureProvenance> + 'a {
         self.provenance[table]
             .iter()
-            .filter(move |feature| feature.stage == stage && feature.lookups.contains(&lookup))
+            .filter(move |feature| {
+                feature.stage == stage
+                    && (feature.lookups.contains(&lookup)
+                        || rejected && feature.width_rejected.contains(&lookup))
+            })
             .flat_map(move |feature| {
                 inputs.iter().filter_map(move |(mask, cluster)| {
                     if mask & feature.mask == 0 {
@@ -171,6 +195,29 @@ impl hb_ot_map_t {
                     })
                 })
             })
+    }
+
+    pub(crate) fn width_provenance_work(&self, table: TableIndex) -> Option<usize> {
+        self.provenance[table]
+            .iter()
+            .try_fold(self.provenance_work(table)?, |work, feature| {
+                work.checked_add(feature.width_rejected.len())
+            })
+    }
+    pub(crate) fn next_width_lookup(
+        &self,
+        table: TableIndex,
+        stage: usize,
+        tag: hb_tag_t,
+        after: Option<u16>,
+    ) -> Option<u16> {
+        self.provenance[table]
+            .iter()
+            .filter(|f| f.stage == stage && f.tag == tag)
+            .flat_map(|f| f.lookups.iter().chain(&f.width_rejected))
+            .copied()
+            .filter(|index| after.is_none_or(|after| *index > after))
+            .min()
     }
 
     pub const MAX_BITS: u32 = 8;
@@ -862,13 +909,15 @@ impl<'a> hb_ot_map_builder_t<'a> {
         let mut result = [Vec::new(), Vec::new()];
         for table in TableIndex::iter() {
             if let (Some(index), Some(tag)) = (required_index[table], required_tag[table]) {
+                let (lookups, width_rejected) = self.feature_lookups(table, index);
                 result[table].push(LookupFeature {
                     tag,
                     stage: required_stage[table],
                     role: FeatureRole::Required,
                     source: FeatureSource::LanguageSystem,
                     mask: GLOBAL_BIT_MASK,
-                    lookups: self.feature_lookups(table, index),
+                    lookups,
+                    width_rejected,
                     fixed: true,
                 });
             }
@@ -877,19 +926,22 @@ impl<'a> hb_ot_map_builder_t<'a> {
                 .filter(|info| info.flags & F_REQUIRED_ALWAYS != 0)
             {
                 if let Some(index) = self.feature_indices(info)[table] {
+                    let (lookups, width_rejected) = self.feature_lookups(table, index);
                     result[table].push(LookupFeature {
                         tag: info.tag,
                         stage: info.stage[table],
                         role: FeatureRole::Required,
                         source: FeatureSource::Script,
                         mask: GLOBAL_BIT_MASK,
-                        lookups: self.feature_lookups(table, index),
+                        lookups,
+                        width_rejected,
                         fixed: true,
                     });
                 }
             }
             for feature in features {
                 if let Some(index) = feature.index[table] {
+                    let (lookups, width_rejected) = self.feature_lookups(table, index);
                     let required = required_tag[table] == Some(feature.tag)
                         || providers
                             .iter()
@@ -910,7 +962,8 @@ impl<'a> hb_ot_map_builder_t<'a> {
                         role,
                         source: FeatureSource::Provider,
                         mask: feature.mask,
-                        lookups: self.feature_lookups(table, index),
+                        lookups,
+                        width_rejected,
                         fixed: false,
                     });
                 }
@@ -919,22 +972,31 @@ impl<'a> hb_ot_map_builder_t<'a> {
         result
     }
 
-    fn feature_lookups(&self, side: TableIndex, index: u16) -> Vec<u16> {
+    fn feature_lookups(&self, side: TableIndex, index: u16) -> (Vec<u16>, Vec<u16>) {
         let Some(table) = self.face.layout_table(side) else {
-            return Vec::new();
+            return (Vec::new(), Vec::new());
         };
         let variation = self.face.ot_tables.feature_variations[side as usize];
         let feature = variation
             .and_then(|variation| table.feature_substitution(variation, index))
             .or_else(|| table.feature(index));
-        feature.map_or_else(Vec::new, |feature| {
-            feature
-                .lookup_list_indices()
-                .iter()
-                .map(|index| index.get())
-                .filter(|index| *index < table.lookup_count())
-                .collect()
-        })
+        let mut valid = Vec::new();
+        let mut rejected = Vec::new();
+        if let Some(feature) = feature {
+            // Preserve legacy public provenance's admitted references, while a
+            // demanded width query can still distinguish rejection from absence.
+            let mut count = None;
+            for index in feature.lookup_list_indices() {
+                let index = index.get();
+                let limit = count.get_or_insert_with(|| table.lookup_count_admission().ok());
+                if limit.is_some_and(|count| index < count) {
+                    valid.push(index);
+                } else {
+                    rejected.push(index);
+                }
+            }
+        }
+        (valid, rejected)
     }
 
     fn add_lookups(

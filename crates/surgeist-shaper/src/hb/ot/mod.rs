@@ -25,6 +25,7 @@ pub mod contextual;
 pub mod gpos;
 pub mod gsub;
 pub mod lookup;
+pub(crate) mod read_observation;
 
 pub struct OtCache {
     pub gsub: LookupCache,
@@ -75,6 +76,9 @@ impl crate::hb::ot_layout::LayoutTable for GsubTable<'_> {
     fn get_lookup(&self, index: u16) -> Option<&LookupInfo> {
         self.lookups.get(&self.table, index)
     }
+    fn lookup_admission(&self, index: u16) -> lookup::LookupAdmission {
+        self.lookups.admission(&self.table, index)
+    }
 }
 
 #[derive(Clone)]
@@ -89,6 +93,9 @@ impl crate::hb::ot_layout::LayoutTable for GposTable<'_> {
 
     fn get_lookup(&self, index: u16) -> Option<&LookupInfo> {
         self.lookups.get(&self.table, index)
+    }
+    fn lookup_admission(&self, index: u16) -> lookup::LookupAdmission {
+        self.lookups.admission(&self.table, index)
     }
 }
 
@@ -277,30 +284,167 @@ impl<'a> OtTables<'a> {
         }
     }
 
+    pub(crate) fn lookup_admission(&self, side: TableIndex, index: u16) -> lookup::LookupAdmission {
+        if side == TableIndex::GSUB {
+            self.gsub
+                .as_ref()
+                .map_or(lookup::LookupAdmission::Failed, |table| {
+                    table.lookups.admission(&table.table, index)
+                })
+        } else {
+            self.gpos
+                .as_ref()
+                .map_or(lookup::LookupAdmission::Failed, |table| {
+                    table.lookups.admission(&table.table, index)
+                })
+        }
+    }
+
     pub(super) fn resolve_anchor(
         &self,
         anchor: &AnchorTable,
         math: &mut super::vertical_position::PositionMath,
+        mut qualified: Option<&mut bool>,
     ) -> (i32, i32) {
         let mut x = anchor.x_coordinate() as i32;
         let mut y = anchor.y_coordinate() as i32;
         if let Some(vs) = self.var_store.as_ref() {
-            let delta = |val: Option<Result<DeviceOrVariationIndex<'_>, ReadError>>| match val {
-                Some(Ok(DeviceOrVariationIndex::VariationIndex(varix))) => vs
-                    .compute_delta(
+            let mut delta = |val: Option<Result<DeviceOrVariationIndex<'_>, ReadError>>| match val {
+                Some(Ok(DeviceOrVariationIndex::VariationIndex(varix))) => {
+                    let value = vs.compute_delta(
                         DeltaSetIndex {
                             outer: varix.delta_set_outer_index(),
                             inner: varix.delta_set_inner_index(),
                         },
                         self.coords,
-                    )
-                    .unwrap_or_default(),
-                _ => 0,
+                    );
+                    if let Some(qualified) = qualified.as_deref_mut() {
+                        *qualified &= observe_variation_adjustment(
+                            Some(vs),
+                            DeltaSetIndex {
+                                outer: varix.delta_set_outer_index(),
+                                inner: varix.delta_set_inner_index(),
+                            },
+                            self.coords,
+                            Some(&value),
+                        ) != AdjustmentObservation::Unqualified;
+                    }
+                    value.unwrap_or_default()
+                }
+                None => 0,
+                other => {
+                    if let Some(qualified) = qualified.as_deref_mut() {
+                        *qualified &= observe_unused_adjustment(other, self.coords)
+                            != AdjustmentObservation::Unqualified;
+                    }
+                    0
+                }
             };
             x = math.add(x, delta(anchor.x_device()));
             y = math.add(y, delta(anchor.y_device()));
+        } else if let Some(qualified) = qualified {
+            // Null offsets are absence. Non-null unresolved adjustments cannot
+            // become proof through this owner's native default-zero fallback.
+            *qualified &= observe_unused_adjustment(anchor.x_device(), self.coords)
+                != AdjustmentObservation::Unqualified
+                && observe_unused_adjustment(anchor.y_device(), self.coords)
+                    != AdjustmentObservation::Unqualified;
         }
         (math.encode(x), math.encode(y))
+    }
+}
+
+/// Private evidence for a native adjustment; numeric recovery remains native.
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(crate) enum AdjustmentObservation {
+    NoAdjustment,
+    Applied,
+    Unqualified,
+}
+
+pub(crate) fn observe_variation_adjustment(
+    store: Option<&ItemVariationStore<'_>>,
+    index: DeltaSetIndex,
+    coords: &[F2Dot14],
+    resolved: Option<&Result<i32, ReadError>>,
+) -> AdjustmentObservation {
+    // These are the native owner's explicit bypass/unused paths. In particular,
+    // ShaperInstance clears ordinary default coordinates rather than failing.
+    if coords.is_empty() || index == DeltaSetIndex::NO_VARIATION_INDEX {
+        return AdjustmentObservation::NoAdjustment;
+    }
+    let Some(store) = store else {
+        return AdjustmentObservation::Unqualified;
+    };
+    match store.item_variation_data().get(index.outer as usize) {
+        // This getter's None means an EXISTING nullable offset is null. An
+        // out-of-range outer index is Some(Err), not qualified unused data.
+        None => AdjustmentObservation::NoAdjustment,
+        Some(Ok(data))
+            if index.inner < data.item_count() && resolved.is_some_and(Result::is_ok) =>
+        {
+            let regions = usize::from(data.region_index_count());
+            let words = usize::from(data.word_delta_count() & 0x7fff);
+            if words > regions {
+                return AdjustmentObservation::Unqualified;
+            }
+            // These are precisely the views used by native delta_set. Their
+            // accessors return empty on a truncated DECLARED array. Qualifying
+            // their lengths distinguishes that recovery from a valid zero-byte
+            // row, without walking regions or recomputing any adjustment.
+            let Some(bytes) = data
+                .get_delta_row_len()
+                .checked_mul(usize::from(data.item_count()))
+            else {
+                return AdjustmentObservation::Unqualified;
+            };
+            if regions
+                .checked_mul(2)
+                .and_then(|n| n.checked_add(6))
+                .and_then(|n| n.checked_add(bytes))
+                .is_none()
+                || data.region_indexes().len() != regions
+                || data.delta_sets().len() != bytes
+            {
+                return AdjustmentObservation::Unqualified;
+            }
+            AdjustmentObservation::Applied
+        }
+        // delta_set silently yields an empty cursor for an invalid inner row;
+        // its resulting native Ok(0) cannot become a genuine action witness.
+        _ => AdjustmentObservation::Unqualified,
+    }
+}
+
+pub(crate) fn observe_unused_adjustment(
+    value: Option<Result<DeviceOrVariationIndex<'_>, ReadError>>,
+    coords: &[F2Dot14],
+) -> AdjustmentObservation {
+    use read_fonts::tables::layout::DeltaFormat;
+    match value {
+        None => AdjustmentObservation::NoAdjustment,
+        Some(Ok(DeviceOrVariationIndex::VariationIndex(index))) => observe_variation_adjustment(
+            None,
+            DeltaSetIndex {
+                outer: index.delta_set_outer_index(),
+                inner: index.delta_set_inner_index(),
+            },
+            coords,
+            None,
+        ),
+        // This native backend does not apply ppem Device corrections. Known
+        // Device formats are unused, rather than malformed/default-zero actions.
+        Some(Ok(DeviceOrVariationIndex::Device(device)))
+            if matches!(
+                device.delta_format(),
+                DeltaFormat::Local2BitDeltas
+                    | DeltaFormat::Local4BitDeltas
+                    | DeltaFormat::Local8BitDeltas
+            ) =>
+        {
+            AdjustmentObservation::NoAdjustment
+        }
+        _ => AdjustmentObservation::Unqualified,
     }
 }
 
@@ -445,15 +589,12 @@ impl<'a> LayoutTable<'a> {
     }
 
     pub(crate) fn lookup_count(&self) -> u16 {
+        self.lookup_count_admission().unwrap_or_default()
+    }
+    pub(crate) fn lookup_count_admission(&self) -> Result<u16, ReadError> {
         match self {
-            Self::Gsub(gsub) => gsub
-                .lookup_list()
-                .map(|list| list.lookup_count())
-                .unwrap_or_default(),
-            Self::Gpos(gpos) => gpos
-                .lookup_list()
-                .map(|list| list.lookup_count())
-                .unwrap_or_default(),
+            Self::Gsub(gsub) => gsub.lookup_list().map(|list| list.lookup_count()),
+            Self::Gpos(gpos) => gpos.lookup_list().map(|list| list.lookup_count()),
         }
     }
 

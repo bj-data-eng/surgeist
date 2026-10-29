@@ -1,6 +1,11 @@
 //! Functional acceptance of the new invocation-local half-design-unit owner.
 //! This is a wholly new operation, not historical RED evidence. Expected values
 //! come from authored tables/nominal records and the existing OT attachment rules.
+#[path = "width_feature_qualification.rs"]
+mod width_feature_qualification;
+#[path = "width_feature_scope_qualification.rs"]
+mod width_feature_scope_qualification;
+
 use crate::hb::completion_fixture::words;
 use crate::{
     script, Direction, Feature, GlyphBuffer, ShapePlan, Shaper, ShapingRefusal, ShapingStatus,
@@ -16,6 +21,9 @@ mod font;
 
 #[path = "backward_vertical_tests.rs"]
 mod backward;
+
+#[path = "width_observation_tests.rs"]
+mod width_observation;
 
 fn input(text: &str, direction: Direction) -> UnicodeBuffer {
     let mut input = UnicodeBuffer::new();
