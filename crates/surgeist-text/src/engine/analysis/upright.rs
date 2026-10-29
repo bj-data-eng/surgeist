@@ -7,7 +7,7 @@ use std::{collections::BTreeSet, ops::Range as IndexRange};
 
 use icu_properties::{
     PropertyNamesShort, PropertyParser,
-    props::{EastAsianWidth, Script},
+    props::{EastAsianWidth, Script, VerticalOrientation},
 };
 
 #[cfg(test)]
@@ -67,6 +67,67 @@ impl UprightUnit {
     }
 }
 
+/// One canonical source-first vertical arrangement partition.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum VerticalUnit {
+    Upright(UprightUnit),
+    Sideways { atoms: IndexRange<usize> },
+}
+
+impl VerticalUnit {
+    pub(crate) fn atoms(&self) -> &IndexRange<usize> {
+        match self {
+            Self::Upright(unit) => &unit.atoms,
+            Self::Sideways { atoms } => atoms,
+        }
+    }
+    pub(crate) fn upright(&self) -> Option<&UprightUnit> {
+        match self {
+            Self::Upright(unit) => Some(unit),
+            Self::Sideways { .. } => None,
+        }
+    }
+}
+
+pub(crate) fn mixed_units(
+    projection: &SourceProjection,
+    analysis: &Analysis,
+    styles: &[AnalyzedStyleRun],
+    barriers: &BTreeSet<usize>,
+    content: impl Fn(IndexRange<usize>) -> UprightContent,
+) -> Result<Vec<VerticalUnit>> {
+    let ranges = arrangement_ranges(projection, &analysis.graphemes, barriers, true)?;
+    let mut result = Vec::new();
+    result.try_reserve(ranges.len()).map_err(|_| capacity())?;
+    for atoms in ranges {
+        let first =
+            &analysis.graphemes[analysis.graphemes.partition_point(|g| g.end <= atoms.start)];
+        let properties = properties(&projection.atoms[first.clone()])?;
+        if properties.vertical_orientation == VerticalOrientation::Rotated {
+            result.push(VerticalUnit::Sideways { atoms });
+            continue;
+        }
+        let indices = style_indices(analysis, atoms.clone())?;
+        let context = match context(&properties, styles, &indices) {
+            Ok(context) => context,
+            Err(reason) => {
+                return Err(Error::new(
+                    ErrorCode::UnsupportedFeature,
+                    "upright source script context is not supported",
+                )
+                .with_detail(ErrorDetail::UprightScript {
+                    content: Box::new(content(atoms)),
+                    candidates: diagnostic_scripts(&properties.scripts)?.into_boxed_slice(),
+                    contexts: diagnostic_contexts(styles, &indices)?.into_boxed_slice(),
+                    reason,
+                }));
+            }
+        };
+        result.push(VerticalUnit::Upright(UprightUnit { atoms, context }));
+    }
+    Ok(result)
+}
+
 /// Uses actual analysis styles and caller-owned occurrence/provenance facts.
 /// `content` is evaluated only for a genuine source-script capability failure.
 pub(crate) fn units(
@@ -76,7 +137,7 @@ pub(crate) fn units(
     barriers: &BTreeSet<usize>,
     content: impl Fn(IndexRange<usize>) -> UprightContent,
 ) -> Result<Vec<UprightUnit>> {
-    let ranges = arrangement_ranges(projection, &analysis.graphemes, barriers)?;
+    let ranges = arrangement_ranges(projection, &analysis.graphemes, barriers, false)?;
     let mut result = Vec::new();
     result.try_reserve(ranges.len()).map_err(|_| capacity())?;
     for atoms in ranges {
@@ -112,6 +173,7 @@ fn arrangement_ranges(
     projection: &SourceProjection,
     graphemes: &[IndexRange<usize>],
     barriers: &BTreeSet<usize>,
+    mixed: bool,
 ) -> Result<Vec<IndexRange<usize>>> {
     let mut result: Vec<IndexRange<usize>> = Vec::new();
     result
@@ -131,7 +193,20 @@ fn arrangement_ranges(
             ))
             .next()
             .is_some();
-        let append = !hard
+        let upright =
+            !mixed || properties(atoms)?.vertical_orientation != VerticalOrientation::Rotated;
+        let prior_upright = if !mixed {
+            true
+        } else if let Some(prior) = result.last() {
+            let first = &graphemes[graphemes.partition_point(|g| g.end <= prior.start)];
+            properties(&projection.atoms[first.clone()])?.vertical_orientation
+                != VerticalOrientation::Rotated
+        } else {
+            false
+        };
+        let append = upright
+            && prior_upright
+            && !hard
             && !prior_hard
             && !blocked
             && !internal_stop

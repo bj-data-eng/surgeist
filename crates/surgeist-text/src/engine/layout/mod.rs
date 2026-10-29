@@ -13,6 +13,24 @@ use crate::{Result, TextNumericError, TextNumericPhase, ValidatedOptions};
 use super::{PreparedData, shape::ShapeContext, text_numeric_error};
 use data::PlacedLayout;
 
+/// Paint capability admission over the actual selected basis, before handles.
+pub(crate) fn qualify_selected_paint(
+    input: crate::protocol::input::PresentationInput<'_>,
+    shaped: &data::ShapedData,
+    participants: &[crate::PreparedParticipant],
+) -> Result<()> {
+    finalize::qualify_selected_paint(input, shaped, participants)
+}
+
+/// A removed source fallback retains font metadata without producing decoration.
+pub(crate) fn metric_only_decoration_demand(
+    run: &data::PreparedRun,
+    shaped: &data::ShapedData,
+    projection: &crate::projection::SourceProjection,
+) -> bool {
+    finalize::metric_only_decoration_demand(run, shaped, projection)
+}
+
 pub(crate) fn layout(
     prepared: Arc<PreparedData>,
     options: ValidatedOptions,

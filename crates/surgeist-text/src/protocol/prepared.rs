@@ -233,7 +233,7 @@ pub(crate) struct SelectedMapping {
 /// One validated selection's actual provider-independent presentation. It is
 /// built once, then shared by spacing admission and retained-face shaping.
 pub(crate) struct SelectedPresentation {
-    pub(crate) upright_units: Vec<crate::engine::analysis::upright::UprightUnit>,
+    pub(crate) vertical_units: Vec<crate::engine::analysis::upright::VerticalUnit>,
     pub(crate) source: Range,
     pub(crate) selected_relation: SelectedRelation,
     pub(crate) units: Vec<PresentationUnit>,
@@ -1926,6 +1926,21 @@ pub(crate) fn prepare_indication_fonts(
                 }
                 crate::LineOrientation::Sideways => {
                     crate::engine::upright::ShapingProfile::Sideways
+                }
+                crate::LineOrientation::Vertical
+                    if analyzed.typography == crate::AnalysisTypography::Mixed =>
+                {
+                    crate::engine::upright::ShapingProfile::Mixed {
+                        owners: &analyzed.styles,
+                        units: &upright_units,
+                        provenance: crate::engine::upright::UprightProvenance::Alternative {
+                            original: &analyzed.projection,
+                            originals: &original_atoms[side.clone()],
+                            inserted: inserted_atoms.clone(),
+                            alternative,
+                            insertion_anchor: row.insertion_anchor,
+                        },
+                    }
                 }
                 crate::LineOrientation::Vertical => {
                     crate::engine::upright::ShapingProfile::Upright {

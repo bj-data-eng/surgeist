@@ -14,6 +14,7 @@ pub surgeist_text::Alignment::Right
 pub surgeist_text::Alignment::Start
 pub enum surgeist_text::AnalysisTypography
 pub surgeist_text::AnalysisTypography::HorizontalComposition
+pub surgeist_text::AnalysisTypography::Mixed
 pub surgeist_text::AnalysisTypography::Upright
 pub surgeist_text::AnalysisTypography::Upright::computed_direction: surgeist_text::ParagraphBaseDirection
 pub enum surgeist_text::AtomicLineAllocation

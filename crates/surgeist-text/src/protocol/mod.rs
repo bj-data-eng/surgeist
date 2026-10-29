@@ -93,7 +93,8 @@ impl PreparationOptions {
         })
     }
     /// Requests a physical preparation basis. Matching issued upright analysis
-    /// admits the native unrotated Vertical profile; Horizontal and clockwise
+    /// admits the native Vertical profile; Mixed retains ordinary bidi with
+    /// source-selected per-run axes. Horizontal and clockwise
     /// Sideways retain horizontal composition. Unsupported inputs refuse atomically.
     #[must_use]
     pub const fn with_orientation(mut self, orientation: LineOrientation) -> Self {
@@ -103,7 +104,7 @@ impl PreparationOptions {
     /// Requests a used named font reference for the complete preparation.
     ///
     /// Alphabetic is supported for Horizontal and clockwise Sideways; Central
-    /// is supported for native Upright. Unsupported combinations refuse during
+    /// is supported for native Upright and Mixed. Unsupported combinations refuse during
     /// preparation. Without a request, H/Sideways use raw font-design zero and
     /// native Upright uses its existing Central reference.
     #[must_use]
@@ -273,7 +274,8 @@ pub enum PreparedParticipant {
 pub enum LineOrientation {
     /// Horizontal shaping and physical x-right/y-down placement.
     Horizontal,
-    /// Native unrotated upright typography from matching Upright analysis.
+    /// Vertical line framing from matching Upright or Mixed analysis.
+    /// Actual run outline axes are retained separately.
     Vertical,
     /// Horizontal composition physically rotated 90 degrees clockwise.
     /// This does not denote CSS sideways-lr or mixed/upright typography.

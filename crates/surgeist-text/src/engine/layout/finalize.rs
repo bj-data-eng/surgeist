@@ -86,6 +86,90 @@ pub(super) fn refinalize(line: &FinalizedLine, amounts: &[f64]) -> Result<Finali
     execute(Arc::clone(&line.selected), amounts)
 }
 
+/// Row presence depends on actual glyph output and edge disposition, not on
+/// allocated advances. Keep this predicate shared with the paint executor.
+fn paints_cluster(cluster: &PreparedCluster, disposition: SpacingSlotDisposition) -> bool {
+    disposition != SpacingSlotDisposition::DiscardedAtLineEdge
+        && cluster.whitespace != Whitespace::Newline
+        && !cluster.glyphs.is_empty()
+}
+
+fn metric_only_run<'a>(
+    shaped: &'a ShapedData,
+    participants: &[crate::PreparedParticipant],
+    has_paint: bool,
+) -> Option<&'a PreparedRun> {
+    if has_paint
+        || !((shaped.empty_run.is_some()
+            && !participants
+                .iter()
+                .any(|participant| matches!(participant, crate::PreparedParticipant::Atomic(_))))
+            || shaped
+                .items
+                .iter()
+                .any(|item| matches!(item, ShapedItem::TextCluster(_))))
+    {
+        return None;
+    }
+    shaped.empty_run.as_ref().or_else(|| shaped.runs.first())
+}
+
+pub(super) fn metric_only_decoration_demand(
+    run: &PreparedRun,
+    shaped: &ShapedData,
+    projection: &crate::projection::SourceProjection,
+) -> bool {
+    // A zero-atom font operation is genuine glyph-free demand. For a source
+    // fallback, only complete exclusions in this actual presentation establish
+    // bookkeeping; an eligible/Normal input keeps its demand at any advance.
+    if run.atoms.is_empty() || projection.atoms.get(run.atoms.clone()).is_none() {
+        return true;
+    }
+    run.atoms
+        .clone()
+        .any(|atom| !shaped.character_exclusions.contains_key(&atom))
+}
+
+pub(super) fn qualify_selected_paint(
+    input: PresentationInput<'_>,
+    shaped: &ShapedData,
+    participants: &[crate::PreparedParticipant],
+) -> Result<()> {
+    if input.prepared.analyzed.typography != crate::AnalysisTypography::Mixed {
+        return Ok(());
+    }
+    let dispositions = edge_dispositions(input, shaped)?;
+    let has_paint = shaped.items.iter().any(|item| match *item {
+        ShapedItem::TextCluster(index) => {
+            paints_cluster(&shaped.clusters[index], dispositions[index])
+        }
+        _ => false,
+    });
+    if let Some(run) = metric_only_run(shaped, participants, has_paint)
+        && run.metrics.horizontal().is_none()
+        && metric_only_decoration_demand(run, shaped, &input.presentation.projection)
+    {
+        let owner = if input.prepared.default_style_index == Some(run.style) {
+            crate::TextStyleOwner::Paragraph
+        } else {
+            let captured = input
+                .prepared
+                .analyzed
+                .styles
+                .get(run.style)
+                .ok_or_else(|| invalid("metric-only paint has no captured style"))?;
+            super::super::upright::style_owner(captured.owner)
+        };
+        let style = input
+            .prepared
+            .styles
+            .get(run.style)
+            .ok_or_else(|| invalid("metric-only paint has no resolved style"))?;
+        super::super::upright::admit_resolved_decoration(&style.style, owner)?;
+    }
+    Ok(())
+}
+
 fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine> {
     let selection = &selected.request.context;
     let atomics = atomic_allocations(&selected)?;
@@ -519,7 +603,7 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
                     -component_shift,
                 )?;
                 let mut glyph_pen = 0.0;
-                if !discarded && cluster.whitespace != Whitespace::Newline {
+                if paints_cluster(cluster, dispositions[cluster_index]) {
                     for glyph in &shaped.glyphs[cluster.glyphs.clone()] {
                         let continue_run = last_run.filter(|&run_index| {
                             let run: &FinalizedRun = &data.runs[run_index];
@@ -656,43 +740,34 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
     }
     // Zero-glyph controls and actual empty lines still retain a real font/style
     // row, rather than publishing a fabricated source space or fallback range.
-    if data.runs.is_empty()
-        && ((shaped.empty_run.is_some()
-            && !selected.request.participants.iter().any(|participant| {
-                matches!(participant, crate::protocol::PreparedParticipant::Atomic(_))
-            }))
-            || shaped
-                .items
-                .iter()
-                .any(|item| matches!(item, ShapedItem::TextCluster(_))))
-    {
-        let run = shaped.empty_run.as_ref().or_else(|| shaped.runs.first());
-        if let Some(run) = run {
-            let source = selected.presentation.source;
-            let run_index =
-                if let Some(index) = shaped.runs.iter().position(|r| std::ptr::eq(r, run)) {
-                    index
-                } else {
-                    let run = run.clone();
-                    shaped.runs.push(run);
-                    shaped.runs.len() - 1
-                };
-            data.runs.push(FinalizedRun {
-                run: run_index,
-                style: shaped.runs[run_index].style,
-                level: base,
-                source,
-                glyphs: 0..0,
-                x: metrics.offset,
-                y: add(
-                    "empty paint font origin",
-                    TextNumericPhase::Finalization,
-                    metrics.baseline,
-                    shaped.runs[run_index].metrics.font_origin_offset(),
-                )?,
-                advance: 0.0,
-            });
-        }
+    if let Some(run) = metric_only_run(
+        &shaped,
+        &selected.request.participants,
+        !data.runs.is_empty(),
+    ) {
+        let source = selected.presentation.source;
+        let run_index = if let Some(index) = shaped.runs.iter().position(|r| std::ptr::eq(r, run)) {
+            index
+        } else {
+            let run = run.clone();
+            shaped.runs.push(run);
+            shaped.runs.len() - 1
+        };
+        data.runs.push(FinalizedRun {
+            run: run_index,
+            style: shaped.runs[run_index].style,
+            level: base,
+            source,
+            glyphs: 0..0,
+            x: metrics.offset,
+            y: add(
+                "empty paint font origin",
+                TextNumericPhase::Finalization,
+                metrics.baseline,
+                shaped.runs[run_index].metrics.font_origin_offset(),
+            )?,
+            advance: 0.0,
+        });
     }
     install_out_of_flow(&selected, &mut data)?;
     data.font_runs = shaped.runs;
@@ -1779,6 +1854,19 @@ fn collapse_edges(
     selected: PresentationInput<'_>,
     shaped: &mut ShapedData,
 ) -> Result<Vec<SpacingSlotDisposition>> {
+    let dispositions = edge_dispositions(selected, shaped)?;
+    for (index, disposition) in dispositions.iter().enumerate() {
+        if *disposition == SpacingSlotDisposition::DiscardedAtLineEdge {
+            shaped.clusters[index].advance = 0.0;
+        }
+    }
+    Ok(dispositions)
+}
+
+fn edge_dispositions(
+    selected: PresentationInput<'_>,
+    shaped: &ShapedData,
+) -> Result<Vec<SpacingSlotDisposition>> {
     let mut projected = Vec::new();
     let mut clusters = Vec::new();
     for item in &shaped.items {
@@ -1840,7 +1928,6 @@ fn collapse_edges(
             && edges.is_discarded(ordinal) == Some(true)
         {
             dispositions[index] = SpacingSlotDisposition::DiscardedAtLineEdge;
-            shaped.clusters[index].advance = 0.0;
         }
     }
     Ok(dispositions)

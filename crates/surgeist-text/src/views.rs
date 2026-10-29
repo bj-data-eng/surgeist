@@ -219,6 +219,16 @@ impl GlyphPlacement {
 }
 
 fn run_decorations(run: &RunView<'_>) -> [Option<DecorationRun>; 2] {
+    if run.run.glyphs.is_empty()
+        && run.layout.inner.prepared.analyzed.typography == crate::AnalysisTypography::Mixed
+        && !crate::engine::layout::metric_only_decoration_demand(
+            run.shaped,
+            &run.placed.finalized.selected.basis.shaped,
+            &run.placed.finalized.selected.presentation.projection,
+        )
+    {
+        return [None, None];
+    }
     let style = &run.layout.inner.prepared.styles[run.run.style].style;
     let metrics = run.shaped.metrics;
     [

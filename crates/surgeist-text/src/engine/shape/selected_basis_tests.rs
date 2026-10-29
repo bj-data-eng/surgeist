@@ -1240,3 +1240,6 @@ fn conditional_residual_demand_masks_optional_liga_before_reconciled_boundary_sh
 
 #[path = "selected_basis_tests/conditional_envelopes.rs"]
 mod conditional_envelopes;
+
+#[path = "mixed_basis_tests.rs"]
+mod mixed_basis_tests;

@@ -159,13 +159,17 @@ pub(crate) fn prepare(
                 catalogue.collection_mut(),
                 &block,
                 options.scale(),
-                options.orientation(),
             )?;
             let block_styles = [block_style];
             let input = crate::engine::ShapingInput {
                 characters: None,
                 separator_geometry: false,
-                profile: crate::engine::upright::original_profile(options.orientation(), &[]),
+                profile: crate::engine::upright::original_profile(
+                    options.orientation(),
+                    &[],
+                    analyzed.typography,
+                    &analyzed.styles,
+                ),
                 baseline_reference: options.resolved_baseline_reference(),
                 projection: &analyzed.projection,
                 analysis: &analyzed.analysis,
@@ -199,7 +203,12 @@ pub(crate) fn prepare(
             let input = crate::engine::ShapingInput {
                 characters: None,
                 separator_geometry: false,
-                profile: crate::engine::upright::original_profile(options.orientation(), &[]),
+                profile: crate::engine::upright::original_profile(
+                    options.orientation(),
+                    &[],
+                    analyzed.typography,
+                    &analyzed.styles,
+                ),
                 baseline_reference: options.resolved_baseline_reference(),
                 projection: &analyzed.projection,
                 analysis: &analyzed.analysis,

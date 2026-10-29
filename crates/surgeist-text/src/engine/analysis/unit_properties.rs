@@ -5,6 +5,7 @@ use icu_properties::{
     props::{
         DefaultIgnorableCodePoint, EastAsianWidth, ExtendedPictographic, GeneralCategory,
         GeneralCategoryGroup, GraphemeClusterBreak, IndicConjunctBreak, Script,
+        VerticalOrientation,
     },
     script::ScriptWithExtensions,
 };
@@ -125,7 +126,12 @@ pub(super) fn is_typographic_letter(atoms: &[OriginalAtom]) -> bool {
 pub(in crate::engine) struct Properties {
     pub(in crate::engine) category: GeneralCategory,
     pub(super) width: EastAsianWidth,
+    pub(in crate::engine) vertical_orientation: VerticalOrientation,
     pub(in crate::engine) scripts: Vec<Script>,
+}
+
+pub(in crate::engine) fn vertical_orientation(cp: u32) -> VerticalOrientation {
+    CodePointMapData::<VerticalOrientation>::new().get32(cp)
 }
 
 pub(super) fn scalar_properties(cp: u32) -> Result<Properties> {
@@ -142,6 +148,7 @@ pub(super) fn scalar_properties(cp: u32) -> Result<Properties> {
     Ok(Properties {
         category: CodePointMapData::<GeneralCategory>::new().get32(cp),
         width: CodePointMapData::<EastAsianWidth>::new().get32(cp),
+        vertical_orientation: vertical_orientation(cp),
         scripts,
     })
 }

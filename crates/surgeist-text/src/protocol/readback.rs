@@ -1563,7 +1563,8 @@ pub struct FinalizedRunView<'a> {
 impl FinalizedRunView<'_> {
     /// Actual outline axes retained by this run's shaping operation.
     ///
-    /// Horizontal and Vertical outlines are unrotated; Sideways is clockwise.
+    /// Horizontal and upright outlines are unrotated; sideways and Mixed R
+    /// outlines are clockwise, independently of the containing Vertical frame.
     /// The finalized pen follows the inline axis separately from raw offsets.
     #[must_use]
     pub fn glyph_basis(&self) -> crate::GlyphBasis {
