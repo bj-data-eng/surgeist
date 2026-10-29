@@ -433,10 +433,9 @@ pub(super) fn consume_declaration<'i, P>(
     // Step 8.
     let value_from = stream.site_at(value_start);
     let value_to = stream.site_at(value_end);
-    let original_text;
-    if name.starts_with("--") {
+    let original_text = if name.starts_with("--") {
         // A custom property keeps the original text of its value.
-        original_text = stream.text_between(value_from, value_to);
+        stream.text_between(value_from, value_to)
     } else {
         // A {}-block is only allowed as the entire value of a non-custom
         // property.
@@ -462,12 +461,12 @@ pub(super) fn consume_declaration<'i, P>(
                 Token::OpenCurly,
             ));
         }
-        original_text = if name.eq_ignore_ascii_case("unicode-range") {
+        if name.eq_ignore_ascii_case("unicode-range") {
             stream.text_between(value_from, value_to)
         } else {
             None
-        };
-    }
+        }
+    };
 
     stream.seek(list_end);
     Ok(Declaration {
