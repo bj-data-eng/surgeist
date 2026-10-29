@@ -27,7 +27,7 @@ use super::{
     convert,
     layout::data::{
         ClusterContent, GlyphData, HorizontalRunMetrics, PreparedCluster, PreparedRun,
-        RunMetricBasis, RunMetrics, ShapedData, ShapedItem, Whitespace,
+        ProviderGroup, RunMetricBasis, RunMetrics, ShapedData, ShapedItem, Whitespace,
     },
     lru_cache::LruCache,
     resolve::ResolvedStyle,
@@ -173,6 +173,7 @@ pub(crate) fn assign_fonts(
     scopes: &[crate::protocol::prepared::presentation::DirectionalScope],
 ) -> Result<Vec<crate::protocol::prepared::RetainedAssignment>> {
     let input = ShapingInput {
+        separator_geometry: false,
         baseline_reference: prepared.options.resolved_baseline_reference(),
         projection,
         analysis,
@@ -630,6 +631,7 @@ pub(crate) fn default_metrics(
 pub(crate) fn finalize(
     selected: crate::protocol::input::PresentationInput<'_>,
     scratch: &mut ShapeContext,
+    spacing: crate::SpacingPolicy,
 ) -> Result<(
     ShapedData,
     std::sync::Arc<crate::protocol::prepared::SelectedMapping>,
@@ -637,7 +639,19 @@ pub(crate) fn finalize(
     use crate::protocol::prepared::PresentationUnitKind;
     let prepared = &selected.prepared;
     let presentation = &selected.presentation;
+    let separator_feedback = match spacing {
+        crate::SpacingPolicy::None => false,
+        crate::SpacingPolicy::Spaces => presentation.units.iter().any(|unit| unit.eligible_space),
+        crate::SpacingPolicy::InterWord => !super::spacing::candidates(
+            &presentation.projection,
+            &presentation.analysis,
+            &selected.boundaries.presentation,
+        )?
+        .is_empty(),
+    };
     let input = ShapingInput {
+        separator_geometry: separator_feedback
+            || super::spacing::authored_demand(&presentation.analysis, &prepared.styles),
         baseline_reference: prepared.options.resolved_baseline_reference(),
         projection: &presentation.projection,
         analysis: &presentation.analysis,
@@ -842,6 +856,7 @@ pub(crate) fn finalize(
         }
         output.clusters.sort_by_key(|cluster| cluster.atoms.start);
     }
+    super::spacing::authored_selected(selected, &mut output, separator_feedback)?;
     // Each real atom receives one extracted cluster; ligature components lend
     // their actual shared glyph association rather than duplicating glyphs.
     let mut clusters = output.clusters.iter().enumerate().peekable();
@@ -1801,6 +1816,17 @@ fn extract_output(
             });
         }
         let glyphs = first_glyph..output.glyphs.len();
+        let provider_receipt = input
+            .separator_geometry
+            .then_some(output.provider_groups.len());
+        if input.separator_geometry {
+            output.provider_groups.push(ProviderGroup {
+                run: run_index,
+                atoms: atom_start..atom_end,
+                glyphs: glyphs.clone(),
+                advance,
+            });
+        }
         let components = end - start;
         let eligible_components = (start..end).filter(|local| !zero_input(*local)).count();
         let last_eligible = (start..end).rfind(|local| !zero_input(*local));
@@ -1832,20 +1858,15 @@ fn extract_output(
             distributed_base += base_advance;
             let style = &input.styles[style_index].style;
             let letter_spacing = if excluded { 0.0 } else { style.letter_spacing };
-            let word_spacing = if !excluded && whitespace.is_space_or_nbsp() {
-                style.word_spacing
-            } else {
-                0.0
-            };
             let with_letter_spacing = logical_add("letter spacing", base_advance, letter_spacing)?;
-            let cluster_advance = logical_add("word spacing", with_letter_spacing, word_spacing)?;
             output.clusters.push(PreparedCluster {
                 line_height: component_line_height(style, &run.metrics, normal_extent)?,
                 shaped_advance: base_advance,
-                logical_adjustments: [letter_spacing, word_spacing, 0.0],
+                logical_adjustments: [letter_spacing, 0.0, 0.0],
                 source: original.source,
                 atoms: atom..atom + 1,
                 provider_group: atom_start..atom_end,
+                provider_receipt,
                 glyphs: if atom == atom_start {
                     glyphs.clone()
                 } else {
@@ -1854,7 +1875,7 @@ fn extract_output(
                 content: ClusterContent::Provider(run_index),
                 style: style_index,
                 level: request.level,
-                advance: cluster_advance,
+                advance: with_letter_spacing,
                 boundary: info.boundary,
                 whitespace,
                 is_whitespace: whitespace != Whitespace::None,
@@ -1930,6 +1951,7 @@ fn append_tab(input: &ShapingInput<'_>, atom: usize, font: Option<usize>, output
         source: original.source,
         atoms: atom..atom + 1,
         provider_group: atom..atom + 1,
+        provider_receipt: None,
         glyphs: output.glyphs.len()..output.glyphs.len(),
         content: ClusterContent::CssTab(font),
         style,
@@ -2107,5 +2129,10 @@ pub(crate) fn measure_character(
             advance,
         ));
     }
+    let advance = if ch == ' ' {
+        super::spacing::hypothetical_space(advance, style.letter_spacing, style.word_spacing)?
+    } else {
+        advance
+    };
     Ok(Some((advance, run)))
 }

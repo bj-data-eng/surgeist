@@ -1365,8 +1365,40 @@ fn source_less_breaks_and_control_alternatives_with_incidental_origins_do_not_ac
     near(rectangles(&q).iter().map(|r| r.size.width).sum(), 20.0);
 }
 
+fn shared_ccmp_refuses_material_authored_spacing(value: ParagraphInput, bytes: Vec<u8>) {
+    let analyzed = crate::test_wrapping::bind_missing(
+        &AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap(),
+        crate::Wrap::Word,
+    );
+    let error = system(bytes)
+        .prepare(&analyzed, PreparationOptions::default())
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::LayoutFailed);
+    let Some(ErrorDetail::UnsupportedWordSpacing {
+        stage,
+        operation,
+        pieces,
+        provider_atoms,
+    }) = error.detail()
+    else {
+        panic!("expected actual shared ccmp geometry refusal: {error:?}")
+    };
+    assert_eq!(*stage, WordSpacingStage::Preparation);
+    assert_eq!(*operation, WordSpacingOperation::Authored);
+    assert_eq!(
+        pieces.as_ref(),
+        [WordSpacingPiece::Source {
+            origin: 0,
+            local: Range::new(1, 2),
+            aggregate: Range::new(1, 2),
+        }]
+    );
+    assert_eq!(provider_atoms, &(0..2));
+}
+
 #[test]
-fn range_egc_shares_keep_owned_spacing_and_rtl_physical_sides() {
+fn range_egc_shares_keep_owned_letter_spacing_and_rtl_physical_sides() {
     let fixtures = [
         (
             "A A",
@@ -1394,17 +1426,35 @@ fn range_egc_shares_keep_owned_spacing_and_rtl_physical_sides() {
             own_style.letter_spacing = 1.0;
             own_style.word_spacing = 3.0;
         }
-        let p = prepare(
-            input(
-                Source::new(text),
-                own_style,
-                &[0, text.encode_utf16().count()],
-                direction,
-            ),
-            crate::shaping_test_fonts::range_ligature_ahem(&components, &mappings),
-        );
+        let bytes = crate::shaping_test_fonts::range_ligature_ahem(&components, &mappings);
+        let source = Source::new(text);
+        let cuts = [0, text.encode_utf16().count()];
+        if spaced {
+            shared_ccmp_refuses_material_authored_spacing(
+                input(source.clone(), own_style.clone(), &cuts, direction),
+                bytes.clone(),
+            );
+            // Preserve the actual ccmp and positive per-EGC Range partition.
+            // Its equal raw shares cannot qualify independent word spacing.
+            own_style.word_spacing = 0.0;
+        }
+        let p = prepare(input(source.clone(), own_style, &cuts, direction), bytes);
         let o = p.origin_views().next().unwrap().handle();
         let l = place(p, 0.0, 30.0);
+        assert_eq!(l.source(), &source);
+        assert_eq!(
+            l.run_views()
+                .flat_map(|run| run
+                    .glyphs()
+                    .map(|g| (g.id(), g.advance()))
+                    .collect::<Vec<_>>())
+                .collect::<Vec<_>>(),
+            if spaced {
+                vec![(58, 12.5), (35, 12.5)]
+            } else {
+                vec![(58, 12.5)]
+            }
+        );
         let first_end = if text == "A\u{301}A" { 2 } else { 1 };
         let a = l.source_range_fragments(&o, Range::new(0, 1)).unwrap();
         let b = l
@@ -1416,7 +1466,7 @@ fn range_egc_shares_keep_owned_spacing_and_rtl_physical_sides() {
         let ra = ua.pieces().next().unwrap().rect();
         let rb = ub.pieces().next().unwrap().rect();
         near(ra.size.width, if spaced { 7.25 } else { 6.25 });
-        near(rb.size.width, if spaced { 10.25 } else { 6.25 });
+        near(rb.size.width, if spaced { 7.25 } else { 6.25 });
         if direction == ParagraphBaseDirection::RightToLeft {
             assert!(ra.origin.x > rb.origin.x);
         } else {
@@ -1470,18 +1520,30 @@ fn nonmonotone_provider_partition_is_a_local_capability_refusal() {
 }
 
 #[test]
-fn optional_ligature_keeps_selected_space_allocation_on_its_own_range_unit() {
+fn ccmp_ligature_keeps_selected_space_allocation_on_its_own_range_unit() {
     let mut own_style = style(12.5);
     own_style.letter_spacing = 1.0;
     own_style.word_spacing = 3.0;
+    let bytes = crate::shaping_test_fonts::range_ligature_ahem(&[35, 3], &[(0x41, 35), (0x20, 3)]);
+    let source = Source::new("A A");
+    shared_ccmp_refuses_material_authored_spacing(
+        input(
+            source.clone(),
+            own_style.clone(),
+            &[0, 3],
+            ParagraphBaseDirection::LeftToRight,
+        ),
+        bytes.clone(),
+    );
+    own_style.word_spacing = 0.0;
     let p = prepare(
         input(
-            Source::new("A A"),
+            source.clone(),
             own_style,
             &[0, 3],
             ParagraphBaseDirection::LeftToRight,
         ),
-        crate::shaping_test_fonts::range_ligature_ahem(&[35, 3], &[(0x41, 35), (0x20, 3)]),
+        bytes,
     );
     let o = p.origin_views().next().unwrap().handle();
     let end = p
@@ -1520,9 +1582,21 @@ fn optional_ligature_keeps_selected_space_allocation_on_its_own_range_unit() {
         })],
     })
     .unwrap();
+    assert_eq!(l.source(), &source);
+    assert_eq!(
+        l.run_views()
+            .flat_map(|run| run
+                .glyphs()
+                .map(|g| (g.id(), g.advance()))
+                .collect::<Vec<_>>())
+            .collect::<Vec<_>>(),
+        [(58, 12.5), (35, 12.5)]
+    );
     let a = l.source_range_fragments(&o, Range::new(0, 1)).unwrap();
     let space = l.source_range_fragments(&o, Range::new(1, 2)).unwrap();
     near(rectangles(&a)[0].size.width, 7.25);
-    near(rectangles(&space)[0].size.width, 14.25);
+    // Raw shared12.5 gives6.25 per EGC; letter1 stays on each owner.
+    // The independent native Spaces allocation4 stays wholly on SPACE.
+    near(rectangles(&space)[0].size.width, 11.25);
     near(rectangles(&space)[0].origin.x, 7.25);
 }

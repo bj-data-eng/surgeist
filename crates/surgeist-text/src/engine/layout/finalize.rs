@@ -37,7 +37,7 @@ pub(super) fn shape_and_collapse(
     Arc<crate::protocol::prepared::SelectedMapping>,
     Vec<SpacingSlotDisposition>,
 )> {
-    let (mut shaped, mapping) = shape::finalize(input, scratch)?;
+    let (mut shaped, mapping) = shape::finalize(input, scratch, crate::SpacingPolicy::None)?;
     validate_rows(input, &shaped)?;
     let dispositions = collapse_edges(input, &mut shaped)?;
     Ok((shaped, mapping, dispositions))
@@ -48,11 +48,31 @@ pub(super) fn finalize(
     amounts: &[f64],
     scratch: &mut ShapeContext,
 ) -> Result<FinalizedLine> {
+    let (shaped, mapping) = shape::finalize(
+        selected.presentation_input(),
+        scratch,
+        selected.request.context.spacing,
+    )?;
+    validate_rows(selected.presentation_input(), &shaped)?;
+    let basis = Arc::new(super::super::SelectedShape { shaped, mapping });
+    execute(selected, basis, amounts)
+}
+
+pub(super) fn refinalize(line: &FinalizedLine, amounts: &[f64]) -> Result<FinalizedLine> {
+    execute(Arc::clone(&line.selected), Arc::clone(&line.shape), amounts)
+}
+
+fn execute(
+    selected: Arc<SelectedData>,
+    basis: Arc<super::super::SelectedShape>,
+    amounts: &[f64],
+) -> Result<FinalizedLine> {
     let selection = &selected.request.context;
     let atomics = atomic_allocations(&selected)?;
     let controls = control_allocations(&selected)?;
-    let (mut shaped, mapping, mut dispositions) =
-        shape_and_collapse(selected.presentation_input(), scratch)?;
+    let mut shaped = basis.shaped.clone();
+    validate_rows(selected.presentation_input(), &shaped)?;
+    let mut dispositions = collapse_edges(selected.presentation_input(), &mut shaped)?;
     let levels = line_levels(&selected, &shaped)?;
     let base = selected.presentation.analysis.base_level;
     let ordered = crate::protocol::prepared::presentation::order_items(&selected, &shaped)?;
@@ -67,9 +87,16 @@ pub(super) fn finalize(
     let order = SuppliedLine::new(&participants)
         .composed_order(&ordered)
         .ok_or_else(|| invalid("composed line order is not a complete permutation"))?;
+    let mut word_halves =
+        super::super::spacing::visual_authored(&mut shaped, &order, &dispositions)?;
     resolve_tabs(&selected, &mut shaped, &atomics, &order)?;
     let natural = phase_two::natural(&selected, &shaped, &atomics, &order, &dispositions)?;
-    let mut spacing_slots = apply_spacing(&selected, &mut shaped, amounts, &dispositions)?;
+    let responses = phase_two::spacing_responses(&selected, &shaped, &order, &natural)?;
+    let mut spacing_slots =
+        apply_spacing(&selected, &mut shaped, amounts, &dispositions, &responses)?;
+    if selection.spacing == crate::SpacingPolicy::InterWord {
+        word_halves = super::super::spacing::visual_authored(&mut shaped, &order, &dispositions)?;
+    }
     if amounts.iter().any(|amount| *amount != 0.0) {
         resolve_tabs(&selected, &mut shaped, &atomics, &order)?;
     }
@@ -92,6 +119,14 @@ pub(super) fn finalize(
     );
     for row in &mut spacing_slots {
         row.disposition = dispositions[row.cluster];
+        row.advance = row.members.iter().try_fold(0.0, |value, &index| {
+            add(
+                "spacing unit advance",
+                TextNumericPhase::Finalization,
+                value,
+                shaped.clusters[index].advance,
+            )
+        })?;
     }
     if selected.metric_policy != LineMetricPolicy::Native {
         include_control_struts(
@@ -128,6 +163,10 @@ pub(super) fn finalize(
     let mut data = FinalizedLineData {
         measurements: Some(measurements),
         spacing_slots,
+        spacing_amounts: amounts
+            .iter()
+            .map(|&amount| if amount == 0.0 { 0.0 } else { amount })
+            .collect(),
         prefix,
         clusters: shaped
             .clusters
@@ -319,6 +358,19 @@ pub(super) fn finalize(
                 }
                 let discarded =
                     dispositions[cluster_index] == SpacingSlotDisposition::DiscardedAtLineEdge;
+                let word_half = word_halves[cluster_index].half;
+                if !discarded && word_halves[cluster_index].unit_start && word_half != 0.0 {
+                    add(
+                        "word spacing unit half",
+                        TextNumericPhase::Finalization,
+                        cluster_x,
+                        word_half,
+                    )?;
+                    data.word_anchors.push(WordSpacingAnchor {
+                        base: Point::new(cluster_x, metrics.baseline),
+                        half: word_half,
+                    });
+                }
                 // RTL ligature/component shares are visited before their logical
                 // start. The one actual glyph belongs at the group's visual
                 // origin, not after those already-positioned component shares.
@@ -410,7 +462,14 @@ pub(super) fn finalize(
                         )?;
                         data.glyphs.push(FinalizedGlyph {
                             glyph: *glyph,
-                            pen: actual_pen,
+                            pen: add(
+                                "word spacing glyph half",
+                                TextNumericPhase::Finalization,
+                                actual_pen,
+                                word_half,
+                            )?,
+                            pen_base: actual_pen,
+                            word_half,
                         });
                         run.glyphs.end = data.glyphs.len();
                         run.source.start = run.source.start.min(glyph.source.start);
@@ -707,7 +766,7 @@ pub(super) fn finalize(
     data.metrics.occupied_end = occupied_end;
     Ok(FinalizedLine {
         selected,
-        mapping,
+        shape: basis,
         data,
     })
 }
@@ -1700,62 +1759,124 @@ fn apply_spacing(
     shaped: &mut ShapedData,
     amounts: &[f64],
     dispositions: &[SpacingSlotDisposition],
+    responses: &[(crate::SpacingStretchability, usize)],
 ) -> Result<Vec<FinalizedSpacingSlot>> {
     if amounts.len() != selected.spacing_slots.len() {
         return Err(invalid("spacing amounts do not cover selected slots"));
     }
-    let atoms = &selected.presentation.projection.atoms;
-    let mut targets = BTreeMap::new();
+    let mut result = Vec::new();
+    let mut cluster_at = vec![None; selected.presentation.projection.atoms.len()];
     for (index, cluster) in shaped.clusters.iter().enumerate() {
-        let range = atoms
-            .get(cluster.atoms.clone())
-            .ok_or_else(|| invalid("spacing cluster has no selected atoms"))?;
-        if let (Some(first), Some(last)) = (range.first(), range.last())
-            && targets
-                .insert((first.presentation.start, last.presentation.end), index)
-                .is_some()
-        {
-            return Err(invalid(
-                "multiple shaped clusters claim one presentation target",
-            ));
+        for atom in cluster.atoms.clone() {
+            cluster_at[atom] = Some(index);
         }
     }
-    let mut spacing_slots = Vec::with_capacity(selected.spacing_slots.len());
+    let units: BTreeMap<_, _> = shaped
+        .word_spacing
+        .iter()
+        .enumerate()
+        .map(|(index, unit)| (unit.base, index))
+        .collect();
     for (slot, (row, &amount)) in selected.spacing_slots.iter().zip(amounts).enumerate() {
         finite(
             "selected spacing amount",
             TextNumericPhase::Finalization,
             amount,
         )?;
-        let Some(&index) = targets.get(&(row.presentation.start, row.presentation.end)) else {
-            return Err(protocol_error(ProtocolError::IneligibleSpacingSlot {
-                slot,
-            }));
+        let mut members = Vec::new();
+        for atom in row.atoms.clone() {
+            if let Some(index) = cluster_at[atom]
+                && members.last() != Some(&index)
+            {
+                members.push(index);
+            }
+        }
+        let index = members
+            .iter()
+            .copied()
+            .find(|&index| shaped.clusters[index].atoms.contains(&row.base))
+            .ok_or_else(|| protocol_error(ProtocolError::IneligibleSpacingSlot { slot }))?;
+        let unit = units.get(&row.base).copied();
+        let (geometry, shared) = if let Some(unit) =
+            unit.filter(|&index| shaped.word_spacing[index].atoms == row.atoms)
+        {
+            let unit = &shaped.word_spacing[unit];
+            (unit.geometry, unit.shared.clone())
+        } else {
+            super::super::spacing::geometry(shaped, &members, row.atoms.clone())?
         };
+        let authored = unit.map_or(0.0, |unit| shaped.word_spacing[unit].authored);
         if dispositions[index] == SpacingSlotDisposition::DiscardedAtLineEdge && amount != 0.0 {
             return Err(protocol_error(ProtocolError::IneligibleSpacingSlot {
                 slot,
             }));
         }
-        let cluster = &mut shaped.clusters[index];
-        if !cluster.whitespace.is_space_or_nbsp() {
-            return Err(protocol_error(ProtocolError::IneligibleSpacingSlot {
-                slot,
-            }));
+        match selected.request.context.spacing {
+            crate::SpacingPolicy::Spaces => {
+                let cluster = &mut shaped.clusters[index];
+                if !cluster.whitespace.is_space_or_nbsp() {
+                    return Err(protocol_error(ProtocolError::IneligibleSpacingSlot {
+                        slot,
+                    }));
+                }
+                cluster.advance = add(
+                    "selected spacing amount",
+                    TextNumericPhase::Finalization,
+                    cluster.advance,
+                    amount,
+                )?;
+                cluster.logical_adjustments[2] = amount;
+            }
+            crate::SpacingPolicy::InterWord => {
+                if amount < 0.0 {
+                    return Err(super::super::text_numeric_error(
+                        "selected spacing amount",
+                        TextNumericPhase::Finalization,
+                        TextNumericError::OutOfRange,
+                        amount,
+                    ));
+                }
+                if amount != 0.0 {
+                    if let Some(provider_atoms) = shared {
+                        return Err(super::super::spacing::unsupported(
+                            crate::WordSpacingStage::SelectedShaping,
+                            crate::WordSpacingOperation::InterWordAllocation,
+                            row.pieces.iter().map(|piece| piece.owner).collect(),
+                            provider_atoms,
+                        ));
+                    }
+                    if matches!(
+                        geometry,
+                        crate::SpacingSlotGeometry::Independent {
+                            intrinsic_advance: 0.0
+                        }
+                    ) {
+                        return Err(protocol_error(ProtocolError::IneligibleSpacingSlot {
+                            slot,
+                        }));
+                    }
+                }
+                shaped.word_spacing[unit
+                    .ok_or_else(|| invalid("separator candidate has no actual unit geometry"))?]
+                .allocation = amount;
+            }
+            crate::SpacingPolicy::None => {
+                return Err(invalid("None has no selected spacing slots"));
+            }
         }
-        cluster.advance = add(
-            "selected spacing amount",
-            TextNumericPhase::Finalization,
-            cluster.advance,
-            amount,
-        )?;
-        cluster.logical_adjustments[2] = amount;
-        spacing_slots.push(FinalizedSpacingSlot {
+        result.push(FinalizedSpacingSlot {
             cluster: index,
+            members,
             disposition: dispositions[index],
+            geometry,
+            stretchability: responses[index].0,
+            traversal_order: responses[index].1,
+            authored,
+            allocation: amount,
+            advance: 0.0,
         });
     }
-    Ok(spacing_slots)
+    Ok(result)
 }
 
 /// The standalone policy produces the same explicit logical allocations as a
@@ -3241,6 +3362,7 @@ mod tests {
         let (shaped, _) = shape::finalize(
             first_selected.inner.presentation_input(),
             &mut ShapeContext::default(),
+            first_selected.inner.request.context.spacing,
         )
         .unwrap();
         let pdi_item = shaped.items.iter().position(|item| matches!(item,

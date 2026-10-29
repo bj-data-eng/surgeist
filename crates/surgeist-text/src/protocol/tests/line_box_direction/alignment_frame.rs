@@ -129,7 +129,17 @@ fn justification_spends_only_the_real_reduced_capacity_on_authenticated_space_sl
                 assert_eq!(unexpanded.measurements().alignment().advance(), natural);
                 let slots: Vec<_> = selected.spacing_slots().collect();
                 assert_eq!(slots.len(), 1);
-                assert_eq!(slots[0].source_range(), space_range);
+                assert_eq!(
+                    slots[0]
+                        .pieces()
+                        .map(|piece| piece.owner())
+                        .collect::<Vec<_>>(),
+                    [crate::SpacingSlotOwner::Source {
+                        origin: p.origin_views().next().unwrap().handle(),
+                        local: space_range,
+                        aggregate: space_range,
+                    }]
+                );
                 let expanded = selected
                     .finalize(SpacingAllocations::Complete(vec![SpacingAllocation {
                         slot: slots[0].clone(),

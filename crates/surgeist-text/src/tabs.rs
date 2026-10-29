@@ -163,6 +163,7 @@ pub(crate) fn prepare(
             )?;
             let block_styles = [block_style];
             let input = crate::engine::ShapingInput {
+                separator_geometry: false,
                 profile: crate::engine::upright::original_profile(options.orientation(), &[]),
                 baseline_reference: options.resolved_baseline_reference(),
                 projection: &analyzed.projection,
@@ -186,25 +187,16 @@ pub(crate) fn prepare(
                 scratch,
             )?
             .ok_or_else(|| capability(crate::ProtocolContextField::TabMetrics))?;
-            let adjusted = crate::engine::layout::add(
-                "tab block letter spacing",
-                crate::TextNumericPhase::Preparation,
-                advance,
-                block_styles[0].style.letter_spacing,
-            )?;
-            let adjusted = crate::engine::layout::add(
-                "tab block word spacing",
-                crate::TextNumericPhase::Preparation,
-                adjusted,
-                block_styles[0].style.word_spacing,
-            )?;
-            metric.period = multiply("tab interval", size.value, adjusted)?;
+            // The actual hypothetical SPACE operation already applied the
+            // shared intrinsic-zero gate and authored spacing exactly once.
+            metric.period = multiply("tab interval", size.value, advance)?;
             metric._block_font = Some(font);
         } else {
             metric.period = multiply("tab length", size.value, f64::from(options.scale()))?;
         }
         if metric.period != 0.0 {
             let input = crate::engine::ShapingInput {
+                separator_geometry: false,
                 profile: crate::engine::upright::original_profile(options.orientation(), &[]),
                 baseline_reference: options.resolved_baseline_reference(),
                 projection: &analyzed.projection,

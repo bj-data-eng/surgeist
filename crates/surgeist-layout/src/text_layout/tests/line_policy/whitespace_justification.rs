@@ -59,13 +59,28 @@ fn preserved_soft_budget<S: LayoutScalar>() {
         slots[0].disposition,
         SpacingSlotDisposition::Retained { trailing: true }
     );
+    let unit = paragraph
+        .prepared
+        .unit_views()
+        .find(|unit| unit.source_range() == surgeist_text::Range::new(1, 2))
+        .unwrap()
+        .handle();
     assert_eq!(
-        slots[0].slot.source_range(),
-        surgeist_text::Range::new(1, 2)
+        slots[0].slot.participants().cloned().collect::<Vec<_>>(),
+        [surgeist_text::PreparedParticipant::Text(unit.clone())]
     );
-    let SpacingSlotOwner::Unit(unit) = slots[0].slot.owner() else {
-        panic!("genuine source SPACE owner");
-    };
+    assert_eq!(
+        slots[0]
+            .slot
+            .pieces()
+            .map(|piece| piece.owner())
+            .collect::<Vec<_>>(),
+        [SpacingSlotOwner::Source {
+            origin: paragraph.origin(1),
+            local: surgeist_text::Range::new(1, 2),
+            aggregate: surgeist_text::Range::new(1, 2),
+        }]
+    );
     assert_eq!(
         unit.view()
             .origins()

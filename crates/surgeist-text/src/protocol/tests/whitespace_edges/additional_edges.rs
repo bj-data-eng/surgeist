@@ -314,7 +314,9 @@ fn negative_preserved_space_contribution_is_not_absolute_hanging() {
             .x
     };
     assert_eq!((x(1) - x(0), x(2) - x(1)), (10.0, -2.0));
-    assert_eq!(observed, (0.0, vec![6.0, 16.0]));
+    // Natural8 centered in20 starts at6. SPACE starts logically at16,
+    // and authored−12 moves only its paint by half−6 to10.
+    assert_eq!(observed, (0.0, vec![6.0, 10.0]));
 }
 
 #[test]
@@ -463,13 +465,27 @@ fn upstream_allocation_moves_eligible_conditional_space_before_exclusion() {
     let p = prepare(&mut system, "X X \nY", WhiteSpace::Preserve);
     let forced = ending(&p, PreparedBreakKind::Forced);
     let selection = selected(&p, first(&p), forced.clone(), 35.0, crate::Alignment::Left);
-    assert_eq!(
-        selection
-            .spacing_slots()
-            .map(|s| s.source_range())
-            .collect::<Vec<_>>(),
-        [Range::new(1, 2), Range::new(3, 4)]
-    );
+    let slots = selection.spacing_slots().collect::<Vec<_>>();
+    assert_eq!(slots.len(), 2);
+    for (slot, range) in slots.iter().zip([Range::new(1, 2), Range::new(3, 4)]) {
+        let unit = p
+            .unit_views()
+            .find(|unit| unit.source_range() == range)
+            .unwrap()
+            .handle();
+        assert_eq!(
+            slot.participants().cloned().collect::<Vec<_>>(),
+            [PreparedParticipant::Text(unit)]
+        );
+        assert_eq!(
+            slot.pieces().map(|piece| piece.owner()).collect::<Vec<_>>(),
+            [crate::SpacingSlotOwner::Source {
+                origin: p.origin_views().next().unwrap().handle(),
+                local: range,
+                aggregate: range,
+            }]
+        );
+    }
     assert_eq!(
         selection
             .finalize(SpacingAllocations::None)
@@ -680,7 +696,10 @@ fn fitting_zero_advance_conditional_space_keeps_preceding_separator_nonterminal(
     custody(&p, vec![line, next], &[88, 8195, 32, 10, 89]);
     // The actual preserved SPACE ends at20, inside40. It does not hang, so
     // the preceding EM SPACE is not terminal (CSS Text4 section9.2).
-    assert_eq!(observed, (0.0, vec![10.0, 20.0, 30.0]));
+    // Natural20 centered in40 starts at10. SPACE starts logically at30,
+    // and authored−10 moves only its paint by half−5 to25. Its contribution
+    // remains zero, so it still prevents the preceding EM SPACE from hanging.
+    assert_eq!(observed, (0.0, vec![10.0, 20.0, 25.0]));
 }
 
 #[test]

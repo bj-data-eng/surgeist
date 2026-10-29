@@ -1074,6 +1074,7 @@ fn discarded_original_coverage_and_distinct_empty_occurrences_survive_selection(
     let (shaped, mapping) = crate::engine::shape::finalize(
         selected.inner.presentation_input(),
         &mut crate::engine::shape::ShapeContext::default(),
+        selected.request().context.spacing,
     )
     .unwrap();
     assert_eq!(shaped.glyphs.len(), 2);
@@ -1236,6 +1237,7 @@ fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent
     let (shaped, _) = crate::engine::shape::finalize(
         selected.inner.presentation_input(),
         &mut crate::engine::shape::ShapeContext::default(),
+        selected.request().context.spacing,
     )
     .unwrap();
     assert!(
@@ -1337,6 +1339,7 @@ fn source_less_discretionary_control_and_empty_replacement_keep_real_owners() {
     let (shaped, _) = crate::engine::shape::finalize(
         selected.inner.presentation_input(),
         &mut crate::engine::shape::ShapeContext::default(),
+        selected.request().context.spacing,
     )
     .unwrap();
     assert_eq!(shaped.glyphs.len(), 2);

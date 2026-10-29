@@ -151,7 +151,10 @@ pub enum TextWrapStyle {
 pub enum TextJustification {
     #[default]
     None,
+    /// Existing native expansion of retained U+0020 participants.
     Spaces,
+    /// Text-qualified word-separator expansion with exact alignment fill.
+    InterWord,
 }
 
 impl TextAlignLast {

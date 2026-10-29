@@ -243,8 +243,12 @@ fn explicit_finalization_key(line: &crate::FinalizedLine) -> ExplicitFinalizatio
         alignment: request.context.alignment,
         context: crate::protocol::request_context(request.into()),
         spacing: line
-            .spacing_slots()
-            .map(|slot| OrderedF64(slot.advance))
+            .inner
+            .data
+            .spacing_amounts
+            .iter()
+            .copied()
+            .map(OrderedF64)
             .collect(),
         profile: line.inner.selected.metric_policy as u8,
     }

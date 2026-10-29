@@ -140,6 +140,8 @@ pub(crate) struct PreparedCluster {
     pub(crate) atoms: IndexRange<usize>,
     /// Actual provider group before scalar component extraction.
     pub(crate) provider_group: IndexRange<usize>,
+    /// Actual invocation-qualified extraction receipt when separator geometry is demanded.
+    pub(crate) provider_receipt: Option<usize>,
     pub(crate) glyphs: IndexRange<usize>,
     pub(crate) content: ClusterContent,
     pub(crate) style: usize,
@@ -172,9 +174,20 @@ pub(crate) struct ShapedData {
     pub(crate) runs: Vec<PreparedRun>,
     pub(crate) clusters: Vec<PreparedCluster>,
     pub(crate) glyphs: Vec<GlyphData>,
+    /// Invocation-qualified provider observations, before component apportioning.
+    pub(crate) provider_groups: Vec<ProviderGroup>,
+    pub(crate) word_spacing: Vec<super::super::spacing::WordSpacingUnit>,
     pub(crate) items: Vec<ShapedItem>,
     /// An actual admitted default face with zero source/glyph extent, for empty metrics.
     pub(crate) empty_run: Option<PreparedRun>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ProviderGroup {
+    pub(crate) run: usize,
+    pub(crate) atoms: IndexRange<usize>,
+    pub(crate) glyphs: IndexRange<usize>,
+    pub(crate) advance: f64,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -219,6 +232,16 @@ pub(crate) struct FinalizedGlyph {
     pub(crate) glyph: GlyphData,
     /// Run-local logical pen. This includes actual finalized cluster spacing.
     pub(crate) pen: f64,
+    /// Independent pre-half operand, never reconstructed from a rounded pen.
+    pub(crate) pen_base: f64,
+    pub(crate) word_half: f64,
+}
+
+/// Pre-half unit origin retained even when its actual glyph inventory is empty.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct WordSpacingAnchor {
+    pub(crate) base: crate::Point,
+    pub(crate) half: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -288,11 +311,18 @@ pub(crate) struct FinalizedAnchor {
     pub(crate) inline_end: f64,
 }
 
-/// The actual allocation target joined by finalization, in selected-slot order.
-/// Logical advance remains on the real finalized cluster, without a copy here.
-#[derive(Clone, Copy, Debug)]
+/// Actual complete-unit feedback in selected-slot order, derived from its
+/// retained component membership after finalization.
+#[derive(Clone, Debug)]
 pub(crate) struct FinalizedSpacingSlot {
     pub(crate) cluster: usize,
+    pub(crate) members: Vec<usize>,
+    pub(crate) geometry: crate::SpacingSlotGeometry,
+    pub(crate) stretchability: crate::SpacingStretchability,
+    pub(crate) traversal_order: usize,
+    pub(crate) authored: f64,
+    pub(crate) allocation: f64,
+    pub(crate) advance: f64,
     pub(crate) disposition: crate::protocol::SpacingSlotDisposition,
 }
 
@@ -305,10 +335,14 @@ pub(crate) struct FinalizedLineData {
     pub(crate) clusters: Vec<FinalizedCluster>,
     /// Paint-order canonical local glyphs, with original associations.
     pub(crate) glyphs: Vec<FinalizedGlyph>,
+    pub(crate) word_anchors: Vec<WordSpacingAnchor>,
     pub(crate) boxes: Vec<FinalizedBox>,
     pub(crate) visual_order: Vec<FinalizedVisualItem>,
     pub(crate) anchors: Vec<FinalizedAnchor>,
     pub(crate) spacing_slots: Vec<FinalizedSpacingSlot>,
+    /// Complete executed allocation amounts, before rounded cluster addition.
+    /// Signed zero is canonicalized only for semantic identity.
+    pub(crate) spacing_amounts: Vec<f64>,
     pub(crate) metrics: LineMetrics,
     pub(crate) prefix: crate::protocol::prefix::PrefixData,
     pub(crate) fragments: Vec<FinalizedFragmentData>,

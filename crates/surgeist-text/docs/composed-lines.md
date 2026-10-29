@@ -159,9 +159,16 @@ uses the same selected-line and placement machinery.
    MinContent accepts only static zero. It does not advance the phantom frontier,
    suppress a manual sibling, or certify consumer counter/fit arithmetic. Text validates their
    owners and roles; the consumer owns actual fit and recomputes on replay.
-4. `PreparedText::select` returns `SelectedLine`. Its slots identify actual selected
+4. `PreparedText::select` returns `SelectedLine`. Its shape-free slots identify candidate selected
    presentation contributions, including replacement spaces. Finalize first with
    `SpacingAllocations::None`, or provide a complete slot table including zeros.
+   `SpacingPolicy::InterWord` selects the native declared separator repertoire;
+   None/Spaces retain their distinct operations. Slots expose complete ordered
+   `pieces()` and plural `participants()`. Actual natural feedback supplies measured
+   intrinsic/shared geometry and alignment response, including deferred terminal
+   dependencies. `FinalizedLine::with_spacing` replaces the complete amounts from
+   the same immutable selected provider basis and reruns dependent geometry without
+   reshaping; it never accumulates the prior allocation.
    Foreign, missing and duplicate slots refuse. Actual feedback carries advances,
    occupied/hanging extents, metrics and atomic slots; the consumer decides fit.
    Raw provider glyph advances remain `f32`, separate from logical `f64` pens.

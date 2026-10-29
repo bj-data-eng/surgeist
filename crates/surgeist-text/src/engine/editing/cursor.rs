@@ -380,7 +380,7 @@ fn anchor_geometry(
         }
         for cluster in &line.finalized.data.clusters {
             let replacement_incident = cluster.source.is_empty()
-                && line.finalized.mapping.pieces.iter().any(|piece| {
+                && line.finalized.shape.mapping.pieces.iter().any(|piece| {
                     matches!(
                         piece.kind,
                         crate::protocol::prepared::SelectedMappingKind::Replacement { .. }

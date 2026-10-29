@@ -810,6 +810,7 @@ pub surgeist_layout::TextGroupAlign::None
 pub surgeist_layout::TextGroupAlign::Right
 pub surgeist_layout::TextGroupAlign::Start
 pub enum surgeist_layout::TextJustification
+pub surgeist_layout::TextJustification::InterWord
 pub surgeist_layout::TextJustification::None
 pub surgeist_layout::TextJustification::Spaces
 pub enum surgeist_layout::TextScopeAssociation<Node>

@@ -121,7 +121,9 @@ fn qualify_font_and_signed_space() {
             )
         }));
     }
-    assert_eq!(glyphs, [(3, 20.0, 0.0), (18, 20.0, -1.0)]);
+    // Intrinsic SPACE20 plus authored−21 contributes−1; its paint receives
+    // half the authored term, while ZERO starts at the unchanged logical−1.
+    assert_eq!(glyphs, [(3, 20.0, -10.5), (18, 20.0, -1.0)]);
     assert_eq!(p.analyzed_source().source().text().code_units(), [32, 48]);
 }
 

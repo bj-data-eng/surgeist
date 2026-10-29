@@ -11,6 +11,8 @@ use crate::{TextAlign, TextAlignLast, TextJustification};
 
 #[path = "fit_balance.rs"]
 mod balance;
+#[path = "fit/inter_word.rs"]
+mod inter_word;
 #[path = "fit_pretty.rs"]
 mod pretty;
 #[path = "fit_tail.rs"]
@@ -353,6 +355,13 @@ fn natural_line(
     }) {
         return Ok(line.finalized.clone());
     }
+    if request.context.spacing == SpacingPolicy::InterWord
+        && let Some(line) = reusable
+            .iter()
+            .find(|line| line.finalized.selected_line().request() == request)
+    {
+        return Ok(line.finalized.with_spacing(SpacingAllocations::None)?);
+    }
     Ok(prepared
         .select(request.clone())?
         .finalize(SpacingAllocations::None)?)
@@ -419,6 +428,30 @@ fn finalize_candidate(
     let natural_advance = natural.measurements().alignment().advance();
     let selected = natural.selected_line();
     let mut amounts = vec![0.0; selected.spacing_slots().len()];
+    if effective == TextAlign::Justify && justification == TextJustification::InterWord {
+        *active_request = request.clone();
+        if let Some(allocation) = inter_word::allocate(&natural)? {
+            return Ok(FinalizedCandidate {
+                request,
+                finalized: allocation.finalized,
+                amounts: allocation.amounts,
+                natural_advance,
+            });
+        }
+        // A proved unexpandable InterWord result follows the real last-line
+        // fallback through a new selection, never through prior slot handles.
+        request.context.alignment = text_alignment(normal.unexpandable(last));
+        *active_request = request.clone();
+        resolve_boundary_context(prepared, controls, &mut request)?;
+        let finalized = natural_line(prepared, reusable, &request)?;
+        amounts = vec![0.0; finalized.selected_line().spacing_slots().len()];
+        return Ok(FinalizedCandidate {
+            request,
+            natural_advance: finalized.measurements().alignment().advance(),
+            finalized,
+            amounts,
+        });
+    }
     if effective == TextAlign::Justify {
         let retained: Vec<_> = natural
             .spacing_slots()
@@ -1695,10 +1728,10 @@ fn selection_request(
             alignment: text_alignment(input.alignment),
             tabs: TabContext::FontAdvance,
 
-            spacing: if input.justification == TextJustification::Spaces {
-                SpacingPolicy::Spaces
-            } else {
-                SpacingPolicy::None
+            spacing: match input.justification {
+                TextJustification::None => SpacingPolicy::None,
+                TextJustification::Spaces => SpacingPolicy::Spaces,
+                TextJustification::InterWord => SpacingPolicy::InterWord,
             },
         },
         atomics,

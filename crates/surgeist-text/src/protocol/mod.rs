@@ -316,11 +316,13 @@ pub enum TabContext {
     /// intrinsic measurement, advancing in paragraph progression.
     IntrinsicCssStops,
 }
-/// The selected profile exposes only actual supported inter-space allocation.
+/// Uniform native selected separator operation; no computed inheritance is inferred.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum SpacingPolicy {
     None,
     Spaces,
+    /// Uniform native CSS separator policy over the declared repertoire.
+    InterWord,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -570,14 +572,75 @@ impl PartialEq for SpacingSlot {
 }
 impl Eq for SpacingSlot {}
 
-/// The actual preparation-issued owner of one selected presentation SPACE.
+/// One exact original, alternative-local or generated contribution to a slot.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SpacingSlotOwner {
-    Unit(PreparedUnit),
-    Alternative(PreparedAlternative),
+    Source {
+        origin: PreparedOrigin,
+        local: Range,
+        aggregate: Range,
+    },
+    Alternative {
+        alternative: PreparedAlternative,
+        local: Range,
+    },
+    Control(PreparedControl),
+    VirtualSeparator(PreparedVirtualSeparator),
 }
 
-/// The executed line-edge and trailing classification of a selected SPACE.
+/// Exact ordered piece of a selected separator, without a fabricated source hull.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SpacingSlotPiece {
+    pub(crate) owner: SpacingSlotOwner,
+    pub(crate) presentation: PresentationRange,
+}
+impl SpacingSlotPiece {
+    #[must_use]
+    pub fn owner(&self) -> SpacingSlotOwner {
+        self.owner.clone()
+    }
+    #[must_use]
+    pub const fn presentation_range(&self) -> PresentationRange {
+        self.presentation
+    }
+}
+
+/// Whole-unit provider geometry, never an apportioned scalar width.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SpacingSlotGeometry {
+    Independent { intrinsic_advance: f64 },
+    SharedProviderGroup,
+}
+
+/// Actual terminal dependency left neutral by the natural operation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SpacingDeferredCause {
+    MissingTerminalBlockEdge,
+    NonBlockParagraphBoundary,
+}
+impl SpacingDeferredCause {
+    pub(crate) fn error(self) -> crate::Error {
+        protocol_error(match self {
+            Self::MissingTerminalBlockEdge => {
+                ProtocolError::MissingPhaseTwoContext(PhaseTwoContext::TerminalBlockEdge)
+            }
+            Self::NonBlockParagraphBoundary => ProtocolError::UnsupportedContext {
+                field: ProtocolContextField::CssParagraphBoundary,
+            },
+        })
+    }
+}
+
+/// Actual alignment response, independently of intrinsic geometry admission.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SpacingStretchability {
+    Excluded,
+    Direct,
+    TabDependent,
+    Deferred(SpacingDeferredCause),
+}
+
+/// Executed line-edge and trailing classification of a selected candidate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SpacingSlotDisposition {
     DiscardedAtLineEdge,
@@ -592,6 +655,24 @@ pub struct SpacingSlotFeedback {
     pub slot: SpacingSlot,
     pub disposition: SpacingSlotDisposition,
     pub advance: f64,
+    pub geometry: SpacingSlotGeometry,
+    pub stretchability: SpacingStretchability,
+    pub traversal_order: usize,
+    pub authored_word_spacing: f64,
+    pub allocation: f64,
+}
+impl SpacingSlotFeedback {
+    /// Known positive expansion admission; Deferred still needs richer inspection.
+    #[must_use]
+    pub fn can_expand(&self) -> bool {
+        matches!(self.disposition, SpacingSlotDisposition::Retained { .. })
+            && matches!(
+                self.stretchability,
+                SpacingStretchability::Direct | SpacingStretchability::TabDependent
+            )
+            && (self.slot.selected.request.context.spacing == SpacingPolicy::Spaces
+                || matches!(self.geometry, SpacingSlotGeometry::Independent { intrinsic_advance } if intrinsic_advance != 0.0))
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -684,11 +765,7 @@ impl PartialEq for NonFormattedLine {
     fn eq(&self, other: &Self) -> bool {
         self.line.inner.selected.metric_policy == other.line.inner.selected.metric_policy
             && self.line.inner.selected.request == other.line.inner.selected.request
-            && self
-                .line
-                .spacing_slots()
-                .map(|slot| slot.advance)
-                .eq(other.line.spacing_slots().map(|slot| slot.advance))
+            && self.line.inner.data.spacing_amounts == other.line.inner.data.spacing_amounts
     }
 }
 

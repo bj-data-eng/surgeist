@@ -81,7 +81,9 @@
 //! These choices do not
 //! change the real containing geometry
 //! or wrapping permission. [`TextJustification::Spaces`] permits
-//! explicit expansion of actual retained U+0020 slots during justification;
+//! explicit expansion of actual retained U+0020 slots during justification.
+//! [`TextJustification::InterWord`] consumes Text-qualified separators and exact
+//! alignment feedback, including actual tab response and unexpandable fallback.
 //! [`TextJustification::None`]
 //! adds no expansion. Text owns line-edge and trailing-space decisions.
 //! Other Text orientations return a precise unsupported error.

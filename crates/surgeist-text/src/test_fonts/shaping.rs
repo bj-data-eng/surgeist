@@ -293,7 +293,7 @@ pub(crate) fn ligature_ahem() -> Vec<u8> {
     )
 }
 
-/// A real optional provider ligature with caller-owned test cmap/sequence.
+/// A real `ccmp` provider ligature with caller-owned test cmap/sequence.
 pub(crate) fn range_ligature_ahem(components: &[u16], mappings: &[(u32, u32)]) -> Vec<u8> {
     let mut data = vec![
         1,

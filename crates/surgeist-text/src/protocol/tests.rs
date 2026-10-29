@@ -4,6 +4,7 @@ mod after_continuation;
 mod after_standalone;
 mod alignment_insets;
 mod allocated_box_metrics;
+mod allocation_identity;
 mod auto_phrase;
 mod automatic_model;
 mod automatic_opportunities;
@@ -38,6 +39,7 @@ mod vertical_metrics_orientation;
 mod wbr;
 mod whitespace_edges;
 mod width;
+mod word_separators;
 
 use super::*;
 use crate::{
