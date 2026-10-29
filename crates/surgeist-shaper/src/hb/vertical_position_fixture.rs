@@ -217,6 +217,21 @@ pub(super) fn with_font(
     extra: &[([u8; 4], &[u8])],
     f: impl FnOnce(&Shaper<'_>),
 ) {
+    let cmap = cmap();
+    with_cmap_font(native, odd, gsub, gpos, extra, &cmap, f);
+}
+
+/// Same owned native records with one caller-authored cmap, never duplicate
+/// SFNT directory entries. Existing fixture callers retain the original cmap.
+pub(super) fn with_cmap_font(
+    native: bool,
+    odd: bool,
+    gsub: Option<&[u8]>,
+    gpos: Option<&[u8]>,
+    extra: &[([u8; 4], &[u8])],
+    cmap: &[u8],
+    f: impl FnOnce(&Shaper<'_>),
+) {
     let count = u16::from_be_bytes(table(b"maxp")[4..6].try_into().unwrap());
     let mut head = table(b"head").to_vec();
     head[50..52].copy_from_slice(&1u16.to_be_bytes());
@@ -256,7 +271,6 @@ pub(super) fn with_font(
         glyf.extend(words(&[0, 0, ink_height, 0]));
     }
     loca.extend(longs(&[u32::try_from(glyf.len()).unwrap()]));
-    let cmap = cmap();
     let gdef = gdef();
     let mut tables = vec![
         (*b"head", head.as_slice()),
@@ -265,7 +279,7 @@ pub(super) fn with_font(
         (*b"hmtx", hmtx.as_slice()),
         (*b"glyf", glyf.as_slice()),
         (*b"loca", loca.as_slice()),
-        (*b"cmap", cmap.as_slice()),
+        (*b"cmap", cmap),
         (*b"GDEF", gdef.as_slice()),
     ];
     if native {

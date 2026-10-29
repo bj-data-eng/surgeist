@@ -14,6 +14,9 @@ use read_fonts::TableProvider;
 #[path = "vertical_position_fixture.rs"]
 mod font;
 
+#[path = "backward_vertical_tests.rs"]
+mod backward;
+
 fn input(text: &str, direction: Direction) -> UnicodeBuffer {
     let mut input = UnicodeBuffer::new();
     // Explicit scalar ordinals are the authentic provider source/cluster domain.
