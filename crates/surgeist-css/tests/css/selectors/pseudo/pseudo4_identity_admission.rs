@@ -337,7 +337,7 @@ fn four_legacy_colon_aliases_and_imported_pseudos_keep_their_identity() {
         (":first-line", "::first-line"),
         ("::first-line", "::first-line"),
     ]);
-    for pair in aliases.chunks_exact(2) {
+    for pair in aliases.as_chunks::<2>().0 {
         assert_eq!(pair[0], pair[1]);
     }
     admitted(&[
