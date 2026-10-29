@@ -209,7 +209,7 @@ fn first_and_repeated_allocation_use_one_actual_selected_provider_basis_in_nativ
     resource_premises(&bytes);
     for orientation in [
         LineOrientation::Horizontal,
-        LineOrientation::Sideways,
+        LineOrientation::SidewaysClockwise,
         LineOrientation::Vertical,
     ] {
         let mut system = system(&bytes);

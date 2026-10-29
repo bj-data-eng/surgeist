@@ -38,7 +38,10 @@ fn signed_fractional_and_outside_font_references_survive_body_and_empty_default_
             let before = 8.0 - b + half;
             let after = b + 2.0 + half;
             assert_eq!(before + after, height);
-            for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+            for orientation in [
+                LineOrientation::Horizontal,
+                LineOrientation::SidewaysClockwise,
+            ] {
                 for text in ["A", ""] {
                     let input = analyzed(
                         Source::identified(text, Id::from_u64(1561010), 1),
@@ -175,7 +178,10 @@ fn automatic_font_decorations_rebase_once_while_absolute_offsets_use_the_shared_
                 },
             );
             let shift = if absolute { 0.0 } else { b };
-            for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+            for orientation in [
+                LineOrientation::Horizontal,
+                LineOrientation::SidewaysClockwise,
+            ] {
                 let prepared = named(&mut system, &input, orientation);
                 let (anchor, expected) = if orientation == LineOrientation::Horizontal {
                     (

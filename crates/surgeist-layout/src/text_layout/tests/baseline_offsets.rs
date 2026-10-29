@@ -181,7 +181,7 @@ fn native(
     system.register_fonts(AHEM.to_vec()).unwrap();
     let orientation = match mode {
         WritingMode::HorizontalTb => text::LineOrientation::Horizontal,
-        WritingMode::SidewaysRl => text::LineOrientation::Sideways,
+        WritingMode::SidewaysRl => text::LineOrientation::SidewaysClockwise,
         WritingMode::VerticalRl | WritingMode::VerticalLr => text::LineOrientation::Vertical,
         WritingMode::SidewaysLr => {
             panic!("counterclockwise Text is outside this supported consumer profile")

@@ -347,7 +347,10 @@ fn natural_shared_provider_geometry_stays_usable_until_a_real_interword_allocati
     .unwrap();
     system.register_fonts(bytes).unwrap();
     let source = Source::identified("A A", Id::from_u64(1564022), 1);
-    for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+    for orientation in [
+        LineOrientation::Horizontal,
+        LineOrientation::SidewaysClockwise,
+    ] {
         let mut style = own(0.0);
         style.font = style.font.feature("\"ccmp\" 1");
         let prepared = prepare_input(
@@ -839,7 +842,10 @@ fn a_published_phrase_separator_keeps_its_actual_virtual_owner_through_interword
 fn preserved_terminal_space_excludes_expansion_from_alignment_in_both_paragraph_directions() {
     let bytes = mapped(' ', false);
     let source = Source::identified("A ", Id::from_u64(1564028), 1);
-    for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+    for orientation in [
+        LineOrientation::Horizontal,
+        LineOrientation::SidewaysClockwise,
+    ] {
         for direction in [
             ParagraphBaseDirection::LeftToRight,
             ParagraphBaseDirection::RightToLeft,

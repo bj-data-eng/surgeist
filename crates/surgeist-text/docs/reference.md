@@ -156,7 +156,7 @@ replace the standalone paragraph path.
 
 ## Clockwise sideways placement
 
-Native preparation accepts `PreparationOptions::with_orientation(LineOrientation::Sideways)`
+Native preparation accepts `PreparationOptions::with_orientation(LineOrientation::SidewaysClockwise)`
 for a whole paragraph composed horizontally and placed 90 degrees clockwise.
 The default remains Horizontal. Retain that same orientation in line selection
 and placement: a supported-profile mismatch returns `MismatchedContext` for

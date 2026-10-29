@@ -384,10 +384,10 @@ fn text_glyph(run: &RunView<'_>, glyph: surgeist_text::GlyphPlacement) -> Result
     // in glyph coordinates before the run's outline basis is applied.
     let (x, y) = match (run.orientation(), run.glyph_basis()) {
         (LineOrientation::Horizontal, GlyphBasis::Unrotated)
-        | (LineOrientation::Sideways | LineOrientation::Vertical, GlyphBasis::Clockwise) => {
+        | (LineOrientation::SidewaysClockwise | LineOrientation::Vertical, GlyphBasis::Clockwise) => {
             (pen + dx, dy)
         }
-        (LineOrientation::Sideways | LineOrientation::Vertical, GlyphBasis::Unrotated) => {
+        (LineOrientation::SidewaysClockwise | LineOrientation::Vertical, GlyphBasis::Unrotated) => {
             (dx, pen + dy)
         }
         (LineOrientation::Horizontal, GlyphBasis::Clockwise) => (dx, dy - pen),

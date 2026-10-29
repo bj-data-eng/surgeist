@@ -121,7 +121,9 @@ impl PreparationOptions {
     pub(crate) const fn resolved_baseline_reference(self) -> Option<crate::FontBaseline> {
         match self.orientation {
             LineOrientation::Vertical => Some(crate::FontBaseline::Central),
-            LineOrientation::Horizontal | LineOrientation::Sideways => self.baseline_reference,
+            LineOrientation::Horizontal | LineOrientation::SidewaysClockwise => {
+                self.baseline_reference
+            }
         }
     }
     /// Requested basis, authenticated again by selection and placement.
@@ -279,7 +281,7 @@ pub enum LineOrientation {
     Vertical,
     /// Horizontal composition physically rotated 90 degrees clockwise.
     /// This does not denote CSS sideways-lr or mixed/upright typography.
-    Sideways,
+    SidewaysClockwise,
 }
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum LineStart {

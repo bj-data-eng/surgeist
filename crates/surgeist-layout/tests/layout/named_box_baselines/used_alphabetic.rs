@@ -999,7 +999,7 @@ fn core<S: l::LayoutScalar>() {
         &mut system,
         "A\nB",
         style(5.0, 6.0),
-        t::LineOrientation::Sideways,
+        t::LineOrientation::SidewaysClockwise,
         false,
     );
     qualify_child_text(&child_h, &bytes, false);
@@ -1019,7 +1019,7 @@ fn core<S: l::LayoutScalar>() {
         &mut system,
         "AB",
         style(10.0, 10.0),
-        t::LineOrientation::Sideways,
+        t::LineOrientation::SidewaysClockwise,
         true,
     );
     // All standalone new-producer controls precede the intended Layout RED.

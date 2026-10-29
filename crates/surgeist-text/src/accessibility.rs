@@ -623,12 +623,15 @@ fn update(
             if direction {
                 node.set_text_direction(match (first.orientation, first.rtl) {
                     (
-                        crate::LineOrientation::Sideways | crate::LineOrientation::Vertical,
+                        crate::LineOrientation::SidewaysClockwise
+                        | crate::LineOrientation::Vertical,
                         false,
                     ) => TextDirection::TopToBottom,
-                    (crate::LineOrientation::Sideways | crate::LineOrientation::Vertical, true) => {
-                        TextDirection::BottomToTop
-                    }
+                    (
+                        crate::LineOrientation::SidewaysClockwise
+                        | crate::LineOrientation::Vertical,
+                        true,
+                    ) => TextDirection::BottomToTop,
                     (_, true) => TextDirection::RightToLeft,
                     (_, false) => TextDirection::LeftToRight,
                 });

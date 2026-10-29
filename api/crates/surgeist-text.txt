@@ -592,7 +592,7 @@ pub surgeist_text::LineHeight::FontSizeRelative(f64)
 pub surgeist_text::LineHeight::MetricsRelative(f64)
 pub enum surgeist_text::LineOrientation
 pub surgeist_text::LineOrientation::Horizontal
-pub surgeist_text::LineOrientation::Sideways
+pub surgeist_text::LineOrientation::SidewaysClockwise
 pub surgeist_text::LineOrientation::Vertical
 pub enum surgeist_text::LineOutlineInk
 pub surgeist_text::LineOutlineInk::Bounds(surgeist_text::Rect)

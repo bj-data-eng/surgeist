@@ -222,7 +222,7 @@ pub(crate) fn original_profile<'a>(
 ) -> ShapingProfile<'a> {
     match orientation {
         LineOrientation::Horizontal => ShapingProfile::Horizontal,
-        LineOrientation::Sideways => ShapingProfile::Sideways,
+        LineOrientation::SidewaysClockwise => ShapingProfile::Sideways,
         LineOrientation::Vertical if typography == crate::AnalysisTypography::Mixed => {
             ShapingProfile::Mixed {
                 units,
@@ -243,7 +243,7 @@ pub(crate) fn selected_profile<'a>(
 ) -> ShapingProfile<'a> {
     match prepared.options.orientation() {
         LineOrientation::Horizontal => ShapingProfile::Horizontal,
-        LineOrientation::Sideways => ShapingProfile::Sideways,
+        LineOrientation::SidewaysClockwise => ShapingProfile::Sideways,
         LineOrientation::Vertical
             if prepared.analyzed.typography == crate::AnalysisTypography::Mixed =>
         {

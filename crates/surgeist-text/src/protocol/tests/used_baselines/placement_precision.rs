@@ -117,5 +117,5 @@ fn horizontal_placement_refuses_a_required_font_displacement_lost_at_a_finite_an
 
 #[test]
 fn clockwise_placement_refuses_a_required_font_displacement_lost_at_a_finite_anchor() {
-    required_displacement(LineOrientation::Sideways);
+    required_displacement(LineOrientation::SidewaysClockwise);
 }

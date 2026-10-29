@@ -361,7 +361,7 @@ fn placed(prepared: &PreparedText, line: FinalizedLine, expected: &[(Id, f64)], 
     assert_eq!(layout.source(), prepared.analyzed_source().source());
     let expected_bounds = match orientation {
         LineOrientation::Horizontal => Rect::new(20.0, 62.0, total, 12.0),
-        LineOrientation::Sideways => Rect::new(96.0, 20.0, 12.0, total),
+        LineOrientation::SidewaysClockwise => Rect::new(96.0, 20.0, 12.0, total),
         LineOrientation::Vertical => Rect::new(95.0, 20.0, 10.0, total),
     };
     assert_eq!(layout.lines()[0].bounds(), expected_bounds);
@@ -389,7 +389,7 @@ fn unequal_atomic_run_endpoints_preserve_actual_boxes_and_native_frames() {
     font_premises(AHEM, false);
     for orientation in [
         LineOrientation::Horizontal,
-        LineOrientation::Sideways,
+        LineOrientation::SidewaysClockwise,
         LineOrientation::Vertical,
     ] {
         let control_source = source("AB", orientation, [0.0; 4], false);
@@ -661,7 +661,10 @@ fn genuine_hebrew_rtl_moves_each_atomic_with_its_own_exterior_values_in_clockwis
     let font = skrifa::FontRef::new(&bytes).unwrap();
     assert_eq!(font.charmap().map('\u{5d0}'), Some(GlyphId::new(35)));
     assert_eq!(font.charmap().map('\u{5d1}'), Some(GlyphId::new(36)));
-    for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+    for orientation in [
+        LineOrientation::Horizontal,
+        LineOrientation::SidewaysClockwise,
+    ] {
         let control_source = source("\u{5d0}\u{5d1}", orientation, [0.0; 4], false);
         let control_prepared = captured(
             &bytes,

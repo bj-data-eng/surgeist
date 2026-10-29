@@ -588,7 +588,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                                             baseline: line.origin.y,
                                         }
                                     }
-                                    surgeist_text::LineOrientation::Sideways
+                                    surgeist_text::LineOrientation::SidewaysClockwise
                                     | surgeist_text::LineOrientation::Vertical => {
                                         surgeist_text::LineAnchor {
                                             inline_origin: line.origin.y,
@@ -704,7 +704,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                     let cross_origin = match paragraph.prepared.orientation() {
                         surgeist_text::LineOrientation::Horizontal => frame.origin.y,
                         surgeist_text::LineOrientation::Vertical
-                        | surgeist_text::LineOrientation::Sideways => frame.origin.x,
+                        | surgeist_text::LineOrientation::SidewaysClockwise => frame.origin.x,
                     };
                     let baseline = placement_add(node, cross_origin, baseline)?;
                     let baseline = (baseline + 0.5).floor();

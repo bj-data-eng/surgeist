@@ -241,7 +241,7 @@ fn composition(bytes: &[u8], mode: layout::WritingMode) {
     let orientation = if horizontal {
         text::LineOrientation::Horizontal
     } else {
-        text::LineOrientation::Sideways
+        text::LineOrientation::SidewaysClockwise
     };
     let source = text::Source::identified("A\u{3a7}", text::Id::from_u64(1561008), 5);
     let mut system = text::System::new(text::SystemOptions {

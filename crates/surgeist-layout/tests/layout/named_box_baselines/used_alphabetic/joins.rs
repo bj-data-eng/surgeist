@@ -151,7 +151,7 @@ fn clockwise(mode: l::WritingMode) -> bool {
 }
 fn orientation(mode: l::WritingMode) -> t::LineOrientation {
     if clockwise(mode) {
-        t::LineOrientation::Sideways
+        t::LineOrientation::SidewaysClockwise
     } else {
         t::LineOrientation::Horizontal
     }
@@ -316,7 +316,7 @@ fn knowledge<S: l::LayoutScalar>() {
         &mut system,
         "A\nB",
         style(5.0, 6.0),
-        t::LineOrientation::Sideways,
+        t::LineOrientation::SidewaysClockwise,
         false,
     );
     for (child, cw) in [(&child_h, false), (&child_cw, true)] {
@@ -473,7 +473,7 @@ fn positioned<S: l::LayoutScalar>() {
             &mut system,
             "A\nB",
             style(5.0, 6.0),
-            t::LineOrientation::Sideways,
+            t::LineOrientation::SidewaysClockwise,
             false,
         ),
     ];

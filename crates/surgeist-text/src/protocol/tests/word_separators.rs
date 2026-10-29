@@ -20,7 +20,7 @@ const AHEM: &[u8] = include_bytes!(concat!(
 ));
 const FRAMES: [LineOrientation; 3] = [
     LineOrientation::Horizontal,
-    LineOrientation::Sideways,
+    LineOrientation::SidewaysClockwise,
     LineOrientation::Vertical,
 ];
 
@@ -295,7 +295,7 @@ fn assert_placement(
         .flat_map(|run| {
             assert_eq!(
                 run.glyph_basis(),
-                if orientation == LineOrientation::Sideways {
+                if orientation == LineOrientation::SidewaysClockwise {
                     GlyphBasis::Clockwise
                 } else {
                     GlyphBasis::Unrotated
@@ -308,7 +308,7 @@ fn assert_placement(
                         origin.x + glyph.pen() + f64::from(glyph.x()),
                         origin.y + f64::from(glyph.y()),
                     ),
-                    LineOrientation::Sideways => Point::new(
+                    LineOrientation::SidewaysClockwise => Point::new(
                         origin.x - f64::from(glyph.y()),
                         origin.y + glyph.pen() + f64::from(glyph.x()),
                     ),

@@ -224,7 +224,7 @@ fn real_uniform_runs_report_outline_basis_and_physical_source_geometry() {
             (0.0, 0.0, 10.0),
         ),
         (
-            LineOrientation::Sideways,
+            LineOrientation::SidewaysClockwise,
             GlyphBasis::Clockwise,
             Rect::new(98.0, 20.0, 10.0, 10.0),
             Point::new(100.0, 20.0),

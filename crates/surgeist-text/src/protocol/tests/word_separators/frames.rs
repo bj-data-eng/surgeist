@@ -197,7 +197,7 @@ fn physical_glyphs(layout: &crate::Layout) -> Vec<(Range, Point)> {
                             origin.x + glyph.pen() + f64::from(glyph.x()),
                             origin.y + f64::from(glyph.y()),
                         ),
-                        LineOrientation::Sideways => Point::new(
+                        LineOrientation::SidewaysClockwise => Point::new(
                             origin.x - f64::from(glyph.y()),
                             origin.y + glyph.pen() + f64::from(glyph.x()),
                         ),
@@ -289,7 +289,10 @@ fn odd_rtl_separator_paints_between_equal_authored_halves_in_horizontal_and_cloc
     );
     let mut system = super::system(&bytes, '\u{a0}', false, false);
     let source = Source::identified("\u{5d0}\u{a0}\u{5d1}", Id::from_u64(1564020), 3);
-    for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+    for orientation in [
+        LineOrientation::Horizontal,
+        LineOrientation::SidewaysClockwise,
+    ] {
         let control = prepare_profile(
             &mut system,
             &source,
@@ -484,7 +487,10 @@ fn authored_inline_halves_do_not_become_a_second_used_alphabetic_cross_displacem
         qualify_base(&bytes, coordinate);
         let mut system = super::system(&bytes, '\u{a0}', false, false);
         let b = f64::from(coordinate) / 100.0;
-        for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+        for orientation in [
+            LineOrientation::Horizontal,
+            LineOrientation::SidewaysClockwise,
+        ] {
             let control = prepare_profile(
                 &mut system,
                 &source,

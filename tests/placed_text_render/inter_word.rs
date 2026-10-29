@@ -240,7 +240,7 @@ fn capture(
                 display: layout::Display::Block,
                 writing_mode: match orientation {
                     text::LineOrientation::Horizontal => layout::WritingMode::HorizontalTb,
-                    text::LineOrientation::Sideways => layout::WritingMode::SidewaysRl,
+                    text::LineOrientation::SidewaysClockwise => layout::WritingMode::SidewaysRl,
                     text::LineOrientation::Vertical => layout::WritingMode::VerticalRl,
                 },
                 inline_baseline_context: layout::InlineBaselineContext::Named(
@@ -341,11 +341,11 @@ fn native_inter_word_fill_keeps_equal_half_visible_paint_in_horizontal_clockwise
             .unwrap();
     for orientation in [
         text::LineOrientation::Horizontal,
-        text::LineOrientation::Sideways,
+        text::LineOrientation::SidewaysClockwise,
         text::LineOrientation::Vertical,
     ] {
         let horizontal = orientation == text::LineOrientation::Horizontal;
-        let clockwise = orientation == text::LineOrientation::Sideways;
+        let clockwise = orientation == text::LineOrientation::SidewaysClockwise;
         let (batch, origin) = capture(&bytes, orientation);
         let placed = batch.placed_text()[0].layout();
         assert_eq!(placed.orientation(), orientation);

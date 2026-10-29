@@ -149,7 +149,7 @@ fn place(prepared: &PreparedText, line: FinalizedLine) -> Layout {
 fn cell(orientation: LineOrientation, edge: f64, width: f64) -> Rect {
     match orientation {
         LineOrientation::Horizontal => Rect::new(20.0 + edge, 92.0, width, 10.0),
-        LineOrientation::Sideways => Rect::new(98.0, 20.0 + edge, 10.0, width),
+        LineOrientation::SidewaysClockwise => Rect::new(98.0, 20.0 + edge, 10.0, width),
         LineOrientation::Vertical => Rect::new(95.0, 20.0 + edge, 10.0, width),
     }
 }
@@ -327,7 +327,7 @@ fn allocated_horizontal_cells_reach_ax_bounds_widths_and_exact_source_selection(
 
 #[test]
 fn allocated_clockwise_cells_reach_ax_with_physical_bounds_and_inline_widths() {
-    qualifies(LineOrientation::Sideways);
+    qualifies(LineOrientation::SidewaysClockwise);
 }
 
 #[test]

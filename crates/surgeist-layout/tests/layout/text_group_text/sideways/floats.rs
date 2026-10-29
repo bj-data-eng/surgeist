@@ -45,7 +45,7 @@ fn paragraph<S: l::LayoutScalar>(host: &mut Host<S>, parts: &[Part<'_>], height:
             ..style()
         },
         t::ParagraphBaseDirection::LeftToRight,
-        t::PreparationOptions::default().with_orientation(t::LineOrientation::Sideways),
+        t::PreparationOptions::default().with_orientation(t::LineOrientation::SidewaysClockwise),
     )
 }
 
@@ -93,7 +93,7 @@ fn qualify<S: l::LayoutScalar>(host: &Host<S>, paragraph: &Paragraph, float: u32
     assert_eq!(paragraph.prepared.atomic_views().count(), 0);
     assert_eq!(
         paragraph.prepared.orientation(),
-        t::LineOrientation::Sideways
+        t::LineOrientation::SidewaysClockwise
     );
     assert_eq!(
         paragraph.prepared.captured_paragraph(),
@@ -125,7 +125,7 @@ fn assert_rows<S: l::LayoutScalar>(
     let root = node_output(batch, 0);
     assert_eq!(root.location, l::Point::ZERO);
     let layout = placed(batch, paragraph);
-    assert_eq!(layout.orientation(), t::LineOrientation::Sideways);
+    assert_eq!(layout.orientation(), t::LineOrientation::SidewaysClockwise);
     let rows = receipts(batch, paragraph);
     assert_eq!(rows.len(), capacity.len());
     assert_eq!(layout.lines().len(), capacity.len());
@@ -133,7 +133,7 @@ fn assert_rows<S: l::LayoutScalar>(
         assert_eq!(row.prepared_text(), paragraph.prepared);
         let selected = row.selected_line();
         let context = &selected.request().context;
-        assert_eq!(context.orientation, t::LineOrientation::Sideways);
+        assert_eq!(context.orientation, t::LineOrientation::SidewaysClockwise);
         assert_eq!(context.available_inline, Some(available));
         assert_eq!(
             context.base_direction,

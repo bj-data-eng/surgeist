@@ -98,7 +98,10 @@ fn qualify_preparation(paragraph: &Paragraph, orientation: t::LineOrientation) {
 fn finite<S: l::LayoutScalar>() {
     for (writing_mode, orientation) in [
         (l::WritingMode::HorizontalTb, t::LineOrientation::Horizontal),
-        (l::WritingMode::SidewaysRl, t::LineOrientation::Sideways),
+        (
+            l::WritingMode::SidewaysRl,
+            t::LineOrientation::SidewaysClockwise,
+        ),
     ] {
         let mut host = Host::<S>::new(l::Direction::Ltr, l::TextGroupAlign::None);
         host.box_change(0, |root| {

@@ -720,7 +720,10 @@ fn orientation_mismatches_precede_fonts_and_matching_upright_demands_a_font() {
     let identity = a.identity();
     let catalogue = s.font_catalogue_identity().clone();
     let stats = s.stats();
-    for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+    for orientation in [
+        LineOrientation::Horizontal,
+        LineOrientation::SidewaysClockwise,
+    ] {
         protocol(
             s.prepare(
                 &a,
@@ -782,11 +785,11 @@ fn warm_horizontal_layout_cannot_substitute_for_upright_analysis_and_prior_recei
     assert_eq!(
         s.prepare(
             &h,
-            PreparationOptions::default().with_orientation(LineOrientation::Sideways)
+            PreparationOptions::default().with_orientation(LineOrientation::SidewaysClockwise)
         )
         .unwrap()
         .orientation(),
-        LineOrientation::Sideways
+        LineOrientation::SidewaysClockwise
     );
     let a = AnalyzedSource::new(original.clone(), style(), upright(RTL)).unwrap();
     let before = s.stats();

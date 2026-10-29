@@ -268,7 +268,7 @@ fn all_seven_separator_scalars_keep_complete_utf16_units_and_fixed_width_spaces_
                 selected.rects()[0].rect(),
                 match orientation {
                     LineOrientation::Horizontal => Rect::new(30.0, 62.0, 14.0, 10.0),
-                    LineOrientation::Sideways => Rect::new(98.0, 30.0, 10.0, 14.0),
+                    LineOrientation::SidewaysClockwise => Rect::new(98.0, 30.0, 10.0, 14.0),
                     LineOrientation::Vertical => Rect::new(95.0, 30.0, 10.0, 14.0),
                 }
             );
@@ -349,7 +349,10 @@ fn appendix_e_marked_units_keep_real_attachment_and_do_not_split_at_storage_orig
         for cuts in [&[0, 4][..], &[0, 2, 4][..]] {
             // Only storage origins split the actual base+mark EGC; the
             // Continuous connection and identical styles keep joint shaping.
-            for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+            for orientation in [
+                LineOrientation::Horizontal,
+                LineOrientation::SidewaysClockwise,
+            ] {
                 let control = prepared(&mut system, &source, style(0.0), orientation, cuts);
                 assert_eq!(
                     control.analyzed_source().graphemes().collect::<Vec<_>>(),
@@ -494,7 +497,10 @@ fn an_author_forced_cross_unit_provider_group_is_preserved_inactive_and_refuses_
     let source = Source::identified("A A", Id::from_u64(1564013), 2);
     let mut own = style(0.0);
     own.font = own.font.feature("\"ccmp\" 1");
-    for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+    for orientation in [
+        LineOrientation::Horizontal,
+        LineOrientation::SidewaysClockwise,
+    ] {
         let control = prepared(&mut system, &source, own.clone(), orientation, &[0, 3]);
         let natural = finalize(&control);
         assert_eq!(
@@ -815,7 +821,10 @@ fn contained_groups_from_real_fallback_fonts_move_together_without_a_cross_font_
             ..style(0.0)
         },
     );
-    for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+    for orientation in [
+        LineOrientation::Horizontal,
+        LineOrientation::SidewaysClockwise,
+    ] {
         let own = style(0.0);
         let control = prepared(&mut system, &source, own.clone(), orientation, &[0, 2, 4]);
         assert_eq!(
