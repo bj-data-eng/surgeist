@@ -150,7 +150,7 @@ fn bounded_scoped_chunks_keep_definition_positions_order_and_parentage() {
                 .collect::<Vec<_>>(),
             expected_offsets
         );
-        for chunk in definitions.chunks_exact(3) {
+        for chunk in definitions.as_chunks::<3>().0 {
             let parent = chunk[0].parent().unwrap();
             assert!(
                 chunk
