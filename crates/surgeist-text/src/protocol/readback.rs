@@ -36,27 +36,53 @@ use super::{
 };
 
 impl SpacingSlot {
-    /// Retains the actual original unit or selected computed replacement that
-    /// owns this slot, even when several inserted spaces share a source anchor.
-    #[must_use]
-    pub fn owner(&self) -> SpacingSlotOwner {
-        let row = &self.selected.spacing_slots[self.index];
-        let unit = &self.selected.presentation.units[row.unit];
-        match unit.kind {
-            super::prepared::PresentationUnitKind::Replacement { alternative, .. } => {
-                SpacingSlotOwner::Alternative(PreparedAlternative {
-                    prepared: Arc::clone(&self.selected.prepared),
-                    index: alternative,
-                })
-            }
-            super::prepared::PresentationUnitKind::Text => {
-                let Some(PreparedParticipant::Text(unit)) = self.participant() else {
-                    unreachable!("a selected original SPACE retains its issued text unit")
+    /// Exact ordered source/alternative/generated pieces of the complete target.
+    pub fn pieces(&self) -> impl ExactSizeIterator<Item = super::SpacingSlotPiece> + '_ {
+        self.selected.spacing_slots[self.index]
+            .pieces
+            .iter()
+            .map(|piece| {
+                let prepared = &self.selected.prepared;
+                let owner = match piece.owner {
+                    crate::WordSpacingPiece::Source {
+                        origin,
+                        local,
+                        aggregate,
+                    } => SpacingSlotOwner::Source {
+                        origin: PreparedOrigin {
+                            prepared: Arc::clone(prepared),
+                            index: origin,
+                        },
+                        local,
+                        aggregate,
+                    },
+                    crate::WordSpacingPiece::Alternative {
+                        alternative, local, ..
+                    } => SpacingSlotOwner::Alternative {
+                        alternative: PreparedAlternative {
+                            prepared: Arc::clone(prepared),
+                            index: alternative,
+                        },
+                        local,
+                    },
+                    crate::WordSpacingPiece::Control { occurrence } => {
+                        SpacingSlotOwner::Control(PreparedControl {
+                            prepared: Arc::clone(prepared),
+                            index: control_index(prepared, occurrence),
+                        })
+                    }
+                    crate::WordSpacingPiece::VirtualSeparator { occurrence } => {
+                        SpacingSlotOwner::VirtualSeparator(PreparedVirtualSeparator {
+                            prepared: Arc::clone(prepared),
+                            index: occurrence,
+                        })
+                    }
                 };
-                SpacingSlotOwner::Unit(unit.clone())
-            }
-            _ => unreachable!("only original or replacement SPACE units issue spacing slots"),
-        }
+                super::SpacingSlotPiece {
+                    owner,
+                    presentation: piece.presentation,
+                }
+            })
     }
 }
 
@@ -110,7 +136,12 @@ impl FinalizedLine {
                     index,
                 },
                 disposition: row.disposition,
-                advance: self.inner.data.clusters[row.cluster].advance,
+                advance: row.advance,
+                geometry: row.geometry,
+                stretchability: row.stretchability,
+                traversal_order: row.traversal_order,
+                authored_word_spacing: row.authored,
+                allocation: row.allocation,
             })
     }
 }
@@ -1072,6 +1103,7 @@ impl FinalizedLine {
     /// Borrows the actual selected source/processed/presentation correspondence.
     pub fn mapping_views(&self) -> impl ExactSizeIterator<Item = SelectedMappingView<'_>> {
         self.inner
+            .shape
             .mapping
             .pieces
             .iter()

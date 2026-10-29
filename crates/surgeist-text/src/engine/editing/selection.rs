@@ -53,7 +53,7 @@ pub(super) fn between(
             let cluster = &line.finalized.data.clusters[cluster_index];
             overlaps(cluster.source, range)
                 || (cluster.source.is_empty()
-                    && line.finalized.mapping.pieces.iter().any(|piece| {
+                    && line.finalized.shape.mapping.pieces.iter().any(|piece| {
                         let crate::protocol::prepared::SelectedMappingKind::Replacement {
                             alternative,
                             anchor,

@@ -70,10 +70,26 @@ fn finite_upright_centering_applies_indent_insets_and_actual_space_allocation_on
     assert_eq!(request_context.alignment_insets, insets);
     let slots = selected.spacing_slots().collect::<Vec<_>>();
     assert_eq!(slots.len(), 1);
-    assert_eq!(slots[0].source_range(), Range::new(1, 2));
-    let SpacingSlotOwner::Unit(space) = slots[0].owner() else {
-        panic!("actual authored SPACE must retain its preparation-issued unit")
-    };
+    let space = prepared
+        .unit_views()
+        .find(|unit| unit.source_range() == Range::new(1, 2))
+        .unwrap()
+        .handle();
+    assert_eq!(
+        slots[0].participants().cloned().collect::<Vec<_>>(),
+        [PreparedParticipant::Text(space.clone())]
+    );
+    assert_eq!(
+        slots[0]
+            .pieces()
+            .map(|piece| piece.owner())
+            .collect::<Vec<_>>(),
+        [SpacingSlotOwner::Source {
+            origin: prepared.origin_views().next().unwrap().handle(),
+            local: Range::new(1, 2),
+            aggregate: Range::new(1, 2),
+        }]
+    );
     assert_eq!(space.prepared_text(), prepared);
     assert_eq!(space.view().source_range(), Range::new(1, 2));
     let line = selected

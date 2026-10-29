@@ -1614,10 +1614,16 @@ fn fri05_c04_flex_auto_root_and_nested_publish_stable_output_with_exact_pass_cac
 
 #[test]
 fn native_line_policy_warm_width_policy_changes_and_late_sink_failure_are_atomic() {
-    fn lane<S: LayoutScalar>() {
+    fn lane<S: LayoutScalar>(justification: TextJustification) {
         let mut style = ahem_style(10.0, 10.0);
         style.white_space = WhiteSpace::Collapse;
         let mut tree = Fri06C02StatefulTextTree::<S>::new(Source::new("X X X"), style);
+        let origin = tree.text.origins[0].origin.clone();
+        let spacing = match justification {
+            TextJustification::Spaces => surgeist_text::SpacingPolicy::Spaces,
+            TextJustification::InterWord => surgeist_text::SpacingPolicy::InterWord,
+            TextJustification::None => panic!("this fixture qualifies actual allocation methods"),
+        };
         let set = |tree: &mut Fri06C02StatefulTextTree<S>, alignment, last| {
             tree.inputs.insert(
                 0,
@@ -1625,7 +1631,7 @@ fn native_line_policy_warm_width_policy_changes_and_late_sink_failure_are_atomic
                     display: Display::Block,
                     text_align: alignment,
                     text_align_last: last,
-                    text_justification: TextJustification::Spaces,
+                    text_justification: justification,
                     ..NodeInputOf::default()
                 }),
             );
@@ -1638,9 +1644,14 @@ fn native_line_policy_warm_width_policy_changes_and_late_sink_failure_are_atomic
             .unwrap()
         };
         let advances = |batch: &CompletedLayoutBatchOf<u32, S>| {
+            assert_eq!(
+                batch.placed_text()[0].layout().source().text(),
+                &surgeist_text::Text::from("X X X")
+            );
             let mut lines = Vec::new();
             for entry in batch.final_inline_fragments() {
                 let line = entry.fragment().finalized_fragment().finalized_line();
+                assert_eq!(line.selected_line().request().context.spacing, spacing);
                 if !lines.contains(&line) {
                     lines.push(line);
                 }
@@ -1650,24 +1661,98 @@ fn native_line_policy_warm_width_policy_changes_and_late_sink_failure_are_atomic
                 .map(|line| line.feedback().advance)
                 .collect::<Vec<_>>()
         };
+        let inter_word_receipts = |batch: &CompletedLayoutBatchOf<u32, S>, extra| {
+            if justification != TextJustification::InterWord {
+                return;
+            }
+            let first = batch.final_inline_fragments()[0]
+                .fragment()
+                .finalized_fragment()
+                .finalized_line();
+            assert_eq!(
+                first
+                    .selected_line()
+                    .request()
+                    .end
+                    .view()
+                    .source_after()
+                    .get(),
+                4
+            );
+            let selected = first.selected_line();
+            let rows = first.spacing_slots().collect::<Vec<_>>();
+            assert_eq!(rows.len(), 2);
+            assert_eq!(
+                selected.spacing_slots().collect::<Vec<_>>(),
+                rows.iter().map(|row| row.slot.clone()).collect::<Vec<_>>()
+            );
+            assert_eq!(
+                rows[0]
+                    .slot
+                    .pieces()
+                    .map(|piece| piece.owner())
+                    .collect::<Vec<_>>(),
+                [surgeist_text::SpacingSlotOwner::Source {
+                    origin: origin.clone(),
+                    local: surgeist_text::Range::new(1, 2),
+                    aggregate: surgeist_text::Range::new(1, 2),
+                }]
+            );
+            assert_eq!(
+                rows[0].geometry,
+                surgeist_text::SpacingSlotGeometry::Independent {
+                    intrinsic_advance: 10.0
+                }
+            );
+            assert_eq!(
+                rows[0].stretchability,
+                surgeist_text::SpacingStretchability::Direct
+            );
+            assert!(rows[0].can_expand());
+            assert_eq!(rows[0].authored_word_spacing, 0.0);
+            assert_eq!((rows[0].allocation, rows[0].advance), (extra, 10.0 + extra));
+            assert_eq!(
+                rows[1].disposition,
+                surgeist_text::SpacingSlotDisposition::DiscardedAtLineEdge
+            );
+            assert_eq!((rows[1].allocation, rows[1].advance), (0.0, 0.0));
+            assert_eq!(first.measurements().alignment().advance(), 30.0 + extra);
+            let separator = first
+                .run_views()
+                .flat_map(|run| {
+                    run.glyphs()
+                        .filter(|glyph| glyph.range() == surgeist_text::Range::new(1, 2))
+                        .map(|glyph| (glyph.id(), glyph.advance(), run.origin().x + glyph.pen()))
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>();
+            // Actual raw10 SPACE, with half of the logical extra before paint.
+            assert_eq!(separator, [(3, 10.0, 10.0 + extra / 2.0)]);
+        };
         set(&mut tree, TextAlign::Justify, TextAlignLast::Auto);
         let cold = tree.compute(request(35.0)).unwrap();
         assert_eq!(advances(&cold), [35.0, 10.0]);
+        inter_word_receipts(&cold, 5.0);
         let cold_entries = cold.final_entries().to_vec();
         cold.apply_to(&mut tree).unwrap();
         let warm = tree.compute(request(35.0)).unwrap();
         assert_eq!(advances(&warm), [35.0, 10.0]);
+        inter_word_receipts(&warm, 5.0);
         assert_eq!(warm.final_entries(), cold_entries);
         warm.apply_to(&mut tree).unwrap();
         let wider = tree.compute(request(45.0)).unwrap();
         assert_eq!(advances(&wider), [45.0, 10.0]);
+        inter_word_receipts(&wider, 15.0);
         wider.apply_to(&mut tree).unwrap();
         set(&mut tree, TextAlign::Start, TextAlignLast::Center);
         let changed = tree.compute_invalidated(request(35.0), &[0]).unwrap();
         assert_eq!(advances(&changed), [30.0, 10.0]);
+        inter_word_receipts(&changed, 0.0);
         changed.apply_to(&mut tree).unwrap();
         set(&mut tree, TextAlign::Justify, TextAlignLast::Justify);
         let staged = tree.compute(request(35.0)).unwrap();
+        assert_eq!(advances(&staged), [35.0, 10.0]);
+        inter_word_receipts(&staged, 5.0);
         tree.reject_preparation = true;
         let before = tree.retained.clone();
         assert_eq!(
@@ -1676,8 +1761,10 @@ fn native_line_policy_warm_width_policy_changes_and_late_sink_failure_are_atomic
         );
         assert_eq!(tree.retained, before);
     }
-    lane::<f32>();
-    lane::<f64>();
+    lane::<f32>(TextJustification::Spaces);
+    lane::<f64>(TextJustification::Spaces);
+    lane::<f32>(TextJustification::InterWord);
+    lane::<f64>(TextJustification::InterWord);
 }
 
 #[test]
@@ -1755,7 +1842,14 @@ fn native_fractional_spacing_budget_is_stable_across_real_warm_float_cache() {
         (
             line.feedback(),
             rows.into_iter()
-                .map(|row| (row.slot.owner(), row.disposition, row.advance))
+                .map(|row| {
+                    (
+                        row.slot.pieces().collect::<Vec<_>>(),
+                        row.slot.participants().cloned().collect::<Vec<_>>(),
+                        row.disposition,
+                        row.advance,
+                    )
+                })
                 .collect::<Vec<_>>(),
         )
     };

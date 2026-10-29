@@ -1381,8 +1381,21 @@ fn complete_spacing_remaps_punctuation_advance_without_reclassifying_natural_ove
             .find(|u| u.source_range() == t::Range::new(1, 2))
             .unwrap()
             .handle();
-        assert_eq!(slots[0].source_range(), t::Range::new(1, 2));
-        assert_eq!(slots[0].owner(), t::SpacingSlotOwner::Unit(space));
+        assert_eq!(
+            slots[0].participants().cloned().collect::<Vec<_>>(),
+            [t::PreparedParticipant::Text(space)]
+        );
+        assert_eq!(
+            slots[0]
+                .pieces()
+                .map(|piece| piece.owner())
+                .collect::<Vec<_>>(),
+            [t::SpacingSlotOwner::Source {
+                origin: p.origin_views().next().unwrap().handle(),
+                local: t::Range::new(1, 2),
+                aggregate: t::Range::new(1, 2),
+            }]
+        );
         let natural = selected.finalize(t::SpacingAllocations::None).unwrap();
         assert_eq!(natural.feedback().advance, 30.0);
         let natural_measure = match end {

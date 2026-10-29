@@ -186,22 +186,30 @@ fn collapsed_slots_keep_identity_and_each_actual_finalization_after_resources_dr
     let prepared = prepare(input("  X X  ", WhiteSpace::Collapse));
     let selected = select(&prepared, None);
     let slots: Vec<_> = selected.spacing_slots().collect();
-    assert_eq!(
-        slots
-            .iter()
-            .map(SpacingSlot::source_range)
-            .collect::<Vec<_>>(),
-        [Range::new(0, 1), Range::new(3, 4), Range::new(5, 6)]
-    );
-    for slot in &slots {
-        let SpacingSlotOwner::Unit(unit) = slot.owner() else {
-            panic!("authored SPACE has its actual original unit")
-        };
+    assert_eq!(slots.len(), 3);
+    for (slot, range) in slots
+        .iter()
+        .zip([Range::new(0, 1), Range::new(3, 4), Range::new(5, 6)])
+    {
+        let unit = prepared
+            .unit_views()
+            .find(|unit| unit.source_range() == range)
+            .unwrap()
+            .handle();
         assert_eq!(
-            slot.participant(),
-            Some(&PreparedParticipant::Text(unit.clone()))
+            slot.participants().cloned().collect::<Vec<_>>(),
+            [PreparedParticipant::Text(unit.clone())]
         );
-        assert_eq!(unit.view().source_range(), slot.source_range());
+        assert_eq!(
+            slot.pieces().map(|piece| piece.owner()).collect::<Vec<_>>(),
+            [SpacingSlotOwner::Source {
+                origin: prepared.origin_views().next().unwrap().handle(),
+                local: range,
+                aggregate: range,
+            }]
+        );
+        let pieces = slot.pieces().collect::<Vec<_>>();
+        assert_eq!(pieces[0].presentation_range(), slot.presentation_range());
         assert_eq!(unit.prepared_text(), prepared);
     }
     let first = selected.finalize(SpacingAllocations::None).unwrap();
@@ -250,8 +258,24 @@ fn collapsed_slots_keep_identity_and_each_actual_finalization_after_resources_dr
     drop(first);
     assert_eq!(facts(&second), [(EDGE, 0.0), (INNER, 12.0), (EDGE, 0.0)]);
     assert_eq!(
-        second.spacing_slots().nth(1).unwrap().slot.source_range(),
-        Range::new(3, 4)
+        second
+            .spacing_slots()
+            .nth(1)
+            .unwrap()
+            .slot
+            .pieces()
+            .map(|piece| piece.owner())
+            .collect::<Vec<_>>(),
+        [SpacingSlotOwner::Source {
+            origin: second
+                .prepared_text()
+                .origin_views()
+                .next()
+                .unwrap()
+                .handle(),
+            local: Range::new(3, 4),
+            aggregate: Range::new(3, 4),
+        }]
     );
     assert!(
         second
@@ -445,13 +469,20 @@ fn computed_replacement_spaces_keep_actual_alternative_and_empty_source_anchors(
     let slots: Vec<_> = selected.spacing_slots().collect();
     assert_eq!(slots.len(), 2);
     assert_ne!(slots[0], slots[1]);
-    for slot in &slots {
+    assert_eq!(alternative.view().insertion_anchor().get(), 2);
+    for (slot, local) in slots.iter().zip([Range::new(0, 1), Range::new(2, 3)]) {
         assert_eq!(
-            slot.owner(),
-            SpacingSlotOwner::Alternative(alternative.clone())
+            slot.pieces().map(|piece| piece.owner()).collect::<Vec<_>>(),
+            [SpacingSlotOwner::Alternative {
+                alternative: alternative.clone(),
+                local
+            }]
         );
-        assert_eq!(slot.source_range(), Range::new(2, 2));
-        assert!(slot.participant().is_none());
+        assert_eq!(
+            slot.pieces().next().unwrap().presentation_range(),
+            slot.presentation_range()
+        );
+        assert_eq!(slot.participants().count(), 0);
     }
     assert_eq!(
         slots

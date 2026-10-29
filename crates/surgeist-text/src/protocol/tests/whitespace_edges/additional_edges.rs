@@ -465,13 +465,27 @@ fn upstream_allocation_moves_eligible_conditional_space_before_exclusion() {
     let p = prepare(&mut system, "X X \nY", WhiteSpace::Preserve);
     let forced = ending(&p, PreparedBreakKind::Forced);
     let selection = selected(&p, first(&p), forced.clone(), 35.0, crate::Alignment::Left);
-    assert_eq!(
-        selection
-            .spacing_slots()
-            .map(|s| s.source_range())
-            .collect::<Vec<_>>(),
-        [Range::new(1, 2), Range::new(3, 4)]
-    );
+    let slots = selection.spacing_slots().collect::<Vec<_>>();
+    assert_eq!(slots.len(), 2);
+    for (slot, range) in slots.iter().zip([Range::new(1, 2), Range::new(3, 4)]) {
+        let unit = p
+            .unit_views()
+            .find(|unit| unit.source_range() == range)
+            .unwrap()
+            .handle();
+        assert_eq!(
+            slot.participants().cloned().collect::<Vec<_>>(),
+            [PreparedParticipant::Text(unit)]
+        );
+        assert_eq!(
+            slot.pieces().map(|piece| piece.owner()).collect::<Vec<_>>(),
+            [crate::SpacingSlotOwner::Source {
+                origin: p.origin_views().next().unwrap().handle(),
+                local: range,
+                aggregate: range,
+            }]
+        );
+    }
     assert_eq!(
         selection
             .finalize(SpacingAllocations::None)

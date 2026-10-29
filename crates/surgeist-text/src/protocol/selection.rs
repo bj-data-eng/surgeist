@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use super::LineSelectionRequest;
-use crate::{Range, engine::PreparedData};
+use crate::engine::PreparedData;
 
 /// Shared selected-request owner; issued spacing slots retain this allocation.
 /// Finalized rows retain it so context and occurrence admission are not replayed.
@@ -30,14 +30,18 @@ impl SelectedData {
     }
 }
 
-/// A supported logical space contribution, before any provider-independent delta.
+/// One complete semantic candidate; no provider width or eligibility is guessed.
 pub(crate) struct SpacingSlotData {
-    /// Exact selected presentation unit; replacement and original ownership
-    /// cannot be recovered from equal source ranges or insertion anchors.
-    pub(crate) unit: usize,
-    pub(crate) participant: Option<usize>,
+    pub(crate) atoms: std::ops::Range<usize>,
+    pub(crate) base: usize,
+    pub(crate) participants: Vec<usize>,
     pub(crate) presentation: super::PresentationRange,
-    pub(crate) source: Range,
+    pub(crate) pieces: Vec<SpacingSlotPieceData>,
+}
+
+pub(crate) struct SpacingSlotPieceData {
+    pub(crate) owner: crate::WordSpacingPiece,
+    pub(crate) presentation: super::PresentationRange,
 }
 
 /// Existing standalone pixel metric policy is not a preparation input.
@@ -90,25 +94,60 @@ pub(crate) fn select(
             occurrence: missing.index,
         }));
     }
-    let spacing_slots = if request.context.spacing == SpacingPolicy::Spaces {
-        presentation
+    let targets = match request.context.spacing {
+        SpacingPolicy::None => Vec::new(),
+        SpacingPolicy::Spaces => presentation
             .units
             .iter()
-            .enumerate()
-            .filter(|(_, unit)| unit.eligible_space)
-            .map(|(index, unit)| SpacingSlotData {
-                unit: index,
-                participant: unit.participant,
-                presentation: PresentationRange {
-                    start: unit.presentation.start,
-                    end: unit.presentation.end,
-                },
-                source: unit.source,
+            .filter(|unit| unit.eligible_space)
+            .map(|unit| crate::engine::spacing::SeparatorCandidate {
+                atoms: unit.atoms.clone(),
+                base: unit.atoms.start,
             })
-            .collect()
-    } else {
-        Vec::new()
+            .collect(),
+        SpacingPolicy::InterWord => crate::engine::spacing::candidates(
+            &presentation.projection,
+            &presentation.analysis,
+            &boundaries.presentation,
+        )?,
     };
+    let mut participant_at = vec![None; presentation.projection.atoms.len()];
+    for unit in &presentation.units {
+        for atom in unit.atoms.clone() {
+            participant_at[atom] = unit.participant;
+        }
+    }
+    let spacing_slots = targets
+        .into_iter()
+        .map(|candidate| {
+            let atoms = candidate.atoms;
+            let mut participants = Vec::new();
+            for atom in atoms.clone() {
+                if let Some(index) = participant_at[atom]
+                    && participants.last() != Some(&index)
+                {
+                    participants.push(index);
+                }
+            }
+            let range = PresentationRange {
+                start: presentation.projection.atoms[atoms.start]
+                    .presentation
+                    .start,
+                end: presentation.projection.atoms[atoms.end - 1]
+                    .presentation
+                    .end,
+            };
+            let pieces =
+                crate::engine::spacing::slot_pieces(&prepared.inner, &presentation, atoms.clone());
+            SpacingSlotData {
+                atoms,
+                base: candidate.base,
+                participants,
+                presentation: range,
+                pieces,
+            }
+        })
+        .collect();
     Ok(SelectedLine {
         inner: Arc::new(SelectedData {
             prepared: Arc::clone(&prepared.inner),

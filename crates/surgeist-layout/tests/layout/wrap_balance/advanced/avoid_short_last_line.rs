@@ -282,8 +282,8 @@ fn long_final_group<S: l::LayoutScalar>() {
             line.spacing_slots()
                 .map(|feedback| {
                     (
-                        feedback.slot.owner(),
-                        feedback.slot.source_range(),
+                        feedback.slot.pieces().collect::<Vec<_>>(),
+                        feedback.slot.participants().cloned().collect::<Vec<_>>(),
                         feedback.slot.presentation_range(),
                         feedback.disposition,
                         feedback.advance,

@@ -586,6 +586,27 @@ the same selected line with the complete allocations. It reconciles an over-budg
 result against Text's actual allocated alignment measure; if that correction
 still exceeds the span, `TextSpacingBudget` reports the available span and actual
 alignment advance. Text numeric refusals remain Text errors.
+
+`TextJustification::InterWord` is a distinct uniform native paragraph method. Text
+supplies the complete separator inventory, intrinsic geometry and actual alignment
+response; Layout supplies complete nonnegative allocations. Direct opportunities
+receive equal initial shares and correction against Text's actual measurement.
+When only tab-dependent opportunities can stretch, Layout probes the last admitted
+one in Text's tab traversal using the same immutable natural shape, brackets the
+actual response and refines until exact fill or adjacent representable amounts
+prove the target is skipped. Refused probes propagate as Text errors; they never
+prove unexpandability. Shared provider geometry or deferred terminal authority
+needed for expansion is demanded through the real Text operation, not inferred
+from a zero width or unavailable feedback.
+
+An InterWord result must exactly fill the actual alignment capacity after indent
+and group insets, or return its numeric/spacing-budget refusal. Known unexpandable
+content uses the actual last-line alignment, with Justify falling back to Center,
+through a fresh selection. Hanging-only allocation is not a successful fill.
+Natural and intrinsic trials add no allocation; authored word spacing remains
+Text-owned. Replays retain the actual method, complete amounts and Text shape
+basis; changed line, box, role, tab or float context rebuilds the real selection.
+
 `None` adds no spacing. Native fitting and intrinsic queries consume the matching
 Text-issued measurements; an absent finite width is not an intrinsic-purpose
 tag. Intrinsic allocation/report width is separate from the actual Text metric

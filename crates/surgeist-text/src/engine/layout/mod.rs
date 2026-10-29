@@ -29,6 +29,13 @@ pub(crate) fn finalize_selected(
     finalize::finalize(selected, &amounts, &mut ShapeContext::default())
 }
 
+pub(crate) fn refinalize_selected(
+    line: &super::FinalizedLine,
+    amounts: Vec<f64>,
+) -> Result<super::FinalizedLine> {
+    finalize::refinalize(line, &amounts)
+}
+
 fn finalize_standalone(
     prepared: Arc<PreparedData>,
     request: crate::LineSelectionRequest,
@@ -69,7 +76,7 @@ fn finalize_standalone(
                     .expect("finalized raw measures"),
             )?;
             if amounts.iter().any(|amount| *amount != 0.0) {
-                finalize::finalize(selected, &amounts, scratch)
+                finalize::refinalize(&first, &amounts)
             } else {
                 Ok(first)
             }

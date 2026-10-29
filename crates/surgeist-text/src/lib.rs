@@ -121,8 +121,9 @@ pub use protocol::{
     PreparedPhraseProvenance, PreparedScope, PreparedTermination, PreparedText, PreparedUnit,
     PreparedVirtualSeparator, PreparedWord, PreparedWordPortion, PreparedWordView,
     PresentationRange, ProtocolContextField, ProtocolError, ProtocolHandleKind, SelectedLine,
-    SpacingAllocation, SpacingAllocations, SpacingPolicy, SpacingSlot, SpacingSlotDisposition,
-    SpacingSlotFeedback, SpacingSlotOwner, TabContext, WrappingScopeQueryError,
+    SpacingAllocation, SpacingAllocations, SpacingDeferredCause, SpacingPolicy, SpacingSlot,
+    SpacingSlotDisposition, SpacingSlotFeedback, SpacingSlotGeometry, SpacingSlotOwner,
+    SpacingSlotPiece, SpacingStretchability, TabContext, WrappingScopeQueryError,
 };
 pub use range::{Range, SourcePosition, SourceRange};
 pub use source_model::{

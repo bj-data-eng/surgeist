@@ -13,7 +13,8 @@ pub use upright::{
 /// Text crate result alias.
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Executed shaping phase that demanded independent separator geometry.
+/// Provider-observation domain behind an independent separator-geometry demand.
+/// SelectedShaping also identifies retained selected output reused without reshaping.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WordSpacingStage {
     Preparation,
@@ -24,6 +25,7 @@ pub enum WordSpacingStage {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WordSpacingOperation {
     Authored,
+    InterWordAllocation,
 }
 
 /// Ordered actual content of an unsupported separator unit. Ordinals describe

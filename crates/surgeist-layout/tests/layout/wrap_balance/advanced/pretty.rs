@@ -87,8 +87,8 @@ fn semantic_prefix(before: &t::FinalizedLine, after: &t::FinalizedLine) {
         line.spacing_slots()
             .map(|feedback| {
                 (
-                    feedback.slot.owner(),
-                    feedback.slot.source_range(),
+                    feedback.slot.pieces().collect::<Vec<_>>(),
+                    feedback.slot.participants().cloned().collect::<Vec<_>>(),
                     feedback.slot.presentation_range(),
                     feedback.disposition,
                     feedback.advance,

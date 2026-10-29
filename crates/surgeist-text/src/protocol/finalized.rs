@@ -6,10 +6,11 @@ use super::{
     AtomicSlotFeedback, FinalizedLine, LineFeedback, PreparedParticipant, PresentationRange,
     ProtocolError, SelectedLine, SpacingAllocations, SpacingSlot, protocol_error,
 };
-use crate::{Range, Result, TextNumericError, TextNumericPhase};
+use crate::{Result, TextNumericError, TextNumericPhase};
 
 impl SelectedLine {
-    /// The complete eligible slot inventory for this exact selected request.
+    /// Complete shape-free semantic candidates for this exact selected request.
+    /// Actual geometry and expansion admission come from finalized feedback.
     /// Every handle retains the selected allocation, including its preparation.
     pub fn spacing_slots(&self) -> impl ExactSizeIterator<Item = SpacingSlot> + '_ {
         (0..self.inner.spacing_slots.len()).map(|index| SpacingSlot {
@@ -27,18 +28,12 @@ impl SpacingSlot {
         }
     }
 
-    /// Original source extent of the actual eligible logical participant.
-    #[must_use]
-    pub fn source_range(&self) -> Range {
-        self.selected.spacing_slots[self.index].source
-    }
-
-    /// The preparation-issued participant whose logical advance is adjustable.
-    #[must_use]
-    pub fn participant(&self) -> Option<&PreparedParticipant> {
+    /// Every actual participating selected capability, in content order.
+    pub fn participants(&self) -> impl Iterator<Item = &PreparedParticipant> {
         self.selected.spacing_slots[self.index]
-            .participant
-            .map(|index| &self.selected.request.participants[index])
+            .participants
+            .iter()
+            .map(|&index| &self.selected.request.participants[index])
     }
 
     /// Exact selected presentation target, including inserted replacement spaces.
@@ -82,11 +77,18 @@ fn allocation_amounts(
         if amount.is_some() {
             return Err(protocol_error(ProtocolError::DuplicateSpacingSlot { slot }));
         }
-        if !allocation.amount.is_finite() {
+        if !allocation.amount.is_finite()
+            || (selected.inner.request.context.spacing == super::SpacingPolicy::InterWord
+                && allocation.amount < 0.0)
+        {
             return Err(crate::error::text_numeric_error(
                 "selected spacing allocation",
                 TextNumericPhase::Finalization,
-                TextNumericError::NonFinite,
+                if allocation.amount.is_finite() {
+                    TextNumericError::OutOfRange
+                } else {
+                    TextNumericError::NonFinite
+                },
                 allocation.amount,
             ));
         }
@@ -102,6 +104,16 @@ fn allocation_amounts(
 }
 
 impl FinalizedLine {
+    /// Replace all selected allocations from this immutable unallocated shape.
+    /// No provider shaping, font matching or subtraction from rounded output occurs.
+    pub fn with_spacing(&self, allocations: SpacingAllocations) -> Result<FinalizedLine> {
+        let amounts = allocation_amounts(&self.selected_line(), allocations)?;
+        let inner = crate::engine::layout::refinalize_selected(&self.inner, amounts)?;
+        Ok(FinalizedLine {
+            inner: Arc::new(inner),
+        })
+    }
+
     /// The exact immutable request which produced these finalized rows.
     #[must_use]
     pub fn selected_line(&self) -> SelectedLine {

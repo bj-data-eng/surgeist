@@ -16,7 +16,7 @@ pub(super) struct Natural {
     causes: Vec<Cause>,
     removed: Vec<bool>,
     raw_trim: Vec<bool>,
-    deferred: Vec<Option<(TerminalCause, Side)>>,
+    deferred: Vec<Option<(crate::SpacingDeferredCause, Side)>>,
     usage: FormattedLineUsage,
     capacity: Option<Option<f64>>,
     positions: Vec<(f64, f64)>,
@@ -31,23 +31,7 @@ struct Cause {
     punctuation: Option<crate::PresentationRange>,
     first: bool,
 }
-#[derive(Clone, Copy)]
-enum TerminalCause {
-    Missing,
-    NonBlock,
-}
-impl TerminalCause {
-    fn error(self) -> crate::Error {
-        protocol_error(match self {
-            Self::Missing => {
-                ProtocolError::MissingPhaseTwoContext(crate::PhaseTwoContext::TerminalBlockEdge)
-            }
-            Self::NonBlock => ProtocolError::UnsupportedContext {
-                field: crate::ProtocolContextField::CssParagraphBoundary,
-            },
-        })
-    }
-}
+
 fn separator(selected: &SelectedData, cluster: &PreparedCluster) -> bool {
     use icu_properties::{CodePointMapData, props::GeneralCategory};
     selected.presentation.projection.atoms[cluster.atoms.clone()]
@@ -258,7 +242,7 @@ pub(super) fn natural(
             visual.reverse()
         }
         let mut terminal = [true; 4];
-        let mut deferred: Option<TerminalCause> = None;
+        let mut deferred: Option<crate::SpacingDeferredCause> = None;
         let mut quota = false;
         let mut handled = vec![false; units.len()];
         for ordinal in visual {
@@ -393,11 +377,13 @@ pub(super) fn natural(
                         match selected.prepared.analyzed.paragraph.terminal_edge {
                             crate::ParagraphTerminalEdge::BlockEnd => true,
                             crate::ParagraphTerminalEdge::Unknown => {
-                                deferred = Some(TerminalCause::Missing);
+                                deferred =
+                                    Some(crate::SpacingDeferredCause::MissingTerminalBlockEdge);
                                 false
                             }
                             crate::ParagraphTerminalEdge::NonBlockBoundary => {
-                                deferred = Some(TerminalCause::NonBlock);
+                                deferred =
+                                    Some(crate::SpacingDeferredCause::NonBlockParagraphBoundary);
                                 false
                             }
                         }
@@ -649,6 +635,80 @@ fn measure(
         occupied_start,
         occupied_end,
     })
+}
+
+/// Response attribution uses the same actual natural causes/exclusion algebra
+/// as the allocated views. No font metric or source-class guess enters here.
+pub(super) fn spacing_responses(
+    selected: &SelectedData,
+    shaped: &ShapedData,
+    order: &crate::SuppliedVisualOrder<'_, '_>,
+    natural: &Natural,
+) -> Result<Vec<(crate::SpacingStretchability, usize)>> {
+    use crate::SpacingStretchability as Response;
+    let mut exclusions = vec![Exclusion::default(); shaped.clusters.len()];
+    for (i, exclusion) in exclusions.iter_mut().enumerate() {
+        exclusion.flow = natural.removed[i] || natural.raw_trim[i];
+    }
+    for cause in &natural.causes {
+        if !cause.effects[ALIGN] {
+            continue;
+        }
+        for &i in &cause.rows {
+            if cause.conditional {
+                if let Some(capacity) = natural.capacity.flatten() {
+                    exclusions[i].partial(
+                        cause.side,
+                        physical_edge(cause.side, capacity, natural.total)?,
+                    );
+                }
+            } else {
+                exclusions[i].flow = true;
+            }
+        }
+    }
+    let mut result: Vec<_> = exclusions
+        .iter()
+        .enumerate()
+        .map(|(i, exclusion)| {
+            let response = if let Some((cause, _)) = natural.deferred[i] {
+                Response::Deferred(cause)
+            } else if exclusion.flow
+                || exclusion
+                    .left
+                    .is_some_and(|edge| natural.positions[i].0 <= edge)
+                || exclusion
+                    .right
+                    .is_some_and(|edge| natural.positions[i].1 >= edge)
+            {
+                Response::Excluded
+            } else {
+                Response::Direct
+            };
+            (response, 0)
+        })
+        .collect();
+    let mut traversal: Vec<_> = order.iter().map(|(ordinal, _)| ordinal).collect();
+    if selected.presentation.analysis.base_level & 1 != 0 {
+        traversal.reverse();
+    }
+    let mut intercepted = false;
+    for (rank, ordinal) in traversal.into_iter().enumerate().rev() {
+        if let ShapedItem::TextCluster(index) = shaped.items[ordinal] {
+            result[index].1 = rank;
+            if matches!(shaped.clusters[index].content, ClusterContent::CssTab(_))
+                && selected.prepared.tab_metrics[shaped.clusters[index].style]
+                    .as_ref()
+                    .is_some_and(|metric| metric.period != 0.0)
+                && result[index].0 != Response::Excluded
+            {
+                intercepted = true;
+            } else if intercepted && result[index].0 == Response::Direct {
+                result[index].0 = Response::TabDependent;
+            }
+        }
+    }
+    Ok(result)
 }
 
 pub(super) fn allocated(

@@ -1017,16 +1017,36 @@ pub surgeist_text::SourceRangeFragmentError::UnsupportedPartition::unit: usize
 pub enum surgeist_text::SpacingAllocations
 pub surgeist_text::SpacingAllocations::Complete(alloc::vec::Vec<surgeist_text::SpacingAllocation>)
 pub surgeist_text::SpacingAllocations::None
+pub enum surgeist_text::SpacingDeferredCause
+pub surgeist_text::SpacingDeferredCause::MissingTerminalBlockEdge
+pub surgeist_text::SpacingDeferredCause::NonBlockParagraphBoundary
 pub enum surgeist_text::SpacingPolicy
+pub surgeist_text::SpacingPolicy::InterWord
 pub surgeist_text::SpacingPolicy::None
 pub surgeist_text::SpacingPolicy::Spaces
 pub enum surgeist_text::SpacingSlotDisposition
 pub surgeist_text::SpacingSlotDisposition::DiscardedAtLineEdge
 pub surgeist_text::SpacingSlotDisposition::Retained
 pub surgeist_text::SpacingSlotDisposition::Retained::trailing: bool
+pub enum surgeist_text::SpacingSlotGeometry
+pub surgeist_text::SpacingSlotGeometry::Independent
+pub surgeist_text::SpacingSlotGeometry::Independent::intrinsic_advance: f64
+pub surgeist_text::SpacingSlotGeometry::SharedProviderGroup
 pub enum surgeist_text::SpacingSlotOwner
-pub surgeist_text::SpacingSlotOwner::Alternative(surgeist_text::PreparedAlternative)
-pub surgeist_text::SpacingSlotOwner::Unit(surgeist_text::PreparedUnit)
+pub surgeist_text::SpacingSlotOwner::Alternative
+pub surgeist_text::SpacingSlotOwner::Alternative::alternative: surgeist_text::PreparedAlternative
+pub surgeist_text::SpacingSlotOwner::Alternative::local: surgeist_text::Range
+pub surgeist_text::SpacingSlotOwner::Control(surgeist_text::PreparedControl)
+pub surgeist_text::SpacingSlotOwner::Source
+pub surgeist_text::SpacingSlotOwner::Source::aggregate: surgeist_text::Range
+pub surgeist_text::SpacingSlotOwner::Source::local: surgeist_text::Range
+pub surgeist_text::SpacingSlotOwner::Source::origin: surgeist_text::PreparedOrigin
+pub surgeist_text::SpacingSlotOwner::VirtualSeparator(surgeist_text::PreparedVirtualSeparator)
+pub enum surgeist_text::SpacingStretchability
+pub surgeist_text::SpacingStretchability::Deferred(surgeist_text::SpacingDeferredCause)
+pub surgeist_text::SpacingStretchability::Direct
+pub surgeist_text::SpacingStretchability::Excluded
+pub surgeist_text::SpacingStretchability::TabDependent
 pub enum surgeist_text::SuppliedInlineParticipant
 pub surgeist_text::SuppliedInlineParticipant::Atomic
 pub surgeist_text::SuppliedInlineParticipant::Atomic::level: surgeist_text::BidiLevel
@@ -1312,6 +1332,7 @@ pub surgeist_text::WordSpaceTransform::Space
 pub surgeist_text::WordSpaceTransform::SpaceAutoPhrase
 pub enum surgeist_text::WordSpacingOperation
 pub surgeist_text::WordSpacingOperation::Authored
+pub surgeist_text::WordSpacingOperation::InterWordAllocation
 pub enum surgeist_text::WordSpacingPiece
 pub surgeist_text::WordSpacingPiece::Alternative
 pub surgeist_text::WordSpacingPiece::Alternative::alternative: usize
@@ -1662,6 +1683,7 @@ impl surgeist_text::FinalizedLine
 pub fn surgeist_text::FinalizedLine::atomic_slots(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::AtomicSlotFeedback> + '_
 pub fn surgeist_text::FinalizedLine::feedback(&self) -> surgeist_text::LineFeedback
 pub fn surgeist_text::FinalizedLine::selected_line(&self) -> surgeist_text::SelectedLine
+pub fn surgeist_text::FinalizedLine::with_spacing(&self, allocations: surgeist_text::SpacingAllocations) -> surgeist_text::Result<surgeist_text::FinalizedLine>
 impl surgeist_text::FinalizedLine
 pub fn surgeist_text::FinalizedLine::control_slots(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::FinalizedControlView<'_>>
 impl surgeist_text::FinalizedLine
@@ -2935,12 +2957,11 @@ pub surgeist_text::SpacingAllocation::amount: f64
 pub surgeist_text::SpacingAllocation::slot: surgeist_text::SpacingSlot
 pub struct surgeist_text::SpacingSlot
 impl surgeist_text::SpacingSlot
-pub fn surgeist_text::SpacingSlot::owner(&self) -> surgeist_text::SpacingSlotOwner
-impl surgeist_text::SpacingSlot
-pub fn surgeist_text::SpacingSlot::participant(&self) -> core::option::Option<&surgeist_text::PreparedParticipant>
+pub fn surgeist_text::SpacingSlot::participants(&self) -> impl core::iter::traits::iterator::Iterator<Item = &surgeist_text::PreparedParticipant>
 pub fn surgeist_text::SpacingSlot::presentation_range(&self) -> surgeist_text::PresentationRange
 pub fn surgeist_text::SpacingSlot::selected_line(&self) -> surgeist_text::SelectedLine
-pub fn surgeist_text::SpacingSlot::source_range(&self) -> surgeist_text::Range
+impl surgeist_text::SpacingSlot
+pub fn surgeist_text::SpacingSlot::pieces(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::SpacingSlotPiece> + '_
 impl core::cmp::Eq for surgeist_text::SpacingSlot
 impl core::cmp::PartialEq for surgeist_text::SpacingSlot
 pub fn surgeist_text::SpacingSlot::eq(&self, other: &Self) -> bool
@@ -2948,8 +2969,19 @@ impl core::fmt::Debug for surgeist_text::SpacingSlot
 pub fn surgeist_text::SpacingSlot::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_text::SpacingSlotFeedback
 pub surgeist_text::SpacingSlotFeedback::advance: f64
+pub surgeist_text::SpacingSlotFeedback::allocation: f64
+pub surgeist_text::SpacingSlotFeedback::authored_word_spacing: f64
 pub surgeist_text::SpacingSlotFeedback::disposition: surgeist_text::SpacingSlotDisposition
+pub surgeist_text::SpacingSlotFeedback::geometry: surgeist_text::SpacingSlotGeometry
 pub surgeist_text::SpacingSlotFeedback::slot: surgeist_text::SpacingSlot
+pub surgeist_text::SpacingSlotFeedback::stretchability: surgeist_text::SpacingStretchability
+pub surgeist_text::SpacingSlotFeedback::traversal_order: usize
+impl surgeist_text::SpacingSlotFeedback
+pub fn surgeist_text::SpacingSlotFeedback::can_expand(&self) -> bool
+pub struct surgeist_text::SpacingSlotPiece
+impl surgeist_text::SpacingSlotPiece
+pub fn surgeist_text::SpacingSlotPiece::owner(&self) -> surgeist_text::SpacingSlotOwner
+pub const fn surgeist_text::SpacingSlotPiece::presentation_range(&self) -> surgeist_text::PresentationRange
 pub struct surgeist_text::Span
 impl surgeist_text::Span
 pub const fn surgeist_text::Span::new(range: surgeist_text::Range, style: surgeist_text::Style) -> Self

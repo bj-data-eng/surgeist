@@ -38,6 +38,12 @@ mod hanging_punctuation;
 mod indent;
 #[path = "tests/inline_boundary_edges.rs"]
 mod inline_boundary_edges;
+#[path = "tests/inter_word.rs"]
+mod inter_word;
+#[path = "tests/inter_word_distribution.rs"]
+mod inter_word_distribution;
+#[path = "tests/inter_word_failures.rs"]
+mod inter_word_failures;
 #[path = "tests/lexical_fallback.rs"]
 mod lexical_fallback;
 #[path = "tests/line_box_direction.rs"]

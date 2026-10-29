@@ -1,7 +1,7 @@
 //! Actual separator-unit geometry shared by authored and selected spacing.
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeSet,
     ops::{Bound::Excluded, Range as AtomRange},
 };
 
@@ -31,9 +31,13 @@ pub(crate) struct WordSpacingComponent {
 /// A complete actual separator TCU, rather than a scalar advance share.
 #[derive(Clone, Debug)]
 pub(crate) struct WordSpacingUnit {
+    pub(crate) atoms: AtomRange<usize>,
+    pub(crate) base: usize,
     pub(crate) components: Vec<WordSpacingComponent>,
     pub(crate) authored: f64,
-    pub(crate) half: f64,
+    pub(crate) allocation: f64,
+    pub(crate) geometry: crate::SpacingSlotGeometry,
+    pub(crate) shared: Option<AtomRange<usize>>,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -53,7 +57,10 @@ pub(crate) fn authored_original(
         styles,
         &BTreeSet::new(),
         shaped,
-        WordSpacingStage::Preparation,
+        Demand {
+            stage: WordSpacingStage::Preparation,
+            feedback: false,
+        },
         |atoms| {
             let mut pieces = Vec::new();
             for atom in atoms {
@@ -67,6 +74,7 @@ pub(crate) fn authored_original(
 pub(crate) fn authored_selected(
     input: PresentationInput<'_>,
     shaped: &mut ShapedData,
+    feedback: bool,
 ) -> Result<()> {
     apply(
         &input.presentation.projection,
@@ -74,56 +82,125 @@ pub(crate) fn authored_selected(
         &input.prepared.styles,
         &input.boundaries.presentation,
         shaped,
-        WordSpacingStage::SelectedShaping,
+        Demand {
+            stage: WordSpacingStage::SelectedShaping,
+            feedback,
+        },
         |atoms| {
-            let mut pieces = Vec::new();
-            for atom in atoms {
-                if let Some(original) = input.presentation.originals[atom] {
-                    original_pieces(&input.prepared.analyzed, original, &mut pieces);
-                    continue;
-                }
-                let unit = input
-                    .presentation
-                    .units
-                    .iter()
-                    .find(|unit| unit.atoms.contains(&atom))
-                    .expect("selected atom has an actual presentation owner");
-                match unit.kind {
-                    PresentationUnitKind::Replacement { alternative, local } => {
-                        let range = input.presentation.projection.atoms[atom].presentation;
-                        push_piece(
-                            &mut pieces,
-                            WordSpacingPiece::Alternative {
-                                alternative,
-                                local: Range::new(
-                                    local.start + range.start - unit.presentation.start,
-                                    local.start + range.end - unit.presentation.start,
-                                ),
-                                insertion_anchor: input.prepared.tables.alternatives[alternative]
-                                    .insertion_anchor,
-                            },
-                        );
-                    }
-                    PresentationUnitKind::GeneratedSeparator { owner } => {
-                        use crate::transform::relation::GeneratedSeparatorOwner;
-                        push_piece(
-                            &mut pieces,
-                            match owner {
-                                GeneratedSeparatorOwner::Control(occurrence) => {
-                                    WordSpacingPiece::Control { occurrence }
-                                }
-                                GeneratedSeparatorOwner::Virtual(occurrence) => {
-                                    WordSpacingPiece::VirtualSeparator { occurrence }
-                                }
-                            },
-                        );
-                    }
-                    _ => unreachable!("selected nonoriginal scalar has an actual inserted owner"),
-                }
-            }
-            pieces
+            slot_pieces(input.prepared, input.presentation, atoms)
+                .into_iter()
+                .map(|piece| piece.owner)
+                .collect()
         },
     )
+}
+
+/// Exact selected atom correspondence, shared by errors and strong slot views.
+pub(crate) fn slot_pieces(
+    prepared: &super::PreparedData,
+    presentation: &crate::protocol::prepared::SelectedPresentation,
+    atoms: AtomRange<usize>,
+) -> Vec<crate::protocol::selection::SpacingSlotPieceData> {
+    let mut output = Vec::new();
+    for atom in atoms {
+        let mut owners = Vec::new();
+        if let Some(original) = presentation.originals[atom] {
+            original_pieces(&prepared.analyzed, original, &mut owners);
+        } else {
+            let index = presentation
+                .units
+                .partition_point(|unit| unit.atoms.end <= atom);
+            let unit = &presentation.units[index];
+            assert!(
+                unit.atoms.contains(&atom),
+                "selected atom has its actual owner"
+            );
+            match unit.kind {
+                PresentationUnitKind::Replacement { alternative, local } => {
+                    let range = presentation.projection.atoms[atom].presentation;
+                    owners.push(WordSpacingPiece::Alternative {
+                        alternative,
+                        local: Range::new(
+                            local.start + range.start - unit.presentation.start,
+                            local.start + range.end - unit.presentation.start,
+                        ),
+                        insertion_anchor: prepared.tables.alternatives[alternative]
+                            .insertion_anchor,
+                    });
+                }
+                PresentationUnitKind::GeneratedSeparator { owner } => {
+                    use crate::transform::relation::GeneratedSeparatorOwner;
+                    owners.push(match owner {
+                        GeneratedSeparatorOwner::Control(occurrence) => {
+                            WordSpacingPiece::Control { occurrence }
+                        }
+                        GeneratedSeparatorOwner::Virtual(occurrence) => {
+                            WordSpacingPiece::VirtualSeparator { occurrence }
+                        }
+                    });
+                }
+                _ => unreachable!("inserted scalar has an actual inserted owner"),
+            }
+        }
+        let range = presentation.projection.atoms[atom].presentation;
+        for owner in owners {
+            output.push(crate::protocol::selection::SpacingSlotPieceData {
+                owner,
+                presentation: crate::PresentationRange {
+                    start: range.start,
+                    end: range.end,
+                },
+            });
+        }
+    }
+    output
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SeparatorCandidate {
+    pub(crate) atoms: AtomRange<usize>,
+    pub(crate) base: usize,
+}
+
+pub(crate) fn candidates(
+    projection: &SourceProjection,
+    analysis: &Analysis,
+    additional: &BTreeSet<usize>,
+) -> Result<Vec<SeparatorCandidate>> {
+    let barriers: BTreeSet<_> = projection
+        .barrier_atoms
+        .iter()
+        .copied()
+        .chain(additional.iter().copied())
+        .collect();
+    let mut result = Vec::new();
+    for grapheme in &analysis.graphemes {
+        let mut first = grapheme.start;
+        for end in barriers
+            .range((Excluded(grapheme.start), Excluded(grapheme.end)))
+            .copied()
+            .chain(std::iter::once(grapheme.end))
+        {
+            let atoms = first..end;
+            first = end;
+            if let Some(base) = separator_base(projection, atoms.clone())? {
+                result.push(SeparatorCandidate { atoms, base });
+            }
+        }
+    }
+    Ok(result)
+}
+
+pub(crate) fn authored_demand(analysis: &Analysis, styles: &[ResolvedStyleRun]) -> bool {
+    analysis
+        .infos
+        .iter()
+        .any(|(_, style)| styles[*style].style.word_spacing != 0.0)
+}
+
+struct Demand {
+    stage: WordSpacingStage,
+    feedback: bool,
 }
 
 fn original_pieces(analyzed: &AnalyzedData, atom: usize, output: &mut Vec<WordSpacingPiece>) {
@@ -186,122 +263,139 @@ fn apply(
     styles: &[ResolvedStyleRun],
     additional_barriers: &BTreeSet<usize>,
     shaped: &mut ShapedData,
-    stage: WordSpacingStage,
+    demand: Demand,
     content: impl Fn(AtomRange<usize>) -> Vec<WordSpacingPiece>,
 ) -> Result<()> {
-    if styles.iter().all(|run| run.style.word_spacing == 0.0) {
+    if !demand.feedback && !authored_demand(analysis, styles) {
         return Ok(());
     }
-    let barriers: BTreeSet<_> = projection
-        .barrier_atoms
-        .iter()
-        .copied()
-        .chain(additional_barriers.iter().copied())
-        .collect();
     let mut clusters = vec![None; projection.atoms.len()];
     for (index, cluster) in shaped.clusters.iter().enumerate() {
         for atom in cluster.atoms.clone() {
             clusters[atom] = Some(index);
         }
     }
-    let groups: BTreeMap<_, _> = shaped
-        .provider_groups
-        .iter()
-        .enumerate()
-        .map(|(index, group)| ((group.run, group.atoms.start, group.atoms.end), index))
-        .collect();
-    for grapheme in &analysis.graphemes {
-        let mut first = grapheme.start;
-        for end in barriers
-            .range((Excluded(grapheme.start), Excluded(grapheme.end)))
-            .copied()
-            .chain(std::iter::once(grapheme.end))
-        {
-            let atoms = first..end;
-            first = end;
-            let Some(base) = separator_base(projection, atoms.clone())? else {
-                continue;
-            };
-            let authored = styles[analysis.infos[base].1].style.word_spacing;
-            if authored == 0.0 {
-                continue;
-            }
-            let members: Vec<_> = atoms.clone().filter_map(|atom| clusters[atom]).collect();
-            let mut membership = BTreeSet::new();
-            for &index in &members {
-                let cluster = &shaped.clusters[index];
-                if let Some(run) = cluster.content.font_run() {
-                    let group = groups
-                        .get(&(
-                            run,
-                            cluster.provider_group.start,
-                            cluster.provider_group.end,
-                        ))
-                        .ok_or_else(|| {
-                            Error::new(
-                                ErrorCode::LayoutFailed,
-                                "separator component lacks its actual provider receipt",
-                            )
-                        })?;
-                    membership.insert(*group);
-                }
-            }
-            let mut intrinsic = 0.0;
-            for index in membership {
-                let group = &shaped.provider_groups[index];
-                if group.atoms.start < atoms.start || group.atoms.end > atoms.end {
-                    return Err(Error::new(
-                        ErrorCode::LayoutFailed,
-                        "word spacing requires independent separator geometry",
-                    )
-                    .with_detail(ErrorDetail::UnsupportedWordSpacing {
-                        stage,
-                        operation: WordSpacingOperation::Authored,
-                        pieces: content(atoms.clone()).into_boxed_slice(),
-                        provider_atoms: group.atoms.clone(),
-                    }));
-                }
-                assert!(
-                    group.glyphs.end <= shaped.glyphs.len(),
-                    "provider receipt retains its actual glyph inventory"
-                );
-                intrinsic = super::layout::add(
-                    "separator intrinsic advance",
-                    TextNumericPhase::Shaping,
-                    intrinsic,
-                    group.advance,
-                )?;
-            }
-            if intrinsic == 0.0 {
-                continue;
-            }
-            let half = half(authored)?;
-            let components: Vec<_> = members
-                .into_iter()
-                .map(|cluster| WordSpacingComponent {
-                    cluster,
-                    advance: shaped.clusters[cluster].advance,
-                })
-                .collect();
-            let last = components
-                .last()
-                .expect("nonzero separator has actual components")
-                .cluster;
-            shaped.clusters[last].advance = super::layout::add(
-                "word spacing",
-                TextNumericPhase::Shaping,
-                shaped.clusters[last].advance,
-                authored,
-            )?;
-            shaped.clusters[last].logical_adjustments[1] = authored;
-            shaped.word_spacing.push(WordSpacingUnit {
-                components,
-                authored,
-                half,
-            });
+    for candidate in candidates(projection, analysis, additional_barriers)? {
+        let atoms = candidate.atoms;
+        let base = candidate.base;
+        let mut authored = styles[analysis.infos[base].1].style.word_spacing;
+        if authored == 0.0 && !demand.feedback {
+            continue;
         }
+        let members: Vec<_> = atoms.clone().filter_map(|atom| clusters[atom]).collect();
+        let (geometry, shared) = geometry(shaped, &members, atoms.clone())?;
+        let intrinsic = match geometry {
+            crate::SpacingSlotGeometry::Independent { intrinsic_advance } => intrinsic_advance,
+            crate::SpacingSlotGeometry::SharedProviderGroup => 0.0,
+        };
+        if let Some(provider_atoms) = &shared {
+            if authored != 0.0 {
+                return Err(unsupported(
+                    demand.stage,
+                    WordSpacingOperation::Authored,
+                    content(atoms.clone()),
+                    provider_atoms.clone(),
+                ));
+            }
+        } else if intrinsic == 0.0 {
+            authored = 0.0;
+        }
+
+        let components: Vec<_> = members
+            .into_iter()
+            .map(|cluster| WordSpacingComponent {
+                cluster,
+                advance: shaped.clusters[cluster].advance,
+            })
+            .collect();
+        let last = components
+            .last()
+            .expect("nonzero separator has actual components")
+            .cluster;
+        shaped.clusters[last].advance = super::layout::add(
+            "word spacing",
+            TextNumericPhase::Shaping,
+            shaped.clusters[last].advance,
+            authored,
+        )?;
+        shaped.clusters[last].logical_adjustments[1] = authored;
+        shaped.word_spacing.push(WordSpacingUnit {
+            atoms,
+            base,
+            components,
+            authored,
+            allocation: 0.0,
+            geometry,
+            shared,
+        });
     }
     Ok(())
+}
+
+pub(crate) fn geometry(
+    shaped: &ShapedData,
+    members: &[usize],
+    atoms: AtomRange<usize>,
+) -> Result<(crate::SpacingSlotGeometry, Option<AtomRange<usize>>)> {
+    let mut membership = BTreeSet::new();
+    for &index in members {
+        let cluster = &shaped.clusters[index];
+        if cluster.content.font_run().is_some() {
+            membership.insert(cluster.provider_receipt.ok_or_else(|| {
+                Error::new(
+                    ErrorCode::LayoutFailed,
+                    "separator component lacks its actual provider receipt",
+                )
+            })?);
+        }
+    }
+    let mut intrinsic = 0.0;
+    let mut shared = None;
+    for index in membership {
+        let group = &shaped.provider_groups[index];
+        assert!(
+            group.run < shaped.runs.len() && group.glyphs.end <= shaped.glyphs.len(),
+            "actual provider receipt retains its font and glyphs"
+        );
+        if group.atoms.start < atoms.start || group.atoms.end > atoms.end {
+            shared = Some(group.atoms.clone());
+        } else {
+            intrinsic = super::layout::add(
+                "separator intrinsic advance",
+                TextNumericPhase::Shaping,
+                intrinsic,
+                group.advance,
+            )?;
+        }
+    }
+    Ok((
+        if shared.is_some() {
+            crate::SpacingSlotGeometry::SharedProviderGroup
+        } else {
+            crate::SpacingSlotGeometry::Independent {
+                intrinsic_advance: intrinsic,
+            }
+        },
+        shared,
+    ))
+}
+
+pub(crate) fn unsupported(
+    stage: WordSpacingStage,
+    operation: WordSpacingOperation,
+    pieces: Vec<WordSpacingPiece>,
+    provider_atoms: AtomRange<usize>,
+) -> Error {
+    Error::new(
+        ErrorCode::LayoutFailed,
+        "word spacing requires independent separator geometry",
+    )
+    .with_detail(ErrorDetail::UnsupportedWordSpacing {
+        stage,
+        operation,
+        pieces: pieces.into_boxed_slice(),
+        provider_atoms,
+    })
 }
 
 fn half(amount: f64) -> Result<f64> {
@@ -309,7 +403,7 @@ fn half(amount: f64) -> Result<f64> {
     if amount != 0.0 && half == 0.0 {
         return Err(super::text_numeric_error(
             "word spacing half",
-            TextNumericPhase::Shaping,
+            TextNumericPhase::Finalization,
             TextNumericError::NonZeroLost,
             amount,
         ));
@@ -332,6 +426,13 @@ pub(crate) fn visual_authored(
     }
     let mut halves = vec![WordSpacingPlacement::default(); shaped.clusters.len()];
     for unit in &shaped.word_spacing {
+        let extra = super::layout::add(
+            "separator spacing total",
+            TextNumericPhase::Finalization,
+            unit.authored,
+            unit.allocation,
+        )?;
+        let unit_half = half(extra)?;
         let mut trailing = None;
         let mut leading = None;
         for component in &unit.components {
@@ -341,7 +442,7 @@ pub(crate) fn visual_authored(
             }
             shaped.clusters[index].advance = component.advance;
             shaped.clusters[index].logical_adjustments[1] = 0.0;
-            halves[index].half = unit.half;
+            halves[index].half = unit_half;
             if leading.is_none_or(|old| rank[index] < rank[old]) {
                 leading = Some(index);
             }
@@ -357,9 +458,10 @@ pub(crate) fn visual_authored(
                 "visual word spacing",
                 TextNumericPhase::Finalization,
                 shaped.clusters[index].advance,
-                unit.authored,
+                extra,
             )?;
             shaped.clusters[index].logical_adjustments[1] = unit.authored;
+            shaped.clusters[index].logical_adjustments[2] = unit.allocation;
         }
     }
     Ok(halves)

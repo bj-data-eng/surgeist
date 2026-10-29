@@ -233,8 +233,35 @@ create no separator. Used Alphabetic/Central origins remain independent.
 Existing `SpacingPolicy::None` and `Spaces` retain their distinct native allocation
 semantics. In particular, allocated `Spaces` amounts keep their existing U+0020
 geometry and valid zero/cancellation/negative behavior; they are not silently
-given CSS InterWord half-side or zero-suppression semantics. A native InterWord
-allocation front is a separate contribution.
+given CSS InterWord half-side or zero-suppression semantics. `SpacingPolicy::InterWord` is the separate native Text operation over the declared
+repertoire. Its uniformly resolved request applies to every selected candidate;
+it does not infer computed per-parent method inheritance. Layout allocation and
+full method families remain separate capabilities.
+
+Selection issues shape-free semantic candidates. `SpacingSlot::pieces()` retains
+ordered Source-origin/local/aggregate, Alternative-local, Control or VirtualSeparator
+ownership; `participants()` retains every actual selected participant. There is no
+singular source hull or owner for a multi-piece unit. Natural finalized feedback
+reports independent intrinsic advance or shared provider geometry, edge disposition,
+alignment stretchability, traversal order, authored term and exact allocation.
+Independent0 is not discarded whitespace. Shared geometry remains usable until
+material spacing needs it. `can_expand()` is false for excluded/deferred responses;
+consumers inspect the richer state before claiming unexpandability.
+
+`SpacingDeferredCause::{MissingTerminalBlockEdge, NonBlockParagraphBoundary}`
+retains the actual neutral Phase-II dependency. Its material execution returns the
+existing missing-terminal or unsupported-paragraph error. Complete0 stays valid;
+a changed terminal fact requires authentic recapture/preparation, not a guessed role.
+
+`FinalizedLine::with_spacing` replaces complete allocations from its retained,
+immutable unallocated selected shape, preserving the same selection/resources.
+It reruns collapse, ordering, natural and allocated tabs/Phase II, measurements and
+geometry, without font matching, provider shaping, a mutable cache or subtracting
+old rounded amounts. None restores zero allocation with authored spacing retained.
+Foreign/missing/duplicate/negative-InterWord/nonfinite amounts refuse atomically.
+InterWord adds its amount to the authored term and splits the total equally;
+independent intrinsic0 cannot receive its nonzero allocation. Existing Spaces
+keeps its distinct signed primitive behavior.
 
 ## Used named preparation references
 

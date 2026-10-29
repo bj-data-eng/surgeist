@@ -91,6 +91,7 @@ pub(crate) struct PreparedData {
 
 /// Inputs coupled to one shaping operation, without a mutable System escape.
 pub(crate) struct ShapingInput<'a> {
+    pub(crate) separator_geometry: bool,
     pub(crate) profile: upright::ShapingProfile<'a>,
     pub(crate) baseline_reference: Option<crate::FontBaseline>,
     pub(crate) projection: &'a SourceProjection,
@@ -106,8 +107,14 @@ pub(crate) struct ShapingInput<'a> {
 /// line-local rows. These rows never mutate preliminary preparation tables.
 pub(crate) struct FinalizedLine {
     pub(crate) selected: Arc<SelectedData>,
-    pub(crate) mapping: Arc<SelectedMapping>,
+    pub(crate) shape: Arc<SelectedShape>,
     pub(crate) data: layout::data::FinalizedLineData,
+}
+
+/// Actual selected provider output before any allocation-dependent operation.
+pub(crate) struct SelectedShape {
+    pub(crate) mapping: Arc<SelectedMapping>,
+    pub(crate) shaped: layout::data::ShapedData,
 }
 
 /// One retained outer placement, kept separate from canonical glyph geometry.
@@ -333,6 +340,7 @@ pub(crate) fn prepare(
     let mut shaped = shape::shape(
         catalogue,
         ShapingInput {
+            separator_geometry: spacing::authored_demand(&analyzed.analysis, &styles),
             profile: upright::original_profile(options.orientation(), &upright_units),
             baseline_reference: options.resolved_baseline_reference(),
             projection: &analyzed.projection,
@@ -356,6 +364,7 @@ pub(crate) fn prepare(
         shaped.empty_run = Some(shape::default_metrics(
             catalogue.query(),
             &ShapingInput {
+                separator_geometry: spacing::authored_demand(&analyzed.analysis, &styles),
                 profile: upright::original_profile(options.orientation(), &upright_units),
                 baseline_reference: options.resolved_baseline_reference(),
                 projection: &analyzed.projection,

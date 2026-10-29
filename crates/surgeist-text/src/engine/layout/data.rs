@@ -140,6 +140,8 @@ pub(crate) struct PreparedCluster {
     pub(crate) atoms: IndexRange<usize>,
     /// Actual provider group before scalar component extraction.
     pub(crate) provider_group: IndexRange<usize>,
+    /// Actual invocation-qualified extraction receipt when separator geometry is demanded.
+    pub(crate) provider_receipt: Option<usize>,
     pub(crate) glyphs: IndexRange<usize>,
     pub(crate) content: ClusterContent,
     pub(crate) style: usize,
@@ -309,11 +311,18 @@ pub(crate) struct FinalizedAnchor {
     pub(crate) inline_end: f64,
 }
 
-/// The actual allocation target joined by finalization, in selected-slot order.
-/// Logical advance remains on the real finalized cluster, without a copy here.
-#[derive(Clone, Copy, Debug)]
+/// Actual complete-unit feedback in selected-slot order, derived from its
+/// retained component membership after finalization.
+#[derive(Clone, Debug)]
 pub(crate) struct FinalizedSpacingSlot {
     pub(crate) cluster: usize,
+    pub(crate) members: Vec<usize>,
+    pub(crate) geometry: crate::SpacingSlotGeometry,
+    pub(crate) stretchability: crate::SpacingStretchability,
+    pub(crate) traversal_order: usize,
+    pub(crate) authored: f64,
+    pub(crate) allocation: f64,
+    pub(crate) advance: f64,
     pub(crate) disposition: crate::protocol::SpacingSlotDisposition,
 }
 

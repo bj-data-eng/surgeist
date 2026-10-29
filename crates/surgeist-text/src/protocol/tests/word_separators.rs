@@ -2,6 +2,7 @@
 //! Text4 §8.1 requires separator coverage, equal halves and intrinsic-zero suppression.
 use super::*;
 mod frames;
+mod inter_word;
 mod qualification;
 use crate::{
     Affinity, Cursor, FontBaseline, FontBaselineScript, GlyphBasis, Id, LineHeight, Point, Range,

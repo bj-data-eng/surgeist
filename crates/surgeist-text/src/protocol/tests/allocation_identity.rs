@@ -95,7 +95,14 @@ fn prefix() -> Prefix {
     let slots = selected.spacing_slots().collect::<Vec<_>>();
     assert_eq!(slots.len(), 1);
     let slot = slots[0].clone();
-    assert_eq!(slot.source_range(), Range::new(1, 2));
+    assert_eq!(
+        slot.pieces().map(|piece| piece.owner()).collect::<Vec<_>>(),
+        [crate::SpacingSlotOwner::Source {
+            origin: prepared.origin_views().next().unwrap().handle(),
+            local: Range::new(1, 2),
+            aggregate: Range::new(1, 2),
+        }]
+    );
     assert_eq!(slot.selected_line(), selected);
     let natural = selected.finalize(SpacingAllocations::None).unwrap();
     assert_eq!(natural.feedback().advance, 20.0);

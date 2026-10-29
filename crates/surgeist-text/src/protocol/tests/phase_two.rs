@@ -233,7 +233,22 @@ fn allocated_zero_retains_natural_eligibility_and_real_source_geometry_both_dire
         assert_eq!(natural.measurements().alignment().advance(), 15.0);
         let slots: Vec<_> = selected.spacing_slots().collect();
         assert_eq!(slots.len(), 1);
-        assert_eq!(slots[0].source_range(), Range::new(1, 2));
+        assert_eq!(
+            slots[0]
+                .pieces()
+                .map(|piece| piece.owner())
+                .collect::<Vec<_>>(),
+            [crate::SpacingSlotOwner::Source {
+                origin: selected
+                    .prepared_text()
+                    .origin_views()
+                    .next()
+                    .unwrap()
+                    .handle(),
+                local: Range::new(1, 2),
+                aggregate: Range::new(1, 2),
+            }]
+        );
         let actual = selected
             .finalize(SpacingAllocations::Complete(vec![SpacingAllocation {
                 slot: slots[0].clone(),
@@ -731,7 +746,22 @@ fn unallocated_zero_terminal_is_neutral_but_known_block_retains_classification()
         );
         let slots: Vec<_> = selected.spacing_slots().collect();
         assert_eq!(slots.len(), 1);
-        assert_eq!(slots[0].source_range(), Range::new(0, 1));
+        assert_eq!(
+            slots[0]
+                .pieces()
+                .map(|piece| piece.owner())
+                .collect::<Vec<_>>(),
+            [crate::SpacingSlotOwner::Source {
+                origin: selected
+                    .prepared_text()
+                    .origin_views()
+                    .next()
+                    .unwrap()
+                    .handle(),
+                local: Range::new(0, 1),
+                aggregate: Range::new(0, 1),
+            }]
+        );
         let edge = natural.edge_units().next().unwrap();
         assert_eq!(edge.source_pieces().collect::<Vec<_>>(), [Range::new(0, 1)]);
         if terminal != Terminal::BlockEnd {
@@ -786,7 +816,19 @@ fn expanded_zero_terminal_error(
     let natural = selected.finalize(SpacingAllocations::None).unwrap();
     assert_eq!(natural.feedback().advance, 0.0);
     let slot = selected.spacing_slots().next().unwrap();
-    assert_eq!(slot.source_range(), Range::new(0, 1));
+    assert_eq!(
+        slot.pieces().map(|piece| piece.owner()).collect::<Vec<_>>(),
+        [crate::SpacingSlotOwner::Source {
+            origin: selected
+                .prepared_text()
+                .origin_views()
+                .next()
+                .unwrap()
+                .handle(),
+            local: Range::new(0, 1),
+            aggregate: Range::new(0, 1),
+        }]
+    );
     selected
         .finalize(SpacingAllocations::Complete(vec![SpacingAllocation {
             slot,
@@ -864,10 +906,21 @@ fn deferred_zero_preserved_edge_tracks_its_exact_earlier_group_not_ordinary_pref
         );
         let slots: Vec<_> = selected.spacing_slots().collect();
         assert_eq!(slots.len(), 2);
-        assert_eq!(
-            (slots[0].source_range(), slots[1].source_range()),
-            (Range::new(1, 2), Range::new(2, 3))
-        );
+        for (slot, range) in slots.iter().zip([Range::new(1, 2), Range::new(2, 3)]) {
+            assert_eq!(
+                slot.pieces().map(|piece| piece.owner()).collect::<Vec<_>>(),
+                [crate::SpacingSlotOwner::Source {
+                    origin: selected
+                        .prepared_text()
+                        .origin_views()
+                        .next()
+                        .unwrap()
+                        .handle(),
+                    local: range,
+                    aggregate: range,
+                }]
+            );
+        }
         let unchanged = selected
             .finalize(SpacingAllocations::Complete(
                 slots
@@ -928,10 +981,21 @@ fn allocation_outside_deferred_terminal_dependencies_remains_admitted() {
         let selected = p.select(request(&p)).unwrap();
         let slots: Vec<_> = selected.spacing_slots().collect();
         assert_eq!(slots.len(), 2);
-        assert_eq!(
-            (slots[0].source_range(), slots[1].source_range()),
-            (Range::new(0, 1), Range::new(2, 3))
-        );
+        for (slot, range) in slots.iter().zip([Range::new(0, 1), Range::new(2, 3)]) {
+            assert_eq!(
+                slot.pieces().map(|piece| piece.owner()).collect::<Vec<_>>(),
+                [crate::SpacingSlotOwner::Source {
+                    origin: selected
+                        .prepared_text()
+                        .origin_views()
+                        .next()
+                        .unwrap()
+                        .handle(),
+                    local: range,
+                    aggregate: range,
+                }]
+            );
+        }
         let actual = selected
             .finalize(SpacingAllocations::Complete(vec![
                 SpacingAllocation {
@@ -1079,7 +1143,7 @@ fn forced_zero_point_outside_frame_cannot_make_preceding_group_terminal() {
                 .iter()
                 .map(|slot| SpacingAllocation {
                     slot: slot.clone(),
-                    amount: if slot.source_range() == Range::new(2, 3) {
+                    amount: if slot.pieces().any(|piece| matches!(piece.owner(), crate::SpacingSlotOwner::Source { aggregate, .. } if aggregate == Range::new(2, 3))) {
                         10.0
                     } else {
                         0.0

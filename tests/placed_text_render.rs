@@ -8,6 +8,9 @@ use std::convert::Infallible;
 
 use surgeist::{layout, render, text};
 
+#[path = "placed_text_render/inter_word.rs"]
+mod inter_word;
+
 #[path = "placed_text_render/used_alphabetic.rs"]
 mod used_alphabetic;
 
