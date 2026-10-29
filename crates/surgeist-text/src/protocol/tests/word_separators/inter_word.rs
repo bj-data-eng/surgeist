@@ -141,12 +141,17 @@ fn real_interword_adds_authored_and_allocated_halves_and_replaces_an_immutable_n
         let slots = selected.spacing_slots().collect::<Vec<_>>();
         assert_eq!(slots.len(), 1);
         assert_eq!(slots[0].selected_line(), selected);
+        let crate::SpacingSlotTarget::Separator(unit) = slots[0].target() else {
+            panic!("InterWord targets this actual separator unit")
+        };
         assert_eq!(
-            (
-                slots[0].presentation_range().start(),
-                slots[0].presentation_range().end()
-            ),
-            (1, 2)
+            unit.pieces()
+                .map(|piece| {
+                    let range = piece.presentation_range();
+                    (range.start(), range.end())
+                })
+                .collect::<Vec<_>>(),
+            [(1, 2)]
         );
         source_piece(
             &slots[0],
@@ -369,26 +374,27 @@ fn natural_shared_provider_geometry_stays_usable_until_a_real_interword_allocati
             .with_spacing(amounts(&selection, &[6.0]))
             .unwrap_err();
         assert_eq!(error.code, crate::ErrorCode::LayoutFailed);
-        let Some(crate::ErrorDetail::UnsupportedWordSpacing {
+        let Some(crate::ErrorDetail::UnsupportedSpacing {
             stage,
             operation,
             pieces,
             provider_atoms,
+            ..
         }) = error.detail()
         else {
             panic!("expected precise provider-group refusal: {error:?}")
         };
-        assert_eq!(*stage, crate::WordSpacingStage::SelectedShaping);
-        assert_eq!(*operation, crate::WordSpacingOperation::InterWordAllocation);
+        assert_eq!(*stage, crate::SpacingStage::SelectedShaping);
+        assert_eq!(*operation, crate::SpacingOperation::InterWordAllocation);
         assert_eq!(
             pieces.as_ref(),
-            [crate::WordSpacingPiece::Source {
+            [crate::SpacingPiece::Source {
                 origin: 0,
                 local: Range::new(1, 2),
                 aggregate: Range::new(1, 2)
             }]
         );
-        assert_eq!((provider_atoms.start, provider_atoms.end), (0, 2));
+        assert_eq!(provider_atoms.as_ref(), std::slice::from_ref(&(0..2)));
         assert_eq!(
             raw(&natural.with_spacing(SpacingAllocations::None).unwrap()),
             raw(&natural)
@@ -579,12 +585,17 @@ fn a_complete_marked_candidate_keeps_both_real_source_origin_pieces_and_moves_ev
     let selection = selected(&prepared);
     let slots = selection.spacing_slots().collect::<Vec<_>>();
     assert_eq!(slots.len(), 1);
+    let crate::SpacingSlotTarget::Separator(unit) = slots[0].target() else {
+        panic!("split origins retain one complete InterWord separator")
+    };
     assert_eq!(
-        (
-            slots[0].presentation_range().start(),
-            slots[0].presentation_range().end()
-        ),
-        (1, 3)
+        unit.pieces()
+            .map(|piece| {
+                let range = piece.presentation_range();
+                (range.start(), range.end())
+            })
+            .collect::<Vec<_>>(),
+        [(1, 2), (2, 3)]
     );
     let pieces = slots[0].pieces().collect::<Vec<_>>();
     assert_eq!(pieces.len(), 2);
@@ -683,12 +694,13 @@ fn selected_supplementary_indication_slots_keep_alternative_local_custody_and_or
     };
     assert_eq!(actual, alternative);
     assert_eq!(local, Range::new(0, 2));
+    let crate::SpacingSlotTarget::Separator(unit) = slots[0].target() else {
+        panic!("the indication retains its complete supplementary separator")
+    };
+    assert_eq!(unit.pieces().len(), 1);
+    assert_eq!(unit.pieces().collect::<Vec<_>>(), pieces);
     assert_eq!(
-        pieces[0].presentation_range(),
-        slots[0].presentation_range()
-    );
-    assert_eq!(
-        slots[0].presentation_range().end() - slots[0].presentation_range().start(),
+        pieces[0].presentation_range().end() - pieces[0].presentation_range().start(),
         2
     );
     let natural = selection.finalize(SpacingAllocations::None).unwrap();

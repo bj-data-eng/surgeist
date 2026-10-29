@@ -209,7 +209,11 @@ fn collapsed_slots_keep_identity_and_each_actual_finalization_after_resources_dr
             }]
         );
         let pieces = slot.pieces().collect::<Vec<_>>();
-        assert_eq!(pieces[0].presentation_range(), slot.presentation_range());
+        let crate::SpacingSlotTarget::Separator(spacing_unit) = slot.target() else {
+            panic!("the existing Spaces target is a complete separator")
+        };
+        assert_eq!(spacing_unit.pieces().len(), 1);
+        assert_eq!(spacing_unit.pieces().collect::<Vec<_>>(), pieces);
         assert_eq!(unit.prepared_text(), prepared);
     }
     let first = selected.finalize(SpacingAllocations::None).unwrap();
@@ -478,9 +482,13 @@ fn computed_replacement_spaces_keep_actual_alternative_and_empty_source_anchors(
                 local
             }]
         );
+        let crate::SpacingSlotTarget::Separator(unit) = slot.target() else {
+            panic!("the inserted Spaces target is a complete separator")
+        };
+        assert_eq!(unit.pieces().len(), 1);
         assert_eq!(
-            slot.pieces().next().unwrap().presentation_range(),
-            slot.presentation_range()
+            unit.pieces().collect::<Vec<_>>(),
+            slot.pieces().collect::<Vec<_>>()
         );
         assert_eq!(slot.participants().count(), 0);
     }
@@ -488,11 +496,18 @@ fn computed_replacement_spaces_keep_actual_alternative_and_empty_source_anchors(
         slots
             .iter()
             .map(|slot| {
-                let range = slot.presentation_range();
-                (range.start(), range.end())
+                let crate::SpacingSlotTarget::Separator(unit) = slot.target() else {
+                    panic!("the inserted Spaces target is a complete separator")
+                };
+                unit.pieces()
+                    .map(|piece| {
+                        let range = piece.presentation_range();
+                        (range.start(), range.end())
+                    })
+                    .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>(),
-        [(2, 3), (4, 5)]
+        [vec![(2, 3)], vec![(4, 5)]]
     );
     let line = selected.finalize(SpacingAllocations::None).unwrap();
     assert_eq!(facts(&line), [(INNER, 10.0), (EDGE, 0.0)]);

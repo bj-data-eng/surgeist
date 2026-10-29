@@ -159,8 +159,8 @@ uses the same selected-line and placement machinery.
    MinContent accepts only static zero. It does not advance the phantom frontier,
    suppress a manual sibling, or certify consumer counter/fit arithmetic. Text validates their
    owners and roles; the consumer owns actual fit and recomputes on replay.
-4. `PreparedText::select` returns `SelectedLine`. Its shape-free slots identify candidate selected
-   presentation contributions, including replacement spaces. Finalize first with
+4. `PreparedText::select` shapes the selected presentation and returns `SelectedLine`
+   with complete, receipt-qualified slots, including replacement spaces. Finalize first with
    `SpacingAllocations::None`, or provide a complete slot table including zeros.
    `SpacingPolicy::InterWord` selects the native declared separator repertoire;
    None/Spaces retain their distinct operations. Slots expose complete ordered

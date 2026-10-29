@@ -1,6 +1,8 @@
-//! Positive InterWord allocation over Text's actual immutable response.
+//! Positive separator and character-boundary allocation over actual Text response.
 use super::{FinalizedLine, FitError, SpacingAllocation, SpacingAllocations};
-use surgeist_text::{SpacingSlotDisposition, SpacingSlotGeometry, SpacingStretchability};
+use surgeist_text::{
+    SpacingBoundaryGeometry, SpacingSlotDisposition, SpacingSlotGeometry, SpacingStretchability,
+};
 
 pub(super) struct Allocation {
     pub finalized: FinalizedLine,
@@ -45,8 +47,37 @@ pub(super) fn allocate(natural: &FinalizedLine) -> Result<Option<Allocation>, Fi
                 .then_some(index)
         })
         .collect::<Vec<_>>();
+    let unresolved = rows.iter().position(|row| {
+        matches!(row.disposition, SpacingSlotDisposition::Retained { .. })
+            && row.stretchability != SpacingStretchability::Excluded
+            && match row.geometry {
+                SpacingSlotGeometry::Boundary(
+                    SpacingBoundaryGeometry::ProtectedRequired
+                    | SpacingBoundaryGeometry::ProtectedCursive,
+                ) => false,
+                SpacingSlotGeometry::Boundary(SpacingBoundaryGeometry::Constrained)
+                | SpacingSlotGeometry::SharedProviderGroup => true,
+                SpacingSlotGeometry::Boundary(SpacingBoundaryGeometry::Independent) => {
+                    matches!(row.stretchability, SpacingStretchability::Deferred(_))
+                }
+                SpacingSlotGeometry::Independent { intrinsic_advance } => {
+                    intrinsic_advance != 0.0
+                        && matches!(row.stretchability, SpacingStretchability::Deferred(_))
+                }
+            }
+    });
     if !direct.is_empty() {
-        return direct_allocation(natural, capacity, extra, amounts, &direct).map(Some);
+        return match direct_allocation(natural, capacity, extra, amounts.clone(), &direct) {
+            Ok(allocation) => Ok(Some(allocation)),
+            Err(error @ FitError::SpacingBudget { .. }) => {
+                if let Some(index) = unresolved {
+                    demand(natural, amounts, index, capacity, extra).map(Some)
+                } else {
+                    Err(error)
+                }
+            }
+            Err(error) => Err(error),
+        };
     }
     if let Some(index) = rows
         .iter()
@@ -57,7 +88,7 @@ pub(super) fn allocate(natural: &FinalizedLine) -> Result<Option<Allocation>, Fi
         .max_by_key(|(_, row)| row.traversal_order)
         .map(|(index, _)| index)
     {
-        // The last admitted separator in Text's real grid traversal can vary
+        // The last admitted spacing target in Text's real grid traversal can vary
         // the incoming pen of its next included tab continuously. Earlier
         // allocations supply only a subset of those pen values. Fixed signed
         // advances and each forward next-stop/one-threshold-bump map preserve
@@ -80,27 +111,27 @@ pub(super) fn allocate(natural: &FinalizedLine) -> Result<Option<Allocation>, Fi
     // Shared geometry and neutral terminal dependencies cannot prove that no
     // expansion is available. Demand the material operation through Text, using
     // genuine handles and a complete table; never construct its diagnostic here.
-    if let Some(index) = rows.iter().position(|row| {
-        matches!(row.disposition, SpacingSlotDisposition::Retained { .. })
-            && !matches!(
-                row.geometry,
-                SpacingSlotGeometry::Independent {
-                    intrinsic_advance: 0.0
-                }
-            )
-            && row.stretchability != SpacingStretchability::Excluded
-            && (row.geometry == SpacingSlotGeometry::SharedProviderGroup
-                || matches!(row.stretchability, SpacingStretchability::Deferred(_)))
-    }) {
-        amounts.fill(0.0);
-        amounts[index] = extra;
-        let finalized = probe(natural, &amounts)?;
-        if alignment(&finalized) == capacity {
-            return Ok(Some(Allocation { finalized, amounts }));
-        }
-        return Err(budget(capacity, &finalized));
+    if let Some(index) = unresolved {
+        return demand(natural, amounts, index, capacity, extra).map(Some);
     }
     Ok(None)
+}
+
+fn demand(
+    natural: &FinalizedLine,
+    mut amounts: Vec<f64>,
+    index: usize,
+    capacity: f64,
+    extra: f64,
+) -> Result<Allocation, FitError> {
+    amounts.fill(0.0);
+    amounts[index] = extra;
+    let finalized = probe(natural, &amounts)?;
+    if alignment(&finalized) == capacity {
+        Ok(Allocation { finalized, amounts })
+    } else {
+        Err(budget(capacity, &finalized))
+    }
 }
 
 fn direct_allocation(

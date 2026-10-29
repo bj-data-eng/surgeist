@@ -183,19 +183,61 @@ fn conditional_float_replay_cold_warm_changed_frame_policy_and_late_failure_are_
     cached::<f64>();
 }
 
-fn signed<S: LayoutScalar>(tracking: f64) {
+fn signed<S: LayoutScalar>(adjustment: f64) {
     let mut first = ahem_style(10.0, 10.0);
-    first.letter_spacing = tracking;
+    let (delta, advance): (i16, f32) = if adjustment == -10.0 {
+        (-1000, 0.0)
+    } else {
+        assert_eq!(adjustment, -12.5);
+        (-1250, -2.5)
+    };
+    let font = super::super::canonical::fonts::positioned_ahem(&[(35, delta)]);
+    first.font = first.font.feature("\"kern\" 1");
     first.overflow_wrap = text::OverflowWrap::Anywhere;
     let mut second = ahem_style(10.0, 10.0);
     second.overflow_wrap = text::OverflowWrap::Anywhere;
-    let paragraph = PreparedParagraph::new(
+    let paragraph = PreparedParagraph::with_registered_font(
         vec![
             ParagraphPart::text(10, Source::new("A"), first.clone()),
             ParagraphPart::text(11, Source::new("XX"), second),
         ],
         first,
         text::ParagraphBaseDirection::LeftToRight,
+        &font,
+    );
+    let whole =
+        crate::test_support::text_fragment::fragment_for(&paragraph.prepared).finalized_line();
+    let actual = whole
+        .run_views()
+        .flat_map(|run| {
+            assert_eq!(run.face().bytes(), font);
+            run.glyphs()
+                .map(|g| (g.range(), g.id(), g.advance()))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        actual,
+        [
+            (text::Range::new(0, 1), 35, advance),
+            (text::Range::new(1, 2), 58, 10.0),
+            (text::Range::new(2, 3), 58, 10.0)
+        ]
+    );
+    let mut off = ahem_style(10.0, 10.0);
+    off.font = off.font.feature("\"kern\" 0");
+    let control = PreparedParagraph::with_registered_font(
+        vec![ParagraphPart::text(10, Source::new("A"), off.clone())],
+        off,
+        text::ParagraphBaseDirection::LeftToRight,
+        &font,
+    );
+    assert_eq!(
+        crate::test_support::text_fragment::fragment_for(&control.prepared)
+            .finalized_line()
+            .feedback()
+            .advance,
+        10.0
     );
     let mut binding = paragraph.binding(2);
     binding.nodes = vec![10, 30, 11];
@@ -248,15 +290,15 @@ fn signed<S: LayoutScalar>(tracking: f64) {
     };
     let prefix = line.prefix_at(&seam).unwrap();
     assert!(prefix.has_retained_flow_participation());
-    assert_eq!(prefix.advance(), 10.0 + tracking);
-    assert_eq!(line.feedback().advance, 10.0 + tracking);
+    assert_eq!(prefix.advance(), 10.0 + adjustment);
+    assert_eq!(line.feedback().advance, 10.0 + adjustment);
     assert!(line.feedback().occupied_end - line.feedback().occupied_start <= 7.0);
 }
 #[test]
 fn conditional_retained_zero_and_signed_prefixes_advance_source_and_keep_the_real_line() {
-    for tracking in [-10.0, -12.5] {
-        signed::<f32>(tracking);
-        signed::<f64>(tracking);
+    for adjustment in [-10.0, -12.5] {
+        signed::<f32>(adjustment);
+        signed::<f64>(adjustment);
     }
 }
 

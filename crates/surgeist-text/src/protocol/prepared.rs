@@ -1943,6 +1943,7 @@ pub(crate) fn prepare_indication_fonts(
             let mut font_queries = crate::engine::shape::capture_fonts(
                 catalogue,
                 crate::engine::ShapingInput {
+                    characters: None,
                     separator_geometry: false,
                     profile: shaping_profile(),
                     baseline_reference,
@@ -1967,6 +1968,7 @@ pub(crate) fn prepare_indication_fonts(
                 font_queries.extend(crate::engine::shape::capture_fonts(
                     catalogue,
                     crate::engine::ShapingInput {
+                        characters: None,
                         separator_geometry: false,
                         profile: shaping_profile(),
                         baseline_reference,

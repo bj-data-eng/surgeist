@@ -629,18 +629,21 @@ fn retained_receiver_input(
     let base_style = base_style.clone();
     let mut selected_style = base_style.clone();
     selected_style.white_space = text::WhiteSpace::Preserve;
-    selected_style.letter_spacing = if space { 0.0 } else { -10.0 };
-    let tail = if space { " " } else { "X" };
+    // A real internal boundary, rather than a suppressed outer half, cancels
+    // the two one-em glyphs in the retained zero-advance text receiver.
+    selected_style.letter_spacing = if space { 0.0 } else { -20.0 };
+    let tail = if space { " " } else { "XX" };
+    let tail_len = tail.encode_utf16().count();
     let mut aggregate =
         text::Source::identified(format!("AB{tail}"), text::Id::from_u64(659900), 1);
     aggregate.span(text::Range::new(0, 2), base_style);
-    aggregate.span(text::Range::new(2, 3), selected_style.clone());
+    aggregate.span(text::Range::new(2, 2 + tail_len), selected_style.clone());
     raw.source = aggregate;
     raw.origins.push(text::ParagraphOrigin {
         text_node: None,
         source: text::Source::identified(tail, text::Id::from_u64(659903), 1),
-        local: text::Range::new(0, 1),
-        aggregate: text::Range::new(2, 3),
+        local: text::Range::new(0, tail_len),
+        aggregate: text::Range::new(2, 2 + tail_len),
         kind: text::ParagraphOriginKind::Authored,
     });
     raw.connections.push(text::SourceProcessingConnection {
@@ -688,9 +691,10 @@ fn retained_receiver_input(
 }
 fn retained_text_receiver<S: layout::LayoutScalar>(space: bool, direction: layout::Direction) {
     let f = semantic_receiver_fixture::<S>(retained_receiver_input(space, direction), direction);
+    let tail_len = if space { 1 } else { 2 };
     assert_eq!(
         f.processed.source().text(),
-        &text::Text::from(if space { "AB " } else { "ABX" })
+        &text::Text::from(if space { "AB " } else { "ABXX" })
     );
     assert_eq!(f.prepared.origin_views().count(), 3);
     assert_eq!(f.prepared.control_views().count(), 0);
@@ -716,7 +720,7 @@ fn retained_text_receiver<S: layout::LayoutScalar>(space: bool, direction: layou
             .collect::<Vec<_>>(),
         [
             (text::PreparedBreakKind::Forced, 3),
-            (text::PreparedBreakKind::ParagraphEnd, 4)
+            (text::PreparedBreakKind::ParagraphEnd, 3 + tail_len)
         ]
     );
     let pin = f
@@ -739,7 +743,7 @@ fn retained_text_receiver<S: layout::LayoutScalar>(space: bool, direction: layou
             .iter()
             .map(|line| line.range())
             .collect::<Vec<_>>(),
-        [text::Range::new(0, 2), text::Range::new(2, 3)]
+        [text::Range::new(0, 2), text::Range::new(2, 2 + tail_len)]
     );
     assert_eq!(
         placed
@@ -766,12 +770,71 @@ fn retained_text_receiver<S: layout::LayoutScalar>(space: bool, direction: layou
         .expect("the real receiving occurrence keeps a published source fragment");
     assert_eq!(fragment.fragment().line_index(), 1);
     let fragment = fragment.fragment().finalized_fragment();
-    assert_eq!(fragment.view().local_range(), Some(text::Range::new(0, 1)));
-    assert_eq!(
-        fragment.view().aggregate_range(),
-        Some(text::Range::new(2, 3))
-    );
     let line = fragment.finalized_line();
+    for entries in [
+        batch.unrounded_inline_fragments(),
+        batch.final_inline_fragments(),
+    ] {
+        let mut fragments = entries
+            .iter()
+            .filter(|entry| {
+                entry.fragment().finalized_fragment().view().origin() == Some(origin.clone())
+            })
+            .collect::<Vec<_>>();
+        fragments.sort_by_key(|entry| {
+            entry
+                .fragment()
+                .finalized_fragment()
+                .view()
+                .local_range()
+                .unwrap()
+                .start
+        });
+        // The selected units retain separate slices of the same occurrence.
+        // Their exact local and aggregate ranges jointly cover the whole tail.
+        let mut coverage = Vec::new();
+        for entry in fragments {
+            assert_eq!(
+                entry.owner(),
+                &layout::InlineFragmentOwner::Node(f.binding.origins[2].node)
+            );
+            let fragment = entry.fragment();
+            assert_eq!(fragment.line_index(), 1);
+            assert!(fragment.rect().is_some());
+            let issued = fragment.finalized_fragment();
+            assert_eq!(issued.finalized_line(), line);
+            assert_eq!(issued.finalized_line().prepared_text(), f.prepared);
+            coverage.push((
+                issued.view().local_range().unwrap(),
+                issued.view().aggregate_range().unwrap(),
+            ));
+        }
+        let expected = if space {
+            vec![(text::Range::new(0, 1), text::Range::new(2, 3))]
+        } else {
+            vec![
+                (text::Range::new(0, 1), text::Range::new(2, 3)),
+                (text::Range::new(1, 2), text::Range::new(3, 4)),
+            ]
+        };
+        assert_eq!(coverage, expected);
+    }
+    let mut cells = placed
+        .clusters()
+        .into_iter()
+        .filter(|cluster| cluster.range().start >= 2)
+        .map(|cluster| (cluster.range(), cluster.bounds().size.width))
+        .collect::<Vec<_>>();
+    cells.sort_by_key(|cell| cell.0.start);
+    let expected_cells = if space {
+        vec![(text::Range::new(2, 3), 10.0)]
+    } else {
+        vec![
+            (text::Range::new(2, 3), -10.0),
+            (text::Range::new(3, 4), 10.0),
+        ]
+    };
+    assert_eq!(cells, expected_cells);
     assert!(line.has_in_flow_content());
     assert_eq!(
         line.measurements().fit().advance(),
@@ -792,9 +855,17 @@ fn retained_text_receiver<S: layout::LayoutScalar>(space: bool, direction: layou
                 .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
-    // Registered Ahem emits the actual one-em glyph in both cases. Authored
-    // logical spacing, not a fabricated zero glyph, cancels X's used advance.
-    assert_eq!(glyphs, [(text::Range::new(2, 3), 10.0)]);
+    // Every retained glyph has its real one-em provider advance. The two X
+    // units have one actual internal gap(-20), so their logical total is0.
+    let expected = if space {
+        vec![(text::Range::new(2, 3), 10.0)]
+    } else {
+        vec![
+            (text::Range::new(2, 3), 10.0),
+            (text::Range::new(3, 4), 10.0),
+        ]
+    };
+    assert_eq!(glyphs, expected);
     assert_eq!(
         f.prepared
             .boundary_incidences(&offers[0].view().boundary())

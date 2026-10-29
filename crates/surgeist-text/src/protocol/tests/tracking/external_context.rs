@@ -282,3 +282,6 @@ fn material_tracking_refuses_unproven_external_joining_between_real_arabic_and_s
     );
     assert_eq!(prepared.analyzed_source().source(), &source);
 }
+
+#[path = "external_context_qualification.rs"]
+mod qualification;

@@ -342,26 +342,42 @@ fn force_and_allow_measurements_retain_actual_glyphs_source_and_carets() {
 
 #[test]
 fn first_last_lazy_unknown_false_true_and_zero_advance_are_semantic() {
+    use skrifa::MetadataProvider;
+    let zero_font = hanging_punctuation::font::zero_advance_parentheses();
+    let face = skrifa::FontRef::new(&zero_font).unwrap();
+    for (character, glyph) in [('(', 10), (')', 11), ('A', 35)] {
+        assert_eq!(face.charmap().map(character).unwrap().to_u32(), glyph);
+    }
+    for tag in [*b"cmap", *b"glyf", *b"loca"] {
+        assert_eq!(
+            hanging_punctuation::font::table(&zero_font, tag),
+            hanging_punctuation::font::table(AHEM, tag)
+        );
+    }
+    let head = hanging_punctuation::font::table(&zero_font, *b"head");
+    assert_eq!(u16::from_be_bytes(head[18..20].try_into().unwrap()), 1000);
+    let hmtx = hanging_punctuation::font::table(&zero_font, *b"hmtx");
+    let original_hmtx = hanging_punctuation::font::table(AHEM, *b"hmtx");
+    for (glyph, advance) in [(10, 0), (11, 0), (35, 1000)] {
+        assert_eq!(
+            u16::from_be_bytes(hmtx[glyph * 4..glyph * 4 + 2].try_into().unwrap()),
+            advance
+        );
+        assert_eq!(
+            hmtx[glyph * 4 + 2..glyph * 4 + 4],
+            original_hmtx[glyph * 4 + 2..glyph * 4 + 4]
+        );
+    }
     for (text, first, role) in [
         ("(A", true, t::PhaseTwoContext::FirstFormattedLine),
         ("A)", false, t::PhaseTwoContext::LastFormattedLine),
     ] {
         for zero in [false, true] {
-            let mut value = input(text, style(punctuation(first, None, !first)));
-            if zero {
-                value.source.span(
-                    if first {
-                        t::Range::new(0, 1)
-                    } else {
-                        t::Range::new(1, 2)
-                    },
-                    t::Style {
-                        letter_spacing: -10.0,
-                        ..value.base_style.clone()
-                    },
-                );
-            }
-            let p = prepare(value, AHEM);
+            // Zero advance comes from the actual punctuation font metric,
+            // independently of tracking at its adjacent character boundary.
+            let bytes = if zero { zero_font.as_slice() } else { AHEM };
+            let value = input(text, style(punctuation(first, None, !first)));
+            let p = prepare(value, bytes);
             demand(
                 &finish(&p, request(&p, 40.0, None, None)).unwrap_err(),
                 role,
@@ -377,13 +393,77 @@ fn first_last_lazy_unknown_false_true_and_zero_advance_are_semantic() {
                 assert_eq!(line.feedback().advance, raw);
                 assert_eq!(measures(&line), (measured, measured, measured, measured));
                 assert_eq!(usage(&line), (first, !first));
-                assert_eq!(glyphs(&line, AHEM).len(), 2);
+                let punctuation_advance: f32 = if zero { 0.0 } else { 10.0 };
+                let start = if first && yes {
+                    -f64::from(punctuation_advance)
+                } else {
+                    0.0
+                };
+                assert_eq!(
+                    glyphs(&line, bytes),
+                    if first {
+                        [
+                            (
+                                t::Range::new(0, 1),
+                                10,
+                                punctuation_advance,
+                                0.0,
+                                0.0,
+                                start,
+                            ),
+                            (
+                                t::Range::new(1, 2),
+                                35,
+                                10.0,
+                                0.0,
+                                f64::from(punctuation_advance),
+                                start + f64::from(punctuation_advance),
+                            ),
+                        ]
+                    } else {
+                        [
+                            (t::Range::new(0, 1), 35, 10.0, 0.0, 0.0, 0.0),
+                            (
+                                t::Range::new(1, 2),
+                                11,
+                                punctuation_advance,
+                                0.0,
+                                10.0,
+                                10.0,
+                            ),
+                        ]
+                    }
+                );
+                if zero {
+                    for run in line.run_views() {
+                        let instance = run.effective_instance().unwrap();
+                        for glyph in run.glyphs().filter(|g| matches!(g.id(), 10 | 11)) {
+                            let bounds = instance
+                                .glyph_outline(glyph.id(), run.face().catalogue_identity())
+                                .unwrap()
+                                .bounds()
+                                .expect("zero-advance punctuation retains real ink");
+                            assert!(bounds.size.width > 0.0 && bounds.size.height > 0.0);
+                        }
+                    }
+                }
                 if first && yes && !zero {
                     assert_eq!(
-                        glyphs(&line, AHEM).iter().map(|g| g.5).collect::<Vec<_>>(),
+                        glyphs(&line, bytes).iter().map(|g| g.5).collect::<Vec<_>>(),
                         [-10.0, 0.0]
                     );
                     carets(&placed(&p, line), &[-10.0, 0.0, 10.0]);
+                } else if zero {
+                    let layout = placed(&p, line);
+                    assert_eq!(layout.source().text(), &t::Text::from(text));
+                    carets(
+                        &layout,
+                        if first {
+                            &[0.0, 0.0, 10.0]
+                        } else {
+                            &[0.0, 10.0, 10.0]
+                        },
+                    );
                 }
             }
         }

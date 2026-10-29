@@ -21,12 +21,12 @@ pub(crate) fn layout(
     standalone::layout(prepared, options, scratch)
 }
 
-/// One selected operation; scratch is private and cannot select another font basis.
+/// Pure allocation geometry over the already retained selected basis.
 pub(crate) fn finalize_selected(
     selected: Arc<crate::protocol::selection::SelectedData>,
     amounts: Vec<f64>,
 ) -> Result<super::FinalizedLine> {
-    finalize::finalize(selected, &amounts, &mut ShapeContext::default())
+    finalize::finalize(selected, &amounts)
 }
 
 pub(crate) fn refinalize_selected(
@@ -43,7 +43,7 @@ fn finalize_standalone(
     scratch: &mut ShapeContext,
     roles: &mut standalone::RawRoleBasis<'_>,
 ) -> Result<super::FinalizedLine> {
-    use crate::protocol::selection::{LineMetricPolicy, select};
+    use crate::protocol::selection::{LineMetricPolicy, select_with_scratch};
     let profile = if quantize {
         LineMetricPolicy::StandaloneQuantized
     } else {
@@ -52,19 +52,19 @@ fn finalize_standalone(
     let mut request = request;
     request.context.formatted_line = roles.initial(request.context.end);
     loop {
-        let selected = select(
+        let selected = select_with_scratch(
             &crate::PreparedText {
                 inner: Arc::clone(&prepared),
             },
             request.clone(),
             profile,
+            scratch,
         )?
         .inner;
         let result = (|| {
             let first = finalize::finalize(
                 Arc::clone(&selected),
                 &vec![0.0; selected.spacing_slots.len()],
-                scratch,
             )?;
             let amounts = finalize::standalone_amounts(
                 &selected,

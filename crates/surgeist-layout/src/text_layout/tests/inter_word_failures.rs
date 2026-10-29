@@ -398,26 +398,28 @@ fn shared_refusal<S: LayoutScalar>() {
     let error = compute::<S>(&paragraph, 30.0, TextAlignLast::Justify).unwrap_err();
     let error = text_error(&error);
     assert_eq!(error.code, text::ErrorCode::LayoutFailed);
-    let Some(text::ErrorDetail::UnsupportedWordSpacing {
+    let Some(text::ErrorDetail::UnsupportedSpacing {
         stage,
         operation,
         pieces,
         provider_atoms,
+        ..
     }) = error.detail()
     else {
         panic!("shared provider geometry requires its precise refusal: {error:?}")
     };
-    assert_eq!(*stage, text::WordSpacingStage::SelectedShaping);
-    assert_eq!(*operation, text::WordSpacingOperation::InterWordAllocation);
+    assert_eq!(*stage, text::SpacingStage::SelectedShaping);
+    assert_eq!(*operation, text::SpacingOperation::InterWordAllocation);
     assert_eq!(
         pieces.as_ref(),
-        [text::WordSpacingPiece::Source {
+        [text::SpacingPiece::Source {
             origin: 0,
             local: text::Range::new(1, 2),
             aggregate: text::Range::new(1, 2)
         }]
     );
-    assert_eq!((provider_atoms.start, provider_atoms.end), (0, 2));
+    assert_eq!(provider_atoms.len(), 1);
+    assert_eq!(provider_atoms[0], 0..2);
     assert_eq!(retained.feedback().advance, 20.0);
     assert_eq!(
         raw(&retained),
@@ -439,11 +441,12 @@ fn direct_subnormal_allocation_and_equal_share_underflow_refuse_instead_of_falli
     let tiny = f64::from_bits(1);
     assert!(tiny > 0.0);
     assert_eq!(tiny * 0.5, 0.0);
-    for source in [" ", " \u{a0}"] {
-        // Actual provider advances remain10. Authored letter spacing cancels
-        // each logical advance; word spacing remains0, isolating allocation.
+    for (source, tracking, slots, cell) in [(" A", -20.0, 1, -10.0), (" \u{a0}A", -15.0, 2, -5.0)] {
+        // Real internal gaps cancel the complete line: [10-20,10] or
+        // [10-15,10-15,10]. Every glyph remains10; the final A has no edge gap.
+        // Retained SPACE/NBSP own one/two Direct slots independently of A.
         let mut own = style(0.0);
-        own.letter_spacing = -10.0;
+        own.letter_spacing = tracking;
         // A Soft all-SPACE prefix hangs and falls back before ParagraphEnd.
         // No wrapping isolates the final Direct allocation qualified here.
         own.wrap = Wrap::None;
@@ -452,8 +455,9 @@ fn direct_subnormal_allocation_and_equal_share_underflow_refuse_instead_of_falli
         let retained = line(&natural);
         assert_eq!(retained.measurements().alignment().advance(), 0.0);
         let rows = retained.spacing_slots().collect::<Vec<_>>();
-        assert_eq!(rows.len(), source.encode_utf16().count());
-        for row in &rows {
+        assert_eq!(rows.len(), slots);
+        for (index, row) in rows.iter().enumerate() {
+            source_piece(row, &paragraph, text::Range::new(index, index + 1));
             assert_eq!(
                 row.geometry,
                 text::SpacingSlotGeometry::Independent {
@@ -464,7 +468,7 @@ fn direct_subnormal_allocation_and_equal_share_underflow_refuse_instead_of_falli
             assert!(row.can_expand());
             assert_eq!(
                 (row.authored_word_spacing, row.allocation, row.advance),
-                (0.0, 0.0, 0.0)
+                (0.0, 0.0, cell)
             );
         }
         assert!(
@@ -473,7 +477,7 @@ fn direct_subnormal_allocation_and_equal_share_underflow_refuse_instead_of_falli
                 .all(|(_, _, advance)| *advance == 10.0)
         );
         let error = compute::<f64>(&paragraph, tiny, TextAlignLast::Justify).unwrap_err();
-        if source == " " {
+        if slots == 1 {
             let error = text_error(&error);
             assert_eq!(error.code, text::ErrorCode::InvalidTextNumeric);
             assert!(

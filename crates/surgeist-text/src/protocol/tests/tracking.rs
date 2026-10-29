@@ -306,4 +306,14 @@ fn mark_only_tracking_style_preserves_joint_gpos_and_uses_the_tcu_base_tracking(
     assert_eq!(prepared.analyzed_source().source(), &source);
 }
 
+mod atomic_boundaries;
+mod authored;
+mod cursive_boundaries;
 mod external_context;
+mod fixtures;
+mod inter_character;
+mod profile_boundaries;
+
+mod shaping_boundaries;
+
+mod source_numeric;

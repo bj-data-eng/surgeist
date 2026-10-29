@@ -200,6 +200,140 @@ remain separate capabilities. See the [composed-line guide](composed-lines.md)
 for retained
 source, receipt and placement custody.
 
+## Character tracking and native InterCharacter
+
+`Style::letter_spacing` is a resolved signed full tracking value. Text derives
+complete operation units from actual presentation EGCs and Appendix-E properties,
+then inserts the mean of adjacent full values after bidi ordering. There is no
+outer-line term. Adjacent4/8 gives gap6; exact4/−4 gives no gap. A split EGC's base
+style governs both sides. Raw provider offsets and advances remain unchanged.
+
+The native cell policy assigns the combined gap to the preceding visual unit's
+logical extent. Thus raw10 A(4)/B(8) paints at0/16, has extent26 and caret edge16;
+A(4)/B(−4) paints0/10 with extent20 and caret edge10. Retained original operands
+qualify actual local and physical displacement, including at large anchors.
+
+`InlineBox::try_with_letter_spacing` captures each atomic occurrence's own finite
+signed exterior full value; the initial zero is actual zero, never inheritance.
+A consecutive visual in-flow atomic run is one tracking unit. Its first and last
+occurrences supply exposed endpoint values; interior atomic gaps are suppressed.
+Raw atomic allocations and border/content geometry stay separate from spacing.
+
+The actual completed invocation's DI receipt determines Residual/Deleted input
+eligibility. These inputs retain exact source custody and their earlier shaping
+effects, but supply no independent unit, tracking half, allocation, paint or
+advance. They are omitted only from the character-operation projection after
+native shaping. Filtering and resegmentation run separately within each actual
+projection barrier component, preserving original editing EGCs. A wholly excluded
+unit is transparent to eligible neighbors; a partially eligible unit keeps its
+complete source membership and chooses an eligible base and displacement carrier.
+Cf/DI membership, glyph count, ink and zero advance are not eligibility proofs.
+Native Normal descendants and actual mapped filler resources remain preserved;
+Normal participation alone qualifies neither a writing system nor movement.
+
+Processed/selected EGCs retain genuine atomic and disconnected component boundaries.
+An atomic inside a host-readback A+mark EGC therefore does not establish an operation
+EGC spanning that seam: the processed A and standalone mark remain distinct. Ordinary
+zero behavior stays usable; materially unqualified standalone-mark topology refuses
+precisely. Text does not infer a text-plus-box TCU from host readback or erase a real
+component boundary while tailoring formatting characters.
+
+A component-local operation unit can nevertheless become visually interleaved with
+an atomic after bidi reordering. The qualified witness is A/RLO/mark, then an
+in-flow atomic, then PDF/B: ignoring the formats within the left component admits
+A+mark, while actual bidi order places the atomic between its constituents.
+Ordinary zero composition remains usable. Material tracking or a complete
+InterCharacter basis returns InterleavedUnit with actual ordered source/atomic
+custody. This witness does not make a host EGC spanning an atomic into an operation
+unit or qualify arbitrary noncontiguous movement.
+
+`SpacingPolicy::InterCharacter` requests a uniformly resolved native spacing-capable
+selected basis. Selection executes the exact selected shaping plan, reconciles its
+actual receipt and visual order, then issues complete endpoint handles; natural feedback
+qualifies Independent, ProtectedRequired, ProtectedCursive or Constrained geometry.
+Required shaping and coherent same-script cursive letter pairs remain protected.
+For justification, qualified P/S also follows its script’s default letter rule;
+its actual authored tracking mean remains independently observable. A constrained mandatory
+boundary remains a candidate: material unsupported movement returns exact source,
+feature and provider-domain diagnostics rather than silently dropping it.
+
+Complete provider component coverage describes the emitted buffer. Actual executed
+joining actions can still consume bounded context across separately emitted runs.
+Text retains such potential Unicode joining connections as ExternalJoiningContext
+constraints with exact body/context atom ranges, actual run identity and empty applied
+feature provenance. This expresses missing independent-movement proof, not an observed
+attachment. Zero allocation remains usable on that complete unit basis; material
+movement returns UnqualifiedProviderPath. Nonjoining endpoints, ZWNJ, actual context
+barriers and selected-away endpoints do not acquire this constraint merely from script.
+
+Default optional liga/clig/dlig/hlig are suppressed where the provider plan
+classifies them optional. Touched endpoints include both exact demand and the
+bounded conditional coverage permitted by the [native feature-plan policy](../../../references/text-character-spacing--native-determination.md#selected-feature-basis).
+DI outcomes can expose a gap hidden by provisional cancellation: A4/DI−4/B4
+requires possible A/B endpoint coverage before shaping. The controls stay in
+force if this invocation instead keeps Normal DI and final means0/0. A touched
+unit can also change a neighboring zero-boundary default ligature. Explicit
+low-level overrides and required script features retain precedence.
+
+One immutable upfront requirement drives both structural observation and input
+mask ranges, with exact-boundary or conditional-envelope provenance. The
+conditional fallback preserves complete original EGC coverage inside real text
+components and genuine selected domains, plus possible visual endpoint
+interactions. It may conservatively cover a component in full; it does not mask
+unrelated components because they share a font invocation or cross an atomic
+into unrelated text. Possible governing bases follow the shared three-tier base
+rule, so an unused mark style cannot create demand. Proven all-zero, ordinary
+cancellation, single-unit and invariant cursive no-opportunity cases retain
+defaults. An unrequested receipt is retained as unobserved movement coverage,
+never proof of independence; it requests no provider observation by itself.
+
+Common P/S resolution can also depend on content in other components of the same
+captured domain. The canonical resolver exposes that dependency to the planner.
+If counted contributions may change, dependent punctuation cannot use its
+provisional same-script justification protection as an invariant. The shared
+boundary owner covers its possible endpoints with conditional provenance; it
+does not mask an unrelated domain or change segmentation fences. A fixed base
+alone does not prove content context stable. Components with fixed ordinary
+governors and invariant properties, such as mandatory A+VS, retain their counted
+contributions and do not create this uncertainty.
+
+`SelectedLine::finalize` and `with_spacing` execute allocations over the same
+retained basis without font queries or reshaping. Another feature/context/method
+basis needs a fresh selection and handles. Requirements never depend on allocation
+amounts or a later slot count, and receipt reconciliation runs no shaping fixpoint.
+All-residual output has a truthful complete empty basis even with authored
+tracking. A lone eligible unit has no outside tracking: a raw18 mapped filler
+remains18. Residual U+180F between raw10 A/raw20 B with uniform3 leaves one gap3,
+total33, and residual own allocation0.
+
+The first native unit families are ordinary Latin/Greek/Cyrillic/Armenian/Hebrew,
+Han/Kana/Bopomofo/Hangul, qualified source-context Common punctuation/symbols,
+neutral Common Zs separators and numbers, and Appendix-D cursive no-elongation
+families. Unspecified source uses an explicit native ordinary EGC profile, not a
+language guess. Recognized declared script/language profiles retain their actual
+context separately from supported mixed source scripts. A known en profile can
+contain Hebrew/Arabic units with independently qualified rules; a real conflicting
+convention or ambiguous source-script choice still refuses precisely. A captured
+qualified profile can restrict an ambiguous ScriptExtensions set to several
+supported noncursive candidates sharing the ordinary operation. For example,
+Japanese U+3002 retains Han/Hiragana/Katakana as resolved alternatives and keeps
+its complete raw candidates separately; it needs no invented unique script.
+Cursive same-script protection still requires a unique actual resolved script.
+Unknown declared languages do not supply this profile resolution.
+Unqualified orthographic/complex tailoring and provider paths refuse only
+material demand; ordinary zero and unrelated operations remain usable. Explicit InterCharacter
+requires complete unit topology and refuses an unqualified basis before handles,
+even if the eventual residual is zero; this differs from zero allocation on an
+already valid basis with only provider movement uncertainty. Myanmar/Indic
+syllables, Thai/Lao decomposition, full ancestry/NCA, Auto/Ruby/NoCompress and live
+Style/generated producers remain positive parent requirements.
+
+`SpacingSlot::target()` returns a Separator unit or two Boundary endpoint units.
+Their `pieces()` and `participants()` retain actual source, alternative, generated
+and atomic custody; there is no fabricated contiguous range around a bidi pair.
+Feedback keeps authored word spacing, authored tracking and exact allocations
+separate. Native Spaces and InterWord keep their distinct existing rules below.
+
 ## Authored word-separator spacing
 
 `Style::word_spacing` adds a resolved signed length to actual surviving separator
@@ -216,7 +350,7 @@ The intrinsic advance comes once from actual invocation-qualified provider group
 wholly contained in the unit, before scalar apportioning or any spacing. A real
 zero-intrinsic separator receives no word spacing, regardless of ink. Intrinsic10
 plus authored-10 is still intrinsically nonzero. Material spacing on a provider
-group spanning another unit refuses with `UnsupportedWordSpacing`, retaining the
+group spanning another unit refuses with `UnsupportedSpacing`, retaining the
 executed stage and exact original/alternative/control/virtual content. Zero word
 spacing does not create that capability demand, and required/author-forced font
 features remain intact.
@@ -238,7 +372,8 @@ repertoire. Its uniformly resolved request applies to every selected candidate;
 it does not infer computed per-parent method inheritance. Layout allocation and
 full method families remain separate capabilities.
 
-Selection issues shape-free semantic candidates. `SpacingSlot::pieces()` retains
+Selection issues complete receipt-qualified candidates from its actual immutable
+selected basis. Actual provider/resource failures are reported by selection. `SpacingSlot::pieces()` retains
 ordered Source-origin/local/aggregate, Alternative-local, Control or VirtualSeparator
 ownership; `participants()` retains every actual selected participant. There is no
 singular source hull or owner for a multi-piece unit. Natural finalized feedback
@@ -253,8 +388,9 @@ retains the actual neutral Phase-II dependency. Its material execution returns t
 existing missing-terminal or unsupported-paragraph error. Complete0 stays valid;
 a changed terminal fact requires authentic recapture/preparation, not a guessed role.
 
-`FinalizedLine::with_spacing` replaces complete allocations from its retained,
-immutable unallocated selected shape, preserving the same selection/resources.
+`SelectedLine::finalize` and `FinalizedLine::with_spacing` execute complete
+allocations from the same retained immutable selected shape, preserving its plan,
+eligibility, raw output and resources. Neither operation calls the provider.
 It reruns collapse, ordering, natural and allocated tabs/Phase II, measurements and
 geometry, without font matching, provider shaping, a mutable cache or subtracting
 old rounded amounts. None restores zero allocation with authored spacing retained.

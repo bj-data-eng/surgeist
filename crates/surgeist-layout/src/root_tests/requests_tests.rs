@@ -3203,8 +3203,9 @@ fn fri06_c08_float_line_continuation_batch<S: LayoutScalar>(
 #[test]
 fn fri06_c08_float_line_actual_bidi_continuation_uses_visual_placement() {
     fn assert_lane<S: LayoutScalar>() {
-        // Actual Hebrew source resolves the RTL line. The real Ahem cell plus
-        // authored letter spacing is 40px and the atomic border is 28px.
+        // Actual Hebrew source resolves the RTL line. Ahem's real cell is16px.
+        // L2 puts the atomic before it; full tracking values0/24 add a12px
+        // gap to that atomic's logical extent, separately from its28px border.
         let style = surgeist_text::Style {
             letter_spacing: 24.0,
             ..ahem_style(16.0, 20.0)
@@ -3263,9 +3264,12 @@ fn fri06_c08_float_line_actual_bidi_continuation_uses_visual_placement() {
         assert_eq!(rows[0].1, paragraph.origin(3));
         let text = rows[0].3.unwrap();
         let atomic = public_flow_output(batch.final_entries(), 4);
-        assert_eq!(text.size().width, S::from_f64(40.0));
+        assert_eq!(text.size().width, S::from_f64(16.0));
         assert_eq!(atomic.size.width, S::from_f64(28.0));
-        assert_eq!(text.origin().x, atomic.location.x + atomic.size.width);
+        assert_eq!(
+            text.origin().x,
+            atomic.location.x + atomic.size.width + S::from_f64(12.0)
+        );
         assert_eq!(text.origin().x + text.size().width, S::from_f64(130.0));
         assert_eq!(
             public_flow_output(batch.final_entries(), 0).size.height,
@@ -3527,9 +3531,9 @@ fn fri06_c08_recovery_characterization_batch<S: LayoutScalar>(
 fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lanes() {
     fn assert_percentage_lane<S: LayoutScalar>() {
         for box_sizing in [BoxSizing::BorderBox, BoxSizing::ContentBox] {
-            // Three Ahem cells with authored 3.265625px spacing: 57.796875.
-            // Four cells with 5.67578125px spacing: 86.703125. Strong Hebrew
-            // source establishes actual level one instead of supplied glyph levels.
+            // Strong Hebrew source establishes actual level one instead of
+            // supplied glyph levels. Actual line edges suppress outer halves;
+            // each text/atomic boundary averages its full tracking with zero.
             let first_style = surgeist_text::Style {
                 letter_spacing: 3.265625,
                 ..ahem_style(16.0, 20.0)
@@ -3587,17 +3591,48 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
             );
             let atomic = fri06_c02_final_node(&batch, 2);
             assert_eq!(atomic.source_index, SourceIndex::new(1));
-            // L2 puts the last Hebrew origin first, then the atomic, then the
-            // first origin. Start alignment uses 180 - (57.796875+20+86.703125).
+            // L2 puts the four-cell origin first:64+3.5*5.67578125=83.865234375.
+            // The atomic owns20+3.265625/2=21.6328125; the last three text cells
+            // own48+2*3.265625=54.53125. Total160.029296875 leaves19.970703125.
+            // Text's line-local slot retains103.8359375. Layout has already
+            // canonicalized the allocated border before either public batch
+            // view: its local+.1640625 correction maps that slot to104.
+            let line = batch.final_inline_fragments()[0]
+                .fragment()
+                .finalized_fragment()
+                .finalized_line();
+            let occurrence = paragraph
+                .prepared
+                .atomic_views()
+                .find(|view| view.original_box().id() == Id::from_u64(2))
+                .unwrap()
+                .handle();
+            let slot = line
+                .atomic_slots()
+                .find(|slot| slot.occurrence == occurrence)
+                .unwrap();
+            assert_eq!(slot.origin.x, 103.8359375);
+            let surgeist_text::AtomicLineAllocation::InFlow { box_geometry, .. } = slot.allocation
+            else {
+                panic!("the actual percentage-sized atomic remains in flow")
+            };
+            assert_eq!(box_geometry.border.origin.x, 0.1640625);
+            assert_eq!(slot.origin.x + box_geometry.border.origin.x, 104.0);
+            for entries in [batch.unrounded_entries(), batch.final_entries()] {
+                assert_eq!(
+                    public_flow_output(entries, 2).location.x,
+                    S::from_f64(104.0)
+                );
+            }
             assert_eq!(
                 (atomic.location, atomic.size, atomic.content_size),
                 (
-                    Point::new(S::from_f64(102.0), S::ZERO),
+                    Point::new(S::from_f64(104.0), S::ZERO),
                     Size::new(S::from_f64(20.0), S::from_f64(40.0)),
                     Size::new(S::from_f64(20.0), S::from_f64(40.0))
                 )
             );
-            for (node, x, width) in [(1, 122.203125, 57.796875), (3, 15.5, 86.703125)] {
+            for (node, x, width) in [(1, 125.46875, 54.53125), (3, 19.970703125, 83.865234375)] {
                 let output = public_flow_output(batch.final_entries(), node);
                 assert_eq!(output.location.x, S::from_f64(x));
                 assert_eq!(output.size.width, S::from_f64(width));
@@ -3806,9 +3841,12 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
                 let left = floating(true, 42.0, 42.0);
                 let right = floating(false, 50.0, 62.0);
                 let atomics = [atomic(28.0), atomic(32.0), atomic(36.0), atomic(40.0)];
-                // One genuine 16px Ahem cell plus exact authored spacing.
+                // Full tracking45.0625 averages with atomic0 to22.53125.
+                // Text16 plus that gap and atomics28+32 is98.53125>88,
+                // preserving the intended three actual float-band lines in
+                // either visual order. No outer tracking half is retained.
                 let style = surgeist_text::Style {
-                    letter_spacing: 22.53125,
+                    letter_spacing: 45.0625,
                     ..ahem_style(16.0, 20.0)
                 };
                 let paragraph = PreparedParagraph::new(
@@ -3920,7 +3958,17 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
                 assert_eq!(rows[0].1, paragraph.origin(3));
                 assert_eq!(rows[0].5, 0);
                 let text = rows[0].3.unwrap();
-                assert_eq!(text.size().width, S::from_f64(38.53125));
+                // The preceding visual unit owns the mean22.53125 gap.
+                // LTR text owns it; in RTL the preceding atomic owns it and
+                // this source fragment keeps its raw16px logical extent.
+                assert_eq!(
+                    text.size().width,
+                    S::from_f64(if direction == Direction::Rtl {
+                        16.0
+                    } else {
+                        38.53125
+                    })
+                );
                 let first = fri06_c02_final_node(&batch, 4);
                 assert_eq!(
                     first.location.x,

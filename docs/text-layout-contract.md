@@ -566,8 +566,8 @@ Hard-break precedence belongs to Text’s opportunity inventory under the [pinne
 
 1. `System::prepare` obtains or retains the immutable analyzed source, resolves fonts and returns `PreparedText`. It does not choose the composed paragraph's line breaks. Its preliminary measurements/opportunities are explicitly preliminary wherever selected boundaries can change shaping or line-edge processing.
 2. Layout’s consuming adapter lowers text units, opportunities and metrics to layout's validated inline inputs. Layout chooses a candidate logical range, break alternative and float-dependent span. It supplies the complete logical participant sequence, including atomic inline identities and directional controls, plus the relevant line context.
-3. `PreparedText` validates a selection and creates `SelectedLine`. Private handles bind the selection to that preparation; validate range order, unit boundaries, break legality, selected replacement, atomic participant uniqueness and context. Selection context includes writing mode/orientation, start/end and forced/soft break facts, tab origin, available text span, indentation/hanging facts and exact spacing allocations. Do not pass unrelated paint policy into shaping.
-4. Text finalizes that selection. `FinalizedLine` owns its selected preparation, the applied replacement and processed mapping, final effective font runs/glyphs, actual advances, line-edge/hanging facts, text metrics and outline ink, visual order including atomic placeholders, and caret/selection anchors. It returns line-local geometry. It never chooses a different break or places a box. Finalization applies the selected line's shaping boundaries, bidi line rules and text spacing to one result shared by all consumers.
+3. `PreparedText::select` validates the exact range, break/replacement, participants and captured context, chooses the method/feature policy up front, and establishes the actual selected shaping basis. It retains complete output, correspondence, DI eligibility, constraints, visual order and font resources; only after receipt-based topology reconciliation does it create `SelectedLine` and complete spacing handles. Selection can report real provider/resource failures. Context includes writing mode/orientation, start/end and forced/soft break facts, tab origin, available span and indentation/hanging facts. Allocation amounts do not choose the plan or slot count. Do not pass unrelated paint policy into shaping.
+4. Text finalizes allocations over that immutable selected basis, including the first finalization. It performs no provider shaping or font matching. `FinalizedLine` retains the selected owner and actual allocation-dependent advances, line-edge/hanging facts, metrics, outline ink, cells and caret/selection anchors. It returns line-local geometry without choosing another break or placing a box. `None`/zero replaces only allocated amounts; it preserves the selected plan, actual output and authored spacing. A changed method, feature/context or resource basis needs a fresh selection and handles.
 5. Layout evaluates the returned metrics against its candidate span, including changes to float intersection caused by actual line height. It can choose another candidate/context and finalize again. After choosing a fitting line it supplies its space allocation and obtains the final geometry; it rechecks any resulting width/height feedback before committing. Preliminary metrics are never silently treated as final.
 6. Layout supplies validated placement of those exact finalized lines, including line/fragment IDs, physical origin, writing-mode basis, baseline and atomic box rectangles, to text's placed-layout constructor. The constructor validates identities, completeness and geometry before returning a placed `Layout`. Painting, hit testing, movement, selection and accessibility consume this placed result. They cannot call a separate paragraph wrapper to recreate it.
 
@@ -913,6 +913,53 @@ cannot receive surviving normal advance; inconsistent provider output fails
 admission. Preserve authentic provider groups, semantic graphemes, source-only
 pieces, affinities, exact original UTF-16, copy and plaintext. A computed visible
 hyphen is classified by its actual emitted atom, not its authored SHY source.
+
+Retain these actual exclusions beyond extraction for character topology and
+carrier choice. Wholly Residual/Deleted operation units have no spacing role;
+bridge their actual eligible neighbors only within genuine semantic components.
+A partial unit keeps complete source custody, but its base and displacement
+carrier cannot be a residual/deleted component. Native Normal descendants remain
+subject to source-owned EGC/Appendix-E rules and actual movement constraints;
+Normal is neither a writing-system proof nor a complete AAT movement receipt.
+An all-residual selected presentation truthfully publishes an empty complete
+basis, including lone U+2065 with nonzero authored tracking. A single eligible
+complete unit has no outside tracking; a native raw18 filler remains18.
+
+The actual selected invocation is authoritative. Preparation DI receipts are
+reusable only with complete invocation identity equivalence, including emitted
+body/correspondence, consumed context, effective plan and resource instance.
+Neither source/face equality nor matching glyph counts proves this equivalence.
+Choose the spacing-capable method policy before shaping and honor explicit
+feature overrides; do not iterate shaping until eligibility or slot counts
+stabilize. Both first/repeated `finalize` and `with_spacing` reuse one immutable
+basis without provider/font queries or DI reclassification. Retained invocation
+work/storage stays charged once to the existing actual provider limits.
+
+The [native conditional-envelope policy](../references/text-character-spacing--native-determination.md#selected-feature-basis)
+permits bounded conservative endpoint controls before final DI outcomes are
+known. One immutable requirement supplies structural observation and canonical
+source/input coverage with exact or conditional provenance. Include partial
+outcomes, coalescence and possible governing bases; do not infer the plan from
+provisional cancellation or sampled exclusion subsets. Source-stable neutral
+cases retain ordinary defaults. A permitted full-component fallback respects
+actual semantic barriers and isolated domains, includes real visual text–atomic
+interaction, and does not automatically mask another component or font run.
+Actual receipt-qualified units alone determine final slots and amounts.
+
+The canonical Common P/S resolver owns content-context dependencies as well as
+actual script resolution. Source-component contribution-invariance proofs can
+preserve that context; local base/property invariance alone is insufficient when
+other counted units in the same domain may disappear or coalesce. Propagate
+conditional requirements to dependent P/S endpoints and their real boundary
+counterparts through the existing owner. Preserve unrelated domains and stable
+contributions without duplicating script counts, winner selection or segmentation.
+
+A complete output with no requested component receipt retains an explicit
+Text-owned unobserved marker at the extraction fence. It has no invented provider
+path or feature provenance and adds no provider observation budget. If a later
+real material boundary requires movement proof, missing evidence constrains that
+operation rather than establishing Independent geometry. Pure neutral shaping
+remains usable; allocation replacement never reclassifies or reruns the provider.
 
 ### Native whitespace processing modes
 

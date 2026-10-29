@@ -1,8 +1,11 @@
 //! Shared raw-Unicode primitives for operation-specific typographic units.
 
 use icu_properties::{
-    CodePointMapData,
-    props::{EastAsianWidth, GeneralCategory, GeneralCategoryGroup, GraphemeClusterBreak, Script},
+    CodePointMapData, CodePointSetData,
+    props::{
+        DefaultIgnorableCodePoint, EastAsianWidth, ExtendedPictographic, GeneralCategory,
+        GeneralCategoryGroup, GraphemeClusterBreak, IndicConjunctBreak, Script,
+    },
     script::ScriptWithExtensions,
 };
 
@@ -29,17 +32,80 @@ pub(crate) fn first_non_format(atoms: &[OriginalAtom]) -> Option<&OriginalAtom> 
         .find(|atom| categories.get32(atom.code_point) != GeneralCategory::Format)
 }
 
+fn base_tier(atom: &OriginalAtom) -> u8 {
+    let category = CodePointMapData::<GeneralCategory>::new().get32(atom.code_point);
+    if category == GeneralCategory::Format {
+        2
+    } else if CodePointMapData::<GraphemeClusterBreak>::new().get32(atom.code_point)
+        == GraphemeClusterBreak::Prepend
+    {
+        1
+    } else {
+        0
+    }
+}
+
 pub(in crate::engine) fn base(atoms: &[OriginalAtom]) -> Option<&OriginalAtom> {
-    let category = CodePointMapData::<GeneralCategory>::new();
-    let grapheme = CodePointMapData::<GraphemeClusterBreak>::new();
     atoms
         .iter()
-        .find(|atom| {
-            category.get32(atom.code_point) != GeneralCategory::Format
-                && grapheme.get32(atom.code_point) != GraphemeClusterBreak::Prepend
+        .enumerate()
+        .min_by_key(|(index, atom)| (base_tier(atom), *index))
+        .map(|(_, atom)| atom)
+}
+
+/// Possible governors under arbitrary final DI exclusions, within this original
+/// EGC. A mandatory candidate stops its tier and makes lower tiers unreachable.
+/// This predicts operands only; it neither excludes input nor segments text.
+pub(in crate::engine) fn possible_bases(atoms: &[OriginalAtom]) -> Vec<usize> {
+    let di = CodePointSetData::new::<DefaultIgnorableCodePoint>();
+    let mut output = Vec::new();
+    for tier in 0..3 {
+        for (index, atom) in atoms.iter().enumerate() {
+            if base_tier(atom) != tier {
+                continue;
+            }
+            output.push(index);
+            if !di.contains32(atom.code_point) {
+                return output;
+            }
+        }
+    }
+    output
+}
+
+/// Proof fence for source-conditioned planning, using the canonical projection
+/// representative (visible Cc and opaque UTF-16 have explicit representatives).
+/// This does not introduce a grapheme boundary or classify a final unit.
+pub(in crate::engine) fn mandatory_ordinary_anchor(
+    atom: &OriginalAtom,
+    representative: char,
+) -> bool {
+    !CodePointSetData::new::<DefaultIgnorableCodePoint>().contains32(atom.code_point)
+        && base_tier(atom) == 0
+        && CodePointMapData::<GraphemeClusterBreak>::new().get(representative)
+            == GraphemeClusterBreak::Other
+        && !CodePointSetData::new::<ExtendedPictographic>().contains(representative)
+        && CodePointMapData::<IndicConjunctBreak>::new().get(representative)
+            != IndicConjunctBreak::Consonant
+}
+
+/// A fixed governor still needs stable Appendix-E exceptions before its current
+/// script/category can prove an invariant spacing rule for every DI subset.
+pub(in crate::engine) fn di_properties_invariant(atoms: &[OriginalAtom]) -> bool {
+    let Some(base) = base(atoms) else {
+        return false;
+    };
+    let categories = CodePointMapData::<GeneralCategory>::new();
+    let di = CodePointSetData::new::<DefaultIgnorableCodePoint>();
+    atoms
+        .iter()
+        .filter(|a| di.contains32(a.code_point))
+        .all(|a| {
+            let category = categories.get32(a.code_point);
+            category != GeneralCategory::EnclosingMark
+                && !(categories.get32(base.code_point) == GeneralCategory::SpaceSeparator
+                    && GeneralCategoryGroup::Mark.contains(category))
         })
-        .or_else(|| first_non_format(atoms))
-        .or_else(|| atoms.first())
 }
 
 /// Allocation-free category query over the same Appendix E property source.
@@ -59,7 +125,7 @@ pub(super) fn is_typographic_letter(atoms: &[OriginalAtom]) -> bool {
 pub(in crate::engine) struct Properties {
     pub(in crate::engine) category: GeneralCategory,
     pub(super) width: EastAsianWidth,
-    pub(super) scripts: Vec<Script>,
+    pub(in crate::engine) scripts: Vec<Script>,
 }
 
 pub(super) fn scalar_properties(cp: u32) -> Result<Properties> {

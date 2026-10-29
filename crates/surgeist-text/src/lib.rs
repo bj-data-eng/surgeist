@@ -48,11 +48,12 @@ pub use error::{
     DocumentSegmentBreakError, Error, ErrorCode, ErrorDetail, FontMetricField,
     FontMetricNumericError, FontMetricPhase, FontMetricTable, FontMetricTableError,
     NumericRequirement, ProcessingCapacityError, Result, ShapingBoundary, ShapingRefusalReason,
-    TextNumericError, TextNumericPhase, TextScript, TextStyleOwner, TextTransformError,
-    UprightContent, UprightContentPiece, UprightDecorationRole, UprightPresentation,
-    UprightScriptContext, UprightScriptContextFailure, UprightScriptFailure, UprightTabMeasurement,
-    VerticalOriginReferenceReason, VerticalPositionStage, VerticalShapingContextReason,
-    WordSpacingOperation, WordSpacingPiece, WordSpacingStage,
+    SpacingConstraint, SpacingConstraintKind, SpacingContext, SpacingFailureReason,
+    SpacingOperation, SpacingPiece, SpacingStage, TextNumericError, TextNumericPhase, TextScript,
+    TextStyleOwner, TextTransformError, UprightContent, UprightContentPiece, UprightDecorationRole,
+    UprightPresentation, UprightScriptContext, UprightScriptContextFailure, UprightScriptFailure,
+    UprightTabMeasurement, VerticalOriginReferenceReason, VerticalPositionStage,
+    VerticalShapingContextReason,
 };
 pub use font::{
     EffectiveFontInstance, FontBaseline, FontBaselineAbsence, FontBaselineAxis,
@@ -121,9 +122,10 @@ pub use protocol::{
     PreparedPhraseProvenance, PreparedScope, PreparedTermination, PreparedText, PreparedUnit,
     PreparedVirtualSeparator, PreparedWord, PreparedWordPortion, PreparedWordView,
     PresentationRange, ProtocolContextField, ProtocolError, ProtocolHandleKind, SelectedLine,
-    SpacingAllocation, SpacingAllocations, SpacingDeferredCause, SpacingPolicy, SpacingSlot,
-    SpacingSlotDisposition, SpacingSlotFeedback, SpacingSlotGeometry, SpacingSlotOwner,
-    SpacingSlotPiece, SpacingStretchability, TabContext, WrappingScopeQueryError,
+    SpacingAllocation, SpacingAllocations, SpacingBoundaryGeometry, SpacingDeferredCause,
+    SpacingPolicy, SpacingSlot, SpacingSlotDisposition, SpacingSlotFeedback, SpacingSlotGeometry,
+    SpacingSlotOwner, SpacingSlotPiece, SpacingSlotTarget, SpacingStretchability, SpacingUnit,
+    TabContext, WrappingScopeQueryError,
 };
 pub use range::{Range, SourcePosition, SourceRange};
 pub use source_model::{

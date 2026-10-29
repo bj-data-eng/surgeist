@@ -13,25 +13,33 @@ pub use upright::{
 /// Text crate result alias.
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Provider-observation domain behind an independent separator-geometry demand.
+/// Provider-observation domain behind a material spacing demand.
 /// SelectedShaping also identifies retained selected output reused without reshaping.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum WordSpacingStage {
+pub enum SpacingStage {
+    /// Admission of a source-owned complete-basis request or its receipt-qualified topology.
+    Selection,
     Preparation,
     SelectedShaping,
 }
 
 /// The material spacing contribution, independently of its source ownership.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum WordSpacingOperation {
-    Authored,
+pub enum SpacingOperation {
+    InterCharacterBasis,
+    AuthoredWord,
+    AuthoredTracking,
+    InterCharacterAllocation,
     InterWordAllocation,
 }
 
-/// Ordered actual content of an unsupported separator unit. Ordinals describe
+/// Ordered actual content of an unsupported spacing target. Ordinals describe
 /// the executed phase's inventory and do not issue capabilities.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum WordSpacingPiece {
+pub enum SpacingPiece {
+    Atomic {
+        occurrence: usize,
+    },
     Source {
         origin: usize,
         local: super::Range,
@@ -50,12 +58,59 @@ pub enum WordSpacingPiece {
     },
 }
 
+/// Capability needed by an actual material spacing operation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SpacingFailureReason {
+    InterleavedUnit,
+    UnqualifiedWritingSystem,
+    UnqualifiedProviderPath,
+    PreservedOptionalLigature,
+    CrossUnitConstraint,
+}
+
+/// Actual relation or observed context scope constraining independent movement.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SpacingConstraintKind {
+    Ligature,
+    MarkAttachment,
+    CursiveAttachment,
+    UnqualifiedProviderPath(surgeist_shaper::ComponentPath),
+    /// Joining actions used context across separately emitted invocations. This
+    /// identifies an unqualified movement dependency, not an observed attachment.
+    /// Both ranges use the actual preparation or selected-presentation atoms.
+    ExternalJoiningContext {
+        body: std::ops::Range<usize>,
+        context: std::ops::Range<usize>,
+    },
+}
+
+/// Governing source context of one endpoint in a rejected spacing operation.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SpacingContext {
+    pub pieces: Box<[SpacingPiece]>,
+    pub locale: Option<String>,
+    pub candidates: Box<[TextScript]>,
+    pub writing_systems: Box<[TextScript]>,
+    pub resolved_scripts: Box<[TextScript]>,
+    pub letter_spacing_before: f64,
+    pub letter_spacing_after: f64,
+}
+
+/// Actual provider relation retained for a rejected spacing target.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SpacingConstraint {
+    pub kind: SpacingConstraintKind,
+    pub run: usize,
+    pub components: Box<[std::ops::Range<usize>]>,
+    pub provenance: Box<[surgeist_shaper::FeatureProvenance]>,
+}
+
 /// Stable text diagnostic.
 #[derive(Debug)]
 pub struct Error {
     pub code: ErrorCode,
     pub message: String,
-    detail: Option<ErrorDetail>,
+    detail: Option<Box<ErrorDetail>>,
     pub source: Option<Box<dyn error::Error + Send + Sync>>,
 }
 
@@ -72,13 +127,16 @@ impl Error {
 
     #[must_use]
     pub fn with_detail(mut self, detail: ErrorDetail) -> Self {
-        self.detail = Some(detail);
+        self.detail = Some(Box::new(detail));
         self
     }
 
     #[must_use]
     pub const fn detail(&self) -> Option<&ErrorDetail> {
-        self.detail.as_ref()
+        match &self.detail {
+            Some(detail) => Some(detail),
+            None => None,
+        }
     }
 }
 
@@ -138,13 +196,16 @@ pub enum ErrorCode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErrorDetail {
-    /// A material word-spacing operation needs unavailable independent unit geometry.
-    UnsupportedWordSpacing {
-        stage: WordSpacingStage,
-        operation: WordSpacingOperation,
-        pieces: Box<[WordSpacingPiece]>,
-        /// Atom range in the actual preparation or selected presentation.
-        provider_atoms: std::ops::Range<usize>,
+    /// A material spacing operation needs unavailable profile or movement capability.
+    UnsupportedSpacing {
+        stage: SpacingStage,
+        operation: SpacingOperation,
+        pieces: Box<[SpacingPiece]>,
+        /// Exact atom pieces in the actual preparation or selected presentation.
+        provider_atoms: Box<[std::ops::Range<usize>]>,
+        reason: SpacingFailureReason,
+        contexts: Box<[SpacingContext]>,
+        constraints: Box<[SpacingConstraint]>,
     },
     /// Executed pre-analysis transformation could not retain its operation.
     TextTransform {

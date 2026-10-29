@@ -114,7 +114,6 @@ fn zero_preserved_edges_consume_context_only_for_a_material_preceding_group() {
                 Range::new(1, 2),
                 Style {
                     white_space: WhiteSpace::Collapse,
-                    letter_spacing: preceding - 10.0,
                     ..captured.base_style.clone()
                 },
             );
@@ -122,6 +121,9 @@ fn zero_preserved_edges_consume_context_only_for_a_material_preceding_group() {
                 Range::new(2, 3),
                 Style {
                     word_spacing: -10.0,
+                    // X/EM has gap0. EM/SPACE has half this full value,
+                    // charged to EM; SPACE's raw10 plus word−10 stays0.
+                    letter_spacing: 2.0 * (preceding - 10.0),
                     ..captured.base_style.clone()
                 },
             );
@@ -139,6 +141,43 @@ fn zero_preserved_edges_consume_context_only_for_a_material_preceding_group() {
                 assert_eq!(reason(&error), &expected);
             } else {
                 let actual = result.unwrap();
+                let raw: Vec<_> = actual
+                    .run_views()
+                    .flat_map(|run| {
+                        run.glyphs()
+                            .map(|glyph| {
+                                (
+                                    glyph.range(),
+                                    glyph.id(),
+                                    glyph.x(),
+                                    glyph.y(),
+                                    glyph.advance(),
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .collect();
+                assert_eq!(
+                    raw,
+                    [
+                        (Range::new(0, 1), 58, 0.0, 0.0, 10.0),
+                        (Range::new(1, 2), 247, 0.0, 0.0, 10.0),
+                        (Range::new(2, 3), 3, 0.0, 0.0, 10.0),
+                    ]
+                );
+                let cells: Vec<_> = actual.edge_units().collect();
+                assert_eq!(cells.len(), 3);
+                assert_eq!(
+                    cells.iter().map(|cell| cell.advance()).collect::<Vec<_>>(),
+                    [10.0, preceding, 0.0]
+                );
+                for (index, cell) in cells.iter().enumerate() {
+                    assert_eq!(
+                        cell.source_pieces().collect::<Vec<_>>(),
+                        [Range::new(index, index + 1)]
+                    );
+                    assert_ne!(cell.disposition(), crate::LineEdgeDisposition::Removed);
+                }
                 assert_eq!(actual.feedback().advance, 10.0 + preceding);
                 assert_eq!(
                     actual.measurements().alignment().advance(),

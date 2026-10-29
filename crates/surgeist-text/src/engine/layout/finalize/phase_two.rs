@@ -76,7 +76,11 @@ fn positions(
                 continue;
             }
             ShapedItem::InlineBox { occurrence, .. } => {
-                inflow_allocation(atomics[&occurrence])?.0.advance
+                super::super::super::spacing::character::atomic_advance(
+                    shaped,
+                    occurrence,
+                    inflow_allocation(atomics[&occurrence])?.0.advance,
+                )?
             }
             ShapedItem::Anchor { unit } => {
                 crate::protocol::boundary::advance(selected.presentation_input(), unit)
@@ -554,7 +558,11 @@ fn measure(
                 if baseline.raw_advance.is_some() {
                     0.0
                 } else {
-                    inflow_allocation(atomics[&occurrence])?.0.advance
+                    super::super::super::spacing::character::atomic_advance(
+                        shaped,
+                        occurrence,
+                        inflow_allocation(atomics[&occurrence])?.0.advance,
+                    )?
                 }
             }
             ShapedItem::Anchor { unit } => {
@@ -608,7 +616,11 @@ fn measure(
                         flow.occupied_end,
                     )?,
                 );
-                flow.advance
+                super::super::super::spacing::character::atomic_advance(
+                    shaped,
+                    occurrence,
+                    flow.advance,
+                )?
             }
             ShapedItem::Anchor { unit } => {
                 let n = crate::protocol::boundary::advance(selected.presentation_input(), unit);

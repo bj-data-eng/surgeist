@@ -1369,24 +1369,25 @@ fn spacing<S: LayoutScalar>() {
         false,
         AHEM,
     );
-    // Each retained Ahem10 advance plus the authored5 letter spacing is15.
-    // The scope comparison must use finalized measures, not glyph10 alone.
+    // n retained Ahem10 cells have n-1 internal5px gaps: three use40,
+    // two use25. A glyph-only estimate would incorrectly admit four at40.
+    // Scope preference follows actual fit, with both line-edge gaps suppressed.
     let auto = compute::<S>(
         &f,
         &[WrapInside::Auto],
-        AvailableOf::definite(S::from_f64(45.0)),
+        AvailableOf::definite(S::from_f64(40.0)),
         false,
     );
     let avoid = compute::<S>(
         &f,
         &[WrapInside::Avoid],
-        AvailableOf::definite(S::from_f64(45.0)),
+        AvailableOf::definite(S::from_f64(40.0)),
         false,
     );
     assert_eq!(cuts(&auto), [3, 6]);
     assert_eq!(cuts(&avoid), [2, 5, 6]);
-    assert_eq!(finalized(&auto)[0].measurements().fit().advance(), 45.0);
-    assert_eq!(finalized(&avoid)[0].measurements().fit().advance(), 30.0);
+    assert_eq!(finalized(&auto)[0].measurements().fit().advance(), 40.0);
+    assert_eq!(finalized(&avoid)[0].measurements().fit().advance(), 25.0);
     assert_ascii_custody(&avoid, &f, "ABCDEF");
 }
 

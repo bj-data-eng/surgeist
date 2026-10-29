@@ -42,7 +42,7 @@ fn trial(
         .finalize(SpacingAllocations::None)
         .unwrap()
 }
-fn report(label: &str, line: &surgeist_text::FinalizedLine) {
+fn report(label: &str, line: &surgeist_text::FinalizedLine, bytes: &[u8]) {
     let selected = line.selected_line();
     let request = selected.request();
     let fit = line.measurements().fit();
@@ -69,24 +69,53 @@ fn report(label: &str, line: &surgeist_text::FinalizedLine) {
             .map(|alt| alt.view().definition())
     );
     assert!(
-        line.run_views().all(|run| run.face().bytes() == AHEM
+        line.run_views().all(|run| run.face().bytes() == bytes
             && run.effective_instance().unwrap().font_size() == 10.0)
     );
 }
 fn qualify<S: LayoutScalar>() -> (Range, Option<PreparedBreakKind>, bool, f64, f64) {
     println!("ZONE_SCALAR {}", std::any::type_name::<S>());
-    let normal = style();
+    let font = super::canonical::fonts::positioned_ahem(&[
+        (58, -1000),
+        (3, -1000),
+        (67, -1000),
+        (85, -1000),
+    ]);
+    let mut normal = style();
+    normal.font = normal.font.feature("\"kern\" 0");
     let mut collapsed = normal.clone();
-    collapsed.letter_spacing = -10.0;
-    let paragraph = PreparedParagraph::new(
+    collapsed.font = surgeist_text::Font::new()
+        .family("Ahem")
+        .feature("\"kern\" 1");
+    let paragraph = PreparedParagraph::with_registered_font(
         vec![
             ParagraphPart::text(1, Source::new("X as"), collapsed),
             ParagraphPart::text(2, Source::new("sociate"), normal.clone()),
         ],
         normal.clone(),
         ParagraphBaseDirection::LeftToRight,
+        &font,
     );
     let p = &paragraph.prepared;
+    // Same font and literal glyphs: kern-on prefix has four actual zero cells;
+    // kern-off residual has seven10px cells, including repeated s/a glyphs.
+    let whole = crate::test_support::text_fragment::fragment_for(p).finalized_line();
+    let actual = whole
+        .run_views()
+        .flat_map(|run| {
+            assert_eq!(run.face().bytes(), font);
+            run.glyphs()
+                .map(|g| (g.range(), g.id(), g.advance()))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        actual.iter().map(|g| g.1).collect::<Vec<_>>(),
+        [58, 3, 67, 85, 85, 81, 69, 75, 67, 86, 71]
+    );
+    for (range, _, advance) in actual {
+        assert_eq!(advance, if range.end <= 4 { 0.0 } else { 10.0 });
+    }
     assert_eq!(
         p.analyzed_source().source().text().code_units(),
         "X associate".encode_utf16().collect::<Vec<_>>()
@@ -133,7 +162,7 @@ fn qualify<S: LayoutScalar>() -> (Range, Option<PreparedBreakKind>, bool, f64, f
         })
         .unwrap();
     let prefix = trial(p, prefix.handle(), None);
-    report("ordinary-prefix", &prefix);
+    report("ordinary-prefix", &prefix, &font);
     assert!(prefix.edge_units().any(|row| row.disposition()
         == surgeist_text::LineEdgeDisposition::Removed
         && row.source_pieces().collect::<Vec<_>>() == [Range::new(1, 2)]));
@@ -143,7 +172,7 @@ fn qualify<S: LayoutScalar>() -> (Range, Option<PreparedBreakKind>, bool, f64, f
     let alt = first.view().alternatives().next().unwrap().handle();
     assert!(alt.view().text().code_units().is_empty());
     let first = trial(p, first, Some(alt));
-    report("automatic-two", &first);
+    report("automatic-two", &first, &font);
     let end = p
         .opportunity_views()
         .find(|row| row.kind() == PreparedBreakKind::ParagraphEnd)
@@ -164,7 +193,7 @@ fn qualify<S: LayoutScalar>() -> (Range, Option<PreparedBreakKind>, bool, f64, f
         .unwrap()
         .finalize(SpacingAllocations::None)
         .unwrap();
-    report("positive-original-residual", &residual_line);
+    report("positive-original-residual", &residual_line, &font);
     assert_eq!(residual_line.feedback().advance, 70.0);
     assert_eq!(
         (
@@ -177,7 +206,7 @@ fn qualify<S: LayoutScalar>() -> (Range, Option<PreparedBreakKind>, bool, f64, f
     let second = cuts[1].opportunity().unwrap();
     let alt = second.view().alternatives().next().unwrap().handle();
     let second = trial(p, second, Some(alt));
-    report("automatic-four", &second);
+    report("automatic-four", &second, &font);
     for line in [&prefix, &first] {
         assert_eq!(line.feedback().advance, 0.0);
         assert_eq!(line.measurements().fit().advance(), 0.0);
@@ -210,7 +239,7 @@ fn qualify<S: LayoutScalar>() -> (Range, Option<PreparedBreakKind>, bool, f64, f
     let whole =
         crate::test_support::text_fragment::fragment_for(&control.prepared).finalized_line();
     assert_eq!(whole.feedback().advance, 110.0);
-    report("font-control", &whole);
+    report("font-control", &whole, AHEM);
     let mut glyphs = whole
         .run_views()
         .flat_map(|run| {
@@ -263,7 +292,7 @@ fn qualify<S: LayoutScalar>() -> (Range, Option<PreparedBreakKind>, bool, f64, f
     }
     for (index, line) in lines.iter().enumerate() {
         let line = line.as_ref().unwrap();
-        report(&format!("current-chosen-{index}"), line);
+        report(&format!("current-chosen-{index}"), line, &font);
         println!(
             "ZONE_CHOICE {} {:?} {}",
             index,

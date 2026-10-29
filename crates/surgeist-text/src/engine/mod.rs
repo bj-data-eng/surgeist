@@ -92,6 +92,7 @@ pub(crate) struct PreparedData {
 /// Inputs coupled to one shaping operation, without a mutable System escape.
 pub(crate) struct ShapingInput<'a> {
     pub(crate) separator_geometry: bool,
+    pub(crate) characters: Option<&'a spacing::character::PlanRequirements>,
     pub(crate) profile: upright::ShapingProfile<'a>,
     pub(crate) baseline_reference: Option<crate::FontBaseline>,
     pub(crate) projection: &'a SourceProjection,
@@ -107,7 +108,6 @@ pub(crate) struct ShapingInput<'a> {
 /// line-local rows. These rows never mutate preliminary preparation tables.
 pub(crate) struct FinalizedLine {
     pub(crate) selected: Arc<SelectedData>,
-    pub(crate) shape: Arc<SelectedShape>,
     pub(crate) data: layout::data::FinalizedLineData,
 }
 
@@ -115,6 +115,8 @@ pub(crate) struct FinalizedLine {
 pub(crate) struct SelectedShape {
     pub(crate) mapping: Arc<SelectedMapping>,
     pub(crate) shaped: layout::data::ShapedData,
+    pub(crate) characters: spacing::character::Graph,
+    pub(crate) order: Vec<usize>,
 }
 
 /// One retained outer placement, kept separate from canonical glyph geometry.
@@ -337,9 +339,18 @@ pub(crate) fn prepare(
         None
     };
     let font_catalogue = catalogue.identity().clone();
+    let characters = spacing::character::plan(
+        &analyzed.projection,
+        &analyzed.analysis,
+        &styles,
+        analyzed.processed.source().boxes(),
+        None,
+        false,
+    )?;
     let mut shaped = shape::shape(
         catalogue,
         ShapingInput {
+            characters: Some(&characters),
             separator_geometry: spacing::authored_demand(&analyzed.analysis, &styles),
             profile: upright::original_profile(options.orientation(), &upright_units),
             baseline_reference: options.resolved_baseline_reference(),
@@ -353,7 +364,18 @@ pub(crate) fn prepare(
         },
         scratch,
     )?;
+    shaped.character_requirements = Some(characters);
     spacing::authored_original(&analyzed, &styles, &mut shaped)?;
+    let characters = spacing::character::build(
+        &analyzed.projection,
+        &analyzed.analysis,
+        &styles,
+        analyzed.processed.source().boxes(),
+        None,
+        false,
+        Some(&shaped.character_exclusions),
+    )?;
+    spacing::character::original(&analyzed, &characters, &mut shaped)?;
     let metrics_index = default_style_index.or_else(|| {
         (profile == PreparationProfile::Standalone
             && analyzed.projection.atoms.is_empty()
@@ -364,6 +386,7 @@ pub(crate) fn prepare(
         shaped.empty_run = Some(shape::default_metrics(
             catalogue.query(),
             &ShapingInput {
+                characters: None,
                 separator_geometry: spacing::authored_demand(&analyzed.analysis, &styles),
                 profile: upright::original_profile(options.orientation(), &upright_units),
                 baseline_reference: options.resolved_baseline_reference(),

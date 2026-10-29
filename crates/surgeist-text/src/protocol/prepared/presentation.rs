@@ -845,7 +845,7 @@ fn is_out_of_flow(unit: &PresentationUnit, boxes: &[crate::InlineBox]) -> bool {
 }
 /// Hierarchy is two independent applications of the existing L2 owner. Local
 /// levels never enter the original paragraph's level array or embedding stack.
-fn unit_order(
+pub(crate) fn unit_order(
     units: &[PresentationUnit],
     domains: &[IndicationDomain],
     boxes: &[crate::InlineBox],
@@ -936,13 +936,13 @@ fn prove_graphemes(
 }
 
 /// Actual visual item order plus provider joint-unit and run congruence proof.
-/// This is invoked only after real joint GSUB/GPOS and before any line publish.
-pub(crate) fn order_items(
-    selected: &super::super::selection::SelectedData,
+/// The selected basis retains this order before publishing complete handles.
+pub(crate) fn order_presentation(
+    presentation: &SelectedPresentation,
+    boxes: &[crate::InlineBox],
     shaped: &crate::engine::layout::data::ShapedData,
 ) -> crate::Result<Vec<usize>> {
     use crate::engine::layout::data::ShapedItem;
-    let presentation = &selected.presentation;
     let mut by_unit = vec![Vec::new(); presentation.units.len()];
     for (item, value) in shaped.items.iter().enumerate() {
         let unit = match *value {
@@ -960,11 +960,7 @@ pub(crate) fn order_items(
         by_unit[unit].push(item);
     }
     let mut output = Vec::with_capacity(shaped.items.len());
-    for unit in unit_order(
-        &presentation.units,
-        &presentation.domains,
-        selected.prepared.analyzed.processed.source().boxes(),
-    )? {
+    for unit in unit_order(&presentation.units, &presentation.domains, boxes)? {
         let members = &by_unit[unit];
         for i in reorder(members.iter().map(|_| presentation.units[unit].line_level))? {
             output.push(members[i]);

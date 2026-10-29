@@ -1020,15 +1020,58 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
 #[test]
 fn retained_zero_or_signed_text_cannot_be_a_phantom_receipt() {
     let mut system = system();
-    for (spacing, advance) in [(-20.0, 0.0), (-40.0, -20.0)] {
-        let mut value = input("A AAA", OverflowWrap::Anywhere);
+    // Two retained20px A units have one internal full tracking gap. The
+    // trailing collapsible SPACE supplies no retained unit or outer gap.
+    for (spacing, advance) in [(-40.0, 0.0), (-60.0, -20.0)] {
+        let mut value = input("AA AAA", OverflowWrap::Anywhere);
         value.base_style.white_space = WhiteSpace::Collapse;
         value.base_style.letter_spacing = spacing;
         let prepared = prepare(&mut system, value);
         let start = prepared.boundary_views().next().unwrap().handle();
         let first = first_after(&prepared, &start);
+        assert_eq!(first.view().boundary().view().source_before().get(), 3);
         let ceiling = prepared.opportunity_views().last().unwrap().handle();
         let receipt = ordinary_receipt(&prepared, start.clone(), first, None);
+        let raw: Vec<_> = receipt
+            .run_views()
+            .flat_map(|run| {
+                run.glyphs()
+                    .filter(|glyph| glyph.range().end <= 2)
+                    .map(|glyph| {
+                        (
+                            glyph.range(),
+                            glyph.id(),
+                            glyph.x(),
+                            glyph.y(),
+                            glyph.advance(),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        assert_eq!(
+            raw,
+            [
+                (Range::new(0, 1), 35, 0.0, 0.0, 20.0),
+                (Range::new(1, 2), 35, 0.0, 0.0, 20.0),
+            ]
+        );
+        let cells: Vec<_> = receipt.edge_units().collect();
+        assert_eq!(cells.len(), 3);
+        assert_eq!(
+            cells.iter().map(|cell| cell.advance()).collect::<Vec<_>>(),
+            [20.0 + spacing, 20.0, 0.0]
+        );
+        for (index, cell) in cells.iter().enumerate() {
+            assert_eq!(
+                cell.source_pieces().collect::<Vec<_>>(),
+                [Range::new(index, index + 1)]
+            );
+        }
+        assert_eq!(cells[0].disposition(), crate::LineEdgeDisposition::Ordinary);
+        assert_eq!(cells[1].disposition(), crate::LineEdgeDisposition::Ordinary);
+        assert_eq!(cells[2].disposition(), crate::LineEdgeDisposition::Removed);
+        assert!(receipt.has_in_flow_content());
         assert_eq!(receipt.feedback().advance, advance);
         assert!(matches!(
             reason(
@@ -1477,12 +1520,9 @@ fn conditional_provider_and_numeric_refusals_leave_prior_actual_results_valid() 
     let mut value = selection(&prepared, cut);
     value.context.base_direction = ParagraphBaseDirection::RightToLeft;
     value.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
-    let selected = prepared.select(value.clone()).unwrap();
+    let error = prepared.select(value.clone()).unwrap_err();
     assert_eq!(
-        selected
-            .finalize(SpacingAllocations::None)
-            .unwrap_err()
-            .detail(),
+        error.detail(),
         Some(&crate::ErrorDetail::ShapingRefused {
             reason: crate::ShapingRefusalReason::ContextLimit
         })

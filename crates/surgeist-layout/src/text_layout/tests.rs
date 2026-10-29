@@ -2184,3 +2184,5 @@ mod box_incidence;
 
 #[path = "tests/box_incidence_cases.rs"]
 mod box_incidence_cases;
+
+mod inter_character;

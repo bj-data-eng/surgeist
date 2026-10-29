@@ -3,13 +3,13 @@
 use std::sync::Arc;
 
 use super::{
-    AtomicSlotFeedback, FinalizedLine, LineFeedback, PreparedParticipant, PresentationRange,
-    ProtocolError, SelectedLine, SpacingAllocations, SpacingSlot, protocol_error,
+    AtomicSlotFeedback, FinalizedLine, LineFeedback, PreparedParticipant, ProtocolError,
+    SelectedLine, SpacingAllocations, SpacingSlot, protocol_error,
 };
 use crate::{Result, TextNumericError, TextNumericPhase};
 
 impl SelectedLine {
-    /// Complete shape-free semantic candidates for this exact selected request.
+    /// Complete receipt-qualified candidates from this exact retained basis.
     /// Actual geometry and expansion admission come from finalized feedback.
     /// Every handle retains the selected allocation, including its preparation.
     pub fn spacing_slots(&self) -> impl ExactSizeIterator<Item = SpacingSlot> + '_ {
@@ -36,16 +36,31 @@ impl SpacingSlot {
             .map(|&index| &self.selected.request.participants[index])
     }
 
-    /// Exact selected presentation target, including inserted replacement spaces.
+    /// Exact units on either side of the actual visual boundary.
     #[must_use]
-    pub fn presentation_range(&self) -> PresentationRange {
-        self.selected.spacing_slots[self.index].presentation
+    pub fn target(&self) -> super::SpacingSlotTarget {
+        let unit = |side| super::SpacingUnit {
+            selected: Arc::clone(&self.selected),
+            slot: self.index,
+            side,
+        };
+        match self.selected.spacing_slots[self.index].target {
+            super::selection::SpacingTargetData::Separator { .. } => {
+                super::SpacingSlotTarget::Separator(unit(0))
+            }
+            super::selection::SpacingTargetData::Boundary { .. } => {
+                super::SpacingSlotTarget::Boundary {
+                    visual_before: unit(0),
+                    visual_after: unit(1),
+                }
+            }
+        }
     }
 }
 
 impl SelectedLine {
-    /// Execute this exact selection with a complete logical spacing allocation.
-    /// No current System, catalogue, or alternative boundary is consulted.
+    /// Execute allocation geometry over this exact retained selected basis.
+    /// No provider, System, catalogue, or alternative boundary is consulted.
     pub fn finalize(&self, allocations: SpacingAllocations) -> Result<FinalizedLine> {
         let amounts = allocation_amounts(self, allocations)?;
         let inner = crate::engine::layout::finalize_selected(Arc::clone(&self.inner), amounts)?;
@@ -78,8 +93,10 @@ fn allocation_amounts(
             return Err(protocol_error(ProtocolError::DuplicateSpacingSlot { slot }));
         }
         if !allocation.amount.is_finite()
-            || (selected.inner.request.context.spacing == super::SpacingPolicy::InterWord
-                && allocation.amount < 0.0)
+            || (matches!(
+                selected.inner.request.context.spacing,
+                super::SpacingPolicy::InterWord | super::SpacingPolicy::InterCharacter
+            ) && allocation.amount < 0.0)
         {
             return Err(crate::error::text_numeric_error(
                 "selected spacing allocation",

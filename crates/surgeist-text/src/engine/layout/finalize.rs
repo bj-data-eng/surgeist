@@ -28,7 +28,7 @@ use crate::protocol::{
 mod phase_two;
 
 /// Role-independent shaping and edge collapse shared with nonplaceable flow
-/// observations. No hanging, spacing, tabs or geometry receipt is produced here.
+/// observations. No hanging, spacing allocation, tabs or geometry receipt is produced here.
 pub(super) fn shape_and_collapse(
     input: PresentationInput<'_>,
     scratch: &mut ShapeContext,
@@ -40,42 +40,62 @@ pub(super) fn shape_and_collapse(
     let (mut shaped, mapping) = shape::finalize(input, scratch, crate::SpacingPolicy::None)?;
     validate_rows(input, &shaped)?;
     let dispositions = collapse_edges(input, &mut shaped)?;
+    let ordered = crate::protocol::prepared::presentation::order_presentation(
+        input.presentation,
+        input.prepared.analyzed.processed.source().boxes(),
+        &shaped,
+    )?;
+    let levels = item_levels(input.presentation, &shaped);
+    let participants = levels
+        .into_iter()
+        .map(|level| {
+            BidiLevel::try_new(level)
+                .map(|level| SuppliedInlineParticipant::Boundary { level })
+                .map_err(|_| invalid("flow character level"))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let order = SuppliedLine::new(&participants)
+        .composed_order(&ordered)
+        .ok_or_else(|| invalid("flow character order"))?;
+    super::super::spacing::visual_authored(&mut shaped, &order, &dispositions)?;
+    let graph = super::super::spacing::character::build(
+        &input.presentation.projection,
+        &input.presentation.analysis,
+        &input.prepared.styles,
+        input.prepared.analyzed.processed.source().boxes(),
+        Some(input.presentation),
+        false,
+        Some(&shaped.character_exclusions),
+    )?;
+    super::super::spacing::character::apply_selected(
+        input,
+        &graph,
+        &mut shaped,
+        &ordered,
+        &dispositions,
+        None,
+    )?;
     Ok((shaped, mapping, dispositions))
 }
 
-pub(super) fn finalize(
-    selected: Arc<SelectedData>,
-    amounts: &[f64],
-    scratch: &mut ShapeContext,
-) -> Result<FinalizedLine> {
-    let (shaped, mapping) = shape::finalize(
-        selected.presentation_input(),
-        scratch,
-        selected.request.context.spacing,
-    )?;
-    validate_rows(selected.presentation_input(), &shaped)?;
-    let basis = Arc::new(super::super::SelectedShape { shaped, mapping });
-    execute(selected, basis, amounts)
+pub(super) fn finalize(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine> {
+    execute(selected, amounts)
 }
 
 pub(super) fn refinalize(line: &FinalizedLine, amounts: &[f64]) -> Result<FinalizedLine> {
-    execute(Arc::clone(&line.selected), Arc::clone(&line.shape), amounts)
+    execute(Arc::clone(&line.selected), amounts)
 }
 
-fn execute(
-    selected: Arc<SelectedData>,
-    basis: Arc<super::super::SelectedShape>,
-    amounts: &[f64],
-) -> Result<FinalizedLine> {
+fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine> {
     let selection = &selected.request.context;
     let atomics = atomic_allocations(&selected)?;
     let controls = control_allocations(&selected)?;
-    let mut shaped = basis.shaped.clone();
+    let mut shaped = selected.basis.shaped.clone();
     validate_rows(selected.presentation_input(), &shaped)?;
     let mut dispositions = collapse_edges(selected.presentation_input(), &mut shaped)?;
-    let levels = line_levels(&selected, &shaped)?;
+    let levels = item_levels(&selected.presentation, &shaped);
     let base = selected.presentation.analysis.base_level;
-    let ordered = crate::protocol::prepared::presentation::order_items(&selected, &shaped)?;
+    let ordered = &selected.basis.order;
     let participants = levels
         .iter()
         .map(|&level| {
@@ -85,17 +105,44 @@ fn execute(
         })
         .collect::<Result<Vec<_>>>()?;
     let order = SuppliedLine::new(&participants)
-        .composed_order(&ordered)
+        .composed_order(ordered)
         .ok_or_else(|| invalid("composed line order is not a complete permutation"))?;
     let mut word_halves =
         super::super::spacing::visual_authored(&mut shaped, &order, &dispositions)?;
+    let character_order: Vec<_> = order.iter().map(|(i, _)| i).collect();
+    super::super::spacing::character::apply_selected(
+        selected.presentation_input(),
+        &selected.basis.characters,
+        &mut shaped,
+        &character_order,
+        &dispositions,
+        None,
+    )?;
     resolve_tabs(&selected, &mut shaped, &atomics, &order)?;
     let natural = phase_two::natural(&selected, &shaped, &atomics, &order, &dispositions)?;
     let responses = phase_two::spacing_responses(&selected, &shaped, &order, &natural)?;
-    let mut spacing_slots =
-        apply_spacing(&selected, &mut shaped, amounts, &dispositions, &responses)?;
-    if selection.spacing == crate::SpacingPolicy::InterWord {
+    let mut spacing_slots = apply_spacing(
+        &selected,
+        &mut shaped,
+        amounts,
+        &dispositions,
+        &responses,
+        &character_order,
+    )?;
+    if matches!(
+        selection.spacing,
+        crate::SpacingPolicy::InterWord | crate::SpacingPolicy::InterCharacter
+    ) {
+        super::super::spacing::character::restore(&mut shaped);
         word_halves = super::super::spacing::visual_authored(&mut shaped, &order, &dispositions)?;
+        super::super::spacing::character::apply_selected(
+            selected.presentation_input(),
+            &selected.basis.characters,
+            &mut shaped,
+            &character_order,
+            &dispositions,
+            (selection.spacing == crate::SpacingPolicy::InterCharacter).then_some(amounts),
+        )?;
     }
     if amounts.iter().any(|amount| *amount != 0.0) {
         resolve_tabs(&selected, &mut shaped, &atomics, &order)?;
@@ -118,6 +165,36 @@ fn execute(
         prefix_receipts,
     );
     for row in &mut spacing_slots {
+        if let Some(edge) = row.edge {
+            let discarded = super::super::spacing::character::discarded(
+                &selected.basis.characters,
+                edge,
+                &shaped,
+                &dispositions,
+            );
+            row.disposition = if discarded {
+                SpacingSlotDisposition::DiscardedAtLineEdge
+            } else {
+                SpacingSlotDisposition::Retained { trailing: false }
+            };
+            row.advance = if discarded
+                || matches!(
+                    row.geometry,
+                    crate::SpacingSlotGeometry::Boundary(
+                        crate::SpacingBoundaryGeometry::ProtectedRequired
+                    )
+                ) {
+                0.0
+            } else {
+                add(
+                    "character slot gap",
+                    TextNumericPhase::Finalization,
+                    row.letter,
+                    row.allocation,
+                )?
+            };
+            continue;
+        }
         row.disposition = dispositions[row.cluster];
         row.advance = row.members.iter().try_fold(0.0, |value, &index| {
             add(
@@ -306,6 +383,45 @@ fn execute(
                         metrics.block_max - flow.after_baseline,
                     )?,
                 };
+                let gap = shaped.atomic_gaps.get(&occurrence).copied().unwrap_or(0.0);
+                if gap != 0.0 {
+                    let before = add(
+                        "atomic pre-gap endpoint",
+                        TextNumericPhase::Finalization,
+                        pen,
+                        flow.advance,
+                    )?;
+                    let after = add(
+                        "atomic cell endpoint",
+                        TextNumericPhase::Finalization,
+                        pen,
+                        super::super::spacing::character::atomic_advance(
+                            &shaped,
+                            occurrence,
+                            flow.advance,
+                        )?,
+                    )?;
+                    if before == after {
+                        return Err(super::super::text_numeric_error(
+                            "atomic boundary displacement",
+                            TextNumericPhase::Finalization,
+                            TextNumericError::NonZeroLost,
+                            gap,
+                        ));
+                    }
+                    data.character_anchors.push(WordSpacingAnchor {
+                        base: Point::new(
+                            add(
+                                "atomic pre-gap endpoint",
+                                TextNumericPhase::Finalization,
+                                pen,
+                                flow.advance,
+                            )?,
+                            baseline,
+                        ),
+                        half: gap,
+                    });
+                }
                 let rect = translate_rect(geometry.border, pen, baseline)?;
                 translate_rect(geometry.content, pen, baseline)?;
                 add(
@@ -320,6 +436,7 @@ fn execute(
                     occurrence,
                     atomic: allocation.occurrence.clone(),
                     slot: Point::new(pen, baseline),
+                    following_gap: shaped.atomic_gaps.get(&occurrence).copied().unwrap_or(0.0),
                     geometry: FinalizedBoxGeometry::InFlow {
                         flow,
                         alignment,
@@ -332,7 +449,11 @@ fn execute(
                     "atomic logical advance",
                     TextNumericPhase::Finalization,
                     pen,
-                    flow.advance,
+                    super::super::spacing::character::atomic_advance(
+                        &shaped,
+                        occurrence,
+                        flow.advance,
+                    )?,
                 )?;
             }
             ShapedItem::TextCluster(cluster_index) => {
@@ -517,6 +638,12 @@ fn execute(
                             -run.x,
                         )?;
                     }
+                }
+                if let Some(gap) = shaped.character_gaps.iter().find(|g| matches!(g.owner, super::super::spacing::character::Owner::Cluster(i) if i == cluster_index)) && gap.amount != 0.0 {
+                    let before = add("character pre-gap endpoint", TextNumericPhase::Finalization, pen, gap.base)?;
+                    let after = add("character cell endpoint", TextNumericPhase::Finalization, pen, output.advance)?;
+                    if before == after { return Err(super::super::text_numeric_error("character boundary displacement", TextNumericPhase::Finalization, TextNumericError::NonZeroLost, gap.amount)); }
+                    data.character_anchors.push(WordSpacingAnchor { base: Point::new(before, metrics.baseline), half: gap.amount });
                 }
                 pen = add(
                     "line logical advance",
@@ -764,11 +891,7 @@ fn execute(
     }
     data.metrics.occupied_start = occupied_start;
     data.metrics.occupied_end = occupied_end;
-    Ok(FinalizedLine {
-        selected,
-        shape: basis,
-        data,
-    })
+    Ok(FinalizedLine { selected, data })
 }
 
 struct SharedEndpointGeometry {
@@ -1070,7 +1193,7 @@ fn install_out_of_flow(selected: &SelectedData, data: &mut FinalizedLineData) ->
             "atomic logical endpoint",
             TextNumericPhase::Finalization,
             item.slot.x,
-            item.flow_advance(),
+            item.cell_advance(),
         )?;
         slots[unit] = Some(if level & 1 == 0 {
             (item.slot.x, end)
@@ -1128,6 +1251,7 @@ fn install_out_of_flow(selected: &SelectedData, data: &mut FinalizedLineData) ->
             occurrence,
             atomic: atomic.clone(),
             slot: Point::new(x, data.metrics.baseline),
+            following_gap: 0.0,
             geometry: FinalizedBoxGeometry::OutOfFlow,
         });
     }
@@ -1362,7 +1486,11 @@ fn line_metrics(
                     "line atomic advance",
                     TextNumericPhase::Finalization,
                     result.advance,
-                    flow.advance,
+                    super::super::spacing::character::atomic_advance(
+                        shaped,
+                        occurrence,
+                        flow.advance,
+                    )?,
                 )?;
                 result.line_height = result.line_height.max(finite(
                     "atomic line height",
@@ -1760,9 +1888,20 @@ fn apply_spacing(
     amounts: &[f64],
     dispositions: &[SpacingSlotDisposition],
     responses: &[(crate::SpacingStretchability, usize)],
+    character_order: &[usize],
 ) -> Result<Vec<FinalizedSpacingSlot>> {
     if amounts.len() != selected.spacing_slots.len() {
         return Err(invalid("spacing amounts do not cover selected slots"));
+    }
+    if selected.request.context.spacing == crate::SpacingPolicy::InterCharacter {
+        return character_slots(
+            selected,
+            shaped,
+            amounts,
+            dispositions,
+            responses,
+            character_order,
+        );
     }
     let mut result = Vec::new();
     let mut cluster_at = vec![None; selected.presentation.projection.atoms.len()];
@@ -1778,13 +1917,19 @@ fn apply_spacing(
         .map(|(index, unit)| (unit.base, index))
         .collect();
     for (slot, (row, &amount)) in selected.spacing_slots.iter().zip(amounts).enumerate() {
+        let crate::protocol::selection::SpacingTargetData::Separator { atoms, base, .. } =
+            &row.target
+        else {
+            return Err(invalid("separator target"));
+        };
+        let base = *base;
         finite(
             "selected spacing amount",
             TextNumericPhase::Finalization,
             amount,
         )?;
         let mut members = Vec::new();
-        for atom in row.atoms.clone() {
+        for atom in atoms.clone() {
             if let Some(index) = cluster_at[atom]
                 && members.last() != Some(&index)
             {
@@ -1794,17 +1939,16 @@ fn apply_spacing(
         let index = members
             .iter()
             .copied()
-            .find(|&index| shaped.clusters[index].atoms.contains(&row.base))
+            .find(|&index| shaped.clusters[index].atoms.contains(&base))
             .ok_or_else(|| protocol_error(ProtocolError::IneligibleSpacingSlot { slot }))?;
-        let unit = units.get(&row.base).copied();
-        let (geometry, shared) = if let Some(unit) =
-            unit.filter(|&index| shaped.word_spacing[index].atoms == row.atoms)
-        {
-            let unit = &shaped.word_spacing[unit];
-            (unit.geometry, unit.shared.clone())
-        } else {
-            super::super::spacing::geometry(shaped, &members, row.atoms.clone())?
-        };
+        let unit = units.get(&base).copied();
+        let (geometry, shared) =
+            if let Some(unit) = unit.filter(|&index| shaped.word_spacing[index].atoms == *atoms) {
+                let unit = &shaped.word_spacing[unit];
+                (unit.geometry, unit.shared.clone())
+            } else {
+                super::super::spacing::geometry(shaped, &members, atoms.clone())?
+            };
         let authored = unit.map_or(0.0, |unit| shaped.word_spacing[unit].authored);
         if dispositions[index] == SpacingSlotDisposition::DiscardedAtLineEdge && amount != 0.0 {
             return Err(protocol_error(ProtocolError::IneligibleSpacingSlot {
@@ -1819,12 +1963,10 @@ fn apply_spacing(
                         slot,
                     }));
                 }
-                cluster.advance = add(
-                    "selected spacing amount",
-                    TextNumericPhase::Finalization,
-                    cluster.advance,
-                    amount,
-                )?;
+                if let Some(gap) = shaped.character_gaps.iter_mut().find(|gap| matches!(gap.owner, super::super::spacing::character::Owner::Cluster(i) if i == index)) {
+                    gap.base = add("native space cell basis", TextNumericPhase::Finalization, gap.base, amount)?;
+                    cluster.advance = add("native space and tracking", TextNumericPhase::Finalization, gap.base, gap.amount)?;
+                } else { cluster.advance = add("selected spacing amount", TextNumericPhase::Finalization, cluster.advance, amount)?; }
                 cluster.logical_adjustments[2] = amount;
             }
             crate::SpacingPolicy::InterWord => {
@@ -1839,8 +1981,8 @@ fn apply_spacing(
                 if amount != 0.0 {
                     if let Some(provider_atoms) = shared {
                         return Err(super::super::spacing::unsupported(
-                            crate::WordSpacingStage::SelectedShaping,
-                            crate::WordSpacingOperation::InterWordAllocation,
+                            crate::SpacingStage::SelectedShaping,
+                            crate::SpacingOperation::InterWordAllocation,
                             row.pieces.iter().map(|piece| piece.owner).collect(),
                             provider_atoms,
                         ));
@@ -1860,23 +2002,131 @@ fn apply_spacing(
                     .ok_or_else(|| invalid("separator candidate has no actual unit geometry"))?]
                 .allocation = amount;
             }
-            crate::SpacingPolicy::None => {
+            crate::SpacingPolicy::None | crate::SpacingPolicy::InterCharacter => {
                 return Err(invalid("None has no selected spacing slots"));
             }
         }
         result.push(FinalizedSpacingSlot {
             cluster: index,
+            edge: None,
             members,
             disposition: dispositions[index],
             geometry,
             stretchability: responses[index].0,
             traversal_order: responses[index].1,
             authored,
+            letter: 0.0,
             allocation: amount,
             advance: 0.0,
         });
     }
     Ok(result)
+}
+
+fn character_slots(
+    selected: &SelectedData,
+    shaped: &ShapedData,
+    amounts: &[f64],
+    dispositions: &[SpacingSlotDisposition],
+    responses: &[(crate::SpacingStretchability, usize)],
+    order: &[usize],
+) -> Result<Vec<FinalizedSpacingSlot>> {
+    use super::super::spacing::character::{self, Owner};
+    use crate::{SpacingBoundaryGeometry as Geometry, SpacingSlotGeometry};
+    let mut rows = Vec::with_capacity(amounts.len());
+    for (slot, (target, &amount)) in selected.spacing_slots.iter().zip(amounts).enumerate() {
+        let crate::protocol::selection::SpacingTargetData::Boundary { edge, .. } = target.target
+        else {
+            return Err(invalid("character boundary target"));
+        };
+        finite(
+            "selected character amount",
+            TextNumericPhase::Finalization,
+            amount,
+        )?;
+        if amount < 0.0 {
+            return Err(super::super::text_numeric_error(
+                "selected character amount",
+                TextNumericPhase::Finalization,
+                TextNumericError::OutOfRange,
+                amount,
+            ));
+        }
+        let boundary = &selected.basis.characters.boundaries[edge];
+        let geometry = selected
+            .basis
+            .characters
+            .geometry(edge, &shaped.character_invocations);
+        let geometry = if geometry == Geometry::Independent
+            && !character::qualified(&selected.basis.characters, edge)
+        {
+            Geometry::Constrained
+        } else {
+            geometry
+        };
+        let discarded =
+            character::discarded(&selected.basis.characters, edge, shaped, dispositions);
+        let protected = matches!(
+            geometry,
+            Geometry::ProtectedRequired | Geometry::ProtectedCursive
+        );
+        if amount != 0.0 && (discarded || protected) {
+            return Err(protocol_error(ProtocolError::IneligibleSpacingSlot {
+                slot,
+            }));
+        }
+        let owner = selected
+            .basis
+            .characters
+            .owner(shaped, boundary.before, order);
+        let (cluster, response, rank) = match owner {
+            Some(Owner::Cluster(i)) => (i, responses[i].0, responses[i].1),
+            Some(Owner::Atomic(occurrence)) => {
+                let mut traversal = order.to_vec();
+                if selected.presentation.analysis.base_level & 1 != 0 {
+                    traversal.reverse();
+                }
+                let rank=traversal.iter().position(|&i| matches!(shaped.items[i],ShapedItem::InlineBox {occurrence:actual,..} if actual==occurrence)).unwrap_or(0);
+                let downstream_tab=traversal.iter().skip(rank+1).any(|&i| matches!(shaped.items[i],ShapedItem::TextCluster(c) if matches!(shaped.clusters[c].content,ClusterContent::CssTab(_)) && responses[c].0!=crate::SpacingStretchability::Excluded));
+                (
+                    usize::MAX,
+                    if downstream_tab {
+                        crate::SpacingStretchability::TabDependent
+                    } else {
+                        crate::SpacingStretchability::Direct
+                    },
+                    rank,
+                )
+            }
+            None => (usize::MAX, crate::SpacingStretchability::Excluded, 0),
+        };
+        rows.push(FinalizedSpacingSlot {
+            cluster,
+            edge: Some(edge),
+            members: Vec::new(),
+            geometry: SpacingSlotGeometry::Boundary(geometry),
+            stretchability: if discarded || protected {
+                crate::SpacingStretchability::Excluded
+            } else {
+                response
+            },
+            traversal_order: rank,
+            authored: 0.0,
+            letter: if geometry == Geometry::ProtectedRequired || discarded {
+                0.0
+            } else {
+                boundary.authored
+            },
+            allocation: amount,
+            advance: 0.0,
+            disposition: if discarded {
+                SpacingSlotDisposition::DiscardedAtLineEdge
+            } else {
+                SpacingSlotDisposition::Retained { trailing: false }
+            },
+        });
+    }
+    Ok(rows)
 }
 
 /// The standalone policy produces the same explicit logical allocations as a
@@ -1916,7 +2166,13 @@ pub(super) fn standalone_amounts(
         .enumerate()
         .filter(|(_, slot)| {
             last.is_none_or(|last| {
-                slot.presentation.start != last.start || slot.presentation.end != last.end
+                slot.pieces
+                    .first()
+                    .is_none_or(|p| p.presentation.start != last.start)
+                    || slot
+                        .pieces
+                        .last()
+                        .is_none_or(|p| p.presentation.end != last.end)
             })
         })
         .map(|(index, _)| index)
@@ -2047,21 +2303,23 @@ fn free_space(selection: &LineContext, width: f64, metrics: &LineMetrics) -> Res
     )
 }
 
-fn line_levels(selected: &SelectedData, shaped: &ShapedData) -> Result<Vec<u8>> {
-    Ok(shaped
+fn item_levels(
+    presentation: &crate::protocol::prepared::SelectedPresentation,
+    shaped: &ShapedData,
+) -> Vec<u8> {
+    shaped
         .items
         .iter()
         .map(|item| match *item {
-            ShapedItem::Anchor { unit, .. } => selected.presentation.units[unit].line_level,
+            ShapedItem::Anchor { unit } => presentation.units[unit].line_level,
             ShapedItem::InlineBox { level, .. } => level,
-            ShapedItem::TextCluster(i) => selected
-                .presentation
+            ShapedItem::TextCluster(i) => presentation
                 .units
                 .iter()
                 .find(|u| u.atoms.contains(&shaped.clusters[i].atoms.start))
                 .map_or(shaped.clusters[i].level, |u| u.line_level),
         })
-        .collect())
+        .collect()
 }
 
 fn invalid(message: &'static str) -> Error {
@@ -2116,7 +2374,11 @@ fn resolve_tabs(
                 crate::protocol::boundary::advance(selected.presentation_input(), unit)
             }
             ShapedItem::InlineBox { occurrence, .. } => {
-                inflow_allocation(atomics[&occurrence])?.0.advance
+                super::super::spacing::character::atomic_advance(
+                    shaped,
+                    occurrence,
+                    inflow_allocation(atomics[&occurrence])?.0.advance,
+                )?
             }
             ShapedItem::TextCluster(index) => {
                 let cluster = &mut shaped.clusters[index];
@@ -3374,7 +3636,7 @@ mod tests {
         assert_eq!(shaped.clusters[pdi_cluster].level, 2);
         assert_eq!(shaped.clusters[pdi_cluster].advance, 0.0);
         assert_eq!(
-            line_levels(&first_selected.inner, &shaped).unwrap()[pdi_item],
+            item_levels(&first_selected.inner.presentation, &shaped)[pdi_item],
             1
         );
 

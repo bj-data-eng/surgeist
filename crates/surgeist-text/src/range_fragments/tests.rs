@@ -1375,26 +1375,27 @@ fn shared_ccmp_refuses_material_authored_spacing(value: ParagraphInput, bytes: V
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap_err();
     assert_eq!(error.code, ErrorCode::LayoutFailed);
-    let Some(ErrorDetail::UnsupportedWordSpacing {
+    let Some(ErrorDetail::UnsupportedSpacing {
         stage,
         operation,
         pieces,
         provider_atoms,
+        ..
     }) = error.detail()
     else {
         panic!("expected actual shared ccmp geometry refusal: {error:?}")
     };
-    assert_eq!(*stage, WordSpacingStage::Preparation);
-    assert_eq!(*operation, WordSpacingOperation::Authored);
+    assert_eq!(*stage, SpacingStage::Preparation);
+    assert_eq!(*operation, SpacingOperation::AuthoredWord);
     assert_eq!(
         pieces.as_ref(),
-        [WordSpacingPiece::Source {
+        [SpacingPiece::Source {
             origin: 0,
             local: Range::new(1, 2),
             aggregate: Range::new(1, 2),
         }]
     );
-    assert_eq!(provider_atoms, &(0..2));
+    assert_eq!(provider_atoms.as_ref(), std::slice::from_ref(&(0..2)));
 }
 
 #[test]
@@ -1465,7 +1466,7 @@ fn range_egc_shares_keep_owned_letter_spacing_and_rtl_physical_sides() {
         assert!(!ua.same_unit(&ub));
         let ra = ua.pieces().next().unwrap().rect();
         let rb = ub.pieces().next().unwrap().rect();
-        near(ra.size.width, if spaced { 7.25 } else { 6.25 });
+        near(ra.size.width, 6.25);
         near(rb.size.width, if spaced { 7.25 } else { 6.25 });
         if direction == ParagraphBaseDirection::RightToLeft {
             assert!(ra.origin.x > rb.origin.x);
@@ -1594,9 +1595,10 @@ fn ccmp_ligature_keeps_selected_space_allocation_on_its_own_range_unit() {
     );
     let a = l.source_range_fragments(&o, Range::new(0, 1)).unwrap();
     let space = l.source_range_fragments(&o, Range::new(1, 2)).unwrap();
-    near(rectangles(&a)[0].size.width, 7.25);
-    // Raw shared12.5 gives6.25 per EGC; letter1 stays on each owner.
-    // The independent native Spaces allocation4 stays wholly on SPACE.
+    near(rectangles(&a)[0].size.width, 6.25);
+    // Raw shared12.5 gives6.25 per EGC. Required ccmp protects A/SPACE;
+    // the outside SPACE/A tracking1 belongs to SPACE. Native Spaces4
+    // stays wholly on that same SPACE range unit.
     near(rectangles(&space)[0].size.width, 11.25);
-    near(rectangles(&space)[0].origin.x, 7.25);
+    near(rectangles(&space)[0].origin.x, 6.25);
 }
