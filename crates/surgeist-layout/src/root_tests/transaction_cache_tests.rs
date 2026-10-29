@@ -1623,6 +1623,9 @@ fn native_line_policy_warm_width_policy_changes_and_late_sink_failure_are_atomic
             TextJustification::Spaces => surgeist_text::SpacingPolicy::Spaces,
             TextJustification::InterWord => surgeist_text::SpacingPolicy::InterWord,
             TextJustification::None => panic!("this fixture qualifies actual allocation methods"),
+            TextJustification::InterCharacter => {
+                panic!("this fixture qualifies the existing separator allocation methods")
+            }
         };
         let set = |tree: &mut Fri06C02StatefulTextTree<S>, alignment, last| {
             tree.inputs.insert(
@@ -1869,4 +1872,265 @@ fn native_fractional_spacing_budget_is_stable_across_real_warm_float_cache() {
         "genuine independent float cache is warm"
     );
     warm.apply_to(&mut tree).unwrap();
+}
+
+#[test]
+fn inter_character_source_revision_and_late_sink_failure_preserve_completed_cache_and_geometry() {
+    fn receipts<S: LayoutScalar>(
+        batch: &CompletedLayoutBatchOf<u32, S>,
+        source: &Source,
+        extra: f64,
+        ids: [u32; 3],
+    ) {
+        let layout = batch.placed_text()[0].layout();
+        // Paragraph assembly owns the canonical text and explicit part style;
+        // the original node's identity remains on its retained origin below.
+        let composed = layout.source();
+        assert_eq!(composed.id(), None);
+        assert_eq!(composed.revision(), 0);
+        assert_eq!(composed.text(), source.text());
+        assert!(composed.boxes().is_empty());
+        assert_eq!(composed.spans().len(), 1);
+        assert_eq!(composed.spans()[0].range(), surgeist_text::Range::new(0, 3));
+        let mut part_style = ahem_style(10.0, 10.0);
+        part_style.white_space = WhiteSpace::Preserve;
+        part_style.wrap = surgeist_text::Wrap::None;
+        assert_eq!(composed.spans()[0].style(), &part_style);
+        assert_eq!(layout.lines().len(), 1);
+        assert_eq!(layout.lines()[0].range(), surgeist_text::Range::new(0, 3));
+        // The real preceding 1px block contributes physical y=1. Ahem's
+        // independently known 8px ascent then places the text baseline at9.
+        assert_eq!(layout.lines()[0].bounds().origin.y, 1.0);
+        let line = batch.final_inline_fragments()[0]
+            .fragment()
+            .finalized_fragment()
+            .finalized_line();
+        let selected = line.selected_line();
+        assert_eq!(
+            selected.request().context.spacing,
+            surgeist_text::SpacingPolicy::InterCharacter
+        );
+        assert_eq!(
+            selected.request().context.alignment,
+            surgeist_text::Alignment::Justify
+        );
+        assert_eq!(
+            selected.request().context.end,
+            surgeist_text::LineEnd::Paragraph
+        );
+        let prepared = line.prepared_text();
+        let origins = prepared.origin_views().collect::<Vec<_>>();
+        assert_eq!(origins.len(), 1);
+        let origin = origins[0].handle();
+        assert_eq!(origin.view().source(), source);
+        assert_eq!(origin.view().source().id(), Some(Id::from_u64(1566071)));
+        assert_eq!(origin.view().source().revision(), source.revision());
+        assert_eq!(origin.view().local_range(), surgeist_text::Range::new(0, 3));
+        assert_eq!(
+            origin.view().aggregate_range(),
+            surgeist_text::Range::new(0, 3)
+        );
+        let rows = line.spacing_slots().collect::<Vec<_>>();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(
+            selected.spacing_slots().collect::<Vec<_>>(),
+            rows.iter().map(|row| row.slot.clone()).collect::<Vec<_>>()
+        );
+        for (at, row) in rows.iter().enumerate() {
+            let surgeist_text::SpacingSlotTarget::Boundary {
+                visual_before,
+                visual_after,
+            } = row.slot.target()
+            else {
+                panic!("character allocation must preserve actual endpoint units")
+            };
+            for (unit, index) in [(visual_before, at), (visual_after, at + 1)] {
+                assert_eq!(unit.letter_spacing_before(), 0.0);
+                assert_eq!(unit.letter_spacing_after(), 0.0);
+                assert_eq!(
+                    unit.pieces().map(|piece| piece.owner()).collect::<Vec<_>>(),
+                    [surgeist_text::SpacingSlotOwner::Source {
+                        origin: origin.clone(),
+                        local: surgeist_text::Range::new(index, index + 1),
+                        aggregate: surgeist_text::Range::new(index, index + 1),
+                    }]
+                );
+            }
+            assert_eq!(
+                row.geometry,
+                surgeist_text::SpacingSlotGeometry::Boundary(
+                    surgeist_text::SpacingBoundaryGeometry::Independent
+                )
+            );
+            assert_eq!(
+                row.stretchability,
+                surgeist_text::SpacingStretchability::Direct
+            );
+            assert!(row.can_expand());
+            assert_eq!(row.authored_word_spacing, 0.0);
+            assert_eq!(row.authored_letter_spacing, 0.0);
+            assert_eq!((row.allocation, row.advance), (extra, extra));
+        }
+        // Registered Ahem has three raw10 glyphs. Two direct character gaps
+        // share only the positive residual:34 gives2 each;38 gives4 each.
+        assert_eq!(line.feedback().advance, 30.0 + 2.0 * extra);
+        assert_eq!(
+            line.measurements().alignment().advance(),
+            30.0 + 2.0 * extra
+        );
+        assert_eq!(
+            layout
+                .clusters()
+                .into_iter()
+                .map(|cluster| cluster.range())
+                .collect::<Vec<_>>(),
+            [
+                surgeist_text::Range::new(0, 1),
+                surgeist_text::Range::new(1, 2),
+                surgeist_text::Range::new(2, 3),
+            ]
+        );
+        // Finalized glyph readback owns the source-to-glyph correspondence;
+        // placed glyph readback below owns the physical pens and raw metrics.
+        assert_eq!(
+            line.run_views()
+                .flat_map(|run| {
+                    run.glyphs()
+                        .map(|glyph| (glyph.range(), glyph.id(), glyph.advance()))
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>(),
+            [
+                (surgeist_text::Range::new(0, 1), ids[0], 10.0_f32),
+                (surgeist_text::Range::new(1, 2), ids[1], 10.0_f32),
+                (surgeist_text::Range::new(2, 3), ids[2], 10.0_f32),
+            ]
+        );
+        assert_eq!(
+            layout
+                .run_views()
+                .flat_map(|run| {
+                    assert_eq!(run.font_size(), 10.0);
+                    assert_eq!(run.range(), surgeist_text::Range::new(0, 3));
+                    assert_eq!(run.origin().y, 9.0);
+                    run.glyphs()
+                        .map(|glyph| {
+                            assert_eq!((glyph.x(), glyph.y()), (0.0, 0.0));
+                            (glyph.id(), glyph.advance(), run.origin().x + glyph.pen())
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>(),
+            [
+                (ids[0], 10.0_f32, 0.0),
+                (ids[1], 10.0_f32, 10.0 + extra),
+                (ids[2], 10.0_f32, 20.0 + 2.0 * extra),
+            ]
+        );
+    }
+
+    fn lane<S: LayoutScalar>() {
+        let mut style = ahem_style(10.0, 10.0);
+        style.white_space = WhiteSpace::Preserve;
+        style.wrap = surgeist_text::Wrap::None;
+        let original = Source::identified("ABC", Id::from_u64(1566071), 1);
+        let mut tree = Fri06C02StatefulTextTree::<S>::new(original.clone(), style.clone());
+        tree.inputs.insert(
+            0,
+            LayoutInputOf::box_input(NodeInputOf {
+                display: Display::Block,
+                text_align: TextAlign::Justify,
+                text_align_last: TextAlignLast::Justify,
+                text_justification: TextJustification::InterCharacter,
+                ..NodeInputOf::default()
+            }),
+        );
+        // Captured Text and its ancestor intentionally bypass geometry caches.
+        // This real independent sibling proves that retained cache publication
+        // participates in the same complete batch and survives a rejected sink.
+        tree.inputs.insert(
+            9,
+            LayoutInputOf::box_input(NodeInputOf {
+                display: Display::Block,
+                size: Size::new(PreferredSizeOf::px(S::ONE), PreferredSizeOf::px(S::ONE)),
+                ..NodeInputOf::default()
+            }),
+        );
+        // The producer captures a genuine BlockEnd terminal. Keep text last
+        // in actual in-flow order rather than placing another block after it.
+        tree.children.insert(0, vec![9, 1]);
+        tree.children.insert(9, vec![]);
+        assert_eq!(tree.children[&0], [9, 1]);
+        let request = |width| {
+            LayoutRootRequestOf::viewport(Size::new(
+                AvailableOf::definite(S::from_f64(width)),
+                AvailableOf::MAX_CONTENT,
+            ))
+            .unwrap()
+        };
+        let cold = tree.compute(request(34.0)).unwrap();
+        receipts(&cold, &original, 2.0, [35, 36, 37]);
+        let old_origin = tree.text.origins[0].origin.clone();
+        let cold_entries = cold.final_entries().to_vec();
+        cold.apply_to(&mut tree).unwrap();
+        assert!(!tree.retained.caches.is_empty());
+        tree.cache_queries.borrow_mut().clear();
+        let warm = tree.compute(request(34.0)).unwrap();
+        receipts(&warm, &original, 2.0, [35, 36, 37]);
+        assert_eq!(warm.final_entries(), cold_entries);
+        assert!(
+            tree.cache_queries
+                .borrow()
+                .iter()
+                .any(|(node, hit)| *node == 9 && *hit)
+        );
+        assert!(
+            tree.cache_queries
+                .borrow()
+                .iter()
+                .all(|(node, _)| ![0, 1].contains(node))
+        );
+        warm.apply_to(&mut tree).unwrap();
+        let wider = tree.compute(request(38.0)).unwrap();
+        receipts(&wider, &original, 4.0, [35, 36, 37]);
+        wider.apply_to(&mut tree).unwrap();
+
+        let revised = Source::identified("ABD", Id::from_u64(1566071), 2);
+        tree.replace_text(revised.clone(), style);
+        assert_ne!(tree.text.origins[0].origin, old_origin);
+        tree.retained.dirty = vec![1];
+        let before = tree.retained.clone();
+        let staged = tree.compute_invalidated(request(34.0), &[1]).unwrap();
+        receipts(&staged, &revised, 2.0, [35, 36, 38]);
+        assert!(staged.invalidated_nodes().contains(&1));
+        assert_eq!(
+            tree.retained, before,
+            "computing a complete replacement stages only"
+        );
+        tree.reject_preparation = true;
+        assert_eq!(
+            staged.apply_to(&mut tree),
+            Err("C02 retained-state preparation rejected")
+        );
+        assert_eq!(
+            tree.retained, before,
+            "rejection preserves nodes, fragments, caches and dirty state"
+        );
+        receipts(&wider, &original, 4.0, [35, 36, 37]);
+        tree.reject_preparation = false;
+        staged.apply_to(&mut tree).unwrap();
+        assert!(tree.retained.dirty.is_empty());
+        assert_ne!(tree.retained, before);
+        assert_eq!(
+            tree.retained.final_nodes[&1],
+            fri06_c02_final_node(&staged, 1)
+        );
+        let replay = tree.compute(request(34.0)).unwrap();
+        receipts(&replay, &revised, 2.0, [35, 36, 38]);
+        assert_eq!(replay.final_entries(), staged.final_entries());
+        replay.apply_to(&mut tree).unwrap();
+    }
+
+    lane::<f32>();
+    lane::<f64>();
 }

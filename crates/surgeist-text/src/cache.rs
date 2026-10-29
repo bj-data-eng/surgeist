@@ -434,6 +434,7 @@ fn hash_inline_box<H: Hasher>(box_: InlineBox, hasher: &mut H) {
     box_.index.hash(hasher);
     hash_size(box_.size, hasher);
     hash_vertical_align(box_.vertical_align, hasher);
+    hash_f64(box_.letter_spacing, hasher);
 }
 
 fn hash_style<H: Hasher>(style: &Style, hasher: &mut H) {

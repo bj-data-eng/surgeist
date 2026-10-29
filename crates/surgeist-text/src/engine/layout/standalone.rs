@@ -532,7 +532,6 @@ fn receipt(line: &FinalizedLine) -> crate::FinalizedLine {
     crate::FinalizedLine {
         inner: Arc::new(FinalizedLine {
             selected: Arc::clone(&line.selected),
-            shape: Arc::clone(&line.shape),
             data: line.data.clone(),
         }),
     }

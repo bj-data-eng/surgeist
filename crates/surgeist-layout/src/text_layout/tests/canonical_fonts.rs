@@ -1,7 +1,7 @@
 //! Real OpenType fixture builders adapted from Text src/test_fonts.rs and
 //! src/test_fonts/shaping.rs. The licensed base resource and its provenance are
 //! crates/surgeist-text/tests/fixtures/fonts/ahem/{Ahem.ttf,PROVENANCE.md}.
-//! Only authored GSUB/GPOS/GDEF/cmap tables differ; registered Text shaping
+//! Only authored GSUB/GPOS/GDEF/cmap/hmtx tables differ; registered Text shaping
 //! executes them. No glyph rows or measured geometry are supplied by this helper.
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -156,6 +156,62 @@ fn cmap(mappings: &[(u32, u32)]) -> Vec<u8> {
         output.extend(codepoint.to_be_bytes());
         output.extend(glyph.to_be_bytes());
     }
+    output
+}
+
+/// Authors actual unsigned horizontal advances while retaining every outline,
+/// mapping and side bearing. The existing table owner rebuilds all checksums.
+pub(crate) fn with_advances(bytes: &[u8], advances: &[(usize, u16)]) -> Vec<u8> {
+    assert_eq!(u16_at(table(bytes, *b"head"), 18), 1000);
+    let mut hmtx = table(bytes, *b"hmtx").to_vec();
+    let hhea = table(bytes, *b"hhea");
+    for &(glyph, advance) in advances {
+        assert!(glyph < usize::from(u16_at(hhea, 34)));
+        hmtx[glyph * 4..glyph * 4 + 2].copy_from_slice(&advance.to_be_bytes());
+    }
+    let output = replace_tables(bytes, vec![(*b"hmtx", hmtx.clone())]);
+    assert_eq!(table(&output, *b"hmtx"), hmtx);
+    for tag in [*b"cmap", *b"glyf", *b"loca"] {
+        assert_eq!(table(&output, tag), table(bytes, tag));
+    }
+    assert_eq!(checksum(&output), 0xb1b0_afba);
+    output
+}
+
+/// Real kern-feature GPOS SinglePos xAdvance adjustments in signed font units.
+/// UPEM1000/raw hmtx1000 remain intact; size10 maps -1000/-1250 to 0/-2.5.
+pub(crate) fn positioned_ahem(adjustments: &[(u16, i16)]) -> Vec<u8> {
+    let mut adjustments = adjustments.to_vec();
+    adjustments.sort_unstable_by_key(|&(glyph, _)| glyph);
+    assert!(adjustments.windows(2).all(|pair| pair[0].0 < pair[1].0));
+    let mut subtable = words(&[
+        2,
+        offset(8 + 2 * adjustments.len()),
+        4,
+        offset(adjustments.len()),
+    ]);
+    for &(_, delta) in &adjustments {
+        subtable.extend(delta.to_be_bytes());
+    }
+    subtable.extend(words(&[1, offset(adjustments.len())]));
+    for &(glyph, _) in &adjustments {
+        subtable.extend(glyph.to_be_bytes());
+    }
+    let output = replace_tables(
+        AHEM,
+        vec![(
+            *b"GPOS",
+            layout_table(*b"DFLT", vec![(*b"kern", 1, subtable)]),
+        )],
+    );
+    for tag in [*b"head", *b"hmtx", *b"cmap", *b"glyf", *b"loca"] {
+        if tag == *b"head" {
+            assert_eq!(u16_at(table(&output, tag), 18), 1000);
+        } else {
+            assert_eq!(table(&output, tag), table(AHEM, tag));
+        }
+    }
+    assert_eq!(checksum(&output), 0xb1b0_afba);
     output
 }
 

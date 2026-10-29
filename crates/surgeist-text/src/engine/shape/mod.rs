@@ -8,6 +8,27 @@ mod cache;
 mod tests;
 mod vertical;
 
+#[cfg(test)]
+#[path = "selected_basis_tests.rs"]
+mod selected_basis_tests;
+
+#[cfg(test)]
+thread_local! {
+    static PROVIDER_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+#[cfg(test)]
+fn reset_provider_calls() {
+    PROVIDER_CALLS.set(0);
+}
+#[cfg(test)]
+fn provider_calls() -> usize {
+    PROVIDER_CALLS.get()
+}
+#[cfg(test)]
+fn observe_provider_call() {
+    PROVIDER_CALLS.set(PROVIDER_CALLS.get() + 1);
+}
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     ops::Range as IndexRange,
@@ -173,6 +194,7 @@ pub(crate) fn assign_fonts(
     scopes: &[crate::protocol::prepared::presentation::DirectionalScope],
 ) -> Result<Vec<crate::protocol::prepared::RetainedAssignment>> {
     let input = ShapingInput {
+        characters: None,
         separator_geometry: false,
         baseline_reference: prepared.options.resolved_baseline_reference(),
         projection,
@@ -577,6 +599,7 @@ fn shape_impl(
         });
     }
     if !capture_only {
+        retain_external_invocations(&mut output);
         install_mixed_order(&mut output, &input);
     }
     Ok(output)
@@ -626,8 +649,8 @@ pub(crate) fn default_metrics(
         .expect("the actual zero-atom operation produces its metrics row"))
 }
 
-/// A selected line reshapes with its retained original faces and actual selected
-/// boundary context. It never queries the current catalogue or redoes fallback.
+/// Establish actual selected output before complete spacing handles are issued.
+/// Retained faces/context are used without querying the catalogue or redoing fallback.
 pub(crate) fn finalize(
     selected: crate::protocol::input::PresentationInput<'_>,
     scratch: &mut ShapeContext,
@@ -639,8 +662,16 @@ pub(crate) fn finalize(
     use crate::protocol::prepared::PresentationUnitKind;
     let prepared = &selected.prepared;
     let presentation = &selected.presentation;
+    let characters = super::spacing::character::plan(
+        &presentation.projection,
+        &presentation.analysis,
+        &prepared.styles,
+        prepared.analyzed.processed.source().boxes(),
+        Some(presentation),
+        spacing == crate::SpacingPolicy::InterCharacter,
+    )?;
     let separator_feedback = match spacing {
-        crate::SpacingPolicy::None => false,
+        crate::SpacingPolicy::None | crate::SpacingPolicy::InterCharacter => false,
         crate::SpacingPolicy::Spaces => presentation.units.iter().any(|unit| unit.eligible_space),
         crate::SpacingPolicy::InterWord => !super::spacing::candidates(
             &presentation.projection,
@@ -650,6 +681,7 @@ pub(crate) fn finalize(
         .is_empty(),
     };
     let input = ShapingInput {
+        characters: Some(&characters),
         separator_geometry: separator_feedback
             || super::spacing::authored_demand(&presentation.analysis, &prepared.styles),
         baseline_reference: prepared.options.resolved_baseline_reference(),
@@ -662,7 +694,10 @@ pub(crate) fn finalize(
         css_tabs: prepared.options.tabs() == crate::TabPreparation::CssStops,
         profile: super::upright::selected_profile(prepared, presentation),
     };
-    let mut output = ShapedData::default();
+    let mut output = ShapedData {
+        character_requirements: Some(std::sync::Arc::clone(&characters)),
+        ..ShapedData::default()
+    };
     let native = selected.metric_policy == crate::protocol::selection::LineMetricPolicy::Native;
     if native {
         // This is the actual base-style strut retained by Native+DefaultFont.
@@ -856,6 +891,7 @@ pub(crate) fn finalize(
         }
         output.clusters.sort_by_key(|cluster| cluster.atoms.start);
     }
+    retain_external_invocations(&mut output);
     super::spacing::authored_selected(selected, &mut output, separator_feedback)?;
     // Each real atom receives one extracted cluster; ligature components lend
     // their actual shared glyph association rather than duplicating glyphs.
@@ -905,7 +941,6 @@ fn same_shaping_style(a: &ResolvedStyle, b: &ResolvedStyle) -> bool {
         && a.font_variations == b.font_variations
         && a.font_features == b.font_features
         && a.word_spacing == b.word_spacing
-        && a.letter_spacing == b.letter_spacing
 }
 
 fn configure_query(
@@ -1092,6 +1127,7 @@ fn install_mixed_order(data: &mut ShapedData, input: &ShapingInput<'_>) {
 struct RunContext<'a> {
     before: &'a str,
     after: &'a str,
+    atoms: IndexRange<usize>,
     joining: Option<JoiningRun<'a>>,
 }
 
@@ -1108,10 +1144,11 @@ impl<'a> RunContext<'a> {
         context: IndexRange<usize>,
     ) -> Self {
         let bytes = atom_bytes(projection, atoms);
-        let extent = atom_bytes(projection, context);
+        let extent = atom_bytes(projection, context.clone());
         Self {
             before: &projection.text[extent.start..bytes.start],
             after: &projection.text[bytes.end..extent.end],
+            atoms: context,
             joining: None,
         }
     }
@@ -1312,7 +1349,23 @@ fn append_request(
             .upright_units()
             .iter()
             .any(|unit| unit.isolate() && unit.atoms.contains(&request.atoms.start));
-    let features = provider_features(style, native_isolated);
+    let mut features = provider_features(style, native_isolated);
+    if let Some(graph) = request.input.characters {
+        for range in graph.masks(request.atoms.clone()) {
+            for tag in [b"liga", b"clig", b"dlig", b"hlig"] {
+                u32::try_from(range.start)
+                    .and_then(|_| u32::try_from(range.end))
+                    .map_err(|_| {
+                        Error::new(ErrorCode::SourceLengthOverflow, "optional feature range")
+                    })?;
+                features.push(surgeist_shaper::Feature::optional_default(
+                    surgeist_shaper::Tag::new(tag),
+                    0,
+                    range.clone(),
+                ));
+            }
+        }
+    }
     let mut plan_key = key;
     plan_key.coords = shaper
         .coords()
@@ -1355,6 +1408,13 @@ fn append_request(
             ErrorCode::SourceLengthOverflow,
             "shaping input exceeds provider cluster indices",
         ));
+    }
+    if request
+        .input
+        .characters
+        .is_some_and(|requirements| requirements.observe)
+    {
+        buffer.observe_components();
     }
     buffer.reserve(count);
     for (local, atom) in request.input.projection.atoms[request.atoms.clone()]
@@ -1430,6 +1490,8 @@ fn append_request(
             }
         };
     }
+    #[cfg(test)]
+    observe_provider_call();
     let glyph_buffer = shaper.shape_with_plan(plan, buffer, &features);
     // This is the actual returned invocation's status. No glyph, position,
     // metric or immutable result row is observed before this fence.
@@ -1648,6 +1710,24 @@ fn extract_run(
     // Receipt admission is part of the same invocation fence, including empty
     // glyph output. Each buffer.add above emits exactly one scalar per atom,
     // so these input ordinals map directly to this request's local atom range.
+    if let Some(receipt) = glyph_buffer
+        .component_receipt()
+        .map_err(super::shaping_refused)?
+    {
+        retain_components(request, receipt, glyph_buffer.glyph_infos().len(), output)?;
+    } else if request.input.characters.is_some() {
+        output
+            .character_invocations
+            .push(super::spacing::character::Invocation {
+                atoms: request.atoms.clone(),
+                complete: false,
+                path: None,
+                run: output.runs.len(),
+                components: Vec::new(),
+                generated: Vec::new(),
+                constraints: Vec::new(),
+            });
+    }
     let receipt = glyph_buffer
         .default_ignorable_receipt()
         .map_err(super::shaping_refused)?;
@@ -1682,6 +1762,24 @@ fn extract_vertical_run(
     coords: &[surgeist_shaper::NormalizedCoord],
     output: &mut ShapedData,
 ) -> Result<()> {
+    if let Some(receipt) = glyph_buffer
+        .component_receipt()
+        .map_err(super::shaping_refused)?
+    {
+        retain_components(request, receipt, glyph_buffer.glyph_infos().len(), output)?;
+    } else if request.input.characters.is_some() {
+        output
+            .character_invocations
+            .push(super::spacing::character::Invocation {
+                atoms: request.atoms.clone(),
+                complete: false,
+                path: None,
+                run: output.runs.len(),
+                components: Vec::new(),
+                generated: Vec::new(),
+                constraints: Vec::new(),
+            });
+    }
     let receipt = glyph_buffer
         .default_ignorable_receipt()
         .map_err(super::shaping_refused)?;
@@ -1701,6 +1799,166 @@ fn extract_vertical_run(
         coords,
         output,
     )
+}
+
+fn retain_components(
+    request: &RunRequest<'_, '_>,
+    receipt: surgeist_shaper::ComponentReceipt<'_>,
+    glyph_count: usize,
+    output: &mut ShapedData,
+) -> Result<()> {
+    if receipt.input_len() != request.atoms.len() {
+        return Err(invalid_output(receipt.input_len(), request.atoms.len()));
+    }
+    let mapped = |members: &[u32]| -> Result<Vec<usize>> {
+        members
+            .iter()
+            .map(|&i| {
+                let local = i as usize;
+                if local >= request.atoms.len() {
+                    Err(invalid_output(local, request.atoms.len()))
+                } else {
+                    Ok(request.atoms.start + local)
+                }
+            })
+            .collect()
+    };
+    let mut components = Vec::new();
+    let mut generated = Vec::new();
+    for i in 0..glyph_count {
+        components.push(mapped(
+            receipt
+                .components(i)
+                .ok_or_else(|| invalid_output(i, glyph_count))?,
+        )?);
+        if receipt.generated(i) == Some(true) {
+            generated.push(mapped(
+                receipt
+                    .generated_context(i)
+                    .ok_or_else(|| invalid_output(i, glyph_count))?,
+            )?);
+        }
+    }
+    let mut constraints = Vec::new();
+    for relation in receipt.ligatures() {
+        constraints.push(super::spacing::character::Constraint {
+            run: output.runs.len(),
+            components: mapped(relation.components())?,
+            required: relation
+                .provenance()
+                .iter()
+                .any(|p| p.role() == surgeist_shaper::FeatureRole::Required),
+            kind: crate::SpacingConstraintKind::Ligature,
+            provenance: relation.provenance().to_vec(),
+        });
+    }
+    for relation in receipt.attachments() {
+        let mut members = mapped(relation.dependent_components())?;
+        members.extend(mapped(relation.base_components())?);
+        members.sort_unstable();
+        members.dedup();
+        constraints.push(super::spacing::character::Constraint {
+            run: output.runs.len(),
+            components: members,
+            required: false,
+            kind: match relation.kind() {
+                surgeist_shaper::ComponentAttachmentKind::Mark => {
+                    crate::SpacingConstraintKind::MarkAttachment
+                }
+                surgeist_shaper::ComponentAttachmentKind::Cursive => {
+                    crate::SpacingConstraintKind::CursiveAttachment
+                }
+            },
+            provenance: Vec::new(),
+        });
+    }
+    if receipt.joining_context_use() == surgeist_shaper::JoiningContextUse::ContextualActions {
+        retain_external_joining(request, output.runs.len(), &mut constraints);
+    }
+    output
+        .character_invocations
+        .push(super::spacing::character::Invocation {
+            atoms: request.atoms.clone(),
+            complete: receipt.coverage() == surgeist_shaper::ComponentCoverage::Complete,
+            path: match receipt.coverage() {
+                surgeist_shaper::ComponentCoverage::Complete => None,
+                surgeist_shaper::ComponentCoverage::Unqualified(path) => Some(path),
+            },
+            run: output.runs.len(),
+            components,
+            generated,
+            constraints,
+        });
+    Ok(())
+}
+
+/// Retain only actual potential Unicode connections in the bounded context of
+/// an invocation that executed joining actions. No script-to-shaper inference
+/// or claim about an applied external attachment is made here.
+fn retain_external_joining(
+    request: &RunRequest<'_, '_>,
+    run: usize,
+    constraints: &mut Vec<super::spacing::character::Constraint>,
+) {
+    use icu_properties::{CodePointMapData, props::JoiningType};
+    let types = CodePointMapData::<JoiningType>::new();
+    let mut before = None;
+    for atom in request.context.atoms.clone() {
+        let joining = types.get32(request.input.projection.atoms[atom].code_point);
+        if matches!(joining, JoiningType::Transparent | JoiningType::JoinCausing) {
+            continue;
+        }
+        if let Some((previous, previous_type)) = before
+            && matches!(
+                previous_type,
+                JoiningType::DualJoining | JoiningType::LeftJoining
+            )
+            && matches!(
+                joining,
+                JoiningType::DualJoining | JoiningType::RightJoining
+            )
+            && request.atoms.contains(&previous) != request.atoms.contains(&atom)
+        {
+            constraints.push(super::spacing::character::Constraint {
+                run,
+                components: vec![previous, atom],
+                required: false,
+                kind: crate::SpacingConstraintKind::ExternalJoiningContext {
+                    body: request.atoms.clone(),
+                    context: request.context.atoms.clone(),
+                },
+                provenance: Vec::new(),
+            });
+        }
+        // Nonjoining characters, including ZWNJ, replace the previous endpoint
+        // and therefore break connectivity rather than being skipped.
+        before = Some((atom, joining));
+    }
+}
+
+/// A source context scalar only constrains this result when another actual
+/// emitted invocation owns it. Selected-away context is not another line unit.
+fn retain_external_invocations(output: &mut ShapedData) {
+    let bodies: Vec<_> = output
+        .character_invocations
+        .iter()
+        .map(|invocation| (invocation.run, invocation.atoms.clone()))
+        .collect();
+    for invocation in &mut output.character_invocations {
+        invocation.constraints.retain(|constraint| {
+            let crate::SpacingConstraintKind::ExternalJoiningContext { body, .. } =
+                &constraint.kind
+            else {
+                return true;
+            };
+            constraint.components.iter().all(|atom| {
+                body.contains(atom)
+                    || bodies
+                        .iter()
+                        .any(|(run, atoms)| *run != invocation.run && atoms.contains(atom))
+            })
+        });
+    }
 }
 
 fn extract_output(
@@ -1734,6 +1992,28 @@ fn extract_output(
         .map_err(|_| Error::new(ErrorCode::FontLoadFailed, "font lacks valid glyph bounds"))?
         .num_glyphs();
     let count = request.atoms.len();
+    // Preserve the completed invocation's semantic exclusions for spacing.
+    // Input ordinals are body scalars, exactly one per emitted selected atom.
+    for (ordinals, kind) in [
+        (
+            receipt.residual_input_positions(),
+            super::spacing::character::Exclusion::Residual,
+        ),
+        (
+            receipt.deleted_input_positions(),
+            super::spacing::character::Exclusion::Deleted,
+        ),
+    ] {
+        for &ordinal in ordinals {
+            let local = ordinal as usize;
+            if local >= count {
+                return Err(invalid_output(local, count));
+            }
+            output
+                .character_exclusions
+                .insert(request.atoms.start + local, kind);
+        }
+    }
     let zero_input = |local: usize| {
         let ordinal = u32::try_from(local).expect("invocation scalar indices were admitted");
         receipt
@@ -1857,12 +2137,11 @@ fn extract_output(
             };
             distributed_base += base_advance;
             let style = &input.styles[style_index].style;
-            let letter_spacing = if excluded { 0.0 } else { style.letter_spacing };
-            let with_letter_spacing = logical_add("letter spacing", base_advance, letter_spacing)?;
+
             output.clusters.push(PreparedCluster {
                 line_height: component_line_height(style, &run.metrics, normal_extent)?,
                 shaped_advance: base_advance,
-                logical_adjustments: [letter_spacing, 0.0, 0.0],
+                logical_adjustments: [0.0, 0.0, 0.0],
                 source: original.source,
                 atoms: atom..atom + 1,
                 provider_group: atom_start..atom_end,
@@ -1875,7 +2154,7 @@ fn extract_output(
                 content: ClusterContent::Provider(run_index),
                 style: style_index,
                 level: request.level,
-                advance: with_letter_spacing,
+                advance: base_advance,
                 boundary: info.boundary,
                 whitespace,
                 is_whitespace: whitespace != Whitespace::None,

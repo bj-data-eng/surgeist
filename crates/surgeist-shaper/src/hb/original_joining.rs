@@ -484,7 +484,10 @@ pub(crate) fn work(buffer: &mut hb_buffer_t, count: usize) -> bool {
 }
 
 pub(crate) fn room(buffer: &mut hb_buffer_t, length: usize, extra: usize) -> bool {
-    if buffer.joining.request.is_none() && !buffer.default_ignorables.active {
+    if buffer.joining.request.is_none()
+        && !buffer.default_ignorables.active
+        && !buffer.components.active()
+    {
         return true;
     }
     let joining_limit = if buffer.joining.request.is_some() {
@@ -503,6 +506,12 @@ pub(crate) fn room(buffer: &mut hb_buffer_t, length: usize, extra: usize) -> boo
                 .default_ignorables
                 .bytes()
                 .and_then(|d| n.checked_add(d))
+        })
+        .and_then(|n| {
+            buffer
+                .components
+                .bytes()
+                .and_then(|bytes| n.checked_add(bytes))
         })
         .and_then(|n| n.checked_add(buffer.default_ignorables_temporary))
         .and_then(|n| n.checked_add(extra));

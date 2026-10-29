@@ -708,10 +708,36 @@ fn intrinsic_first_refinement_is_not_filtered_by_a_later_fitting_none() {
         style.hyphens = Hyphens::Auto;
         style.locale = Some("en-US".into());
         style.white_space = WhiteSpace::Collapse;
-        style.letter_spacing = -10.0;
-        style.word_spacing = -10.0;
+        // Source/indication letters have actual zero metrics. The ordinary
+        // retained NBSP stays intrinsic10 and receives authored word spacing-20.
+        style.word_spacing = -20.0;
         style.hyphenate_character = HyphenateCharacter::String(Text::from("A\u{a0}"));
-        let p = PreparedParagraph::plain(1, Source::new("associate"), style);
+        let font = super::canonical::fonts::with_advances(
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
+            )),
+            &[
+                (35, 0),
+                (67, 0),
+                (85, 0),
+                (81, 0),
+                (69, 0),
+                (75, 0),
+                (86, 0),
+                (71, 0),
+            ],
+        );
+        let p = PreparedParagraph::with_registered_font(
+            vec![ParagraphPart::text(
+                1,
+                Source::new("associate"),
+                style.clone(),
+            )],
+            style,
+            ParagraphBaseDirection::LeftToRight,
+            &font,
+        );
         assert_eq!(
             p.prepared.analyzed_source().source().text().code_units(),
             "associate".encode_utf16().collect::<Vec<_>>()
@@ -767,10 +793,10 @@ fn intrinsic_first_refinement_is_not_filtered_by_a_later_fitting_none() {
             .finalize(surgeist_text::SpacingAllocations::None)
             .unwrap();
         let measure = first.measurements().min_content_contribution();
-        // Letter spacing cancels every actual Ahem advance10. The ordinary
-        // retained NBSP additionally receives word spacing−10; it is neither
-        // a residual DI nor a collapsible trailing SPACE. The genuine first
-        // refinement therefore occupies[−10,0], while the source word stays0.
+        // Actual source/indication letters are0. NBSP retains raw10 and its
+        // independent authored word term is-20, giving a genuine-10 cell.
+        // It is neither residual DI nor collapsible trailing SPACE. The first
+        // refinement occupies[-10,0], while the complete source word stays0.
         let glyphs: Vec<_> = first
             .run_views()
             .flat_map(|run| {
@@ -779,7 +805,11 @@ fn intrinsic_first_refinement_is_not_filtered_by_a_later_fitting_none() {
                     .collect::<Vec<_>>()
             })
             .collect();
-        assert!(glyphs.iter().all(|(_, advance)| *advance == 10.0));
+        assert!(
+            glyphs
+                .iter()
+                .all(|(glyph, advance)| *advance == if *glyph == 153 { 10.0 } else { 0.0 })
+        );
         // Retained Ahem's cmap maps U+00A0 to153; hmtx gives1000/UPEM1000.
         assert_eq!(glyphs.last(), Some(&(153, 10.0)));
         assert_eq!(
@@ -790,11 +820,7 @@ fn intrinsic_first_refinement_is_not_filtered_by_a_later_fitting_none() {
             ),
             (-10.0, -10.0, 0.0)
         );
-        assert!(first.run_views().all(|run| run.face().bytes()
-            == include_bytes!(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
-            ))
+        assert!(first.run_views().all(|run| run.face().bytes() == font
             && run.effective_instance().unwrap().font_size() == 10.0));
         for policy in [HyphenateLimitLast::None, HyphenateLimitLast::Always] {
             let b = batch::<S>(&p, AvailableOf::MinContent, policy);

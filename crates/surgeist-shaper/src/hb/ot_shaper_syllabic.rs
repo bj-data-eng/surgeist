@@ -49,6 +49,7 @@ pub fn insert_dotted_circles(
             let mut ginfo = dottedcircle;
             ginfo.cluster = buffer.cur(0).cluster;
             ginfo.mask = buffer.cur(0).mask;
+            ginfo.component_set = super::components::generated(buffer, buffer.cur(0).component_set);
             ginfo.set_syllable(buffer.cur(0).syllable());
 
             // Insert dottedcircle after possible Repha.

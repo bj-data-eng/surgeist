@@ -316,13 +316,15 @@ pub enum TabContext {
     /// intrinsic measurement, advancing in paragraph progression.
     IntrinsicCssStops,
 }
-/// Uniform native selected separator operation; no computed inheritance is inferred.
+/// Uniform native selected spacing operation; no computed inheritance is inferred.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum SpacingPolicy {
     None,
     Spaces,
     /// Uniform native CSS separator policy over the declared repertoire.
     InterWord,
+    /// Uniform native spacing at qualified visual character boundaries.
+    InterCharacter,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -536,6 +538,8 @@ pub struct LineSelectionRequest {
     pub line_box_struts: Vec<LineBoxStrut>,
 }
 
+/// An immutable actual selected shaping basis with complete spacing handles.
+/// Allocation finalization reuses its retained output and resources.
 #[derive(Clone)]
 pub struct SelectedLine {
     pub(crate) inner: Arc<SelectedData>,
@@ -586,9 +590,10 @@ pub enum SpacingSlotOwner {
     },
     Control(PreparedControl),
     VirtualSeparator(PreparedVirtualSeparator),
+    Atomic(PreparedAtomic),
 }
 
-/// Exact ordered piece of a selected separator, without a fabricated source hull.
+/// Exact ordered piece of a selected unit, without a fabricated source hull.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SpacingSlotPiece {
     pub(crate) owner: SpacingSlotOwner,
@@ -608,9 +613,53 @@ impl SpacingSlotPiece {
 /// Whole-unit provider geometry, never an apportioned scalar width.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum SpacingSlotGeometry {
+    Boundary(SpacingBoundaryGeometry),
     Independent { intrinsic_advance: f64 },
     SharedProviderGroup,
 }
+
+/// Actual movement admission at a visual character boundary.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SpacingBoundaryGeometry {
+    Independent,
+    ProtectedRequired,
+    ProtectedCursive,
+    Constrained,
+}
+
+/// Exact target of an issued spacing allocation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SpacingSlotTarget {
+    Separator(SpacingUnit),
+    Boundary {
+        visual_before: SpacingUnit,
+        visual_after: SpacingUnit,
+    },
+}
+
+/// A complete target unit retaining its selected source/atomic custody.
+#[derive(Clone)]
+pub struct SpacingUnit {
+    pub(crate) selected: Arc<selection::SelectedData>,
+    pub(crate) slot: usize,
+    pub(crate) side: usize,
+}
+impl fmt::Debug for SpacingUnit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SpacingUnit")
+            .field("slot", &self.slot)
+            .field("side", &self.side)
+            .finish_non_exhaustive()
+    }
+}
+impl PartialEq for SpacingUnit {
+    fn eq(&self, other: &Self) -> bool {
+        self.slot == other.slot
+            && self.side == other.side
+            && Arc::ptr_eq(&self.selected, &other.selected)
+    }
+}
+impl Eq for SpacingUnit {}
 
 /// Actual terminal dependency left neutral by the natural operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -648,7 +697,7 @@ pub enum SpacingSlotDisposition {
 }
 
 /// Immutable finalization feedback for one exact selected slot. `advance` is
-/// the resulting logical contribution, including its admitted allocation;
+/// the resulting unit contribution or boundary gap, including its allocation;
 /// canonical provider glyph advances remain available through glyph readback.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SpacingSlotFeedback {
@@ -659,6 +708,7 @@ pub struct SpacingSlotFeedback {
     pub stretchability: SpacingStretchability,
     pub traversal_order: usize,
     pub authored_word_spacing: f64,
+    pub authored_letter_spacing: f64,
     pub allocation: f64,
 }
 impl SpacingSlotFeedback {
@@ -671,6 +721,8 @@ impl SpacingSlotFeedback {
                 SpacingStretchability::Direct | SpacingStretchability::TabDependent
             )
             && (self.slot.selected.request.context.spacing == SpacingPolicy::Spaces
+                || self.geometry
+                    == SpacingSlotGeometry::Boundary(SpacingBoundaryGeometry::Independent)
                 || matches!(self.geometry, SpacingSlotGeometry::Independent { intrinsic_advance } if intrinsic_advance != 0.0))
     }
 }

@@ -807,7 +807,10 @@ pub(super) fn assert_fri06_c08_float_line_final_height<S: LayoutScalar>(
         ..NodeInputOf::default()
     };
     let mut text_style = ahem_style(16.0, 20.0);
-    text_style.letter_spacing = 24.0;
+    // The actual text/atomic boundary averages full values48/0 to24.
+    // X16 therefore owns a40px cell before the initial atomic, preserving
+    // the three real float-band lines and the66.4px unrounded flow extent.
+    text_style.letter_spacing = 48.0;
     let paragraph = PreparedParagraph::new(
         vec![
             ParagraphPart::text(3, Source::new("X"), text_style.clone()),

@@ -53,32 +53,43 @@ pub(super) fn between(
             let cluster = &line.finalized.data.clusters[cluster_index];
             overlaps(cluster.source, range)
                 || (cluster.source.is_empty()
-                    && line.finalized.shape.mapping.pieces.iter().any(|piece| {
-                        let crate::protocol::prepared::SelectedMappingKind::Replacement {
-                            alternative,
-                            anchor,
-                        } = piece.kind
-                        else {
-                            return false;
-                        };
-                        let defining = match line.finalized.selected.prepared.tables.alternatives
-                            [alternative]
-                            .definition
-                        {
-                            crate::protocol::prepared::AlternativeDefinition::Source {
-                                source,
-                                ..
-                            } => source,
-                            crate::protocol::prepared::AlternativeDefinition::Control {
-                                ..
-                            }
-                            | crate::protocol::prepared::AlternativeDefinition::Automatic {
-                                ..
-                            } => crate::Range::new(anchor, anchor),
-                        };
-                        overlaps(cluster.presentation, piece.presentation)
-                            && (overlaps(defining, range) || range.contains(anchor))
-                    }))
+                    && line
+                        .finalized
+                        .selected
+                        .basis
+                        .mapping
+                        .pieces
+                        .iter()
+                        .any(|piece| {
+                            let crate::protocol::prepared::SelectedMappingKind::Replacement {
+                                alternative,
+                                anchor,
+                            } = piece.kind
+                            else {
+                                return false;
+                            };
+                            let defining = match line
+                                .finalized
+                                .selected
+                                .prepared
+                                .tables
+                                .alternatives[alternative]
+                                .definition
+                            {
+                                crate::protocol::prepared::AlternativeDefinition::Source {
+                                    source,
+                                    ..
+                                } => source,
+                                crate::protocol::prepared::AlternativeDefinition::Control {
+                                    ..
+                                }
+                                | crate::protocol::prepared::AlternativeDefinition::Automatic {
+                                    ..
+                                } => crate::Range::new(anchor, anchor),
+                            };
+                            overlaps(cluster.presentation, piece.presentation)
+                                && (overlaps(defining, range) || range.contains(anchor))
+                        }))
         },
         |line_index| {
             layout.lines[line_index]

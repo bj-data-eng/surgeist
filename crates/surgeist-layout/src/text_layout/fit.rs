@@ -11,10 +11,10 @@ use crate::{TextAlign, TextAlignLast, TextJustification};
 
 #[path = "fit_balance.rs"]
 mod balance;
-#[path = "fit/inter_word.rs"]
-mod inter_word;
 #[path = "fit_pretty.rs"]
 mod pretty;
+#[path = "fit/spacing.rs"]
+mod spacing;
 #[path = "fit_tail.rs"]
 mod tail;
 
@@ -329,6 +329,8 @@ pub(crate) struct LineAllocations {
 struct FinalizedCandidate {
     request: LineSelectionRequest,
     finalized: FinalizedLine,
+    /// Actually executed spacing-capable ordinary trial before ordinary fallback.
+    conditional_trial: Option<FinalizedLine>,
     amounts: Vec<f64>,
     natural_advance: f64,
 }
@@ -344,6 +346,14 @@ fn text_alignment(alignment: TextAlign) -> Alignment {
     }
 }
 
+fn character_basis(normal: TextAlign, last: TextAlignLast, end: LineEnd) -> SpacingPolicy {
+    if normal.for_line(last, end != LineEnd::Soft) == TextAlign::Justify {
+        SpacingPolicy::InterCharacter
+    } else {
+        SpacingPolicy::None
+    }
+}
+
 fn natural_line(
     prepared: &PreparedText,
     reusable: &[ReusableLine],
@@ -355,10 +365,12 @@ fn natural_line(
     }) {
         return Ok(line.finalized.clone());
     }
-    if request.context.spacing == SpacingPolicy::InterWord
-        && let Some(line) = reusable
-            .iter()
-            .find(|line| line.finalized.selected_line().request() == request)
+    if matches!(
+        request.context.spacing,
+        SpacingPolicy::InterWord | SpacingPolicy::InterCharacter
+    ) && let Some(line) = reusable
+        .iter()
+        .find(|line| line.finalized.selected_line().request() == request)
     {
         return Ok(line.finalized.with_spacing(SpacingAllocations::None)?);
     }
@@ -422,30 +434,56 @@ fn finalize_candidate(
     } = alignment;
     let effective = normal.for_line(last, request.context.end != LineEnd::Soft);
     request.context.alignment = text_alignment(effective);
+    if justification == TextJustification::InterCharacter {
+        request.context.spacing = character_basis(normal, last, request.context.end);
+    }
     *active_request = request.clone();
     resolve_boundary_context(prepared, controls, &mut request)?;
     let natural = natural_line(prepared, reusable, &request)?;
     let natural_advance = natural.measurements().alignment().advance();
     let selected = natural.selected_line();
     let mut amounts = vec![0.0; selected.spacing_slots().len()];
-    if effective == TextAlign::Justify && justification == TextJustification::InterWord {
+    if effective == TextAlign::Justify
+        && matches!(
+            justification,
+            TextJustification::InterWord | TextJustification::InterCharacter
+        )
+    {
         *active_request = request.clone();
-        if let Some(allocation) = inter_word::allocate(&natural)? {
+        if let Some(allocation) = spacing::allocate(&natural)? {
             return Ok(FinalizedCandidate {
+                conditional_trial: None,
                 request,
                 finalized: allocation.finalized,
                 amounts: allocation.amounts,
                 natural_advance,
             });
         }
-        // A proved unexpandable InterWord result follows the real last-line
+        if justification == TextJustification::InterCharacter
+            && matches!(&request.termination, PreparedTermination::Conditional(cut) if cut.purpose() == ConditionalPurpose::Overflow)
+        {
+            return Ok(FinalizedCandidate {
+                request,
+                finalized: natural.clone(),
+                conditional_trial: Some(natural),
+                amounts,
+                natural_advance,
+            });
+        }
+        // A proved unexpandable spacing result follows the real last-line
         // fallback through a new selection, never through prior slot handles.
         request.context.alignment = text_alignment(normal.unexpandable(last));
+        if justification == TextJustification::InterCharacter {
+            // Ordinary fallback may use another real optional-feature plan.
+            request.context.spacing = SpacingPolicy::None;
+        }
         *active_request = request.clone();
         resolve_boundary_context(prepared, controls, &mut request)?;
         let finalized = natural_line(prepared, reusable, &request)?;
         amounts = vec![0.0; finalized.selected_line().spacing_slots().len()];
         return Ok(FinalizedCandidate {
+            conditional_trial: (justification == TextJustification::InterCharacter)
+                .then_some(natural),
             request,
             natural_advance: finalized.measurements().alignment().advance(),
             finalized,
@@ -512,6 +550,7 @@ fn finalize_candidate(
                 let finalized =
                     constrain_spacing_budget(&selected, &retained, width, &mut amounts, finalized)?;
                 return Ok(FinalizedCandidate {
+                    conditional_trial: None,
                     request,
                     finalized,
                     amounts,
@@ -527,6 +566,7 @@ fn finalize_candidate(
             let finalized = natural_line(prepared, reusable, &request)?;
             amounts = vec![0.0; finalized.selected_line().spacing_slots().len()];
             return Ok(FinalizedCandidate {
+                conditional_trial: None,
                 request,
                 natural_advance: finalized.measurements().alignment().advance(),
                 finalized,
@@ -535,6 +575,7 @@ fn finalize_candidate(
         }
     }
     Ok(FinalizedCandidate {
+        conditional_trial: None,
         request,
         finalized: natural,
         amounts,
@@ -549,15 +590,29 @@ fn finalize_with_roles(
     mut request: LineSelectionRequest,
     natural_only: bool,
     entry: &super::roles::RoleEntry<'_>,
+    operation: CandidateOperation,
 ) -> Result<(FinalizedCandidate, Option<RoleBasis>), FitError> {
     request.context.formatted_line = surgeist_text::FormattedLineContext::default();
     let mut basis = super::roles::initial_basis(&request, entry.current_first);
     for _ in 0..=2 {
         let mut active = request.clone();
         let result = if natural_only {
+            if operation == CandidateOperation::OrdinaryFallback {
+                active.context.spacing = SpacingPolicy::None;
+                active.context.alignment =
+                    text_alignment(input.alignment.unexpandable(input.last_alignment));
+            } else if input.justification == TextJustification::InterCharacter {
+                let effective = input
+                    .alignment
+                    .for_line(input.last_alignment, active.context.end != LineEnd::Soft);
+                active.context.alignment = text_alignment(effective);
+                active.context.spacing =
+                    character_basis(input.alignment, input.last_alignment, active.context.end);
+            }
             resolve_boundary_context(input.prepared, input.controls, &mut active)?;
             natural_line(input.prepared, input.reusable, &active).map(|finalized| {
                 FinalizedCandidate {
+                    conditional_trial: None,
                     amounts: vec![0.0; finalized.selected_line().spacing_slots().len()],
                     request: active.clone(),
                     natural_advance: finalized.measurements().alignment().advance(),
@@ -570,10 +625,18 @@ fn finalize_with_roles(
                 input.controls,
                 input.reusable,
                 request.clone(),
-                FinalizationAlignment {
-                    normal: input.alignment,
-                    last: input.last_alignment,
-                    justification: input.justification,
+                if operation == CandidateOperation::OrdinaryFallback {
+                    FinalizationAlignment {
+                        normal: input.alignment.unexpandable(input.last_alignment),
+                        last: TextAlignLast::Auto,
+                        justification: TextJustification::None,
+                    }
+                } else {
+                    FinalizationAlignment {
+                        normal: input.alignment,
+                        last: input.last_alignment,
+                        justification: input.justification,
+                    }
                 },
                 &mut active,
             )
@@ -684,6 +747,7 @@ struct EvaluatedCandidate {
     boxes: Option<BoxAssignment>,
     request: LineSelectionRequest,
     finalized: FinalizedLine,
+    conditional_trial: Option<FinalizedLine>,
     amounts: Vec<f64>,
     natural_advance: f64,
     encounters: Vec<EncounterBasis>,
@@ -860,9 +924,21 @@ fn prefer_candidate(
     Ok(goal.compare(candidate, current) != std::cmp::Ordering::Greater)
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CandidateOperation {
+    Primary,
+    OrdinaryFallback,
+}
+
+struct ConditionalQueryRecipe {
+    frame: FinalizedLine,
+    ceiling: surgeist_text::PreparedOpportunity,
+}
+
 #[derive(Clone, Copy)]
 struct EndpointContext<'a> {
     accepted_prefix: &'a [FittedLine],
+    preceding: Option<&'a EvaluatedCandidate>,
     line_box_context: crate::line_box::LineBoxContext,
     start: &'a PreparedBoundary,
     incoming: Option<&'a HyphenationContinuation>,
@@ -871,6 +947,8 @@ struct EndpointContext<'a> {
     hyphenation_state: crate::hyphenation::LineHyphenationState,
     rejected_choices: &'a [CandidateKey],
     conditional: bool,
+    operation: CandidateOperation,
+    conditional_recipe: Option<&'a ConditionalQueryRecipe>,
 }
 
 #[derive(Clone, Copy)]
@@ -1008,9 +1086,9 @@ where
         input: &FitInput<'_>,
         request: LineSelectionRequest,
         query: &EndpointContext<'_>,
-        preceding: Option<&EvaluatedCandidate>,
-    ) -> Result<EvaluatedCandidate, FitError> {
-        self.evaluate_mode(input, request, query, preceding, false)
+        on_unavailable: impl FnOnce(FinalizedLine),
+    ) -> Result<Option<EvaluatedCandidate>, FitError> {
+        self.evaluate_mode(input, request, query, false, on_unavailable)
     }
 
     fn evaluate_mode(
@@ -1018,13 +1096,20 @@ where
         input: &FitInput<'_>,
         request: LineSelectionRequest,
         query: &EndpointContext<'_>,
-        preceding: Option<&EvaluatedCandidate>,
         natural_only: bool,
-    ) -> Result<EvaluatedCandidate, FitError> {
+        on_unavailable: impl FnOnce(FinalizedLine),
+    ) -> Result<Option<EvaluatedCandidate>, FitError> {
         let Some(resolver) = input.wrapping else {
-            return self.evaluate_assignment(input, request, query, preceding, natural_only, None);
+            return self.evaluate_assignment(
+                input,
+                request,
+                query,
+                natural_only,
+                None,
+                on_unavailable,
+            );
         };
-        let incoming = box_checkpoint(&request.start, query, preceding)?;
+        let incoming = box_checkpoint(&request.start, query, query.preceding)?;
         let assignments = resolver.choices(BoxChoice {
             start: &request.start,
             end: &request.end,
@@ -1039,17 +1124,23 @@ where
         let mut ordinary = None;
         let mut unrejected = None;
         let mut fitting = Vec::new();
+        let mut unavailable = None;
         for assignment in assignments {
             let mut request = request.clone();
             request.line_box_struts = assignment.struts();
-            let trial = self.evaluate_assignment(
+            let Some(trial) = self.evaluate_assignment(
                 input,
                 request,
                 query,
-                preceding,
                 natural_only,
                 Some(assignment),
-            )?;
+                |receipt| {
+                    unavailable.get_or_insert(receipt);
+                },
+            )?
+            else {
+                continue;
+            };
             if ordinary.is_none() {
                 ordinary = Some(trial.clone());
             }
@@ -1076,14 +1167,18 @@ where
             }
             return frontier
                 .and_then(|frontier| frontier.into_preferred())
+                .map(Some)
                 .ok_or(FitError::InvalidGeometry);
         }
-        fitting
-            .into_iter()
-            .next()
-            .or(unrejected)
-            .or(ordinary)
-            .ok_or(FitError::InvalidGeometry)
+        if let Some(candidate) = fitting.into_iter().next().or(unrejected).or(ordinary) {
+            Ok(Some(candidate))
+        } else if let Some(receipt) = unavailable {
+            // An admitted assignment takes precedence over exhausted trials.
+            on_unavailable(receipt);
+            Ok(None)
+        } else {
+            Err(FitError::InvalidGeometry)
+        }
     }
 
     fn evaluate_assignment(
@@ -1091,10 +1186,12 @@ where
         input: &FitInput<'_>,
         mut request: LineSelectionRequest,
         query: &EndpointContext<'_>,
-        preceding: Option<&EvaluatedCandidate>,
         natural_only: bool,
         boxes: Option<BoxAssignment>,
-    ) -> Result<EvaluatedCandidate, FitError> {
+        on_unavailable: impl FnOnce(FinalizedLine),
+    ) -> Result<Option<EvaluatedCandidate>, FitError> {
+        let preceding = query.preceding;
+        let query_termination = request.termination.clone();
         let original_box_struts = boxes.as_ref().map_or_else(Vec::new, BoxAssignment::struts);
         let position = query.position;
         let entry = super::roles::RoleEntry {
@@ -1129,9 +1226,40 @@ where
             };
             request.context.tabs = tab_context(input, band, request.context.available_inline)?;
             let mut allocation_bases = Vec::new();
-            let (finalized, amounts, natural_advance, role_basis) = loop {
-                let (candidate, role_basis) =
-                    finalize_with_roles(input, request, natural_only, &entry)?;
+            let (finalized, amounts, natural_advance, conditional_trial, role_basis) = loop {
+                // Feedback retains actual allocations, but each attempt starts
+                // from the caller's method-bound target. An ordinary fallback
+                // result cannot replace the primary conditional authority.
+                request.termination = query_termination.clone();
+                if query.operation == CandidateOperation::OrdinaryFallback {
+                    request.context.spacing = SpacingPolicy::None;
+                }
+                let (mut candidate, mut role_basis) =
+                    finalize_with_roles(input, request, natural_only, &entry, query.operation)?;
+                if query.operation == CandidateOperation::Primary
+                    && candidate.request.context.spacing == SpacingPolicy::InterCharacter
+                    && candidate.conditional_trial.is_some()
+                    && let PreparedTermination::Conditional(target) = &candidate.request.termination
+                    && target.purpose() == ConditionalPurpose::Overflow
+                {
+                    let Some(fallback) = self.fallback_opportunity(input, query, target)? else {
+                        on_unavailable(candidate.finalized);
+                        return Ok(None);
+                    };
+                    let primary = candidate.finalized;
+                    let mut fallback_request = candidate.request;
+                    fallback_request.context.spacing = SpacingPolicy::None;
+                    fallback_request.termination = PreparedTermination::Conditional(fallback);
+                    (candidate, role_basis) = finalize_with_roles(
+                        input,
+                        fallback_request,
+                        natural_only,
+                        &entry,
+                        CandidateOperation::OrdinaryFallback,
+                    )?;
+                    candidate.conditional_trial = Some(primary);
+                    (self.reset)(EncounterReset::Candidate);
+                }
                 request = candidate.request;
                 (self.replay)(
                     &candidate.finalized,
@@ -1163,6 +1291,7 @@ where
                         candidate.finalized,
                         candidate.amounts,
                         candidate.natural_advance,
+                        candidate.conditional_trial,
                         role_basis,
                     );
                 }
@@ -1278,10 +1407,11 @@ where
                     self.box_uses.push(used);
                 }
             }
-            return Ok(EvaluatedCandidate {
+            return Ok(Some(EvaluatedCandidate {
                 boxes,
                 request,
                 finalized,
+                conditional_trial,
                 amounts,
                 natural_advance,
                 encounters,
@@ -1289,7 +1419,7 @@ where
                 placed_start,
                 fits,
                 disposition,
-            });
+            }));
         }
     }
 
@@ -1346,7 +1476,9 @@ where
                         query.indent_state,
                         query.line_box_context,
                     )?;
-                    let trial = self.evaluate_mode(input, request, query, None, true)?;
+                    let Some(trial) = self.evaluate_mode(input, request, query, true, drop)? else {
+                        continue;
+                    };
                     if !trial.disposition.is_formatted() {
                         continue;
                     }
@@ -1394,10 +1526,20 @@ where
                 query.indent_state,
                 query.line_box_context,
             )?;
-            let candidate = self.evaluate(input, request, query, None)?;
+            let Some(candidate) = self.evaluate(input, request, query, |receipt| {
+                // The primary trial executed without an authorized fallback.
+                // Its actual receipt belongs to this query's exhaustion proof.
+                dispositions.push(ConditionalDisposition::Exhausted(receipt));
+            })?
+            else {
+                continue;
+            };
             if zone_suppressed {
                 dispositions.push(ConditionalDisposition::ConsumerHyphenationPolicy(
-                    candidate.finalized,
+                    candidate
+                        .conditional_trial
+                        .clone()
+                        .unwrap_or_else(|| candidate.finalized.clone()),
                 ));
                 continue;
             }
@@ -1407,7 +1549,10 @@ where
             if query.rejected_choices.contains(&candidate.key()) {
                 if candidate.request.alternative.is_some() {
                     dispositions.push(ConditionalDisposition::ConsumerHyphenationPolicy(
-                        candidate.finalized,
+                        candidate
+                            .conditional_trial
+                            .clone()
+                            .unwrap_or_else(|| candidate.finalized.clone()),
                     ));
                 } else {
                     // An unselected meaningful None is still an ordinary
@@ -1448,7 +1593,13 @@ where
                         query.indent_state,
                         query.line_box_context,
                     )?;
-                    let trial = self.evaluate(input, request, query, Some(&candidate))?;
+                    let priority_query = EndpointContext {
+                        preceding: Some(&candidate),
+                        ..*query
+                    };
+                    let Some(trial) = self.evaluate(input, request, &priority_query, drop)? else {
+                        continue;
+                    };
                     if trial.fits {
                         priority = Some(trial.finalized);
                         break;
@@ -1465,7 +1616,12 @@ where
             if !candidate.disposition.is_formatted()
                 && candidate.request.context.end == LineEnd::Soft
             {
-                dispositions.push(ConditionalDisposition::Phantom(candidate.finalized));
+                dispositions.push(ConditionalDisposition::Phantom(
+                    candidate
+                        .conditional_trial
+                        .clone()
+                        .unwrap_or_else(|| candidate.finalized.clone()),
+                ));
                 continue;
             }
             if let Some(alternative) = alternative.filter(|_| automatic.is_some()) {
@@ -1473,12 +1629,18 @@ where
                     dispositions.push(ConditionalDisposition::AutoIntrinsicRefinement(alternative));
                 } else {
                     dispositions.push(ConditionalDisposition::AutoFitExhausted(
-                        candidate.finalized.clone(),
+                        candidate
+                            .conditional_trial
+                            .clone()
+                            .unwrap_or_else(|| candidate.finalized.clone()),
                     ));
                 }
             } else if query.conditional {
                 dispositions.push(ConditionalDisposition::Exhausted(
-                    candidate.finalized.clone(),
+                    candidate
+                        .conditional_trial
+                        .clone()
+                        .unwrap_or_else(|| candidate.finalized.clone()),
                 ));
             } else if candidate.disposition.is_formatted() {
                 ordinary_formatted = true;
@@ -1497,6 +1659,153 @@ where
             formatted: ordinary_formatted,
             fitting_none,
         })
+    }
+
+    /// Rebuild the fallback query at its owner. Ordinary, phrase and staged
+    /// receipts below all execute the ordinary operation; a primary receipt is
+    /// never relabeled or used to discharge this query's tiers.
+    fn fallback_opportunity(
+        &mut self,
+        input: &FitInput<'_>,
+        query: &EndpointContext<'_>,
+        target: &surgeist_text::PreparedConditionalOpportunity,
+    ) -> Result<Option<surgeist_text::PreparedConditionalOpportunity>, FitError> {
+        let recipe = query.conditional_recipe.ok_or(FitError::InvalidGeometry)?;
+        if target.start() != *query.start || target.ceiling() != recipe.ceiling {
+            return Err(FitError::InvalidGeometry);
+        }
+        let ordinary_query = EndpointContext {
+            preceding: None,
+            conditional: false,
+            operation: CandidateOperation::OrdinaryFallback,
+            conditional_recipe: None,
+            ..*query
+        };
+        let Some(ordinary) = self.evaluate(
+            input,
+            recipe.frame.selected_line().request().clone(),
+            &ordinary_query,
+            drop,
+        )?
+        else {
+            // The recipe is an actual ordinary frame, not a conditional cut.
+            return Err(FitError::InvalidGeometry);
+        };
+        let start = query.start.view().participant_offset();
+        let ceiling = recipe.ceiling.view().boundary().view().participant_offset();
+        let mut skipped = Vec::new();
+        let mut zone = ZoneBasis {
+            policy: input.hyphenate_limit_zone,
+            references: Vec::new(),
+        };
+        for offer in input.prepared.opportunity_views() {
+            let boundary = offer.boundary().view().participant_offset();
+            if boundary <= start {
+                continue;
+            }
+            if offer.handle() == recipe.ceiling {
+                break;
+            }
+            if boundary >= ceiling
+                || matches!(
+                    offer.kind(),
+                    PreparedBreakKind::Forced | PreparedBreakKind::ParagraphEnd
+                )
+            {
+                return Ok(None);
+            }
+            let alternatives = offer
+                .alternatives()
+                .map(|alternative| Some(alternative.handle()))
+                .collect::<Vec<_>>();
+            let variants = (!matches!(offer.kind(), PreparedBreakKind::Discretionary))
+                .then_some(None)
+                .into_iter()
+                .chain(alternatives);
+            let choice = self.choose_endpoint(
+                input,
+                &ordinary_query,
+                variants.map(|alternative| LineEndpoint {
+                    boundary: offer.boundary(),
+                    termination: PreparedTermination::Ordinary(offer.handle()),
+                    alternative,
+                    ending: LineEnd::Soft,
+                }),
+                &mut zone,
+            )?;
+            if choice.formatted {
+                // The ordinary method has a real earlier barrier. It cannot
+                // supply this primary cut's fallback authority.
+                return Ok(None);
+            }
+            skipped.extend(choice.dispositions);
+        }
+        let search = input.prepared.conditional_search(
+            query.start,
+            query.incoming,
+            &recipe.ceiling,
+            target.purpose(),
+            &skipped,
+            Some(&ordinary.finalized),
+        )?;
+        let staged_query = EndpointContext {
+            conditional: true,
+            ..ordinary_query
+        };
+        let mut decisions = Vec::new();
+        for portion in search.phrase_portions() {
+            let (decision, _) = self.measure_phrase(input, &staged_query, &ordinary, portion)?;
+            decisions.push(decision);
+        }
+        let mut batch = search.begin(&decisions)?;
+        loop {
+            if let Some(issued) = batch.opportunities().iter().find(|issued| {
+                issued.boundary() == target.boundary()
+                    && issued.alternative() == target.alternative()
+            }) {
+                return Ok(Some(issued.clone()));
+            }
+            let mut dispositions = Vec::new();
+            let mut from = 0;
+            while from < batch.opportunities().len() {
+                let boundary = batch.opportunities()[from].boundary();
+                let mut to = from + 1;
+                while to < batch.opportunities().len()
+                    && batch.opportunities()[to].boundary() == boundary
+                {
+                    to += 1;
+                }
+                let choice = self.choose_endpoint(
+                    input,
+                    &staged_query,
+                    batch.opportunities()[from..to]
+                        .iter()
+                        .cloned()
+                        .map(|issued| LineEndpoint {
+                            boundary: issued.boundary(),
+                            alternative: issued.alternative(),
+                            termination: PreparedTermination::Conditional(issued),
+                            ending: LineEnd::Soft,
+                        }),
+                    &mut zone,
+                )?;
+                if choice
+                    .candidate
+                    .as_ref()
+                    .is_some_and(|candidate| candidate.fits)
+                {
+                    // A genuine earlier ordinary-method tier already fits;
+                    // exhausting it merely to obtain this later cut is false.
+                    return Ok(None);
+                }
+                dispositions.extend(choice.dispositions);
+                from = to;
+            }
+            let Some(next) = batch.advance(&dispositions)? else {
+                return Ok(None);
+            };
+            batch = next;
+        }
     }
 
     fn measure_phrase(
@@ -1527,11 +1836,15 @@ where
             query.line_box_context,
         )?;
         let phrase_query = EndpointContext {
+            preceding,
             position: &empty_position,
             indent_state: empty_indent,
             ..*query
         };
-        let trial = self.evaluate(input, request, &phrase_query, preceding)?;
+        let Some(trial) = self.evaluate(input, request, &phrase_query, drop)? else {
+            // A phrase measurement cannot request conditional fallback.
+            return Err(FitError::InvalidGeometry);
+        };
         let basis = PhraseBasis {
             ordinary: ordinary.basis(query.position),
             position: empty_position.clone(),
@@ -1650,6 +1963,31 @@ pub(crate) struct EncounterCallbacks<Replay, Accept, Reset, Checkpoint> {
     pub checkpoint_group: Checkpoint,
 }
 
+/// Query authority follows the real prospective Soft method. A terminal Auto
+/// candidate may never have executed that basis; request a genuine ordinary
+/// trial without relabeling its issued termination, end role or alignment.
+fn conditional_query_frame(
+    input: &FitInput<'_>,
+    candidate: &EvaluatedCandidate,
+) -> Result<FinalizedLine, FitError> {
+    if input.justification != TextJustification::InterCharacter {
+        return Ok(candidate.finalized.clone());
+    }
+    let method = character_basis(input.alignment, input.last_alignment, LineEnd::Soft);
+    if candidate.request.context.spacing == method {
+        return Ok(candidate.finalized.clone());
+    }
+    if let Some(trial) = &candidate.conditional_trial
+        && trial.selected_line().request().context.spacing == method
+    {
+        return Ok(trial.clone());
+    }
+    let mut request = candidate.request.clone();
+    request.context.spacing = method;
+    resolve_boundary_context(input.prepared, input.controls, &mut request)?;
+    natural_line(input.prepared, input.reusable, &request)
+}
+
 struct LineEndpoint {
     boundary: PreparedBoundary,
     termination: PreparedTermination,
@@ -1732,6 +2070,9 @@ fn selection_request(
                 TextJustification::None => SpacingPolicy::None,
                 TextJustification::Spaces => SpacingPolicy::Spaces,
                 TextJustification::InterWord => SpacingPolicy::InterWord,
+                TextJustification::InterCharacter => {
+                    character_basis(input.alignment, input.last_alignment, endpoint.ending)
+                }
             },
         },
         atomics,
@@ -2031,6 +2372,7 @@ where
                                 .chain(alternatives.iter().cloned().map(Some));
                             let query = EndpointContext {
                                 accepted_prefix: result,
+                                preceding: None,
                                 line_box_context,
                                 start: &start_boundary,
                                 incoming: incoming.as_ref(),
@@ -2039,6 +2381,8 @@ where
                                 hyphenation_state,
                                 rejected_choices,
                                 conditional: false,
+                                operation: CandidateOperation::Primary,
+                                conditional_recipe: None,
                             };
                             let endpoint = environment.choose_endpoint(
                                 input,
@@ -2191,17 +2535,24 @@ where
                         && let Some(ceiling) = first_ceiling
                         && ceiling.view().boundary().view().participant_offset() > start
                     {
+                        let frame = (purpose == ConditionalPurpose::Overflow)
+                            .then(|| conditional_query_frame(input, &candidate))
+                            .transpose()?;
+                        let recipe = frame.as_ref().map(|frame| ConditionalQueryRecipe {
+                            frame: frame.clone(),
+                            ceiling: ceiling.clone(),
+                        });
                         let search = input.prepared.conditional_search(
                             &start_boundary,
                             incoming.as_ref(),
                             &ceiling,
                             purpose,
                             &skipped_ordinary,
-                            (purpose == ConditionalPurpose::Overflow)
-                                .then_some(&candidate.finalized),
+                            frame.as_ref(),
                         )?;
                         let query = EndpointContext {
                             accepted_prefix: result,
+                            preceding: None,
                             start: &start_boundary,
                             line_box_context,
                             incoming: incoming.as_ref(),
@@ -2210,6 +2561,8 @@ where
                             hyphenation_state,
                             rejected_choices,
                             conditional: true,
+                            operation: CandidateOperation::Primary,
+                            conditional_recipe: recipe.as_ref(),
                         };
                         let mut decisions = Vec::new();
                         for portion in search.phrase_portions() {

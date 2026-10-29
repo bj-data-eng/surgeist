@@ -35,54 +35,102 @@ use super::{
     },
 };
 
+fn spacing_piece(
+    selected: &Arc<super::selection::SelectedData>,
+    piece: &super::selection::SpacingSlotPieceData,
+) -> super::SpacingSlotPiece {
+    let prepared = &selected.prepared;
+    let owner = match piece.owner {
+        crate::SpacingPiece::Atomic { occurrence } => SpacingSlotOwner::Atomic(PreparedAtomic {
+            prepared: Arc::clone(prepared),
+            index: prepared
+                .tables
+                .atomics
+                .iter()
+                .position(|a| a.occurrence == occurrence)
+                .expect("actual atomic inventory"),
+        }),
+        crate::SpacingPiece::Source {
+            origin,
+            local,
+            aggregate,
+        } => SpacingSlotOwner::Source {
+            origin: PreparedOrigin {
+                prepared: Arc::clone(prepared),
+                index: origin,
+            },
+            local,
+            aggregate,
+        },
+        crate::SpacingPiece::Alternative {
+            alternative, local, ..
+        } => SpacingSlotOwner::Alternative {
+            alternative: PreparedAlternative {
+                prepared: Arc::clone(prepared),
+                index: alternative,
+            },
+            local,
+        },
+        crate::SpacingPiece::Control { occurrence } => SpacingSlotOwner::Control(PreparedControl {
+            prepared: Arc::clone(prepared),
+            index: control_index(prepared, occurrence),
+        }),
+        crate::SpacingPiece::VirtualSeparator { occurrence } => {
+            SpacingSlotOwner::VirtualSeparator(PreparedVirtualSeparator {
+                prepared: Arc::clone(prepared),
+                index: occurrence,
+            })
+        }
+    };
+    super::SpacingSlotPiece {
+        owner,
+        presentation: piece.presentation,
+    }
+}
+
 impl SpacingSlot {
-    /// Exact ordered source/alternative/generated pieces of the complete target.
+    /// Exact source, alternative, generated and atomic custody in target order.
     pub fn pieces(&self) -> impl ExactSizeIterator<Item = super::SpacingSlotPiece> + '_ {
         self.selected.spacing_slots[self.index]
             .pieces
             .iter()
-            .map(|piece| {
-                let prepared = &self.selected.prepared;
-                let owner = match piece.owner {
-                    crate::WordSpacingPiece::Source {
-                        origin,
-                        local,
-                        aggregate,
-                    } => SpacingSlotOwner::Source {
-                        origin: PreparedOrigin {
-                            prepared: Arc::clone(prepared),
-                            index: origin,
-                        },
-                        local,
-                        aggregate,
-                    },
-                    crate::WordSpacingPiece::Alternative {
-                        alternative, local, ..
-                    } => SpacingSlotOwner::Alternative {
-                        alternative: PreparedAlternative {
-                            prepared: Arc::clone(prepared),
-                            index: alternative,
-                        },
-                        local,
-                    },
-                    crate::WordSpacingPiece::Control { occurrence } => {
-                        SpacingSlotOwner::Control(PreparedControl {
-                            prepared: Arc::clone(prepared),
-                            index: control_index(prepared, occurrence),
-                        })
-                    }
-                    crate::WordSpacingPiece::VirtualSeparator { occurrence } => {
-                        SpacingSlotOwner::VirtualSeparator(PreparedVirtualSeparator {
-                            prepared: Arc::clone(prepared),
-                            index: occurrence,
-                        })
-                    }
-                };
-                super::SpacingSlotPiece {
-                    owner,
-                    presentation: piece.presentation,
-                }
-            })
+            .map(|piece| spacing_piece(&self.selected, piece))
+    }
+}
+
+impl super::SpacingUnit {
+    /// Actual governing full values before neighboring-side averaging.
+    #[must_use]
+    pub fn letter_spacing_before(&self) -> f64 {
+        self.selected.spacing_slots[self.slot]
+            .target
+            .unit(self.side)
+            .left
+    }
+    #[must_use]
+    pub fn letter_spacing_after(&self) -> f64 {
+        self.selected.spacing_slots[self.slot]
+            .target
+            .unit(self.side)
+            .right
+    }
+    pub fn pieces(&self) -> impl ExactSizeIterator<Item = super::SpacingSlotPiece> + '_ {
+        let range = self.selected.spacing_slots[self.slot]
+            .target
+            .unit(self.side)
+            .pieces
+            .clone();
+        self.selected.spacing_slots[self.slot].pieces[range]
+            .iter()
+            .map(|piece| spacing_piece(&self.selected, piece))
+    }
+    pub fn participants(&self) -> impl Iterator<Item = &PreparedParticipant> {
+        self.selected.spacing_slots[self.slot]
+            .target
+            .unit(self.side)
+            .participants
+            .iter()
+            .map(|&i| &self.selected.request.participants[i])
     }
 }
 
@@ -141,6 +189,7 @@ impl FinalizedLine {
                 stretchability: row.stretchability,
                 traversal_order: row.traversal_order,
                 authored_word_spacing: row.authored,
+                authored_letter_spacing: row.letter,
                 allocation: row.allocation,
             })
     }
@@ -1103,7 +1152,8 @@ impl FinalizedLine {
     /// Borrows the actual selected source/processed/presentation correspondence.
     pub fn mapping_views(&self) -> impl ExactSizeIterator<Item = SelectedMappingView<'_>> {
         self.inner
-            .shape
+            .selected
+            .basis
             .mapping
             .pieces
             .iter()

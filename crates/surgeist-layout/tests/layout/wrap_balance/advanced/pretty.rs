@@ -89,7 +89,12 @@ fn semantic_prefix(before: &t::FinalizedLine, after: &t::FinalizedLine) {
                 (
                     feedback.slot.pieces().collect::<Vec<_>>(),
                     feedback.slot.participants().cloned().collect::<Vec<_>>(),
-                    feedback.slot.presentation_range(),
+                    match feedback.slot.target() {
+                        t::SpacingSlotTarget::Separator(unit) => unit.pieces().collect::<Vec<_>>(),
+                        t::SpacingSlotTarget::Boundary { .. } => {
+                            panic!("existing Spaces candidates are complete separator units")
+                        }
+                    },
                     feedback.disposition,
                     feedback.advance,
                 )

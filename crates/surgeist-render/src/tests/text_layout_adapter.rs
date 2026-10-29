@@ -4,6 +4,7 @@
 mod composed;
 mod control_paint;
 mod endpoint_paint;
+mod inter_character;
 mod sideways;
 mod upright;
 

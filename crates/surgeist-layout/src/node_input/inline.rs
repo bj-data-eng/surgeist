@@ -155,6 +155,8 @@ pub enum TextJustification {
     Spaces,
     /// Text-qualified word-separator expansion with exact alignment fill.
     InterWord,
+    /// Text-qualified visual character-boundary expansion with exact alignment fill.
+    InterCharacter,
 }
 
 impl TextAlignLast {

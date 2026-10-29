@@ -515,26 +515,27 @@ fn an_author_forced_cross_unit_provider_group_is_preserved_inactive_and_refuses_
             )
             .unwrap_err();
         assert_eq!(error.code, crate::ErrorCode::LayoutFailed);
-        let Some(crate::ErrorDetail::UnsupportedWordSpacing {
+        let Some(crate::ErrorDetail::UnsupportedSpacing {
             stage,
             operation,
             pieces,
             provider_atoms,
+            ..
         }) = error.detail()
         else {
             panic!("expected actual group diagnostic: {error:?}")
         };
-        assert_eq!(*stage, crate::WordSpacingStage::Preparation);
-        assert_eq!(*operation, crate::WordSpacingOperation::Authored);
+        assert_eq!(*stage, crate::SpacingStage::Preparation);
+        assert_eq!(*operation, crate::SpacingOperation::AuthoredWord);
         assert_eq!(
             pieces.as_ref(),
-            [crate::WordSpacingPiece::Source {
+            [crate::SpacingPiece::Source {
                 origin: 0,
                 local: Range::new(1, 2),
                 aggregate: Range::new(1, 2)
             }]
         );
-        assert_eq!((provider_atoms.start, provider_atoms.end), (0, 2));
+        assert_eq!(provider_atoms.as_ref(), std::slice::from_ref(&(0..2)));
         assert_eq!(raw(&finalize(&control)), raw(&natural));
     }
 }

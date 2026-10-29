@@ -240,10 +240,11 @@ residual slots from paint. REMOVE removes those carriers and PRESERVE keeps the
 selected diagnostic glyph behavior; neither flag establishes native support.
 The consuming Text adapter owns zero independent allocation and paint admission.
 
-The independent DI carrier word increases each interchangeable GlyphInfo and
-GlyphPosition row from 24 to 28 bytes. Their POD layouts remain equal and the
+The independent DI carrier word originally increased each interchangeable
+GlyphInfo and GlyphPosition row from 24 to 28 bytes; the component word described
+below increases each to 32 bytes. Their POD layouts remain equal and the
 joining lineage word's Cc high bit remains independent. Ordinary buffers also
-carry this row overhead. Actual 56-byte row-pair storage, DI sets/members,
+carry this row overhead. Actual 64-byte row-pair storage, DI sets/members,
 terminal slices, joining retained data, temporaries and overlapping old/new
 capacities share the unchanged logical allowance of 48 bytes per permitted row
 pair and the existing operation budget. No limit is enlarged. Checked logical
@@ -334,3 +335,101 @@ contain the corresponding integration. The adjacent repository-owned
 `vertical_position_tests.rs` and `vertical_position_fixture.rs` qualify real font
 metrics, substitutions, positioning, status and lifecycle. No generated machine,
 Unicode source, dependency, upstream archive or version is changed.
+
+
+## Opt-in Component Constraints And Feature Intent
+
+`UnicodeBuffer::observe_components` sets demand for the next actual invocation,
+including input appended after the request. Begin initializes body-scalar ordinal
+sets under the existing growth/work guards. One independent private u32 in the
+Copy/Pod GlyphInfo carries immutable sorted-set identity; GlyphPosition retains
+an equal-size reserved word for the provider's safe interchangeable row buffers.
+The inactive carrier is zero and allocates no per-input observation arena.
+
+Actual normalization unions consumed membership without declaring a ligature.
+One-to-many substitutions copy membership, reorder/move operations carry identity,
+and GSUB ligation unions only actual matched positions, excluding skipped marks.
+Canonical ligature rows retain the union of enabled effective feature sources,
+including required LangSys/script registrations and inherited contextual parents.
+Original input cluster values are retained privately for authentic ranged-request
+provenance after provider cluster merging. Final scans bind rows to all surviving
+descendants after subsequent substitutions, deletion and direction reversal;
+inputs without surviving descendants are explicitly accounted for. Generated
+repairs have separate generated status and their actual input context association.
+Generated combinations without qualified correspondence remain unqualified.
+
+The observer captures final OpenType mark/cursive chains before attachment-offset
+propagation consumes them, and records actual successful fallback mark positioning.
+Kerning does not declare attachment. Complete coverage qualifies executed OpenType
+substitution and positioning, normalization, no-positioning and fallback mark
+paths. Executed morx/kerx paths expose Unqualified coverage; irrelevant AAT tables
+do not select that state. Provider clusters, unsafe-to-break flags, syllable IDs,
+advance width and glyph class never substitute for component constraints.
+
+The completed GlyphBuffer and VerticalGlyphBuffer expose borrowed receipts;
+refused output returns the original ShapingRefusal and cannot publish a receipt.
+Clear removes demand, arenas, identities and completion. Sets, retained source
+clusters, provenance, constraints, descendants, terminal accounting and overlapping
+allocations share the unchanged 48-byte-per-permitted-row logical allowance and
+operation budget with joining and default-ignorable storage. Checked overflow or
+logical limits retain GrowthLimit/WorkLimit; physical allocation failure retains
+provider allocator semantics.
+
+FeatureOrigin privately distinguishes Explicit from OptionalDefault intent.
+Constructors/parser retain public tag/value fields and use the backend's half-open
+cluster bounds. The inherited constructor incorrectly subtracted one from excluded
+ends and retained included ends; #1567 corrects the canonical constructor to retain
+excluded ends and use a saturating successor for included ends. Parsing already
+uses half-open bounds. Empty/reversed ranges select nothing. Finite bounds saturate
+to the existing u32 end sentinel: its complete zero-start encoding is global,
+including caller cluster u32::MAX, while other sentinel-ended ranges exclude that
+cluster. The finite representation cannot select that final sentinel independently.
+The unchanged test-only RED checkpoint is 478e7147e365fdb601f2e821a4dc09ce0e50d432;
+it demonstrates both constructor failures after real font/parser/completion controls.
+No compatibility constructor or compensating caller range is retained.
+The effective plan admits soft overrides only for affirmative Optional roles,
+retains required LangSys and script behavior (including Khmer clig), and reports
+Required/Unclassified ignored requests. Provider defaults precede admitted soft
+requests, then explicit requests, preserving source order within each origin.
+Ranged soft masks remain distinct across later explicit globals; replay restores
+the last explicit value over each actual overlap. Exact origin/ranges participate
+in plan matching and shaping admission. Applied provenance preserves the enabled
+set across merged lookup registrations rather than choosing one feature tag.
+
+The adjacent `components_tests` and `feature_origin_tests` use real authored SFNT
+lookups and nominal records. They qualify the new API; they do not claim an
+executable preimplementation regression checkpoint or comprehensive complex-script
+unit semantics. CSS units, spacing opportunities and required-unit policy remain
+with consuming Text.
+
+
+## Completed Joining-Context Mechanism Observation
+
+`ComponentReceipt::joining_context_use` adds one invocation-local scalar fact to
+opt-in observation, without a per-input arena, additional traversal or mutable
+readback. The shared `ot_shaper_arabic::setup_masks_inner` owner resolves native
+external-context actions or bound original/presentation-source actions, then
+consumes their selected action-indexed masks. Only actual consumption of at least
+one nonzero mask records ContextualActions. This covers executed Arabic and
+joining-enabled USE, whose optional `UniversalShapePlan::arabic_plan` reaches the
+same owner; ordinary USE's body-syllable topographical path is distinct.
+
+The fact deliberately does not prove an external scalar changed a glyph, that a
+feature lookup matched, that an attachment exists, or that subsequent explicit
+feature-mask replay retained the native value. None means this observed mechanism
+was absent on the qualified path, not universal independence from external context.
+An actual unqualified component path reports Unqualified with the same cause,
+including AAT paths, rather than publishing negative joining evidence. An empty
+invocation has no executed mask construction; disabled or absent selected action
+masks do not produce ContextualActions. Current `arabic_fallback_shape` is a no-op;
+its historical name establishes no implemented fallback-substitution guarantee.
+
+The receipt remains bound to a completed ordinary or supplied-vertical invocation.
+Refusal denies receipt admission, repeated reads never debit work or mutate
+completion, and clear resets the fact. Body component ordinals still exclude
+external context: this API invents no external input identities, source ranges,
+script dispatch in consumers, spacing units or cross-invocation attachment.
+The adjacent `joining_context_tests` qualify actual authored Arabic/Syriac/NKo
+forms, ordinary USE/default and absent/disabled-mask controls, bound source actions,
+empty/refused/reset lifecycles and unqualified AAT behavior. This is qualification
+of a new predicate, without a fabricated executable preimplementation RED.

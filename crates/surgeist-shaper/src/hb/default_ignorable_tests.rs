@@ -458,15 +458,16 @@ fn logical_discovery_union_and_finalization_refuse_without_admitting_receipt() {
 
 #[test]
 fn row_layout_and_frozen_aggregate_allowance_include_di_storage() {
-    assert_eq!(size_of::<GlyphInfo>(), 28);
-    assert_eq!(size_of::<super::super::buffer::GlyphPosition>(), 28);
+    assert_eq!(size_of::<GlyphInfo>(), 32);
+    assert_eq!(size_of::<super::super::buffer::GlyphPosition>(), 32);
     let mut input = UnicodeBuffer::new();
     input.push_str("\u{2065}");
     input.0.enter();
     assert!(begin(&mut input.0));
     let bytes = input.0.default_ignorables.bytes().unwrap();
     assert!(bytes > 0);
-    let row_storage = input.0.info.capacity() * 28 + input.0.pos.capacity() * 28;
+    let row_storage = input.0.info.capacity() * size_of::<GlyphInfo>()
+        + input.0.pos.capacity() * size_of::<super::super::buffer::GlyphPosition>();
     input.0.max_len = (row_storage + bytes).div_ceil(48);
     assert!(super::super::original_joining::room(&mut input.0, 1, 0));
     assert!(!super::super::original_joining::room(&mut input.0, 1, 48));
@@ -714,7 +715,8 @@ fn union_growth_and_deletion_work_preflight_preserve_carrier_custody() {
         input.0.info[0].default_ignorable,
         input.0.info[1].default_ignorable,
     );
-    let rows = input.0.info.capacity() * 28 + input.0.pos.capacity() * 28;
+    let rows = input.0.info.capacity() * size_of::<GlyphInfo>()
+        + input.0.pos.capacity() * size_of::<super::super::buffer::GlyphPosition>();
     let bytes = input.0.default_ignorables.bytes().unwrap();
     input.0.max_len = (rows + bytes).div_ceil(48);
     assert!(union(&mut input.0, a, b).is_none());
@@ -801,7 +803,8 @@ fn logical_growth_refusal_preserves_progress_through_generated_repair_loops() {
         let mut buffer = input.0;
         buffer.enter();
         assert!(begin(&mut buffer));
-        let rows = buffer.info.capacity() * 28 + buffer.pos.capacity() * 28;
+        let rows = buffer.info.capacity() * size_of::<GlyphInfo>()
+            + buffer.pos.capacity() * size_of::<super::super::buffer::GlyphPosition>();
         buffer.max_len = rows.div_ceil(48);
         let plan = crate::ShapePlan::new(shaper, buffer.direction, buffer.script, None, &[]);
         shape_internal(&mut hb_ot_shape_context_t {

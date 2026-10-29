@@ -27,6 +27,7 @@ mod aat;
 mod cache;
 mod charmap;
 pub mod common;
+pub(crate) mod components;
 pub(crate) mod default_ignorable;
 pub mod face;
 mod glyph_metrics;

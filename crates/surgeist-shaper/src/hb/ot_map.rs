@@ -3,7 +3,10 @@ use core::cmp::Ordering;
 use core::ops::Range;
 
 use super::buffer::{glyph_flag, hb_buffer_t};
-use super::common::TagExt;
+use super::common::{canonical_features, FeatureOrigin, TagExt};
+use super::components::{
+    DefaultFeature, DefaultFeatureDisposition, FeatureProvenance, FeatureRole, FeatureSource,
+};
 use super::ot_layout::TableIndex;
 use super::ot_shape_plan::hb_ot_shape_plan_t;
 use super::Feature;
@@ -21,6 +24,19 @@ pub struct hb_ot_map_t {
     stages: [Vec<StageMap>; 2],
     feature_variations: [Option<u32>; 2],
     capacity_loss: FeatureCapacityLoss,
+    requests: Vec<Feature>,
+    default_features: Vec<DefaultFeature>,
+    provenance: [Vec<LookupFeature>; 2],
+}
+
+struct LookupFeature {
+    tag: hb_tag_t,
+    stage: usize,
+    role: FeatureRole,
+    source: FeatureSource,
+    mask: hb_mask_t,
+    lookups: Vec<u16>,
+    fixed: bool,
 }
 
 // Source-owned observations of the existing bit-allocation decisions. These
@@ -98,14 +114,77 @@ pub struct StageMap {
 pub type pause_func_t = fn(&hb_ot_shape_plan_t, &hb_font_t, &mut hb_buffer_t) -> bool;
 
 impl hb_ot_map_t {
+    pub(crate) fn default_features(&self) -> &[DefaultFeature] {
+        &self.default_features
+    }
+
+    pub(crate) fn requests(&self) -> &[Feature] {
+        &self.requests
+    }
+
+    /// Conservative scan work for one member query, charged by the observer.
+    pub(crate) fn provenance_work(&self, table: TableIndex) -> Option<usize> {
+        self.provenance[table]
+            .iter()
+            .try_fold(0usize, |work, feature| {
+                work.checked_add(1)?
+                    .checked_add(feature.lookups.len())?
+                    .checked_add(self.requests.len())
+            })
+    }
+
+    /// Every effective selected feature contribution, including merged lookups.
+    /// Repetition across matched components is intentional: the observation owner
+    /// interns the union under its invocation resource budget.
+    pub(crate) fn lookup_provenance<'a>(
+        &'a self,
+        table: TableIndex,
+        stage: usize,
+        lookup: u16,
+        inputs: &'a [(hb_mask_t, u32)],
+    ) -> impl Iterator<Item = FeatureProvenance> + 'a {
+        self.provenance[table]
+            .iter()
+            .filter(move |feature| feature.stage == stage && feature.lookups.contains(&lookup))
+            .flat_map(move |feature| {
+                inputs.iter().filter_map(move |(mask, cluster)| {
+                    if mask & feature.mask == 0 {
+                        return None;
+                    }
+                    let request = (!feature.fixed)
+                        .then(|| {
+                            self.requests.iter().rev().find(|request| {
+                                request.tag == feature.tag
+                                    && (request.is_global()
+                                        || request.start <= *cluster && *cluster < request.end)
+                            })
+                        })
+                        .flatten();
+                    if request.is_some_and(|request| request.value == 0) {
+                        return None;
+                    }
+                    Some(FeatureProvenance {
+                        tag: feature.tag,
+                        role: feature.role,
+                        source: request
+                            .map_or(feature.source, |request| FeatureSource::Request(*request)),
+                    })
+                })
+            })
+    }
+
     pub const MAX_BITS: u32 = 8;
     pub const MAX_VALUE: u32 = (1 << Self::MAX_BITS) - 1;
 
-    pub(crate) fn selected_capacity_loss(&self, requests: &[Feature], selected: [bool; 2]) -> bool {
+    pub(crate) fn selected_capacity_loss(
+        &self,
+        _requests: &[Feature],
+        selected: [bool; 2],
+    ) -> bool {
         if (0..2).any(|side| selected[side] && self.capacity_loss.tables[side]) {
             return true;
         }
-        requests.iter().any(|request| {
+        self.requests.iter().any(|request| {
             !request.is_global()
                 && self
                     .features
@@ -120,7 +199,7 @@ impl hb_ot_map_t {
 
     pub(crate) fn native_kerning_capacity_loss(
         &self,
-        requests: &[Feature],
+        _requests: &[Feature],
         horizontal: bool,
     ) -> bool {
         let side = usize::from(!horizontal);
@@ -134,7 +213,7 @@ impl hb_ot_map_t {
         };
         let (mask, shift) = self.get_mask(tag);
         mask != 0
-            && requests.iter().any(|request| {
+            && self.requests.iter().any(|request| {
                 !request.is_global() && request.tag == tag && request.value > mask >> shift
             })
     }
@@ -234,6 +313,10 @@ pub const F_GLOBAL_MANUAL_JOINERS: u32 = F_GLOBAL | F_MANUAL_JOINERS;
 pub const F_GLOBAL_HAS_FALLBACK: u32 = F_GLOBAL | F_HAS_FALLBACK;
 pub const F_GLOBAL_SEARCH: u32 = 0x0010; /* If feature not found in LangSys, look for it in global feature list and pick one. */
 pub const F_RANDOM: u32 = 0x0020; /* Randomly select a glyph from an AlternateSubstFormat1 subtable. */
+pub const F_OPTIONAL: u32 = 0x0080; /* Affirmative selected-plan optional role. */
+pub const F_REQUIRED: u32 = 0x0100; /* Required shaping role; explicit requests still apply. */
+const F_SCRIPT_OVERRIDE: u32 = 0x0400;
+pub const F_REQUIRED_ALWAYS: u32 = 0x0200; /* Script override must remain enabled. */
 pub const F_PER_SYLLABLE: u32 = 0x0040; /* Contain lookup application to within syllable. */
 
 pub struct hb_ot_map_builder_t<'a> {
@@ -244,8 +327,11 @@ pub struct hb_ot_map_builder_t<'a> {
     lang_index: [Option<u16>; 2],
     current_stage: [usize; 2],
     feature_infos: Vec<feature_info_t>,
+    requests: Vec<Feature>,
     stages: [Vec<stage_info_t>; 2],
     pub(crate) is_simple: bool,
+    pub(crate) allow_optional_defaults: bool,
+    pub(crate) collecting_overrides: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -259,6 +345,7 @@ struct feature_info_t {
     default_value: u32,
     // GSUB/GPOS
     stage: [usize; 2],
+    has_range: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -305,8 +392,11 @@ impl<'a> hb_ot_map_builder_t<'a> {
             lang_index,
             current_stage: [0, 0],
             feature_infos: Vec::new(),
+            requests: Vec::new(),
             stages: [Vec::new(), Vec::new()],
             is_simple: false,
+            allow_optional_defaults: true,
+            collecting_overrides: false,
         }
     }
 
@@ -339,11 +429,21 @@ impl<'a> hb_ot_map_builder_t<'a> {
                 tag,
                 seq,
                 max_value: value,
-                flags,
+                flags: flags
+                    | if self.collecting_overrides {
+                        F_SCRIPT_OVERRIDE
+                    } else {
+                        0
+                    },
                 default_value: if flags & F_GLOBAL != 0 { value } else { 0 },
                 stage: self.current_stage,
+                has_range: false,
             });
         }
+    }
+
+    pub(crate) fn set_user_features(&mut self, features: &[Feature]) {
+        self.requests = canonical_features(features).copied().collect();
     }
 
     #[inline]
@@ -392,6 +492,61 @@ impl<'a> hb_ot_map_builder_t<'a> {
             }
         }
 
+        // Provider registrations and selected language systems establish role;
+        // request tags and F_GLOBAL never manufacture optionality.
+        let provider_infos = self.feature_infos.clone();
+        self.feature_infos
+            .retain(|info| info.flags & F_SCRIPT_OVERRIDE == 0);
+        let original_requests = core::mem::take(&mut self.requests);
+        let mut default_features = Vec::new();
+        for request in original_requests {
+            if request.origin() == FeatureOrigin::OptionalDefault {
+                let disposition = if required_tag.contains(&Some(request.tag))
+                    || provider_infos
+                        .iter()
+                        .any(|info| info.tag == request.tag && info.flags & F_REQUIRED != 0)
+                {
+                    DefaultFeatureDisposition::Required
+                } else if self.allow_optional_defaults
+                    && provider_infos.iter().any(|info| {
+                        info.tag == request.tag
+                            && info.flags & F_OPTIONAL != 0
+                            && self.feature_indices(info).iter().any(Option::is_some)
+                    })
+                {
+                    DefaultFeatureDisposition::Accepted
+                } else {
+                    DefaultFeatureDisposition::Unclassified
+                };
+                default_features.push(DefaultFeature {
+                    request,
+                    disposition,
+                });
+                if disposition != DefaultFeatureDisposition::Accepted {
+                    continue;
+                }
+            }
+            let flags = if request.is_global() {
+                F_GLOBAL
+            } else {
+                F_NONE
+            };
+            if !request.tag.is_null() {
+                self.add_feature(request.tag, flags, request.value);
+                if let Some(info) = self.feature_infos.last_mut() {
+                    info.has_range = !request.is_global();
+                }
+            }
+            self.requests.push(request);
+        }
+        for info in provider_infos
+            .iter()
+            .filter(|info| info.flags & F_SCRIPT_OVERRIDE != 0)
+        {
+            let mut info = *info;
+            info.seq = self.feature_infos.len();
+            self.feature_infos.push(info);
+        }
         let (features, required_stage, global_mask, capacity_loss) =
             self.collect_feature_maps(required_tag);
 
@@ -399,7 +554,14 @@ impl<'a> hb_ot_map_builder_t<'a> {
         self.add_gpos_pause(None);
 
         let (lookups, stages) =
-            self.collect_lookup_stages(&features, required_index, required_stage);
+            self.collect_lookup_stages(&features, required_index, required_stage, &provider_infos);
+        let provenance = self.collect_provenance(
+            &features,
+            required_index,
+            required_tag,
+            required_stage,
+            &provider_infos,
+        );
 
         hb_ot_map_t {
             found_script: self.found_script,
@@ -410,6 +572,9 @@ impl<'a> hb_ot_map_builder_t<'a> {
             stages,
             feature_variations: self.face.ot_tables.feature_variations,
             capacity_loss,
+            requests: core::mem::take(&mut self.requests),
+            default_features,
+            provenance,
         }
     }
 
@@ -533,8 +698,18 @@ impl<'a> hb_ot_map_builder_t<'a> {
                 feature_infos[j] = feature_infos[i];
             } else {
                 if feature_infos[i].flags & F_GLOBAL != 0 {
-                    feature_infos[j].flags |= F_GLOBAL;
-                    feature_infos[j].max_value = feature_infos[i].max_value;
+                    if feature_infos[i].flags & F_SCRIPT_OVERRIDE != 0
+                        && feature_infos[i].flags & F_REQUIRED_ALWAYS == 0
+                    {
+                        feature_infos[j].has_range = false;
+                    }
+                    if feature_infos[j].has_range {
+                        feature_infos[j].max_value =
+                            feature_infos[j].max_value.max(feature_infos[i].max_value);
+                    } else {
+                        feature_infos[j].flags |= F_GLOBAL;
+                        feature_infos[j].max_value = feature_infos[i].max_value;
+                    }
                     feature_infos[j].default_value = feature_infos[i].default_value;
                 } else {
                     if feature_infos[j].flags & F_GLOBAL != 0 {
@@ -544,7 +719,12 @@ impl<'a> hb_ot_map_builder_t<'a> {
                         feature_infos[j].max_value.max(feature_infos[i].max_value);
                     // Inherit default_value from j
                 }
-                let flags = feature_infos[i].flags & F_HAS_FALLBACK;
+                feature_infos[j].has_range |= feature_infos[i].has_range;
+                if feature_infos[j].has_range {
+                    feature_infos[j].flags &= !F_GLOBAL;
+                }
+                let flags = feature_infos[i].flags
+                    & (F_HAS_FALLBACK | F_OPTIONAL | F_REQUIRED | F_REQUIRED_ALWAYS);
                 feature_infos[j].flags |= flags;
                 feature_infos[j].stage[0] =
                     feature_infos[j].stage[0].min(feature_infos[i].stage[0]);
@@ -561,6 +741,7 @@ impl<'a> hb_ot_map_builder_t<'a> {
         map_features: &[feature_map_t],
         required_feature_index: [Option<u16>; 2],
         required_feature_stage: [usize; 2],
+        provider_infos: &[feature_info_t],
     ) -> ([Vec<lookup_map_t>; 2], [Vec<StageMap>; 2]) {
         let mut map_lookups = [Vec::new(), Vec::new()];
         let mut map_stages = [Vec::new(), Vec::new()];
@@ -586,6 +767,29 @@ impl<'a> hb_ot_map_builder_t<'a> {
                             false,
                             false,
                         );
+                    }
+                }
+
+                // Script-required registrations remain a separate enabled
+                // contribution, just like the selected LangSys requirement.
+                for info in provider_infos
+                    .iter()
+                    .filter(|info| info.flags & F_REQUIRED_ALWAYS != 0)
+                {
+                    if info.stage[table_index] == stage {
+                        if let Some(index) = self.feature_indices(info)[table_index] {
+                            self.add_lookups(
+                                &mut map_lookups[table_index],
+                                table_index,
+                                index,
+                                variation_index,
+                                GLOBAL_BIT_MASK,
+                                info.flags & F_MANUAL_ZWNJ == 0,
+                                info.flags & F_MANUAL_ZWJ == 0,
+                                false,
+                                info.flags & F_PER_SYLLABLE != 0,
+                            );
+                        }
                     }
                 }
 
@@ -647,6 +851,92 @@ impl<'a> hb_ot_map_builder_t<'a> {
         (map_lookups, map_stages)
     }
 
+    fn collect_provenance(
+        &self,
+        features: &[feature_map_t],
+        required_index: [Option<u16>; 2],
+        required_tag: [Option<hb_tag_t>; 2],
+        required_stage: [usize; 2],
+        providers: &[feature_info_t],
+    ) -> [Vec<LookupFeature>; 2] {
+        let mut result = [Vec::new(), Vec::new()];
+        for table in TableIndex::iter() {
+            if let (Some(index), Some(tag)) = (required_index[table], required_tag[table]) {
+                result[table].push(LookupFeature {
+                    tag,
+                    stage: required_stage[table],
+                    role: FeatureRole::Required,
+                    source: FeatureSource::LanguageSystem,
+                    mask: GLOBAL_BIT_MASK,
+                    lookups: self.feature_lookups(table, index),
+                    fixed: true,
+                });
+            }
+            for info in providers
+                .iter()
+                .filter(|info| info.flags & F_REQUIRED_ALWAYS != 0)
+            {
+                if let Some(index) = self.feature_indices(info)[table] {
+                    result[table].push(LookupFeature {
+                        tag: info.tag,
+                        stage: info.stage[table],
+                        role: FeatureRole::Required,
+                        source: FeatureSource::Script,
+                        mask: GLOBAL_BIT_MASK,
+                        lookups: self.feature_lookups(table, index),
+                        fixed: true,
+                    });
+                }
+            }
+            for feature in features {
+                if let Some(index) = feature.index[table] {
+                    let required = required_tag[table] == Some(feature.tag)
+                        || providers
+                            .iter()
+                            .any(|info| info.tag == feature.tag && info.flags & F_REQUIRED != 0);
+                    let role = if required {
+                        FeatureRole::Required
+                    } else if providers
+                        .iter()
+                        .any(|info| info.tag == feature.tag && info.flags & F_OPTIONAL != 0)
+                    {
+                        FeatureRole::Optional
+                    } else {
+                        FeatureRole::Unclassified
+                    };
+                    result[table].push(LookupFeature {
+                        tag: feature.tag,
+                        stage: feature.stage[table],
+                        role,
+                        source: FeatureSource::Provider,
+                        mask: feature.mask,
+                        lookups: self.feature_lookups(table, index),
+                        fixed: false,
+                    });
+                }
+            }
+        }
+        result
+    }
+
+    fn feature_lookups(&self, side: TableIndex, index: u16) -> Vec<u16> {
+        let Some(table) = self.face.layout_table(side) else {
+            return Vec::new();
+        };
+        let variation = self.face.ot_tables.feature_variations[side as usize];
+        let feature = variation
+            .and_then(|variation| table.feature_substitution(variation, index))
+            .or_else(|| table.feature(index));
+        feature.map_or_else(Vec::new, |feature| {
+            feature
+                .lookup_list_indices()
+                .iter()
+                .map(|index| index.get())
+                .filter(|index| *index < table.lookup_count())
+                .collect()
+        })
+    }
+
     fn add_lookups(
         &self,
         lookups: &mut Vec<lookup_map_t>,
@@ -690,3 +980,7 @@ impl<'a> hb_ot_map_builder_t<'a> {
 #[cfg(test)]
 #[path = "ot_map_completion_tests.rs"]
 mod completion_tests;
+
+#[cfg(test)]
+#[path = "feature_origin_tests.rs"]
+mod feature_origin_tests;

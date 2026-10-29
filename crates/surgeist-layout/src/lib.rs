@@ -84,6 +84,8 @@
 //! explicit expansion of actual retained U+0020 slots during justification.
 //! [`TextJustification::InterWord`] consumes Text-qualified separators and exact
 //! alignment feedback, including actual tab response and unexpandable fallback.
+//! [`TextJustification::InterCharacter`] uses the same allocator over Text-qualified
+//! visual character boundaries, retaining protected/constrained provider geometry.
 //! [`TextJustification::None`]
 //! adds no expansion. Text owns line-edge and trailing-space decisions.
 //! Other Text orientations return a precise unsupported error.

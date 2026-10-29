@@ -451,11 +451,7 @@ fn a_genuine_body_and_indication_mark_egc_failure_retains_both_ordered_pieces() 
         offer(&prepared, 3),
         None,
     );
-    let error = prepared
-        .select(input)
-        .unwrap()
-        .finalize(SpacingAllocations::None)
-        .unwrap_err();
+    let error = prepared.select(input).unwrap_err();
     assert_eq!(
         presentation(supplier(&error, 9999)),
         [
@@ -720,15 +716,14 @@ fn two_distinct_indications_sharing_one_real_mark_egc_keep_both_local_ranges_and
     let continuation = first
         .hyphenation_continuation()
         .expect("actual LogicalAfter has receiving-line custody");
-    let selected = prepared
+    let error = prepared
         .select(through_offer(
             &prepared,
             first_offer.view().boundary(),
             second_offer,
             Some(continuation),
         ))
-        .unwrap();
-    let error = selected.finalize(SpacingAllocations::None).unwrap_err();
+        .unwrap_err();
     assert_eq!(
         presentation(supplier(&error, 9999)),
         [

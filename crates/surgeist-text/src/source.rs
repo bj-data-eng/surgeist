@@ -158,6 +158,7 @@ fn validate_boxes(source: &Source) -> Result<()> {
         range::validate_index(source.text(), box_.index, "inline box index")?;
         validate_inline_box_size(box_.size)?;
         validate_inline_box_vertical_align(box_.vertical_align)?;
+        validate_atomic_tracking(box_.letter_spacing)?;
         if !inline_box_ids.insert(box_.id) {
             return Err(Error::new(
                 ErrorCode::InvalidStyle,
@@ -196,6 +197,21 @@ fn validate_inline_box_dimension(value: f64, field: &'static str) -> Result<()> 
 fn validate_inline_box_vertical_align(vertical_align: VerticalAlign) -> Result<()> {
     if let VerticalAlign::Shift(shift) = vertical_align {
         validate_baseline_shift(shift.get())?;
+    }
+    Ok(())
+}
+
+fn validate_atomic_tracking(value: f64) -> Result<()> {
+    if !value.is_finite() {
+        return Err(Error::new(
+            ErrorCode::InvalidStyle,
+            "atomic letter spacing must be finite",
+        )
+        .with_detail(ErrorDetail::InvalidNumericField {
+            field: "atomic letter spacing",
+            value,
+            requirement: NumericRequirement::Finite,
+        }));
     }
     Ok(())
 }
@@ -330,6 +346,7 @@ pub struct InlineBox {
     pub(crate) index: usize,
     pub(crate) size: Size,
     pub(crate) vertical_align: VerticalAlign,
+    pub(crate) letter_spacing: f64,
 }
 
 impl InlineBox {
@@ -341,7 +358,20 @@ impl InlineBox {
             index,
             size,
             vertical_align: VerticalAlign::Baseline,
+            letter_spacing: 0.0,
         }
+    }
+
+    /// Capture this occurrence's resolved exterior full tracking value.
+    pub fn try_with_letter_spacing(mut self, value: f64) -> Result<Self> {
+        validate_atomic_tracking(value)?;
+        self.letter_spacing = value;
+        Ok(self)
+    }
+
+    #[must_use]
+    pub const fn letter_spacing(self) -> f64 {
+        self.letter_spacing
     }
 
     #[must_use]

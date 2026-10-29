@@ -149,8 +149,10 @@ pub fn apply_layout_table<T: LayoutTable>(
     table: Option<&T>,
 ) {
     let mut ctx = OT::hb_ot_apply_context_t::new(T::INDEX, face, buffer);
+    ctx.component_map = Some(&plan.ot_map);
 
     for (stage_index, stage) in plan.ot_map.stages(T::INDEX).iter().enumerate() {
+        ctx.component_stage = stage_index;
         if let Some(table) = table {
             for lookup_map in plan.ot_map.stage_lookups(T::INDEX, stage_index) {
                 let Some(lookup) = table.get_lookup(lookup_map.index) else {

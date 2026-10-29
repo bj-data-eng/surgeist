@@ -311,34 +311,93 @@ fn finalized_prefix_provider_groups_survive_actual_resource_instance_and_plan_ca
 }
 #[test]
 fn finalized_prefix_optional_unit_failure_does_not_poison_other_actual_queries() {
-    // Real eligible A/B/acute glyphs have authored zero advances. B+acute is
-    // one semantic grapheme, but distinct font sizes split the provider runs. Its
-    // two positive spacing contributions overflow only the optional unit query,
-    // while the preceding negative contribution keeps the complete line finite.
+    // The actual atomic cancels B's ordinary advance before an empty inline's
+    // Start/End edges inside B+acute contribute EPSILON and zero. Every required
+    // whole-line and endpoint-only fold preserves those contributions. Folding
+    // B+acute independently instead loses EPSILON after B's 12.5 advance, so
+    // only queries requiring that optional shared-unit contribution must fail.
+    // In-flow atomics split processed graphemes; physical inline endpoints do not.
+    const TEXT_ADVANCE: f64 = 12.5;
+    const EPSILON: f64 = 1.0 / 18_014_398_509_481_984.0; // 2^-54.
     let mut source = Source::new("AB\u{301}");
-    let mut leading = style();
-    leading.letter_spacing = -f64::MAX;
-    let mut joined = style();
-    joined.letter_spacing = f64::MAX;
-    let mut last = joined.clone();
+    let mut last = style();
     last.size = 13.0;
     last.brush = Brush::color(1.0, 0.0, 0.0, 1.0);
-    source.span(Range::new(0, 1), leading);
-    source.span(Range::new(1, 2), joined);
     source.span(Range::new(2, 3), last);
-    let analyzed = AnalyzedSource::new(
-        source,
-        style(),
+    source.inline_box(InlineBox::new(
+        Id::from_u64(1_566_701),
+        InlineBoxKind::InFlow,
+        1,
+        Size::new(0.0, 0.0),
+    ));
+    let analyzed = AnalyzedSource::from_paragraph(
+        ParagraphInput {
+            source: source.clone(),
+            base_style: style(),
+            paragraph_strut: ParagraphStrut::DefaultFont,
+            terminal_edge: ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: ParagraphBaseDirection::LeftToRight,
+            origins: vec![ParagraphOrigin {
+                text_node: None,
+                source,
+                local: Range::new(0, 3),
+                aggregate: Range::new(0, 3),
+                kind: ParagraphOriginKind::Authored,
+            }],
+            connections: vec![],
+            controls: vec![
+                ParagraphControl {
+                    at: 2,
+                    kind: ParagraphControlKind::InlineBoundaryStart,
+                },
+                ParagraphControl {
+                    at: 2,
+                    kind: ParagraphControlKind::InlineBoundaryEnd,
+                },
+            ],
+            // This native fixture captures one flat Word-wrapping paragraph.
+            // Both sides of its actual atomic occurrence share that ancestor.
+            boundary_policies: [
+                ParagraphBoundaryDefinition::AtomicBefore(0),
+                ParagraphBoundaryDefinition::AtomicAfter(0),
+            ]
+            .into_iter()
+            .map(|definition| ParagraphBoundaryPolicy {
+                definition,
+                preceding_wrap: Wrap::Word,
+                following_wrap: Wrap::Word,
+                ancestor_wrap: Wrap::Word,
+            })
+            .collect(),
+            replacements: vec![],
+            anchor_order: vec![
+                ParagraphAnchor {
+                    item: ParagraphAnchorItem::Atomic(0),
+                    affinity: Affinity::After,
+                },
+                ParagraphAnchor {
+                    item: ParagraphAnchorItem::Control(0),
+                    affinity: Affinity::After,
+                },
+                ParagraphAnchor {
+                    item: ParagraphAnchorItem::Control(1),
+                    affinity: Affinity::After,
+                },
+            ],
+        },
         crate::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
+    let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::Word);
     let mut system = System::new(SystemOptions {
         font_catalogue: FontCatalogueMode::RegisteredOnly,
     })
     .unwrap();
     let font = crate::shaping_test_fonts::mark_ahem();
     let mut hmtx = crate::test_fonts::table(&font, *b"hmtx").to_vec();
-    for glyph in [35, 36, 100] {
+    for glyph in [35, 100] {
         hmtx[glyph * 4..glyph * 4 + 2].copy_from_slice(&0_u16.to_be_bytes());
     }
     system
@@ -350,37 +409,195 @@ fn finalized_prefix_optional_unit_failure_does_not_poison_other_actual_queries()
     let prepared = system
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap();
-    let line = whole(&prepared);
+    assert_eq!(prepared.inner.analyzed.analysis.graphemes, [0..1, 1..3]);
+    assert!(
+        prepared
+            .inner
+            .styles
+            .iter()
+            .all(|row| row.style.letter_spacing == 0.0)
+    );
+    let atomic = prepared.atomic_views().next().unwrap().handle();
+    let controls = prepared
+        .control_views()
+        .map(|control| control.handle())
+        .collect::<Vec<_>>();
+    assert_eq!(controls.len(), 2);
+    assert_eq!(
+        *controls[0].view().kind(),
+        ParagraphControlKind::InlineBoundaryStart
+    );
+    assert_eq!(
+        *controls[1].view().kind(),
+        ParagraphControlKind::InlineBoundaryEnd
+    );
+    assert_eq!(atomic.view().original_box().index(), 1);
+    assert_eq!(atomic.view().original_box().letter_spacing(), 0.0);
+    let termination = prepared
+        .opportunity_views()
+        .find(|offer| offer.kind() == PreparedBreakKind::ParagraphEnd)
+        .unwrap()
+        .handle();
+    let allocation = AtomicLineAllocation::InFlow {
+        flow: AtomicFlowAllocation {
+            advance: -TEXT_ADVANCE,
+            before_baseline: 0.0,
+            after_baseline: 0.0,
+            occupied_start: 0.0,
+            occupied_end: 0.0,
+        },
+        box_geometry: AtomicBoxAllocation {
+            border: Rect::new(0.0, 0.0, 0.0, 0.0),
+            content: Rect::new(0.0, 0.0, 0.0, 0.0),
+            baseline: 0.0,
+        },
+        alignment: LineBoxAlignment::Baseline,
+    };
+    let selected = prepared
+        .select(LineSelectionRequest {
+            boundary_context: vec![],
+            incoming: None,
+            start: prepared.boundary_views().next().unwrap().handle(),
+            end: termination.view().boundary(),
+            termination: PreparedTermination::Ordinary(termination),
+            participants: prepared.participants().collect(),
+            alternative: None,
+            context: LineContext {
+                alignment_insets: LineAlignmentInsets::ZERO,
+                formatted_line: FormattedLineContext::default(),
+                base_direction: ParagraphBaseDirection::LeftToRight,
+                line_box_direction: LineBoxDirection::LeftToRight,
+                orientation: LineOrientation::Horizontal,
+                start: LineStart::Paragraph,
+                end: LineEnd::Paragraph,
+                available_inline: None,
+                indent: 0.0,
+                alignment: Alignment::Start,
+                tabs: TabContext::NoTabs,
+                spacing: SpacingPolicy::Spaces,
+            },
+            atomics: vec![AtomicAllocation {
+                occurrence: atomic.clone(),
+                allocation,
+            }],
+            controls: controls
+                .iter()
+                .cloned()
+                .zip([EPSILON, 0.0])
+                .map(|(occurrence, advance)| ControlAllocation {
+                    occurrence,
+                    strut: None,
+                    boundary: Some(InlineBoundaryAllocation::try_new(advance).unwrap()),
+                })
+                .collect(),
+            line_box_struts: vec![],
+            line_strut: None,
+        })
+        .unwrap();
+    assert_eq!(selected.inner.presentation.analysis.graphemes, [0..1, 1..3]);
+    let line = selected.finalize(SpacingAllocations::None).unwrap();
     assert_eq!(
         line.run_views()
-            .flat_map(|r| r
-                .glyphs()
-                .map(|g| (g.id(), g.advance()))
-                .collect::<Vec<_>>())
+            .flat_map(|run| {
+                run.glyphs()
+                    .map(|glyph| (glyph.range(), glyph.id(), glyph.advance()))
+                    .collect::<Vec<_>>()
+            })
             .collect::<Vec<_>>(),
-        [(35, 0.0), (36, 0.0), (100, 0.0)]
+        [
+            (Range::new(0, 1), 35, 0.0),
+            (Range::new(1, 2), 36, 12.5_f32),
+            (Range::new(2, 3), 100, 0.0),
+        ]
     );
-    assert!(
-        line.inner
-            .data
-            .prefix
-            .groups
-            .iter()
-            .any(|group| group.source == Range::new(1, 3))
-    );
-    assert_eq!(line.prefix_at(&seam(&prepared, 0)).unwrap().advance(), 0.0);
     assert_eq!(
-        line.prefix_at(&seam(&prepared, 1)).unwrap().advance(),
-        -f64::MAX
+        line.inner
+            .selected
+            .basis
+            .shaped
+            .items
+            .iter()
+            .map(|item| match *item {
+                ShapedItem::TextCluster(index) => {
+                    let atoms = &line.inner.selected.basis.shaped.clusters[index].atoms;
+                    (0, atoms.start, atoms.end)
+                }
+                ShapedItem::InlineBox { occurrence, .. } => (1, occurrence, occurrence),
+                ShapedItem::Anchor { unit } => {
+                    let PresentationUnitKind::Control { occurrence } =
+                        selected.inner.presentation.units[unit].kind
+                    else {
+                        panic!("expected an actual inline endpoint")
+                    };
+                    (2, occurrence, occurrence)
+                }
+            })
+            .collect::<Vec<_>>(),
+        [
+            (0, 0, 1),
+            (1, 0, 0),
+            (0, 1, 2),
+            (2, 0, 0),
+            (2, 1, 1),
+            (0, 2, 3)
+        ]
     );
+    let group = line
+        .inner
+        .data
+        .prefix
+        .groups
+        .iter()
+        .find(|group| group.source == Range::new(1, 3))
+        .unwrap();
+    assert_eq!(group.atoms, 1..3);
+    assert_eq!(group.items, 2..6);
+    assert_eq!(
+        selected.inner.presentation.projection.atoms[group.atoms.clone()]
+            .iter()
+            .map(|atom| atom.source)
+            .collect::<Vec<_>>(),
+        [Range::new(1, 2), Range::new(2, 3)]
+    );
+    assert_eq!(line.atomic_slots().next().unwrap().allocation, allocation);
+    assert_eq!(
+        selected
+            .request()
+            .controls
+            .iter()
+            .map(|control| control.boundary.unwrap().advance())
+            .collect::<Vec<_>>(),
+        [EPSILON, 0.0]
+    );
+    assert_eq!(line.feedback().advance, EPSILON);
+    let before = TextSeam::BeforeParticipant(PreparedParticipant::Atomic(atomic.clone()));
+    let after = TextSeam::AfterParticipant(PreparedParticipant::Atomic(atomic));
+    for (query, expected) in [
+        (seam(&prepared, 0), 0.0),
+        (before.clone(), 0.0),
+        (after.clone(), -TEXT_ADVANCE),
+        (seam(&prepared, 3), EPSILON),
+    ] {
+        assert_eq!(line.prefix_at(&query).unwrap().advance(), expected);
+    }
     assert!(matches!(
         line.prefix_at(&seam(&prepared, 2)).unwrap_err().detail(),
         Some(ErrorDetail::InvalidTextNumeric {
-            category: TextNumericError::NonFinite,
-            ..
-        })
+            field: "shared unit advance",
+            phase: TextNumericPhase::Finalization,
+            category: TextNumericError::NonZeroLost,
+            value,
+        }) if *value == EPSILON
     ));
-    assert!(line.prefix_at(&seam(&prepared, 3)).is_ok());
+    for (query, expected) in [
+        (seam(&prepared, 0), 0.0),
+        (before, 0.0),
+        (after, -TEXT_ADVANCE),
+        (seam(&prepared, 3), EPSILON),
+    ] {
+        assert_eq!(line.prefix_at(&query).unwrap().advance(), expected);
+    }
+    assert_eq!(line.feedback().advance, EPSILON);
 }
 
 #[test]

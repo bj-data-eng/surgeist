@@ -59,7 +59,7 @@ pub(crate) enum PlacementMetricPolicy {
     StandaloneStacked,
 }
 
-fn qualify_word_half(
+fn qualify_spacing_displacement(
     placed: &PlacedLine,
     before: crate::Point,
     after: crate::Point,
@@ -67,10 +67,10 @@ fn qualify_word_half(
 ) -> Result<()> {
     let before = crate::layout::inline_coordinate(placed.orientation, before);
     let after = crate::layout::inline_coordinate(placed.orientation, after);
-    finite("placed word spacing half", after)?;
+    finite("placed spacing displacement", after)?;
     if half != 0.0 && before == after {
         return Err(crate::error::text_numeric_error(
-            "placed word spacing half",
+            "placed spacing displacement",
             crate::TextNumericPhase::Placement,
             crate::TextNumericError::NonZeroLost,
             half,
@@ -336,17 +336,23 @@ pub(crate) fn place_request(
                         f64::from(glyph.glyph.x),
                         f64::from(glyph.glyph.y),
                     );
-                    qualify_word_half(&placed, before, point, glyph.word_half)?;
+                    qualify_spacing_displacement(&placed, before, point, glyph.word_half)?;
                 }
             }
         }
-        for unit in &placed.finalized.data.word_anchors {
+        for unit in placed
+            .finalized
+            .data
+            .word_anchors
+            .iter()
+            .chain(&placed.finalized.data.character_anchors)
+        {
             let before = crate::layout::line_point(&placed, unit.base);
             let after = crate::layout::line_point(
                 &placed,
                 crate::Point::new(unit.base.x + unit.half, unit.base.y),
             );
-            qualify_word_half(&placed, before, after, unit.half)?;
+            qualify_spacing_displacement(&placed, before, after, unit.half)?;
         }
         let metric_rect = crate::layout::line_rect(
             &placed,

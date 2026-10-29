@@ -156,8 +156,8 @@ fn real_native_and_absent_records_keep_odd_half_origins_and_ordinary_positions()
                     old_positions(&ordinary(font, "A", Direction::TopToBottom, &[])),
                     old_positions(&old)
                 );
-                assert_eq!(size_of::<crate::GlyphInfo>(), 28);
-                assert_eq!(size_of::<crate::GlyphPosition>(), 28);
+                assert_eq!(size_of::<crate::GlyphInfo>(), 32);
+                assert_eq!(size_of::<crate::GlyphPosition>(), 32);
             });
         }
     }
@@ -932,3 +932,6 @@ mod fallback_origin;
 
 #[path = "vertical_reference_tests.rs"]
 mod reference_tests;
+
+#[path = "components_tests.rs"]
+mod components;

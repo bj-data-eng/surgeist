@@ -283,7 +283,7 @@ fn override_features(planner: &mut hb_ot_shape_planner_t) {
     // typographical correctness.", hence in overrides...
     planner
         .ot_map
-        .enable_feature(hb_tag_t::new(b"clig"), F_NONE, 1);
+        .enable_feature(hb_tag_t::new(b"clig"), F_REQUIRED | F_REQUIRED_ALWAYS, 1);
 
     planner.ot_map.disable_feature(hb_tag_t::new(b"liga"));
 }

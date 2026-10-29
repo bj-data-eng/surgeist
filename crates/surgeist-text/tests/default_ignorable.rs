@@ -28,20 +28,28 @@ struct Glyph {
 }
 
 #[derive(Debug)]
+struct RunEvidence {
+    index: usize,
+    source: text::Range,
+    glyphs: Vec<u32>,
+}
+
+#[derive(Debug)]
 struct Observation {
     glyphs: Vec<Glyph>,
+    runs: Vec<RunEvidence>,
     units: Vec<(text::Range, f64)>,
     advance: f64,
     ink: text::LineOutlineInk,
     line_height: f64,
 }
 
-fn observe(
+fn try_observe(
     bytes: &[u8],
     value: &str,
     spacing: f64,
     direction: text::ParagraphBaseDirection,
-) -> Observation {
+) -> text::Result<Observation> {
     let source = text::Source::new(value);
     let end = source.text().len();
     let analyzed = text::AnalyzedSource::from_paragraph(
@@ -75,16 +83,12 @@ fn observe(
             anchor_order: vec![],
         },
         text::AnalysisTypography::HorizontalComposition,
-    )
-    .unwrap();
+    )?;
     let mut system = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.to_vec()).unwrap();
-    let prepared = system
-        .prepare(&analyzed, text::PreparationOptions::default())
-        .unwrap();
+    })?;
+    system.register_fonts(bytes.to_vec())?;
+    let prepared = system.prepare(&analyzed, text::PreparationOptions::default())?;
     let units = prepared
         .unit_views()
         .map(|unit| (unit.source_range(), unit.advance()))
@@ -128,10 +132,8 @@ fn observe(
                 tabs: text::TabContext::NoTabs,
                 spacing: text::SpacingPolicy::Spaces,
             },
-        })
-        .unwrap()
-        .finalize(text::SpacingAllocations::None)
-        .unwrap();
+        })?
+        .finalize(text::SpacingAllocations::None)?;
     let feedback = line.feedback();
     let mut glyphs = Vec::new();
     for run in line.run_views() {
@@ -141,11 +143,9 @@ fn observe(
             "must use the actual registered derivative"
         );
         assert_eq!(run.face().index(), 0);
-        let instance = run.effective_instance().unwrap();
+        let instance = run.effective_instance()?;
         for glyph in run.glyphs() {
-            let outline = instance
-                .glyph_outline(glyph.id(), run.face().catalogue_identity())
-                .unwrap();
+            let outline = instance.glyph_outline(glyph.id(), run.face().catalogue_identity())?;
             glyphs.push(Glyph {
                 id: glyph.id(),
                 advance: glyph.advance(),
@@ -160,7 +160,7 @@ fn observe(
             });
         }
     }
-    let ink = line.outline_ink().unwrap();
+    let ink = line.outline_ink()?;
     let layout = text::Layout::from_finalized_lines(text::PlacementRequest {
         prepared,
         coverage: text::PlacementCoverage::WholeParagraph,
@@ -173,8 +173,17 @@ fn observe(
             orientation: text::LineOrientation::Horizontal,
             atomics: vec![],
         })],
-    })
-    .unwrap();
+    })?;
+    // These public ordinals identify actual retained shaped runs, including
+    // source-only runs before painted content. They are not paint-list indices.
+    let runs = layout
+        .run_views()
+        .map(|run| RunEvidence {
+            index: run.run_index(),
+            source: run.range(),
+            glyphs: run.glyphs().map(|glyph| glyph.id()).collect(),
+        })
+        .collect();
     let utf16: Vec<_> = value.encode_utf16().collect();
     assert_eq!(layout.source().text().code_units(), utf16);
     let positions: Vec<_> = layout.positions().collect();
@@ -186,16 +195,26 @@ fn observe(
         .iter()
         .find(|position| position.source_cursor() == text::Cursor::new(end, text::Affinity::Before))
         .unwrap();
-    let selection = layout.position_selection(before, after).unwrap();
+    let selection = layout.position_selection(before, after)?;
     assert_eq!(selection.source_text().code_units(), utf16);
     assert_eq!(selection.plaintext().code_units(), utf16);
-    Observation {
+    Ok(Observation {
         glyphs,
+        runs,
         units,
         advance: feedback.advance,
         ink,
         line_height: feedback.line_height,
-    }
+    })
+}
+
+fn observe(
+    bytes: &[u8],
+    value: &str,
+    spacing: f64,
+    direction: text::ParagraphBaseDirection,
+) -> Observation {
+    try_observe(bytes, value, spacing, direction).unwrap()
 }
 
 fn ids_and_advances(value: &Observation) -> Vec<(u32, f32)> {
@@ -292,7 +311,7 @@ fn check_ab(
         .first()
         .map_or(0.0, |glyph| glyph.origin_x + glyph.pen);
     if ids_and_advances(value) != [(35, 10.0), (36, 20.0)]
-        || value.advance != 36.0
+        || value.advance != 33.0
         || value.units != units
         || value
             .glyphs
@@ -302,7 +321,7 @@ fn check_ab(
             != [(0.0, 0.0, 0.0), (13.0, 0.0, 0.0)]
     {
         failures.push(format!(
-            "{label}: expected only A10/B20, final36, units {units:?}; got {value:?}"
+            "{label}: expected only A10/B20, final33, units {units:?}; got {value:?}"
         ));
     }
 }
@@ -344,7 +363,7 @@ fn residual(scalar: char, mapped: bool) {
         let units = vec![
             (text::Range::new(0, 1), 13.0),
             (text::Range::new(1, end), 0.0),
-            (text::Range::new(end, end + 1), 23.0),
+            (text::Range::new(end, end + 1), 20.0),
         ];
         check_ab(&value, &units, &format!("middle {label}"), &mut failures);
         if scalar == DI {
@@ -354,14 +373,14 @@ fn residual(scalar: char, mapped: bool) {
                     vec![
                         (text::Range::new(0, 1), 0.0),
                         (text::Range::new(1, 2), 13.0),
-                        (text::Range::new(2, 3), 23.0),
+                        (text::Range::new(2, 3), 20.0),
                     ],
                 ),
                 (
                     format!("AB{DI}"),
                     vec![
                         (text::Range::new(0, 1), 13.0),
-                        (text::Range::new(1, 2), 23.0),
+                        (text::Range::new(1, 2), 20.0),
                         (text::Range::new(2, 3), 0.0),
                     ],
                 ),
@@ -426,7 +445,7 @@ fn deletion(action: Action) {
                 vec![
                     (text::Range::new(0, 1), 13.0),
                     (text::Range::new(1, 2), 0.0),
-                    (text::Range::new(2, 3), 23.0),
+                    (text::Range::new(2, 3), 20.0),
                 ],
             ),
             (
@@ -434,14 +453,14 @@ fn deletion(action: Action) {
                 vec![
                     (text::Range::new(0, 1), 0.0),
                     (text::Range::new(1, 2), 13.0),
-                    (text::Range::new(2, 3), 23.0),
+                    (text::Range::new(2, 3), 20.0),
                 ],
             ),
             (
                 format!("AB{DI}"),
                 vec![
                     (text::Range::new(0, 1), 13.0),
-                    (text::Range::new(1, 2), 23.0),
+                    (text::Range::new(1, 2), 20.0),
                     (text::Range::new(2, 3), 0.0),
                 ],
             ),
@@ -479,8 +498,8 @@ fn partial_descendant_deletion_preserves_surviving_normal_output() {
     assert_eq!(native_glyphs(&bytes, &DI.to_string()), [(58, 1500)]);
     let value = observe(&bytes, &DI.to_string(), 3.0, LTR);
     assert_eq!(ids_and_advances(&value), [(58, 15.0)]);
-    assert_eq!(value.advance, 18.0);
-    assert_eq!(value.units, [(text::Range::new(0, 1), 18.0)]);
+    assert_eq!(value.advance, 15.0);
+    assert_eq!(value.units, [(text::Range::new(0, 1), 15.0)]);
     assert!(value.glyphs[0].ink);
 }
 
@@ -508,8 +527,8 @@ fn skipped_residual_di_cannot_acquire_joint_output_advance_or_spacing() {
         "skip differs from consuming D: {value:?}"
     );
     assert_eq!(
-        value.advance, 21.0,
-        "ordinary A and B own normal joint allocation: {value:?}"
+        value.advance, 15.0,
+        "real required ccmp protects the internal A/B relation: {value:?}"
     );
     assert_eq!(
         value
@@ -572,11 +591,11 @@ fn unsupported_variation_sequences_keep_the_base_without_selector_output() {
             let source = format!("{base}\u{e0100}");
             let value = observe(&bytes, &source, 3.0, direction);
             let expected_units = [
-                (text::Range::new(0, 1), f64::from(advance) + 3.0),
+                (text::Range::new(0, 1), f64::from(advance)),
                 (text::Range::new(1, 3), 0.0),
             ];
             if ids_and_advances(&value) != [(id, advance)]
-                || value.advance != f64::from(advance) + 3.0
+                || value.advance != f64::from(advance)
                 || value.units != expected_units
             {
                 failures.push(format!("unsupported UVS supported-table={supported} mapped-selector={mapped_selector} {source:?} {direction:?}: expected base{id}/{advance}, units {expected_units:?}; got {value:?}"));
@@ -643,14 +662,14 @@ fn mongolian_selectors_without_an_actual_action_add_no_output_or_spacing() {
             let source = format!("\u{1820}{selector}");
             let value = observe(&bytes, &source, 3.0, direction);
             let expected_units = [
-                (text::Range::new(0, 1), 13.0),
+                (text::Range::new(0, 1), 10.0),
                 (text::Range::new(1, 2), 0.0),
             ];
             if ids_and_advances(&value) != [(35, 10.0)]
-                || value.advance != 13.0
+                || value.advance != 10.0
                 || value.units != expected_units
             {
-                failures.push(format!("unhandled Mongolian selector supported-table={supported} {source:?} {direction:?}: expected A10, final13, units {expected_units:?}; got {value:?}"));
+                failures.push(format!("unhandled Mongolian selector supported-table={supported} {source:?} {direction:?}: expected A10, final10, units {expected_units:?}; got {value:?}"));
             }
         }
     }
@@ -681,8 +700,8 @@ fn four_mapped_fillers_retain_their_actual_nonzero_blank_spacing_resource() {
         for direction in [LTR, RTL] {
             let value = observe(&bytes, &scalar.to_string(), 3.0, direction);
             assert_eq!(ids_and_advances(&value), [(3, 18.0)]);
-            assert_eq!(value.advance, 21.0);
-            assert_eq!(value.units, [(text::Range::new(0, 1), 21.0)]);
+            assert_eq!(value.advance, 18.0);
+            assert_eq!(value.units, [(text::Range::new(0, 1), 18.0)]);
             assert!(!value.glyphs[0].ink);
             assert_eq!(value.ink, text::LineOutlineInk::Empty);
         }
@@ -731,13 +750,13 @@ fn context_only_di_changes_its_neighbor_but_retains_zero_independent_allocation(
         let expected_units = [
             (text::Range::new(0, 1), 18.0),
             (text::Range::new(1, 2), 0.0),
-            (text::Range::new(2, 3), 23.0),
+            (text::Range::new(2, 3), 20.0),
         ];
         if ids_and_advances(&value) != [(58, 15.0), (36, 20.0)]
-            || value.advance != 41.0
+            || value.advance != 38.0
             || value.units != expected_units
         {
-            failures.push(format!("context-only DI {direction:?}: expected R15/B20, final41, units {expected_units:?}; got {value:?}"));
+            failures.push(format!("context-only DI {direction:?}: expected R15/B20, final38, units {expected_units:?}; got {value:?}"));
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
@@ -757,24 +776,77 @@ fn repeated_di_after_a_supplementary_residual_keeps_distinct_normal_and_deleted_
         native_glyphs(&bytes, &source),
         [(277, 2500), (35, 1000), (58, 1500), (36, 2000)]
     );
-    let mut failures = Vec::new();
     for direction in [LTR, RTL] {
-        let value = observe(&bytes, &source, 3.0, direction);
-        let expected_units = [
-            (text::Range::new(0, 2), 0.0),
-            (text::Range::new(2, 3), 13.0),
-            (text::Range::new(3, 4), 18.0),
-            (text::Range::new(4, 5), 23.0),
-            (text::Range::new(5, 6), 0.0),
-        ];
-        if ids_and_advances(&value) != [(35, 10.0), (58, 15.0), (36, 20.0)]
-            || value.advance != 54.0
-            || value.units != expected_units
-        {
-            failures.push(format!("distinct equal DI sources {direction:?}: expected A10/R15/B20, final54, units {expected_units:?}; got {value:?}"));
-        }
+        // Normal proves this actual replacement's participation, not a spacing
+        // profile for reserved U2065. Preserve its native neutral output first.
+        let value = observe(&bytes, &source, 0.0, direction);
+        assert_eq!(
+            ids_and_advances(&value),
+            [(35, 10.0), (58, 15.0), (36, 20.0)]
+        );
+        assert_eq!(value.advance, 45.0);
+        assert_eq!(value.line_height, 10.0);
+        assert_eq!(
+            value.units,
+            [
+                (text::Range::new(0, 2), 0.0),
+                (text::Range::new(2, 3), 10.0),
+                (text::Range::new(3, 4), 15.0),
+                (text::Range::new(4, 5), 20.0),
+                (text::Range::new(5, 6), 0.0),
+            ]
+        );
+        let error = try_observe(&bytes, &source, 3.0, direction).unwrap_err();
+        let Some(text::ErrorDetail::UnsupportedSpacing {
+            stage,
+            operation,
+            reason,
+            pieces,
+            contexts,
+            provider_atoms,
+            constraints,
+        }) = error.detail()
+        else {
+            panic!("{error:?}")
+        };
+        assert_eq!(*stage, text::SpacingStage::Preparation);
+        assert_eq!(*operation, text::SpacingOperation::AuthoredTracking);
+        assert_eq!(
+            *reason,
+            text::SpacingFailureReason::UnqualifiedWritingSystem
+        );
+        assert_eq!(
+            pieces.as_ref(),
+            [text::SpacingPiece::Source {
+                origin: 0,
+                local: text::Range::new(3, 4),
+                aggregate: text::Range::new(3, 4),
+            }]
+        );
+        assert_eq!(provider_atoms.as_ref(), std::slice::from_ref(&(2..3)));
+        assert!(constraints.is_empty());
+        assert_eq!(contexts.len(), 1);
+        assert_eq!(contexts[0].pieces.as_ref(), pieces.as_ref());
+        assert_eq!(contexts[0].locale, None);
+        assert_eq!(
+            contexts[0]
+                .candidates
+                .iter()
+                .map(|script| script.iso15924())
+                .collect::<Vec<_>>(),
+            [*b"Zzzz"]
+        );
+        assert!(contexts[0].writing_systems.is_empty());
+        assert!(contexts[0].resolved_scripts.is_empty());
+        assert_eq!(
+            (
+                contexts[0].letter_spacing_before,
+                contexts[0].letter_spacing_after
+            ),
+            (3.0, 3.0)
+        );
+        assert_eq!(value.advance, 45.0);
     }
-    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
 fn qualified_morx(action: font::MorxAction, with_gpos: bool) -> Vec<u8> {
@@ -859,38 +931,60 @@ fn morx_native_and_later_deletion_preserve_zero_di_allocation_in_both_positionin
                     &label,
                     &mut failures,
                 );
-                for (source, units) in [
+                // The final receipt deletes DI, but the AAT substitution
+                // path still has no complete independent-movement receipt for
+                // the surviving A/B boundary. Preserve native neutral output;
+                // material tracking must report that precise missing proof.
+                for (source, units, ranges) in [
                     (
                         format!("A{DI}B"),
                         vec![
-                            (text::Range::new(0, 1), 13.0),
+                            (text::Range::new(0, 1), 10.0),
                             (text::Range::new(1, 2), 0.0),
-                            (text::Range::new(2, 3), 23.0),
+                            (text::Range::new(2, 3), 20.0),
                         ],
+                        [text::Range::new(0, 1), text::Range::new(2, 3)],
                     ),
                     (
                         format!("{DI}AB"),
                         vec![
                             (text::Range::new(0, 1), 0.0),
-                            (text::Range::new(1, 2), 13.0),
-                            (text::Range::new(2, 3), 23.0),
+                            (text::Range::new(1, 2), 10.0),
+                            (text::Range::new(2, 3), 20.0),
                         ],
+                        [text::Range::new(1, 2), text::Range::new(2, 3)],
                     ),
                     (
                         format!("AB{DI}"),
                         vec![
-                            (text::Range::new(0, 1), 13.0),
-                            (text::Range::new(1, 2), 23.0),
+                            (text::Range::new(0, 1), 10.0),
+                            (text::Range::new(1, 2), 20.0),
                             (text::Range::new(2, 3), 0.0),
                         ],
+                        [text::Range::new(0, 1), text::Range::new(1, 2)],
                     ),
                 ] {
-                    check_ab(
-                        &observe(&bytes, &source, 3.0, direction),
-                        &units,
-                        &format!("{source:?} {label}"),
-                        &mut failures,
+                    let value = observe(&bytes, &source, 0.0, direction);
+                    assert_eq!(
+                        ids_and_advances(&value),
+                        [(35, 10.0), (36, 20.0)],
+                        "{source:?} {label}"
                     );
+                    assert_eq!(value.advance, 30.0, "{source:?} {label}");
+                    assert_eq!(value.units, units, "{source:?} {label}");
+                    assert_eq!(value.line_height, 10.0);
+                    let origin = value.glyphs[0].origin_x + value.glyphs[0].pen;
+                    assert_eq!(
+                        value
+                            .glyphs
+                            .iter()
+                            .map(|glyph| (glyph.origin_x + glyph.pen - origin, glyph.x, glyph.y))
+                            .collect::<Vec<_>>(),
+                        [(0.0, 0.0, 0.0), (10.0, 0.0, 0.0)],
+                        "{source:?} {label}"
+                    );
+                    unqualified_aat_boundary(&bytes, &source, direction, ranges, &value);
+                    assert_eq!(value.advance, 30.0);
                 }
             }
         }
@@ -918,14 +1012,14 @@ fn morx_current_and_marked_insertion_keep_normal_descendant_without_residual_anc
             for direction in [LTR, RTL] {
                 let value = observe(&bytes, &DI.to_string(), 3.0, direction);
                 if ids_and_advances(&value) != [(58, 15.0)]
-                    || value.advance != 18.0
-                    || value.units != [(text::Range::new(0, 1), 18.0)]
+                    || value.advance != 15.0
+                    || value.units != [(text::Range::new(0, 1), 15.0)]
                     || !value
                         .glyphs
                         .iter()
                         .all(|glyph| glyph.ink && glyph.range == text::Range::new(0, 1))
                 {
-                    failures.push(format!("insertion marked={marked} GPOS={with_gpos} {direction:?}: expected only normal R15, final18, source0..1/18; got {value:?}"));
+                    failures.push(format!("insertion marked={marked} GPOS={with_gpos} {direction:?}: expected only normal R15, final15, source0..1/15; got {value:?}"));
                 }
             }
         }
@@ -983,6 +1077,103 @@ fn morx_actual_di_component_consumption_preserves_real_joint_glyph_and_source() 
     }
 }
 
+fn unqualified_aat_boundary(
+    bytes: &[u8],
+    source: &str,
+    direction: text::ParagraphBaseDirection,
+    ranges: [text::Range; 2],
+    neutral: &Observation,
+) {
+    // The same source, direction, face, size and actual AAT tables determine
+    // itemization in both controls. Tracking changes no native feature here.
+    // In particular a source-only prefix can occupy an earlier shaped-run
+    // ordinal, so neither ordinal0 nor a paragraph-wide body is assumed.
+    let candidates = neutral
+        .runs
+        .iter()
+        .filter(|run| {
+            !run.glyphs.is_empty()
+                && run.source.start <= ranges[0].start
+                && run.source.end >= ranges[1].end
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        candidates.len(),
+        1,
+        "one actual neutral native run owns both A/B endpoints: {neutral:?}"
+    );
+    let actual = candidates[0];
+    // Each fixture is untransformed BMP source: this genuine run association
+    // maps one-to-one onto its original scalar invocation body.
+    let actual_body = actual.source.start..actual.source.end;
+    let error = try_observe(bytes, source, 3.0, direction).unwrap_err();
+    let Some(text::ErrorDetail::UnsupportedSpacing {
+        stage,
+        operation,
+        reason,
+        pieces,
+        contexts,
+        provider_atoms,
+        constraints,
+    }) = error.detail()
+    else {
+        panic!("{error:?}")
+    };
+    assert_eq!(*stage, text::SpacingStage::Preparation);
+    assert_eq!(*operation, text::SpacingOperation::AuthoredTracking);
+    assert_eq!(*reason, text::SpacingFailureReason::UnqualifiedProviderPath);
+    let expected = ranges.map(|range| text::SpacingPiece::Source {
+        origin: 0,
+        local: range,
+        aggregate: range,
+    });
+    assert_eq!(pieces.as_ref(), expected);
+    // These fixtures are BMP, so exact scalar invocation ordinals equal their
+    // independently supplied UTF-16 endpoint ranges; no DI hull is assigned.
+    assert_eq!(
+        provider_atoms.as_ref(),
+        ranges.map(|range| range.start..range.end)
+    );
+    assert_eq!(contexts.len(), 2);
+    for (context, piece) in contexts.iter().zip(expected) {
+        assert_eq!(context.pieces.as_ref(), std::slice::from_ref(&piece));
+        assert_eq!(context.locale, None);
+        assert_eq!(
+            context
+                .candidates
+                .iter()
+                .map(|script| script.iso15924())
+                .collect::<Vec<_>>(),
+            [*b"Latn"]
+        );
+        assert_eq!(
+            context
+                .resolved_scripts
+                .iter()
+                .map(|script| script.iso15924())
+                .collect::<Vec<_>>(),
+            [*b"Latn"]
+        );
+        assert!(context.writing_systems.is_empty());
+        assert_eq!(
+            (context.letter_spacing_before, context.letter_spacing_after),
+            (3.0, 3.0)
+        );
+    }
+    assert!(
+        constraints.iter().any(|constraint| {
+            constraint.kind
+                == text::SpacingConstraintKind::UnqualifiedProviderPath(
+                    surgeist_shaper::ComponentPath::AatSubstitution,
+                )
+                && constraint.run == actual.index
+                && constraint.components.as_ref() == std::slice::from_ref(&actual_body)
+                && constraint.provenance.is_empty()
+        }),
+        "{error:?}"
+    );
+}
+
 #[test]
 fn morx_later_joint_deletion_zeroes_di_without_erasing_surviving_ordinary_output() {
     let mut failures = Vec::new();
@@ -991,22 +1182,30 @@ fn morx_later_joint_deletion_zeroes_di_without_erasing_surviving_ordinary_output
         let source = format!("A{DI}B");
         assert_eq!(native_glyphs(&bytes, &source), [(36, 2000)]);
         for direction in [LTR, RTL] {
-            let value = observe(&bytes, &source, 3.0, direction);
-            // Only DI has a deletion receipt. Ordinary A/B keep their existing
-            // normal allocation policy within authentic merged provider groups;
-            // the two ordinary inputs still own two independent spacing terms.
+            let value = observe(&bytes, &source, 0.0, direction);
+            // Only DI has a deletion receipt. Preserve actual B20 and the
+            // ordinary merged-group allocation with no authored spacing first.
+            // Native DI participation is not an AAT movement qualification.
             let di_advance = value
                 .units
                 .iter()
                 .find(|unit| unit.0 == text::Range::new(1, 2))
                 .map(|unit| unit.1);
             if ids_and_advances(&value) != [(36, 20.0)]
-                || value.advance != 26.0
+                || value.advance != 20.0
                 || di_advance != Some(0.0)
                 || !value.glyphs.iter().all(|glyph| glyph.ink)
             {
-                failures.push(format!("joint later deleted GPOS={with_gpos} {direction:?}: expected real B20, final26 and DI0; got {value:?}"));
+                failures.push(format!("joint later deleted GPOS={with_gpos} {direction:?}: expected real B20, final20 and DI0; got {value:?}"));
             }
+            unqualified_aat_boundary(
+                &bytes,
+                &source,
+                direction,
+                [text::Range::new(0, 1), text::Range::new(2, 3)],
+                &value,
+            );
+            assert_eq!(value.advance, 20.0);
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
@@ -1024,22 +1223,30 @@ fn morx_skipped_di_retains_zero_allocation_while_ordinary_ligature_survives() {
             "actual component stack excludes skipped D"
         );
         for direction in [LTR, RTL] {
-            let value = observe(&bytes, &source, 3.0, direction);
+            let value = observe(&bytes, &source, 0.0, direction);
             let di_advance = value
                 .units
                 .iter()
                 .find(|unit| unit.0 == text::Range::new(1, 2))
                 .map(|unit| unit.1);
             if ids_and_advances(&value) != [(58, 15.0)]
-                || value.advance != 21.0
+                || value.advance != 15.0
                 || di_advance != Some(0.0)
                 || !value
                     .glyphs
                     .iter()
                     .all(|glyph| glyph.ink && glyph.range == text::Range::new(0, 3))
             {
-                failures.push(format!("skipped D GPOS={with_gpos} {direction:?}: expected only real R15, final21, DI0 and genuine joint source0..3; got {value:?}"));
+                failures.push(format!("skipped D GPOS={with_gpos} {direction:?}: expected only real R15, final15, DI0 and genuine joint source0..3; got {value:?}"));
             }
+            unqualified_aat_boundary(
+                &bytes,
+                &source,
+                direction,
+                [text::Range::new(0, 1), text::Range::new(2, 3)],
+                &value,
+            );
+            assert_eq!(value.advance, 15.0);
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));

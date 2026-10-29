@@ -280,6 +280,14 @@ impl VerticalGlyphBuffer {
     pub fn default_ignorable_receipt(&self) -> Result<DefaultIgnorableReceipt<'_>, ShapingRefusal> {
         self.0.default_ignorable_receipt()
     }
+    /// Borrow the same actual input-component observation as the retained buffer.
+    ///
+    /// # Errors
+    /// Returns the original shaping refusal for an incomplete result.
+    pub fn component_receipt(&self) -> Result<Option<crate::ComponentReceipt<'_>>, ShapingRefusal> {
+        self.0.component_receipt()
+    }
+
     /// Disposes the coordinate domain and returns a clean ordinary input buffer.
     pub fn clear(self) -> UnicodeBuffer {
         self.0.clear()

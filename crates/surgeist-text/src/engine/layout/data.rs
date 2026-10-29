@@ -176,6 +176,15 @@ pub(crate) struct ShapedData {
     pub(crate) glyphs: Vec<GlyphData>,
     /// Invocation-qualified provider observations, before component apportioning.
     pub(crate) provider_groups: Vec<ProviderGroup>,
+    pub(crate) character_gaps: Vec<super::super::spacing::character::Gap>,
+    pub(crate) character_invocations: Vec<super::super::spacing::character::Invocation>,
+    /// The same immutable upfront requirement used by this actual operation.
+    pub(crate) character_requirements:
+        Option<Arc<super::super::spacing::character::PlanRequirements>>,
+    /// Complete invocation-mapped DI exclusions; absence means eligible input.
+    pub(crate) character_exclusions:
+        std::collections::BTreeMap<usize, super::super::spacing::character::Exclusion>,
+    pub(crate) atomic_gaps: std::collections::BTreeMap<usize, f64>,
     pub(crate) word_spacing: Vec<super::super::spacing::WordSpacingUnit>,
     pub(crate) items: Vec<ShapedItem>,
     /// An actual admitted default face with zero source/glyph extent, for empty metrics.
@@ -273,6 +282,7 @@ pub(crate) struct FinalizedBox {
     pub(crate) atomic: crate::protocol::PreparedAtomic,
     pub(crate) slot: crate::Point,
     pub(crate) geometry: FinalizedBoxGeometry,
+    pub(crate) following_gap: f64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -287,6 +297,9 @@ pub(crate) enum FinalizedBoxGeometry {
 }
 
 impl FinalizedBox {
+    pub(crate) fn cell_advance(&self) -> f64 {
+        self.flow_advance() + self.following_gap
+    }
     pub(crate) fn flow_advance(&self) -> f64 {
         match self.geometry {
             FinalizedBoxGeometry::InFlow { flow, .. } => flow.advance,
@@ -316,11 +329,13 @@ pub(crate) struct FinalizedAnchor {
 #[derive(Clone, Debug)]
 pub(crate) struct FinalizedSpacingSlot {
     pub(crate) cluster: usize,
+    pub(crate) edge: Option<usize>,
     pub(crate) members: Vec<usize>,
     pub(crate) geometry: crate::SpacingSlotGeometry,
     pub(crate) stretchability: crate::SpacingStretchability,
     pub(crate) traversal_order: usize,
     pub(crate) authored: f64,
+    pub(crate) letter: f64,
     pub(crate) allocation: f64,
     pub(crate) advance: f64,
     pub(crate) disposition: crate::protocol::SpacingSlotDisposition,
@@ -336,6 +351,7 @@ pub(crate) struct FinalizedLineData {
     /// Paint-order canonical local glyphs, with original associations.
     pub(crate) glyphs: Vec<FinalizedGlyph>,
     pub(crate) word_anchors: Vec<WordSpacingAnchor>,
+    pub(crate) character_anchors: Vec<WordSpacingAnchor>,
     pub(crate) boxes: Vec<FinalizedBox>,
     pub(crate) visual_order: Vec<FinalizedVisualItem>,
     pub(crate) anchors: Vec<FinalizedAnchor>,

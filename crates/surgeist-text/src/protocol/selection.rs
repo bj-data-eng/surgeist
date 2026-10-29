@@ -13,6 +13,7 @@ pub(crate) struct SelectedData {
     pub(crate) presentation: super::prepared::SelectedPresentation,
     pub(crate) spacing_slots: Vec<SpacingSlotData>,
     pub(crate) metric_policy: LineMetricPolicy,
+    pub(crate) basis: crate::engine::SelectedShape,
     pub(crate) boundaries: super::boundary::Resolved,
 }
 
@@ -32,15 +33,42 @@ impl SelectedData {
 
 /// One complete semantic candidate; no provider width or eligibility is guessed.
 pub(crate) struct SpacingSlotData {
-    pub(crate) atoms: std::ops::Range<usize>,
-    pub(crate) base: usize,
+    pub(crate) target: SpacingTargetData,
     pub(crate) participants: Vec<usize>,
-    pub(crate) presentation: super::PresentationRange,
     pub(crate) pieces: Vec<SpacingSlotPieceData>,
 }
 
+pub(crate) enum SpacingTargetData {
+    Separator {
+        atoms: std::ops::Range<usize>,
+        base: usize,
+        unit: SpacingUnitData,
+    },
+    Boundary {
+        edge: usize,
+        units: [SpacingUnitData; 2],
+    },
+}
+impl SpacingTargetData {
+    pub(crate) fn unit(&self, side: usize) -> &SpacingUnitData {
+        match self {
+            Self::Separator { unit, .. } => {
+                assert_eq!(side, 0);
+                unit
+            }
+            Self::Boundary { units, .. } => &units[side],
+        }
+    }
+}
+pub(crate) struct SpacingUnitData {
+    pub(crate) participants: Vec<usize>,
+    pub(crate) pieces: std::ops::Range<usize>,
+    pub(crate) left: f64,
+    pub(crate) right: f64,
+}
+
 pub(crate) struct SpacingSlotPieceData {
-    pub(crate) owner: crate::WordSpacingPiece,
+    pub(crate) owner: crate::SpacingPiece,
     pub(crate) presentation: super::PresentationRange,
 }
 
@@ -63,8 +91,8 @@ use super::{
 use crate::{InlineBoxKind, Result, TextNumericError, TextNumericPhase};
 
 impl PreparedText {
-    /// Checks the entire mixed request against this exact captured preparation.
-    /// No line is shaped, fitted, placed, or selected as a fallback here.
+    /// Establishes this exact selected shaping basis and complete spacing handles.
+    /// Retained resources are used; no fitting, placement or fallback selection occurs.
     pub fn select(&self, request: LineSelectionRequest) -> Result<SelectedLine> {
         select(self, request, LineMetricPolicy::Native)
     }
@@ -86,6 +114,21 @@ pub(crate) fn select(
     request: LineSelectionRequest,
     metric_policy: LineMetricPolicy,
 ) -> Result<SelectedLine> {
+    select_with_scratch(
+        prepared,
+        request,
+        metric_policy,
+        &mut crate::engine::shape::ShapeContext::default(),
+    )
+}
+
+/// Standalone selection shares its existing bounded shaping scratch.
+pub(crate) fn select_with_scratch(
+    prepared: &PreparedText,
+    request: LineSelectionRequest,
+    metric_policy: LineMetricPolicy,
+    scratch: &mut crate::engine::shape::ShapeContext,
+) -> Result<SelectedLine> {
     let mut presentation = admit(prepared, &request)?;
     let (boundaries, missing) =
         super::boundary::resolve(prepared, (&request).into(), &mut presentation)?;
@@ -94,8 +137,39 @@ pub(crate) fn select(
             occurrence: missing.index,
         }));
     }
+    let input = super::input::PresentationInput {
+        prepared: &prepared.inner,
+        presentation: &presentation,
+        boundaries: &boundaries,
+        start: request.start.index,
+        computed: request.alternative.is_some() || request.incoming.is_some(),
+        metric_policy,
+        controls: &request.controls,
+    };
+    // No handles exist until this exact selected invocation has completed.
+    let (shaped, mapping) =
+        crate::engine::shape::finalize(input, scratch, request.context.spacing)?;
+    let characters = crate::engine::spacing::character::build(
+        &presentation.projection,
+        &presentation.analysis,
+        &prepared.inner.styles,
+        prepared.inner.analyzed.processed.source().boxes(),
+        Some(&presentation),
+        request.context.spacing == SpacingPolicy::InterCharacter,
+        Some(&shaped.character_exclusions),
+    )?;
+    crate::engine::spacing::character::admit(
+        input,
+        &characters,
+        request.context.spacing == SpacingPolicy::InterCharacter,
+    )?;
+    let order = super::prepared::presentation::order_presentation(
+        &presentation,
+        prepared.inner.analyzed.processed.source().boxes(),
+        &shaped,
+    )?;
     let targets = match request.context.spacing {
-        SpacingPolicy::None => Vec::new(),
+        SpacingPolicy::None | SpacingPolicy::InterCharacter => Vec::new(),
         SpacingPolicy::Spaces => presentation
             .units
             .iter()
@@ -117,7 +191,7 @@ pub(crate) fn select(
             participant_at[atom] = unit.participant;
         }
     }
-    let spacing_slots = targets
+    let mut spacing_slots: Vec<_> = targets
         .into_iter()
         .map(|candidate| {
             let atoms = candidate.atoms;
@@ -129,25 +203,89 @@ pub(crate) fn select(
                     participants.push(index);
                 }
             }
-            let range = PresentationRange {
-                start: presentation.projection.atoms[atoms.start]
-                    .presentation
-                    .start,
-                end: presentation.projection.atoms[atoms.end - 1]
-                    .presentation
-                    .end,
-            };
             let pieces =
                 crate::engine::spacing::slot_pieces(&prepared.inner, &presentation, atoms.clone());
             SpacingSlotData {
-                atoms,
-                base: candidate.base,
+                target: SpacingTargetData::Separator {
+                    atoms,
+                    base: candidate.base,
+                    unit: SpacingUnitData {
+                        participants: participants.clone(),
+                        pieces: 0..pieces.len(),
+                        left: prepared.inner.styles[presentation.analysis.infos[candidate.base].1]
+                            .style
+                            .letter_spacing,
+                        right: prepared.inner.styles[presentation.analysis.infos[candidate.base].1]
+                            .style
+                            .letter_spacing,
+                    },
+                },
                 participants,
-                presentation: range,
                 pieces,
             }
         })
         .collect();
+    if request.context.spacing == SpacingPolicy::InterCharacter {
+        for (edge, boundary) in characters.boundaries.iter().enumerate() {
+            let mut pieces = Vec::new();
+            let mut participants = Vec::new();
+            let mut units = Vec::new();
+            for index in [boundary.before, boundary.after] {
+                let unit = &characters.units[index];
+                let start = pieces.len();
+                let mut own = Vec::new();
+                for atoms in &unit.atoms {
+                    pieces.extend(crate::engine::spacing::slot_pieces(
+                        &prepared.inner,
+                        &presentation,
+                        atoms.clone(),
+                    ));
+                    for atom in atoms.clone() {
+                        if let Some(i) = participant_at[atom]
+                            && !own.contains(&i)
+                        {
+                            own.push(i);
+                        }
+                    }
+                }
+                for &occurrence in &unit.atomics {
+                    let index = presentation.units.iter().position(|u| matches!(u.kind, super::prepared::PresentationUnitKind::Atomic { occurrence: i } if i == occurrence)).expect("selected atomic");
+                    let actual = &presentation.units[index];
+                    pieces.push(SpacingSlotPieceData {
+                        owner: crate::SpacingPiece::Atomic { occurrence },
+                        presentation: PresentationRange {
+                            start: actual.presentation.start,
+                            end: actual.presentation.end,
+                        },
+                    });
+                    if let Some(i) = actual.participant
+                        && !own.contains(&i)
+                    {
+                        own.push(i);
+                    }
+                }
+                for &i in &own {
+                    if !participants.contains(&i) {
+                        participants.push(i);
+                    }
+                }
+                units.push(SpacingUnitData {
+                    participants: own,
+                    pieces: start..pieces.len(),
+                    left: unit.left,
+                    right: unit.right,
+                });
+            }
+            let units: [SpacingUnitData; 2] = units
+                .try_into()
+                .unwrap_or_else(|_| unreachable!("two endpoints"));
+            spacing_slots.push(SpacingSlotData {
+                target: SpacingTargetData::Boundary { edge, units },
+                participants,
+                pieces,
+            });
+        }
+    }
     Ok(SelectedLine {
         inner: Arc::new(SelectedData {
             prepared: Arc::clone(&prepared.inner),
@@ -155,6 +293,12 @@ pub(crate) fn select(
             presentation,
             spacing_slots,
             metric_policy,
+            basis: crate::engine::SelectedShape {
+                shaped,
+                mapping,
+                characters,
+                order,
+            },
             boundaries,
         }),
     })

@@ -1,5 +1,7 @@
 //! Actual separator-unit geometry shared by authored and selected spacing.
 
+pub(crate) mod character;
+
 use std::{
     collections::BTreeSet,
     ops::{Bound::Excluded, Range as AtomRange},
@@ -14,8 +16,8 @@ use super::{
     resolve::ResolvedStyleRun,
 };
 use crate::{
-    Error, ErrorCode, ErrorDetail, Range, Result, SpacingSlotDisposition, TextNumericError,
-    TextNumericPhase, WordSpacingOperation, WordSpacingPiece, WordSpacingStage,
+    Error, ErrorCode, ErrorDetail, Range, Result, SpacingOperation, SpacingPiece,
+    SpacingSlotDisposition, SpacingStage, TextNumericError, TextNumericPhase,
     projection::SourceProjection,
     protocol::{input::PresentationInput, prepared::PresentationUnitKind},
     transform::relation::ComponentOwner,
@@ -58,7 +60,7 @@ pub(crate) fn authored_original(
         &BTreeSet::new(),
         shaped,
         Demand {
-            stage: WordSpacingStage::Preparation,
+            stage: SpacingStage::Preparation,
             feedback: false,
         },
         |atoms| {
@@ -83,7 +85,7 @@ pub(crate) fn authored_selected(
         &input.boundaries.presentation,
         shaped,
         Demand {
-            stage: WordSpacingStage::SelectedShaping,
+            stage: SpacingStage::SelectedShaping,
             feedback,
         },
         |atoms| {
@@ -118,7 +120,7 @@ pub(crate) fn slot_pieces(
             match unit.kind {
                 PresentationUnitKind::Replacement { alternative, local } => {
                     let range = presentation.projection.atoms[atom].presentation;
-                    owners.push(WordSpacingPiece::Alternative {
+                    owners.push(SpacingPiece::Alternative {
                         alternative,
                         local: Range::new(
                             local.start + range.start - unit.presentation.start,
@@ -132,10 +134,10 @@ pub(crate) fn slot_pieces(
                     use crate::transform::relation::GeneratedSeparatorOwner;
                     owners.push(match owner {
                         GeneratedSeparatorOwner::Control(occurrence) => {
-                            WordSpacingPiece::Control { occurrence }
+                            SpacingPiece::Control { occurrence }
                         }
                         GeneratedSeparatorOwner::Virtual(occurrence) => {
-                            WordSpacingPiece::VirtualSeparator { occurrence }
+                            SpacingPiece::VirtualSeparator { occurrence }
                         }
                     });
                 }
@@ -199,11 +201,11 @@ pub(crate) fn authored_demand(analysis: &Analysis, styles: &[ResolvedStyleRun]) 
 }
 
 struct Demand {
-    stage: WordSpacingStage,
+    stage: SpacingStage,
     feedback: bool,
 }
 
-fn original_pieces(analyzed: &AnalyzedData, atom: usize, output: &mut Vec<WordSpacingPiece>) {
+fn original_pieces(analyzed: &AnalyzedData, atom: usize, output: &mut Vec<SpacingPiece>) {
     let relation = &analyzed.transform;
     let component = &relation.components[relation.emissions[relation.atoms[atom]].component];
     match component.owner {
@@ -211,7 +213,7 @@ fn original_pieces(analyzed: &AnalyzedData, atom: usize, output: &mut Vec<WordSp
             for piece in &relation.pieces[relation.rows[row].pieces.clone()] {
                 push_piece(
                     output,
-                    WordSpacingPiece::Source {
+                    SpacingPiece::Source {
                         origin: piece.origin,
                         local: piece.local,
                         aggregate: piece.aggregate,
@@ -219,16 +221,14 @@ fn original_pieces(analyzed: &AnalyzedData, atom: usize, output: &mut Vec<WordSp
                 );
             }
         }
-        ComponentOwner::Wbr(occurrence) => {
-            push_piece(output, WordSpacingPiece::Control { occurrence })
-        }
+        ComponentOwner::Wbr(occurrence) => push_piece(output, SpacingPiece::Control { occurrence }),
         ComponentOwner::Virtual(occurrence) => {
-            push_piece(output, WordSpacingPiece::VirtualSeparator { occurrence })
+            push_piece(output, SpacingPiece::VirtualSeparator { occurrence })
         }
     }
 }
 
-fn push_piece(output: &mut Vec<WordSpacingPiece>, piece: WordSpacingPiece) {
+fn push_piece(output: &mut Vec<SpacingPiece>, piece: SpacingPiece) {
     if output.last() != Some(&piece) {
         output.push(piece);
     }
@@ -264,7 +264,7 @@ fn apply(
     additional_barriers: &BTreeSet<usize>,
     shaped: &mut ShapedData,
     demand: Demand,
-    content: impl Fn(AtomRange<usize>) -> Vec<WordSpacingPiece>,
+    content: impl Fn(AtomRange<usize>) -> Vec<SpacingPiece>,
 ) -> Result<()> {
     if !demand.feedback && !authored_demand(analysis, styles) {
         return Ok(());
@@ -287,12 +287,13 @@ fn apply(
         let intrinsic = match geometry {
             crate::SpacingSlotGeometry::Independent { intrinsic_advance } => intrinsic_advance,
             crate::SpacingSlotGeometry::SharedProviderGroup => 0.0,
+            crate::SpacingSlotGeometry::Boundary(_) => unreachable!("separator geometry"),
         };
         if let Some(provider_atoms) = &shared {
             if authored != 0.0 {
                 return Err(unsupported(
                     demand.stage,
-                    WordSpacingOperation::Authored,
+                    SpacingOperation::AuthoredWord,
                     content(atoms.clone()),
                     provider_atoms.clone(),
                 ));
@@ -381,20 +382,23 @@ pub(crate) fn geometry(
 }
 
 pub(crate) fn unsupported(
-    stage: WordSpacingStage,
-    operation: WordSpacingOperation,
-    pieces: Vec<WordSpacingPiece>,
+    stage: SpacingStage,
+    operation: SpacingOperation,
+    pieces: Vec<SpacingPiece>,
     provider_atoms: AtomRange<usize>,
 ) -> Error {
     Error::new(
         ErrorCode::LayoutFailed,
         "word spacing requires independent separator geometry",
     )
-    .with_detail(ErrorDetail::UnsupportedWordSpacing {
+    .with_detail(ErrorDetail::UnsupportedSpacing {
         stage,
         operation,
         pieces: pieces.into_boxed_slice(),
-        provider_atoms,
+        provider_atoms: vec![provider_atoms].into_boxed_slice(),
+        reason: crate::SpacingFailureReason::CrossUnitConstraint,
+        contexts: Box::new([]),
+        constraints: Box::new([]),
     })
 }
 
@@ -440,7 +444,12 @@ pub(crate) fn visual_authored(
             if dispositions[index] == SpacingSlotDisposition::DiscardedAtLineEdge {
                 continue;
             }
-            shaped.clusters[index].advance = component.advance;
+            shaped.clusters[index].advance = super::layout::add(
+                "separator tracking cell",
+                TextNumericPhase::Finalization,
+                component.advance,
+                shaped.clusters[index].logical_adjustments[0],
+            )?;
             shaped.clusters[index].logical_adjustments[1] = 0.0;
             halves[index].half = unit_half;
             if leading.is_none_or(|old| rank[index] < rank[old]) {

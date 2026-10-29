@@ -4,6 +4,9 @@
 // Surgeist owns source-unit grouping, checked identities, geometry and atomic publication.
 // Exact origin and modifications: ../docs/accessibility-provenance.md.
 
+#[cfg(test)]
+mod inter_character;
+
 use std::{collections::BTreeMap, sync::Arc};
 
 use accesskit::{Node, NodeId, Role, TextDirection, TextPosition, TextSelection, TreeUpdate};

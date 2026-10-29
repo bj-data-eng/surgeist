@@ -279,17 +279,20 @@ pub surgeist_text::ErrorDetail::UnsupportedCombination::reason: &'static str
 pub surgeist_text::ErrorDetail::UnsupportedShapingBoundary
 pub surgeist_text::ErrorDetail::UnsupportedShapingBoundary::index: usize
 pub surgeist_text::ErrorDetail::UnsupportedShapingBoundary::kind: surgeist_text::ShapingBoundary
+pub surgeist_text::ErrorDetail::UnsupportedSpacing
+pub surgeist_text::ErrorDetail::UnsupportedSpacing::constraints: alloc::boxed::Box<[surgeist_text::SpacingConstraint]>
+pub surgeist_text::ErrorDetail::UnsupportedSpacing::contexts: alloc::boxed::Box<[surgeist_text::SpacingContext]>
+pub surgeist_text::ErrorDetail::UnsupportedSpacing::operation: surgeist_text::SpacingOperation
+pub surgeist_text::ErrorDetail::UnsupportedSpacing::pieces: alloc::boxed::Box<[surgeist_text::SpacingPiece]>
+pub surgeist_text::ErrorDetail::UnsupportedSpacing::provider_atoms: alloc::boxed::Box<[core::ops::range::Range<usize>]>
+pub surgeist_text::ErrorDetail::UnsupportedSpacing::reason: surgeist_text::SpacingFailureReason
+pub surgeist_text::ErrorDetail::UnsupportedSpacing::stage: surgeist_text::SpacingStage
 pub surgeist_text::ErrorDetail::UnsupportedTextStyle
 pub surgeist_text::ErrorDetail::UnsupportedTextStyle::feature: surgeist_text::TextStyleFeature
 pub surgeist_text::ErrorDetail::UnsupportedTextStyle::reason: surgeist_text::UnsupportedTextStyleReason
 pub surgeist_text::ErrorDetail::UnsupportedVerticalGlyphVariation
 pub surgeist_text::ErrorDetail::UnsupportedVerticalGlyphVariation::axis_count: usize
 pub surgeist_text::ErrorDetail::UnsupportedVerticalGlyphVariation::glyph: u32
-pub surgeist_text::ErrorDetail::UnsupportedWordSpacing
-pub surgeist_text::ErrorDetail::UnsupportedWordSpacing::operation: surgeist_text::WordSpacingOperation
-pub surgeist_text::ErrorDetail::UnsupportedWordSpacing::pieces: alloc::boxed::Box<[surgeist_text::WordSpacingPiece]>
-pub surgeist_text::ErrorDetail::UnsupportedWordSpacing::provider_atoms: core::ops::range::Range<usize>
-pub surgeist_text::ErrorDetail::UnsupportedWordSpacing::stage: surgeist_text::WordSpacingStage
 pub surgeist_text::ErrorDetail::UprightDecoration
 pub surgeist_text::ErrorDetail::UprightDecoration::kind: surgeist_text::DecorationKind
 pub surgeist_text::ErrorDetail::UprightDecoration::owner: surgeist_text::TextStyleOwner
@@ -1017,10 +1020,51 @@ pub surgeist_text::SourceRangeFragmentError::UnsupportedPartition::unit: usize
 pub enum surgeist_text::SpacingAllocations
 pub surgeist_text::SpacingAllocations::Complete(alloc::vec::Vec<surgeist_text::SpacingAllocation>)
 pub surgeist_text::SpacingAllocations::None
+pub enum surgeist_text::SpacingBoundaryGeometry
+pub surgeist_text::SpacingBoundaryGeometry::Constrained
+pub surgeist_text::SpacingBoundaryGeometry::Independent
+pub surgeist_text::SpacingBoundaryGeometry::ProtectedCursive
+pub surgeist_text::SpacingBoundaryGeometry::ProtectedRequired
+pub enum surgeist_text::SpacingConstraintKind
+pub surgeist_text::SpacingConstraintKind::CursiveAttachment
+pub surgeist_text::SpacingConstraintKind::ExternalJoiningContext
+pub surgeist_text::SpacingConstraintKind::ExternalJoiningContext::body: core::ops::range::Range<usize>
+pub surgeist_text::SpacingConstraintKind::ExternalJoiningContext::context: core::ops::range::Range<usize>
+pub surgeist_text::SpacingConstraintKind::Ligature
+pub surgeist_text::SpacingConstraintKind::MarkAttachment
+pub surgeist_text::SpacingConstraintKind::UnqualifiedProviderPath(surgeist_shaper::hb::components::ComponentPath)
 pub enum surgeist_text::SpacingDeferredCause
 pub surgeist_text::SpacingDeferredCause::MissingTerminalBlockEdge
 pub surgeist_text::SpacingDeferredCause::NonBlockParagraphBoundary
+pub enum surgeist_text::SpacingFailureReason
+pub surgeist_text::SpacingFailureReason::CrossUnitConstraint
+pub surgeist_text::SpacingFailureReason::InterleavedUnit
+pub surgeist_text::SpacingFailureReason::PreservedOptionalLigature
+pub surgeist_text::SpacingFailureReason::UnqualifiedProviderPath
+pub surgeist_text::SpacingFailureReason::UnqualifiedWritingSystem
+pub enum surgeist_text::SpacingOperation
+pub surgeist_text::SpacingOperation::AuthoredTracking
+pub surgeist_text::SpacingOperation::AuthoredWord
+pub surgeist_text::SpacingOperation::InterCharacterAllocation
+pub surgeist_text::SpacingOperation::InterCharacterBasis
+pub surgeist_text::SpacingOperation::InterWordAllocation
+pub enum surgeist_text::SpacingPiece
+pub surgeist_text::SpacingPiece::Alternative
+pub surgeist_text::SpacingPiece::Alternative::alternative: usize
+pub surgeist_text::SpacingPiece::Alternative::insertion_anchor: usize
+pub surgeist_text::SpacingPiece::Alternative::local: surgeist_text::Range
+pub surgeist_text::SpacingPiece::Atomic
+pub surgeist_text::SpacingPiece::Atomic::occurrence: usize
+pub surgeist_text::SpacingPiece::Control
+pub surgeist_text::SpacingPiece::Control::occurrence: usize
+pub surgeist_text::SpacingPiece::Source
+pub surgeist_text::SpacingPiece::Source::aggregate: surgeist_text::Range
+pub surgeist_text::SpacingPiece::Source::local: surgeist_text::Range
+pub surgeist_text::SpacingPiece::Source::origin: usize
+pub surgeist_text::SpacingPiece::VirtualSeparator
+pub surgeist_text::SpacingPiece::VirtualSeparator::occurrence: usize
 pub enum surgeist_text::SpacingPolicy
+pub surgeist_text::SpacingPolicy::InterCharacter
 pub surgeist_text::SpacingPolicy::InterWord
 pub surgeist_text::SpacingPolicy::None
 pub surgeist_text::SpacingPolicy::Spaces
@@ -1029,6 +1073,7 @@ pub surgeist_text::SpacingSlotDisposition::DiscardedAtLineEdge
 pub surgeist_text::SpacingSlotDisposition::Retained
 pub surgeist_text::SpacingSlotDisposition::Retained::trailing: bool
 pub enum surgeist_text::SpacingSlotGeometry
+pub surgeist_text::SpacingSlotGeometry::Boundary(surgeist_text::SpacingBoundaryGeometry)
 pub surgeist_text::SpacingSlotGeometry::Independent
 pub surgeist_text::SpacingSlotGeometry::Independent::intrinsic_advance: f64
 pub surgeist_text::SpacingSlotGeometry::SharedProviderGroup
@@ -1036,12 +1081,22 @@ pub enum surgeist_text::SpacingSlotOwner
 pub surgeist_text::SpacingSlotOwner::Alternative
 pub surgeist_text::SpacingSlotOwner::Alternative::alternative: surgeist_text::PreparedAlternative
 pub surgeist_text::SpacingSlotOwner::Alternative::local: surgeist_text::Range
+pub surgeist_text::SpacingSlotOwner::Atomic(surgeist_text::PreparedAtomic)
 pub surgeist_text::SpacingSlotOwner::Control(surgeist_text::PreparedControl)
 pub surgeist_text::SpacingSlotOwner::Source
 pub surgeist_text::SpacingSlotOwner::Source::aggregate: surgeist_text::Range
 pub surgeist_text::SpacingSlotOwner::Source::local: surgeist_text::Range
 pub surgeist_text::SpacingSlotOwner::Source::origin: surgeist_text::PreparedOrigin
 pub surgeist_text::SpacingSlotOwner::VirtualSeparator(surgeist_text::PreparedVirtualSeparator)
+pub enum surgeist_text::SpacingSlotTarget
+pub surgeist_text::SpacingSlotTarget::Boundary
+pub surgeist_text::SpacingSlotTarget::Boundary::visual_after: surgeist_text::SpacingUnit
+pub surgeist_text::SpacingSlotTarget::Boundary::visual_before: surgeist_text::SpacingUnit
+pub surgeist_text::SpacingSlotTarget::Separator(surgeist_text::SpacingUnit)
+pub enum surgeist_text::SpacingStage
+pub surgeist_text::SpacingStage::Preparation
+pub surgeist_text::SpacingStage::SelectedShaping
+pub surgeist_text::SpacingStage::Selection
 pub enum surgeist_text::SpacingStretchability
 pub surgeist_text::SpacingStretchability::Deferred(surgeist_text::SpacingDeferredCause)
 pub surgeist_text::SpacingStretchability::Direct
@@ -1330,25 +1385,6 @@ pub surgeist_text::WordSpaceTransform::IdeographicSpaceAutoPhrase
 pub surgeist_text::WordSpaceTransform::None
 pub surgeist_text::WordSpaceTransform::Space
 pub surgeist_text::WordSpaceTransform::SpaceAutoPhrase
-pub enum surgeist_text::WordSpacingOperation
-pub surgeist_text::WordSpacingOperation::Authored
-pub surgeist_text::WordSpacingOperation::InterWordAllocation
-pub enum surgeist_text::WordSpacingPiece
-pub surgeist_text::WordSpacingPiece::Alternative
-pub surgeist_text::WordSpacingPiece::Alternative::alternative: usize
-pub surgeist_text::WordSpacingPiece::Alternative::insertion_anchor: usize
-pub surgeist_text::WordSpacingPiece::Alternative::local: surgeist_text::Range
-pub surgeist_text::WordSpacingPiece::Control
-pub surgeist_text::WordSpacingPiece::Control::occurrence: usize
-pub surgeist_text::WordSpacingPiece::Source
-pub surgeist_text::WordSpacingPiece::Source::aggregate: surgeist_text::Range
-pub surgeist_text::WordSpacingPiece::Source::local: surgeist_text::Range
-pub surgeist_text::WordSpacingPiece::Source::origin: usize
-pub surgeist_text::WordSpacingPiece::VirtualSeparator
-pub surgeist_text::WordSpacingPiece::VirtualSeparator::occurrence: usize
-pub enum surgeist_text::WordSpacingStage
-pub surgeist_text::WordSpacingStage::Preparation
-pub surgeist_text::WordSpacingStage::SelectedShaping
 pub enum surgeist_text::Wrap
 pub surgeist_text::Wrap::None
 pub surgeist_text::Wrap::Word
@@ -1932,8 +1968,10 @@ impl surgeist_text::InlineBox
 pub const fn surgeist_text::InlineBox::id(self) -> surgeist_text::Id
 pub const fn surgeist_text::InlineBox::index(self) -> usize
 pub const fn surgeist_text::InlineBox::kind(self) -> surgeist_text::InlineBoxKind
+pub const fn surgeist_text::InlineBox::letter_spacing(self) -> f64
 pub const fn surgeist_text::InlineBox::new(id: surgeist_text::Id, kind: surgeist_text::InlineBoxKind, index: usize, size: surgeist_text::Size) -> Self
 pub const fn surgeist_text::InlineBox::size(self) -> surgeist_text::Size
+pub fn surgeist_text::InlineBox::try_with_letter_spacing(self, value: f64) -> surgeist_text::Result<Self>
 pub const fn surgeist_text::InlineBox::vertical_align(self) -> surgeist_text::VerticalAlign
 pub const fn surgeist_text::InlineBox::with_vertical_align(self, vertical_align: surgeist_text::VerticalAlign) -> Self
 pub struct surgeist_text::InlineBoxMetricFact
@@ -2955,11 +2993,24 @@ pub const fn surgeist_text::SourceRevision::new(value: u64) -> Self
 pub struct surgeist_text::SpacingAllocation
 pub surgeist_text::SpacingAllocation::amount: f64
 pub surgeist_text::SpacingAllocation::slot: surgeist_text::SpacingSlot
+pub struct surgeist_text::SpacingConstraint
+pub surgeist_text::SpacingConstraint::components: alloc::boxed::Box<[core::ops::range::Range<usize>]>
+pub surgeist_text::SpacingConstraint::kind: surgeist_text::SpacingConstraintKind
+pub surgeist_text::SpacingConstraint::provenance: alloc::boxed::Box<[surgeist_shaper::hb::components::FeatureProvenance]>
+pub surgeist_text::SpacingConstraint::run: usize
+pub struct surgeist_text::SpacingContext
+pub surgeist_text::SpacingContext::candidates: alloc::boxed::Box<[surgeist_text::TextScript]>
+pub surgeist_text::SpacingContext::letter_spacing_after: f64
+pub surgeist_text::SpacingContext::letter_spacing_before: f64
+pub surgeist_text::SpacingContext::locale: core::option::Option<alloc::string::String>
+pub surgeist_text::SpacingContext::pieces: alloc::boxed::Box<[surgeist_text::SpacingPiece]>
+pub surgeist_text::SpacingContext::resolved_scripts: alloc::boxed::Box<[surgeist_text::TextScript]>
+pub surgeist_text::SpacingContext::writing_systems: alloc::boxed::Box<[surgeist_text::TextScript]>
 pub struct surgeist_text::SpacingSlot
 impl surgeist_text::SpacingSlot
 pub fn surgeist_text::SpacingSlot::participants(&self) -> impl core::iter::traits::iterator::Iterator<Item = &surgeist_text::PreparedParticipant>
-pub fn surgeist_text::SpacingSlot::presentation_range(&self) -> surgeist_text::PresentationRange
 pub fn surgeist_text::SpacingSlot::selected_line(&self) -> surgeist_text::SelectedLine
+pub fn surgeist_text::SpacingSlot::target(&self) -> surgeist_text::SpacingSlotTarget
 impl surgeist_text::SpacingSlot
 pub fn surgeist_text::SpacingSlot::pieces(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::SpacingSlotPiece> + '_
 impl core::cmp::Eq for surgeist_text::SpacingSlot
@@ -2970,6 +3021,7 @@ pub fn surgeist_text::SpacingSlot::fmt(&self, f: &mut core::fmt::Formatter<'_>) 
 pub struct surgeist_text::SpacingSlotFeedback
 pub surgeist_text::SpacingSlotFeedback::advance: f64
 pub surgeist_text::SpacingSlotFeedback::allocation: f64
+pub surgeist_text::SpacingSlotFeedback::authored_letter_spacing: f64
 pub surgeist_text::SpacingSlotFeedback::authored_word_spacing: f64
 pub surgeist_text::SpacingSlotFeedback::disposition: surgeist_text::SpacingSlotDisposition
 pub surgeist_text::SpacingSlotFeedback::geometry: surgeist_text::SpacingSlotGeometry
@@ -2982,6 +3034,17 @@ pub struct surgeist_text::SpacingSlotPiece
 impl surgeist_text::SpacingSlotPiece
 pub fn surgeist_text::SpacingSlotPiece::owner(&self) -> surgeist_text::SpacingSlotOwner
 pub const fn surgeist_text::SpacingSlotPiece::presentation_range(&self) -> surgeist_text::PresentationRange
+pub struct surgeist_text::SpacingUnit
+impl surgeist_text::SpacingUnit
+pub fn surgeist_text::SpacingUnit::letter_spacing_after(&self) -> f64
+pub fn surgeist_text::SpacingUnit::letter_spacing_before(&self) -> f64
+pub fn surgeist_text::SpacingUnit::participants(&self) -> impl core::iter::traits::iterator::Iterator<Item = &surgeist_text::PreparedParticipant>
+pub fn surgeist_text::SpacingUnit::pieces(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::SpacingSlotPiece> + '_
+impl core::cmp::Eq for surgeist_text::SpacingUnit
+impl core::cmp::PartialEq for surgeist_text::SpacingUnit
+pub fn surgeist_text::SpacingUnit::eq(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_text::SpacingUnit
+pub fn surgeist_text::SpacingUnit::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_text::Span
 impl surgeist_text::Span
 pub const fn surgeist_text::Span::new(range: surgeist_text::Range, style: surgeist_text::Style) -> Self

@@ -380,15 +380,22 @@ fn anchor_geometry(
         }
         for cluster in &line.finalized.data.clusters {
             let replacement_incident = cluster.source.is_empty()
-                && line.finalized.shape.mapping.pieces.iter().any(|piece| {
-                    matches!(
-                        piece.kind,
-                        crate::protocol::prepared::SelectedMappingKind::Replacement { .. }
-                    ) && piece.source.start <= index
-                        && index <= piece.source.end
-                        && piece.presentation.start < cluster.presentation.end
-                        && cluster.presentation.start < piece.presentation.end
-                });
+                && line
+                    .finalized
+                    .selected
+                    .basis
+                    .mapping
+                    .pieces
+                    .iter()
+                    .any(|piece| {
+                        matches!(
+                            piece.kind,
+                            crate::protocol::prepared::SelectedMappingKind::Replacement { .. }
+                        ) && piece.source.start <= index
+                            && index <= piece.source.end
+                            && piece.presentation.start < cluster.presentation.end
+                            && cluster.presentation.start < piece.presentation.end
+                    });
             if (cluster.source.is_empty() && cluster.source.start == index) || replacement_incident
             {
                 let after = affinity == Affinity::After;

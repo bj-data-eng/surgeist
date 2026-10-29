@@ -394,7 +394,12 @@ fn reshaped<S: LayoutScalar>() {
     let mut style = ahem_style(12.5, 16.0);
     style.letter_spacing = 5.0;
     style.overflow_wrap = OverflowWrap::Anywhere;
-    let bytes = super::super::canonical::fonts::ligature_ahem();
+    // Required ccmp keeps its internal boundary protected. Its actual X cell
+    // is20px, exceeding the18px float band; a reshaped A cell is12.5px.
+    let bytes = super::super::canonical::fonts::with_advances(
+        &super::super::canonical::fonts::ligature_ahem(),
+        &[(58, 1600)],
+    );
     let binding = registered(
         bytes.clone(),
         "AA",
@@ -403,7 +408,7 @@ fn reshaped<S: LayoutScalar>() {
     );
     let whole =
         crate::test_support::text_fragment::fragment_for(&binding.prepared).finalized_line();
-    qualify_whole(&whole, &bytes, 12.5, 22.5, &[(Range::new(0, 2), 58, 12.5)]);
+    qualify_whole(&whole, &bytes, 12.5, 20.0, &[(Range::new(0, 2), 58, 20.0)]);
     let origin = binding.origins[0].origin.clone();
     let seam = surgeist_text::TextSeam::Origin {
         local: surgeist_text::SourcePosition::try_new(origin.view().source().text(), 1).unwrap(),
@@ -419,7 +424,7 @@ fn reshaped<S: LayoutScalar>() {
             batch.placed_text()[0].layout().lines()[index].range(),
             Range::new(index, index + 1)
         );
-        assert_eq!(line.feedback().advance, 17.5);
+        assert_eq!(line.feedback().advance, 12.5);
         let glyphs = line
             .run_views()
             .flat_map(|run| {

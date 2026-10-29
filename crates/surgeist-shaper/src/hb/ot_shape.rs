@@ -84,26 +84,27 @@ impl<'a> hb_ot_shape_planner_t<'a> {
         static COMMON_FEATURES: &[(hb_tag_t, hb_ot_map_feature_flags_t)] = &[
             (hb_tag_t::new(b"abvm"), F_GLOBAL),
             (hb_tag_t::new(b"blwm"), F_GLOBAL),
-            (hb_tag_t::new(b"ccmp"), F_GLOBAL),
+            (hb_tag_t::new(b"ccmp"), F_GLOBAL | F_REQUIRED),
             (hb_tag_t::new(b"locl"), F_GLOBAL),
             (hb_tag_t::new(b"mark"), F_GLOBAL_MANUAL_JOINERS),
             (hb_tag_t::new(b"mkmk"), F_GLOBAL_MANUAL_JOINERS),
-            (hb_tag_t::new(b"rlig"), F_GLOBAL),
+            (hb_tag_t::new(b"rlig"), F_GLOBAL | F_REQUIRED),
         ];
 
         static HORIZONTAL_FEATURES: &[(hb_tag_t, hb_ot_map_feature_flags_t)] = &[
-            (hb_tag_t::new(b"calt"), F_GLOBAL),
-            (hb_tag_t::new(b"clig"), F_GLOBAL),
+            (hb_tag_t::new(b"calt"), F_GLOBAL | F_OPTIONAL),
+            (hb_tag_t::new(b"clig"), F_GLOBAL | F_OPTIONAL),
             (hb_tag_t::new(b"curs"), F_GLOBAL),
             (hb_tag_t::new(b"dist"), F_GLOBAL),
             (hb_tag_t::new(b"kern"), F_GLOBAL_HAS_FALLBACK),
-            (hb_tag_t::new(b"liga"), F_GLOBAL),
+            (hb_tag_t::new(b"liga"), F_GLOBAL | F_OPTIONAL),
             (hb_tag_t::new(b"rclt"), F_GLOBAL),
         ];
 
         let empty = F_NONE;
 
         self.ot_map.is_simple = true;
+        self.ot_map.allow_optional_defaults = !self.apply_morx;
 
         self.ot_map.enable_feature(hb_tag_t::new(b"rvrn"), empty, 1);
         self.ot_map.add_gsub_pause(None);
@@ -150,6 +151,13 @@ impl<'a> hb_ot_shape_planner_t<'a> {
             self.ot_map.add_feature(tag, flags, 1);
         }
 
+        // Role is independent of whether this orientation enables a default.
+        // Discretionary/historical ligatures remain disabled until requested.
+        for tag in [b"liga", b"clig", b"dlig", b"hlig"] {
+            self.ot_map
+                .add_feature(hb_tag_t::new(tag), F_GLOBAL | F_OPTIONAL, 0);
+        }
+
         if self.direction.is_horizontal() {
             for &(tag, flags) in HORIZONTAL_FEATURES {
                 self.ot_map.add_feature(tag, flags, 1);
@@ -171,13 +179,12 @@ impl<'a> hb_ot_shape_planner_t<'a> {
             self.ot_map.is_simple = false;
         }
 
-        for feature in user_features {
-            let flags = if feature.is_global() { F_GLOBAL } else { empty };
-            self.ot_map.add_feature(feature.tag, flags, feature.value);
-        }
+        self.ot_map.set_user_features(user_features);
 
         if let Some(func) = self.shaper.override_features {
+            self.ot_map.collecting_overrides = true;
             func(self);
+            self.ot_map.collecting_overrides = false;
         }
     }
 
@@ -301,7 +308,7 @@ impl<'a> hb_ot_shape_planner_t<'a> {
             apply_kerx,
             apply_morx,
             apply_trak,
-            user_features: features.into(),
+            user_features: common::canonical_features(features).copied().collect(),
         };
 
         if let Some(func) = self.shaper.create_data {
@@ -448,7 +455,10 @@ fn hb_ot_substitute_plan(ctx: &mut hb_ot_shape_context_t) {
     }
 
     if ctx.plan.apply_morx {
-        aat::layout::substitute(ctx.plan, ctx.face, ctx.buffer, ctx.features);
+        if ctx.buffer.len != 0 {
+            components::unqualify(ctx.buffer, components::ComponentPath::AatSubstitution);
+        }
+        aat::layout::substitute(ctx.plan, ctx.face, ctx.buffer, ctx.plan.ot_map.requests());
         ctx.buffer.update_digest();
     } else {
         ctx.buffer.update_digest();
@@ -588,6 +598,9 @@ fn position_by_plan(plan: &hb_ot_shape_plan_t, face: &hb_font_t, buffer: &mut hb
     if plan.apply_gpos {
         ot_layout_gpos_table::position(plan, face, buffer);
     } else if plan.apply_kerx {
+        if buffer.len != 0 {
+            components::unqualify(buffer, components::ComponentPath::AatPositioning);
+        }
         aat::layout::position(plan, face, buffer);
     }
     if plan.apply_kern {
@@ -607,15 +620,19 @@ fn initialize_masks(ctx: &mut hb_ot_shape_context_t) {
 }
 
 fn setup_masks(ctx: &mut hb_ot_shape_context_t) {
+    debug_assert!(common::canonical_features(ctx.features)
+        .eq(common::canonical_features(&ctx.plan.user_features)));
     setup_masks_fraction(ctx);
 
     if let Some(func) = ctx.plan.shaper.setup_masks {
         func(ctx.plan, ctx.face, ctx.buffer);
     }
 
-    for feature in ctx.features {
-        if !feature.is_global() {
-            let (mask, shift) = ctx.plan.ot_map.get_mask(feature.tag);
+    for feature in ctx.plan.ot_map.requests() {
+        let (mask, shift) = ctx.plan.ot_map.get_mask(feature.tag);
+        // A distinct mask may have been reserved by an earlier native range.
+        // Replaying globals is essential to restore later explicit global values.
+        if !feature.is_global() || mask != 0 && mask != 1 << 31 {
             ctx.buffer
                 .set_masks(feature.value << shift, mask, feature.start, feature.end);
         }
@@ -794,6 +811,7 @@ fn insert_dotted_circle(buffer: &mut hb_buffer_t, face: &hb_font_t) {
             ..GlyphInfo::default()
         };
         info.set_joining_lineage(original_joining::synthetic(buffer, 0x25cc));
+        info.component_set = components::generated(buffer, buffer.cur(0).component_set);
 
         info.init_unicode_props(&mut buffer.scratch_flags);
         buffer.clear_output();

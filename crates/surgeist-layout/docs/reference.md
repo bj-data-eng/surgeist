@@ -607,6 +607,47 @@ Natural and intrinsic trials add no allocation; authored word spacing remains
 Text-owned. Replays retain the actual method, complete amounts and Text shape
 basis; changed line, box, role, tab or float context rebuilds the real selection.
 
+`TextJustification::InterCharacter` requests Text's qualified visual character
+boundaries through the same positive response solver. The actual effective
+Justify context selects the spacing-capable Text basis before any natural or
+residual measurement. Effective non-Justify contexts, including terminal Auto,
+use an ordinary selection. Intrinsic and chosen-cut trials retain their actual
+receiving context and add no allocation when they are natural measurements;
+they do not borrow an ordinary ligature width for a spacing-capable request.
+Text owns the [native character-spacing profile](../../../references/text-character-spacing--native-determination.md),
+provider constraints, authored tracking, boundary cells and raw glyph geometry.
+
+Qualified Direct boundaries receive equal initial full extras. Independent
+character boundaries do not inherit InterWord's zero-intrinsic exclusion.
+Protected required/cursive pairs are not allocated. Constrained or deferred
+candidates stay in the complete table: an exact fill through qualified responses
+may leave them at zero, but otherwise their material demand executes through
+Text before fallback. Tab-dependent boundaries use the same actual response
+bracket and representable termination as InterWord.
+
+An ordinary InterCharacter fallback is a fresh selection and may change the
+optional-feature plan. Layout remeasures that result for fitting, float bands,
+groups, chosen cuts and tails. Conditional search retains matching-method query
+authority: it uses an actually executed pre-fallback trial, or executes a real
+ordinary trial with the prospective Soft method while preserving its issued
+range, termination and actual end role. That trial authorizes queries only;
+the actual fallback result remains the fit and placement output. No conditional
+capability is transferred across methods or recreated from source offsets.
+A conditional cut that itself needs ordinary fallback obtains a separately issued
+ordinary-method endpoint: Layout executes that query's real ordinary trials,
+phrase measurements and tier receipts through the same fitter. The endpoint
+must match both the strong boundary and alternative. If an earlier ordinary
+barrier or tier prevents issuance, that fallback attempt is inadmissible; the
+primary tier retains its actually executed primary receipt and the chooser
+continues without publishing an underfilled result.
+
+An atomic's full exterior tracking value belongs to its actual Text `InlineBox`
+before preparation, with resolved zero as the default. Layout consumes that bound
+source occurrence. Neither child interior Text nor neighboring style supplies its
+exterior tracking, and no later box allocation patches an issued preparation.
+Atomic border/content rectangles and supplied flow allocations retain their
+meaning; Text reports their actually shifted origins and boundary cell geometry.
+
 `None` adds no spacing. Native fitting and intrinsic queries consume the matching
 Text-issued measurements; an absent finite width is not an intrinsic-purpose
 tag. Intrinsic allocation/report width is separate from the actual Text metric

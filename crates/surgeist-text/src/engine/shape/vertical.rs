@@ -204,6 +204,8 @@ impl Operation<'_, '_> {
                 }));
             }
         };
+        #[cfg(test)]
+        super::observe_provider_call();
         shaper
             .shape_vertical_with_metrics(plan, buffer, features, provider_reference, |glyph_id| {
                 let nominal = instance.unscaled_vertical_glyph_metrics(glyph_id, catalogue)?;

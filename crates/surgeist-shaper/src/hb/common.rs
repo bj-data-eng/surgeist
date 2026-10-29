@@ -507,20 +507,39 @@ pub mod script {
     pub const MYANMAR_ZAWGYI: Script = Script::from_bytes(b"Qaag");
 }
 
+/// Intent of a feature request, independent of its selected OpenType role.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum FeatureOrigin {
+    /// An authored setting, with precedence over optional defaults.
+    Explicit,
+    /// A soft override admitted only for an affirmatively optional feature.
+    OptionalDefault,
+}
+
 /// A feature tag with an accompanying range specifying on which subslice of
 /// `shape`s input it should be applied.
 #[repr(C)]
 #[allow(missing_docs)]
-#[derive(Clone, Copy, PartialEq, Hash, Debug)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug)]
 pub struct Feature {
     pub tag: Tag,
     pub value: u32,
     pub start: u32,
     pub end: u32,
+    origin: FeatureOrigin,
 }
 
 impl Feature {
-    /// Create a new `Feature` struct.
+    /// Create an explicit feature request over the supplied Rust cluster range.
+    ///
+    /// Finite bounds execute half-open: an excluded end is stored unchanged,
+    /// and an included end becomes its saturating successor. Bounds beyond the
+    /// u32 cluster representation saturate to `u32::MAX`, the provider's end
+    /// sentinel. Unbounded input uses `0..u32::MAX`; this complete sentinel range
+    /// applies globally, including a caller cluster equal to `u32::MAX`.
+    /// Other ranges ending at the sentinel exclude that cluster, so it cannot
+    /// be selected independently through this finite representation.
+    /// Empty or reversed ranges select no clusters.
     pub fn new(tag: Tag, value: u32, range: impl RangeBounds<usize>) -> Feature {
         let max = u32::MAX as usize;
         let start = match range.start_bound() {
@@ -529,8 +548,8 @@ impl Feature {
             Bound::Unbounded => 0,
         };
         let end = match range.end_bound() {
-            Bound::Included(&included) => included.min(max) as u32,
-            Bound::Excluded(&excluded) => excluded.saturating_sub(1).min(max) as u32,
+            Bound::Included(&included) => included.saturating_add(1).min(max) as u32,
+            Bound::Excluded(&excluded) => excluded.min(max) as u32,
             Bound::Unbounded => max as u32,
         };
 
@@ -539,12 +558,38 @@ impl Feature {
             value,
             start,
             end,
+            origin: FeatureOrigin::Explicit,
         }
+    }
+
+    /// Requests a soft override without asserting that the feature is optional.
+    /// The selected plan preserves required and unclassified features.
+    pub fn optional_default(tag: Tag, value: u32, range: impl RangeBounds<usize>) -> Self {
+        let mut feature = Self::new(tag, value, range);
+        feature.origin = FeatureOrigin::OptionalDefault;
+        feature
+    }
+
+    /// Returns the request's authored or optional-default intent.
+    pub fn origin(&self) -> FeatureOrigin {
+        self.origin
     }
 
     pub(crate) fn is_global(&self) -> bool {
         self.start == 0 && self.end == u32::MAX
     }
+}
+
+/// The request precedence order; order within an origin remains authored order.
+pub(crate) fn canonical_features(features: &[Feature]) -> impl Iterator<Item = &Feature> {
+    features
+        .iter()
+        .filter(|f| f.origin == FeatureOrigin::OptionalDefault)
+        .chain(
+            features
+                .iter()
+                .filter(|f| f.origin == FeatureOrigin::Explicit),
+        )
 }
 
 impl FromStr for Feature {
@@ -563,10 +608,10 @@ impl FromStr for Feature {
     /// - `kern[]` -> kern .. 1
     /// - `kern[:]` -> kern .. 1
     /// - `kern[5:]` -> kern 5.. 1
-    /// - `kern[:5]` -> kern ..=5 1
-    /// - `kern[3:5]` -> kern 3..=5 1
-    /// - `kern[3]` -> kern 3..=4 1
-    /// - `aalt[3:5]=2` -> kern 3..=5 1
+    /// - `kern[:5]` -> kern ..5 1
+    /// - `kern[3:5]` -> kern 3..5 1
+    /// - `kern[3]` -> kern 3..4 1
+    /// - `aalt[3:5]=2` -> aalt 3..5 2
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         fn parse(s: &str) -> Option<Feature> {
             if s.is_empty() {
@@ -645,12 +690,10 @@ impl FromStr for Feature {
                 return None;
             }
 
-            Some(Feature {
-                tag,
-                value,
-                start,
-                end,
-            })
+            let mut feature = Feature::new(tag, value, ..);
+            feature.start = start;
+            feature.end = end;
+            Some(feature)
         }
 
         parse(s).ok_or("invalid feature")
@@ -683,11 +726,11 @@ mod tests_features {
     test!(parse_07, "kern[]", b"kern", 1, ..);
     test!(parse_08, "kern[:]", b"kern", 1, ..);
     test!(parse_09, "kern[5:]", b"kern", 1, 5..);
-    test!(parse_10, "kern[:5]", b"kern", 1, ..=5);
-    test!(parse_11, "kern[3:5]", b"kern", 1, 3..=5);
-    test!(parse_12, "kern[3]", b"kern", 1, 3..=4);
-    test!(parse_13, "kern[3:5]=2", b"kern", 2, 3..=5);
-    test!(parse_14, "kern[3;5]=2", b"kern", 2, 3..=5);
+    test!(parse_10, "kern[:5]", b"kern", 1, ..5);
+    test!(parse_11, "kern[3:5]", b"kern", 1, 3..5);
+    test!(parse_12, "kern[3]", b"kern", 1, 3..4);
+    test!(parse_13, "kern[3:5]=2", b"kern", 2, 3..5);
+    test!(parse_14, "kern[3;5]=2", b"kern", 2, 3..5);
     test!(parse_15, "kern[:-1]", b"kern", 1, ..);
     test!(parse_16, "kern[-1]", b"kern", 1, u32::MAX as usize..);
     test!(parse_17, "kern=on", b"kern", 1, ..);

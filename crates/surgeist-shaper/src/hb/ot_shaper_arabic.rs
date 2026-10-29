@@ -456,8 +456,14 @@ pub fn setup_masks_inner(
     if !buffer.successful && buffer.joining.request.is_some() {
         return;
     }
+    let mut used_actions = false;
     for info in buffer.info_slice_mut() {
-        info.mask |= arabic_plan.mask_array[info.arabic_shaping_action() as usize];
+        let mask = arabic_plan.mask_array[info.arabic_shaping_action() as usize];
+        used_actions |= mask != 0;
+        info.mask |= mask;
+    }
+    if used_actions {
+        super::components::record_joining_context_actions(buffer);
     }
 }
 

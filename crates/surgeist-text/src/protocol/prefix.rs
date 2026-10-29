@@ -327,7 +327,14 @@ impl PrefixData {
                     shaped.clusters[index].advance
                 }
                 ShapedItem::InlineBox { occurrence, .. } => match atomics[&occurrence].allocation {
-                    super::AtomicLineAllocation::InFlow { flow, .. } => flow.advance,
+                    super::AtomicLineAllocation::InFlow { flow, .. } => {
+                        crate::engine::spacing::character::atomic_advance(
+                            shaped,
+                            occurrence,
+                            flow.advance,
+                        )
+                        .expect("line metrics admitted the actual atomic cell advance")
+                    }
                     super::AtomicLineAllocation::OutOfFlow => 0.0,
                 },
                 ShapedItem::Anchor { unit } => {

@@ -382,9 +382,13 @@ fn assert_alternative_spacing<S: LayoutScalar>() {
             }]
         );
         assert_eq!(row.slot.participants().count(), 0);
+        let surgeist_text::SpacingSlotTarget::Separator(unit) = row.slot.target() else {
+            panic!("the inserted Spaces target is a complete separator")
+        };
+        assert_eq!(unit.pieces().len(), 1);
         assert_eq!(
-            row.slot.pieces().next().unwrap().presentation_range(),
-            row.slot.presentation_range()
+            unit.pieces().collect::<Vec<_>>(),
+            row.slot.pieces().collect::<Vec<_>>()
         );
     }
     assert_eq!(slots[0].advance, 15.0);

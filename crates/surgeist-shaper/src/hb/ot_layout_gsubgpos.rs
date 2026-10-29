@@ -516,6 +516,21 @@ pub(crate) fn apply_lookup(
     match_end: usize,
     lookups: &[SequenceLookupRecord],
 ) {
+    let saved = ctx.component_parent;
+    let Some(parent) = ctx.component_provenance(input_len + 1) else {
+        return;
+    };
+    ctx.component_parent = parent;
+    apply_lookup_inner(ctx, input_len, match_end, lookups);
+    ctx.component_parent = saved;
+}
+
+fn apply_lookup_inner(
+    ctx: &mut hb_ot_apply_context_t,
+    input_len: usize,
+    match_end: usize,
+    lookups: &[SequenceLookupRecord],
+) {
     let mut count = input_len + 1;
 
     debug_assert!(count <= ctx.match_positions.len(), "");
@@ -861,6 +876,9 @@ pub mod OT {
 
     pub struct hb_ot_apply_context_t<'a> {
         pub table_index: TableIndex,
+        pub(crate) component_map: Option<&'a super::super::ot_map::hb_ot_map_t>,
+        pub(crate) component_stage: usize,
+        pub(crate) component_parent: super::super::components::ProvenanceSet,
         pub face: &'a hb_font_t<'a>,
         pub buffer: &'a mut hb_buffer_t,
         lookup_mask: hb_mask_t,
@@ -889,6 +907,9 @@ pub mod OT {
         ) -> Self {
             Self {
                 table_index,
+                component_map: None,
+                component_stage: 0,
+                component_parent: super::super::components::ProvenanceSet::default(),
                 face,
                 buffer,
                 lookup_mask: 1,
@@ -908,6 +929,71 @@ pub mod OT {
                 match_positions_len: 0,
                 match_positions: MatchPositions::from_elem(0, 1),
             }
+        }
+
+        pub(crate) fn component_provenance(
+            &mut self,
+            count: usize,
+        ) -> Option<super::super::components::ProvenanceSet> {
+            if !self.buffer.components.active() {
+                return Some(super::super::components::ProvenanceSet::default());
+            }
+            let Some(map) = self.component_map else {
+                return Some(self.component_parent);
+            };
+            if count > MAX_CONTEXT_LENGTH {
+                self.buffer.refuse(ShapingRefusal::ContextLimit);
+                self.buffer.successful = false;
+                return None;
+            }
+            let Some(query_work) = map.provenance_work(self.table_index) else {
+                self.buffer.refuse(ShapingRefusal::WorkLimit);
+                self.buffer.successful = false;
+                return None;
+            };
+            let mut set = self.component_parent;
+            for i in 0..count {
+                let info = self.buffer.info[self.match_positions[i] as usize];
+                let len = self.buffer.components.members(info.component_set).len();
+                if !super::super::original_joining::work(self.buffer, len.saturating_add(1)) {
+                    return None;
+                }
+                if len == 0 {
+                    if !super::super::original_joining::work(self.buffer, query_work) {
+                        return None;
+                    }
+                    let input = [(info.mask, info.cluster)];
+                    set = super::super::components::collect_provenance(
+                        self.buffer,
+                        set,
+                        map.lookup_provenance(
+                            self.table_index,
+                            self.component_stage,
+                            self.lookup_index,
+                            &input,
+                        ),
+                    )?;
+                } else {
+                    for j in 0..len {
+                        if !super::super::original_joining::work(self.buffer, query_work) {
+                            return None;
+                        }
+                        let ordinal = self.buffer.components.members(info.component_set)[j];
+                        let input = [(info.mask, self.buffer.components.input_cluster(ordinal))];
+                        set = super::super::components::collect_provenance(
+                            self.buffer,
+                            set,
+                            map.lookup_provenance(
+                                self.table_index,
+                                self.component_stage,
+                                self.lookup_index,
+                                &input,
+                            ),
+                        )?;
+                    }
+                }
+            }
+            Some(set)
         }
 
         pub fn random_number(&mut self) -> u32 {
@@ -1111,6 +1197,20 @@ pub fn ligate_input(
     //   https://bugzilla.gnome.org/show_bug.cgi?id=437633
     //
 
+    let Some(provenance) = ctx.component_provenance(count) else {
+        return;
+    };
+    let mut components = ctx.buffer.cur(0).component_set;
+    for i in 1..count {
+        let Some(combined) = super::components::union(
+            ctx.buffer,
+            components,
+            ctx.buffer.info[ctx.match_positions[i] as usize].component_set,
+        ) else {
+            return;
+        };
+        components = combined;
+    }
     let mut di = ctx.buffer.cur(0).default_ignorable;
     for i in 1..count {
         let Some(combined) = super::default_ignorable::union(
@@ -1131,6 +1231,10 @@ pub fn ligate_input(
         return;
     }
     ctx.buffer.cur_mut(0).default_ignorable = di;
+    ctx.buffer.cur_mut(0).component_set = components;
+    if !super::components::ligature(ctx.buffer, components, provenance) {
+        return;
+    }
 
     let mut is_base_ligature = ctx.buffer.info[ctx.match_positions[0] as usize].is_base_glyph();
     let mut is_mark_ligature = ctx.buffer.info[ctx.match_positions[0] as usize].is_mark();
