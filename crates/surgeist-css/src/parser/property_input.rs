@@ -674,7 +674,17 @@ fn advance_native_component(input: &mut cssparser::Parser<'_, '_>) -> Result<(),
     }
     Ok(())
 }
-fn advance_native_to(input: &mut cssparser::Parser<'_, '_>, offset: usize) {
+/// The byte where the scope of the native parser `input` ends, which is the
+/// end of the last component it holds. The parser is left where it was.
+pub(super) fn native_scope_end(input: &mut cssparser::Parser<'_, '_>) -> usize {
+    let checkpoint = input.state();
+    while advance_native_component(input).is_ok() {}
+    let end = input.position().byte_index();
+    input.reset(&checkpoint);
+    end
+}
+
+pub(super) fn advance_native_to(input: &mut cssparser::Parser<'_, '_>, offset: usize) {
     while input.position().byte_index() < offset && advance_native_component(input).is_ok() {}
     assert_eq!(
         input.position().byte_index(),

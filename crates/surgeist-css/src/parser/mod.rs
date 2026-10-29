@@ -35,7 +35,7 @@ pub(crate) mod content_values;
 pub(crate) mod counter_style;
 pub(crate) mod declaration_block;
 pub(crate) mod declaration_unit;
-pub(crate) mod descriptor_body;
+pub(crate) mod descriptor_stream;
 pub(crate) mod descriptor_values;
 pub(crate) mod domain_declaration_contents;
 pub(crate) mod effects;

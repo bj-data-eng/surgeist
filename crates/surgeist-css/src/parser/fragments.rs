@@ -452,7 +452,7 @@ pub(crate) fn parse_font_palette_values_block(
         "later.rule.font-palette-values",
         parser_context,
         |source, input, diagnostics, state| {
-            let descriptors = font_palette_values::parse_body(source, input, diagnostics, state);
+            let descriptors = font_palette_values::parse_body(source, input, diagnostics, state)?;
             crate::rule::font_palette_values::rule::validate_descriptors(&descriptors).map_err(
                 |_| crate::diagnostic::error::invalid_syntax(input.current_source_location()),
             )?;
@@ -475,7 +475,7 @@ pub(crate) fn parse_color_profile_block(
         "interop.rule.color-profile",
         parser_context,
         |source, input, diagnostics, state| {
-            Ok(color_profile::parse_body(source, input, diagnostics, state))
+            color_profile::parse_body(source, input, diagnostics, state)
         },
     )
 }
@@ -496,7 +496,7 @@ pub(crate) fn parse_font_feature_values_block(
         "later.rule.font-feature-values",
         parser_context,
         |source, input, diagnostics, state| {
-            let recovered = font_feature_values::parse_outer_body(source, input, state);
+            let recovered = font_feature_values::parse_outer_body(source, input, state)?;
             diagnostics.extend(recovered.diagnostics);
             Ok(recovered.syntax)
         },
@@ -518,7 +518,7 @@ pub(crate) fn parse_font_feature_value_block(
         "later.rule.font-feature-values",
         parser_context,
         move |source, input, diagnostics, state| {
-            let recovered = font_feature_values::parse_definition_body(source, input, kind, state);
+            let recovered = font_feature_values::parse_definition_body(source, input, kind, state)?;
             let block = crate::rule::font_feature_values::CssFontFeatureValueBlock::try_new(
                 kind,
                 recovered.syntax,

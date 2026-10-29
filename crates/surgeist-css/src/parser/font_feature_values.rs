@@ -1,17 +1,34 @@
-use super::property_input::{NativeValueRange, adapt_native};
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use cssparser::{ParseError, Parser, ParserState};
+use surgeist_css_parser::Token;
+use surgeist_css_parser::grammar::{AtRule, BlockGrammar, QualifiedRule, RuleGrammar};
+
+use super::Recovered;
+use super::block_units::{
+    DeclarationUnit, GrammarError, NativeError, grammar_error, location_at, offset_of,
+};
+use super::declaration_unit::DeclarationText;
+use super::descriptor_stream::{
+    Boundary, DescriptorGrammar, DescriptorRecovery, NativeValueError, Value, comma_list,
+    consume_remaining, declaration_position, drive_descriptors_into, expect_exhausted, fail,
+    from_remaining, native, parse_descriptor_checked, parse_descriptor_text, parse_scope,
+    validate_root,
+};
+use super::property_input::StreamExt;
 use super::recovery::RecoveryState;
-use super::{Recovered, parse_descriptor_boundary};
+use super::syntax_types::{Attached, Stream, SyntaxError};
 use crate::component::{
     CssComponentValue, CssComponentValueRef, CssComponentValues, CssNumericTokenKind,
     CssSerializedValue, CssValueOrigin, CssValueTokenRef,
 };
 use crate::declaration::{CssAuthoredDeclarationValue, CssSubstitutionDependentValue};
-use crate::diagnostic::CssError;
 use crate::diagnostic::error::{
-    basic, descriptor_name_error, invalid_syntax, with_at_rule_prelude_context,
+    descriptor_name_error, invalid_syntax, unexpected_syntax_token, with_at_rule_prelude_context,
     with_descriptor_context,
 };
-use crate::diagnostic::{CssFeatureId, CssRecoveryDiagnostic};
+use crate::diagnostic::{CssError, CssFeatureId, CssRecoveryAction, CssRecoveryDiagnostic};
 use crate::numeric::expression::NumericInputContext;
 use crate::rule::font_face::CssFontFaceFamily;
 use crate::rule::font_feature_values::descriptor_values::{
@@ -24,10 +41,6 @@ use crate::rule::font_feature_values::{
     CssFontFeatureValuesRule,
 };
 use crate::source::{CssParsedOrigin, CssSourcePosition, CssSourceSnapshot};
-use cssparser::{
-    AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, ParserState,
-    QualifiedRuleParser, RuleBodyItemParser,
-};
 
 pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] =
     &[CssFeatureId::new("later.rule.font-feature-values")];
@@ -49,32 +62,41 @@ pub(super) fn parse_families_observed<'i>(
     mut observe: impl FnMut(
         std::ops::Range<usize>,
         cssparser::SourceLocation,
-    ) -> Result<(), ParseError<'i, CssError>>,
+    ) -> Result<(), ParseError<'static, CssError>>,
 ) -> Result<Vec<CssFontFaceFamily>, ParseError<'i, CssError>> {
     recovery.check_specialized_components(source, input, "later.rule.font-feature-values")?;
-    input
-        .parse_comma_separated(|input| {
-            let start = input.position().byte_index();
-            let location = input.current_source_location();
-            let numeric = NumericInputContext::parsed(recovery.source_snapshot());
-            let name = adapt_native(input, &numeric, NativeValueRange::Remaining, |input, _| {
-                super::typography::parse_non_generic_font_family_name(input)
-            })?;
-            input.expect_exhausted().map_err(basic)?;
+    let snapshot = recovery.source_snapshot().clone();
+    parse_scope(input, &snapshot, |input, numeric| {
+        comma_list(input, |input| {
+            let start = input.site();
+            let location = input.site();
+            let name = from_remaining(
+                numeric,
+                input,
+                super::typography::parse_non_generic_font_family_name,
+            )?;
+            expect_exhausted(input)?;
             let family = CssFontFaceFamily::try_new(name.as_str())
-                .ok_or_else(|| invalid_syntax(location))?;
-            observe(start..input.position().byte_index(), location)?;
+                .ok_or_else(|| fail(numeric, location, invalid_syntax))?;
+            let at = input.site();
+            observe(
+                offset_of(start)..offset_of(at),
+                super::descriptor_stream::location(numeric, location),
+            )
+            .map_err(|error| SyntaxError::custom(at, error))?;
             Ok(family)
         })
-        .map_err(|error| {
-            with_at_rule_prelude_context(
-                error,
-                "font-feature-values",
-                "later.rule.font-feature-values",
-                "a nonempty list of non-generic font family names",
-            )
-        })
+    })
+    .map_err(|error| {
+        with_at_rule_prelude_context(
+            error,
+            "font-feature-values",
+            "later.rule.font-feature-values",
+            "a nonempty list of non-generic font family names",
+        )
+    })
 }
+
 pub(super) fn parse_rule<'i>(
     source: &'i str,
     families: Vec<CssFontFaceFamily>,
@@ -83,25 +105,23 @@ pub(super) fn parse_rule<'i>(
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: RecoveryState,
 ) -> Result<CssFontFeatureValuesRule, ParseError<'i, CssError>> {
-    let recovered = parse_outer_body(source, input, recovery);
+    let recovered = parse_outer_body(source, input, recovery)?;
     diagnostics.extend(recovered.diagnostics);
     CssFontFeatureValuesRule::try_new(families, recovered.syntax)
         .map(|rule| rule.with_position(position(start)))
         .map_err(|_| invalid_syntax(start.source_location()))
 }
 
+/// The items of the outer block the native parser `input` is inside.
 pub(super) fn parse_outer_body<'i>(
     source: &'i str,
     input: &mut Parser<'i, '_>,
     recovery: RecoveryState,
-) -> Recovered<Vec<CssFontFeatureValuesItem>> {
-    let mut parser = BodyParser {
-        source,
-        recovery,
-        kind: None,
-        diagnostics: Vec::new(),
-    };
-    let members = parse_body(input, &mut parser);
+) -> Result<Recovered<Vec<CssFontFeatureValuesItem>>, ParseError<'i, CssError>> {
+    let snapshot = recovery.source_snapshot().clone();
+    let (members, diagnostics) = parse_scope(input, &snapshot, |contents, _| {
+        Ok(drive_members(contents, source, None, &recovery))
+    })?;
     let items = members
         .into_iter()
         .map(|member| match member {
@@ -109,25 +129,23 @@ pub(super) fn parse_outer_body<'i>(
             Member::Definition(_) => unreachable!("outer body returns only mixed rule items"),
         })
         .collect();
-    Recovered {
+    Ok(Recovered {
         syntax: items,
-        diagnostics: parser.diagnostics,
-    }
+        diagnostics,
+    })
 }
 
+/// The definitions of the block of `kind` the native parser `input` is inside.
 pub(super) fn parse_definition_body<'i>(
     source: &'i str,
     input: &mut Parser<'i, '_>,
     kind: CssFontFeatureValueKind,
     recovery: RecoveryState,
-) -> Recovered<Vec<CssFontFeatureValueDefinition>> {
-    let mut parser = BodyParser {
-        source,
-        recovery,
-        kind: Some(kind),
-        diagnostics: Vec::new(),
-    };
-    let members = parse_body(input, &mut parser);
+) -> Result<Recovered<Vec<CssFontFeatureValueDefinition>>, ParseError<'i, CssError>> {
+    let snapshot = recovery.source_snapshot().clone();
+    let (members, diagnostics) = parse_scope(input, &snapshot, |contents, _| {
+        Ok(drive_members(contents, source, Some(kind), &recovery))
+    })?;
     let definitions = members
         .into_iter()
         .map(|member| match member {
@@ -135,11 +153,50 @@ pub(super) fn parse_definition_body<'i>(
             Member::Item(_) => unreachable!("subsidiary bodies return only definitions"),
         })
         .collect();
-    Recovered {
+    Ok(Recovered {
         syntax: definitions,
-        diagnostics: parser.diagnostics,
-    }
+        diagnostics,
+    })
 }
+
+/// Drives the units of the contents of a block: the outer block when `kind` is
+/// none, and the block of the feature type `kind` otherwise.
+fn drive_members<'i>(
+    contents: &mut Stream<'i>,
+    source: &str,
+    kind: Option<CssFontFeatureValueKind>,
+    recovery: &RecoveryState,
+) -> (Vec<Member>, Vec<CssRecoveryDiagnostic>) {
+    let sink = Rc::new(RefCell::new(Vec::new()));
+    let mut grammar = BodyParser {
+        source,
+        recovery: recovery.clone(),
+        kind,
+        diagnostics: Rc::clone(&sink),
+    };
+    let mut readmit = BodyParser {
+        source,
+        recovery: recovery.clone(),
+        kind,
+        diagnostics: Rc::clone(&sink),
+    };
+    let members = drive_descriptors_into(
+        contents,
+        &mut grammar,
+        &mut readmit,
+        &DescriptorRecovery {
+            source,
+            recovery,
+            production: "later.rule.font-feature-values",
+            declaration: CssRecoveryAction::DropDescriptor,
+            at_rule_first: true,
+        },
+        &sink,
+    );
+    drop((grammar, readmit));
+    (members, sink.take())
+}
+
 fn position(start: &ParserState) -> CssSourcePosition {
     CssSourcePosition::from_cssparser(start.position(), start.source_location())
 }
@@ -148,138 +205,177 @@ enum Member {
     Item(CssFontFeatureValuesItem),
     Definition(CssFontFeatureValueDefinition),
 }
+
 struct BodyParser<'i> {
     source: &'i str,
     recovery: RecoveryState,
     kind: Option<CssFontFeatureValueKind>,
-    diagnostics: Vec<CssRecoveryDiagnostic>,
-}
-fn parse_body<'i>(input: &mut Parser<'i, '_>, parser: &mut BodyParser<'i>) -> Vec<Member> {
-    super::descriptor_body::parse(input, parser, "later.rule.font-feature-values")
-}
-impl<'i> super::descriptor_body::Receiver<'i, Member> for BodyParser<'i> {
-    fn recovery_context(&mut self) -> super::descriptor_body::RecoveryContext<'_, 'i> {
-        super::descriptor_body::RecoveryContext {
-            source: self.source,
-            recovery: &self.recovery,
-            diagnostics: &mut self.diagnostics,
-        }
-    }
+    diagnostics: Rc<RefCell<Vec<CssRecoveryDiagnostic>>>,
 }
 
-impl<'i> AtRuleParser<'i> for BodyParser<'i> {
-    type Prelude = CssFontFeatureValueKind;
-    type AtRule = Member;
-    type Error = CssError;
-    fn parse_prelude<'t>(
-        &mut self,
-        name: CowRcStr<'i>,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self::Prelude, ParseError<'i, CssError>> {
-        self.recovery.check_specialized_components(
-            self.source,
-            input,
-            "later.rule.font-feature-values",
-        )?;
+impl<'i> RuleGrammar<'i, Attached<'i>> for BodyParser<'_> {
+    type Item = Member;
+    type Error = NativeError<'i>;
+
+    // The outer body admits the blocks of the feature types, whose own bodies
+    // are definitions. A prelude that is rejected is reported at its start,
+    // which tells it from a rejected block.
+    fn at_rule(&mut self, rule: AtRule<'i, Attached<'i>>) -> Result<Member, GrammarError<'i>> {
+        let snapshot = self.recovery.source_snapshot();
+        let name = rule.name();
+        let prelude_site = rule.prelude().start_site();
+        self.recovery
+            .check_specialized_components_from(
+                self.source,
+                offset_of(prelude_site),
+                "later.rule.font-feature-values",
+            )
+            .map_err(|error| grammar_error(prelude_site, error))?;
         let kind = self
             .kind
             .is_none()
-            .then(|| CssFontFeatureValueKind::from_css_name(&name))
+            .then(|| CssFontFeatureValueKind::from_css_name(name))
             .flatten()
-            .ok_or_else(|| input.new_error(cssparser::BasicParseErrorKind::AtRuleInvalid(name)))?;
-        input.expect_exhausted().map_err(basic)?;
-        Ok(kind)
-    }
-    fn parse_block<'t>(
-        &mut self,
-        kind: Self::Prelude,
-        start: &ParserState,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self::AtRule, ParseError<'i, CssError>> {
-        let mut depth =
-            self.recovery
-                .enter_rule_block(self.source, input, "later.rule.font-feature-values")?;
-        let recovered = parse_definition_body(self.source, input, kind, self.recovery.clone());
-        let block = CssFontFeatureValueBlock::try_new(kind, recovered.syntax)
-            .map_err(|_| invalid_syntax(start.source_location()))?
-            .with_position(position(start));
-        self.diagnostics.extend(recovered.diagnostics);
+            .ok_or_else(|| SyntaxError::unknown_at_rule_error(prelude_site, name))?;
+        expect_exhausted(&mut rule.prelude())?;
+        let at = rule.start();
+        let Some(mut block) = rule.block() else {
+            return Err(grammar_error(
+                at,
+                unexpected_syntax_token(
+                    location_at(snapshot, offset_of(rule.end())),
+                    Token::Semicolon,
+                ),
+            ));
+        };
+        let opening = offset_of(block.start_site()).saturating_sub(1);
+        let mut depth = self
+            .recovery
+            .enter_rule_block_at(self.source, opening, "later.rule.font-feature-values")
+            .map_err(|error| grammar_error(at, error))?;
+        let (definitions, recovered) =
+            drive_members(&mut block, self.source, Some(kind), &self.recovery);
+        let definitions = definitions
+            .into_iter()
+            .map(|member| match member {
+                Member::Definition(value) => value,
+                Member::Item(_) => unreachable!("subsidiary bodies return only definitions"),
+            })
+            .collect();
+        let block = CssFontFeatureValueBlock::try_new(kind, definitions)
+            .map_err(|_| grammar_error(at, invalid_syntax(location_at(snapshot, offset_of(at)))))?
+            .with_position(declaration_position(snapshot, offset_of(at)));
+        self.diagnostics.borrow_mut().extend(recovered);
         depth.retain();
         Ok(Member::Item(CssFontFeatureValuesItem::Block(block)))
     }
-}
-impl<'i> QualifiedRuleParser<'i> for BodyParser<'i> {
-    type Prelude = ();
-    type QualifiedRule = Member;
-    type Error = CssError;
-}
-impl<'i> RuleBodyItemParser<'i, Member, CssError> for BodyParser<'i> {
-    fn parse_declarations(&self) -> bool {
-        true
-    }
-    // Syntax 3 (2026 CRD) §5.5.5 reconsumes a failed declaration, and any
-    // other non-at-rule unit, as a nested qualified rule with a `;` stop token.
-    fn parse_qualified(&self) -> bool {
-        true
-    }
-}
-impl<'i> DeclarationParser<'i> for BodyParser<'i> {
-    type Declaration = Member;
-    type Error = CssError;
-    fn parse_value<'t>(
+
+    // Syntax 3 (2026 CRD) section 5.5.5 reads a unit that is not a
+    // declaration as a qualified rule, which this body does not admit.
+    fn qualified_rule(
         &mut self,
-        name: CowRcStr<'i>,
-        input: &mut Parser<'i, 't>,
-        start: &ParserState,
-    ) -> Result<Member, ParseError<'i, CssError>> {
-        let implicit =
-            self.recovery
-                .check_component_values(self.source, input, "css.descriptor")?;
+        rule: QualifiedRule<'i, Attached<'i>>,
+    ) -> Result<Member, GrammarError<'i>> {
+        Err(SyntaxError::invalid_qualified_rule_error(rule.start()))
+    }
+}
+
+impl<'i> BlockGrammar<'i, Attached<'i>> for BodyParser<'_> {
+    fn declaration(
+        &mut self,
+        declaration: DeclarationUnit<'i>,
+    ) -> Result<Member, GrammarError<'i>> {
+        let at = declaration.start();
+        self.admit(declaration.name(), &DeclarationText::of(&declaration))
+            .map_err(|error| grammar_error(at, error))
+    }
+}
+
+impl<'i> DescriptorGrammar<'i, Member> for BodyParser<'_> {
+    fn readmit(&mut self, name: &str, text: &DeclarationText) -> Result<Member, NativeError<'i>> {
+        self.admit(name, text)
+    }
+}
+
+impl BodyParser<'_> {
+    /// Admits the declaration named `name` that lies at `text`.
+    fn admit<'i>(&mut self, name: &str, text: &DeclarationText) -> Result<Member, NativeError<'i>> {
+        let snapshot = self.recovery.source_snapshot();
+        let implicit = self.recovery.check_component_values_from(
+            self.source,
+            text.value_start,
+            "css.descriptor",
+        )?;
         let owner = self
             .kind
             .map_or("font-feature-values", CssFontFeatureValueKind::as_str);
-        let value_start = input.state();
-        input.reset(start);
-        input.expect_ident().map_err(basic)?;
-        let name_origin = CssParsedOrigin::from_range(
-            self.recovery.source_snapshot(),
-            start.position().byte_index()..input.position().byte_index(),
-        )
-        .expect("actual declaration name");
-        input.reset(&value_start);
-        let result = parse_descriptor_boundary(input, owner, &name, |input| {
-            if let Some(kind) = self.kind {
-                let friendly = CssFontFeatureValueName::try_new(name.to_string())
-                    .map_err(|_| invalid_syntax(start.source_location()))?;
-                let (data, components, origin) = super::collect_declaration_value(
-                    input,
-                    self.recovery.source_snapshot(),
-                    |input| parse_feature_value(input, kind, self.recovery.source_snapshot()),
-                )?;
-                let value = CssFontFeatureValue::from_parsed(kind, data, components, origin);
-                Ok(Member::Definition(
-                    CssFontFeatureValueDefinition::new(friendly, value)
-                        .with_parsed_name(name_origin.clone())
-                        .with_position(position(start)),
-                ))
-            } else {
-                if !name.eq_ignore_ascii_case("font-display") {
-                    return Err(descriptor_name_error(start.source_location(), owner, &name));
-                }
-                let (data, components, origin) = super::collect_declaration_value(
-                    input,
-                    self.recovery.source_snapshot(),
-                    |input| parse_display_value(input, self.recovery.source_snapshot()),
-                )?;
-                let value = CssFontFeatureDisplayValue::from_parsed(data, components, origin);
-                Ok(Member::Item(CssFontFeatureValuesItem::FontDisplay(
-                    CssFontFeatureDisplayOccurrence::new(value)
-                        .with_parsed_name(name_origin.clone())
-                        .with_position(position(start)),
-                )))
+        let name_origin = CssParsedOrigin::from_range(snapshot, text.name_range())
+            .expect("actual declaration name");
+        let start_location = location_at(snapshot, text.name_start());
+        let position = declaration_position(snapshot, text.name_start());
+        let result = if let Some(kind) = self.kind {
+            let friendly = CssFontFeatureValueName::try_new(name.to_string())
+                .map_err(|_| invalid_syntax(start_location))
+                .map_err(|error| with_descriptor_context(error, owner, name))?;
+            let value = parse_descriptor_text(
+                snapshot,
+                text.value_start,
+                text.end,
+                owner,
+                name,
+                Boundary::Value,
+                |input, components, numeric, range| {
+                    let data = feature_data(
+                        input,
+                        kind,
+                        &components,
+                        numeric,
+                        crate::diagnostic::error::unexpected_component_value,
+                    )?;
+                    let origin = CssParsedOrigin::from_range(snapshot, range)
+                        .expect("parser value boundaries belong to the original source");
+                    Ok(CssFontFeatureValue::from_parsed(
+                        kind, data, components, origin,
+                    ))
+                },
+            )
+            .map_err(|error| with_descriptor_context(error, owner, name))?;
+            Member::Definition(
+                CssFontFeatureValueDefinition::new(friendly, value)
+                    .with_parsed_name(name_origin)
+                    .with_position(position),
+            )
+        } else {
+            if !name.eq_ignore_ascii_case("font-display") {
+                return Err(with_descriptor_context(
+                    descriptor_name_error(start_location, owner, name),
+                    owner,
+                    name,
+                ));
             }
-        })
-        .map_err(|error| with_descriptor_context(error, owner, &name))?;
+            let value = parse_descriptor_text(
+                snapshot,
+                text.value_start,
+                text.end,
+                owner,
+                name,
+                Boundary::ValidatedValue,
+                |input, components, numeric, range| {
+                    let data = display_data(input, &components, numeric)?;
+                    let origin = CssParsedOrigin::from_range(snapshot, range)
+                        .expect("parser value boundaries belong to the original source");
+                    Ok(CssFontFeatureDisplayValue::from_parsed(
+                        data, components, origin,
+                    ))
+                },
+            )
+            .map_err(|error| with_descriptor_context(error, owner, name))?;
+            Member::Item(CssFontFeatureValuesItem::FontDisplay(
+                CssFontFeatureDisplayOccurrence::new(value)
+                    .with_parsed_name(name_origin)
+                    .with_position(position),
+            ))
+        };
         self.recovery.retain_component_closures(implicit);
         Ok(result)
     }
@@ -314,105 +410,150 @@ pub(super) fn indexes_from_components<'i>(
     Ok(indexes)
 }
 
-fn qualifies(
+fn qualifies<'i>(
     components: &CssComponentValues,
     numeric: &NumericInputContext<'_>,
-    location: cssparser::SourceLocation,
-) -> Result<bool, ParseError<'static, CssError>> {
-    super::variables::descriptor_environment_qualifies(components.items(), numeric)
-        .map_err(|error| crate::diagnostic::error::invalid_component_value(location, error))
+    at: super::syntax_types::Site<'i>,
+) -> Result<bool, super::descriptor_stream::ValueError<'i>> {
+    super::variables::descriptor_environment_qualifies(components.items(), numeric).map_err(
+        |error| {
+            fail(numeric, at, |at| {
+                crate::diagnostic::error::invalid_component_value(at, error)
+            })
+        },
+    )
 }
-fn pending<'i>(
-    input: &mut Parser<'i, '_>,
-) -> Result<CssSubstitutionDependentValue, ParseError<'i, CssError>> {
-    let start = input.position();
-    super::descriptor_values::consume_remaining_components(input)?;
-    Ok(CssSubstitutionDependentValue::new(
-        CssAuthoredDeclarationValue::new(input.slice_from(start)),
+
+fn pending(input: &mut Stream<'_>) -> CssSubstitutionDependentValue {
+    let start = input.site();
+    consume_remaining(input);
+    CssSubstitutionDependentValue::new(CssAuthoredDeclarationValue::new(
+        input.authored_text_since(start),
     ))
 }
+
+/// The value of a `font-display` descriptor from the scope of the native
+/// parser `input`.
 pub(super) fn parse_display_value<'i>(
     input: &mut Parser<'i, '_>,
     snapshot: &CssSourceSnapshot,
 ) -> Result<FontFeatureDisplayData, ParseError<'i, CssError>> {
-    super::descriptor_values::validate_root(input, "font-feature-values", "font-display")?;
-    let start = input.state();
-    let components = CssComponentValues::collect_from_parser(input, snapshot).map_err(|error| {
-        crate::diagnostic::error::invalid_component_value(input.current_source_location(), error)
-    })?;
-    input.reset(&start);
-    display_data(input, &components, &NumericInputContext::parsed(snapshot))
+    let start = input.position().byte_index();
+    let end = super::property_input::native_scope_end(input);
+    let value = parse_descriptor_text(
+        snapshot,
+        start,
+        end,
+        "font-feature-values",
+        "font-display",
+        Boundary::ValidatedText,
+        |input, components, numeric, _| display_data(input, &components, numeric),
+    )?;
+    super::property_input::advance_native_to(input, end);
+    Ok(value)
 }
+
 fn display_data<'i>(
-    input: &mut Parser<'i, '_>,
+    input: &mut Stream<'i>,
     components: &CssComponentValues,
     numeric: &NumericInputContext<'_>,
-) -> Result<FontFeatureDisplayData, ParseError<'i, CssError>> {
-    if qualifies(components, numeric, input.current_source_location())? {
-        return Ok(FontFeatureDisplayData::Pending(pending(input)?));
+) -> Value<'i, FontFeatureDisplayData> {
+    if qualifies(components, numeric, input.site())? {
+        return Ok(FontFeatureDisplayData::Pending(pending(input)));
     }
-    let value = super::font_face::parse_font_display(input)?;
-    input.expect_exhausted().map_err(basic)?;
+    let value = super::font_face::parse_font_display_value(input, numeric)?;
+    expect_exhausted(input)?;
     Ok(FontFeatureDisplayData::Ordinary(value))
 }
+
 pub(crate) fn construct_display_value(
     components: &CssComponentValues,
     serialized: &CssSerializedValue,
 ) -> Result<FontFeatureDisplayData, CssError> {
-    let source = crate::tokenization::prepare(serialized.as_css());
-    let mut parser_input = cssparser::ParserInput::new(&source);
-    let mut input = Parser::new(&mut parser_input);
     let numeric = NumericInputContext::components(components, serialized);
     let result = (|| {
-        super::descriptor_values::validate_root(&mut input, "font-feature-values", "font-display")?;
-        parse_descriptor_boundary(&mut input, "font-feature-values", "font-display", |input| {
-            display_data(input, components, &numeric)
-        })
+        let document = crate::syntax_consumption::checked_document(
+            components.items(),
+            crate::syntax_consumption::SyntaxInputLimits::default(),
+            0,
+        )
+        .map_err(|error| {
+            crate::diagnostic::error::invalid_component_value(
+                cssparser::SourceLocation { line: 0, column: 1 },
+                error,
+            )
+        })?;
+        let mut input = document.root();
+        validate_root(&mut input, &numeric, "font-feature-values", "font-display")
+            .map_err(|error| native(&numeric, &error))?;
+        parse_descriptor_checked(
+            &mut input,
+            &numeric,
+            "font-feature-values",
+            "font-display",
+            |input| display_data(input, components, &numeric),
+        )
     })();
     result.map_err(|error| crate::diagnostic::error::from_parse_error(serialized.as_css(), error))
 }
 
+/// The value of a feature of `kind` from the scope of the native parser
+/// `input`.
 pub(super) fn parse_feature_value<'i>(
     input: &mut Parser<'i, '_>,
     kind: CssFontFeatureValueKind,
     snapshot: &CssSourceSnapshot,
 ) -> Result<FontFeatureValueData, ParseError<'i, CssError>> {
-    let start = input.state();
-    let components = CssComponentValues::collect_from_parser(input, snapshot).map_err(|error| {
-        crate::diagnostic::error::invalid_component_value(input.current_source_location(), error)
-    })?;
-    input.reset(&start);
-    feature_data(
-        input,
-        kind,
-        &components,
-        &NumericInputContext::parsed(snapshot),
-        crate::diagnostic::error::unexpected_component_value,
-    )
+    let start = input.position().byte_index();
+    let end = super::property_input::native_scope_end(input);
+    let value = parse_descriptor_text(
+        snapshot,
+        start,
+        end,
+        "font-feature-values",
+        kind.as_str(),
+        Boundary::Text,
+        |input, components, numeric, _| {
+            feature_data(
+                input,
+                kind,
+                &components,
+                numeric,
+                crate::diagnostic::error::unexpected_component_value,
+            )
+        },
+    )?;
+    super::property_input::advance_native_to(input, end);
+    Ok(value)
 }
+
 fn feature_data<'i>(
-    input: &mut Parser<'i, '_>,
+    input: &mut Stream<'i>,
     kind: CssFontFeatureValueKind,
     components: &CssComponentValues,
     numeric: &NumericInputContext<'_>,
-    error: impl Fn(&CssComponentValue, &'static str) -> ParseError<'i, CssError>,
-) -> Result<FontFeatureValueData, ParseError<'i, CssError>> {
+    error: impl Fn(&CssComponentValue, &'static str) -> NativeValueError,
+) -> Value<'i, FontFeatureValueData> {
     // Annotation/boundary tokens are disallowed before whole-value qualification.
     for component in components.items() {
         if matches!(
             component.view(),
             CssComponentValueRef::Token(CssValueTokenRef::Semicolon | CssValueTokenRef::Delim('!'))
         ) {
-            return Err(error(component, "nonnegative integer tokens"));
+            return Err(SyntaxError::custom(
+                input.site(),
+                error(component, "nonnegative integer tokens"),
+            ));
         }
     }
-    if qualifies(components, numeric, input.current_source_location())? {
-        return Ok(FontFeatureValueData::Pending(pending(input)?));
+    if qualifies(components, numeric, input.site())? {
+        return Ok(FontFeatureValueData::Pending(pending(input)));
     }
     let indexes = indexes_from_components(components, |component| {
         error(component, "nonnegative integer tokens")
-    })?;
-    super::descriptor_values::consume_remaining_components(input)?;
+    })
+    .map_err(|error| SyntaxError::custom(input.site(), error))?;
+    consume_remaining(input);
     kind.validate_index_count(indexes.len()).map_err(|_| {
         let surplus = components
             .items()
@@ -426,45 +567,64 @@ fn feature_data<'i>(
             })
             .enumerate()
             .find(|(index, _)| kind.validate_index_count(index + 1).is_err());
+        let at = input.site();
         match surplus {
-            Some((_, component)) => error(component, "the selected feature-value index count"),
-            None => crate::diagnostic::error::unexpected_end_at(
-                input.current_source_location(),
-                "the selected feature-value index count",
+            Some((_, component)) => SyntaxError::custom(
+                at,
+                error(component, "the selected feature-value index count"),
             ),
+            None => fail(numeric, at, |location| {
+                crate::diagnostic::error::unexpected_end_at(
+                    location,
+                    "the selected feature-value index count",
+                )
+            }),
         }
     })?;
     Ok(FontFeatureValueData::Indexes(indexes))
 }
+
 pub(crate) fn construct_feature_value(
     kind: CssFontFeatureValueKind,
     components: &CssComponentValues,
     serialized: &CssSerializedValue,
 ) -> Result<FontFeatureValueData, CssError> {
-    let source = crate::tokenization::prepare(serialized.as_css());
-    let mut parser_input = cssparser::ParserInput::new(&source);
-    let mut input = Parser::new(&mut parser_input);
     let numeric = NumericInputContext::components(components, serialized);
-    feature_data(
-        &mut input,
-        kind,
-        components,
-        &numeric,
-        |component, expectation| {
-            let index = components
-                .items()
-                .iter()
-                .position(|item| std::ptr::eq(item, component))
-                .expect("root grammar component");
-            let offset = serialized
-                .component_offset_for_path(&[index])
-                .expect("serialized root component");
-            crate::diagnostic::error::unexpected_component_value_at(
-                component,
-                expectation,
-                CssSourcePosition::from_byte_offset_in(serialized.as_css(), offset),
+    let result = (|| {
+        let document = crate::syntax_consumption::checked_document(
+            components.items(),
+            crate::syntax_consumption::SyntaxInputLimits::default(),
+            0,
+        )
+        .map_err(|error| {
+            crate::diagnostic::error::invalid_component_value(
+                cssparser::SourceLocation { line: 0, column: 1 },
+                error,
             )
-        },
-    )
-    .map_err(|error| crate::diagnostic::error::from_parse_error(serialized.as_css(), error))
+        })?;
+        let mut input = document.root();
+        feature_data(
+            &mut input,
+            kind,
+            components,
+            &numeric,
+            |component, expectation| {
+                let index = components
+                    .items()
+                    .iter()
+                    .position(|item| std::ptr::eq(item, component))
+                    .expect("root grammar component");
+                let offset = serialized
+                    .component_offset_for_path(&[index])
+                    .expect("serialized root component");
+                crate::diagnostic::error::unexpected_component_value_at(
+                    component,
+                    expectation,
+                    CssSourcePosition::from_byte_offset_in(serialized.as_css(), offset),
+                )
+            },
+        )
+        .map_err(|error| native(&numeric, &error))
+    })();
+    result.map_err(|error| crate::diagnostic::error::from_parse_error(serialized.as_css(), error))
 }

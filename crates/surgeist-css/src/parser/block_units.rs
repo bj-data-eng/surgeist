@@ -54,10 +54,18 @@ pub(super) fn native_error<'i>(
     snapshot: &CssSourceSnapshot,
     error: &GrammarError<'i>,
 ) -> NativeError<'i> {
+    native_error_located(error, |site| location_at(snapshot, offset_of(site)))
+}
+
+/// [`native_error`] for a document whose boundaries `locate` places.
+pub(super) fn native_error_located<'i>(
+    error: &GrammarError<'i>,
+    locate: impl FnOnce(Site<'i>) -> SourceLocation,
+) -> NativeError<'i> {
     if let Some(native) = error.custom_value() {
         return native.clone();
     }
-    let location = location_at(snapshot, offset_of(error.at()));
+    let location = locate(error.at());
     let basic = |kind| ParseError {
         kind: ParseErrorKind::Basic(kind),
         location,
