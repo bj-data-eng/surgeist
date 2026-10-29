@@ -554,7 +554,9 @@ fn atomics<S: l::LayoutScalar>() {
             2.0
         };
         let out_x = if mode == l::WritingMode::VerticalRl {
-            34.0
+            // Static block-start is C+B=32+8=40; absolute RTL placement
+            // subtracts this child's actual width5, not the in-flow width6.
+            35.0
         } else {
             0.0
         };
