@@ -16,6 +16,8 @@ mod auto_phrase;
 mod automatic_phrase;
 #[path = "tests/automatic_priority.rs"]
 mod automatic_priority;
+#[path = "tests/native_physical_publication.rs"]
+mod native_physical_publication;
 #[path = "tests/before_indication_bidi.rs"]
 mod before_indication_bidi;
 #[path = "tests/both_sides.rs"]
