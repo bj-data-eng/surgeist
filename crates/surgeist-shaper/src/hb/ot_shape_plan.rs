@@ -2,8 +2,6 @@ use alloc::boxed::Box;
 use core::any::Any;
 use smallvec::SmallVec;
 
-use crate::hb::common::HB_FEATURE_GLOBAL_END;
-use crate::hb::common::HB_FEATURE_GLOBAL_START;
 use crate::ShaperInstance;
 
 use super::aat::map::*;
@@ -139,19 +137,7 @@ impl<'a> ShapePlanKey<'a> {
 }
 
 fn features_equivalent(features_a: &[Feature], features_b: &[Feature]) -> bool {
-    if features_a.len() != features_b.len() {
-        return false;
-    }
-    for (a, b) in features_a.iter().zip(features_b) {
-        if a.tag != b.tag
-            || a.value != b.value
-            || (a.start == HB_FEATURE_GLOBAL_START && a.end == HB_FEATURE_GLOBAL_END)
-                != (b.start == HB_FEATURE_GLOBAL_START && b.end == HB_FEATURE_GLOBAL_END)
-        {
-            return false;
-        }
-    }
-    true
+    super::common::canonical_features(features_a).eq(super::common::canonical_features(features_b))
 }
 
 #[cfg(test)]

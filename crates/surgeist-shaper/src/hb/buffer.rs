@@ -125,6 +125,7 @@ pub struct GlyphPosition {
     // Keep the interchangeable Info/Position allocation layouts equal.
     pub(crate) _joining_reserved: u32,
     pub(crate) _default_ignorable_reserved: u32,
+    pub(crate) _component_reserved: u32,
 }
 
 impl GlyphPosition {
@@ -185,6 +186,7 @@ pub struct GlyphInfo {
     // Neither field is derived from caller cluster numbers.
     pub(crate) joining_lineage: u32,
     pub(crate) default_ignorable: u32,
+    pub(crate) component_set: u32,
 }
 
 #[allow(dead_code)]
@@ -452,6 +454,7 @@ pub enum ShapingRefusal {
 }
 
 pub struct hb_buffer_t {
+    pub(crate) components: super::components::State,
     pub(crate) default_ignorables: super::default_ignorable::State,
     pub(crate) default_ignorables_temporary: usize,
     pub(crate) joining: super::original_joining::JoiningState,
@@ -646,6 +649,7 @@ impl hb_buffer_t {
     /// Creates a new `Buffer`.
     pub fn new() -> Self {
         hb_buffer_t {
+            components: super::components::State::default(),
             default_ignorables: super::default_ignorable::State::default(),
             default_ignorables_temporary: 0,
             joining: super::original_joining::JoiningState::default(),
@@ -801,6 +805,7 @@ impl hb_buffer_t {
 
     fn clear(&mut self) {
         self.position_math = super::vertical_position::PositionMath::ordinary();
+        self.components = super::components::State::default();
         self.default_ignorables = super::default_ignorable::State::default();
         self.default_ignorables_temporary = 0;
         self.joining = super::original_joining::JoiningState::default();
@@ -1023,6 +1028,15 @@ impl hb_buffer_t {
     }
 
     pub fn replace_glyphs(&mut self, num_in: usize, num_out: usize, glyph_data: &[u32]) {
+        let mut components = self.info[self.idx].component_set;
+        for i in 1..num_in {
+            let Some(combined) =
+                super::components::union(self, components, self.info[self.idx + i].component_set)
+            else {
+                return;
+            };
+            components = combined;
+        }
         let mut di = self.info[self.idx].default_ignorable;
         for i in 1..num_in {
             let Some(combined) = super::default_ignorable::union(
@@ -1053,6 +1067,7 @@ impl hb_buffer_t {
 
         let mut orig_info = self.info[self.idx];
         orig_info.default_ignorable = di;
+        orig_info.component_set = components;
         for i in 1..num_in {
             let lineage = super::original_joining::union(
                 self,
@@ -1110,11 +1125,20 @@ impl hb_buffer_t {
         }
 
         self.out_info_mut()[out_len].glyph_id = glyph_index;
+        if self.components.generating_repair {
+            let context = self.out_info()[out_len].component_set;
+            let generated = super::components::generated(self, context);
+            self.out_info_mut()[out_len].component_set = generated;
+        }
 
         self.out_len += 1;
     }
 
-    pub fn output_info(&mut self, glyph_info: GlyphInfo) {
+    pub fn output_info(&mut self, mut glyph_info: GlyphInfo) {
+        if self.components.active() && glyph_info.component_set == 0 {
+            let context = self.info.get(self.idx).map_or(0, |info| info.component_set);
+            glyph_info.component_set = super::components::generated(self, context);
+        }
         if !super::default_ignorable::copy_work(self, 1) {
             return;
         }
@@ -1687,7 +1711,10 @@ impl hb_buffer_t {
             return false;
         }
 
-        if self.joining.request.is_some() || self.default_ignorables.active {
+        if self.joining.request.is_some()
+            || self.default_ignorables.active
+            || self.components.active()
+        {
             let old_info = if size > self.info.capacity() {
                 self.info.capacity()
             } else {
@@ -2093,6 +2120,13 @@ pub const HB_BUFFER_SCRATCH_FLAG_SHAPER0: u32 = 0x0100_0000;
 pub struct UnicodeBuffer(pub(crate) hb_buffer_t);
 
 impl UnicodeBuffer {
+    /// Request compact input-component and movement-constraint observation for the
+    /// next actual shaping invocation. Input may be appended before or after this
+    /// request; allocation and qualification occur during shaping. Clear resets it.
+    pub fn observe_components(&mut self) {
+        self.0.components.requested = true;
+    }
+
     /// Present selected nonexempt Cc scalars as ordinary nonjoining symbols.
     ///
     /// Positions are strictly increasing scalar indices in this complete input,
@@ -2330,6 +2364,18 @@ impl Default for UnicodeBuffer {
 pub struct GlyphBuffer(pub(crate) hb_buffer_t);
 
 impl GlyphBuffer {
+    /// Borrow the actual completed invocation's component constraints, if requested.
+    /// Absence is not proof of independent movement; inspect receipt coverage.
+    ///
+    /// # Errors
+    /// Returns the first original shaping refusal; partial output admits no receipt.
+    pub fn component_receipt(&self) -> Result<Option<crate::ComponentReceipt<'_>>, ShapingRefusal> {
+        match self.shaping_status() {
+            ShapingStatus::Refused(reason) => Err(reason),
+            ShapingStatus::Complete => Ok(super::components::receipt(&self.0)),
+        }
+    }
+
     /// Reports completion for this actual result, including any input-growth
     /// refusal before shaping. The first refusal survives shaping and reads;
     /// [`Self::clear`] starts a new input lifecycle and resets it.

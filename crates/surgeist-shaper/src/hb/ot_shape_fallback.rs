@@ -268,10 +268,8 @@ fn position_around_base(
     let mut component_extents = base_extents;
     let mut cluster_extents = base_extents;
 
-    for (info, pos) in buffer.info[base + 1..end]
-        .iter()
-        .zip(&mut buffer.pos[base + 1..end])
-    {
+    for index in base + 1..end {
+        let info = buffer.info[index];
         if info.modified_combining_class() != 0 {
             if num_lig_components > 1 {
                 let this_lig_id = info.lig_id() as u32;
@@ -316,7 +314,7 @@ fn position_around_base(
                 cluster_extents = component_extents;
             }
 
-            if let Some((raw_x, raw_y)) = position_mark(
+            let positioned = position_mark(
                 plan,
                 face,
                 buffer.direction,
@@ -324,7 +322,19 @@ fn position_around_base(
                 &mut cluster_extents,
                 this_combining_class,
                 &mut math,
-            ) {
+            );
+            if positioned.is_some()
+                && !super::components::attachment(
+                    buffer,
+                    index,
+                    base,
+                    super::components::ComponentAttachmentKind::Mark,
+                )
+            {
+                return;
+            }
+            let pos = &mut buffer.pos[index];
+            if let Some((raw_x, raw_y)) = positioned {
                 pos.x_offset = math.encode(raw_x);
                 if buffer.direction.is_vertical() {
                     // Raw centering is relative to the base's font origin;
@@ -339,6 +349,7 @@ fn position_around_base(
             pos.x_offset = math.add(pos.x_offset, x_offset);
             pos.y_offset = math.add(pos.y_offset, y_offset);
         } else {
+            let pos = &mut buffer.pos[index];
             if buffer.direction.is_forward() {
                 x_offset = math.sub(x_offset, pos.x_advance);
                 y_offset = math.sub(y_offset, pos.y_advance);

@@ -53,11 +53,11 @@ fn input(text: &str) -> UnicodeBuffer {
 fn plan_qualification_is_conservative_but_excludes_disabled_absent_and_empty() {
     alternate_font(|font, _| {
         let global = |value| Feature::new(hb_tag_t::new(b"ccmp"), value, ..);
-        let range = |value, start, end| Feature {
-            tag: hb_tag_t::new(b"ccmp"),
-            value,
-            start,
-            end,
+        let range = |value, start, end| {
+            let mut feature = Feature::new(hb_tag_t::new(b"ccmp"), value, ..);
+            feature.start = start;
+            feature.end = end;
+            feature
         };
         for features in [
             alloc::vec![range(256, 0, 1), global(1)],
@@ -128,11 +128,10 @@ fn total_mask_capacity_and_builtin_default_zero_loss_are_observable() {
         with_gsub(&gsub, |font| {
             let features: Vec<_> = tags[..count]
                 .iter()
-                .map(|tag| Feature {
-                    tag: hb_tag_t::new(tag),
-                    value: 255,
-                    start: 0,
-                    end: 1,
+                .map(|tag| {
+                    let mut feature = Feature::new(hb_tag_t::new(tag), 255, ..);
+                    feature.end = 1;
+                    feature
                 })
                 .collect();
             assert_eq!(
@@ -151,11 +150,11 @@ fn total_mask_capacity_and_builtin_default_zero_loss_are_observable() {
         let features: Vec<_> = tags[..5]
             .iter()
             .enumerate()
-            .map(|(index, tag)| Feature {
-                tag: hb_tag_t::new(tag),
-                value: if index < 3 { 255 } else { 1 },
-                start: 0,
-                end: 1,
+            .map(|(index, tag)| {
+                let mut feature =
+                    Feature::new(hb_tag_t::new(tag), if index < 3 { 255 } else { 1 }, ..);
+                feature.end = 1;
+                feature
             })
             .collect();
         let plan =
@@ -329,11 +328,10 @@ fn real_gpos_kern_mask_loss_preserves_kerx_choice_and_reports_plan_refusal() {
             for count in [2, 3] {
                 let mut features: Vec<_> = tags[..count]
                     .iter()
-                    .map(|tag| Feature {
-                        tag: hb_tag_t::new(tag),
-                        value: 255,
-                        start: 0,
-                        end: 1,
+                    .map(|tag| {
+                        let mut feature = Feature::new(hb_tag_t::new(tag), 255, ..);
+                        feature.end = 1;
+                        feature
                     })
                     .collect();
                 features.push(Feature::new(hb_tag_t::new(b"kern"), 255, ..));

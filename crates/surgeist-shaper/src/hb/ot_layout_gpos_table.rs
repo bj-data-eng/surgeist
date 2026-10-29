@@ -113,6 +113,11 @@ pub mod GPOS {
 
     pub fn position_finish_offsets(_: &hb_font_t, buffer: &mut hb_buffer_t) {
         buffer.assert_gsubgpos_vars();
+        if buffer.scratch_flags & HB_BUFFER_SCRATCH_FLAG_HAS_GPOS_ATTACHMENT != 0
+            && !super::super::components::capture_attachments(buffer)
+        {
+            return;
+        }
 
         let len = buffer.len;
         let direction = buffer.direction;

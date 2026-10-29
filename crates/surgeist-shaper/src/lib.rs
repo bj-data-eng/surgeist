@@ -26,7 +26,12 @@ pub use read_fonts::{types::Tag, FontRef};
 pub use hb::buffer::{
     GlyphBuffer, GlyphInfo, GlyphPosition, ShapingRefusal, ShapingStatus, UnicodeBuffer,
 };
-pub use hb::common::{script, Direction, Feature, Language, Script, Variation};
+pub use hb::common::{script, Direction, Feature, FeatureOrigin, Language, Script, Variation};
+pub use hb::components::{
+    ComponentAttachment, ComponentAttachmentKind, ComponentCoverage, ComponentLigature,
+    ComponentPath, ComponentReceipt, DefaultFeature, DefaultFeatureDisposition, FeatureProvenance,
+    FeatureRole, FeatureSource,
+};
 pub use hb::default_ignorable::DefaultIgnorableReceipt;
 pub use hb::face::{hb_font_t as Shaper, ShaperBuilder, ShaperData, ShaperInstance};
 pub use hb::ordinary_symbol::OrdinarySymbolInputError;

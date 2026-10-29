@@ -500,6 +500,13 @@ pub fn _hb_ot_shape_normalize(
                     || ctx.buffer.cur(0).is_ordinary_symbol();
                 if let Some(composed) = (!symbol).then(|| (ctx.compose)(&ctx, a, b)).flatten() {
                     if let Some(glyph_id) = face.get_nominal_glyph(composed) {
+                        let Some(components) = super::components::union(
+                            ctx.buffer,
+                            ctx.buffer.out_info()[starter].component_set,
+                            ctx.buffer.cur(0).component_set,
+                        ) else {
+                            return;
+                        };
                         let Some(di) = super::default_ignorable::union(
                             ctx.buffer,
                             ctx.buffer.out_info()[starter].default_ignorable,
@@ -530,6 +537,7 @@ pub fn _hb_ot_shape_normalize(
                         let info = &mut ctx.buffer.out_info_mut()[starter];
                         info.set_joining_lineage(lineage);
                         info.default_ignorable = di;
+                        info.component_set = components;
                         info.di_normal();
                         info.glyph_id = composed;
                         info.set_normalizer_glyph_index(u32::from(glyph_id));

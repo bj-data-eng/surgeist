@@ -285,8 +285,8 @@ impl<'a> crate::Shaper<'a> {
     ///
     /// # Panics
     ///
-    /// Will panic when debugging assertions are enabled if the buffer and plan have mismatched
-    /// properties.
+    /// Panics if the buffer properties, exact feature requests or selected feature
+    /// variations do not match the supplied plan.
     pub fn shape_with_plan(
         &self,
         plan: &ShapePlan,
@@ -319,7 +319,24 @@ impl<'a> crate::Shaper<'a> {
             plan.script.unwrap_or(script::UNKNOWN)
         );
 
-        let di_admitted = super::default_ignorable::begin(&mut buffer);
+        assert_eq!(
+            buffer.language.as_ref(),
+            plan.language.as_ref(),
+            "Buffer language does not match plan language"
+        );
+        assert!(
+            super::common::canonical_features(features)
+                .eq(super::common::canonical_features(&plan.user_features)),
+            "Feature requests do not match plan requests"
+        );
+        assert_eq!(
+            self.ot_tables.feature_variations,
+            *plan.ot_map.feature_variations(),
+            "Font feature variations do not match plan variations"
+        );
+
+        let components_admitted = super::components::begin(&mut buffer, plan);
+        let di_admitted = components_admitted && super::default_ignorable::begin(&mut buffer);
         if buffer.len > 0 && di_admitted {
             if plan
                 .ot_map
@@ -345,6 +362,7 @@ impl<'a> crate::Shaper<'a> {
 
         if !metrics.is_some_and(|source| source.failed) && buffer.position_math.failure.is_none() {
             super::default_ignorable::finish(&mut buffer);
+            super::components::finish(&mut buffer);
         }
         buffer.leave();
 

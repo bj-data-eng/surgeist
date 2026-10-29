@@ -16,10 +16,31 @@ units and retain responsibility for fonts, paragraph interpretation and layout.
 
 Shaper owns substitution, positioning, completion/refusal reporting, original
 joining correspondence, closed ordinary-symbol presentation, original
-default-ignorable custody and supplied vertical positioning. The provenance
+default-ignorable custody, opt-in component constraints and supplied vertical positioning. The provenance
 explains each extension's admission, typed errors and logical resource limits.
 The supplied vertical operation decodes its internal half-unit domain to exact
 f64 design-unit positions; ordinary `GlyphPosition` units stay unchanged.
+
+For movement-sensitive consumers, call `UnicodeBuffer::observe_components()`
+before shaping. The completed ordinary or supplied-vertical buffer's
+`component_receipt()` borrows exact body-scalar membership, actual ligature
+constraints with effective feature provenance, and mark/cursive dependencies.
+Inspect its `coverage()` before treating absent constraints as independence:
+executed AAT substitution/positioning is explicitly unqualified. Input ordinals
+exclude pre/post context and do not use caller cluster numbers. Clear disposes
+the request and receipt; inactive observation has no per-input arena.
+
+`Feature::new` and feature parsing create explicit requests.
+`Feature::optional_default` requests a soft override only for a feature the
+selected plan affirmatively identifies as optional. Required and unclassified
+requests retain their effective behavior, with admission reported by the receipt.
+Explicit requests take precedence over soft requests regardless of input-array
+order; within either origin the last overlapping request wins. These are ordinary
+feature ranges, without a separate shaping mode. Rust constructor ranges execute
+half-open: `0..1` and `0..=0` select the first cluster, matching parsed `[0:1]`.
+The u32 end sentinel saturates out-of-representation bounds; its complete
+`0..u32::MAX` encoding applies globally, while a nonzero-start range ending there
+excludes a caller cluster equal to the sentinel.
 
 ## Features And Verification
 

@@ -544,7 +544,10 @@ fn has_arabic_joining(script: Script) -> bool {
 }
 
 fn preprocess_text(_: &hb_ot_shape_plan_t, _: &hb_font_t, buffer: &mut hb_buffer_t) {
-    super::ot_shaper_vowel_constraints::preprocess_text_vowel_constraints(buffer);
+    super::components::generated_repairs(
+        buffer,
+        super::ot_shaper_vowel_constraints::preprocess_text_vowel_constraints,
+    );
 }
 
 fn compose(_: &hb_ot_shape_normalize_context_t, a: Codepoint, b: Codepoint) -> Option<Codepoint> {
