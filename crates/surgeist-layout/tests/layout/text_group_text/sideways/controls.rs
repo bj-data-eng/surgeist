@@ -76,7 +76,10 @@ fn forced_completion<S: l::LayoutScalar>() {
             completion.origin,
             t::Point::new(if twice { 20.0 } else { 30.0 }, 0.0)
         );
-        assert_eq!(completion.orientation, t::LineOrientation::Sideways);
+        assert_eq!(
+            completion.orientation,
+            t::LineOrientation::SidewaysClockwise
+        );
         assert_eq!(
             layout.metrics().size(),
             t::Size::new(if twice { 20.0 } else { 10.0 }, 10.0)

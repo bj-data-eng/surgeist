@@ -193,7 +193,7 @@ fn refusal<S: l::LayoutScalar>() {
             "AB",
             Some((kind, t::Id::from_u64(3))),
             t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::Sideways,
+            t::LineOrientation::SidewaysClockwise,
             10.0,
         );
         qualify_parent(&parent, kind);

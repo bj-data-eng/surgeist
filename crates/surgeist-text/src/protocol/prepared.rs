@@ -1924,8 +1924,11 @@ pub(crate) fn prepare_indication_fonts(
                 crate::LineOrientation::Horizontal => {
                     crate::engine::upright::ShapingProfile::Horizontal
                 }
-                crate::LineOrientation::Sideways => {
-                    crate::engine::upright::ShapingProfile::Sideways
+                crate::LineOrientation::SidewaysClockwise => {
+                    crate::engine::upright::ShapingProfile::SidewaysClockwise
+                }
+                crate::LineOrientation::SidewaysCounterclockwise => {
+                    crate::engine::upright::ShapingProfile::SidewaysCounterclockwise
                 }
                 crate::LineOrientation::Vertical
                     if analyzed.typography == crate::AnalysisTypography::Mixed =>

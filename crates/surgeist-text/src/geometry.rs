@@ -8,6 +8,8 @@ pub enum GlyphBasis {
     Unrotated,
     /// Glyph outlines rotate clockwise by ninety degrees.
     Clockwise,
+    /// Glyph outlines rotate counterclockwise by ninety degrees.
+    Counterclockwise,
 }
 
 /// Point in the coordinate frame documented by its owning operation.

@@ -10,7 +10,7 @@ mod source_ranges;
 use super::*;
 use crate::{Affinity, Cursor, Hit, Id, Movement, Point, Range, Rect, Selection, Size};
 
-const CW: LineOrientation = LineOrientation::Sideways;
+const CW: LineOrientation = LineOrientation::SidewaysClockwise;
 const H: LineOrientation = LineOrientation::Horizontal;
 
 fn own_style() -> Style {

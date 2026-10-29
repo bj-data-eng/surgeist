@@ -13,7 +13,8 @@ use crate::{
 
 pub(crate) enum ShapingProfile<'a> {
     Horizontal,
-    Sideways,
+    SidewaysClockwise,
+    SidewaysCounterclockwise,
     Upright {
         units: &'a [analysis::upright::VerticalUnit],
         provenance: UprightProvenance<'a>,
@@ -222,7 +223,8 @@ pub(crate) fn original_profile<'a>(
 ) -> ShapingProfile<'a> {
     match orientation {
         LineOrientation::Horizontal => ShapingProfile::Horizontal,
-        LineOrientation::Sideways => ShapingProfile::Sideways,
+        LineOrientation::SidewaysClockwise => ShapingProfile::SidewaysClockwise,
+        LineOrientation::SidewaysCounterclockwise => ShapingProfile::SidewaysCounterclockwise,
         LineOrientation::Vertical if typography == crate::AnalysisTypography::Mixed => {
             ShapingProfile::Mixed {
                 units,
@@ -243,7 +245,8 @@ pub(crate) fn selected_profile<'a>(
 ) -> ShapingProfile<'a> {
     match prepared.options.orientation() {
         LineOrientation::Horizontal => ShapingProfile::Horizontal,
-        LineOrientation::Sideways => ShapingProfile::Sideways,
+        LineOrientation::SidewaysClockwise => ShapingProfile::SidewaysClockwise,
+        LineOrientation::SidewaysCounterclockwise => ShapingProfile::SidewaysCounterclockwise,
         LineOrientation::Vertical
             if prepared.analyzed.typography == crate::AnalysisTypography::Mixed =>
         {
@@ -271,7 +274,8 @@ pub(crate) fn selected_profile<'a>(
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(crate) enum RunRole {
     Horizontal,
-    Sideways,
+    SidewaysClockwise,
+    SidewaysCounterclockwise,
     Upright,
 }
 
@@ -282,7 +286,8 @@ impl ShapingInput<'_> {
     pub(crate) fn role(&self, atom: usize) -> RunRole {
         match &self.profile {
             ShapingProfile::Horizontal => RunRole::Horizontal,
-            ShapingProfile::Sideways => RunRole::Sideways,
+            ShapingProfile::SidewaysClockwise => RunRole::SidewaysClockwise,
+            ShapingProfile::SidewaysCounterclockwise => RunRole::SidewaysCounterclockwise,
             ShapingProfile::Upright { .. } => RunRole::Upright,
             ShapingProfile::Mixed { units, .. } => units
                 .get(units.partition_point(|unit| unit.atoms().end <= atom))
@@ -291,7 +296,7 @@ impl ShapingInput<'_> {
                     if unit.upright().is_some() {
                         RunRole::Upright
                     } else {
-                        RunRole::Sideways
+                        RunRole::SidewaysClockwise
                     }
                 }),
         }
@@ -299,7 +304,9 @@ impl ShapingInput<'_> {
     pub(crate) fn vertical_units(&self) -> &[analysis::upright::VerticalUnit] {
         match &self.profile {
             ShapingProfile::Upright { units, .. } | ShapingProfile::Mixed { units, .. } => units,
-            ShapingProfile::Horizontal | ShapingProfile::Sideways => &[],
+            ShapingProfile::Horizontal
+            | ShapingProfile::SidewaysClockwise
+            | ShapingProfile::SidewaysCounterclockwise => &[],
         }
     }
     pub(crate) fn upright_content(&self, atoms: AtomRange<usize>) -> UprightContent {

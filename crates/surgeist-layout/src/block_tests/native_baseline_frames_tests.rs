@@ -121,7 +121,7 @@ impl Paragraph {
         system.register_fonts(AHEM.to_vec()).unwrap();
         let orientation = match mode {
             WritingMode::HorizontalTb => text::LineOrientation::Horizontal,
-            WritingMode::SidewaysRl => text::LineOrientation::Sideways,
+            WritingMode::SidewaysRl => text::LineOrientation::SidewaysClockwise,
             WritingMode::VerticalRl | WritingMode::VerticalLr => text::LineOrientation::Vertical,
             WritingMode::SidewaysLr => {
                 panic!("this fixture uses only admitted native Text profiles")

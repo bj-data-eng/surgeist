@@ -361,10 +361,10 @@ fn provider_direction(level: u8) -> surgeist_shaper::Direction {
 fn provider_features(
     style: &ResolvedStyle,
     native_isolated: bool,
-    sideways: bool,
+    role: super::upright::RunRole,
 ) -> Vec<surgeist_shaper::Feature> {
     let mut features = Vec::with_capacity(style.font_features.len() + usize::from(native_isolated));
-    if sideways {
+    if role == super::upright::RunRole::SidewaysClockwise {
         features.push(surgeist_shaper::Feature::new(
             surgeist_shaper::Tag::new(b"vrtr"),
             1,
@@ -1446,11 +1446,7 @@ fn append_request(
             .iter()
             .filter_map(|unit| unit.upright())
             .any(|unit| unit.isolate() && unit.atoms.contains(&request.atoms.start));
-    let mut features = provider_features(
-        style,
-        native_isolated,
-        request.role() == super::upright::RunRole::Sideways,
-    );
+    let mut features = provider_features(style, native_isolated, request.role());
     if let Some(graph) = request.input.characters {
         for range in graph.masks(request.atoms.clone()) {
             for tag in [b"liga", b"clig", b"dlig", b"hlig"] {
@@ -1706,7 +1702,7 @@ fn resolved_run(
     let line_height = resolved_line_height(style, normal_extent)?;
     let baseline_reference = match input.baseline_reference {
         Some(crate::FontBaseline::Central)
-            if request.role() == super::upright::RunRole::Sideways =>
+            if request.role() == super::upright::RunRole::SidewaysClockwise =>
         {
             Some(crate::FontBaseline::Central)
         }
@@ -1815,10 +1811,14 @@ fn resolved_run(
         level: request.level,
         script: request.script,
         atoms: request.atoms.clone(),
-        glyph_basis: if request.role() == super::upright::RunRole::Sideways {
-            crate::GlyphBasis::Clockwise
-        } else {
-            crate::GlyphBasis::Unrotated
+        glyph_basis: match request.role() {
+            super::upright::RunRole::SidewaysClockwise => crate::GlyphBasis::Clockwise,
+            super::upright::RunRole::SidewaysCounterclockwise => {
+                crate::GlyphBasis::Counterclockwise
+            }
+            super::upright::RunRole::Horizontal | super::upright::RunRole::Upright => {
+                crate::GlyphBasis::Unrotated
+            }
         },
         metrics: run_metrics,
     };
@@ -2395,7 +2395,7 @@ pub(crate) fn measure_character(
         input.profile = if super::analysis::unit_properties::vertical_orientation(u32::from(ch))
             == icu_properties::props::VerticalOrientation::Rotated
         {
-            super::upright::ShapingProfile::Sideways
+            super::upright::ShapingProfile::SidewaysClockwise
         } else {
             super::upright::ShapingProfile::Upright {
                 units: &[],
@@ -2469,11 +2469,7 @@ pub(crate) fn measure_character(
         .instance(Some(&instance))
         .point_size(Some(style.font_size))
         .build();
-    let features = provider_features(
-        style,
-        false,
-        input.role(0) == super::upright::RunRole::Sideways,
-    );
+    let features = provider_features(style, false, input.role(0));
     let language = style
         .locale
         .as_ref()

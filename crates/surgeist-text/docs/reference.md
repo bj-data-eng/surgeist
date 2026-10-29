@@ -156,7 +156,7 @@ replace the standalone paragraph path.
 
 ## Clockwise sideways placement
 
-Native preparation accepts `PreparationOptions::with_orientation(LineOrientation::Sideways)`
+Native preparation accepts `PreparationOptions::with_orientation(LineOrientation::SidewaysClockwise)`
 for a whole paragraph composed horizontally and placed 90 degrees clockwise.
 The default remains Horizontal. Retain that same orientation in line selection
 and placement: a supported-profile mismatch returns `MismatchedContext` for
@@ -195,10 +195,33 @@ inline/line-under geometry; physical placement checks the actual border/content
 rectangles and x baseline. Out-of-flow geometry comes from its positioned-box
 owner with zero flow contribution. Atomic boxes retain their physical dimensions
 and their owner's content orientation while text glyphs use Clockwise.
-Mixed typography, counterclockwise sideways-lr progression and combined upright
-remain separate capabilities. See the [composed-line guide](composed-lines.md)
+Mixed typography and combined upright retain their separate capability bounds.
+See the [composed-line guide](composed-lines.md)
 for retained
 source, receipt and placement custody.
+
+## Counterclockwise sideways placement
+
+`LineOrientation::SidewaysCounterclockwise` retains horizontal composition,
+ordinary bidi and horizontal font metrics, with `GlyphBasis::Counterclockwise`.
+It supplies no automatic `vert`, `vrt2` or `vrtr`; authored feature settings
+retain their normal precedence. Preparation, selection and placement must retain
+the same exact orientation, including replacements and generated indications.
+
+For local inline/line-under coordinates `(u,v)`, local baseline `B` and physical
+anchor `(X,Y)`, placement is `(X+v-B, Y-u)`. Its inverse is
+`(Y-physical_y, B+physical_x-X)`. Positive inline progression moves upward;
+positive line-over displacement moves left. A nonnegative local rectangle
+`(u,v,w,h)` has physical hull `(X+v-B, Y-u-w, h,w)`; signed spans retain their
+actual endpoints. `LineAnchor` still reports physical y for inline origin and
+physical x for baseline. Atomic boxes keep their own physical dimensions.
+
+Paint, source fragments, decorations, carets, selection and hit testing consume
+this same issued frame. Adjacent-line movement retains the actual local caret
+target, independently of the caret rectangle's upper edge. Positioned
+accessibility reports BottomToTop for LTR and TopToBottom for RTL.
+This native Text profile does not admit Layout's CSS `SidewaysLr` adapter or
+combined upright interiors; those require their own consuming allocations.
 
 ## Character tracking and native InterCharacter
 
@@ -402,7 +425,7 @@ keeps its distinct signed primitive behavior.
 ## Used named preparation references
 
 `PreparationOptions::with_baseline_reference(FontBaseline::Alphabetic)` requests
-used Alphabetic composition in Horizontal or clockwise Sideways. The options'
+used Alphabetic composition in Horizontal or either sideways orientation. The options'
 `requested_baseline_reference()` retains that demand;
 `PreparedText::baseline_reference()` observes the successfully admitted reference.
 Default H/Sideways remains raw font-design-zero composition and observes `None`.
@@ -421,7 +444,8 @@ Independent caller-allocated box/control struts keep their own validity rules.
 
 The common line reference remains in line feedback, line baselines and anchors.
 Each font-design-zero paint origin is displaced by local line-under `+b`: physical
-H `y=alignment+b`, clockwise `x=alignment-b`. Raw glyph offsets, advances and pens
+H `y=alignment+b`, clockwise `x=alignment-b`, counterclockwise `x=alignment+b`.
+Raw glyph offsets, advances and pens
 remain unchanged. Borrowed/owned run origins and per-run metric facts expose that
 actual paint origin; they do not independently assert a named line baseline.
 Actual default and hypothetical tab operations retain their own existing Latin
@@ -448,8 +472,9 @@ original immutable Layout.
 `RunView::origin()` is physical; `FinalizedRunView::origin()` is line-local
 `(inline, line-under)`. Both views and owned `Run` expose the actual shaping
 run's retained `glyph_basis()`, independently of the placed line frame. Native
-Horizontal and whole-upright Vertical retain `GlyphBasis::Unrotated`; Sideways
-retains `Clockwise`. `Run::new` takes the outline basis explicitly. The logical
+Horizontal and whole-upright Vertical retain `GlyphBasis::Unrotated`;
+SidewaysClockwise retains `Clockwise` and SidewaysCounterclockwise retains
+`Counterclockwise`. `Run::new` takes the outline basis explicitly. The logical
 pen advances along the line's inline axis independently of raw font-x and
 converted font-y offsets. With physical run origin `(X,Y)`, pen `p` and raw
 scaled offsets `(dx,dy)`, glyph origins are:
@@ -458,10 +483,15 @@ scaled offsets `(dx,dy)`, glyph origins are:
 | --- | --- | --- |
 | Horizontal | Unrotated | `(X+p+dx, Y+dy)` |
 | Horizontal | Clockwise | `(X+p-dy, Y+dx)` |
-| Sideways or Vertical | Clockwise | `(X-dy, Y+p+dx)` |
-| Sideways or Vertical | Unrotated | `(X+dx, Y+p+dy)` |
+| Horizontal | Counterclockwise | `(X+p+dy, Y-dx)` |
+| SidewaysClockwise or Vertical | Clockwise | `(X-dy, Y+p+dx)` |
+| SidewaysClockwise or Vertical | Unrotated | `(X+dx, Y+p+dy)` |
+| SidewaysClockwise or Vertical | Counterclockwise | `(X+dy, Y+p-dx)` |
+| SidewaysCounterclockwise | Unrotated | `(X+dx, Y-p+dy)` |
+| SidewaysCounterclockwise | Clockwise | `(X-dy, Y-p+dx)` |
+| SidewaysCounterclockwise | Counterclockwise | `(X+dy, Y-p-dx)` |
 
-Vertical and Sideways line **cells** share a physical mapping from inline and
+Vertical and SidewaysClockwise line **cells** share a physical mapping from inline and
 line-under coordinates; that map does not rotate upright outlines. Raw glyph
 offsets are never rotated in storage. Logical spacing changes the pen without
 rewriting the provider advance. Decoration rectangles are already physical.
@@ -1065,8 +1095,8 @@ operations use that same line geometry and ordinary bidi result.
 
 Mixed Text does not itself grant a consumer named-baseline capability. Layout
 owns admission and both vertical column directions; Render owns paint conversion
-from the actual run axes. Full intrinsic-script tailoring, counterclockwise
-progression, combined upright and broader upright decoration policy remain
+from the actual run axes. Full intrinsic-script tailoring, combined upright
+and broader upright decoration policy remain
 separate operations; this native contribution does not complete those profiles.
 
 ## Native whole-upright paragraphs

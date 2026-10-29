@@ -13,6 +13,7 @@ mod casing;
 mod computed_boundaries;
 mod conditional;
 mod count_admission;
+mod counterclockwise;
 mod horizontal_control_movement;
 mod hyphenation_limits;
 mod hyphenation_policy;

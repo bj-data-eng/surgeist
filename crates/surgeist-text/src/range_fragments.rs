@@ -785,8 +785,24 @@ impl Layout {
                     let inline_anchor =
                         crate::layout::inline_coordinate(placed.orientation, placed.anchor);
                     let baseline = crate::layout::line_baseline(placed);
-                    let start = add("source range advance start", inline_anchor, metric.start)?;
-                    let end = add("source range advance end", inline_anchor, metric.end)?;
+                    // Directed metric edges use the actual inline basis before
+                    // checked translation; CCW advances decrease physical y.
+                    let inline_delta = |inline| {
+                        crate::layout::inline_coordinate(
+                            placed.orientation,
+                            crate::layout::line_vector(placed, crate::Point::new(inline, 0.0)),
+                        )
+                    };
+                    let start = add(
+                        "source range advance start",
+                        inline_anchor,
+                        inline_delta(metric.start),
+                    )?;
+                    let end = add(
+                        "source range advance end",
+                        inline_anchor,
+                        inline_delta(metric.end),
+                    )?;
                     let over = crate::layout::line_vector(
                         placed,
                         crate::Point::new(0.0, -font.metrics.ascent),

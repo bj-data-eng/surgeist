@@ -296,7 +296,9 @@ pub(crate) fn prepare(
             crate::LineOrientation::Vertical,
             None | Some(crate::FontBaseline::Central)
         ) | (
-            crate::LineOrientation::Horizontal | crate::LineOrientation::Sideways,
+            crate::LineOrientation::Horizontal
+                | crate::LineOrientation::SidewaysClockwise
+                | crate::LineOrientation::SidewaysCounterclockwise,
             None | Some(crate::FontBaseline::Alphabetic)
         )
     ) {

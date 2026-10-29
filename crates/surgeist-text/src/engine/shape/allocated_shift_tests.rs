@@ -24,7 +24,7 @@ fn shift(value: f64) -> LineBoxAlignment {
 fn orientation(frame: u8) -> LineOrientation {
     match frame {
         0 => LineOrientation::Horizontal,
-        1 => LineOrientation::Sideways,
+        1 => LineOrientation::SidewaysClockwise,
         _ => LineOrientation::Vertical,
     }
 }

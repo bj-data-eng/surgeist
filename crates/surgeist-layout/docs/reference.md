@@ -476,7 +476,7 @@ the shared ownership and placement boundary.
 
 The native profile supports horizontal LTR and RTL text and clockwise
 `WritingMode::SidewaysRl`. `VerticalRl` and `VerticalLr` also consume authentic
-`HorizontalComposition` analysis prepared with `LineOrientation::Sideways`.
+`HorizontalComposition` analysis prepared with `LineOrientation::SidewaysClockwise`.
 Block progression follows the containing writing mode while glyph outlines
 remain clockwise and use horizontal text metrics and bidi. Selection and
 placement retain that actual

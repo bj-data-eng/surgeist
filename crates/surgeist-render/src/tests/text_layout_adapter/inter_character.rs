@@ -220,9 +220,13 @@ fn consumed(input: &text::Layout, bytes: &[u8], gap: f64) {
             [1.0, 0.0, 0.0, 1.0, 27.0, 109.0],
             kurbo::Rect::new(27.0, 103.0, 27.0 + advance, 105.0),
         ),
-        text::LineOrientation::Sideways => (
+        text::LineOrientation::SidewaysClockwise => (
             [0.0, 1.0, -1.0, 0.0, 107.0, 29.0],
             kurbo::Rect::new(111.0, 29.0, 113.0, 29.0 + advance),
+        ),
+        text::LineOrientation::SidewaysCounterclockwise => (
+            [0.0, -1.0, 1.0, 0.0, 107.0, 29.0],
+            kurbo::Rect::new(101.0, 29.0 - advance, 103.0, 29.0),
         ),
         text::LineOrientation::Vertical => (
             [1.0, 0.0, 0.0, 1.0, 107.0, 29.0],
@@ -303,7 +307,7 @@ fn allocated_horizontal_gaps_preserve_raw_provider_data_and_actual_render_pens()
 
 #[test]
 fn allocated_clockwise_gaps_rotate_actual_outlines_and_pens_once() {
-    qualifies(text::LineOrientation::Sideways);
+    qualifies(text::LineOrientation::SidewaysClockwise);
 }
 
 #[test]

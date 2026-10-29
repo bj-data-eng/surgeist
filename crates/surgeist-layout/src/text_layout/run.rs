@@ -455,15 +455,15 @@ pub(crate) fn text_orientation(
 ) -> Result<LineOrientation, FitError> {
     match mode {
         crate::WritingMode::HorizontalTb => Ok(LineOrientation::Horizontal),
-        crate::WritingMode::SidewaysRl => Ok(LineOrientation::Sideways),
+        crate::WritingMode::SidewaysRl => Ok(LineOrientation::SidewaysClockwise),
         crate::WritingMode::VerticalRl | crate::WritingMode::VerticalLr
-            if prepared.orientation() == LineOrientation::Sideways
+            if prepared.orientation() == LineOrientation::SidewaysClockwise
                 && matches!(
                     prepared.analyzed_source().typography(),
                     surgeist_text::AnalysisTypography::HorizontalComposition
                 ) =>
         {
-            Ok(LineOrientation::Sideways)
+            Ok(LineOrientation::SidewaysClockwise)
         }
         crate::WritingMode::VerticalRl | crate::WritingMode::VerticalLr => {
             Ok(LineOrientation::Vertical)
@@ -503,7 +503,7 @@ pub(crate) fn named_baseline(
                 surgeist_text::AnalysisTypography::HorizontalComposition
             ) && matches!(
                 prepared.orientation(),
-                LineOrientation::Horizontal | LineOrientation::Sideways
+                LineOrientation::Horizontal | LineOrientation::SidewaysClockwise
             ) && text_orientation(axes.writing_mode(), prepared)
                 .is_ok_and(|orientation| orientation == prepared.orientation())
         }

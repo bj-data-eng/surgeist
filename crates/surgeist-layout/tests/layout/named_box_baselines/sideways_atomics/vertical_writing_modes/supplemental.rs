@@ -46,7 +46,7 @@ fn standalone(parent: &Captured, kind: Option<t::InlineBoxKind>) -> t::Finalized
                     t::ParagraphBaseDirection::LeftToRight
                 },
                 line_box_direction: t::LineBoxDirection::LeftToRight,
-                orientation: t::LineOrientation::Sideways,
+                orientation: t::LineOrientation::SidewaysClockwise,
                 start: t::LineStart::Paragraph,
                 end: t::LineEnd::Paragraph,
                 available_inline: Some(40.0),
@@ -139,7 +139,7 @@ fn directions<S: l::LayoutScalar>() {
             if rtl { "\u{5d0}\u{5d1}" } else { "AB" },
             None,
             body,
-            t::LineOrientation::Sideways,
+            t::LineOrientation::SidewaysClockwise,
             10.0,
         );
         let whole = standalone(&parent, None);
@@ -208,7 +208,7 @@ fn directions<S: l::LayoutScalar>() {
                         let line = fragment.finalized_fragment().finalized_line();
                         assert_eq!(
                             line.selected_line().request().context.orientation,
-                            t::LineOrientation::Sideways
+                            t::LineOrientation::SidewaysClockwise
                         );
                         assert_eq!(line.selected_line().request().context.base_direction, body);
                         assert_eq!(
@@ -285,7 +285,7 @@ fn atomics<S: l::LayoutScalar>() {
                 if rtl { "\u{5d0}\u{5d1}" } else { "AB" },
                 Some((kind, t::Id::from_u64(2))),
                 body,
-                t::LineOrientation::Sideways,
+                t::LineOrientation::SidewaysClockwise,
                 10.0,
             );
             standalone(&parent, Some(kind));
@@ -394,7 +394,7 @@ fn constraints<S: l::LayoutScalar>() {
         "AB",
         None,
         t::ParagraphBaseDirection::LeftToRight,
-        t::LineOrientation::Sideways,
+        t::LineOrientation::SidewaysClockwise,
         10.0,
     );
     standalone(&parent, None);
@@ -472,7 +472,7 @@ fn completion<S: l::LayoutScalar>() {
             "",
             Some((kind, t::Id::from_u64(1))),
             t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::Sideways,
+            t::LineOrientation::SidewaysClockwise,
             10.0,
         );
         let line = standalone(&parent, Some(kind));
@@ -581,7 +581,7 @@ fn replay<S: l::LayoutScalar>() {
             "AB",
             Some((kind, t::Id::from_u64(3))),
             t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::Sideways,
+            t::LineOrientation::SidewaysClockwise,
             10.0,
         );
         standalone(&parent, Some(kind));
@@ -691,7 +691,7 @@ fn forced_line(
                 formatted_line: t::FormattedLineContext::default(),
                 base_direction: t::ParagraphBaseDirection::LeftToRight,
                 line_box_direction: t::LineBoxDirection::LeftToRight,
-                orientation: t::LineOrientation::Sideways,
+                orientation: t::LineOrientation::SidewaysClockwise,
                 start: if from == 0 {
                     t::LineStart::Paragraph
                 } else {
@@ -719,7 +719,7 @@ fn forced<S: l::LayoutScalar>() {
         "A\nB",
         None,
         t::ParagraphBaseDirection::LeftToRight,
-        t::LineOrientation::Sideways,
+        t::LineOrientation::SidewaysClockwise,
         10.0,
     );
     let p = &parent.prepared;
@@ -761,7 +761,7 @@ fn forced<S: l::LayoutScalar>() {
                         inline_origin: 0.0,
                         baseline,
                     },
-                    orientation: t::LineOrientation::Sideways,
+                    orientation: t::LineOrientation::SidewaysClockwise,
                     atomics: vec![],
                 })
             })
@@ -978,7 +978,7 @@ fn late_refusal<S: l::LayoutScalar>() {
             "AB",
             Some((kind, t::Id::from_u64(3))),
             t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::Sideways,
+            t::LineOrientation::SidewaysClockwise,
             10.0,
         );
         standalone(&parent, Some(kind));
@@ -1107,7 +1107,7 @@ fn guards<S: l::LayoutScalar>() {
         "AB",
         None,
         t::ParagraphBaseDirection::LeftToRight,
-        t::LineOrientation::Sideways,
+        t::LineOrientation::SidewaysClockwise,
         10.0,
     );
     standalone(&cw, None);

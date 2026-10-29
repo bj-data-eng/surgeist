@@ -368,7 +368,9 @@ pub(crate) fn place_request(
                     placed.anchor.x + vector.x,
                     checked_add("placed run origin y", placed.anchor.y, vector.y)?,
                 ),
-                LineOrientation::Sideways | LineOrientation::Vertical => crate::Point::new(
+                LineOrientation::SidewaysClockwise
+                | LineOrientation::SidewaysCounterclockwise
+                | LineOrientation::Vertical => crate::Point::new(
                     checked_add("placed run origin x", placed.anchor.x, vector.x)?,
                     placed.anchor.y + vector.y,
                 ),

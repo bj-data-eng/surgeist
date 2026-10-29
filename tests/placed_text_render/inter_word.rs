@@ -137,10 +137,36 @@ fn qualify_font(bytes: &[u8]) {
     }
 }
 
+#[derive(Clone, Copy)]
+enum AdapterFrame {
+    Horizontal,
+    Clockwise,
+    Upright,
+}
+
+impl AdapterFrame {
+    fn orientation(self) -> text::LineOrientation {
+        match self {
+            Self::Horizontal => text::LineOrientation::Horizontal,
+            Self::Clockwise => text::LineOrientation::SidewaysClockwise,
+            Self::Upright => text::LineOrientation::Vertical,
+        }
+    }
+
+    fn writing_mode(self) -> layout::WritingMode {
+        match self {
+            Self::Horizontal => layout::WritingMode::HorizontalTb,
+            Self::Clockwise => layout::WritingMode::SidewaysRl,
+            Self::Upright => layout::WritingMode::VerticalRl,
+        }
+    }
+}
+
 fn capture(
     bytes: &[u8],
-    orientation: text::LineOrientation,
+    frame: AdapterFrame,
 ) -> (layout::CompletedLayoutBatch<usize>, text::PreparedOrigin) {
+    let orientation = frame.orientation();
     qualify_font(bytes);
     let mut system = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,
@@ -238,11 +264,7 @@ fn capture(
         inputs: [
             layout::LayoutInput::box_input(layout::NodeInput {
                 display: layout::Display::Block,
-                writing_mode: match orientation {
-                    text::LineOrientation::Horizontal => layout::WritingMode::HorizontalTb,
-                    text::LineOrientation::Sideways => layout::WritingMode::SidewaysRl,
-                    text::LineOrientation::Vertical => layout::WritingMode::VerticalRl,
-                },
+                writing_mode: frame.writing_mode(),
                 inline_baseline_context: layout::InlineBaselineContext::Named(
                     if orientation == text::LineOrientation::Vertical {
                         layout::BaselineName::Central
@@ -339,14 +361,15 @@ fn native_inter_word_fill_keeps_equal_half_visible_paint_in_horizontal_clockwise
     let mut surface =
         block_on(renderer.create_headless(render::Size::try_new(40.0, 40.0).unwrap(), 1.0))
             .unwrap();
-    for orientation in [
-        text::LineOrientation::Horizontal,
-        text::LineOrientation::Sideways,
-        text::LineOrientation::Vertical,
+    for frame in [
+        AdapterFrame::Horizontal,
+        AdapterFrame::Clockwise,
+        AdapterFrame::Upright,
     ] {
+        let orientation = frame.orientation();
         let horizontal = orientation == text::LineOrientation::Horizontal;
-        let clockwise = orientation == text::LineOrientation::Sideways;
-        let (batch, origin) = capture(&bytes, orientation);
+        let clockwise = orientation == text::LineOrientation::SidewaysClockwise;
+        let (batch, origin) = capture(&bytes, frame);
         let placed = batch.placed_text()[0].layout();
         assert_eq!(placed.orientation(), orientation);
         assert_eq!(placed.lines().len(), 1);
@@ -488,7 +511,7 @@ fn native_inter_word_fill_keeps_equal_half_visible_paint_in_horizontal_clockwise
 #[test]
 fn native_inter_word_accessibility_keeps_nbsp_source_and_allocated_character_geometry() {
     let bytes = visible_separator_font();
-    let (batch, _) = capture(&bytes, text::LineOrientation::Horizontal);
+    let (batch, _) = capture(&bytes, AdapterFrame::Horizontal);
     let placed = batch.placed_text()[0].layout();
     let paint =
         render::prepare_text_layout(placed, render::Transform::identity(), limits()).unwrap();

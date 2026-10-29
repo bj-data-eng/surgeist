@@ -181,11 +181,9 @@ fn native(
     system.register_fonts(AHEM.to_vec()).unwrap();
     let orientation = match mode {
         WritingMode::HorizontalTb => text::LineOrientation::Horizontal,
-        WritingMode::SidewaysRl => text::LineOrientation::Sideways,
+        WritingMode::SidewaysRl => text::LineOrientation::SidewaysClockwise,
         WritingMode::VerticalRl | WritingMode::VerticalLr => text::LineOrientation::Vertical,
-        WritingMode::SidewaysLr => {
-            panic!("counterclockwise Text is outside this supported consumer profile")
-        }
+        WritingMode::SidewaysLr => text::LineOrientation::SidewaysCounterclockwise,
     };
     let mut options = text::PreparationOptions::default().with_orientation(orientation);
     if name(mode) == BaselineName::Alphabetic {
@@ -918,8 +916,44 @@ fn shifted_real_text_envelope_changes_float_band_and_failed_sink_preserves_prior
 }
 
 fn counterclockwise<S: LayoutScalar>() {
-    let parent = native("X", 10.0, 10.0, WritingMode::SidewaysRl, &[(2, 20.0, 10.0)]);
-    let inner = native("X", 10.0, 10.0, WritingMode::SidewaysRl, &[]);
+    premises();
+    let supported_parent = native("X", 10.0, 10.0, WritingMode::SidewaysRl, &[(2, 20.0, 10.0)]);
+    let supported_inner = native("X", 10.0, 10.0, WritingMode::SidewaysRl, &[]);
+    let supported_tree = tree::<S>(
+        WritingMode::SidewaysRl,
+        &supported_parent,
+        &supported_inner,
+        10.0,
+        BaselineSource::Auto,
+        VerticalAlignOf::Baseline,
+    );
+    let prior = solve(
+        &supported_tree,
+        WritingMode::SidewaysRl,
+        vec![
+            supported_parent.binding(0, 1),
+            supported_inner.binding(2, 11),
+        ],
+    )
+    .unwrap();
+    let mut sink = Publication {
+        batch: None,
+        reject: false,
+    };
+    prior.apply_to(&mut sink).unwrap();
+
+    let parent = native("X", 10.0, 10.0, WritingMode::SidewaysLr, &[(2, 20.0, 10.0)]);
+    let inner = native("X", 10.0, 10.0, WritingMode::SidewaysLr, &[]);
+    for native in [&parent, &inner] {
+        assert_eq!(
+            native.prepared.orientation(),
+            text::LineOrientation::SidewaysCounterclockwise
+        );
+        assert_eq!(
+            native.prepared.baseline_reference(),
+            Some(text::FontBaseline::Alphabetic)
+        );
+    }
     let tree = tree::<S>(
         WritingMode::SidewaysLr,
         &parent,
@@ -943,6 +977,7 @@ fn counterclockwise<S: LayoutScalar>() {
         ),
         "{error:?}"
     );
+    same_geometry(sink.batch.as_ref().unwrap(), &prior);
 }
 #[test]
 fn resolved_shift_does_not_claim_counterclockwise_native_text_support() {

@@ -122,8 +122,10 @@ impl RunView<'_> {
     /// displaced from the shared line alignment reference by the actual font.
     ///
     /// Rotate raw offsets `(dx,dy)` by [`Self::glyph_basis`]: Unrotated keeps
-    /// `(dx,dy)`, Clockwise gives `(-dy,dx)`. Add those offsets to this origin,
-    /// with the pen along physical x for Horizontal or y for Vertical/Sideways.
+    /// `(dx,dy)`, Clockwise gives `(-dy,dx)` and Counterclockwise gives `(dy,-dx)`.
+    /// Add those offsets to this origin. The line pen advances along physical x
+    /// for Horizontal, positive y for Vertical/SidewaysClockwise and negative y
+    /// for SidewaysCounterclockwise.
     #[must_use]
     pub fn origin(&self) -> Point {
         crate::layout::line_point(self.placed, Point::new(self.run.x, self.run.y))

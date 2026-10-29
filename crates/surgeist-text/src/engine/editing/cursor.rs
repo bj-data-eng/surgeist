@@ -296,6 +296,13 @@ fn visual_pair(layout: &PlacedLayout, value: Cursor) -> [Option<ClusterPath>; 2]
 }
 
 pub(super) fn geometry(layout: &PlacedLayout, value: Cursor) -> (usize, Rect) {
+    let (line, x) = local_geometry(layout, value);
+    (line, line_rect(&layout.lines[line], x))
+}
+
+// Retain the actual source/occurrence edge before turning its caret into a
+// physical hull. A counterclockwise caret's hull starts one inline unit later.
+fn local_geometry(layout: &PlacedLayout, value: Cursor) -> (usize, f64) {
     // Deleted anchors are genuine source-associated occurrences. This does not
     // change the historical raw-source visual-neighbor policy around atomics:
     // a physical atomic gap and an executed source deletion have different owners.
@@ -303,9 +310,7 @@ pub(super) fn geometry(layout: &PlacedLayout, value: Cursor) -> (usize, Rect) {
         let line = layout.interaction.positions[index].line;
         return (
             line,
-            super::position::geometry(layout, index)
-                .expect("owned deleted row")
-                .rect(),
+            super::position::inline(layout, index).expect("owned deleted row"),
         );
     }
     let no_text_neighbor = at_source(layout, value.index()).is_none()
@@ -317,7 +322,7 @@ pub(super) fn geometry(layout: &PlacedLayout, value: Cursor) -> (usize, Rect) {
     if no_text_neighbor
         && let Some((line, x)) = anchor_geometry(layout, value.index(), value.affinity())
     {
-        return (line, line_rect(&layout.lines[line], x));
+        return (line, x);
     }
     let chosen = match visual_pair(layout, value) {
         [Some(left), Some(right)] => {
@@ -343,15 +348,12 @@ pub(super) fn geometry(layout: &PlacedLayout, value: Cursor) -> (usize, Rect) {
         let cluster = path.get(layout);
         (
             path.line,
-            line_rect(
-                &layout.lines[path.line],
-                cluster.x + if at_end { cluster.advance } else { 0.0 },
-            ),
+            cluster.x + if at_end { cluster.advance } else { 0.0 },
         )
     } else {
         let index = layout.lines.len() - 1;
         let line = &layout.lines[index];
-        (index, line_rect(line, line.finalized.data.metrics.offset))
+        (index, line.finalized.data.metrics.offset)
     }
 }
 
@@ -666,11 +668,16 @@ pub(crate) fn move_cursor(
             });
             target.map_or(value, |index| {
                 let line = &layout.lines[index];
-                let (current, rect) = geometry(layout, value);
-                let inline = if line.orientation != crate::LineOrientation::Horizontal {
-                    crate::layout::local_point(&layout.lines[current], rect.origin).x
+                let inline = if line.orientation == crate::LineOrientation::SidewaysCounterclockwise
+                {
+                    local_geometry(layout, value).1
                 } else {
-                    rect.origin.x
+                    let (current, rect) = geometry(layout, value);
+                    if line.orientation != crate::LineOrientation::Horizontal {
+                        crate::layout::local_point(&layout.lines[current], rect.origin).x
+                    } else {
+                        rect.origin.x
+                    }
                 };
                 // Exact and raw movement select the same genuine target rows.
                 // Final source validation owns any lossy projection ambiguity.

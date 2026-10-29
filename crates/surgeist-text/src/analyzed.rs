@@ -13,7 +13,7 @@ use crate::{Direction, Range, Result, Source, Style, ValidatedSource, ValidatedS
 /// This is independent of font shaping and placed line geometry.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum AnalysisTypography {
-    /// Existing Unicode interpretation for horizontal and clockwise-sideways composition.
+    /// Ordinary Unicode interpretation for horizontal and both sideways profiles.
     /// No computed direction is asserted for the standalone automatic policy.
     HorizontalComposition,
     /// Mixed vertical typography with ordinary paragraph bidi and source-owned orientation.

@@ -67,7 +67,10 @@ fn successful_nominal_vertical_metrics_do_not_enable_nonhorizontal_selection() {
         [(58, 20.0, crate::Range::new(0, 1))]
     );
     observe_actual_instance(&line, system.font_catalogue_identity());
-    for orientation in [LineOrientation::Vertical, LineOrientation::Sideways] {
+    for orientation in [
+        LineOrientation::Vertical,
+        LineOrientation::SidewaysClockwise,
+    ] {
         let mut rejected = input.clone();
         rejected.context.orientation = orientation;
         let error = p.select(rejected).unwrap_err();
@@ -116,7 +119,10 @@ fn successful_nominal_vertical_metrics_do_not_enable_nonhorizontal_placement() {
         .map(|g| (g.id(), g.advance(), g.range()))
         .collect::<Vec<_>>();
     assert_eq!(before, [(58, 20.0, crate::Range::new(0, 1))]);
-    for orientation in [LineOrientation::Vertical, LineOrientation::Sideways] {
+    for orientation in [
+        LineOrientation::Vertical,
+        LineOrientation::SidewaysClockwise,
+    ] {
         let error = crate::Layout::from_finalized_lines(PlacementRequest {
             prepared: p.clone(),
             coverage: PlacementCoverage::WholeParagraph,

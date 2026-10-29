@@ -17,7 +17,7 @@ fn completion<S: l::LayoutScalar>() {
             "",
             Some((kind, t::Id::from_u64(1))),
             t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::Sideways,
+            t::LineOrientation::SidewaysClockwise,
             10.0,
         );
         let line = selected(&parent, kind);
@@ -87,7 +87,7 @@ fn completion<S: l::LayoutScalar>() {
                     t::NonFormattedLinePlacement {
                         line: completion,
                         origin: t::Point::new(40.0, 0.0),
-                        orientation: t::LineOrientation::Sideways,
+                        orientation: t::LineOrientation::SidewaysClockwise,
                         atomics: vec![t::AtomicPlacement {
                             occurrence: parent.prepared.atomic_views().next().unwrap().handle(),
                             border: t::Rect::new(34.0, 0.0, 6.0, 14.0),
@@ -128,7 +128,7 @@ fn constraints<S: l::LayoutScalar>() {
             "AB",
             Some((kind, t::Id::from_u64(2))),
             t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::Sideways,
+            t::LineOrientation::SidewaysClockwise,
             10.0,
         );
         qualify_parent(&parent, kind);
@@ -195,7 +195,7 @@ fn physical_boxes<S: l::LayoutScalar>() {
             "AB",
             Some((kind, t::Id::from_u64(2))),
             t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::Sideways,
+            t::LineOrientation::SidewaysClockwise,
             10.0,
         );
         qualify_parent(&parent, kind);
@@ -333,7 +333,7 @@ fn replay<S: l::LayoutScalar>() {
             "AB",
             Some((kind, t::Id::from_u64(3))),
             t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::Sideways,
+            t::LineOrientation::SidewaysClockwise,
             10.0,
         );
         qualify_parent(&parent, kind);
@@ -411,7 +411,7 @@ fn mappings<S: l::LayoutScalar>() {
             "AB",
             Some((kind, t::Id::from_u64(2))),
             t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::Sideways,
+            t::LineOrientation::SidewaysClockwise,
             10.0,
         );
         qualify_parent(&parent, kind);

@@ -259,7 +259,7 @@ fn selected(parent: &Captured, kind: t::InlineBoxKind) -> t::FinalizedLine {
             formatted_line: t::FormattedLineContext::default(),
             base_direction: t::ParagraphBaseDirection::LeftToRight,
             line_box_direction: t::LineBoxDirection::LeftToRight,
-            orientation: t::LineOrientation::Sideways,
+            orientation: t::LineOrientation::SidewaysClockwise,
             start: t::LineStart::Paragraph,
             end: t::LineEnd::Paragraph,
             available_inline: Some(40.0),
@@ -286,7 +286,7 @@ fn explicit(
         entries: vec![t::PlacementEntry::Formatted(t::LinePlacement {
             line,
             anchor,
-            orientation: t::LineOrientation::Sideways,
+            orientation: t::LineOrientation::SidewaysClockwise,
             atomics: vec![geometry],
         })],
     })
@@ -549,7 +549,7 @@ fn core<S: l::LayoutScalar>() {
             "AB",
             Some((kind, t::Id::from_u64(2))),
             t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::Sideways,
+            t::LineOrientation::SidewaysClockwise,
             10.0,
         );
         qualify_parent(&parent, kind);
@@ -574,7 +574,7 @@ fn core<S: l::LayoutScalar>() {
             unknown(node(entries, 0).named_baselines);
         }
         let text = placed(&batch, 0);
-        assert_eq!(text.orientation(), t::LineOrientation::Sideways);
+        assert_eq!(text.orientation(), t::LineOrientation::SidewaysClockwise);
         assert_eq!(text.lines().len(), 1);
         assert_eq!(text.lines()[0].baseline(), 32.0);
         assert_eq!(text.inline_boxes()[0].rect(), physical);

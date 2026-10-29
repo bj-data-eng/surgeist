@@ -182,7 +182,10 @@ fn allocated<S: LayoutScalar>(orientation: text::LineOrientation, mode: WritingM
 #[test]
 fn clockwise_and_upright_character_fill_preserve_raw_packets_and_physical_cell_edges() {
     for (orientation, mode) in [
-        (text::LineOrientation::Sideways, WritingMode::SidewaysRl),
+        (
+            text::LineOrientation::SidewaysClockwise,
+            WritingMode::SidewaysRl,
+        ),
         (text::LineOrientation::Vertical, WritingMode::VerticalRl),
     ] {
         allocated::<f32>(orientation, mode);

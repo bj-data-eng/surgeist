@@ -379,6 +379,10 @@ fn mixed_latin_and_han_use_actual_metrics_and_distinct_central_references() {
                         origin.x - f64::from(g.y()),
                         origin.y + g.pen() + f64::from(g.x()),
                     ),
+                    GlyphBasis::Counterclockwise => Point::new(
+                        origin.x + f64::from(g.y()),
+                        origin.y + g.pen() - f64::from(g.x()),
+                    ),
                     GlyphBasis::Unrotated => Point::new(
                         origin.x + f64::from(g.x()),
                         origin.y + g.pen() + f64::from(g.y()),

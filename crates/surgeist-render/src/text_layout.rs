@@ -380,17 +380,23 @@ fn text_glyph(run: &RunView<'_>, glyph: surgeist_text::GlyphPlacement) -> Result
     let dx = f64::from(glyph.x());
     let dy = f64::from(glyph.y());
     let pen = glyph.pen();
-    // The pen follows the physical line's inline axis. Express that displacement
-    // in glyph coordinates before the run's outline basis is applied.
+    // The pen follows the physical line's inline axis. Apply the inverse glyph
+    // basis to that displacement, then add the raw glyph-coordinate offsets.
     let (x, y) = match (run.orientation(), run.glyph_basis()) {
         (LineOrientation::Horizontal, GlyphBasis::Unrotated)
-        | (LineOrientation::Sideways | LineOrientation::Vertical, GlyphBasis::Clockwise) => {
+        | (LineOrientation::SidewaysClockwise | LineOrientation::Vertical, GlyphBasis::Clockwise)
+        | (LineOrientation::SidewaysCounterclockwise, GlyphBasis::Counterclockwise) => {
             (pen + dx, dy)
         }
-        (LineOrientation::Sideways | LineOrientation::Vertical, GlyphBasis::Unrotated) => {
-            (dx, pen + dy)
-        }
-        (LineOrientation::Horizontal, GlyphBasis::Clockwise) => (dx, dy - pen),
+        (LineOrientation::SidewaysClockwise | LineOrientation::Vertical, GlyphBasis::Unrotated)
+        | (LineOrientation::Horizontal, GlyphBasis::Counterclockwise) => (dx, pen + dy),
+        (LineOrientation::Horizontal, GlyphBasis::Clockwise)
+        | (LineOrientation::SidewaysCounterclockwise, GlyphBasis::Unrotated) => (dx, dy - pen),
+        (
+            LineOrientation::SidewaysClockwise | LineOrientation::Vertical,
+            GlyphBasis::Counterclockwise,
+        )
+        | (LineOrientation::SidewaysCounterclockwise, GlyphBasis::Clockwise) => (dx - pen, dy),
     };
     TextGlyph::try_new(glyph.id(), x, y, glyph.advance())
 }
@@ -400,6 +406,9 @@ fn run_transform(run: &RunView<'_>, placement: Transform) -> Result<Transform> {
     let transform = match run.glyph_basis() {
         GlyphBasis::Unrotated => Transform::translation(origin.x, origin.y)?,
         GlyphBasis::Clockwise => Transform::try_new([0.0, 1.0, -1.0, 0.0, origin.x, origin.y])?,
+        GlyphBasis::Counterclockwise => {
+            Transform::try_new([0.0, -1.0, 1.0, 0.0, origin.x, origin.y])?
+        }
     };
     transform.then(placement)
 }

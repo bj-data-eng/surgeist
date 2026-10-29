@@ -129,7 +129,7 @@ fn profile_line<S: l::LayoutScalar>(
             } else {
                 t::LineBoxDirection::RightToLeft
             },
-            orientation: t::LineOrientation::Sideways,
+            orientation: t::LineOrientation::SidewaysClockwise,
             start: t::LineStart::Paragraph,
             end: t::LineEnd::Paragraph,
             available_inline: Some(40.0),
@@ -175,7 +175,7 @@ fn matrix<S: l::LayoutScalar>() {
                 raw,
                 Some((kind, t::Id::from_u64(2))),
                 body,
-                t::LineOrientation::Sideways,
+                t::LineOrientation::SidewaysClockwise,
                 10.0,
             );
             let level = if body == t::ParagraphBaseDirection::LeftToRight {
@@ -320,7 +320,7 @@ fn guards<S: l::LayoutScalar>() {
             "AB",
             Some((kind, t::Id::from_u64(2))),
             t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::Sideways,
+            t::LineOrientation::SidewaysClockwise,
             10.0,
         );
         qualify_parent(&parent, kind);

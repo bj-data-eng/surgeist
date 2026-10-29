@@ -51,7 +51,7 @@ fn native_run_axes_and_glyph_origins_survive_all_readback_forms() {
     let mut system = system_with(&bytes);
     for orientation in [
         LineOrientation::Horizontal,
-        LineOrientation::Sideways,
+        LineOrientation::SidewaysClockwise,
         LineOrientation::Vertical,
     ] {
         let typography = if orientation == LineOrientation::Vertical {
@@ -73,7 +73,7 @@ fn native_run_axes_and_glyph_origins_survive_all_readback_forms() {
                 [Point::new(20.0, 100.0), Point::new(30.0, 100.0)],
                 Rect::new(20.0, 91.0, 20.0, 12.0),
             ),
-            LineOrientation::Sideways => (
+            LineOrientation::SidewaysClockwise => (
                 GlyphBasis::Clockwise,
                 274,
                 10.0,
@@ -83,6 +83,17 @@ fn native_run_axes_and_glyph_origins_survive_all_readback_forms() {
                 Point::new(100.0, 20.0),
                 [Point::new(100.0, 20.0), Point::new(100.0, 30.0)],
                 Rect::new(97.0, 20.0, 12.0, 20.0),
+            ),
+            LineOrientation::SidewaysCounterclockwise => (
+                GlyphBasis::Counterclockwise,
+                58,
+                10.0,
+                0.0,
+                0.0,
+                9.0,
+                Point::new(100.0, 20.0),
+                [Point::new(100.0, 20.0), Point::new(100.0, 10.0)],
+                Rect::new(91.0, 0.0, 12.0, 20.0),
             ),
             LineOrientation::Vertical => (
                 GlyphBasis::Unrotated,
