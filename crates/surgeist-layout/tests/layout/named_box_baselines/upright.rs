@@ -4,6 +4,7 @@
 use super::*;
 mod atomics;
 mod constraints;
+mod mixed;
 mod positioned;
 mod supplemental;
 
@@ -42,11 +43,24 @@ fn checksum(bytes: &[u8]) -> u32 {
 fn chi_font() -> Vec<u8> {
     // The same safe cmap-only derivative as Render's text_layout_adapter/
     // upright.rs. U+4E00 maps to licensed Ahem chi274, not a claimed Han design.
+    mapped_ahem(&[(0x4e00, 0x4e00, 274)], None)
+}
+
+fn mapped_ahem(groups: &[(u32, u32, u32)], advance: Option<(u16, u16)>) -> Vec<u8> {
     let mut cmap = vec![0, 0, 0, 1, 0, 3, 0, 10];
     cmap.extend(12_u32.to_be_bytes());
     cmap.extend([0, 12, 0, 0]);
-    for word in [28_u32, 0, 1, 0x4e00, 0x4e00, 274] {
+    for word in [
+        16 + u32::try_from(groups.len()).unwrap() * 12,
+        0,
+        u32::try_from(groups.len()).unwrap(),
+    ] {
         cmap.extend(word.to_be_bytes());
+    }
+    for &(first, last, glyph) in groups {
+        for word in [first, last, glyph] {
+            cmap.extend(word.to_be_bytes());
+        }
     }
     let mut output = vec![0; 12 + usize::from(u16_at(AHEM, 4)) * 16];
     output[..12].copy_from_slice(&AHEM[..12]);
@@ -60,6 +74,12 @@ fn chi_font() -> Vec<u8> {
         };
         if tag == *b"head" {
             data[8..12].fill(0);
+        }
+        if tag == *b"hmtx"
+            && let Some((glyph, width)) = advance
+        {
+            let at = usize::from(glyph) * 4;
+            data[at..at + 2].copy_from_slice(&width.to_be_bytes());
         }
         while !output.len().is_multiple_of(4) {
             output.push(0);
