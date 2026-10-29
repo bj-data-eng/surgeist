@@ -140,7 +140,7 @@ pub enum VerticalPositionStage {
 /// A context not supported by the metric-supplied operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum VerticalShapeContextError {
-    /// The actual input direction is not TopToBottom.
+    /// The actual input direction is neither TopToBottom nor BottomToTop.
     Direction,
     /// The plan direction differs from the input.
     PlanDirection,
@@ -189,7 +189,7 @@ impl core::fmt::Display for VerticalPositionStage {
 impl core::fmt::Display for VerticalShapeContextError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(match self {
-            Self::Direction => "metric-supplied shaping requires TopToBottom input",
+            Self::Direction => "metric-supplied shaping requires TopToBottom or BottomToTop input",
             Self::PlanDirection => "shape plan direction differs from the input",
             Self::PlanScript => "shape plan script differs from the input",
             Self::Morx => "selected morx substitution is unsupported in the half-unit domain",
@@ -303,8 +303,9 @@ impl core::fmt::Debug for VerticalGlyphBuffer {
 }
 
 impl Shaper<'_> {
-    /// Shapes TopToBottom with caller-supplied nominal metrics for actual needed
-    /// post-substitution glyphs, before positioning and attachment propagation.
+    /// Shapes either vertical direction with caller-supplied nominal metrics for
+    /// actual needed post-substitution glyphs, before positioning and attachment
+    /// propagation.
     ///
     /// The supplier must describe this configured face and instance. It is
     /// invocation-local and receives no unrelated glyph queries. The result
@@ -313,7 +314,7 @@ impl Shaper<'_> {
     /// the nominal origin; a nominal-pen distance adds to it. The supplier remains
     /// nominal, and advance/origin Y are unchanged. Selected AAT paths are unsupported;
     /// dormant tables do not refuse an OpenType-selected plan. Ordinary shaping
-    /// and its design-unit results are unchanged.
+    /// retains its integral design-unit coordinate policy.
     ///
     /// As with [`Self::shape_with_plan`], callers must supply a plan valid for
     /// this configured face and compatible language, features and feature-variation
@@ -341,7 +342,10 @@ impl Shaper<'_> {
         if let ShapingStatus::Refused(reason) = buffer.0.shaping_status() {
             return Err(VerticalShapeError::Refused(reason));
         }
-        let context = if buffer.0.direction != Direction::TopToBottom {
+        let context = if !matches!(
+            buffer.0.direction,
+            Direction::TopToBottom | Direction::BottomToTop
+        ) {
             Some(VerticalShapeContextError::Direction)
         } else if plan.direction != buffer.0.direction {
             Some(VerticalShapeContextError::PlanDirection)

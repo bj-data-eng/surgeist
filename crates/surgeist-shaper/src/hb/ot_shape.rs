@@ -116,9 +116,14 @@ impl<'a> hb_ot_shape_planner_t<'a> {
             }
             Direction::RightToLeft => {
                 self.ot_map.enable_feature(hb_tag_t::new(b"rtla"), empty, 1);
-                self.ot_map.add_feature(hb_tag_t::new(b"rtlm"), empty, 1);
             }
             _ => {}
+        }
+        if matches!(
+            self.direction,
+            Direction::RightToLeft | Direction::BottomToTop
+        ) {
+            self.ot_map.add_feature(hb_tag_t::new(b"rtlm"), empty, 1);
         }
 
         // Automatic fractions.
