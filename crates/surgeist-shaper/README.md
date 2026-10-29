@@ -30,6 +30,16 @@ executed AAT substitution/positioning is explicitly unqualified. Input ordinals
 exclude pre/post context and do not use caller cluster numbers. Clear disposes
 the request and receipt; inactive observation has no per-input arena.
 
+`ComponentReceipt::joining_context_use()` observes actual native Unicode joining
+mask construction. `ContextualActions` means the shared Arabic/joining-enabled USE
+owner consumed at least one joining action into a nonzero selected native action
+mask. It does not prove external context changed final glyphs, an attachment
+exists, or later explicit overrides retained the mask. `None` only reports absence
+of that mechanism on the qualified path; it does not prove universal external
+independence. Actual unqualified provider paths retain `Unqualified(path)`.
+Consumers own genuine external source/context and boundary policy. Ordinary USE's
+body-syllable masks do not claim external Unicode joining use.
+
 `Feature::new` and feature parsing create explicit requests.
 `Feature::optional_default` requests a soft override only for a feature the
 selected plan affirmatively identifies as optional. Required and unclassified

@@ -410,3 +410,6 @@ fn component_observer_reordered_marks_and_generated_dotted_circle_have_exact_cus
         assert_eq!(receipt.components(1), Some(&[0][..]));
     });
 }
+
+#[path = "joining_context_tests.rs"]
+mod joining_context;

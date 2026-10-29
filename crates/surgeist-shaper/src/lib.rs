@@ -30,7 +30,7 @@ pub use hb::common::{script, Direction, Feature, FeatureOrigin, Language, Script
 pub use hb::components::{
     ComponentAttachment, ComponentAttachmentKind, ComponentCoverage, ComponentLigature,
     ComponentPath, ComponentReceipt, DefaultFeature, DefaultFeatureDisposition, FeatureProvenance,
-    FeatureRole, FeatureSource,
+    FeatureRole, FeatureSource, JoiningContextUse,
 };
 pub use hb::default_ignorable::DefaultIgnorableReceipt;
 pub use hb::face::{hb_font_t as Shaper, ShaperBuilder, ShaperData, ShaperInstance};

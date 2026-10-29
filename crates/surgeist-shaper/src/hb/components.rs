@@ -24,6 +24,21 @@ pub enum ComponentPath {
     /// An actual attachment chain has no valid final parent correspondence.
     AttachmentCorrespondence,
 }
+/// Observed native Unicode joining-action mask construction for this invocation.
+///
+/// This is a mechanism fact, not proof that external context changed final glyphs,
+/// that an attachment exists, or that subsequent explicit overrides kept a mask.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum JoiningContextUse {
+    /// No native joining action was consumed into a nonzero action mask on the
+    /// qualified path. This is not universal external-context independence.
+    None,
+    /// The executed shared Arabic/joining-USE action owner consumed at least one
+    /// joining action into a nonzero selected native action mask.
+    ContextualActions,
+    /// The actual provider path does not qualify negative joining-use evidence.
+    Unqualified(ComponentPath),
+}
 /// Effective role of an enabled feature contribution.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FeatureRole {
@@ -198,6 +213,19 @@ impl ComponentReceipt<'_> {
     pub fn coverage(&self) -> ComponentCoverage {
         self.buffer.components.coverage
     }
+    /// Observe actual native joining-action mask construction, independently of
+    /// the requested script. A contextual result is not an external-influence,
+    /// final-glyph, attachment or explicit-override-survival guarantee. A negative
+    /// result does not prove universal external-context independence.
+    pub fn joining_context_use(&self) -> JoiningContextUse {
+        match self.coverage() {
+            ComponentCoverage::Unqualified(path) => JoiningContextUse::Unqualified(path),
+            ComponentCoverage::Complete if self.buffer.components.joining_context_actions => {
+                JoiningContextUse::ContextualActions
+            }
+            ComponentCoverage::Complete => JoiningContextUse::None,
+        }
+    }
     /// Canonical actual ligature constraints with final descendant indices.
     pub fn ligatures(&self) -> impl Iterator<Item = ComponentLigature<'_>> {
         let state = &self.buffer.components;
@@ -228,6 +256,7 @@ pub(crate) struct State {
     pub(crate) requested: bool,
     active: bool,
     pub(crate) generating_repair: bool,
+    joining_context_actions: bool,
     input_len: usize,
     coverage: ComponentCoverage,
     sets: Vec<Span>,
@@ -246,6 +275,7 @@ impl Default for State {
             requested: false,
             active: false,
             generating_repair: false,
+            joining_context_actions: false,
             input_len: 0,
             coverage: ComponentCoverage::Complete,
             sets: Vec::new(),
@@ -785,4 +815,10 @@ pub(crate) fn generated_repairs(buffer: &mut hb_buffer_t, f: fn(&mut hb_buffer_t
     buffer.components.generating_repair = true;
     f(buffer);
     buffer.components.generating_repair = false;
+}
+
+pub(crate) fn record_joining_context_actions(buffer: &mut hb_buffer_t) {
+    if buffer.components.active {
+        buffer.components.joining_context_actions = true;
+    }
 }
