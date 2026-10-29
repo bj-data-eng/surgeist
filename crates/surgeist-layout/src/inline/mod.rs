@@ -18,6 +18,8 @@ use surgeist_text::{BidiLevel, SuppliedInlineParticipant, SuppliedLine};
 mod input;
 
 #[cfg(test)]
+mod no_strut_tests;
+#[cfg(test)]
 mod wrap_edges_tests;
 #[cfg(test)]
 mod wrap_inside_auto_tests;
