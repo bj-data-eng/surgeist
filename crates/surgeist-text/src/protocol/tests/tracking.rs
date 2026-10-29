@@ -262,3 +262,46 @@ fn base_and_attached_mark_share_one_tracking_unit_and_keep_the_actual_gpos_ancho
     assert_eq!(paint_offsets(&line), [(0.0, 0.0), (3.0, -4.0), (14.0, 0.0)]);
     assert_eq!(prepared.analyzed_source().source(), &source);
 }
+
+#[test]
+fn mark_only_tracking_style_preserves_joint_gpos_and_uses_the_tcu_base_tracking() {
+    let bytes = crate::shaping_test_fonts::mark_ahem();
+    font_premises(&bytes, true);
+    let graphemes = [Range::new(0, 2), Range::new(2, 3)];
+    let mut control_source = Source::identified("A\u{301}B", Id::from_u64(70004), 1);
+    control_source.span(Range::new(1, 2), own(0.0));
+    assert_eq!(control_source.spans()[0].range(), Range::new(1, 2));
+    assert_eq!(control_source.spans()[0].style().letter_spacing, 0.0);
+    let control = whole(&prepare(&bytes, &control_source, own(0.0), &graphemes));
+    let expected_raw = [
+        (Range::new(0, 2), 35, 0.0, 0.0, 10.0),
+        (Range::new(0, 2), 100, -7.0, -4.0, 0.0),
+        (Range::new(2, 3), 36, 0.0, 0.0, 10.0),
+    ];
+    assert_eq!(raw(&control, &bytes), expected_raw);
+    assert_eq!(
+        paint_offsets(&control),
+        [(0.0, 0.0), (3.0, -4.0), (10.0, 0.0)]
+    );
+    assert_eq!(control.feedback().advance, 20.0);
+
+    let base_style = own(4.0);
+    let mut mark_style = base_style.clone();
+    // Only tracking differs: this span does not change the actual font, size,
+    // feature settings, locale or other shaping inputs of the attached mark.
+    mark_style.letter_spacing = 8.0;
+    let mut source = Source::identified("A\u{301}B", Id::from_u64(70004), 2);
+    source.span(Range::new(1, 2), mark_style);
+    assert_eq!(source.spans()[0].range(), control_source.spans()[0].range());
+    assert_eq!(source.spans()[0].style().letter_spacing, 8.0);
+    let prepared = prepare(&bytes, &source, base_style, &graphemes);
+    assert_eq!(prepared.analyzed_source().style().letter_spacing, 4.0);
+    let line = whole(&prepared);
+    // GPOS still shapes the complete A+mark TCU. The mark's own tracking
+    // value cannot separate that invocation or move its(+3,−4) attachment.
+    assert_eq!(raw(&line, &bytes), expected_raw);
+    assert_eq!(line.feedback().advance, 24.0);
+    assert_eq!(line.measurements().alignment().advance(), 24.0);
+    assert_eq!(paint_offsets(&line), [(0.0, 0.0), (3.0, -4.0), (14.0, 0.0)]);
+    assert_eq!(prepared.analyzed_source().source(), &source);
+}
