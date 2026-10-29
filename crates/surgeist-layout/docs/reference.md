@@ -168,6 +168,13 @@ for each name: `Unknown`, genuinely `Absent`, or `Available`. Generic
 `BaselinesOf` projections do not establish named authority. A missing generic
 scalar likewise cannot prove named absence.
 
+Measurement returns both generic and named coordinates relative to the returned
+border box. An indefinite sizing pass retains its accepted physical anchor and
+used frame until the final extent is known. Completing an end-side frame rebases
+that anchor by the extent change without snapping it again; an already canonical
+local anchor stays local. A child resolves its own frame before parent placement.
+These measurement facts do not establish canonical Text placement authority.
+
 The child's non-inherited `NodeInputOf::baseline_source` selects its matching
 set. `BaselineSource::Auto` selects last for an inline-block and first otherwise;
 `First` and `Last` select their respective sets explicitly. Only that set is
@@ -188,6 +195,32 @@ places its margin box against the line's physical line-over/under edge. Block
 progression does not rename those edges. Signed margins locate the border from
 that edge and can place it outside the line box.
 
+`VerticalAlignOf<S>::Shift(BaselineOffsetOf<S>)` matches the actual child
+baseline through the same path as `Baseline`, then applies a finite signed
+displacement toward `FlowAxes::line_over`. Positive values move up in
+horizontal-tb, right in vertical-rl/lr and sideways-rl, and left in numeric
+sideways-lr. Local child baseline and extent facts remain unchanged. The shifted
+bounds participate in line fitting, float feedback and committed placement.
+An explicit `Shift(0)` retains its request identity and baseline geometry.
+Generic callers use the `Of<S>` types; `VerticalAlign` and `BaselineOffset`
+select the default scalar lane.
+
+The offset helpers consume supplied used values. `from_length_percentage`
+accepts `LengthPercentageOf` and the child's own `PercentageBasisOf` line-height;
+a missing basis is valid only for a zero percentage coefficient. `subscript`
+and `superscript` accept a `NonNegativeFiniteOf` parent font size and use the
+native [Inline 3 fallback policy](../../../references/css-inline-3--WD-css-inline-3-20241218--a73a73a45bf5.md):
+minus one fifth and plus one third, without resizing the child or querying
+optional font offsets. Numeric zero contexts are valid. Resolution reports
+missing context, nonfinite arithmetic or a lost nonzero contribution through
+`BaselineOffsetResolutionError`; exact cancellation is valid.
+
+These operations describe actual box/control allocations. They do not discover
+CSS ancestry or execute captured text-scope glyph alignment. Native Text
+allocations use already used line-coordinate units, with no second preparation
+scale; see Text's [allocated shift contract](../../surgeist-text/docs/reference.md).
+Its existing sideways-lr refusal remains in effect.
+
 For a block scroll container with `baseline_source: Auto`, the last set places
 both names at its own signed block-end margin edge. Layout then clamps exported
 available coordinates to that container's border interval. Explicit `First` or
@@ -201,7 +234,7 @@ offsets are not Layout inputs. See the pinned
 and [source selection](../../../references/css-inline-3--WD-css-inline-3-20241218--a73a73a45bf5.md#baseline-source).
 
 `InlineMetricsOf` constructors require an explicit reference for their control
-strut. Baseline-aligned controls must match the line's reference; top/bottom
+strut. Baseline and shifted controls must match the line's reference; top/bottom
 alignment uses their real extents. Context, source and metric-reference changes use
 the ordinary changed-node invalidation contract, and cached computation
 outputs retain their named facts.

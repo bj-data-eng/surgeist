@@ -4,6 +4,7 @@ mod after_continuation;
 mod after_standalone;
 mod alignment_insets;
 mod allocated_box_metrics;
+mod allocated_signed_bounds;
 mod allocation_identity;
 mod auto_phrase;
 mod automatic_model;

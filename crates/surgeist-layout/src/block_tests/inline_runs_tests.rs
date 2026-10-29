@@ -1253,7 +1253,7 @@ fn block_line_break_metadata_positions_rtl_lines_and_preserves_two_line_extent()
             LineBreakInput::new()
                 .with_direction(Direction::Rtl)
                 .with_writing_mode(WritingMode::HorizontalTb)
-                .with_vertical_align(VerticalAlign::Top)
+                .with_vertical_align(VerticalAlignOf::Top)
                 .with_clear(Clear::Both)
                 .with_metrics(metrics),
         )

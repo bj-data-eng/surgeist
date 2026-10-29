@@ -6,7 +6,7 @@ fn single_signed_top<S: l::LayoutScalar>() {
     let direction = l::Direction::Ltr;
     let mut host = Host::<S>::new(root(mode, direction, l::InlineBaselineContext::Physical));
     let mut item = atomic(mode, direction, 10.0, (-2.0, 6.0));
-    item.vertical_align = l::VerticalAlign::Top;
+    item.vertical_align = l::VerticalAlignOf::Top;
     assert_eq!(host.push(Some(0), l::LayoutInputOf::box_input(item)), 1);
     let batch = host.compute(mode, &[]).unwrap();
     for entries in [batch.unrounded_entries(), batch.final_entries()] {
@@ -26,7 +26,7 @@ fn single_signed_top<S: l::LayoutScalar>() {
     assert!(batch.final_inline_fragments().is_empty());
 }
 
-fn vertical_lr_taller_peer<S: l::LayoutScalar>(alignment: l::VerticalAlign, expected_x: f64) {
+fn vertical_lr_taller_peer<S: l::LayoutScalar>(alignment: l::VerticalAlignOf<S>, expected_x: f64) {
     let mode = l::WritingMode::VerticalLr;
     let direction = l::Direction::Ltr;
     let mut host = Host::<S>::new(root(mode, direction, l::InlineBaselineContext::Physical));
@@ -76,31 +76,31 @@ fn atomic_top_signed_margin_aligns_actual_over_edge_f64() {
 }
 #[test]
 fn vertical_lr_atomic_top_aligns_line_over_with_taller_peer_f32() {
-    vertical_lr_taller_peer::<f32>(l::VerticalAlign::Top, 20.0);
+    vertical_lr_taller_peer::<f32>(l::VerticalAlignOf::Top, 20.0);
 }
 #[test]
 fn vertical_lr_atomic_top_aligns_line_over_with_taller_peer_f64() {
-    vertical_lr_taller_peer::<f64>(l::VerticalAlign::Top, 20.0);
+    vertical_lr_taller_peer::<f64>(l::VerticalAlignOf::Top, 20.0);
 }
 #[test]
 fn vertical_lr_atomic_bottom_aligns_line_under_with_taller_peer_f32() {
-    vertical_lr_taller_peer::<f32>(l::VerticalAlign::Bottom, 0.0);
+    vertical_lr_taller_peer::<f32>(l::VerticalAlignOf::Bottom, 0.0);
 }
 #[test]
 fn vertical_lr_atomic_bottom_aligns_line_under_with_taller_peer_f64() {
-    vertical_lr_taller_peer::<f64>(l::VerticalAlign::Bottom, 0.0);
+    vertical_lr_taller_peer::<f64>(l::VerticalAlignOf::Bottom, 0.0);
 }
 
 #[derive(Clone, Copy, Debug)]
-struct EdgeSpec {
+struct EdgeSpec<S: l::LayoutScalar> {
     mode: l::WritingMode,
     direction: l::Direction,
     context: l::InlineBaselineContext,
-    alignment: l::VerticalAlign,
+    alignment: l::VerticalAlignOf<S>,
     margins: (f64, f64),
     peer: bool,
 }
-fn edge_tree<S: l::LayoutScalar>(spec: EdgeSpec) -> Host<S> {
+fn edge_tree<S: l::LayoutScalar>(spec: EdgeSpec<S>) -> Host<S> {
     let mut host = Host::<S>::new(root(spec.mode, spec.direction, spec.context));
     let mut item = atomic(spec.mode, spec.direction, 10.0, spec.margins);
     item.vertical_align = spec.alignment;
@@ -161,7 +161,7 @@ fn edge_geometry_matrix<S: l::LayoutScalar>() {
                         continue;
                     }
                     for peer in [false, true] {
-                        for alignment in [l::VerticalAlign::Top, l::VerticalAlign::Bottom] {
+                        for alignment in [l::VerticalAlignOf::Top, l::VerticalAlignOf::Bottom] {
                             let spec = EdgeSpec {
                                 mode,
                                 direction,
@@ -176,7 +176,7 @@ fn edge_geometry_matrix<S: l::LayoutScalar>() {
                             let cross = if peer { 30.0 } else { span };
                             let expected_cross = if peer {
                                 let values = if over_right { right } else { forward };
-                                values[usize::from(alignment == l::VerticalAlign::Bottom)]
+                                values[usize::from(alignment == l::VerticalAlignOf::Bottom)]
                             } else {
                                 single[usize::from(over_right)]
                             };
@@ -318,7 +318,7 @@ fn edge_cache_and_publication<S: l::LayoutScalar>() {
             mode,
             direction: l::Direction::Ltr,
             context: l::InlineBaselineContext::Physical,
-            alignment: l::VerticalAlign::Top,
+            alignment: l::VerticalAlignOf::Top,
             margins: (-2.0, 6.0),
             peer: true,
         };
@@ -334,7 +334,7 @@ fn edge_cache_and_publication<S: l::LayoutScalar>() {
         warm.apply_to(&mut host).unwrap();
         let after = EdgeSpec {
             context: l::InlineBaselineContext::Named(l::BaselineName::Central),
-            alignment: l::VerticalAlign::Bottom,
+            alignment: l::VerticalAlignOf::Bottom,
             margins: (3.0, 5.0),
             ..before
         };
@@ -418,8 +418,8 @@ fn explicit_control_offsets<S: l::LayoutScalar>() {
         l::InlineBaselineContext::Named(l::BaselineName::Central),
     ] {
         for (alignment, y) in [
-            (l::VerticalAlign::Top, 2.0),
-            (l::VerticalAlign::Bottom, 22.0),
+            (l::VerticalAlignOf::Top, 2.0),
+            (l::VerticalAlignOf::Bottom, 22.0),
         ] {
             let mut host = Host::<S>::new(root(mode, l::Direction::Ltr, context));
             let metrics =

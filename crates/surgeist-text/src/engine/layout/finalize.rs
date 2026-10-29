@@ -292,8 +292,27 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
     if selected.metric_policy != LineMetricPolicy::Native {
         include_control_struts(
             &mut metrics,
-            controls.values().filter_map(|allocation| allocation.strut),
+            controls
+                .values()
+                .filter_map(|allocation| allocation.strut)
+                .chain(
+                    selected
+                        .request
+                        .line_box_struts
+                        .iter()
+                        .map(|allocation| ControlStrut {
+                            baseline: allocation.metrics.baseline,
+                            line_extent: allocation.metrics.line_extent,
+                            alignment: allocation.alignment,
+                        }),
+                ),
             selected.request.line_strut,
+            shaped.empty_run.is_some()
+                || !shaped.runs.is_empty()
+                || shaped
+                    .items
+                    .iter()
+                    .any(|item| matches!(item, ShapedItem::InlineBox { .. })),
         )?;
     }
     let measurements =
@@ -456,6 +475,7 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
                 let (flow, geometry, alignment) = inflow_allocation(allocation)?;
                 let baseline = match alignment {
                     LineBoxAlignment::Baseline => metrics.baseline,
+                    LineBoxAlignment::Shift(shift) => shifted_baseline(metrics.baseline, shift)?,
                     LineBoxAlignment::Top => finite(
                         "atomic top baseline",
                         TextNumericPhase::Finalization,
@@ -508,6 +528,17 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
                 }
                 let rect = translate_rect(geometry.border, pen, baseline)?;
                 translate_rect(geometry.content, pen, baseline)?;
+                if let LineBoxAlignment::Shift(shift) = alignment {
+                    for local in [
+                        geometry.border.origin.y,
+                        geometry.border.origin.y + geometry.border.size.height,
+                        geometry.content.origin.y,
+                        geometry.content.origin.y + geometry.content.size.height,
+                        geometry.baseline,
+                    ] {
+                        qualify_local_shift(metrics.baseline, baseline, local, shift)?;
+                    }
+                }
                 add(
                     "atomic actual baseline",
                     TextNumericPhase::Finalization,
@@ -1356,65 +1387,35 @@ fn include_control_struts(
     metrics: &mut LineMetrics,
     struts: impl Iterator<Item = ControlStrut>,
     empty: Option<crate::protocol::LineStrut>,
+    have_base: bool,
 ) -> Result<()> {
-    let mut baseline = metrics.baseline - metrics.block_min;
-    let mut after = metrics.block_max - metrics.baseline;
-    let mut top = 0.0_f64;
-    let mut bottom = 0.0_f64;
-    let mut any = false;
-    if let Some(strut) = empty {
-        any = true;
-        baseline = baseline.max(strut.baseline);
-        after = after.max(strut.line_extent - strut.baseline);
+    let mut groups = MetricGroups::default();
+    if have_base {
+        groups.include(
+            metrics.baseline - metrics.block_min,
+            metrics.block_max - metrics.baseline,
+            LineBoxAlignment::Baseline,
+        )?;
     }
+    if let Some(strut) = empty {
+        groups.include(
+            strut.baseline,
+            strut.line_extent - strut.baseline,
+            LineBoxAlignment::Baseline,
+        )?;
+    }
+    let mut any = false;
     for strut in struts {
         any = true;
-        match strut.alignment {
-            LineBoxAlignment::Baseline => {
-                baseline = baseline.max(strut.baseline);
-                after = after.max(strut.line_extent - strut.baseline);
-            }
-            LineBoxAlignment::Top => top = top.max(strut.line_extent),
-            LineBoxAlignment::Bottom => bottom = bottom.max(strut.line_extent),
-        }
+        groups.include(
+            strut.baseline,
+            strut.line_extent - strut.baseline,
+            strut.alignment,
+        )?;
     }
-    if !any {
-        return Ok(());
+    if any || empty.is_some() {
+        *metrics = groups.finish(*metrics)?;
     }
-    let under = finite(
-        "control line under extent",
-        TextNumericPhase::Finalization,
-        baseline + after,
-    )?
-    .max(top);
-    let over = finite(
-        "control line over extent",
-        TextNumericPhase::Finalization,
-        under - bottom,
-    )?
-    .min(0.0);
-    let actual_baseline = finite(
-        "control line baseline",
-        TextNumericPhase::Finalization,
-        baseline - over,
-    )?;
-    let actual_after = finite(
-        "control line after baseline",
-        TextNumericPhase::Finalization,
-        under - baseline,
-    )?;
-    let extent = finite(
-        "control line extent",
-        TextNumericPhase::Finalization,
-        actual_baseline + actual_after,
-    )?;
-    metrics.baseline = actual_baseline;
-    metrics.ascent = actual_baseline;
-    metrics.descent = actual_after;
-    metrics.leading = 0.0;
-    metrics.line_height = extent;
-    metrics.block_min = 0.0;
-    metrics.block_max = extent;
     Ok(())
 }
 
@@ -1427,6 +1428,7 @@ fn control_baseline(metrics: &LineMetrics, strut: Option<ControlStrut>) -> Resul
         TextNumericPhase::Finalization,
         match strut.alignment {
             LineBoxAlignment::Baseline => metrics.baseline,
+            LineBoxAlignment::Shift(shift) => return shifted_baseline(metrics.baseline, shift),
             LineBoxAlignment::Top => metrics.block_min + strut.baseline,
             LineBoxAlignment::Bottom => metrics.block_max - (strut.line_extent - strut.baseline),
         },
@@ -1699,6 +1701,77 @@ fn font_strut(metrics: RunMetrics) -> Result<(f64, f64)> {
     ))
 }
 
+fn shifted_baseline(baseline: f64, shift: crate::BaselineShift) -> Result<f64> {
+    add(
+        "allocated baseline displacement",
+        TextNumericPhase::Finalization,
+        baseline,
+        -shift.get(),
+    )
+}
+
+fn qualify_local_shift(
+    before: f64,
+    after: f64,
+    local: f64,
+    shift: crate::BaselineShift,
+) -> Result<()> {
+    let before = finite(
+        "unshifted allocated coordinate",
+        TextNumericPhase::Finalization,
+        before + local,
+    )?;
+    let after = finite(
+        "shifted allocated coordinate",
+        TextNumericPhase::Finalization,
+        after + local,
+    )?;
+    if shift.get() != 0.0 && before == after {
+        return Err(super::super::text_numeric_error(
+            "allocated coordinate displacement",
+            TextNumericPhase::Finalization,
+            crate::TextNumericError::NonZeroLost,
+            shift.get(),
+        ));
+    }
+    Ok(())
+}
+
+/// Preserve local metrics; only their relative endpoints are displaced.
+fn shifted_bounds(before: f64, after: f64, shift: crate::BaselineShift) -> Result<(f64, f64)> {
+    let actual_before = add(
+        "allocated shifted over bound",
+        TextNumericPhase::Finalization,
+        before,
+        shift.get(),
+    )?;
+    let actual_after = add(
+        "allocated shifted under bound",
+        TextNumericPhase::Finalization,
+        after,
+        -shift.get(),
+    )?;
+    let extent = finite(
+        "allocated local extent",
+        TextNumericPhase::Finalization,
+        before + after,
+    )?;
+    let actual_extent = finite(
+        "allocated shifted extent",
+        TextNumericPhase::Finalization,
+        actual_before + actual_after,
+    )?;
+    if extent != 0.0 && actual_extent == 0.0 {
+        return Err(super::super::text_numeric_error(
+            "allocated shifted extent",
+            TextNumericPhase::Finalization,
+            crate::TextNumericError::NonZeroLost,
+            extent,
+        ));
+    }
+    Ok((actual_before, actual_after))
+}
+
 #[derive(Default)]
 struct MetricGroups {
     baseline: Option<(f64, f64)>,
@@ -1715,7 +1788,11 @@ impl MetricGroups {
         )?;
         finite("metric group after", TextNumericPhase::Finalization, after)?;
         match alignment {
-            LineBoxAlignment::Baseline => {
+            LineBoxAlignment::Baseline | LineBoxAlignment::Shift(_) => {
+                let (before, after) = match alignment {
+                    LineBoxAlignment::Shift(shift) => shifted_bounds(before, after, shift)?,
+                    _ => (before, after),
+                };
                 self.baseline = Some(self.baseline.map_or((before, after), |(above, below)| {
                     (above.max(before), below.max(after))
                 }));
@@ -3456,7 +3533,7 @@ mod tests {
                 line_extent: 18.0,
                 alignment,
             };
-            include_control_struts(&mut metrics, [strut].into_iter(), None).unwrap();
+            include_control_struts(&mut metrics, [strut].into_iter(), None, true).unwrap();
             assert_eq!(metrics.line_height, 18.0);
             assert_eq!(metrics.baseline, expected_baseline);
             assert_eq!(
@@ -3514,6 +3591,7 @@ mod tests {
             ]
             .into_iter(),
             None,
+            true,
         )
         .unwrap();
         assert_eq!((metrics.baseline, metrics.line_height), (14.0, 24.0));

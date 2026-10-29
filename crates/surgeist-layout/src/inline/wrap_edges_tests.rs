@@ -383,7 +383,10 @@ fn empty_edges<S: LayoutScalar>() {
         );
         assert_eq!(r.block_extent, n(10.0));
         assert_eq!(
-            r.atomics.iter().map(|a| a.block_start).collect::<Vec<_>>(),
+            r.atomics
+                .iter()
+                .map(|a| crate::inline::expect_logical_position(a.position).block)
+                .collect::<Vec<_>>(),
             [S::ZERO; 3]
         );
         assert_eq!(output(&leading.compute(), 0).size.height, n(10.0));
@@ -404,8 +407,8 @@ fn empty_edges<S: LayoutScalar>() {
         assert_eq!(groups(&r), [vec![1, 2, 3]]);
         assert_eq!(r.lines.iter().map(|l| l.end).collect::<Vec<_>>(), [Forced]);
         assert_eq!(r.block_extent, n(10.0));
-        assert_eq!(r.first_baseline, Some(n(10.0)));
-        assert_eq!(r.last_baseline, Some(n(10.0)));
+        assert_eq!(r.baselines.numeric().first, Some(n(10.0)));
+        assert_eq!(r.baselines.numeric().last, Some(n(10.0)));
         assert_eq!(output(&terminal.compute(), 0).size.height, n(10.0));
         edges = [WrapEdges::AUTO; 3];
         edges[0].after = WrapEdge::Line;

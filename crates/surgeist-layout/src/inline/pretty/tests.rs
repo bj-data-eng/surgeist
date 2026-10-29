@@ -2,7 +2,7 @@ use super::*;
 use crate::inline::balance_tests::{groups, input};
 use crate::inline::tail::tests::{ContourFailure, TriangleTree};
 use crate::inline_wrapping::body::BodyAdmission;
-use crate::{LayoutInputOf, NodeInputOf, PreferredSizeOf};
+use crate::{LayoutInputOf, NodeInputOf, PreferredSizeOf, VerticalAlignOf};
 use std::cell::RefCell;
 
 #[derive(Clone)]
@@ -266,7 +266,7 @@ fn fullness_veto_rectangle<S: LayoutScalar>() -> TriangleTree<S> {
             LayoutInputOf::box_input(NodeInputOf {
                 display: crate::Display::InlineBlock,
                 direction: Direction::Ltr,
-                vertical_align: VerticalAlign::Baseline,
+                vertical_align: VerticalAlignOf::Baseline,
                 atomic_inline_participation: Some(AtomicInlineParticipation::new(
                     BidiLevel::try_new(0).unwrap(),
                     InlineBreakOpportunity::Allowed,
@@ -461,7 +461,7 @@ fn rectangle<S: LayoutScalar>() -> TriangleTree<S> {
             LayoutInputOf::box_input(NodeInputOf {
                 display: crate::Display::InlineBlock,
                 direction: Direction::Ltr,
-                vertical_align: VerticalAlign::Baseline,
+                vertical_align: VerticalAlignOf::Baseline,
                 atomic_inline_participation: Some(AtomicInlineParticipation::new(
                     BidiLevel::try_new(0).unwrap(),
                     InlineBreakOpportunity::Allowed,

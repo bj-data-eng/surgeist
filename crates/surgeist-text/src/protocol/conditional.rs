@@ -604,6 +604,17 @@ fn role(value: Option<bool>) -> u64 {
 fn number(values: &mut Vec<u64>, value: f64) {
     values.push(if value == 0.0 { 0 } else { value.to_bits() });
 }
+fn allocation_alignment(values: &mut Vec<u64>, alignment: super::LineBoxAlignment) {
+    match alignment {
+        super::LineBoxAlignment::Baseline => values.push(0),
+        super::LineBoxAlignment::Top => values.push(1),
+        super::LineBoxAlignment::Bottom => values.push(2),
+        super::LineBoxAlignment::Shift(shift) => {
+            values.push(3);
+            number(values, shift.get());
+        }
+    }
+}
 pub(crate) fn request_context(request: super::input::RequestInput<'_>) -> Vec<u64> {
     let context = request.context;
     let mut values = vec![
@@ -644,7 +655,8 @@ pub(crate) fn request_context(request: super::input::RequestInput<'_>) -> Vec<u6
                 box_geometry,
                 alignment,
             } => {
-                values.extend([1, alignment as u64]);
+                values.push(1);
+                allocation_alignment(&mut values, alignment);
                 for value in [
                     flow.advance,
                     flow.before_baseline,
@@ -675,7 +687,7 @@ pub(crate) fn request_context(request: super::input::RequestInput<'_>) -> Vec<u6
         }
         values.push(u64::from(allocation.strut.is_some()));
         if let Some(strut) = allocation.strut {
-            values.push(strut.alignment as u64);
+            allocation_alignment(&mut values, strut.alignment);
             number(&mut values, strut.baseline);
             number(&mut values, strut.line_extent);
         }
@@ -687,7 +699,7 @@ pub(crate) fn request_context(request: super::input::RequestInput<'_>) -> Vec<u6
     }
     values.push(request.line_box_struts.len() as u64);
     for allocation in request.line_box_struts {
-        values.push(allocation.alignment as u64);
+        allocation_alignment(&mut values, allocation.alignment);
         number(&mut values, allocation.metrics.baseline);
         number(&mut values, allocation.metrics.line_extent);
     }

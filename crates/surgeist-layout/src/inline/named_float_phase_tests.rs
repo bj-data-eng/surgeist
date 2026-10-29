@@ -74,19 +74,28 @@ fn common_named_reference<S: LayoutScalar>() {
     )
     .unwrap();
 
-    let common = report.first_baseline.unwrap();
-    let atomic_reference =
-        report.atomics[0].block_start + report.atomics[0].item.first_baseline.unwrap();
+    let common = report.baselines.numeric().first.unwrap();
+    let atomic_reference = crate::inline::expect_logical_position(report.atomics[0].position).block
+        + report.atomics[0].item.first_baseline.unwrap();
     // Both actual participants demand the same Central reference. Float
     // exclusion admission cannot give the endpoint a second cross anchor.
-    assert_eq!(report.controls[0].block_start, common);
+    assert_eq!(
+        crate::inline::expect_logical_position(report.controls[0].position).block,
+        common
+    );
     assert_eq!(atomic_reference, common);
-    assert!(report.first_named_baseline && report.last_named_baseline);
+    assert!(report.baselines.numeric().first_named && report.baselines.numeric().last_named);
     // max(before8,6)+max(after2,4)=12; the common baseline is8.
     assert_eq!(common, n(8.0));
     assert_eq!(report.block_extent, n(12.0));
-    assert_eq!(report.atomics[0].block_start, n(2.0));
-    assert_eq!(report.atomics[0].inline_start, n(10.0));
+    assert_eq!(
+        crate::inline::expect_logical_position(report.atomics[0].position).block,
+        n(2.0)
+    );
+    assert_eq!(
+        crate::inline::expect_logical_position(report.atomics[0].position).inline,
+        n(10.0)
+    );
     assert_eq!(report.atomics[0].item.first_baseline, Some(n(6.0)));
     assert_eq!(report.atomics[0].item.size, item.size);
     assert_eq!(report.atomics[0].item.content_size, item.content_size);

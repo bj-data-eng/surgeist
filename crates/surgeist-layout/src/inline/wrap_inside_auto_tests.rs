@@ -163,8 +163,8 @@ fn assert_numeric_receipts<S: LayoutScalar>(
             .map(|row| (
                 row.item.source_index,
                 row.line_index,
-                row.inline_start,
-                row.block_start
+                crate::inline::expect_logical_position(row.position).inline,
+                crate::inline::expect_logical_position(row.position).block
             ))
             .collect::<Vec<_>>(),
         [

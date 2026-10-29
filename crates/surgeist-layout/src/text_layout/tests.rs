@@ -16,8 +16,8 @@ mod auto_phrase;
 mod automatic_phrase;
 #[path = "tests/automatic_priority.rs"]
 mod automatic_priority;
-#[path = "tests/native_physical_publication.rs"]
-mod native_physical_publication;
+#[path = "tests/baseline_offsets.rs"]
+mod baseline_offsets;
 #[path = "tests/before_indication_bidi.rs"]
 mod before_indication_bidi;
 #[path = "tests/both_sides.rs"]
@@ -62,6 +62,8 @@ mod line_policy;
 mod logical_after;
 #[path = "tests/manual_css_minima.rs"]
 mod manual_css_minima;
+#[path = "tests/native_physical_publication.rs"]
+mod native_physical_publication;
 #[path = "tests/negative_tabs.rs"]
 mod negative_tabs;
 #[path = "tests/scope_continuation.rs"]
@@ -1198,9 +1200,9 @@ fn source_less_discretionary_tries_all_actual_alternatives_and_preserves_origina
 
 fn assert_atomic_alignment<S: LayoutScalar>() {
     for (vertical_align, baseline, height) in [
-        (VerticalAlign::Baseline, 20.0, 22.0),
-        (VerticalAlign::Top, 8.0, 20.0),
-        (VerticalAlign::Bottom, 18.0, 20.0),
+        (VerticalAlignOf::Baseline, 20.0, 22.0),
+        (VerticalAlignOf::Top, 8.0, 20.0),
+        (VerticalAlignOf::Bottom, 18.0, 20.0),
     ] {
         let style = ahem_style(10.0, 10.0);
         let paragraph = PreparedParagraph::new(

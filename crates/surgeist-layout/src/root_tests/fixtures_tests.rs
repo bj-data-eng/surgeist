@@ -613,7 +613,7 @@ pub(super) fn assert_fri06_c08_r1_mixed_unit_traversal<S: LayoutScalar>(
             .unwrap();
         let rect = axes.physical_rect(
             crate::geometry::LogicalRectOf::new(
-                LogicalPointOf::new(actual.inline_start, actual.block_start),
+                crate::inline::expect_logical_position(actual.position),
                 axes.logical_size(actual.item.size),
             ),
             containing,
@@ -636,7 +636,7 @@ pub(super) fn assert_fri06_c08_r1_mixed_unit_traversal<S: LayoutScalar>(
             .unwrap();
         assert_eq!(
             axes.physical_point(
-                LogicalPointOf::new(actual.inline_start, actual.block_start),
+                crate::inline::expect_logical_position(actual.position),
                 LogicalSizeOf::new(S::ZERO, S::ZERO),
                 containing
             ),

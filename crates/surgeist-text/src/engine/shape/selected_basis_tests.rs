@@ -1243,3 +1243,6 @@ mod conditional_envelopes;
 
 #[path = "mixed_basis_tests.rs"]
 mod mixed_basis_tests;
+
+#[path = "allocated_shift_tests.rs"]
+mod allocated_shift_tests;

@@ -422,12 +422,17 @@ pub struct AtomicAllocation {
     pub allocation: AtomicLineAllocation,
 }
 
-/// Alignment of an actual Layout-allocated atomic box or control strut.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+/// Alignment of an actual Layout-allocated atomic box or strut.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LineBoxAlignment {
     Baseline,
     Top,
     Bottom,
+    /// Match the actual baseline, then displace toward line-over by this amount.
+    /// The displacement is already allocated in used line-coordinate units,
+    /// like the accompanying box/strut geometry. Preparation scale is not
+    /// applied again. This does not execute standalone Requested metadata.
+    Shift(crate::BaselineShift),
 }
 
 /// Coupled allocated control geometry; these are Layout facts, not font metrics.

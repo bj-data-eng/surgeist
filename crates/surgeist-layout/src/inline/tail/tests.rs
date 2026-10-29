@@ -2,7 +2,7 @@ use super::*;
 use crate::inline::balance_tests::{groups, input};
 use crate::inline_wrapping::tail::TailAdmission;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
-use crate::{LayoutInputOf, LayoutTree, NodeInputOf, PreferredSizeOf, Traverse};
+use crate::{LayoutInputOf, LayoutTree, NodeInputOf, PreferredSizeOf, Traverse, VerticalAlignOf};
 use std::cell::RefCell;
 
 #[derive(Clone)]
@@ -354,7 +354,7 @@ impl<S: LayoutScalar> TriangleTree<S> {
                 LayoutInputOf::box_input(NodeInputOf {
                     display: crate::Display::InlineBlock,
                     direction: Direction::Ltr,
-                    vertical_align: VerticalAlign::Baseline,
+                    vertical_align: VerticalAlignOf::Baseline,
                     atomic_inline_participation: Some(AtomicInlineParticipation::new(
                         BidiLevel::try_new(0).unwrap(),
                         InlineBreakOpportunity::Allowed,

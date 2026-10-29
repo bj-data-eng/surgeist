@@ -4,6 +4,10 @@ use super::scroll::{child_scrollbar_size, retained_child_scroll_geometry};
 use super::sizing::{max_content_size, resolve_auto_optional, resolve_length_or_zero};
 use super::*;
 use crate::FlowAxes;
+use crate::inline::InlineSourcePositionOf;
+
+#[cfg(test)]
+mod baseline_offset_tests;
 
 type TextFragmentGroup<Node, S> = (
     Node,
@@ -184,7 +188,6 @@ impl VisibleInlineRunTransition {
             content_size,
             scroll_content_size,
             baselines,
-            named_baselines,
             static_positions,
             resolved_terminal_float_block_end,
             active_margin,
@@ -264,24 +267,17 @@ impl VisibleInlineRunTransition {
             .block
             .max(placement_scroll_content_size.block);
         *owned_float_block_end = (*owned_float_block_end).max(placement.owned_float_block_end);
-        record_inline_run_baselines(baselines, &placement, *cursor_block, constants);
-        let mut run_baselines = BaselinesOf::NONE;
-        record_inline_run_baselines(&mut run_baselines, &placement, *cursor_block, constants);
-        let facts = crate::NamedBaselinesOf::from_line(
-            placement.inline_baseline_context,
-            constants.flow_axes,
-            run_baselines,
-            placement.first_named_baseline,
-            placement.last_named_baseline,
-        )
-        .map_err(|crate::FiniteScalarErrorOf::NonFinite { value }| {
-            LayoutErrorOf::new(
-                LayoutErrorSiteOf::Node(node),
-                LayoutOperation::ChildLayout,
-                LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric { value }),
+        let contribution = &placement.baselines;
+        baselines
+            .line(
+                contribution.first,
+                contribution.last,
+                contribution.frame,
+                contribution.context,
+                contribution.first_named,
+                contribution.last_named,
             )
-        })?;
-        named_baselines.record(facts);
+            .map_err(|error| error.layout(node))?;
         *cursor_block = *cursor_block + placement.logical_block_extent(constants.flow_axes);
         pending_floats.extend(placement.floats);
         static_positions.extend(placement.static_positions);
@@ -305,8 +301,7 @@ pub(super) struct InlineRunTransitionState<'a, Node, S: LayoutScalar> {
     pub(super) cursor_block: &'a mut S,
     pub(super) content_size: &'a mut LogicalSizeOf<S>,
     pub(super) scroll_content_size: &'a mut LogicalSizeOf<S>,
-    pub(super) baselines: &'a mut BaselinesOf<S>,
-    pub(super) named_baselines: &'a mut crate::NamedBaselinesOf<S>,
+    pub(super) baselines: &'a mut super::baseline_frame::PendingBaselines,
     pub(super) static_positions: &'a mut Vec<(Node, Point<S>)>,
     pub(super) resolved_terminal_float_block_end: &'a mut Option<S>,
     pub(super) active_margin: &'a mut CollapsibleMarginOf<S>,
@@ -327,9 +322,6 @@ enum InlineRunMargin {
 }
 
 struct InlineRunPlacement<Node, S: LayoutScalar> {
-    inline_baseline_context: crate::InlineBaselineContext,
-    first_named_baseline: bool,
-    last_named_baseline: bool,
     margin: InlineRunMargin,
     box_frontier: Option<crate::text_layout::boxes::BoxFrontier>,
     formatted: Option<crate::text_layout::formatted::FormattedFlowItem<Node, S>>,
@@ -343,9 +335,7 @@ struct InlineRunPlacement<Node, S: LayoutScalar> {
     content_size: Size<S>,
     scroll_content_size: Size<S>,
     static_positions: Vec<(Node, Point<S>)>,
-    baselines: BaselinesOf<S>,
-    first_baseline: Option<S>,
-    last_baseline: Option<S>,
+    baselines: crate::inline::PhysicalBaselineReport,
     resolved_float_terminal_block_end: Option<S>,
 }
 
@@ -398,7 +388,7 @@ fn forced_line_break_control<S: LayoutScalar>(
             available_inline_extent,
         ),
         input.metrics(),
-        InlineControlAlignment::from(input.vertical_align()),
+        input.vertical_align(),
         input.clear(),
     )
 }
@@ -417,7 +407,7 @@ fn inline_boundary_control<S: LayoutScalar>(
             available_inline_extent,
         ),
         input.metrics(),
-        InlineControlAlignment::from(input.vertical_align()),
+        input.vertical_align(),
         input.edge(),
     )
 }
@@ -529,7 +519,7 @@ where
         let child_style = match projection.kind() {
             InlineParticipantKindOf::InlineText(_) => continue,
             InlineParticipantKindOf::TextControl(_) => {
-                control_children.push((child, source_index));
+                control_children.push((child, source_index, None));
                 continue;
             }
             InlineParticipantKindOf::Box(style) => style,
@@ -557,7 +547,7 @@ where
                 participants.push(MixedInlineParticipantOf::ForcedLineBreak(
                     forced_line_break_control(source_index, line_break, available_inline_extent),
                 ));
-                control_children.push((child, source_index));
+                control_children.push((child, source_index, Some(line_break.vertical_align())));
                 continue;
             }
             InlineParticipantKindOf::InlineBoundary(_) => {
@@ -575,7 +565,7 @@ where
                     boundary,
                     available_inline_extent,
                 )));
-                control_children.push((child, source_index));
+                control_children.push((child, source_index, Some(boundary.vertical_align())));
                 continue;
             }
         };
@@ -988,12 +978,18 @@ where
                             baseline: metrics.baseline().to_f64(),
                             line_extent: metrics.line_extent().to_f64(),
                             alignment: match alignment {
-                                crate::VerticalAlign::Baseline => {
+                                crate::VerticalAlignOf::Baseline => {
                                     surgeist_text::LineBoxAlignment::Baseline
                                 }
-                                crate::VerticalAlign::Top => surgeist_text::LineBoxAlignment::Top,
-                                crate::VerticalAlign::Bottom => {
+                                crate::VerticalAlignOf::Top => surgeist_text::LineBoxAlignment::Top,
+                                crate::VerticalAlignOf::Bottom => {
                                     surgeist_text::LineBoxAlignment::Bottom
+                                }
+                                crate::VerticalAlignOf::Shift(offset) => {
+                                    surgeist_text::LineBoxAlignment::Shift(
+                                        surgeist_text::BaselineShift::try_new(offset.get().to_f64())
+                                            .expect("a finite Layout scalar widens to finite Text coordinates"),
+                                    )
                                 }
                             },
                         }),
@@ -1326,6 +1322,87 @@ where
             containing_size,
         )
     };
+    let project_source =
+        |position: InlineSourcePositionOf<S>, size: LogicalSizeOf<S>| match position {
+            InlineSourcePositionOf::Logical(point) => {
+                project_point(point.inline, point.block, size)
+            }
+            InlineSourcePositionOf::Physical(point) => point,
+        };
+
+    // Numeric geometry has no grid conversion. Validate every newly consumed
+    // numeric displacement before publishing output, using retained input loans.
+    // Captured Text owns its separate checked, once-applied grid conversion.
+    let atomic_sources = report
+        .atomics
+        .iter()
+        .map(|source| (source.item.source_index, *source))
+        .collect::<BTreeMap<_, _>>();
+    let control_sources = report
+        .controls
+        .iter()
+        .map(|source| (source.source_index, *source))
+        .collect::<BTreeMap<_, _>>();
+    let mut shifted_atomic_locations = BTreeMap::new();
+    let mut shifted_control_locations = BTreeMap::new();
+    if text_binding.is_none() {
+        for child in &atomic_children {
+            let source = atomic_sources[&child.source_index];
+            if !matches!(source.item.alignment, VerticalAlignOf::Shift(offset) if offset.get() != S::ZERO)
+            {
+                continue;
+            }
+            let InlineParticipantKindOf::Box(projection) = child.projection.kind() else {
+                unreachable!("retained atomic projection is a box");
+            };
+            let inset = atomic_inset_offset::<Tree, S, M>(
+                tree,
+                child.node,
+                &projection,
+                constants.flow_axes,
+                node_inner_size,
+                text_binding.is_some(),
+            )?;
+            let logical_size = constants.flow_axes.logical_size(source.item.size);
+            let InlineSourcePositionOf::Logical(position) = source.position else {
+                unreachable!("the numeric fitter emits logical positions");
+            };
+            let location = checked_shift_projection(
+                source.item.alignment,
+                constants.flow_axes,
+                position.block,
+                |block| {
+                    let point = project_point(position.inline, block, logical_size);
+                    Point::new(point.x + inset.x, point.y + inset.y)
+                },
+            )
+            .map_err(|error| error.layout::<Tree::Node, S, M>(child.node))?;
+            shifted_atomic_locations.insert(child.source_index, location);
+        }
+        for (child, source_index, alignment) in &control_children {
+            let Some(alignment) = alignment else {
+                continue;
+            };
+            if !matches!(alignment, VerticalAlignOf::Shift(offset) if offset.get() != S::ZERO) {
+                continue;
+            }
+            let Some(source) = control_sources.get(source_index) else {
+                continue;
+            };
+            let size = LogicalSizeOf::new(source.inline_extent, S::ZERO);
+            let InlineSourcePositionOf::Logical(position) = source.position else {
+                unreachable!("the numeric fitter emits logical positions");
+            };
+            let location = checked_shift_projection(
+                *alignment,
+                constants.flow_axes,
+                position.block,
+                |block| project_point(position.inline, block, size),
+            )
+            .map_err(|error| error.layout::<Tree::Node, S, M>(*child))?;
+            shifted_control_locations.insert(*source_index, location);
+        }
+    }
 
     let mut text_content_size = Size::ZERO;
     if let Some(output) = text_output {
@@ -1493,11 +1570,6 @@ where
         }
     }
 
-    let atomic_sources = report
-        .atomics
-        .iter()
-        .map(|source| (source.item.source_index, *source))
-        .collect::<BTreeMap<_, _>>();
     let mut content_size = report_size;
     let mut scroll_content_size = text_content_size;
     for RetainedAtomicChild {
@@ -1510,30 +1582,23 @@ where
     {
         let source = atomic_sources[&source_index];
         let logical_size = constants.flow_axes.logical_size(source.item.size);
-        let projected_location =
-            project_point(source.inline_start, source.block_start, logical_size);
         let InlineParticipantKindOf::Box(child_projection) = child_style.kind() else {
             unreachable!("atomic child retains its settled box projection");
         };
-        let inset_offset = if text_binding.is_some() {
-            Point::ZERO
+        let location = if let Some(location) = shifted_atomic_locations.get(&source_index) {
+            *location
         } else {
-            relative_inset_offset(
-                constants
-                    .flow_axes
-                    .zip_physical_edges_with_inline_extent(
-                        *child_projection.common.inset,
-                        node_inner_size,
-                        |length, basis| resolve_auto_optional(length, basis),
-                    )
-                    .transpose_with_node(tree, child)?,
+            let point = project_source(source.position, logical_size);
+            let inset = atomic_inset_offset::<Tree, S, M>(
+                tree,
+                child,
+                &child_projection,
                 constants.flow_axes,
-            )
+                node_inner_size,
+                text_binding.is_some(),
+            )?;
+            Point::new(point.x + inset.x, point.y + inset.y)
         };
-        let location = Point::new(
-            projected_location.x + inset_offset.x,
-            projected_location.y + inset_offset.y,
-        );
         let contribution = content_size_contribution(
             Point::new(
                 location.x - constants.content_box_inset.left,
@@ -1585,30 +1650,22 @@ where
         }
     }
 
-    let control_sources = report
-        .controls
-        .iter()
-        .map(|source| (source.source_index, *source))
-        .collect::<BTreeMap<_, _>>();
     if set_layout {
         let nonformatted_controls = report
             .nonformatted_controls
             .iter()
             .map(|source| (source.control.source_index(), source))
             .collect::<BTreeMap<_, _>>();
-        for (child, source_index) in control_children {
-            let (inline_start, block_start, inline_extent, endpoint) =
+        for (child, source_index, _) in control_children {
+            let (position, inline_extent, endpoint) =
                 if let Some(source) = control_sources.get(&source_index) {
-                    (
-                        source.inline_start,
-                        source.block_start,
-                        source.inline_extent,
-                        source.endpoint,
-                    )
+                    (source.position, source.inline_extent, source.endpoint)
                 } else if let Some(source) = nonformatted_controls.get(&source_index) {
                     (
-                        source.inline_start,
-                        source.block_start,
+                        InlineSourcePositionOf::Logical(LogicalPointOf::new(
+                            source.inline_start,
+                            source.block_start,
+                        )),
                         source.control.edge().advance(),
                         Some(crate::inline::InlineEndpointOf::from_control(
                             source.control,
@@ -1626,7 +1683,10 @@ where
                 child,
                 NodeOutputOf::<S> {
                     source_index: crate::SourceIndex::new(source_index),
-                    location: project_point(inline_start, block_start, logical_size),
+                    location: shifted_control_locations
+                        .get(&source_index)
+                        .copied()
+                        .unwrap_or_else(|| project_source(position, logical_size)),
                     size,
                     border,
                     padding,
@@ -1636,18 +1696,59 @@ where
         }
     }
 
-    let projected_baseline = |baseline| {
-        constants.flow_axes.block_axis_coordinate(project_point(
-            S::ZERO,
-            baseline,
-            LogicalSizeOf::new(S::ZERO, S::ZERO),
-        ))
+    let baselines = match report.baselines {
+        crate::inline::InlineBaselineReportOf::Native(physical) => physical,
+        crate::inline::InlineBaselineReportOf::Numeric(numeric) => {
+            // Numeric line facts are accepted run-local logical S values.
+            // Project them once in f64, retaining this parent's actual used
+            // frame until its final border-box extent is known.
+            let project = |baseline: S| {
+                let block =
+                    crate::group_alignment::add::<f64>(cursor_block.to_f64(), baseline.to_f64())?;
+                crate::group_alignment::add::<f64>(baseline.to_f64(), cursor_block.to_f64())?;
+                match constants.flow_axes.block_start() {
+                    PhysicalSide::Top | PhysicalSide::Left => Ok(block),
+                    PhysicalSide::Right | PhysicalSide::Bottom => {
+                        crate::group_alignment::add::<f64>(
+                            -block,
+                            constants
+                                .flow_axes
+                                .logical_size(containing_size)
+                                .block
+                                .to_f64(),
+                        )?;
+                        crate::group_alignment::add::<f64>(
+                            constants
+                                .flow_axes
+                                .logical_size(containing_size)
+                                .block
+                                .to_f64(),
+                            -block,
+                        )
+                    }
+                }
+            };
+            crate::inline::PhysicalBaselineReport {
+                context: numeric.context,
+                first: numeric
+                    .first
+                    .map(project)
+                    .transpose()
+                    .map_err(|error| error.layout(container))?,
+                last: numeric
+                    .last
+                    .map(project)
+                    .transpose()
+                    .map_err(|error| error.layout(container))?,
+                first_named: numeric.first_named,
+                last_named: numeric.last_named,
+                frame: super::baseline_frame::BaselineFrame::Measured {
+                    used_size: containing_size.map(LayoutScalar::to_f64),
+                    axes: constants.flow_axes,
+                },
+            }
+        }
     };
-    let baselines = BaselinesOf::from_block_coordinates(
-        constants.flow_axes,
-        report.first_baseline.map(projected_baseline),
-        report.last_baseline.map(projected_baseline),
-    );
 
     if let Some(groups) = tree.group_computation() {
         for line in &report.group_lines {
@@ -1666,9 +1767,6 @@ where
         })
         .fold(owned_float_block_end, |a, b| a.max(b));
     Ok(InlineRunPlacement {
-        inline_baseline_context: report.inline_baseline_context,
-        first_named_baseline: report.first_named_baseline,
-        last_named_baseline: report.last_named_baseline,
         margin,
         box_frontier,
         formatted: formatted_item,
@@ -1683,49 +1781,80 @@ where
         scroll_content_size,
         static_positions,
         baselines,
-        first_baseline: report.first_baseline,
-        last_baseline: report.last_baseline,
         resolved_float_terminal_block_end,
     })
-}
-
-fn record_inline_run_baselines<S: LayoutScalar>(
-    baselines: &mut BaselinesOf<S>,
-    placement: &InlineRunPlacement<impl Copy, S>,
-    cursor_block: S,
-    constants: &Constants<S>,
-) {
-    if constants.flow_axes.inline_axis() == PhysicalAxis::Vertical {
-        baselines.record_first(placement.baselines.first);
-        baselines.record_last(placement.baselines.last);
-        return;
-    }
-
-    if let Some(baseline) = placement.first_baseline {
-        baselines.record_first(
-            BaselinesOf::from_block_coordinates(
-                constants.flow_axes,
-                Some(cursor_block + baseline),
-                None,
-            )
-            .first,
-        );
-    }
-    if let Some(baseline) = placement.last_baseline {
-        baselines.record_last(
-            BaselinesOf::from_block_coordinates(
-                constants.flow_axes,
-                None,
-                Some(cursor_block + baseline),
-            )
-            .last,
-        );
-    }
 }
 
 struct AtomicInlineContext {
     axes: crate::FlowAxes,
     baseline: crate::InlineBaselineContext,
+}
+
+fn atomic_inset_offset<'input, Tree, S, M>(
+    tree: &Tree,
+    child: Tree::Node,
+    projection: &BlockChildProjection<'_, S>,
+    axes: FlowAxes,
+    inner_size: Size<Option<S>>,
+    captured: bool,
+) -> LayoutResultOf<Tree::Node, Point<S>, S, M>
+where
+    Tree: Compute<'input, M, Scalar = S>,
+    S: LayoutScalar,
+{
+    if captured {
+        return Ok(Point::ZERO);
+    }
+    Ok(relative_inset_offset(
+        axes.zip_physical_edges_with_inline_extent(
+            *projection.common.inset,
+            inner_size,
+            |length, basis| resolve_auto_optional(length, basis),
+        )
+        .transpose_with_node(tree, child)?,
+        axes,
+    ))
+}
+
+/// Compare the actual post-match displacement inside the same retained frame.
+/// Reconstructing the matched point does not refit or renormalize the line.
+fn checked_shift_projection<S: LayoutScalar>(
+    alignment: VerticalAlignOf<S>,
+    axes: FlowAxes,
+    block: S,
+    project: impl Fn(S) -> Point<S>,
+) -> Result<Point<S>, crate::group_alignment::NumericError> {
+    let actual = project(block);
+    if let VerticalAlignOf::Shift(offset) = alignment
+        && offset.get() != S::ZERO
+    {
+        let inverse = if axes.line_over() == axes.block_start() {
+            offset.get()
+        } else {
+            -offset.get()
+        };
+        let matched = project(crate::baseline_offset::displaced(block, inverse)?);
+        let before = axes.block_axis_coordinate(matched);
+        let after = axes.block_axis_coordinate(actual);
+        let delta = match axes.line_over() {
+            PhysicalSide::Top | PhysicalSide::Left => -offset.get(),
+            PhysicalSide::Right | PhysicalSide::Bottom => offset.get(),
+        };
+        crate::baseline_offset::displaced(before, delta)?;
+        if !after.is_finite() {
+            return Err(crate::group_alignment::NumericError::new(
+                after.to_f64(),
+                crate::LayoutTextNumericError::NonFinite,
+            ));
+        }
+        if after == before {
+            return Err(crate::group_alignment::NumericError::new(
+                offset.get().to_f64(),
+                crate::LayoutTextNumericError::NonZeroLost,
+            ));
+        }
+    }
+    Ok(actual)
 }
 
 fn named_atomic_demand<S: LayoutScalar>(
@@ -1734,7 +1863,7 @@ fn named_atomic_demand<S: LayoutScalar>(
 ) -> crate::output::NamedBaselineDemand {
     match context {
         crate::InlineBaselineContext::Named(name)
-            if child.vertical_align == VerticalAlign::Baseline && child.float.is_none() =>
+            if child.vertical_align.is_baseline_relative() && child.float.is_none() =>
         {
             crate::output::NamedBaselineDemand::for_source(
                 name,
@@ -1768,7 +1897,7 @@ fn atomic_inline_box_participant<S: LayoutScalar, M>(
         PhysicalAxis::Horizontal => used_overflow.x(),
         PhysicalAxis::Vertical => used_overflow.y(),
     };
-    let mut selected_inner_baseline = (child_style.vertical_align == VerticalAlign::Baseline
+    let mut selected_inner_baseline = (child_style.vertical_align.is_baseline_relative()
         && block_overflow.value() == Overflow::Visible)
         .then(|| {
             let baselines = output.baselines();
@@ -1788,7 +1917,7 @@ fn atomic_inline_box_participant<S: LayoutScalar, M>(
         })
         .flatten();
     if let crate::InlineBaselineContext::Named(name) = context
-        && child_style.vertical_align == VerticalAlign::Baseline
+        && child_style.vertical_align.is_baseline_relative()
     {
         selected_inner_baseline = Some(named_atomic_baseline(
             &child_style,
@@ -1799,7 +1928,7 @@ fn atomic_inline_box_participant<S: LayoutScalar, M>(
         )?);
     }
     Ok(AtomicInlineBoxParticipant {
-        baseline_reference: if child_style.vertical_align == VerticalAlign::Baseline {
+        baseline_reference: if child_style.vertical_align.is_baseline_relative() {
             context
         } else {
             crate::InlineBaselineContext::Physical
@@ -1812,7 +1941,7 @@ fn atomic_inline_box_participant<S: LayoutScalar, M>(
         border,
         scrollbar_size: child_scrollbar_size(&child_style),
         first_baseline: selected_inner_baseline,
-        alignment: child_style.vertical_align.into(),
+        alignment: child_style.vertical_align,
     })
 }
 
@@ -1937,7 +2066,7 @@ where
     if row.request.containing_flow_axes() != axes
         || !matches!(
             style.vertical_align,
-            VerticalAlign::Top | VerticalAlign::Bottom
+            VerticalAlignOf::Top | VerticalAlignOf::Bottom
         )
         || !style.float.is_none()
     {
@@ -2130,9 +2259,9 @@ fn validate_metric_reference<Node: Copy, S: LayoutScalar, M>(
     node: Node,
     expected: crate::InlineBaselineContext,
     metrics: crate::InlineMetricsOf<S>,
-    alignment: VerticalAlign,
+    alignment: VerticalAlignOf<S>,
 ) -> LayoutResultOf<Node, (), S, M> {
-    if alignment == VerticalAlign::Baseline && metrics.reference() != expected {
+    if alignment.is_baseline_relative() && metrics.reference() != expected {
         return Err(LayoutErrorOf::new(
             LayoutErrorSiteOf::Node(node),
             LayoutOperation::ChildLayout,

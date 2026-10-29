@@ -47,11 +47,14 @@ fn no_strut<S: LayoutScalar>() {
     // Relative to the named reference, the only box occupies[-20,-10]. Its
     // envelope is10; the absent parent contributes no additional point at0.
     assert_eq!(report.block_extent, S::from_f64(10.0));
-    assert_eq!(report.first_baseline, Some(S::from_f64(20.0)));
-    assert_eq!(report.last_baseline, Some(S::from_f64(20.0)));
-    assert!(report.first_named_baseline && report.last_named_baseline);
+    assert_eq!(report.baselines.numeric().first, Some(S::from_f64(20.0)));
+    assert_eq!(report.baselines.numeric().last, Some(S::from_f64(20.0)));
+    assert!(report.baselines.numeric().first_named && report.baselines.numeric().last_named);
     assert_eq!(report.atomics.len(), 1);
-    assert_eq!(report.atomics[0].block_start, S::ZERO);
+    assert_eq!(
+        crate::inline::expect_logical_position(report.atomics[0].position).block,
+        S::ZERO
+    );
     assert_eq!(
         report.atomics[0].item.first_baseline,
         participant.first_baseline

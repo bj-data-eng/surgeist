@@ -87,7 +87,7 @@ fn atomic<S: l::LayoutScalar>() -> l::NodeInputOf<S> {
         writing_mode: l::WritingMode::HorizontalTb,
         direction: l::Direction::Ltr,
         text_align: l::TextAlign::Start,
-        vertical_align: l::VerticalAlign::Baseline,
+        vertical_align: l::VerticalAlignOf::Baseline,
         atomic_inline_participation: Some(l::AtomicInlineParticipation::new(
             BidiLevel::try_new(0).unwrap(),
             l::InlineBreakOpportunity::Allowed,
