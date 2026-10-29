@@ -108,6 +108,8 @@ pub(crate) struct PreparedRun {
     pub(crate) script: icu_properties::props::Script,
     pub(crate) level: u8,
     pub(crate) atoms: IndexRange<usize>,
+    /// Actual outline axes, independent of the placed line's inline frame.
+    pub(crate) glyph_basis: crate::GlyphBasis,
     pub(crate) metrics: RunMetrics,
 }
 

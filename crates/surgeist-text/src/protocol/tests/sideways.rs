@@ -1033,6 +1033,7 @@ fn owned_vertical_scalar_run_is_total_without_authorizing_vertical_placement() {
         actual.style().clone(),
         actual.brush(),
         crate::RunMetrics::new(10.0, 100.0, 20.0, 10.0, LineOrientation::Vertical),
+        crate::GlyphBasis::Unrotated,
         actual.glyphs().to_vec(),
     );
     assert_eq!(record.orientation(), LineOrientation::Vertical);

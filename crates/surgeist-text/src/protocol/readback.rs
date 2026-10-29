@@ -1561,13 +1561,13 @@ pub struct FinalizedRunView<'a> {
 }
 
 impl FinalizedRunView<'_> {
-    /// Actual outline axes from the authenticated uniform preparation.
+    /// Actual outline axes retained by this run's shaping operation.
     ///
     /// Horizontal and Vertical outlines are unrotated; Sideways is clockwise.
     /// The finalized pen follows the inline axis separately from raw offsets.
     #[must_use]
     pub fn glyph_basis(&self) -> crate::GlyphBasis {
-        crate::GlyphBasis::for_orientation(self.line.inner.selected.prepared.options.orientation())
+        self.shaped.glyph_basis
     }
 
     /// The aggregate original UTF-16 association of this run.
@@ -1621,11 +1621,11 @@ impl FinalizedRunView<'_> {
 
     /// Borrows raw provider glyph facts and their separate finalized inline pens.
     ///
-    /// After placement at physical run origin `(X,Y)`, pen `p` and raw offsets
-    /// `(dx,dy)` give glyph origin `(X+p+dx,Y+dy)` for Horizontal,
-    /// `(X-dy,Y+p+dx)` for Sideways and `(X+dx,Y+p+dy)` for Vertical.
-    /// The outline axes follow [`Self::glyph_basis`]; raw offsets are not cell
-    /// coordinates and are never rotated in storage.
+    /// After placement, rotate raw offsets `(dx,dy)` by [`Self::glyph_basis`]:
+    /// Unrotated keeps `(dx,dy)`, Clockwise gives `(-dy,dx)`. Add those offsets
+    /// to the physical run origin, with the pen along physical x for Horizontal
+    /// or y for Vertical/Sideways. Raw offsets are not cell coordinates and are
+    /// never rotated in storage.
     pub fn glyphs(&self) -> impl ExactSizeIterator<Item = FinalizedGlyphView<'_>> {
         self.line.inner.data.glyphs[self.run.glyphs.clone()]
             .iter()

@@ -2512,6 +2512,7 @@ fn same_paint_font(a: &PreparedRun, b: &PreparedRun) -> bool {
         && a.font_attrs == b.font_attrs
         && a.synthesis == b.synthesis
         && a.coords == b.coords
+        && a.glyph_basis == b.glyph_basis
         && a.metrics.font_origin_offset() == b.metrics.font_origin_offset()
 }
 

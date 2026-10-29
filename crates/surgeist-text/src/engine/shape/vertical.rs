@@ -70,6 +70,7 @@ pub(super) fn resolved_run(
         level: request.level,
         script: request.script,
         atoms: request.atoms.clone(),
+        glyph_basis: crate::GlyphBasis::Unrotated,
         metrics: RunMetrics {
             ascent,
             descent,

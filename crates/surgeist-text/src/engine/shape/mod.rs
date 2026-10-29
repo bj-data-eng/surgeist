@@ -1696,6 +1696,11 @@ fn resolved_run(
         level: request.level,
         script: request.script,
         atoms: request.atoms.clone(),
+        glyph_basis: if matches!(input.profile, super::upright::ShapingProfile::Sideways) {
+            crate::GlyphBasis::Clockwise
+        } else {
+            crate::GlyphBasis::Unrotated
+        },
         metrics: run_metrics,
     };
     Ok((run, scale, normal_extent))

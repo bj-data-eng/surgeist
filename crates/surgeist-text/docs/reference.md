@@ -446,17 +446,20 @@ metadata and unresolved faux-bold/skew return typed failures. These views retain
 no independent layout or preparation identity; their lifetime comes from the
 original immutable Layout.
 `RunView::origin()` is physical; `FinalizedRunView::origin()` is line-local
-`(inline, line-under)`. Both views expose `glyph_basis()`: `GlyphBasis::Unrotated`
-for Horizontal and whole-upright Vertical, `Clockwise` for Sideways. The logical
+`(inline, line-under)`. Both views and owned `Run` expose the actual shaping
+run's retained `glyph_basis()`, independently of the placed line frame. Native
+Horizontal and whole-upright Vertical retain `GlyphBasis::Unrotated`; Sideways
+retains `Clockwise`. `Run::new` takes the outline basis explicitly. The logical
 pen advances along the line's inline axis independently of raw font-x and
 converted font-y offsets. With physical run origin `(X,Y)`, pen `p` and raw
 scaled offsets `(dx,dy)`, glyph origins are:
 
-| Orientation | Physical glyph origin |
-| --- | --- |
-| Horizontal | `(X+p+dx, Y+dy)` |
-| Sideways | `(X-dy, Y+p+dx)` |
-| Vertical | `(X+dx, Y+p+dy)` |
+| Line frame | Outline basis | Physical glyph origin |
+| --- | --- | --- |
+| Horizontal | Unrotated | `(X+p+dx, Y+dy)` |
+| Horizontal | Clockwise | `(X+p-dy, Y+dx)` |
+| Sideways or Vertical | Clockwise | `(X-dy, Y+p+dx)` |
+| Sideways or Vertical | Unrotated | `(X+dx, Y+p+dy)` |
 
 Vertical and Sideways line **cells** share a physical mapping from inline and
 line-under coordinates; that map does not rotate upright outlines. Raw glyph

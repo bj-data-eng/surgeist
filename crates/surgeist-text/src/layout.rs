@@ -224,6 +224,7 @@ impl Layout {
                         run.advance,
                         line.orientation,
                     ),
+                    shaped.glyph_basis,
                     glyphs,
                 )
             })
@@ -531,16 +532,26 @@ pub(crate) fn line_rect(line: &PlacedLine, local: Rect) -> Rect {
 /// treating an upright outline as a rotated line rectangle.
 pub(crate) fn glyph_origin(
     orientation: LineOrientation,
+    basis: crate::GlyphBasis,
     physical_run_origin: Point,
     pen: f64,
     dx: f64,
     dy: f64,
 ) -> Point {
     let Point { x, y } = physical_run_origin;
-    match orientation {
-        LineOrientation::Horizontal => Point::new(x + pen + dx, y + dy),
-        LineOrientation::Sideways => Point::new(x - dy, y + pen + dx),
-        LineOrientation::Vertical => Point::new(x + dx, y + pen + dy),
+    match (orientation, basis) {
+        (LineOrientation::Horizontal, crate::GlyphBasis::Unrotated) => {
+            Point::new(x + pen + dx, y + dy)
+        }
+        (LineOrientation::Horizontal, crate::GlyphBasis::Clockwise) => {
+            Point::new(x + pen - dy, y + dx)
+        }
+        (LineOrientation::Sideways | LineOrientation::Vertical, crate::GlyphBasis::Clockwise) => {
+            Point::new(x - dy, y + pen + dx)
+        }
+        (LineOrientation::Sideways | LineOrientation::Vertical, crate::GlyphBasis::Unrotated) => {
+            Point::new(x + dx, y + pen + dy)
+        }
     }
 }
 
@@ -680,6 +691,7 @@ pub struct Run {
     style: Style,
     brush: Brush,
     metrics: RunMetrics,
+    glyph_basis: crate::GlyphBasis,
     glyphs: Vec<Glyph>,
 }
 
@@ -690,13 +702,19 @@ impl Run {
         self.metrics.orientation()
     }
 
-    /// Actual outline axes, derived from this run's uniform line orientation.
+    /// Actual outline axes, independent of this run's line frame.
     #[must_use]
     pub const fn glyph_basis(&self) -> crate::GlyphBasis {
-        crate::GlyphBasis::for_orientation(self.orientation())
+        self.glyph_basis
     }
 
+    /// Constructs an owned run record with explicit outline axes. The metrics'
+    /// orientation determines the line frame and pen direction independently.
     #[must_use]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "One owned run captures independent line metrics and outline axes alongside its font, style, source and glyph facts"
+    )]
     pub fn new(
         line: usize,
         range: Range,
@@ -704,6 +722,7 @@ impl Run {
         style: Style,
         brush: Brush,
         metrics: RunMetrics,
+        glyph_basis: crate::GlyphBasis,
         glyphs: Vec<Glyph>,
     ) -> Self {
         Self {
@@ -713,6 +732,7 @@ impl Run {
             style,
             brush,
             metrics,
+            glyph_basis,
             glyphs,
         }
     }
@@ -766,9 +786,9 @@ impl Run {
     /// Alphabetic H/Sideways uses the actual font-design-zero origin, which may
     /// differ from the shared line alignment coordinate.
     ///
-    /// With origin `(X,Y)`, pen `p` and raw offsets `(dx,dy)`, glyph origins are
-    /// `(X+p+dx,Y+dy)` for Horizontal, `(X-dy,Y+p+dx)` for Sideways and
-    /// `(X+dx,Y+p+dy)` for Vertical. Outline axes follow [`Self::glyph_basis`].
+    /// Rotate raw offsets `(dx,dy)` by [`Self::glyph_basis`]: Unrotated keeps
+    /// `(dx,dy)`, Clockwise gives `(-dy,dx)`. Add those offsets to this origin,
+    /// with the pen along physical x for Horizontal or y for Vertical/Sideways.
     #[must_use]
     pub const fn origin(&self) -> Point {
         physical_origin(
@@ -1569,16 +1589,77 @@ mod glyph_frame_tests {
         // A nonzero inline pen plus unequal signed offsets distinguishes all
         // three physical maps, including the clockwise cell-map alternative.
         assert_eq!(
-            glyph_origin(LineOrientation::Vertical, origin, 10.0, -7.0, -4.0),
+            glyph_origin(
+                LineOrientation::Vertical,
+                crate::GlyphBasis::Unrotated,
+                origin,
+                10.0,
+                -7.0,
+                -4.0,
+            ),
             Point::new(93.0, 26.0)
         );
         assert_eq!(
-            glyph_origin(LineOrientation::Horizontal, origin, 10.0, -7.0, -4.0),
+            glyph_origin(
+                LineOrientation::Horizontal,
+                crate::GlyphBasis::Unrotated,
+                origin,
+                10.0,
+                -7.0,
+                -4.0,
+            ),
             Point::new(103.0, 16.0)
         );
         assert_eq!(
-            glyph_origin(LineOrientation::Sideways, origin, 10.0, -7.0, -4.0),
+            glyph_origin(
+                LineOrientation::Sideways,
+                crate::GlyphBasis::Clockwise,
+                origin,
+                10.0,
+                -7.0,
+                -4.0,
+            ),
             Point::new(104.0, 23.0)
+        );
+    }
+
+    #[test]
+    fn glyph_axes_rotate_offsets_without_rotating_the_line_pen() {
+        let origin = Point::new(100.0, 20.0);
+        for orientation in [LineOrientation::Vertical, LineOrientation::Sideways] {
+            assert_eq!(
+                glyph_origin(
+                    orientation,
+                    crate::GlyphBasis::Unrotated,
+                    origin,
+                    10.0,
+                    -7.0,
+                    -4.0
+                ),
+                Point::new(93.0, 26.0)
+            );
+            assert_eq!(
+                glyph_origin(
+                    orientation,
+                    crate::GlyphBasis::Clockwise,
+                    origin,
+                    10.0,
+                    -7.0,
+                    -4.0
+                ),
+                Point::new(104.0, 23.0)
+            );
+        }
+        assert_eq!(
+            glyph_origin(
+                LineOrientation::Horizontal,
+                crate::GlyphBasis::Clockwise,
+                origin,
+                10.0,
+                -7.0,
+                -4.0,
+            ),
+            Point::new(114.0, 13.0)
         );
     }
 }
