@@ -88,8 +88,8 @@ fn phantom<S: LayoutScalar>(direction: Direction) {
         .unwrap();
         assert_eq!(report.inline_extent, S::ZERO);
         assert_eq!(report.block_extent, S::ZERO);
-        assert_eq!(report.first_baseline, None);
-        assert_eq!(report.last_baseline, None);
+        assert_eq!(report.baselines.numeric().first, None);
+        assert_eq!(report.baselines.numeric().last, None);
         assert_eq!(report.float_edge_phase, None);
         assert!(report.line_bands.is_empty());
         assert!(report.post_line_clear_intents.is_empty());
@@ -191,8 +191,8 @@ fn zero_atomic<S: LayoutScalar>(direction: Direction) {
     assert_eq!(report.line_bands.len(), 1);
     assert_eq!(report.line_bands[0].block_start, S::ZERO);
     assert_eq!(report.line_bands[0].block_end, S::ZERO);
-    assert_eq!(report.first_baseline, Some(S::ZERO));
-    assert_eq!(report.last_baseline, Some(S::ZERO));
+    assert_eq!(report.baselines.numeric().first, Some(S::ZERO));
+    assert_eq!(report.baselines.numeric().last, Some(S::ZERO));
     assert_eq!(report.block_extent, S::ZERO);
     assert_eq!(report.atomics.len(), 1);
     assert_eq!(report.atomics[0].item, atomic);
@@ -257,8 +257,8 @@ fn zero_forced<S: LayoutScalar>(direction: Direction) {
     // receiver does not inherit Forced, clear or formatted-line authority.
     assert_eq!(*clears.borrow(), [PostLineClearIntent::Both]);
     assert_eq!(report.line_bands.len(), 1);
-    assert_eq!(report.first_baseline, Some(S::ZERO));
-    assert_eq!(report.last_baseline, Some(S::ZERO));
+    assert_eq!(report.baselines.numeric().first, Some(S::ZERO));
+    assert_eq!(report.baselines.numeric().last, Some(S::ZERO));
     assert_eq!(report.block_extent, S::ZERO);
     assert_eq!(report.controls.len(), 1);
     assert_eq!(report.controls[0].source_index, 53);
@@ -353,7 +353,7 @@ fn individual_decoration<S: LayoutScalar>(direction: Direction) {
         );
         assert_eq!(report.inline_extent, n(border + padding));
         assert_eq!(report.block_extent, S::ZERO);
-        assert_eq!(report.first_baseline, Some(S::ZERO));
+        assert_eq!(report.baselines.numeric().first, Some(S::ZERO));
         assert_eq!(report.line_bands.len(), 1);
         assert_eq!(report.controls.len(), 2);
         assert!(
@@ -453,7 +453,7 @@ fn authentic_mandatory_edge<S: LayoutScalar>(direction: Direction) {
     assert!(calls.get() > 0);
     assert_eq!(*clears.borrow(), [PostLineClearIntent::None]);
     assert_eq!(report.block_extent, n(10.0));
-    assert_eq!(report.first_baseline, Some(n(8.0)));
+    assert_eq!(report.baselines.numeric().first, Some(n(8.0)));
     assert_eq!(report.line_bands.len(), 1);
     assert_eq!(report.controls.len(), 2);
     assert!(
@@ -567,8 +567,8 @@ fn scoped_metric_witness<S: LayoutScalar>(
         let report = result.expect("a matching actual box metric is valid but is not content");
         assert_eq!(report.inline_extent, S::ZERO);
         assert_eq!(report.block_extent, S::ZERO);
-        assert_eq!(report.first_baseline, None);
-        assert_eq!(report.last_baseline, None);
+        assert_eq!(report.baselines.numeric().first, None);
+        assert_eq!(report.baselines.numeric().last, None);
         assert_eq!(report.formatted_lines, Some(vec![]));
         assert!(report.line_bands.is_empty());
         assert!(report.lines.is_empty());

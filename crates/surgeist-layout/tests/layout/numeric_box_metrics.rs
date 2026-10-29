@@ -58,11 +58,22 @@ fn strut(baseline: f64, extent: f64, alignment: LineBoxAlignment) -> LineBoxStru
     }
 }
 
-fn vertical(alignment: LineBoxAlignment) -> VerticalAlign {
+fn vertical<S: LayoutScalar>(alignment: LineBoxAlignment) -> VerticalAlignOf<S> {
     match alignment {
-        LineBoxAlignment::Baseline => VerticalAlign::Baseline,
-        LineBoxAlignment::Top => VerticalAlign::Top,
-        LineBoxAlignment::Bottom => VerticalAlign::Bottom,
+        LineBoxAlignment::Baseline => VerticalAlignOf::Baseline,
+        LineBoxAlignment::Top => VerticalAlignOf::Top,
+        LineBoxAlignment::Bottom => VerticalAlignOf::Bottom,
+        LineBoxAlignment::Shift(offset) => {
+            let value = S::from_f64(offset.get());
+            assert!(
+                offset.get() == 0.0 || value != S::ZERO,
+                "an actual nonzero Text shift must survive scalar narrowing"
+            );
+            VerticalAlignOf::Shift(
+                BaselineOffsetOf::try_new(value)
+                    .expect("the actual Text shift must fit the Layout scalar"),
+            )
+        }
     }
 }
 
@@ -97,7 +108,7 @@ impl<S: LayoutScalar> NumericTree<S> {
                 .unwrap(),
                 InlineBoundaryEdgeOf::ZERO,
             )
-            .with_vertical_align(vertical(actual.alignment)),
+            .with_vertical_align(vertical::<S>(actual.alignment)),
         ));
         self.children.push(node);
         node

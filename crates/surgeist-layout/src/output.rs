@@ -150,17 +150,6 @@ impl NamedBaselineDemand {
             }
         }
     }
-
-    /// The first non-absent contributor is already the exporting owner's barrier.
-    pub(crate) fn for_following<S: LayoutScalar>(self, facts: NamedBaselinesOf<S>) -> Self {
-        match self {
-            Self::Fact {
-                name,
-                set: NamedBaselineSet::First,
-            } if !matches!(facts.get(name).first(), BaselineFactOf::Absent) => Self::None,
-            other => other,
-        }
-    }
 }
 
 /// Direct and recursive compute state.
@@ -773,16 +762,6 @@ impl<S: LayoutScalar> BaselineCoordinateOf<S> {
         }
         Self::try_new(self.axis, self.offset.max(S::ZERO).min(extent))
     }
-    pub(crate) fn translated(self, by: Point<S>) -> Result<Self, crate::FiniteScalarErrorOf<S>> {
-        Self::try_new(
-            self.axis,
-            self.offset
-                + match self.axis {
-                    PhysicalAxis::Horizontal => by.x,
-                    PhysicalAxis::Vertical => by.y,
-                },
-        )
-    }
 }
 
 /// Unknown authority differs from the affirmative absence permitting synthesis.
@@ -810,13 +789,6 @@ impl<S: LayoutScalar> BaselinePairOf<S> {
     #[must_use]
     pub const fn last(self) -> BaselineFactOf<S> {
         self.last
-    }
-    fn translated(self, by: Point<S>) -> Result<Self, crate::FiniteScalarErrorOf<S>> {
-        let translate = |fact| match fact {
-            BaselineFactOf::Available(value) => value.translated(by).map(BaselineFactOf::Available),
-            other => Ok(other),
-        };
-        Ok(Self::new(translate(self.first)?, translate(self.last)?))
     }
 }
 
@@ -858,12 +830,6 @@ impl<S: LayoutScalar> NamedBaselinesOf<S> {
             crate::BaselineName::Central => self.central,
         }
     }
-    pub(crate) fn translated(self, by: Point<S>) -> Result<Self, crate::FiniteScalarErrorOf<S>> {
-        Ok(Self {
-            alphabetic: self.alphabetic.translated(by)?,
-            central: self.central.translated(by)?,
-        })
-    }
     pub(crate) fn clamped_to_border(
         self,
         size: Size<S>,
@@ -886,54 +852,6 @@ impl<S: LayoutScalar> NamedBaselinesOf<S> {
             );
         }
         Ok(result)
-    }
-    pub(crate) fn record(&mut self, next: Self) {
-        for name in [
-            crate::BaselineName::Alphabetic,
-            crate::BaselineName::Central,
-        ] {
-            let old = self.get(name);
-            let next = next.get(name);
-            let first = if matches!(old.first, BaselineFactOf::Absent) {
-                next.first
-            } else {
-                old.first
-            };
-            let last = if matches!(next.last, BaselineFactOf::Absent) {
-                old.last
-            } else {
-                next.last
-            };
-            *self = self.with(name, BaselinePairOf::new(first, last));
-        }
-    }
-    pub(crate) fn from_line(
-        context: crate::InlineBaselineContext,
-        axes: FlowAxes,
-        baselines: BaselinesOf<S>,
-        first_authority: bool,
-        last_authority: bool,
-    ) -> Result<Self, crate::FiniteScalarErrorOf<S>> {
-        if baselines == BaselinesOf::NONE {
-            return Ok(Self::absent());
-        }
-        let crate::InlineBaselineContext::Named(name) = context else {
-            return Ok(Self::unknown());
-        };
-        let fact =
-            |point: Point<Option<S>>, authority: bool| match axes.block_axis_coordinate(point) {
-                Some(_) if !authority => Ok(BaselineFactOf::Unknown),
-                Some(value) => BaselineCoordinateOf::try_new(axes.block_axis(), value)
-                    .map(BaselineFactOf::Available),
-                None => Ok(BaselineFactOf::Absent),
-            };
-        Ok(Self::unknown().with(
-            name,
-            BaselinePairOf::new(
-                fact(baselines.first, first_authority)?,
-                fact(baselines.last, last_authority)?,
-            ),
-        ))
     }
 }
 

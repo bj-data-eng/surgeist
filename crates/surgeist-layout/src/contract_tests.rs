@@ -236,12 +236,13 @@ fn assert_fri06_c01_inline_model<S: LayoutScalar>() {
     assert_eq!(non_box.display, Display::None);
     assert_eq!(non_box.atomic_inline_participation, None);
     assert_eq!(non_box.float_exclusion, FloatExclusion::MarginBox);
-    let vertical_align_name = |value| match value {
-        VerticalAlign::Baseline => "baseline",
-        VerticalAlign::Top => "top",
-        VerticalAlign::Bottom => "bottom",
+    let vertical_align_name = |value: VerticalAlign| match value {
+        VerticalAlignOf::Baseline => "baseline",
+        VerticalAlignOf::Top => "top",
+        VerticalAlignOf::Bottom => "bottom",
+        VerticalAlignOf::Shift(_) => "shift",
     };
-    assert_eq!(vertical_align_name(VerticalAlign::Bottom), "bottom");
+    assert_eq!(vertical_align_name(VerticalAlignOf::Bottom), "bottom");
 }
 
 #[test]
@@ -1342,7 +1343,7 @@ fn line_break_input_defaults_to_visible_horizontal_break_context() {
     assert_eq!(input.display(), LineBreakDisplay::Break);
     assert_eq!(input.direction(), Direction::Ltr);
     assert_eq!(input.writing_mode(), WritingMode::HorizontalTb);
-    assert_eq!(input.vertical_align(), VerticalAlign::Baseline);
+    assert_eq!(input.vertical_align(), VerticalAlignOf::Baseline);
     assert_eq!(input.clear(), Clear::None);
 }
 
@@ -1388,13 +1389,13 @@ fn inline_boundary_input_requires_explicit_metrics() {
     )
     .with_writing_mode(WritingMode::VerticalRl)
     .with_direction(Direction::Rtl)
-    .with_vertical_align(VerticalAlign::Top);
+    .with_vertical_align(VerticalAlignOf::Top);
 
     assert_eq!(input.kind(), InlineBoundaryKind::Start);
     assert_eq!(input.metrics(), metrics);
     assert_eq!(input.writing_mode(), WritingMode::VerticalRl);
     assert_eq!(input.direction(), Direction::Rtl);
-    assert_eq!(input.vertical_align(), VerticalAlign::Top);
+    assert_eq!(input.vertical_align(), VerticalAlignOf::Top);
 }
 
 #[test]

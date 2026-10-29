@@ -1,3 +1,6 @@
+#[path = "block_tests/native_baseline_frames_tests.rs"]
+mod native_baseline_frames;
+
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::collections::HashSet;

@@ -7,7 +7,7 @@ fn receiver_tree<S: l::LayoutScalar>(native_edge: bool, tail: bool) -> Host<S> {
     let central = l::InlineBaselineContext::Named(l::BaselineName::Central);
     let mut host = Host::<S>::new(root(mode, direction, central));
     let mut first = atomic(mode, direction, 10.0, (0.0, 0.0));
-    first.vertical_align = l::VerticalAlign::Top;
+    first.vertical_align = l::VerticalAlignOf::Top;
     first.atomic_inline_participation = Some(l::AtomicInlineParticipation::new(
         t::BidiLevel::try_new(0).unwrap(),
         if native_edge {
@@ -108,15 +108,15 @@ fn actual_atomic_native_after_line_receiver_uses_central_margin_baseline_f64() {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct ReceiverSpec {
+struct ReceiverSpec<S: l::LayoutScalar> {
     mode: l::WritingMode,
     direction: l::Direction,
     name: l::BaselineName,
-    alignment: l::VerticalAlign,
+    alignment: l::VerticalAlignOf<S>,
     native_edge: bool,
     signed: bool,
 }
-fn matrix_tree<S: l::LayoutScalar>(spec: ReceiverSpec, tail: bool) -> Host<S> {
+fn matrix_tree<S: l::LayoutScalar>(spec: ReceiverSpec<S>, tail: bool) -> Host<S> {
     let mut host = Host::<S>::new(root(
         spec.mode,
         spec.direction,
@@ -196,7 +196,7 @@ fn empty_receiver_matrix<S: l::LayoutScalar>() {
                 (_, l::Direction::Rtl) => 80.0,
             };
             for name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
-                for alignment in [l::VerticalAlign::Top, l::VerticalAlign::Bottom] {
+                for alignment in [l::VerticalAlignOf::Top, l::VerticalAlignOf::Bottom] {
                     for native_edge in [false, true] {
                         for signed_margins in [false, true] {
                             let spec = ReceiverSpec {
@@ -210,7 +210,7 @@ fn empty_receiver_matrix<S: l::LayoutScalar>() {
                             let values = if signed_margins { signed } else { plain };
                             let extent = if signed_margins { 14.0 } else { 10.0 };
                             let preserve_signed_top =
-                                signed_margins && alignment == l::VerticalAlign::Top;
+                                signed_margins && alignment == l::VerticalAlignOf::Top;
                             let physical_control = |tail| {
                                 let mut control = matrix_tree::<S>(spec, tail);
                                 control.change(0, |input| {
@@ -380,8 +380,8 @@ fn receiver_incoming_authority<S: l::LayoutScalar>() {
     let mode = l::WritingMode::HorizontalTb;
     for native_edge in [false, true] {
         for (alignment, y) in [
-            (l::VerticalAlign::Top, 10.0),
-            (l::VerticalAlign::Bottom, 14.0),
+            (l::VerticalAlignOf::Top, 10.0),
+            (l::VerticalAlignOf::Bottom, 14.0),
         ] {
             let mut host = receiver_tree::<S>(native_edge, true);
             host.change(2, |input| input.vertical_align = alignment);
@@ -413,7 +413,7 @@ fn incoming_atomic_receiver_is_the_only_named_anchor_f64() {
 }
 
 fn available_tree<S: l::LayoutScalar>(
-    spec: ReceiverSpec,
+    spec: ReceiverSpec<S>,
     preference: l::BaselineSource,
     tail: bool,
 ) -> Host<S> {
@@ -479,7 +479,7 @@ fn receiver_available_preferences<S: l::LayoutScalar>() {
             15.0,
         ),
     ] {
-        for alignment in [l::VerticalAlign::Top, l::VerticalAlign::Bottom] {
+        for alignment in [l::VerticalAlignOf::Top, l::VerticalAlignOf::Bottom] {
             for native_edge in [false, true] {
                 let spec = ReceiverSpec {
                     mode,
@@ -529,7 +529,7 @@ fn receiver_available_preferences<S: l::LayoutScalar>() {
         mode,
         direction: l::Direction::Ltr,
         name: l::BaselineName::Alphabetic,
-        alignment: l::VerticalAlign::Bottom,
+        alignment: l::VerticalAlignOf::Bottom,
         native_edge: true,
         signed: true,
     };
@@ -561,7 +561,7 @@ fn atomic_receiver_retains_real_nested_name_source_preference_f64() {
 }
 
 fn barrier_tree<S: l::LayoutScalar>(
-    spec: ReceiverSpec,
+    spec: ReceiverSpec<S>,
     preference: l::BaselineSource,
     unknown_first: bool,
     tail: bool,
@@ -589,7 +589,7 @@ fn barrier_tree<S: l::LayoutScalar>(
                         )
                         .unwrap(),
                     )
-                    .with_vertical_align(l::VerticalAlign::Top),
+                    .with_vertical_align(l::VerticalAlignOf::Top),
             ),
         );
     };
@@ -610,7 +610,7 @@ fn receiver_source_barriers<S: l::LayoutScalar>() {
                 mode,
                 direction: l::Direction::Ltr,
                 name,
-                alignment: l::VerticalAlign::Top,
+                alignment: l::VerticalAlignOf::Top,
                 native_edge,
                 signed: false,
             };
@@ -702,7 +702,7 @@ enum RefusedSource {
     OtherName,
     Orthogonal,
 }
-fn refused_tree<S: l::LayoutScalar>(spec: ReceiverSpec, kind: RefusedSource) -> Host<S> {
+fn refused_tree<S: l::LayoutScalar>(spec: ReceiverSpec<S>, kind: RefusedSource) -> Host<S> {
     let mut host = matrix_tree::<S>(spec, false);
     match kind {
         RefusedSource::Unknown => {
@@ -751,7 +751,7 @@ fn refused_tree<S: l::LayoutScalar>(spec: ReceiverSpec, kind: RefusedSource) -> 
 fn receiver_refusals_and_lazy_completion<S: l::LayoutScalar>() {
     let mode = l::WritingMode::HorizontalTb;
     for name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
-        for alignment in [l::VerticalAlign::Top, l::VerticalAlign::Bottom] {
+        for alignment in [l::VerticalAlignOf::Top, l::VerticalAlignOf::Bottom] {
             for native_edge in [false, true] {
                 let spec = ReceiverSpec {
                     mode,
@@ -914,7 +914,7 @@ fn sizing_receiver_tree<S: l::LayoutScalar>(name: l::BaselineName, native_edge: 
         1
     );
     let mut source = atomic(mode, l::Direction::Ltr, 20.0, (0.0, 0.0));
-    source.vertical_align = l::VerticalAlign::Top;
+    source.vertical_align = l::VerticalAlignOf::Top;
     source.inline_baseline_context = reference;
     source.atomic_inline_participation = Some(l::AtomicInlineParticipation::new(
         t::BidiLevel::try_new(0).unwrap(),
@@ -1076,7 +1076,7 @@ fn receiver_balance_replay<S: l::LayoutScalar>() {
                     mode,
                     direction: l::Direction::Ltr,
                     name,
-                    alignment: l::VerticalAlign::Top,
+                    alignment: l::VerticalAlignOf::Top,
                     native_edge,
                     signed: false,
                 };

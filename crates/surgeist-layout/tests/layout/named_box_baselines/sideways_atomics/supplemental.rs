@@ -78,10 +78,10 @@ pub(super) fn rtl_font() -> Vec<u8> {
     bytes
 }
 
-fn profile_line(
+fn profile_line<S: l::LayoutScalar>(
     parent: &Captured,
     kind: t::InlineBoxKind,
-    align: l::VerticalAlign,
+    align: l::VerticalAlignOf<S>,
     containing: l::Direction,
     text_align: t::Alignment,
 ) -> t::FinalizedLine {
@@ -95,9 +95,13 @@ fn profile_line(
     let mut atomic = allocation(parent, kind);
     if let t::AtomicLineAllocation::InFlow { alignment, .. } = &mut atomic.allocation {
         *alignment = match align {
-            l::VerticalAlign::Baseline => t::LineBoxAlignment::Baseline,
-            l::VerticalAlign::Top => t::LineBoxAlignment::Top,
-            l::VerticalAlign::Bottom => t::LineBoxAlignment::Bottom,
+            l::VerticalAlignOf::Baseline => t::LineBoxAlignment::Baseline,
+            l::VerticalAlignOf::Top => t::LineBoxAlignment::Top,
+            l::VerticalAlignOf::Bottom => t::LineBoxAlignment::Bottom,
+            l::VerticalAlignOf::Shift(offset) => t::LineBoxAlignment::Shift(
+                t::BaselineShift::try_new(offset.get().to_f64())
+                    .expect("a finite Layout shift widens to finite Text units"),
+            ),
         };
     }
     p.select(t::LineSelectionRequest {
@@ -194,13 +198,13 @@ fn matrix<S: l::LayoutScalar>() {
                     } else {
                         0.0
                     };
-                for align in [
-                    l::VerticalAlign::Baseline,
-                    l::VerticalAlign::Top,
-                    l::VerticalAlign::Bottom,
+                for (align, in_flow_x) in [
+                    (l::VerticalAlignOf::Baseline, 32.0),
+                    (l::VerticalAlignOf::Top, 34.0),
+                    (l::VerticalAlignOf::Bottom, 30.0),
                 ] {
                     let qualified =
-                        profile_line(&parent, kind, align, direction, t::Alignment::Start);
+                        profile_line::<S>(&parent, kind, align, direction, t::Alignment::Start);
                     assert_eq!(
                         (
                             qualified.feedback().advance,
@@ -220,11 +224,7 @@ fn matrix<S: l::LayoutScalar>() {
                     let x = if kind == t::InlineBoxKind::OutOfFlow {
                         34.0
                     } else {
-                        match align {
-                            l::VerticalAlign::Baseline => 32.0,
-                            l::VerticalAlign::Top => 34.0,
-                            l::VerticalAlign::Bottom => 30.0,
-                        }
+                        in_flow_x
                     };
                     let box_y = shift + 10.0 - positioned_extent;
                     let border = t::Rect::new(x, box_y, 6.0, 14.0);

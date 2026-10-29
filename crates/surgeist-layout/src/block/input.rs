@@ -3,7 +3,7 @@ use crate::scroll::{ScrollBoxProjection, ScrollTargetProjection};
 use crate::{
     AtomicInlineParticipation, Clear, Compute, Display, Float, FloatExclusion, LayoutScalar,
     NodeInputOf, ScrollbarGutter, ScrollbarWidthOf, TextAlign, TextAlignLast, TextJustification,
-    Traverse, VerticalAlign,
+    Traverse, VerticalAlignOf,
 };
 
 /// Block-container facts settled at the block algorithm entry.
@@ -64,7 +64,7 @@ pub(crate) struct BlockChildProjection<'a, S: LayoutScalar> {
     pub(super) clear: Clear,
     pub(super) float_exclusion: FloatExclusion,
     pub(super) atomic_inline_participation: Option<AtomicInlineParticipation>,
-    pub(super) vertical_align: VerticalAlign,
+    pub(super) vertical_align: VerticalAlignOf<S>,
     pub(super) scrollbar_width: ScrollbarWidthOf<S>,
 }
 
@@ -267,7 +267,7 @@ mod tests {
             clear: Clear::Both,
             float_exclusion: FloatExclusion::Shape,
             atomic_inline_participation: expected_atomic_inline_participation,
-            vertical_align: VerticalAlign::Bottom,
+            vertical_align: VerticalAlignOf::Bottom,
             ..NodeInputOf::default()
         };
 
@@ -311,7 +311,7 @@ mod tests {
             child.atomic_inline_participation,
             expected_atomic_inline_participation
         );
-        assert_eq!(child.vertical_align, VerticalAlign::Bottom);
+        assert_eq!(child.vertical_align, VerticalAlignOf::Bottom);
         assert_eq!(child.scrollbar_width, expected_scrollbar_width);
 
         let tree = ProjectionTree {
@@ -331,7 +331,7 @@ mod tests {
             inline_child.atomic_inline_participation,
             expected_atomic_inline_participation
         );
-        assert_eq!(inline_child.vertical_align, VerticalAlign::Bottom);
+        assert_eq!(inline_child.vertical_align, VerticalAlignOf::Bottom);
         assert_eq!(inline_child.scrollbar_width, expected_scrollbar_width);
     }
 

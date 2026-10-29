@@ -554,6 +554,7 @@ pub surgeist_text::InlineWhitespaceEdge::Preserve
 pub enum surgeist_text::LineBoxAlignment
 pub surgeist_text::LineBoxAlignment::Baseline
 pub surgeist_text::LineBoxAlignment::Bottom
+pub surgeist_text::LineBoxAlignment::Shift(surgeist_text::BaselineShift)
 pub surgeist_text::LineBoxAlignment::Top
 pub enum surgeist_text::LineBoxDirection
 pub surgeist_text::LineBoxDirection::LeftToRight

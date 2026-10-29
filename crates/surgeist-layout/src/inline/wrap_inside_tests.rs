@@ -251,8 +251,16 @@ fn atomic_metric<S: LayoutScalar>(
 fn actual_numeric_receipts_use_their_own_height_qualified_float_band() {
     fn lane<S: LayoutScalar>() {
         let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
-        let mut accumulator = NumericReceiptAccumulatorOf::new(None);
-        accumulator.push(atomic_metric(10.0, Some(10.0)), axes);
+        let atomic = |source_index| {
+            let mut participant = atomic_metric::<S>(10.0, Some(10.0));
+            let MixedInlineParticipantOf::Atomic { item, .. } = &mut participant else {
+                unreachable!("atomic_metric constructs an atomic participant");
+            };
+            item.source_index = source_index;
+            participant
+        };
+        let mut accumulator = NumericReceiptAccumulatorOf::new(None, axes);
+        accumulator.push(atomic(0), axes);
         let mut first = accumulator.receipt(
             SelectedInlineLineEnd::Soft,
             InlineSourceCursor {
@@ -282,7 +290,8 @@ fn actual_numeric_receipts_use_their_own_height_qualified_float_band() {
             InlineBoundaryEdgeOf::ZERO,
         );
         accumulator.push(MixedInlineParticipantOf::Boundary(end), axes);
-        accumulator.push(atomic_metric(10.0, Some(10.0)), axes);
+        let second_atomic = atomic(2);
+        accumulator.push(second_atomic, axes);
         let mut second = accumulator.receipt(
             SelectedInlineLineEnd::Soft,
             InlineSourceCursor {
@@ -299,9 +308,12 @@ fn actual_numeric_receipts_use_their_own_height_qualified_float_band() {
             inline_end: S::from_f64(if end > S::from_f64(20.0) { 5.0 } else { 25.0 }),
             next_transition: (end > S::from_f64(20.0)).then_some(S::from_f64(40.0)),
         };
-        let carried = Some(InlineMetricContributionOf {
-            baseline: S::from_f64(30.0),
-            after_baseline: S::ZERO,
+        let carried = Some(ActiveInlineStrutOf {
+            metrics: InlineMetricContributionOf {
+                baseline: S::from_f64(30.0),
+                after_baseline: S::ZERO,
+            },
+            alignment: InlineControlAlignment::Baseline,
         });
         assert!(
             !resolve_numeric_candidate(
@@ -315,7 +327,7 @@ fn actual_numeric_receipts_use_their_own_height_qualified_float_band() {
             .unwrap()
         );
         assert!(
-            resolve_numeric_candidate(
+            !resolve_numeric_candidate(
                 &mut second,
                 carried,
                 S::ZERO,
@@ -325,21 +337,87 @@ fn actual_numeric_receipts_use_their_own_height_qualified_float_band() {
             )
             .unwrap()
         );
+        // Closing the carried scope does not erase the actual End strut's
+        // 30/0 contribution. Both candidate intervals remain 30 units high.
         assert_eq!(
             (
                 first.summary.used_inline_extent.to_f64(),
+                first.summary.baseline.to_f64(),
                 (first.summary.baseline + first.summary.after_baseline).to_f64(),
                 first.band.unwrap().inline_end.to_f64()
             ),
-            (10.0, 30.0, 5.0)
+            (10.0, 30.0, 30.0, 5.0)
         );
         assert_eq!(
             (
                 second.summary.used_inline_extent.to_f64(),
                 second.summary.baseline.to_f64(),
+                (second.summary.baseline + second.summary.after_baseline).to_f64(),
                 second.band.unwrap().inline_end.to_f64()
             ),
-            (20.0, 10.0, 25.0)
+            (20.0, 30.0, 30.0, 5.0)
+        );
+        assert_eq!(
+            (
+                first.next_cursor.source,
+                first.next_cursor.descriptor,
+                first.next_cursor.edge_consumed
+            ),
+            (1, 1, false)
+        );
+        assert_eq!(
+            (
+                second.next_cursor.source,
+                second.next_cursor.descriptor,
+                second.next_cursor.edge_consumed
+            ),
+            (3, 3, false)
+        );
+
+        // An independent line starts at the legal Atomic break at 3,
+        // beyond End at 1. Its actual source interval [3,5) contains two short
+        // atomics and no boundary or carried strut from the earlier scope.
+        assert_eq!(
+            second_atomic.following_break(),
+            Some(InlineBreakOpportunity::Allowed)
+        );
+        let short_start = second.next_cursor;
+        let short_participants = [atomic(3), atomic(4)];
+        let mut short_accumulator = NumericReceiptAccumulatorOf::new(None, axes);
+        for participant in short_participants {
+            short_accumulator.push(participant, axes);
+        }
+        let mut short = short_accumulator.receipt(
+            SelectedInlineLineEnd::Soft,
+            InlineSourceCursor {
+                edge_consumed: false,
+                source: short_start.source + short_participants.len(),
+                descriptor: short_start.descriptor + short_participants.len(),
+            },
+            None,
+            None,
+            short_participants.len(),
+        );
+        assert!(
+            resolve_numeric_candidate(&mut short, None, S::ZERO, S::ZERO, S::from_f64(25.0), band)
+                .unwrap()
+        );
+        assert_eq!(
+            (
+                short.summary.used_inline_extent.to_f64(),
+                short.summary.baseline.to_f64(),
+                (short.summary.baseline + short.summary.after_baseline).to_f64(),
+                short.band.unwrap().inline_end.to_f64()
+            ),
+            (20.0, 10.0, 10.0, 25.0)
+        );
+        assert_eq!(
+            (
+                short.next_cursor.source,
+                short.next_cursor.descriptor,
+                short.next_cursor.edge_consumed
+            ),
+            (5, 5, false)
         );
     }
     lane::<f32>();
@@ -359,7 +437,7 @@ fn actual_numeric_fallback_envelope_cycle_refuses_without_a_retry_threshold() {
                 after_baseline: S::from_f64(10.0),
             },
         });
-        let mut accumulator = NumericReceiptAccumulatorOf::new(strut);
+        let mut accumulator = NumericReceiptAccumulatorOf::new(strut, axes);
         accumulator.push(atomic_metric(15.0, None), axes);
         let mut receipt = accumulator.receipt(
             SelectedInlineLineEnd::Soft,

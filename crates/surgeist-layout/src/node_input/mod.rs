@@ -37,7 +37,7 @@ pub use inline::{
     InlineBoundaryInputOf, InlineBoundaryKind, InlineBreakOpportunity, InlineMetrics,
     InlineMetricsError, InlineMetricsOf, LineBreakDisplay, LineBreakInput, LineBreakInputOf,
     TextAlign, TextAlignLast, TextIndent, TextIndentOf, TextJustification, TextWrapStyle,
-    VerticalAlign, WritingMode,
+    VerticalAlign, VerticalAlignOf, WritingMode,
 };
 pub use scroll::{
     ComputedOverflow, ComputedOverflowError, Overflow, OverflowClipBox, OverflowClipMargin,
@@ -120,7 +120,7 @@ pub struct NodeInputOf<S: LayoutScalar = DefaultScalar> {
     pub text_align: TextAlign,
     pub text_align_last: TextAlignLast,
     pub text_justification: TextJustification,
-    pub vertical_align: VerticalAlign,
+    pub vertical_align: VerticalAlignOf<S>,
     pub writing_mode: WritingMode,
     /// Atomic normalized computed overflow supplied by style lowering.
     pub overflow: ComputedOverflow,
@@ -229,7 +229,7 @@ impl NodeInputOf<DefaultScalar> {
         text_align: TextAlign::Start,
         text_align_last: TextAlignLast::Auto,
         text_justification: TextJustification::None,
-        vertical_align: VerticalAlign::Baseline,
+        vertical_align: VerticalAlignOf::Baseline,
         writing_mode: WritingMode::HorizontalTb,
         overflow: ComputedOverflow::VISIBLE,
         overflow_clip_margin: OverflowClipMarginOf {
@@ -320,7 +320,7 @@ impl<S: LayoutScalar> Default for NodeInputOf<S> {
             text_align: TextAlign::Start,
             text_align_last: TextAlignLast::Auto,
             text_justification: TextJustification::None,
-            vertical_align: VerticalAlign::Baseline,
+            vertical_align: VerticalAlignOf::Baseline,
             writing_mode: WritingMode::HorizontalTb,
             overflow: ComputedOverflow::VISIBLE,
             overflow_clip_margin: OverflowClipMarginOf::default(),

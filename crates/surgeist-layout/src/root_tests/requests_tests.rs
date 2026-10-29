@@ -636,7 +636,7 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
         );
         let text = paragraph.text_input(1);
         let top_with_margins = NodeInputOf {
-            vertical_align: VerticalAlign::Top,
+            vertical_align: VerticalAlignOf::Top,
             margin: Edges {
                 top: LengthAutoOf::px(S::from_f64(2.0)),
                 bottom: LengthAutoOf::px(S::from_f64(3.0)),
@@ -645,11 +645,11 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
             ..prepared_atomic_style(10.0, 20.0, 0.0, 0.0)
         };
         let top = NodeInputOf {
-            vertical_align: VerticalAlign::Top,
+            vertical_align: VerticalAlignOf::Top,
             ..prepared_atomic_style(10.0, 25.0, 0.0, 0.0)
         };
         let bottom_with_margins = NodeInputOf {
-            vertical_align: VerticalAlign::Bottom,
+            vertical_align: VerticalAlignOf::Bottom,
             margin: Edges {
                 top: LengthAutoOf::px(S::from_f64(1.0)),
                 bottom: LengthAutoOf::px(S::from_f64(4.0)),
@@ -658,7 +658,7 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
             ..prepared_atomic_style(10.0, 30.0, 0.0, 0.0)
         };
         let bottom = NodeInputOf {
-            vertical_align: VerticalAlign::Bottom,
+            vertical_align: VerticalAlignOf::Bottom,
             ..prepared_atomic_style(10.0, 35.0, 0.0, 0.0)
         };
         let top_metrics = InlineMetricsOf::from_line_height_and_baseline(
@@ -703,7 +703,7 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
                             top_metrics,
                             crate::InlineBoundaryEdgeOf::ZERO,
                         )
-                        .with_vertical_align(VerticalAlign::Top),
+                        .with_vertical_align(VerticalAlignOf::Top),
                     ),
                     NodeInputOf::non_box(),
                 ),
@@ -715,7 +715,7 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
                             bottom_metrics,
                             crate::InlineBoundaryEdgeOf::ZERO,
                         )
-                        .with_vertical_align(VerticalAlign::Bottom),
+                        .with_vertical_align(VerticalAlignOf::Bottom),
                     ),
                     NodeInputOf::non_box(),
                 ),
@@ -3017,8 +3017,8 @@ fn numeric_rtl_visual_placement_and_internal_supplied_edge_semantics_all_flows_b
             );
             assert_eq!(
                 [
-                    report.atomics[0].inline_start,
-                    report.atomics[2].inline_start
+                    crate::inline::expect_logical_position(report.atomics[0].position).inline,
+                    crate::inline::expect_logical_position(report.atomics[2].position).inline
                 ],
                 [S::ZERO, S::from_f64(25.0)]
             );
@@ -3027,7 +3027,7 @@ fn numeric_rtl_visual_placement_and_internal_supplied_edge_semantics_all_flows_b
             for row in &report.atomics {
                 let projected = axes.physical_rect(
                     crate::geometry::LogicalRectOf::new(
-                        LogicalPointOf::new(row.inline_start, row.block_start),
+                        crate::inline::expect_logical_position(row.position),
                         axes.logical_size(row.item.size),
                     ),
                     containing,
@@ -3035,7 +3035,7 @@ fn numeric_rtl_visual_placement_and_internal_supplied_edge_semantics_all_flows_b
                 assert_eq!(
                     axes.logical_point(projected.0, projected.1, containing)
                         .inline,
-                    row.inline_start
+                    crate::inline::expect_logical_position(row.position).inline
                 );
             }
         }
@@ -4099,7 +4099,7 @@ fn supplied_line_bidi_and_actual_atomic_geometry_preserve_nested_levels_and_slot
             report
                 .atomics
                 .iter()
-                .map(|a| a.inline_start)
+                .map(|a| crate::inline::expect_logical_position(a.position).inline)
                 .collect::<Vec<_>>(),
             [0.0, 40.0, 20.0, 30.0, 10.0, 50.0].map(S::from_f64)
         );
@@ -4126,7 +4126,12 @@ fn supplied_line_bidi_and_actual_atomic_geometry_preserve_nested_levels_and_slot
             wrapped
                 .atomics
                 .iter()
-                .map(|a| (a.line_index, a.visual_index, a.inline_start, a.block_start))
+                .map(|a| (
+                    a.line_index,
+                    a.visual_index,
+                    crate::inline::expect_logical_position(a.position).inline,
+                    crate::inline::expect_logical_position(a.position).block
+                ))
                 .collect::<Vec<_>>(),
             [
                 (0, 1, 10.0, 0.0),

@@ -242,35 +242,39 @@ fn atomics<S: l::LayoutScalar>() {
     );
     qualify_child::<S>(&child);
     // Four rows cover the changed mode choice together with normal bidi, both
-    // containing directions, all three box alignments and inline alignment.
+    // containing directions, the three keyword alignments and inline alignment.
     let rows = [
         (
             false,
             l::Direction::Ltr,
-            l::VerticalAlign::Baseline,
+            l::VerticalAlignOf::Baseline,
             l::TextAlign::Start,
+            0.0,
         ),
         (
             true,
             l::Direction::Ltr,
-            l::VerticalAlign::Top,
+            l::VerticalAlignOf::Top,
             l::TextAlign::Center,
+            2.0,
         ),
         (
             false,
             l::Direction::Rtl,
-            l::VerticalAlign::Bottom,
+            l::VerticalAlignOf::Bottom,
             l::TextAlign::End,
+            -2.0,
         ),
         (
             true,
             l::Direction::Rtl,
-            l::VerticalAlign::Baseline,
+            l::VerticalAlignOf::Baseline,
             l::TextAlign::Start,
+            0.0,
         ),
     ];
     for kind in [t::InlineBoxKind::InFlow, t::InlineBoxKind::OutOfFlow] {
-        for (rtl, direction, alignment, text_align) in rows {
+        for (rtl, direction, alignment, text_align, cross_offset) in rows {
             let body = if rtl {
                 t::ParagraphBaseDirection::RightToLeft
             } else {
@@ -311,12 +315,7 @@ fn atomics<S: l::LayoutScalar>() {
                         0.0
                     }
                 } else {
-                    c(mode)
-                        + match alignment {
-                            l::VerticalAlign::Baseline => 0.0,
-                            l::VerticalAlign::Top => 2.0,
-                            l::VerticalAlign::Bottom => -2.0,
-                        }
+                    c(mode) + cross_offset
                 };
                 // AbsoluteAxis aligns an all-auto inline axis to inline-start.
                 // Under containing RTL that is the bottom edge, so the actual

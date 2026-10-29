@@ -23,7 +23,7 @@ impl<S: LayoutScalar> ContourTree<S> {
         let atomic = |width, height| NodeInputOf {
             display: Display::InlineBlock,
             direction: Direction::Ltr,
-            vertical_align: VerticalAlign::Baseline,
+            vertical_align: VerticalAlignOf::Baseline,
             atomic_inline_participation: Some(AtomicInlineParticipation::new(
                 BidiLevel::try_new(0).unwrap(),
                 InlineBreakOpportunity::Allowed,

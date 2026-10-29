@@ -616,11 +616,36 @@ paragraph storage rather than promising lower memory for a single query. See the
 
 `LineSelectionRequest::line_box_struts` and the corresponding flow-observation
 field carry actual `LineBoxStrut` allocations independently of controls. Each
-pairs `LineStrut` geometry with baseline/top/bottom alignment. Text validates and
-combines them with the existing metric groups, including allocation-only empty
-lines. Consuming adapters own box attribution and selected placement; that
+pairs `LineStrut` geometry with baseline/top/bottom alignment or an allocated
+post-baseline shift. Text validates and combines them with the existing metric
+groups, including allocation-only empty lines. Consuming adapters own box attribution and selected placement; that
 Layout integration remains separate from these Text operations. See the
 [selection contract](../../../docs/text-layout-contract.md).
+
+`LineBoxAlignment::Shift(BaselineShift)` matches the supplied baseline and then
+moves an allocated atomic box, control strut or additional line-box strut toward
+line-over by the signed amount. The amount is already in used line-coordinate
+units, like the supplied geometry; Text does not multiply it by preparation
+scale. The consuming adapter owns semantic normalization and actual matching
+baseline selection. This operation does not infer a parent font or an own
+line-height, resize text, or execute standalone requested alignment metadata.
+
+For raw over/under extents a/d and shift Δ, the allocated relative bounds are
+[−a−Δ, d−Δ]. Text merges those signed bounds with actual font and parent struts,
+without donating baseline zero when the paragraph requests only allocated
+contributions. Raw local baselines, dimensions, font resources and provider
+packets remain unchanged. Atomic border/content and control anchors use the
+same displaced baseline, including Horizontal, clockwise Sideways and admitted
+Vertical frames. Positive therefore moves up in Horizontal and right in the
+supported vertical frames. Finalization and physical placement reject a lost
+nonzero displacement or nonfinite result before publishing output.
+
+Shift(0) and Baseline have equal geometry but distinct captured request context.
+Numeric request identity includes the variant and finite value, with signed zero
+canonicalized. Finalization, replacement spacing and None replay retain the same
+selected basis and query no shaping provider. The direct allocated tests in
+[`allocated_shift_tests.rs`](../src/engine/shape/allocated_shift_tests.rs) qualify
+these rules; they do not establish full captured text-scope vertical alignment.
 
 Paragraph coordinates remain original UTF-16 positions. `source_range()` is the
 minimal envelope of original owned pieces and genuine empty/control/atomic

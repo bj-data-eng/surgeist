@@ -390,12 +390,12 @@ fn knowledge<S: l::LayoutScalar>() {
             "{mode:?}: {error:?}"
         );
         // Edge alignment never consumes the otherwise unavailable child name.
-        for align in [l::VerticalAlign::Top, l::VerticalAlign::Bottom] {
+        for align in [l::VerticalAlignOf::Top, l::VerticalAlignOf::Bottom] {
             let mut input = child_input::<S>(cw, l::InlineBaselineContext::Physical);
             input.vertical_align = align;
             let (host, bindings) = scene::<S>(mode, &parent, input, Some(child));
             let batch = compute(&host, &bindings, &[], space(40.0, 40.0)).unwrap();
-            let top = align == l::VerticalAlign::Top;
+            let top = align == l::VerticalAlignOf::Top;
             let b = if cw {
                 common(mode)
             } else if top {
@@ -510,12 +510,12 @@ fn positioned<S: l::LayoutScalar>() {
         for child_cw in [false, true] {
             let child = &children[usize::from(child_cw)];
             for alignment in [
-                l::VerticalAlign::Baseline,
-                l::VerticalAlign::Top,
-                l::VerticalAlign::Bottom,
+                l::VerticalAlignOf::Baseline,
+                l::VerticalAlignOf::Top,
+                l::VerticalAlignOf::Bottom,
             ] {
                 for inset in [false, true] {
-                    let child_named = alignment == l::VerticalAlign::Baseline && !inset;
+                    let child_named = alignment == l::VerticalAlignOf::Baseline && !inset;
                     let mut input = child_input::<S>(
                         child_cw,
                         if child_named {

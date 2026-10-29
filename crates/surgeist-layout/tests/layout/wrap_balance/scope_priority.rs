@@ -8,7 +8,7 @@ fn fixture<S: l::LayoutScalar>(direction: l::Direction, style: l::TextWrapStyle)
         l::LayoutInputOf::box_input(l::NodeInputOf {
             display: l::Display::InlineBlock,
             direction,
-            vertical_align: l::VerticalAlign::Baseline,
+            vertical_align: l::VerticalAlignOf::Baseline,
             atomic_inline_participation: Some(l::AtomicInlineParticipation::new(
                 t::BidiLevel::try_new(if direction == l::Direction::Ltr { 0 } else { 1 }).unwrap(),
                 l::InlineBreakOpportunity::Allowed,

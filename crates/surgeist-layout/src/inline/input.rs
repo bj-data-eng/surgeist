@@ -102,7 +102,7 @@ mod tests {
     use crate::LayoutInputOf;
     use crate::test_support::text::{PreparedParagraph, ahem_style};
     use crate::{
-        Clear, Direction, InlineBoundaryKind, InlineMetricsOf, VerticalAlign, WritingMode,
+        Clear, Direction, InlineBoundaryKind, InlineMetricsOf, VerticalAlignOf, WritingMode,
     };
     use surgeist_text::Source;
 
@@ -162,7 +162,7 @@ mod tests {
             .hidden()
             .with_direction(Direction::Rtl)
             .with_writing_mode(WritingMode::VerticalLr)
-            .with_vertical_align(VerticalAlign::Top)
+            .with_vertical_align(VerticalAlignOf::Top)
             .with_clear(Clear::Right);
         let line_break_input = LayoutInputOf::line_break(line_break);
         let line_break_projection = projection_from_input(&line_break_input);
@@ -174,7 +174,7 @@ mod tests {
         assert_eq!(projected_break.metrics(), break_metrics);
         assert_eq!(projected_break.direction(), Direction::Rtl);
         assert_eq!(projected_break.writing_mode(), WritingMode::VerticalLr);
-        assert_eq!(projected_break.vertical_align(), VerticalAlign::Top);
+        assert_eq!(projected_break.vertical_align(), VerticalAlignOf::Top);
         assert_eq!(projected_break.clear(), Clear::Right);
 
         let boundary_metrics = InlineMetricsOf::try_new(
@@ -190,7 +190,7 @@ mod tests {
         )
         .with_writing_mode(WritingMode::SidewaysRl)
         .with_direction(Direction::Rtl)
-        .with_vertical_align(VerticalAlign::Bottom);
+        .with_vertical_align(VerticalAlignOf::Bottom);
         let boundary_input = LayoutInputOf::inline_boundary(boundary);
         let boundary_projection = projection_from_input(&boundary_input);
         let InlineParticipantKindOf::InlineBoundary(projected_boundary) =
@@ -203,7 +203,7 @@ mod tests {
         assert_eq!(projected_boundary.metrics(), boundary_metrics);
         assert_eq!(projected_boundary.writing_mode(), WritingMode::SidewaysRl);
         assert_eq!(projected_boundary.direction(), Direction::Rtl);
-        assert_eq!(projected_boundary.vertical_align(), VerticalAlign::Bottom);
+        assert_eq!(projected_boundary.vertical_align(), VerticalAlignOf::Bottom);
     }
 
     #[test]

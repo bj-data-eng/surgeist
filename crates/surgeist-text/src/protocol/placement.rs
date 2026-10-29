@@ -79,6 +79,37 @@ fn qualify_spacing_displacement(
     Ok(())
 }
 
+/// A locally representable allocated shift can disappear at a physical anchor.
+fn qualify_allocated_shift(
+    placed: &PlacedLine,
+    shift: crate::BaselineShift,
+    inline: f64,
+    local_baseline: f64,
+) -> Result<()> {
+    if shift.get() == 0.0 {
+        return Ok(());
+    }
+    let baseline = placed.finalized.data.metrics.baseline;
+    let before = crate::layout::line_point(placed, Point::new(inline, baseline + local_baseline));
+    let after = crate::layout::line_point(
+        placed,
+        Point::new(inline, (baseline - shift.get()) + local_baseline),
+    );
+    let before = crate::layout::cross_coordinate(placed.orientation, before);
+    let after = crate::layout::cross_coordinate(placed.orientation, after);
+    finite("placed allocated baseline displacement", before)?;
+    finite("placed allocated baseline displacement", after)?;
+    if before == after {
+        return Err(crate::error::text_numeric_error(
+            "placed allocated baseline displacement",
+            TextNumericPhase::Placement,
+            TextNumericError::NonZeroLost,
+            shift.get(),
+        ));
+    }
+    Ok(())
+}
+
 impl Layout {
     /// Places these exact finalized lines once; no wrapping, font query, pixel
     /// snapping, or independent paragraph layout occurs here.
@@ -296,6 +327,31 @@ pub(crate) fn place_request(
         }
         line_cuts.push(cut);
         let metrics = placed.finalized.data.metrics;
+        for item in &placed.finalized.data.boxes {
+            if let crate::engine::layout::data::FinalizedBoxGeometry::InFlow {
+                alignment: super::LineBoxAlignment::Shift(shift),
+                box_geometry,
+                ..
+            } = item.geometry
+            {
+                qualify_allocated_shift(&placed, shift, item.slot.x, box_geometry.baseline)?;
+            }
+        }
+        for strut in selected
+            .request
+            .controls
+            .iter()
+            .filter_map(|allocation| allocation.strut)
+        {
+            if let super::LineBoxAlignment::Shift(shift) = strut.alignment {
+                qualify_allocated_shift(&placed, shift, 0.0, 0.0)?;
+            }
+        }
+        for strut in &selected.request.line_box_struts {
+            if let super::LineBoxAlignment::Shift(shift) = strut.alignment {
+                qualify_allocated_shift(&placed, shift, 0.0, 0.0)?;
+            }
+        }
         // Glyph-outline axes are independent from the line's cell frame.
         // Qualify every actual emitted origin before publishing placement.
         for run in &placed.finalized.data.runs {

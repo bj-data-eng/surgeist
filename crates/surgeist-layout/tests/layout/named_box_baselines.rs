@@ -199,7 +199,7 @@ fn atomic<S: l::LayoutScalar>(
         display: l::Display::InlineBlock,
         writing_mode: mode,
         direction,
-        vertical_align: l::VerticalAlign::Baseline,
+        vertical_align: l::VerticalAlignOf::Baseline,
         inline_baseline_context: l::InlineBaselineContext::Physical,
         atomic_inline_participation: Some(l::AtomicInlineParticipation::new(
             t::BidiLevel::try_new(u8::from(direction == l::Direction::Rtl)).unwrap(),
@@ -727,7 +727,7 @@ fn authority_refusals<S: l::LayoutScalar>() {
             );
         }
     }
-    for alignment in [l::VerticalAlign::Top, l::VerticalAlign::Bottom] {
+    for alignment in [l::VerticalAlignOf::Top, l::VerticalAlignOf::Bottom] {
         for has_tail in [false, true] {
             let control = l::LineBreakInputOf::new()
                 .with_metrics(
@@ -1565,7 +1565,7 @@ fn source_unknown_selection<S: l::LayoutScalar>() {
                                 )
                                 .unwrap(),
                             )
-                            .with_vertical_align(l::VerticalAlign::Top),
+                            .with_vertical_align(l::VerticalAlignOf::Top),
                     ),
                 );
             };
