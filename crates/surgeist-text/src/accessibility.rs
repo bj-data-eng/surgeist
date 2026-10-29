@@ -622,6 +622,12 @@ fn update(
             let one_line = pieces.iter().all(|fragment| fragment.line == first.line);
             if direction {
                 node.set_text_direction(match (first.orientation, first.rtl) {
+                    (crate::LineOrientation::SidewaysCounterclockwise, false) => {
+                        TextDirection::BottomToTop
+                    }
+                    (crate::LineOrientation::SidewaysCounterclockwise, true) => {
+                        TextDirection::TopToBottom
+                    }
                     (
                         crate::LineOrientation::SidewaysClockwise
                         | crate::LineOrientation::Vertical,

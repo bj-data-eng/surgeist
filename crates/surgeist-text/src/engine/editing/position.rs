@@ -241,6 +241,10 @@ fn local_x(line: &PlacedLine, target: Target) -> f64 {
         Target::Strut => line.finalized.data.metrics.offset,
     }
 }
+pub(super) fn inline(layout: &PlacedLayout, index: usize) -> Result<f64> {
+    let position = row(layout, index)?;
+    Ok(local_x(&layout.lines[position.line], position.target))
+}
 pub(crate) fn geometry(layout: &PlacedLayout, index: usize) -> Result<CursorGeometry> {
     let position = row(layout, index)?;
     let line = &layout.lines[position.line];
@@ -302,18 +306,31 @@ pub(crate) fn hit(layout: &PlacedLayout, point: Point) -> Option<usize> {
                 && (!matching || row.source == source)
         })
         .min_by(|(a, _), (b, _)| {
-            distance(
-                geometry(layout, *a).expect("owned interaction row").rect(),
-                point,
-                layout.prepared.options.orientation(),
-            )
-            .total_cmp(&distance(
-                geometry(layout, *b).expect("owned interaction row").rect(),
-                point,
-                layout.prepared.options.orientation(),
-            ))
+            position_distance(layout, *a, point).total_cmp(&position_distance(layout, *b, point))
         })
         .map(|(index, _)| index)
+}
+fn position_distance(layout: &PlacedLayout, index: usize, point: Point) -> f64 {
+    let rect = geometry(layout, index)
+        .expect("owned interaction row")
+        .rect();
+    let orientation = layout.prepared.options.orientation();
+    if orientation == crate::LineOrientation::SidewaysCounterclockwise {
+        let position = &layout.interaction.positions[index];
+        let line = &layout.lines[position.line];
+        // The top edge of a CCW caret hull is not its actual source edge.
+        let caret_y = line.anchor.y - local_x(line, position.target);
+        let dx = if point.x < rect.origin.x {
+            rect.origin.x - point.x
+        } else if point.x > rect.origin.x + rect.size.width {
+            point.x - (rect.origin.x + rect.size.width)
+        } else {
+            0.0
+        };
+        (point.y - caret_y).hypot(dx)
+    } else {
+        distance(rect, point, orientation)
+    }
 }
 fn distance(rect: Rect, point: Point, orientation: crate::LineOrientation) -> f64 {
     if orientation != crate::LineOrientation::Horizontal {

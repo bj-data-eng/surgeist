@@ -224,6 +224,10 @@ fn consumed(input: &text::Layout, bytes: &[u8], gap: f64) {
             [0.0, 1.0, -1.0, 0.0, 107.0, 29.0],
             kurbo::Rect::new(111.0, 29.0, 113.0, 29.0 + advance),
         ),
+        text::LineOrientation::SidewaysCounterclockwise => (
+            [0.0, -1.0, 1.0, 0.0, 107.0, 29.0],
+            kurbo::Rect::new(101.0, 29.0 - advance, 103.0, 29.0),
+        ),
         text::LineOrientation::Vertical => (
             [1.0, 0.0, 0.0, 1.0, 107.0, 29.0],
             kurbo::Rect::new(102.0, 31.0, 112.0, 23.0 + advance),

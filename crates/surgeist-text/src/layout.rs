@@ -451,13 +451,17 @@ impl Layout {
 pub(crate) const fn inline_coordinate(orientation: LineOrientation, point: Point) -> f64 {
     match orientation {
         LineOrientation::Horizontal => point.x,
-        LineOrientation::SidewaysClockwise | LineOrientation::Vertical => point.y,
+        LineOrientation::SidewaysClockwise
+        | LineOrientation::SidewaysCounterclockwise
+        | LineOrientation::Vertical => point.y,
     }
 }
 pub(crate) const fn cross_coordinate(orientation: LineOrientation, point: Point) -> f64 {
     match orientation {
         LineOrientation::Horizontal => point.y,
-        LineOrientation::SidewaysClockwise | LineOrientation::Vertical => point.x,
+        LineOrientation::SidewaysClockwise
+        | LineOrientation::SidewaysCounterclockwise
+        | LineOrientation::Vertical => point.x,
     }
 }
 pub(crate) const fn physical_origin(
@@ -467,7 +471,9 @@ pub(crate) const fn physical_origin(
 ) -> Point {
     match orientation {
         LineOrientation::Horizontal => Point::new(inline, cross),
-        LineOrientation::SidewaysClockwise | LineOrientation::Vertical => Point::new(cross, inline),
+        LineOrientation::SidewaysClockwise
+        | LineOrientation::SidewaysCounterclockwise
+        | LineOrientation::Vertical => Point::new(cross, inline),
     }
 }
 pub(crate) fn line_baseline(line: &PlacedLine) -> f64 {
@@ -483,6 +489,7 @@ pub(crate) fn line_vector(line: &PlacedLine, local: Point) -> Point {
         LineOrientation::SidewaysClockwise | LineOrientation::Vertical => {
             Point::new(-local.y, local.x)
         }
+        LineOrientation::SidewaysCounterclockwise => Point::new(local.y, -local.x),
     }
 }
 
@@ -506,6 +513,10 @@ pub(crate) fn local_point(line: &PlacedLine, physical: Point) -> Point {
             physical.y - line.anchor.y,
             line.finalized.data.metrics.baseline - (physical.x - line.anchor.x),
         ),
+        LineOrientation::SidewaysCounterclockwise => Point::new(
+            line.anchor.y - physical.y,
+            line.finalized.data.metrics.baseline + (physical.x - line.anchor.x),
+        ),
     }
 }
 pub(crate) fn line_rect(line: &PlacedLine, local: Rect) -> Rect {
@@ -520,6 +531,17 @@ pub(crate) fn line_rect(line: &PlacedLine, local: Rect) -> Rect {
             // their actual axis-aligned hull, not a fabricated negative height.
             let end_x = origin.x - local.size.height;
             let end_y = origin.y + local.size.width;
+            Rect::new(
+                origin.x.min(end_x),
+                origin.y.min(end_y),
+                local.size.height.abs(),
+                local.size.width.abs(),
+            )
+        }
+        LineOrientation::SidewaysCounterclockwise => {
+            let origin = line_point(line, local.origin);
+            let end_x = origin.x + local.size.height;
+            let end_y = origin.y - local.size.width;
             Rect::new(
                 origin.x.min(end_x),
                 origin.y.min(end_y),
@@ -548,6 +570,9 @@ pub(crate) fn glyph_origin(
         (LineOrientation::Horizontal, crate::GlyphBasis::Clockwise) => {
             Point::new(x + pen - dy, y + dx)
         }
+        (LineOrientation::Horizontal, crate::GlyphBasis::Counterclockwise) => {
+            Point::new(x + pen + dy, y - dx)
+        }
         (
             LineOrientation::SidewaysClockwise | LineOrientation::Vertical,
             crate::GlyphBasis::Clockwise,
@@ -556,6 +581,19 @@ pub(crate) fn glyph_origin(
             LineOrientation::SidewaysClockwise | LineOrientation::Vertical,
             crate::GlyphBasis::Unrotated,
         ) => Point::new(x + dx, y + pen + dy),
+        (
+            LineOrientation::SidewaysClockwise | LineOrientation::Vertical,
+            crate::GlyphBasis::Counterclockwise,
+        ) => Point::new(x + dy, y + pen - dx),
+        (LineOrientation::SidewaysCounterclockwise, crate::GlyphBasis::Unrotated) => {
+            Point::new(x + dx, y - pen + dy)
+        }
+        (LineOrientation::SidewaysCounterclockwise, crate::GlyphBasis::Clockwise) => {
+            Point::new(x - dy, y - pen + dx)
+        }
+        (LineOrientation::SidewaysCounterclockwise, crate::GlyphBasis::Counterclockwise) => {
+            Point::new(x + dy, y - pen - dx)
+        }
     }
 }
 
@@ -791,8 +829,10 @@ impl Run {
     /// differ from the shared line alignment coordinate.
     ///
     /// Rotate raw offsets `(dx,dy)` by [`Self::glyph_basis`]: Unrotated keeps
-    /// `(dx,dy)`, Clockwise gives `(-dy,dx)`. Add those offsets to this origin,
-    /// with the pen along physical x for Horizontal or y for Vertical/Sideways.
+    /// `(dx,dy)`, Clockwise gives `(-dy,dx)` and Counterclockwise gives `(dy,-dx)`.
+    /// Add those offsets to this origin. The line pen advances along physical x
+    /// for Horizontal, positive y for Vertical/SidewaysClockwise and negative y
+    /// for SidewaysCounterclockwise.
     #[must_use]
     pub const fn origin(&self) -> Point {
         physical_origin(

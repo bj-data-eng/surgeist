@@ -1563,8 +1563,9 @@ pub struct FinalizedRunView<'a> {
 impl FinalizedRunView<'_> {
     /// Actual outline axes retained by this run's shaping operation.
     ///
-    /// Horizontal and upright outlines are unrotated; sideways and Mixed R
-    /// outlines are clockwise, independently of the containing Vertical frame.
+    /// Horizontal and upright outlines are unrotated. Mixed R outlines are
+    /// clockwise; whole sideways profiles retain their requested clockwise or
+    /// counterclockwise basis independently of the containing cell frame.
     /// The finalized pen follows the inline axis separately from raw offsets.
     #[must_use]
     pub fn glyph_basis(&self) -> crate::GlyphBasis {
@@ -1605,8 +1606,10 @@ impl FinalizedRunView<'_> {
     /// reference retained in the line's feedback.
     ///
     /// Coordinates are `(inline, line-under)` before physical placement.
-    /// Vertical and Sideways cells map `(u,v)` to
-    /// `(cross_anchor-(v-local_baseline), inline_origin+u)`; this cell map does
+    /// Vertical and SidewaysClockwise cells map `(u,v)` to
+    /// `(cross_anchor+local_baseline-v, inline_origin+u)`.
+    /// SidewaysCounterclockwise cells map them to
+    /// `(cross_anchor+v-local_baseline, inline_origin-u)`. The cell map does
     /// not rotate whole-upright glyph outlines. Once placed, glyph origins use
     /// the owning run's physical origin and its separate pen/offset axes.
     #[must_use]
@@ -1623,10 +1626,11 @@ impl FinalizedRunView<'_> {
     /// Borrows raw provider glyph facts and their separate finalized inline pens.
     ///
     /// After placement, rotate raw offsets `(dx,dy)` by [`Self::glyph_basis`]:
-    /// Unrotated keeps `(dx,dy)`, Clockwise gives `(-dy,dx)`. Add those offsets
-    /// to the physical run origin, with the pen along physical x for Horizontal
-    /// or y for Vertical/Sideways. Raw offsets are not cell coordinates and are
-    /// never rotated in storage.
+    /// Unrotated keeps `(dx,dy)`, Clockwise gives `(-dy,dx)` and
+    /// Counterclockwise gives `(dy,-dx)`. Add those offsets to the physical run
+    /// origin. The pen advances along physical x for Horizontal, positive y for
+    /// Vertical/SidewaysClockwise and negative y for SidewaysCounterclockwise.
+    /// Raw offsets are not cell coordinates and are never rotated in storage.
     pub fn glyphs(&self) -> impl ExactSizeIterator<Item = FinalizedGlyphView<'_>> {
         self.line.inner.data.glyphs[self.run.glyphs.clone()]
             .iter()

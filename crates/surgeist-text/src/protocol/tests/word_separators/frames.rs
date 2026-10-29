@@ -201,6 +201,10 @@ fn physical_glyphs(layout: &crate::Layout) -> Vec<(Range, Point)> {
                             origin.x - f64::from(glyph.y()),
                             origin.y + glyph.pen() + f64::from(glyph.x()),
                         ),
+                        LineOrientation::SidewaysCounterclockwise => Point::new(
+                            origin.x + f64::from(glyph.y()),
+                            origin.y - glyph.pen() - f64::from(glyph.x()),
+                        ),
                         LineOrientation::Vertical => Point::new(
                             origin.x + f64::from(glyph.x()),
                             origin.y + glyph.pen() + f64::from(glyph.y()),
@@ -239,6 +243,8 @@ fn assert_custody(
             layout.cursor(cursor).unwrap().rect(),
             if horizontal {
                 Rect::new(20.0 + inline, low, 1.0, 10.0)
+            } else if prepared.orientation() == LineOrientation::SidewaysCounterclockwise {
+                Rect::new(low, 19.0 - inline, 10.0, 1.0)
             } else {
                 Rect::new(low, 20.0 + inline, 10.0, 1.0)
             }
@@ -271,6 +277,8 @@ fn assert_custody(
             .collect::<Vec<_>>(),
         [if horizontal {
             Rect::new(30.0, low, 14.0, 10.0)
+        } else if prepared.orientation() == LineOrientation::SidewaysCounterclockwise {
+            Rect::new(low, -4.0, 10.0, 14.0)
         } else {
             Rect::new(low, 30.0, 10.0, 14.0)
         }]

@@ -94,8 +94,8 @@ impl PreparationOptions {
     }
     /// Requests a physical preparation basis. Matching issued upright analysis
     /// admits the native Vertical profile; Mixed retains ordinary bidi with
-    /// source-selected per-run axes. Horizontal and clockwise
-    /// Sideways retain horizontal composition. Unsupported inputs refuse atomically.
+    /// source-selected per-run axes. Horizontal and both sideways profiles
+    /// retain horizontal composition. Unsupported inputs refuse atomically.
     #[must_use]
     pub const fn with_orientation(mut self, orientation: LineOrientation) -> Self {
         self.orientation = orientation;
@@ -103,7 +103,7 @@ impl PreparationOptions {
     }
     /// Requests a used named font reference for the complete preparation.
     ///
-    /// Alphabetic is supported for Horizontal and clockwise Sideways; Central
+    /// Alphabetic is supported for Horizontal and both sideways profiles; Central
     /// is supported for native Upright and Mixed. Unsupported combinations refuse during
     /// preparation. Without a request, H/Sideways use raw font-design zero and
     /// native Upright uses its existing Central reference.
@@ -121,9 +121,9 @@ impl PreparationOptions {
     pub(crate) const fn resolved_baseline_reference(self) -> Option<crate::FontBaseline> {
         match self.orientation {
             LineOrientation::Vertical => Some(crate::FontBaseline::Central),
-            LineOrientation::Horizontal | LineOrientation::SidewaysClockwise => {
-                self.baseline_reference
-            }
+            LineOrientation::Horizontal
+            | LineOrientation::SidewaysClockwise
+            | LineOrientation::SidewaysCounterclockwise => self.baseline_reference,
         }
     }
     /// Requested basis, authenticated again by selection and placement.
@@ -173,7 +173,7 @@ impl Hash for PreparedText {
     }
 }
 impl PreparedText {
-    /// Actual admitted horizontal, native upright, or clockwise sideways basis.
+    /// Actual admitted horizontal, native upright, or sideways basis.
     #[must_use]
     pub fn orientation(&self) -> LineOrientation {
         self.inner.options.orientation()
@@ -282,6 +282,8 @@ pub enum LineOrientation {
     /// Horizontal composition physically rotated 90 degrees clockwise.
     /// This does not denote CSS sideways-lr or mixed/upright typography.
     SidewaysClockwise,
+    /// Horizontal typography presented counterclockwise by ninety degrees.
+    SidewaysCounterclockwise,
 }
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum LineStart {
@@ -785,7 +787,7 @@ impl PartialEq for FinalizedFragment {
 impl Eq for FinalizedFragment {}
 
 /// Physical location of local x=0 on the line baseline, not its top-left.
-/// Horizontal uses (inline_origin, baseline); Vertical and clockwise Sideways
+/// Horizontal uses (inline_origin, baseline); Vertical and both sideways profiles
 /// use (baseline, inline_origin). The baseline is a cross-axis coordinate.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LineAnchor {
@@ -889,7 +891,7 @@ pub struct LineFeedback {
     pub line_height: f64,
     /// Signed line-local coordinate from the line-over edge to the shared baseline.
     /// Native Vertical uses its resolved Central reference; Horizontal and
-    /// clockwise Sideways use their preparation's raw or named reference. This
+    /// both sideways profiles use their preparation's raw or named reference. This
     /// is distinct from any displaced per-font paint origin.
     pub baseline: f64,
 }

@@ -333,11 +333,15 @@ fn placed(prepared: &PreparedText, line: FinalizedLine, expected: &[(Id, f64)], 
             occurrence: atomic(prepared, id),
             border: if horizontal {
                 Rect::new(20.0 + inline, 68.0, 10.0, 6.0)
+            } else if orientation == LineOrientation::SidewaysCounterclockwise {
+                Rect::new(98.0, 10.0 - inline, 6.0, 10.0)
             } else {
                 Rect::new(96.0, 20.0 + inline, 6.0, 10.0)
             },
             content: if horizontal {
                 Rect::new(21.0 + inline, 69.0, 8.0, 4.0)
+            } else if orientation == LineOrientation::SidewaysCounterclockwise {
+                Rect::new(99.0, 11.0 - inline, 4.0, 8.0)
             } else {
                 Rect::new(97.0, 21.0 + inline, 4.0, 8.0)
             },
@@ -362,6 +366,7 @@ fn placed(prepared: &PreparedText, line: FinalizedLine, expected: &[(Id, f64)], 
     let expected_bounds = match orientation {
         LineOrientation::Horizontal => Rect::new(20.0, 62.0, total, 12.0),
         LineOrientation::SidewaysClockwise => Rect::new(96.0, 20.0, 12.0, total),
+        LineOrientation::SidewaysCounterclockwise => Rect::new(92.0, 20.0 - total, 12.0, total),
         LineOrientation::Vertical => Rect::new(95.0, 20.0, 10.0, total),
     };
     assert_eq!(layout.lines()[0].bounds(), expected_bounds);

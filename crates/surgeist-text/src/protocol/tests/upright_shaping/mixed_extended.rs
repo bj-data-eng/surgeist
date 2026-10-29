@@ -376,6 +376,10 @@ fn mixed_marks_retain_complete_egc_axes_attachment_and_independent_style_height(
                     origin.x - f64::from(glyph.y()),
                     origin.y + glyph.pen() + f64::from(glyph.x()),
                 ),
+                GlyphBasis::Counterclockwise => Point::new(
+                    origin.x + f64::from(glyph.y()),
+                    origin.y + glyph.pen() - f64::from(glyph.x()),
+                ),
                 GlyphBasis::Unrotated => Point::new(
                     origin.x + f64::from(glyph.x()),
                     origin.y + glyph.pen() + f64::from(glyph.y()),

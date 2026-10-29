@@ -269,6 +269,7 @@ fn all_seven_separator_scalars_keep_complete_utf16_units_and_fixed_width_spaces_
                 match orientation {
                     LineOrientation::Horizontal => Rect::new(30.0, 62.0, 14.0, 10.0),
                     LineOrientation::SidewaysClockwise => Rect::new(98.0, 30.0, 10.0, 14.0),
+                    LineOrientation::SidewaysCounterclockwise => Rect::new(92.0, -4.0, 10.0, 14.0),
                     LineOrientation::Vertical => Rect::new(95.0, 30.0, 10.0, 14.0),
                 }
             );

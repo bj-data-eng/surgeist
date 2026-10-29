@@ -84,6 +84,17 @@ fn native_run_axes_and_glyph_origins_survive_all_readback_forms() {
                 [Point::new(100.0, 20.0), Point::new(100.0, 30.0)],
                 Rect::new(97.0, 20.0, 12.0, 20.0),
             ),
+            LineOrientation::SidewaysCounterclockwise => (
+                GlyphBasis::Counterclockwise,
+                58,
+                10.0,
+                0.0,
+                0.0,
+                9.0,
+                Point::new(100.0, 20.0),
+                [Point::new(100.0, 20.0), Point::new(100.0, 10.0)],
+                Rect::new(91.0, 0.0, 12.0, 20.0),
+            ),
             LineOrientation::Vertical => (
                 GlyphBasis::Unrotated,
                 82,

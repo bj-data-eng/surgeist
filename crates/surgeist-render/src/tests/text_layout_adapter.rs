@@ -3,6 +3,7 @@
 //! descent-200, A/X advance1000), not another adapter invocation.
 mod composed;
 mod control_paint;
+mod counterclockwise;
 mod endpoint_paint;
 mod inter_character;
 mod mixed;
