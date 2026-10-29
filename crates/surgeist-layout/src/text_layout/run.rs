@@ -494,6 +494,7 @@ pub(crate) fn named_baseline(
                 && matches!(
                     prepared.analyzed_source().typography(),
                     surgeist_text::AnalysisTypography::Upright { .. }
+                        | surgeist_text::AnalysisTypography::Mixed
                 )
         }
         (

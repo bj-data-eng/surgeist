@@ -85,10 +85,10 @@ impl RunView<'_> {
     pub const fn orientation(&self) -> crate::LineOrientation {
         self.placed.orientation
     }
-    /// Actual outline axes, derived from the authenticated uniform orientation.
+    /// Actual outline axes retained by this run's shaping operation.
     #[must_use]
     pub const fn glyph_basis(&self) -> crate::GlyphBasis {
-        crate::GlyphBasis::for_orientation(self.orientation())
+        self.shaped.glyph_basis
     }
     /// Actual shaped-run ordinal within this finalized line.
     #[must_use]
@@ -121,9 +121,9 @@ impl RunView<'_> {
     /// For named Alphabetic H/Sideways composition this is font-design zero,
     /// displaced from the shared line alignment reference by the actual font.
     ///
-    /// With origin `(X,Y)`, pen `p` and raw offsets `(dx,dy)`, glyph origins are
-    /// `(X+p+dx,Y+dy)` for Horizontal, `(X-dy,Y+p+dx)` for Sideways and
-    /// `(X+dx,Y+p+dy)` for Vertical. The outline axes follow [`Self::glyph_basis`].
+    /// Rotate raw offsets `(dx,dy)` by [`Self::glyph_basis`]: Unrotated keeps
+    /// `(dx,dy)`, Clockwise gives `(-dy,dx)`. Add those offsets to this origin,
+    /// with the pen along physical x for Horizontal or y for Vertical/Sideways.
     #[must_use]
     pub fn origin(&self) -> Point {
         crate::layout::line_point(self.placed, Point::new(self.run.x, self.run.y))
@@ -219,6 +219,16 @@ impl GlyphPlacement {
 }
 
 fn run_decorations(run: &RunView<'_>) -> [Option<DecorationRun>; 2] {
+    if run.run.glyphs.is_empty()
+        && run.layout.inner.prepared.analyzed.typography == crate::AnalysisTypography::Mixed
+        && !crate::engine::layout::metric_only_decoration_demand(
+            run.shaped,
+            &run.placed.finalized.selected.basis.shaped,
+            &run.placed.finalized.selected.presentation.projection,
+        )
+    {
+        return [None, None];
+    }
     let style = &run.layout.inner.prepared.styles[run.run.style].style;
     let metrics = run.shaped.metrics;
     [

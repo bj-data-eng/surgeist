@@ -109,13 +109,12 @@ pub(crate) fn resolve(
     collection: &mut Collection,
     styles: &[AnalyzedStyleRun],
     scale: f32,
-    orientation: crate::LineOrientation,
 ) -> Result<Vec<ResolvedStyleRun>> {
     styles
         .iter()
         .map(|run| {
             Ok(ResolvedStyleRun {
-                style: resolve_style(collection, &run.style, scale, orientation)?,
+                style: resolve_style(collection, &run.style, scale)?,
             })
         })
         .collect()
@@ -127,10 +126,9 @@ pub(crate) fn resolve_default(
     collection: &mut Collection,
     style: &ValidatedStyle,
     scale: f32,
-    orientation: crate::LineOrientation,
 ) -> Result<ResolvedStyleRun> {
     Ok(ResolvedStyleRun {
-        style: resolve_style(collection, style, scale, orientation)?,
+        style: resolve_style(collection, style, scale)?,
     })
 }
 
@@ -138,7 +136,6 @@ fn resolve_style(
     collection: &mut Collection,
     validated: &ValidatedStyle,
     scale: f32,
-    orientation: crate::LineOrientation,
 ) -> Result<ResolvedStyle> {
     let style = validated.authored();
     let mut families = Vec::new();
@@ -159,11 +156,6 @@ fn resolve_style(
         families.extend(collection.generic_families(GenericFamily::SansSerif));
     }
     let mut features = parse_features(validated)?;
-    if orientation == crate::LineOrientation::Sideways {
-        // Automatic defaults precede explicit settings. Stable sorting below
-        // retains last authored same-tag override; no cross-tag arbitration.
-        features.insert(0, FontFeature::new(parlance::Tag::new(b"vrtr"), 1));
-    }
     let mut variations = parse_variations(validated)?;
     // Stable tag ordering preserves the actual last authored duplicate override.
     features.sort_by_key(|setting| setting.tag);

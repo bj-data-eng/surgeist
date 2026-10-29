@@ -173,6 +173,10 @@ mod baseline_test_fonts;
 #[path = "test_fonts/vertical.rs"]
 mod vertical_test_fonts;
 
+#[cfg(test)]
+#[path = "test_fonts/mixed.rs"]
+mod mixed_test_fonts;
+
 mod range_fragments;
 pub use range_fragments::{
     SourceRangeFragmentError, SourceRangeFragments, SourceRangePiece, SourceRangeUnit,

@@ -16,6 +16,8 @@ pub enum AnalysisTypography {
     /// Existing Unicode interpretation for horizontal and clockwise-sideways composition.
     /// No computed direction is asserted for the standalone automatic policy.
     HorizontalComposition,
+    /// Mixed vertical typography with ordinary paragraph bidi and source-owned orientation.
+    Mixed,
     /// Whole-upright strong-L interpretation with a separately retained computed authority.
     Upright {
         /// Actual computed paragraph direction; the used direction is LTR.

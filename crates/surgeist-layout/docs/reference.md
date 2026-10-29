@@ -218,9 +218,9 @@ unused name and establishes no named anchor. Explicit control struts still use
 their declared reference, because they have no atomic box from which to resolve
 another one.
 
-Numeric atomic-box flow supports both names. Native upright Text in
+Numeric atomic-box flow supports both names. Native upright or Mixed Text in
 `VerticalRl` or `VerticalLr` additionally admits `Named(Central)` when the actual
-prepared paragraph has matching Upright analysis and Vertical orientation.
+prepared paragraph has matching Upright or Mixed analysis and Vertical orientation.
 Its first/last formatted lines establish Central facts on the physical x axis;
 absent or nonformatted lines do not acquire authority from the requested name.
 HorizontalComposition Text admits `Named(Alphabetic)` when its actual preparation
@@ -658,6 +658,9 @@ This explicit profile does not implement CSS-wide justification methods,
 BreakSpaces or styled inline hanging barriers. Native whole-upright paragraphs
 compose in `VerticalRl` and `VerticalLr` through Text's
 [qualified native profile](../../surgeist-text/docs/reference.md#native-whole-upright-paragraphs).
+Native Mixed paragraphs compose in both vertical flows through Text's
+[Mixed profile](../../surgeist-text/docs/reference.md#native-mixed-vertical-paragraphs),
+retaining ordinary bidi, per-run outline axes and the common Central reference.
 Actual Text-backed `SidewaysLr` reports
 `UnsupportedCapability(TextWritingMode(SidewaysLr))` at `TextCapture` on the
 container; box-only flow retains its own support. Clockwise Sideways Physical
@@ -695,7 +698,7 @@ ink and glyph advance do not replace line allocations. The
 [shared placement contract](../../../docs/text-layout-contract.md#canonical-boxes-and-coherent-line-placement)
 distinguishes logical progression, physical anchors and their float constraints.
 
-Native upright placement keeps three coordinate mappings separate. Flow columns
+Native upright and Mixed placement keep three coordinate mappings separate. Flow columns
 progress leftward in VerticalRl and rightward in VerticalLr, while Text's
 line-over to line-under cell direction decreases physical x in both. For actual
 allocated line height `H` and finalized local Central baseline `B`, the anchor
@@ -705,6 +708,8 @@ VerticalLr. A finalized local point `(u,v)` maps to
 block progression; source and metric rectangles retain their own extents.
 Containing direction maps the available interval once, independently of the
 upright paragraph's used LTR direction and retained computed direction.
+Mixed retains Text's ordinary bidi order. Per-run outline axes remain separate
+from these line and cell mappings.
 
 Native upright in-flow atomics retain their physical child size, border, content
 and overflow geometry. The adapter converts those boxes to Text's local

@@ -149,6 +149,7 @@ pub(crate) fn select_with_scratch(
     // No handles exist until this exact selected invocation has completed.
     let (shaped, mapping) =
         crate::engine::shape::finalize(input, scratch, request.context.spacing)?;
+    crate::engine::layout::qualify_selected_paint(input, &shaped, &request.participants)?;
     let characters = crate::engine::spacing::character::build(
         &presentation.projection,
         &presentation.analysis,

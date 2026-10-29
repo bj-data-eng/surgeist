@@ -14,6 +14,7 @@ pub surgeist_text::Alignment::Right
 pub surgeist_text::Alignment::Start
 pub enum surgeist_text::AnalysisTypography
 pub surgeist_text::AnalysisTypography::HorizontalComposition
+pub surgeist_text::AnalysisTypography::Mixed
 pub surgeist_text::AnalysisTypography::Upright
 pub surgeist_text::AnalysisTypography::Upright::computed_direction: surgeist_text::ParagraphBaseDirection
 pub enum surgeist_text::AtomicLineAllocation
@@ -2813,7 +2814,7 @@ pub const fn surgeist_text::Run::font_size(&self) -> f32
 pub const fn surgeist_text::Run::glyph_basis(&self) -> surgeist_text::GlyphBasis
 pub fn surgeist_text::Run::glyphs(&self) -> &[surgeist_text::Glyph]
 pub const fn surgeist_text::Run::line(&self) -> usize
-pub fn surgeist_text::Run::new(line: usize, range: surgeist_text::Range, font: surgeist_text::FontData, style: surgeist_text::Style, brush: surgeist_text::Brush, metrics: surgeist_text::RunMetrics, glyphs: alloc::vec::Vec<surgeist_text::Glyph>) -> Self
+pub fn surgeist_text::Run::new(line: usize, range: surgeist_text::Range, font: surgeist_text::FontData, style: surgeist_text::Style, brush: surgeist_text::Brush, metrics: surgeist_text::RunMetrics, glyph_basis: surgeist_text::GlyphBasis, glyphs: alloc::vec::Vec<surgeist_text::Glyph>) -> Self
 pub const fn surgeist_text::Run::offset(&self) -> f64
 pub const fn surgeist_text::Run::orientation(&self) -> surgeist_text::LineOrientation
 pub const fn surgeist_text::Run::origin(&self) -> surgeist_text::Point

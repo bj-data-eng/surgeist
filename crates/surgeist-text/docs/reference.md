@@ -446,17 +446,20 @@ metadata and unresolved faux-bold/skew return typed failures. These views retain
 no independent layout or preparation identity; their lifetime comes from the
 original immutable Layout.
 `RunView::origin()` is physical; `FinalizedRunView::origin()` is line-local
-`(inline, line-under)`. Both views expose `glyph_basis()`: `GlyphBasis::Unrotated`
-for Horizontal and whole-upright Vertical, `Clockwise` for Sideways. The logical
+`(inline, line-under)`. Both views and owned `Run` expose the actual shaping
+run's retained `glyph_basis()`, independently of the placed line frame. Native
+Horizontal and whole-upright Vertical retain `GlyphBasis::Unrotated`; Sideways
+retains `Clockwise`. `Run::new` takes the outline basis explicitly. The logical
 pen advances along the line's inline axis independently of raw font-x and
 converted font-y offsets. With physical run origin `(X,Y)`, pen `p` and raw
 scaled offsets `(dx,dy)`, glyph origins are:
 
-| Orientation | Physical glyph origin |
-| --- | --- |
-| Horizontal | `(X+p+dx, Y+dy)` |
-| Sideways | `(X-dy, Y+p+dx)` |
-| Vertical | `(X+dx, Y+p+dy)` |
+| Line frame | Outline basis | Physical glyph origin |
+| --- | --- | --- |
+| Horizontal | Unrotated | `(X+p+dx, Y+dy)` |
+| Horizontal | Clockwise | `(X+p-dy, Y+dx)` |
+| Sideways or Vertical | Clockwise | `(X-dy, Y+p+dx)` |
+| Sideways or Vertical | Unrotated | `(X+dx, Y+p+dy)` |
 
 Vertical and Sideways line **cells** share a physical mapping from inline and
 line-under coordinates; that map does not rotate upright outlines. Raw glyph
@@ -970,6 +973,76 @@ Matching Vertical preparation admits the [native whole-upright
 profile](#native-whole-upright-paragraphs). HorizontalComposition with Vertical
 retains its original unsupported-context diagnostic. Layout/Render adapters
 remain separate consumers.
+
+## Native mixed vertical paragraphs
+
+`AnalysisTypography::Mixed` retains ordinary paragraph bidi, captured direction
+and formatting controls. Pair it with `LineOrientation::Vertical` throughout
+preparation, selection and placement. It uses the existing Central line frame;
+whole-upright's strong-L and used-LTR interpretation remains specific to Upright.
+Horizontal/Sideways preparation of Mixed is a context mismatch. This native
+selector does not interpret CSS Style or provide heterogeneous text-orientation
+values inside one paragraph.
+
+The canonical source arrangement owner consumes each real presentation's EGCs,
+semantic barriers and shared Appendix-E properties. UTR50 U/Tu/Tr selects upright;
+R selects clockwise horizontal composition. Base/mark, Common enclosing-Me and
+Zs-plus-mark rules use the same property owner, with no alternate segmenter.
+Actual selected fragments and indications resolve their own source roles before
+font execution. Native DI Normal/Residual/Deleted outcomes keep their original
+correspondence without choosing another orientation or triggering reshaping.
+Spacing's receipt-qualified units remain specific to spacing.
+
+Upright runs use the existing vertical provider, post-substitution nominal
+metrics and VerticalX Central. Their actual direction is TTB at even levels and
+BTT at odd levels; mirroring and glyph order belong to that provider. The shared
+extractor retains negative-y advance encoding and logically reconstructs actual
+provider clusters before final bidi ordering. R runs use ordinary horizontal
+LTR/RTL shaping and joining, horizontal metrics and same-instance HorizontalY
+Central. Missing Central follows the font owner's qualified midpoint synthesis.
+Malformed consumed data preserves its typed error. R does not inherit the
+upright-only source-script refusal or isolation fences.
+
+With horizontal ascent A, signed descent D and Central c, R uses cross-before
+A-c and cross-after c-D, retaining horizontal normal height and signed
+half-leading. Its font-design-zero origin is displaced by local line-under +c,
+so physical paint x is CentralX-c. Upright and R runs share the same line frame
+while retaining Unrotated and Clockwise outline axes respectively. Cells,
+selection, tabs and decoration geometry keep their line frame; outlines do not
+rotate child boxes or rewrite raw provider offsets.
+
+Role transitions fence provider context. Compatible R units retain horizontal
+joining; upright units retain their qualified isolated/normal vertical context.
+One effective feature list applies sideways vrtr defaults, upright defaults,
+upfront spacing controls and explicit authored precedence at the actual
+invocation. Automatic vrt2 never chooses orientation. Explicit settings can
+change glyph selection while preserving the source role. Tr without an
+alternate stays upright; optional synthetic fallback is outside this profile.
+
+Native vertical DefaultFont struts retain their genuine glyph-free metric
+operation. CSS hypothetical SPACE/ZERO tab queries resolve their own scalar
+roles and horizontal Central metrics. Allocated contributions do not invent a
+default font demand. R retains automatic underline/strike metrics rebased to
+its Central reference. An actual material upright effect requiring unavailable
+automatic offset or thickness refuses with its precise style/kind/component;
+disabled or fully explicit upright effects work. Unused and DI-excluded styles
+do not impose a paragraph-wide automatic-decoration refusal.
+Selected paint admission also qualifies a genuinely retained metric-only font
+strut, including its zero-width effects. A source-only fallback whose inputs are
+all Residual/Deleted retains font and source metadata without activating a
+decoration; allocated contributions do not turn that bookkeeping into an effect.
+
+Actual selected shaping, roles, resource custody, constraints and DI receipts
+are retained before complete spacing handles. First/repeated finalization and
+spacing replacement consume that immutable basis without font queries or
+provider execution. Existing source/copy, interaction and positioned-accessibility
+operations use that same line geometry and ordinary bidi result.
+
+Mixed Text does not itself grant a consumer named-baseline capability. Layout
+owns admission and both vertical column directions; Render owns paint conversion
+from the actual run axes. Full intrinsic-script tailoring, counterclockwise
+progression, combined upright and broader upright decoration policy remain
+separate operations; this native contribution does not complete those profiles.
 
 ## Native whole-upright paragraphs
 

@@ -4,21 +4,10 @@
 /// logical glyph pen follows the run's inline axis independently of these axes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum GlyphBasis {
-    /// Horizontal and whole-upright glyph outlines keep their original axes.
+    /// Glyph outlines keep their original axes.
     Unrotated,
-    /// Whole-sideways glyph outlines rotate clockwise by ninety degrees.
+    /// Glyph outlines rotate clockwise by ninety degrees.
     Clockwise,
-}
-
-impl GlyphBasis {
-    pub(crate) const fn for_orientation(orientation: crate::LineOrientation) -> Self {
-        match orientation {
-            crate::LineOrientation::Horizontal | crate::LineOrientation::Vertical => {
-                Self::Unrotated
-            }
-            crate::LineOrientation::Sideways => Self::Clockwise,
-        }
-    }
 }
 
 /// Point in the coordinate frame documented by its owning operation.

@@ -668,6 +668,15 @@ pub(super) fn select(
     let profile = match prepared.options.orientation() {
         crate::LineOrientation::Horizontal => crate::engine::upright::ShapingProfile::Horizontal,
         crate::LineOrientation::Sideways => crate::engine::upright::ShapingProfile::Sideways,
+        crate::LineOrientation::Vertical
+            if prepared.analyzed.typography == crate::AnalysisTypography::Mixed =>
+        {
+            crate::engine::upright::ShapingProfile::Mixed {
+                owners: &prepared.analyzed.styles,
+                units: &upright_units,
+                provenance,
+            }
+        }
         crate::LineOrientation::Vertical => crate::engine::upright::ShapingProfile::Upright {
             units: &upright_units,
             provenance,
@@ -714,7 +723,7 @@ pub(super) fn select(
         .reduce(|a, b| Range::new(a.start.min(b.start), a.end.max(b.end)))
         .unwrap_or(Range::new(start.source_after, end.source_before));
     Ok(SelectedPresentation {
-        upright_units,
+        vertical_units: upright_units,
         source,
         selected_relation,
         units: output.output.units,

@@ -15,7 +15,12 @@ pub(crate) enum ShapingProfile<'a> {
     Horizontal,
     Sideways,
     Upright {
-        units: &'a [analysis::upright::UprightUnit],
+        units: &'a [analysis::upright::VerticalUnit],
+        provenance: UprightProvenance<'a>,
+    },
+    Mixed {
+        owners: &'a [AnalyzedStyleRun],
+        units: &'a [analysis::upright::VerticalUnit],
         provenance: UprightProvenance<'a>,
     },
 }
@@ -170,9 +175,19 @@ pub(crate) fn units(
     analysis: &analysis::Analysis,
     provenance: &UprightProvenance<'_>,
     orientation: LineOrientation,
-) -> Result<Vec<analysis::upright::UprightUnit>> {
+) -> Result<Vec<analysis::upright::VerticalUnit>> {
     if orientation != LineOrientation::Vertical {
         return Ok(Vec::new());
+    }
+    if analyzed.typography == crate::AnalysisTypography::Mixed {
+        let barriers = projection.barrier_atoms.iter().copied().collect();
+        return analysis::upright::mixed_units(
+            projection,
+            analysis,
+            &analyzed.styles,
+            &barriers,
+            |atoms| provenance.content(projection, atoms),
+        );
     }
     for index in analysis
         .infos
@@ -183,18 +198,38 @@ pub(crate) fn units(
         admit_decorations(&analyzed.styles[index])?;
     }
     let barriers = projection.barrier_atoms.iter().copied().collect();
-    analysis::upright::units(projection, analysis, &analyzed.styles, &barriers, |atoms| {
-        provenance.content(projection, atoms)
-    })
+    let units =
+        analysis::upright::units(projection, analysis, &analyzed.styles, &barriers, |atoms| {
+            provenance.content(projection, atoms)
+        })?;
+    let mut result = Vec::new();
+    result
+        .try_reserve(units.len())
+        .map_err(|_| analysis::capacity())?;
+    result.extend(
+        units
+            .into_iter()
+            .map(analysis::upright::VerticalUnit::Upright),
+    );
+    Ok(result)
 }
 
-pub(crate) fn original_profile(
+pub(crate) fn original_profile<'a>(
     orientation: LineOrientation,
-    units: &[analysis::upright::UprightUnit],
-) -> ShapingProfile<'_> {
+    units: &'a [analysis::upright::VerticalUnit],
+    typography: crate::AnalysisTypography,
+    owners: &'a [AnalyzedStyleRun],
+) -> ShapingProfile<'a> {
     match orientation {
         LineOrientation::Horizontal => ShapingProfile::Horizontal,
         LineOrientation::Sideways => ShapingProfile::Sideways,
+        LineOrientation::Vertical if typography == crate::AnalysisTypography::Mixed => {
+            ShapingProfile::Mixed {
+                units,
+                owners,
+                provenance: UprightProvenance::Original,
+            }
+        }
         LineOrientation::Vertical => ShapingProfile::Upright {
             units,
             provenance: UprightProvenance::Original,
@@ -209,8 +244,21 @@ pub(crate) fn selected_profile<'a>(
     match prepared.options.orientation() {
         LineOrientation::Horizontal => ShapingProfile::Horizontal,
         LineOrientation::Sideways => ShapingProfile::Sideways,
+        LineOrientation::Vertical
+            if prepared.analyzed.typography == crate::AnalysisTypography::Mixed =>
+        {
+            ShapingProfile::Mixed {
+                units: &presentation.vertical_units,
+                owners: &prepared.analyzed.styles,
+                provenance: UprightProvenance::Selected {
+                    original: &prepared.analyzed.projection,
+                    originals: &presentation.originals,
+                    units: &presentation.units,
+                },
+            }
+        }
         LineOrientation::Vertical => ShapingProfile::Upright {
-            units: &presentation.upright_units,
+            units: &presentation.vertical_units,
             provenance: UprightProvenance::Selected {
                 original: &prepared.analyzed.projection,
                 originals: &presentation.originals,
@@ -220,19 +268,45 @@ pub(crate) fn selected_profile<'a>(
     }
 }
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(crate) enum RunRole {
+    Horizontal,
+    Sideways,
+    Upright,
+}
+
 impl ShapingInput<'_> {
-    pub(crate) fn is_upright(&self) -> bool {
-        matches!(self.profile, ShapingProfile::Upright { .. })
+    pub(crate) fn is_mixed(&self) -> bool {
+        matches!(self.profile, ShapingProfile::Mixed { .. })
     }
-    pub(crate) fn upright_units(&self) -> &[analysis::upright::UprightUnit] {
+    pub(crate) fn role(&self, atom: usize) -> RunRole {
         match &self.profile {
-            ShapingProfile::Upright { units, .. } => units,
+            ShapingProfile::Horizontal => RunRole::Horizontal,
+            ShapingProfile::Sideways => RunRole::Sideways,
+            ShapingProfile::Upright { .. } => RunRole::Upright,
+            ShapingProfile::Mixed { units, .. } => units
+                .get(units.partition_point(|unit| unit.atoms().end <= atom))
+                .filter(|unit| unit.atoms().contains(&atom))
+                .map_or(RunRole::Upright, |unit| {
+                    if unit.upright().is_some() {
+                        RunRole::Upright
+                    } else {
+                        RunRole::Sideways
+                    }
+                }),
+        }
+    }
+    pub(crate) fn vertical_units(&self) -> &[analysis::upright::VerticalUnit] {
+        match &self.profile {
+            ShapingProfile::Upright { units, .. } | ShapingProfile::Mixed { units, .. } => units,
             ShapingProfile::Horizontal | ShapingProfile::Sideways => &[],
         }
     }
     pub(crate) fn upright_content(&self, atoms: AtomRange<usize>) -> UprightContent {
-        let ShapingProfile::Upright { provenance, .. } = &self.profile else {
-            unreachable!("only an upright invocation requests upright diagnostics")
+        let provenance = match &self.profile {
+            ShapingProfile::Upright { provenance, .. }
+            | ShapingProfile::Mixed { provenance, .. } => provenance,
+            _ => unreachable!("only an upright invocation requests upright diagnostics"),
         };
         provenance.content(self.projection, atoms)
     }
@@ -248,11 +322,39 @@ pub(crate) fn style_owner(owner: super::resolve::AnalyzedStyleOwner) -> TextStyl
     }
 }
 
+pub(crate) fn admit_mixed_decoration(input: &ShapingInput<'_>, index: usize) -> Result<()> {
+    let ShapingProfile::Mixed { owners, .. } = &input.profile else {
+        return Ok(());
+    };
+    let owner = style_owner(owners[index].owner);
+    let style = &input.styles[index].style;
+    admit_resolved_decoration(style, owner)
+}
+
+pub(crate) fn admit_resolved_decoration(
+    style: &super::resolve::ResolvedStyle,
+    owner: TextStyleOwner,
+) -> Result<()> {
+    admit_decoration_values(style.underline, style.strikethrough, owner)
+}
+
 fn admit_decorations(style: &AnalyzedStyleRun) -> Result<()> {
     let authored = style.style.authored();
+    admit_decoration_values(
+        authored.underline,
+        authored.strikethrough,
+        style_owner(style.owner),
+    )
+}
+
+fn admit_decoration_values(
+    underline: crate::Decoration,
+    strikethrough: crate::Decoration,
+    owner: TextStyleOwner,
+) -> Result<()> {
     for (decoration, kind) in [
-        (authored.underline, DecorationKind::Underline),
-        (authored.strikethrough, DecorationKind::Strikethrough),
+        (underline, DecorationKind::Underline),
+        (strikethrough, DecorationKind::Strikethrough),
     ] {
         if !decoration.enabled() {
             continue;
@@ -269,11 +371,7 @@ fn admit_decorations(style: &AnalyzedStyleRun) -> Result<()> {
             ErrorCode::UnsupportedFeature,
             "automatic upright decoration metrics are unsupported",
         )
-        .with_detail(ErrorDetail::UprightDecoration {
-            owner: style_owner(style.owner),
-            kind,
-            role,
-        }));
+        .with_detail(ErrorDetail::UprightDecoration { owner, kind, role }));
     }
     Ok(())
 }

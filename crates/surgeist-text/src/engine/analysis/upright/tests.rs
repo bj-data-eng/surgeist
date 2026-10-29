@@ -388,7 +388,8 @@ fn intrinsic_mixed_set_checks_every_style_in_the_complete_arrangement_unit() {
         arrangement_ranges(
             &a.inner.projection,
             &a.inner.analysis.graphemes,
-            &BTreeSet::new()
+            &BTreeSet::new(),
+            false
         )
         .unwrap(),
         std::iter::once(0..2).collect::<Vec<_>>()

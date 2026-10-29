@@ -282,9 +282,10 @@ font copy or package is introduced.
 ## Supplied vertical nominal positioning
 
 The repository-owned `src/hb/vertical_position.rs` exposes
-`Shaper::shape_vertical_with_metrics`: an invocation-local TopToBottom OpenType
-operation with a fallible supplier for actual post-substitution nominal glyph
-metrics and an explicit `VerticalOriginReference`. `FontDesignX` uses one absolute
+`Shaper::shape_vertical_with_metrics`: an invocation-local TopToBottom or
+BottomToTop OpenType operation with a fallible supplier for actual
+post-substitution nominal glyph metrics and an explicit `VerticalOriginReference`.
+`FontDesignX` uses one absolute
 X coordinate for every actual glyph; `NominalVerticalPenX` adds a signed distance
 to each glyph's nominal X origin. Relative zero is the nominal reference. The
 effective reference is applied before positioning; nominal advance and origin Y
@@ -293,7 +294,11 @@ paragraph orientation, or replace metrics after positioning. The supplier must
 use the configured face and instance. Queries include actual figure/punctuation
 fallback-space lenders; unrelated glyphs are not scanned. Glyph zero is valid.
 
-The new `VerticalGlyphBuffer` is a separate unit domain. Internal positions count
+Backward vertical input uses the canonical mirroring owner and its masked `rtlm`
+fallback, without enabling horizontal `rtla` alternatives. Native direction
+normalization retains negative Y advances and original input correspondence.
+
+`VerticalGlyphBuffer` is a separate unit domain. Internal positions count
 half design units; immutable views decode them exactly to f64 design units.
 Nominal advance and vertical origin are integral, while horizontal origin retains
 its doubled numerator. Checked reference constructors accept unscaled design-unit

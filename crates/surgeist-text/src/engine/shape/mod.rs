@@ -214,6 +214,7 @@ pub(crate) fn assign_fonts(
         .map(|(i, _)| i.script)
         .find(|&s| real_script(s))
         .unwrap_or(Script::Latin);
+    let barriers = shaping_barriers(&input);
     let mut first = 0;
     while first < projection.atoms.len() {
         if input.css_tabs && projection.atoms[first].code_point == 9 {
@@ -240,7 +241,7 @@ pub(crate) fn assign_fonts(
                     &prepared.styles[style].style,
                     &prepared.styles[info.1].style,
                 )
-                || projection.barrier_atoms.contains(&end)
+                || barriers.contains(&end)
             {
                 break;
             }
@@ -360,8 +361,16 @@ fn provider_direction(level: u8) -> surgeist_shaper::Direction {
 fn provider_features(
     style: &ResolvedStyle,
     native_isolated: bool,
+    sideways: bool,
 ) -> Vec<surgeist_shaper::Feature> {
     let mut features = Vec::with_capacity(style.font_features.len() + usize::from(native_isolated));
+    if sideways {
+        features.push(surgeist_shaper::Feature::new(
+            surgeist_shaper::Tag::new(b"vrtr"),
+            1,
+            ..,
+        ));
+    }
     if native_isolated {
         features.push(surgeist_shaper::Feature::new(
             surgeist_shaper::Tag::new(b"isol"),
@@ -724,9 +733,62 @@ pub(crate) fn finalize(
         let mut original_domains: Vec<JoiningDomain> = Vec::new();
         let mut upright_barriers = shaping_barriers(&input);
         upright_barriers.extend(barriers.iter().copied());
-        for assignment in &presentation.assignments {
+        let mut split_assignments = Vec::new();
+        let assignments = if input.is_mixed() {
+            for assignment in &presentation.assignments {
+                let mut first = assignment.atoms.start;
+                for end in upright_barriers
+                    .range((
+                        std::ops::Bound::Excluded(first),
+                        std::ops::Bound::Excluded(assignment.atoms.end),
+                    ))
+                    .copied()
+                    .chain(std::iter::once(assignment.atoms.end))
+                {
+                    split_assignments
+                        .try_reserve(1)
+                        .map_err(|_| super::analysis::capacity())?;
+                    let mut run = assignment.run.clone();
+                    run.atoms = first..end;
+                    split_assignments.push(crate::protocol::prepared::RetainedAssignment {
+                        atoms: first..end,
+                        run,
+                    });
+                    first = end;
+                }
+            }
+            &split_assignments
+        } else {
+            &presentation.assignments
+        };
+        let barriers = if input.is_mixed() {
+            &upright_barriers
+        } else {
+            barriers
+        };
+        let original_input = ShapingInput {
+            profile: super::upright::original_profile(
+                prepared.options.orientation(),
+                &prepared.vertical_units,
+                prepared.analyzed.typography,
+                &prepared.analyzed.styles,
+            ),
+            projection: &prepared.analyzed.projection,
+            analysis: &prepared.analyzed.analysis,
+            characters: input.characters,
+            separator_geometry: input.separator_geometry,
+            baseline_reference: input.baseline_reference,
+            styles: input.styles,
+            boxes: input.boxes,
+            font_catalogue: input.font_catalogue,
+            paragraph: input.paragraph,
+            css_tabs: input.css_tabs,
+        };
+        let mut original_barriers = shaping_barriers(&original_input);
+        original_barriers.extend(selected.boundaries.original.iter().copied());
+        for assignment in assignments {
             let run = &assignment.run;
-            if input.is_upright() {
+            if input.role(assignment.atoms.start) == super::upright::RunRole::Upright {
                 let mut first = assignment.atoms.start;
                 let ends = upright_barriers
                     .range((
@@ -765,7 +827,15 @@ pub(crate) fn finalize(
             if computed {
                 let seed =
                     crate::protocol::boundary::original_seed(prepared, presentation, assignment)?;
-                let original_extent = selected.boundaries.original_extent(prepared, &seed);
+                let original_extent = if input.is_mixed() {
+                    bounded_context(
+                        seed.atoms.clone(),
+                        selected.boundaries.original_extent(prepared, &seed),
+                        &original_barriers,
+                    )
+                } else {
+                    selected.boundaries.original_extent(prepared, &seed)
+                };
                 let original_index = if let Some(index) =
                     original_domains.iter().position(|domain| {
                         domain.atoms == original_extent
@@ -854,7 +924,11 @@ pub(crate) fn finalize(
                         bounded_context(
                             first..last + 1,
                             0..prepared.analyzed.projection.atoms.len(),
-                            &selected.boundaries.original,
+                            if input.is_mixed() {
+                                &original_barriers
+                            } else {
+                                &selected.boundaries.original
+                            },
                         ),
                     );
                 }
@@ -1168,6 +1242,24 @@ struct RunRequest<'a, 'input> {
     context: RunContext<'a>,
 }
 
+impl RunRequest<'_, '_> {
+    fn role(&self) -> super::upright::RunRole {
+        if self.atoms.is_empty()
+            && matches!(
+                self.input.profile,
+                super::upright::ShapingProfile::Mixed { .. }
+            )
+        {
+            super::upright::RunRole::Upright
+        } else {
+            self.input.role(self.atoms.start)
+        }
+    }
+    fn upright(&self) -> bool {
+        self.role() == super::upright::RunRole::Upright
+    }
+}
+
 struct SelectedSegment {
     atoms: IndexRange<usize>,
     style: usize,
@@ -1313,13 +1405,17 @@ fn append_request(
         output.runs.push(run);
         return Ok(());
     }
-    if request.input.is_upright() && request.atoms.is_empty() {
+    if request.upright() && request.atoms.is_empty() {
         let (run, _, _) = resolved_run(&request, shaper.coords())?;
         output.empty_run = Some(run);
         return Ok(());
     }
-    let direction = if request.input.is_upright() {
-        surgeist_shaper::Direction::TopToBottom
+    let direction = if request.upright() {
+        if request.input.is_mixed() && request.level & 1 != 0 {
+            surgeist_shaper::Direction::BottomToTop
+        } else {
+            surgeist_shaper::Direction::TopToBottom
+        }
     } else {
         provider_direction(request.level)
     };
@@ -1342,14 +1438,19 @@ fn append_request(
                 })
         })
         .transpose()?;
-    let native_isolated = request.input.is_upright()
+    let native_isolated = request.upright()
         && matches!(request.script, Script::Arabic | Script::Syriac)
         && request
             .input
-            .upright_units()
+            .vertical_units()
             .iter()
+            .filter_map(|unit| unit.upright())
             .any(|unit| unit.isolate() && unit.atoms.contains(&request.atoms.start));
-    let mut features = provider_features(style, native_isolated);
+    let mut features = provider_features(
+        style,
+        native_isolated,
+        request.role() == super::upright::RunRole::Sideways,
+    );
     if let Some(graph) = request.input.characters {
         for range in graph.masks(request.atoms.clone()) {
             for tag in [b"liga", b"clig", b"dlig", b"hlig"] {
@@ -1474,7 +1575,7 @@ fn append_request(
             _ => surgeist_shaper::ShapingRefusal::JoiningInput,
         }));
     }
-    if request.input.is_upright() {
+    if request.upright() {
         let shaped = vertical::shape(&request, &shaper, plan, buffer, &features);
         return match shaped {
             Ok(glyph_buffer) => {
@@ -1533,9 +1634,18 @@ fn bounded_context(
 
 fn shaping_barriers(input: &ShapingInput<'_>) -> BTreeSet<usize> {
     let mut barriers: BTreeSet<_> = input.projection.barrier_atoms.iter().copied().collect();
-    for unit in input.upright_units().iter().filter(|unit| unit.isolate()) {
-        barriers.insert(unit.atoms.start);
-        barriers.insert(unit.atoms.end);
+    let mut prior_upright = None;
+    for unit in input.vertical_units() {
+        let upright = unit.upright();
+        let atoms = unit.atoms();
+        if prior_upright.is_some_and(|prior| prior != upright.is_some()) {
+            barriers.insert(atoms.start);
+        }
+        if upright.is_some_and(|unit| unit.isolate()) {
+            barriers.insert(atoms.start);
+            barriers.insert(atoms.end);
+        }
+        prior_upright = Some(upright.is_some());
     }
     barriers
 }
@@ -1578,7 +1688,7 @@ fn resolved_run(
         &stored_coords,
         request.synthesis,
     )?;
-    if input.is_upright() {
+    if request.upright() {
         return vertical::resolved_run(request, instance, &stored_coords);
     }
     let metrics = instance.metrics(input.font_catalogue)?;
@@ -1594,7 +1704,16 @@ fn resolved_run(
     // calculation for every component rather than canceling two rebased values.
     let normal_extent = metrics.ascent() - metrics.descent() + leading;
     let line_height = resolved_line_height(style, normal_extent)?;
-    let font_origin_offset = if input.baseline_reference == Some(crate::FontBaseline::Alphabetic) {
+    let baseline_reference = match input.baseline_reference {
+        Some(crate::FontBaseline::Central)
+            if request.role() == super::upright::RunRole::Sideways =>
+        {
+            Some(crate::FontBaseline::Central)
+        }
+        Some(crate::FontBaseline::Alphabetic) => Some(crate::FontBaseline::Alphabetic),
+        _ => None,
+    };
+    let font_origin_offset = if let Some(reference) = baseline_reference {
         let script = crate::FontBaselineScript::from_script(request.script).ok_or_else(|| {
             Error::new(
                 ErrorCode::InvalidFontMetrics,
@@ -1609,12 +1728,12 @@ fn resolved_run(
             input.font_catalogue,
             script,
             crate::FontBaselineAxis::HorizontalY,
-            crate::FontBaseline::Alphabetic,
+            reference,
         )?;
-        // The raw owner guarantees HorizontalY Alphabetic is available: only
-        // qualified absence synthesizes zero; malformed data returned above.
+        // The raw owner supplies the named HorizontalY coordinate or its
+        // qualified synthesis; malformed consumed data returned above.
         let crate::FontBaselineOutcome::Available(value) = baseline.outcome() else {
-            unreachable!("horizontal Alphabetic measurement always has a value")
+            unreachable!("horizontal used baseline measurement always has a value")
         };
         value.coordinate()
     } else {
@@ -1696,6 +1815,11 @@ fn resolved_run(
         level: request.level,
         script: request.script,
         atoms: request.atoms.clone(),
+        glyph_basis: if request.role() == super::upright::RunRole::Sideways {
+            crate::GlyphBasis::Clockwise
+        } else {
+            crate::GlyphBasis::Unrotated
+        },
         metrics: run_metrics,
     };
     Ok((run, scale, normal_extent))
@@ -2047,6 +2171,7 @@ fn extract_output(
     starts.sort_unstable();
     starts.dedup();
     let run_index = output.runs.len();
+    let first_run_glyph = output.glyphs.len();
     // Each actual provider cluster is extracted in logical order; its glyphs
     // retain the provider's visual order. Component geometry remains distinct.
     for pair in starts.windows(2) {
@@ -2163,6 +2288,15 @@ fn extract_output(
             });
         }
     }
+    if input.is_mixed() && request.upright() && output.glyphs.len() != first_run_glyph {
+        let mut seen = BTreeSet::new();
+        for atom in request.atoms.clone() {
+            let style = input.analysis.infos[atom].1;
+            if !output.character_exclusions.contains_key(&atom) && seen.insert(style) {
+                super::upright::admit_mixed_decoration(input, style)?;
+            }
+        }
+    }
     output.runs.push(run);
     Ok(())
 }
@@ -2247,7 +2381,7 @@ fn append_tab(input: &ShapingInput<'_>, atom: usize, font: Option<usize>, output
 /// Internal hypothetical character operation. No authored source or occurrence is created.
 pub(crate) fn measure_character(
     mut query: Query<'_>,
-    input: ShapingInput<'_>,
+    mut input: ShapingInput<'_>,
     style_index: usize,
     ch: char,
     direction: crate::ParagraphBaseDirection,
@@ -2257,8 +2391,20 @@ pub(crate) fn measure_character(
     // Independent hypothetical character analysis: Common uses the existing
     // isolated Latin fallback. SPACE WS follows the actual block base, while
     // ZERO EN is requested with its even/LTR resolved level.
+    if input.is_mixed() {
+        input.profile = if super::analysis::unit_properties::vertical_orientation(u32::from(ch))
+            == icu_properties::props::VerticalOrientation::Rotated
+        {
+            super::upright::ShapingProfile::Sideways
+        } else {
+            super::upright::ShapingProfile::Upright {
+                units: &[],
+                provenance: super::upright::UprightProvenance::Original,
+            }
+        };
+    }
     let level = u8::from(direction == crate::ParagraphBaseDirection::RightToLeft);
-    let direction = if input.is_upright() {
+    let direction = if input.role(0) == super::upright::RunRole::Upright {
         surgeist_shaper::Direction::TopToBottom
     } else {
         provider_direction(level)
@@ -2323,7 +2469,11 @@ pub(crate) fn measure_character(
         .instance(Some(&instance))
         .point_size(Some(style.font_size))
         .build();
-    let features = provider_features(style, false);
+    let features = provider_features(
+        style,
+        false,
+        input.role(0) == super::upright::RunRole::Sideways,
+    );
     let language = style
         .locale
         .as_ref()
@@ -2344,7 +2494,7 @@ pub(crate) fn measure_character(
     if let Some(language) = language {
         buffer.set_language(language);
     }
-    let advances: Vec<_> = if input.is_upright() {
+    let advances: Vec<_> = if input.role(0) == super::upright::RunRole::Upright {
         let effective = crate::EffectiveFontInstance::qualify_synthesized(
             run.font.face(),
             run.font_size,

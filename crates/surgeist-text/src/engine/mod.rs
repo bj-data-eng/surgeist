@@ -85,6 +85,7 @@ pub(crate) struct PreparedData {
     /// Actual resolved base-style row retained for the native font-strut policy.
     pub(crate) default_style_index: Option<usize>,
     pub(crate) shaped: layout::data::ShapedData,
+    pub(crate) vertical_units: Vec<analysis::upright::VerticalUnit>,
     pub(crate) tables: PreparedTables,
     pub(crate) indication_fonts: Vec<PreparedIndicationFonts>,
 }
@@ -267,7 +268,8 @@ pub(crate) fn prepare(
     profile: PreparationProfile,
     scratch: &mut shape::ShapeContext,
 ) -> crate::Result<Arc<PreparedData>> {
-    if analyzed.typography.is_upright() && options.orientation() != crate::LineOrientation::Vertical
+    if (analyzed.typography.is_upright() || analyzed.typography == AnalysisTypography::Mixed)
+        && options.orientation() != crate::LineOrientation::Vertical
     {
         return Err(crate::protocol::protocol_error(
             crate::ProtocolError::MismatchedContext {
@@ -277,6 +279,7 @@ pub(crate) fn prepare(
     }
     if options.orientation() == crate::LineOrientation::Vertical
         && !analyzed.typography.is_upright()
+        && analyzed.typography != AnalysisTypography::Mixed
     {
         return Err(crate::protocol::protocol_error(
             crate::ProtocolError::UnsupportedContext {
@@ -314,7 +317,6 @@ pub(crate) fn prepare(
         catalogue.collection_mut(),
         &analyzed.styles,
         options.scale(),
-        options.orientation(),
     )?;
     let default_style_index = if profile == PreparationProfile::Native
         && analyzed.paragraph.paragraph_strut == crate::ParagraphStrut::DefaultFont
@@ -332,7 +334,6 @@ pub(crate) fn prepare(
             catalogue.collection_mut(),
             &base,
             options.scale(),
-            options.orientation(),
         )?);
         Some(index)
     } else {
@@ -352,7 +353,12 @@ pub(crate) fn prepare(
         ShapingInput {
             characters: Some(&characters),
             separator_geometry: spacing::authored_demand(&analyzed.analysis, &styles),
-            profile: upright::original_profile(options.orientation(), &upright_units),
+            profile: upright::original_profile(
+                options.orientation(),
+                &upright_units,
+                analyzed.typography,
+                &analyzed.styles,
+            ),
             baseline_reference: options.resolved_baseline_reference(),
             projection: &analyzed.projection,
             analysis: &analyzed.analysis,
@@ -388,7 +394,12 @@ pub(crate) fn prepare(
             &ShapingInput {
                 characters: None,
                 separator_geometry: spacing::authored_demand(&analyzed.analysis, &styles),
-                profile: upright::original_profile(options.orientation(), &upright_units),
+                profile: upright::original_profile(
+                    options.orientation(),
+                    &upright_units,
+                    analyzed.typography,
+                    &analyzed.styles,
+                ),
                 baseline_reference: options.resolved_baseline_reference(),
                 projection: &analyzed.projection,
                 analysis: &analyzed.analysis,
@@ -422,6 +433,7 @@ pub(crate) fn prepare(
         font_catalogue,
         styles,
         default_style_index,
+        vertical_units: upright_units,
         shaped,
         tables,
         indication_fonts,
