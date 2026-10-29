@@ -305,3 +305,5 @@ fn mark_only_tracking_style_preserves_joint_gpos_and_uses_the_tcu_base_tracking(
     assert_eq!(paint_offsets(&line), [(0.0, 0.0), (3.0, -4.0), (14.0, 0.0)]);
     assert_eq!(prepared.analyzed_source().source(), &source);
 }
+
+mod external_context;
