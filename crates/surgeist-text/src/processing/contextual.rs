@@ -15,6 +15,7 @@ pub(crate) mod alignment;
 pub(crate) mod canonical;
 mod capture;
 mod computed;
+mod connection;
 mod joint_flow;
 pub use alignment::{
     ScopeAlignmentBoundary, ScopeAlignmentError, ScopeAlignmentLimitKind, ScopeAlignmentLimits,
@@ -22,6 +23,7 @@ pub use alignment::{
 };
 pub use capture::*;
 pub use computed::{ComputedLineBoundaryError, ComputedLineBoundaryInput, SourceBoxSide};
+pub use connection::SourceProcessingConnectionError;
 pub use joint_flow::{SourceProcessingJointFlow, SourceProcessingJointFlowError};
 
 /// Computed non-inherited trim facts for one actual inline or block box.
@@ -232,6 +234,9 @@ pub struct ContextualSourceInput {
 /// Typed atomic capture/view rejection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SourceProcessingError {
+    SourceConnection {
+        reason: SourceProcessingConnectionError,
+    },
     JointFlow {
         reason: SourceProcessingJointFlowError,
     },
@@ -313,7 +318,7 @@ pub(crate) struct ScopeCapture {
     pub(crate) domain_scopes: Vec<usize>,
     pub(crate) paragraphs: Vec<CapturedParagraphData>,
     pub(crate) joint_flows: Vec<joint_flow::CapturedJointFlowData>,
-    pub(crate) connections: Vec<joint_flow::CapturedConnectionData>,
+    pub(crate) connections: Vec<connection::CapturedConnectionData>,
     pub(crate) controls: Vec<CapturedControlData>,
     pub(crate) atomic_orders: Vec<usize>,
     /// Stable projection indices into the sole original event stream.
@@ -822,67 +827,13 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
             SourceProcessingEvent::Connection(index) => {
                 take(&mut connections, index)?;
                 let row = input.connections[index];
-                let local = if input.joint_flows.is_empty() {
-                    let p = paragraph.ok_or_else(|| invalid(SourceProcessingError::Domain))?;
-                    if captures[p].origins.last() != Some(&row.before_origin)
-                        || input
-                            .origins
-                            .get(row.after_origin)
-                            .is_none_or(|origin| origin.aggregate.start != cursor)
-                    {
-                        return Err(invalid(SourceProcessingError::Connection));
-                    }
-                    Some(p)
-                } else {
-                    if input
-                        .origins
-                        .get(row.after_origin)
-                        .is_none_or(|origin| origin.aggregate.start != cursor)
-                    {
-                        return Err(invalid(SourceProcessingError::JointFlow {
-                            reason: SourceProcessingJointFlowError::ConnectionPosition {
-                                connection: index,
-                            },
-                        }));
-                    }
-                    if let Some(p) = paragraph
-                        .filter(|&p| captures[p].origins.last() == Some(&row.before_origin))
-                    {
-                        Some(p)
-                    } else {
-                        if !origins.get(row.before_origin).copied().unwrap_or(false)
-                            || origins.get(row.after_origin).copied().unwrap_or(true)
-                            || paragraph.is_some_and(|p| !captures[p].origins.is_empty())
-                        {
-                            return Err(invalid(SourceProcessingError::JointFlow {
-                                reason: SourceProcessingJointFlowError::ConnectionEndpoints {
-                                    connection: index,
-                                },
-                            }));
-                        }
-                        let before = topology.events[topology.origin_orders[row.before_origin]]
-                            .paragraph
-                            .expect("the already admitted origin belongs to a raw paragraph");
-                        let prospective = input.joint_flows.iter().any(|flow| {
-                            domain
-                                .and_then(|domain| topology.domain_scopes.get(domain))
-                                .copied()
-                                == Some(flow.scope)
-                                && flow.paragraphs.contains(&before)
-                                && paragraph.is_none_or(|p| flow.paragraphs.contains(&p))
-                        });
-                        if !prospective {
-                            return Err(invalid(SourceProcessingError::JointFlow {
-                                reason: SourceProcessingJointFlowError::UndeclaredConnection {
-                                    connection: index,
-                                },
-                            }));
-                        }
-                        None
-                    }
-                };
                 connection_orders[index] = order;
-                if let Some(p) = local {
+                // This is provisional raw-local indexing only. The complete
+                // event stream validates source endpoints independently of
+                // joint authority, then retains cross-view rows globally.
+                if let Some(p) =
+                    paragraph.filter(|&p| captures[p].origins.last() == Some(&row.before_origin))
+                {
                     captures[p].connections.push(index);
                     captures[p].connection_orders.push(order);
                     let cut = captures[p].anchors.len();
@@ -1019,14 +970,16 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
             boundary_controls[boundaries.end] = true;
         }
     }
-    joint_flow::admit(
+    joint_flow::admit(&input, &mut topology, &paragraph_order)?;
+    let provided = connection::admit(
         &input,
         &mut topology,
         &mut captures,
-        &paragraph_order,
         &connection_orders,
         &mut context,
     )?;
+    joint_flow::validate_connections(&topology, &captures, &provided)?;
+    drop(provided);
     computed::admit(&input, &mut topology, &mut captures, &mut context)?;
     let topology = Arc::new(topology);
     for barrier in &context.barriers {

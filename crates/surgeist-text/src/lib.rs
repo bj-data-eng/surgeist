@@ -82,10 +82,11 @@ pub use processing::{
     ProcessedPosition, ProcessedRange, ProcessedSource, ProcessedSpan, ProcessedText,
     ScopeAlignmentBoundary, ScopeAlignmentError, ScopeAlignmentLimitKind, ScopeAlignmentLimits,
     ScopeAlignmentUsage, ScopeFontReference, ScopeRole, SourceBoxSide, SourceProcessingConnection,
-    SourceProcessingEnvelope, SourceProcessingError, SourceProcessingEvent,
-    SourceProcessingJointFlow, SourceProcessingJointFlowError, SourceProcessingParagraph,
-    SourceProcessingScope, SourceProcessingScopeBoundaries, SourceProcessingTopology,
-    SourceWritingAxis, WhiteSpaceTrim, process_contextual_source, process_source_whitespace,
+    SourceProcessingConnectionError, SourceProcessingEnvelope, SourceProcessingError,
+    SourceProcessingEvent, SourceProcessingJointFlow, SourceProcessingJointFlowError,
+    SourceProcessingParagraph, SourceProcessingScope, SourceProcessingScopeBoundaries,
+    SourceProcessingTopology, SourceWritingAxis, WhiteSpaceTrim, process_contextual_source,
+    process_source_whitespace,
 };
 pub use protocol::paragraph::{
     CompleteTextNodeContribution, ParagraphAnchor, ParagraphAnchorItem,

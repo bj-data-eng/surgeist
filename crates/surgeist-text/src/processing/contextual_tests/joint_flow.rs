@@ -145,6 +145,14 @@ fn refuses(input: ContextualSourceInput, expected: SourceProcessingJointFlowErro
     );
 }
 
+fn refuses_source(input: ContextualSourceInput, expected: SourceProcessingConnectionError) {
+    let error = process_contextual_source(input).unwrap_err();
+    assert_eq!(
+        reason(&error),
+        &SourceProcessingError::SourceConnection { reason: expected }
+    );
+}
+
 #[test]
 fn explicit_flow_keeps_empty_member_facts_owner_and_event_ordered_raw_records() {
     let input = three_members();
@@ -670,6 +678,7 @@ fn designated_owner_and_exact_used_direction_and_strut_are_required() {
 
 #[test]
 fn cross_view_connections_require_actual_successive_endpoints_and_position() {
+    use SourceProcessingConnectionError as C;
     use SourceProcessingJointFlowError as J;
     let mut missing = two_members(ParagraphConnectionKind::Continuous);
     missing.connections.clear();
@@ -694,9 +703,9 @@ fn cross_view_connections_require_actual_successive_endpoints_and_position() {
     duplicate
         .events
         .insert(4, SourceProcessingEvent::Connection(1));
-    refuses(
+    refuses_source(
         duplicate,
-        J::DuplicateConnection {
+        C::Duplicate {
             connection: 1,
             first_connection: 0,
         },
@@ -706,7 +715,7 @@ fn cross_view_connections_require_actual_successive_endpoints_and_position() {
     // next occurrence. Numeric adjacency cannot authorize skipping it.
     let mut endpoints = three_members();
     endpoints.connections[0].after_origin = 2;
-    refuses(endpoints, J::ConnectionEndpoints { connection: 0 });
+    refuses_source(endpoints, C::Endpoints { connection: 0 });
 
     let mut position = two_members(ParagraphConnectionKind::Continuous);
     position.events.remove(3);
@@ -714,7 +723,7 @@ fn cross_view_connections_require_actual_successive_endpoints_and_position() {
     position
         .events
         .insert(6, SourceProcessingEvent::Connection(0));
-    refuses(position, J::ConnectionPosition { connection: 0 });
+    refuses_source(position, C::Position { connection: 0 });
 
     let mut undeclared_edge = two_members(ParagraphConnectionKind::Continuous);
     undeclared_edge.joint_flows[0].paragraphs = vec![1];

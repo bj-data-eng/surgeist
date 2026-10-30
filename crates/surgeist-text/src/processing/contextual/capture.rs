@@ -720,6 +720,17 @@ impl CapturedComputedLineBoundary {
 }
 
 impl crate::ProcessedSource {
+    /// Actual source relationship, independently of joint analysis authority.
+    #[must_use]
+    pub fn captured_connection(&self, input_ordinal: usize) -> Option<CapturedConnection> {
+        let capture = self.contextual_capture()?;
+        capture.connections.get(input_ordinal)?;
+        Some(CapturedConnection {
+            capture: Arc::clone(capture),
+            index: input_ordinal,
+        })
+    }
+
     #[must_use]
     pub fn captured_joint_flow(&self, input_ordinal: usize) -> Option<CapturedJointFlow> {
         let capture = self.contextual_capture()?;
