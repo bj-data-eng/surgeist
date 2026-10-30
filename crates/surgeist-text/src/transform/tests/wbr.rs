@@ -347,6 +347,8 @@ fn contextual_event_order_retains_the_same_genuine_wbr_cut() {
             }],
             replacements: vec![],
             scopes: vec![SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: SourceProcessingTopology::Unknown,
                 trim: WhiteSpaceTrim::default(),

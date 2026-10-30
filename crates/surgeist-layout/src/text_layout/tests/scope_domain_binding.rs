@@ -71,6 +71,8 @@ fn atomic_domain_shape(
     let domain = |atomic| {
         if plain_child {
             text::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: text::SourceProcessingTopology::Complete,
                 trim: text::WhiteSpaceTrim::default(),
@@ -79,6 +81,8 @@ fn atomic_domain_shape(
             }
         } else if kind == text::InlineBoxKind::InFlow {
             text::SourceProcessingScope::AtomicBlock {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: text::SourceProcessingTopology::Complete,
                 trim: text::WhiteSpaceTrim::default(),
@@ -88,6 +92,8 @@ fn atomic_domain_shape(
             }
         } else {
             text::SourceProcessingScope::OutOfFlowBlock {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: text::SourceProcessingTopology::Complete,
                 trim: text::WhiteSpaceTrim::default(),
@@ -99,6 +105,8 @@ fn atomic_domain_shape(
     };
     let mut scopes = vec![
         text::SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: text::SourceProcessingTopology::Complete,
             trim: text::WhiteSpaceTrim::default(),
@@ -113,6 +121,7 @@ fn atomic_domain_shape(
     let owner_scope = scopes.len();
     let start = if two_domains { 2 } else { 0 };
     scopes.push(text::SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         trim: text::WhiteSpaceTrim::default(),
@@ -162,6 +171,7 @@ fn atomic_domain_shape(
     if two_domains {
         let empty_inline = scopes.len();
         scopes.push(text::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             trim: text::WhiteSpaceTrim::default(),
@@ -234,6 +244,7 @@ fn atomic_domain_shape(
             },
         ]);
         scopes.push(text::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             trim: text::WhiteSpaceTrim::default(),

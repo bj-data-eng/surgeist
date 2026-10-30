@@ -1256,6 +1256,8 @@ fn captured_enclosing_inline_continues_without_its_later_end_decoration() {
             ],
             scopes: vec![
                 t::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: t::SourceProcessingTopology::Complete,
                     trim: t::WhiteSpaceTrim::default(),
@@ -1263,6 +1265,7 @@ fn captured_enclosing_inline_continues_without_its_later_end_decoration() {
                     used_direction: LTR,
                 },
                 t::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: t::WhiteSpaceTrim::default(),

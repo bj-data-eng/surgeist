@@ -46,6 +46,8 @@ fn nf_input(raw: &str, mode: WhiteSpace) -> crate::ContextualSourceInput {
         replacements: vec![],
         computed_line_boundaries: vec![],
         scopes: vec![crate::SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: crate::SourceProcessingTopology::Complete,
             trim: Default::default(),

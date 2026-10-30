@@ -1141,6 +1141,8 @@ fn actual_text_unknown<S: l::LayoutScalar>() {
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![t::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: t::SourceProcessingTopology::Complete,
                 trim: Default::default(),
@@ -2286,6 +2288,8 @@ fn packet_text_float_binding() -> l::TextParagraphBinding<u32> {
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![t::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: t::SourceProcessingTopology::Complete,
                 trim: Default::default(),

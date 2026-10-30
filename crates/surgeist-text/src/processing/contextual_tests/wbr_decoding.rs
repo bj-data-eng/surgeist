@@ -190,6 +190,7 @@ fn ordinary_origin_inline_and_out_of_flow_seams_keep_an_intact_scalar() {
             0 => {}
             1 => {
                 p.scopes.push(SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: WhiteSpaceTrim::default(),

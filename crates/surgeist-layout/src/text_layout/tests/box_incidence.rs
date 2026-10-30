@@ -72,6 +72,8 @@ impl EmptyBox {
                 }],
                 scopes: vec![
                     text::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
                         font_reference: domain_font_reference,
                         topology: text::SourceProcessingTopology::Complete,
                         trim: Default::default(),
@@ -79,6 +81,7 @@ impl EmptyBox {
                         used_direction: base_direction,
                     },
                     text::SourceProcessingScope::Inline {
+                        horizontal_inner_direction: None,
                         alignment_boundary: None,
                         font_reference: None,
                         trim: Default::default(),

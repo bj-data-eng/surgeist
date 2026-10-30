@@ -54,6 +54,8 @@ fn fixture_empty<S: l::LayoutScalar>()
     let mut source = t::Source::identified("AX", t::Id::from_u64(658200), 41);
     source.span(t::Range::new(0, 2), base.clone());
     let block = || t::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         font_reference: None,
         topology: t::SourceProcessingTopology::Complete,
         trim: Default::default(),
@@ -83,6 +85,7 @@ fn fixture_empty<S: l::LayoutScalar>()
             scopes: vec![
                 block(),
                 t::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),

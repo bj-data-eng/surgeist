@@ -78,6 +78,8 @@ fn capture() -> (
         kind: text::ParagraphOriginKind::Authored,
     };
     let block = || text::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         font_reference: None,
         topology: text::SourceProcessingTopology::Complete,
         trim: text::WhiteSpaceTrim::default(),
@@ -117,6 +119,7 @@ fn capture() -> (
             scopes: vec![
                 block(),
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: text::WhiteSpaceTrim::default(),

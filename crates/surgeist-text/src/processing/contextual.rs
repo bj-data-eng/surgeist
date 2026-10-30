@@ -44,6 +44,17 @@ pub struct SourceProcessingScopeBoundaries {
     pub end: usize,
 }
 
+/// Actual writing axis of a captured source formatting domain.
+///
+/// Vertical includes both vertical and both sideways writing modes. This is
+/// supplied source context, independent of typography, glyph basis or font axes.
+/// Absence is expressed by the containing Option, never a default horizontal axis.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SourceWritingAxis {
+    Horizontal,
+    Vertical,
+}
+
 /// Actual box role. Block domains capture their entire effective base style.
 #[derive(Clone, Debug)]
 pub enum SourceProcessingScope {
@@ -53,12 +64,18 @@ pub enum SourceProcessingScope {
         boundaries: Option<SourceProcessingScopeBoundaries>,
         alignment_boundary: Option<ScopeAlignmentBoundary>,
         font_reference: Option<ScopeFontReference>,
+        /// Actual used direction for this box's horizontal inner composition.
+        /// None does not borrow the parent, paragraph or outer used direction.
+        horizontal_inner_direction: Option<ParagraphBaseDirection>,
     },
     Block {
         topology: SourceProcessingTopology,
         trim: WhiteSpaceTrim,
         base_style: Style,
         used_direction: ParagraphBaseDirection,
+        writing_axis: Option<SourceWritingAxis>,
+        /// Horizontal inner direction for anonymous content governed here.
+        horizontal_inner_direction: Option<ParagraphBaseDirection>,
         font_reference: Option<ScopeFontReference>,
     },
     AtomicBlock {
@@ -66,6 +83,8 @@ pub enum SourceProcessingScope {
         trim: WhiteSpaceTrim,
         base_style: Style,
         used_direction: ParagraphBaseDirection,
+        writing_axis: Option<SourceWritingAxis>,
+        horizontal_inner_direction: Option<ParagraphBaseDirection>,
         atomic: usize,
         font_reference: Option<ScopeFontReference>,
     },
@@ -74,11 +93,43 @@ pub enum SourceProcessingScope {
         trim: WhiteSpaceTrim,
         base_style: Style,
         used_direction: ParagraphBaseDirection,
+        writing_axis: Option<SourceWritingAxis>,
+        horizontal_inner_direction: Option<ParagraphBaseDirection>,
         atomic: usize,
         font_reference: Option<ScopeFontReference>,
     },
 }
 impl SourceProcessingScope {
+    fn writing_axis(&self) -> Option<SourceWritingAxis> {
+        match self {
+            Self::Inline { .. } => None,
+            Self::Block { writing_axis, .. }
+            | Self::AtomicBlock { writing_axis, .. }
+            | Self::OutOfFlowBlock { writing_axis, .. } => *writing_axis,
+        }
+    }
+
+    fn horizontal_inner_direction(&self) -> Option<ParagraphBaseDirection> {
+        match self {
+            Self::Inline {
+                horizontal_inner_direction,
+                ..
+            }
+            | Self::Block {
+                horizontal_inner_direction,
+                ..
+            }
+            | Self::AtomicBlock {
+                horizontal_inner_direction,
+                ..
+            }
+            | Self::OutOfFlowBlock {
+                horizontal_inner_direction,
+                ..
+            } => *horizontal_inner_direction,
+        }
+    }
+
     fn alignment_boundary(&self) -> Option<ScopeAlignmentBoundary> {
         match self {
             Self::Inline {
@@ -204,6 +255,9 @@ pub(crate) struct CapturedScopeData {
     pub(crate) style: Option<Style>,
     pub(crate) boundaries: Option<SourceProcessingScopeBoundaries>,
     pub(crate) definition: Option<CapturedDomainData>,
+    /// Present only on actual domain roots; inline lookup uses domain_scopes.
+    pub(crate) writing_axis: Option<SourceWritingAxis>,
+    pub(crate) horizontal_inner_direction: Option<ParagraphBaseDirection>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -500,6 +554,8 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                         Some(CapturedDomainData::OutOfFlowBlock(*atomic))
                     }
                 },
+                writing_axis: scope.writing_axis(),
+                horizontal_inner_direction: scope.horizontal_inner_direction(),
             })
             .collect(),
         events: Vec::new(),

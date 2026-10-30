@@ -8,6 +8,8 @@ use surgeist_text as text;
 fn child_scope(kind: text::InlineBoxKind) -> text::SourceProcessingScope {
     match kind {
         text::InlineBoxKind::InFlow => text::SourceProcessingScope::AtomicBlock {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: text::SourceProcessingTopology::Complete,
             trim: text::WhiteSpaceTrim::default(),
@@ -16,6 +18,8 @@ fn child_scope(kind: text::InlineBoxKind) -> text::SourceProcessingScope {
             atomic: 0,
         },
         text::InlineBoxKind::OutOfFlow => text::SourceProcessingScope::OutOfFlowBlock {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: text::SourceProcessingTopology::Complete,
             trim: text::WhiteSpaceTrim::default(),
@@ -112,6 +116,8 @@ fn capture(
         },
         scopes: vec![
             text::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: text::SourceProcessingTopology::Complete,
                 trim: text::WhiteSpaceTrim::default(),

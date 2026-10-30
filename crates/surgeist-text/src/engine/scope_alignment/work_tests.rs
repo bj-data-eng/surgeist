@@ -80,6 +80,8 @@ fn fixture() -> Fixture {
         computed_line_boundaries: vec![],
         scopes: vec![
             SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 topology: SourceProcessingTopology::Complete,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style.clone(),
@@ -87,6 +89,7 @@ fn fixture() -> Fixture {
                 font_reference: Some(reference),
             },
             SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
                 trim: WhiteSpaceTrim::default(),
                 style: Some(style.clone()),
                 boundaries: None,
@@ -94,6 +97,7 @@ fn fixture() -> Fixture {
                 font_reference: Some(reference),
             },
             SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
                 trim: WhiteSpaceTrim::default(),
                 style: Some(style),
                 boundaries: None,

@@ -83,7 +83,7 @@ pub use processing::{
     ScopeAlignmentLimitKind, ScopeAlignmentLimits, ScopeAlignmentUsage, ScopeFontReference,
     ScopeRole, SourceBoxSide, SourceProcessingConnection, SourceProcessingEnvelope,
     SourceProcessingError, SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
-    SourceProcessingScopeBoundaries, SourceProcessingTopology, WhiteSpaceTrim,
+    SourceProcessingScopeBoundaries, SourceProcessingTopology, SourceWritingAxis, WhiteSpaceTrim,
     process_contextual_source, process_source_whitespace,
 };
 pub use protocol::paragraph::{
@@ -142,8 +142,9 @@ pub use style::{
     Brush, CaseTransform, Decoration, DecorationBrush, DecorationOffset, DecorationOffsetValue,
     DecorationThickness, DecorationThicknessValue, Direction, Font, FontVariant, FontWeightValue,
     FontWidthRatio, HangingPunctuation, HangingPunctuationEnd, LineBreak, LineHeight, OverflowWrap,
-    SelectionPaint, Slant, Style, TextTransform, TextTransformSet, ValidatedStyle, Weight,
-    WhiteSpace, Width, WordBreak, WordSpaceTransform, Wrap,
+    SelectionPaint, Slant, Style, TextCombineUpright, TextCombineUprightDigits, TextTransform,
+    TextTransformSet, ValidatedStyle, Weight, WhiteSpace, Width, WordBreak, WordSpaceTransform,
+    Wrap,
 };
 pub use style_support::{
     TextStyleFeature, TextStylePhase, TextStyleSupport, UnsupportedTextStyleReason,

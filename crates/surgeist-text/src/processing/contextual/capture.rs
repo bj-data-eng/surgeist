@@ -10,8 +10,11 @@ use std::{
 use super::{
     CapturedDomainData, ScopeAlignmentBoundary, ScopeAlignmentLimits, ScopeAlignmentUsage,
     ScopeCapture, ScopeFontReference, SourceProcessingEvent, SourceProcessingTopology,
+    SourceWritingAxis,
 };
-use crate::{ParagraphControlKind, SourcePosition, Style};
+use crate::{
+    ParagraphBaseDirection, ParagraphControlKind, SourcePosition, Style, TextCombineUpright,
+};
 
 macro_rules! captured_handle {
     ($($name:ident),+ $(,)?) => {$ (
@@ -272,6 +275,29 @@ impl CapturedScope {
     #[must_use]
     pub fn style(&self) -> Option<&Style> {
         self.capture.scopes[self.index].style.as_ref()
+    }
+
+    /// Effective mode on this actual scope, without inferred inheritance.
+    /// Missing Style returns None; an explicitly computed initial value returns
+    /// Some(TextCombineUpright::None).
+    #[must_use]
+    pub fn text_combine_upright(&self) -> Option<TextCombineUpright> {
+        self.style().map(|style| style.text_combine_upright)
+    }
+
+    /// Actual axis supplied on this scope's own formatting-domain root.
+    /// A nested domain with absent evidence does not borrow its parent axis.
+    #[must_use]
+    pub fn writing_axis(&self) -> Option<SourceWritingAxis> {
+        let root = self.capture.domain_scopes[self.capture.scopes[self.index].domain];
+        self.capture.scopes[root].writing_axis
+    }
+
+    /// Explicit same-scope used direction for horizontal inner composition.
+    /// This does not fall back to a paragraph, domain or ancestor direction.
+    #[must_use]
+    pub fn horizontal_inner_direction(&self) -> Option<ParagraphBaseDirection> {
+        self.capture.scopes[self.index].horizontal_inner_direction
     }
 
     /// Genuine scope entry in the sole global mixed-event stream.

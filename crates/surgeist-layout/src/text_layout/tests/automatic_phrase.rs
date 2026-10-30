@@ -42,6 +42,7 @@ fn fixture_in_direction(
     source.span(whole, source_style);
     let control = |kind, at| text::ParagraphControl { kind, at };
     let inline = |style, start, end| text::SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         trim: text::WhiteSpaceTrim::default(),
@@ -78,6 +79,8 @@ fn fixture_in_direction(
             replacements: vec![],
             scopes: vec![
                 text::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: text::SourceProcessingTopology::Complete,
                     trim: text::WhiteSpaceTrim::default(),

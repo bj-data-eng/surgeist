@@ -505,6 +505,8 @@ fn original_separator_at_disconnected_join(
         boundary_policies: vec![],
         replacements: vec![],
         scopes: vec![SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: SourceProcessingTopology::Unknown,
             trim: WhiteSpaceTrim::default(),

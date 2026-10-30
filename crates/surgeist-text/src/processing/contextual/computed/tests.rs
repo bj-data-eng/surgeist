@@ -38,6 +38,8 @@ fn input(left: Text, right: Text) -> ContextualSourceInput {
         replacements: Vec::new(),
         scopes: vec![
             SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: SourceProcessingTopology::Complete,
                 trim: WhiteSpaceTrim::default(),
@@ -45,6 +47,7 @@ fn input(left: Text, right: Text) -> ContextualSourceInput {
                 used_direction: ParagraphBaseDirection::LeftToRight,
             },
             SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
                 trim: WhiteSpaceTrim::default(),

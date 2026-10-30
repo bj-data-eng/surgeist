@@ -297,6 +297,8 @@ fn child_domain_hole_cannot_supply_or_remove_the_parent_words_counting_units() {
             }],
             scopes: vec![
                 SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: crate::SourceProcessingTopology::Unknown,
                     used_direction: ParagraphBaseDirection::LeftToRight,
@@ -304,6 +306,8 @@ fn child_domain_hole_cannot_supply_or_remove_the_parent_words_counting_units() {
                     base_style: style(),
                 },
                 SourceProcessingScope::OutOfFlowBlock {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: crate::SourceProcessingTopology::Unknown,
                     used_direction: ParagraphBaseDirection::LeftToRight,

@@ -98,6 +98,8 @@ fn deferred(kind: InlineBoxKind, closed_parent: bool) -> Arc<ProcessedSource> {
     }
     let domain = |atomic| match kind {
         InlineBoxKind::InFlow => SourceProcessingScope::AtomicBlock {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: SourceProcessingTopology::Unknown,
             trim: WhiteSpaceTrim::default(),
@@ -106,6 +108,8 @@ fn deferred(kind: InlineBoxKind, closed_parent: bool) -> Arc<ProcessedSource> {
             atomic,
         },
         InlineBoxKind::OutOfFlow => SourceProcessingScope::OutOfFlowBlock {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: SourceProcessingTopology::Unknown,
             trim: WhiteSpaceTrim::default(),
@@ -157,6 +161,7 @@ fn deferred(kind: InlineBoxKind, closed_parent: bool) -> Arc<ProcessedSource> {
                 domain(0),
                 domain(1),
                 SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: WhiteSpaceTrim::default(),
@@ -376,6 +381,7 @@ fn inline_and_connection_facts_do_not_add_flow_events_or_hide_originals() {
             scopes: vec![
                 block(SourceProcessingTopology::Unknown),
                 SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: WhiteSpaceTrim::default(),

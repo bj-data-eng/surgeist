@@ -81,6 +81,8 @@ fn input(text: &str, operation: WordSpaceTransform, cuts: &[usize]) -> Contextua
         boundary_policies,
         replacements: vec![],
         scopes: vec![SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: SourceProcessingTopology::Complete,
             trim: WhiteSpaceTrim::default(),
@@ -161,6 +163,7 @@ fn wrap_inline(input: &mut ContextualSourceInput, governing: Option<Style>) {
     ]);
     let scope = input.scopes.len();
     input.scopes.push(SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         trim: WhiteSpaceTrim::default(),
@@ -208,6 +211,7 @@ fn wrap_origin(input: &mut ContextualSourceInput, origin: usize) {
     ]);
     let scope = input.scopes.len();
     input.scopes.push(SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         trim: WhiteSpaceTrim::default(),
@@ -871,6 +875,7 @@ fn text_empty_parent_and_empty_seam_scope_keep_the_outer_actual_font_and_style()
     ]);
     let scope = capture.scopes.len();
     capture.scopes.push(SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         trim: WhiteSpaceTrim::default(),
@@ -962,6 +967,8 @@ fn out_of_flow_child_interiors_do_not_split_parent_analysis_but_in_flow_atomics_
         let child_style = style(WordSpaceTransform::None);
         capture.scopes.push(match kind {
             InlineBoxKind::OutOfFlow => SourceProcessingScope::OutOfFlowBlock {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: SourceProcessingTopology::Complete,
                 trim: WhiteSpaceTrim::default(),
@@ -970,6 +977,8 @@ fn out_of_flow_child_interiors_do_not_split_parent_analysis_but_in_flow_atomics_
                 atomic: 0,
             },
             InlineBoxKind::InFlow => SourceProcessingScope::AtomicBlock {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: SourceProcessingTopology::Complete,
                 trim: WhiteSpaceTrim::default(),

@@ -364,6 +364,8 @@ mod tests {
             replacements: vec![],
             scopes: vec![
                 SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     topology: SourceProcessingTopology::Unknown,
                     trim: WhiteSpaceTrim::default(),
                     base_style: Style {
@@ -374,6 +376,7 @@ mod tests {
                     font_reference: None,
                 },
                 SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: WhiteSpaceTrim::default(),

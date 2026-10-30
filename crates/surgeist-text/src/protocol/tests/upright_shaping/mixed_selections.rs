@@ -64,6 +64,8 @@ fn captured(text: &str, at: usize, style: Style, force: bool) -> Arc<crate::Proc
         replacements: vec![],
         scopes: vec![
             SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: SourceProcessingTopology::Complete,
                 trim: WhiteSpaceTrim::default(),
@@ -71,6 +73,7 @@ fn captured(text: &str, at: usize, style: Style, force: bool) -> Arc<crate::Proc
                 used_direction: ParagraphBaseDirection::LeftToRight,
             },
             SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
                 trim: WhiteSpaceTrim::default(),

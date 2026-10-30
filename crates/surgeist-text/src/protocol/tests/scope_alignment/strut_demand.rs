@@ -50,6 +50,7 @@ fn fixture(relation: Relation) -> Fixture {
         origin.source = input.source.clone();
     }
     input.scopes.push(SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         trim: WhiteSpaceTrim::default(),
         style: None,
         boundaries: None,

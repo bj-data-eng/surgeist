@@ -1019,6 +1019,8 @@ fn contextual_holes_remain_real_pieces_of_shared_units_and_generated_origins_are
         replacements: vec![],
         scopes: vec![
             SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: crate::SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,
@@ -1026,6 +1028,8 @@ fn contextual_holes_remain_real_pieces_of_shared_units_and_generated_origins_are
                 base_style: style(10.0),
             },
             SourceProcessingScope::OutOfFlowBlock {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: crate::SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,

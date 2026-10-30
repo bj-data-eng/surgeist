@@ -631,6 +631,8 @@ fn an_empty_out_of_flow_child_wbr_cannot_split_parent_phase_one_decoding() {
             origin.source = p.source.clone();
         }
         p.scopes.push(SourceProcessingScope::OutOfFlowBlock {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: SourceProcessingTopology::Complete,
             trim: WhiteSpaceTrim::default(),

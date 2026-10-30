@@ -378,6 +378,8 @@ fn contextual(value: &str, base: t::Style, trim: t::WhiteSpaceTrim) -> Arc<t::Pr
             replacements: vec![],
             scopes: vec![
                 t::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: t::SourceProcessingTopology::Complete,
                     trim: t::WhiteSpaceTrim::default(),
@@ -385,6 +387,7 @@ fn contextual(value: &str, base: t::Style, trim: t::WhiteSpaceTrim) -> Arc<t::Pr
                     used_direction: LTR,
                 },
                 t::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim,
@@ -928,6 +931,8 @@ fn preserve_breaks_does_not_collapse_across_distinct_real_block_domains() {
     let source = source("A \tB");
     let base = style(t::WhiteSpace::PreserveBreaks, t::Wrap::Word);
     let block = || t::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         font_reference: None,
         topology: t::SourceProcessingTopology::Complete,
         trim: t::WhiteSpaceTrim::default(),

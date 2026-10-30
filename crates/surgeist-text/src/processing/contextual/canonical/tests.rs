@@ -11,6 +11,8 @@ fn processed(forced: bool) -> Arc<ProcessedSource> {
             envelope: SourceProcessingEnvelope::Complete,
             scopes: vec![
                 SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: SourceProcessingTopology::Complete,
                     trim: Default::default(),
@@ -18,6 +20,7 @@ fn processed(forced: bool) -> Arc<ProcessedSource> {
                     used_direction: ParagraphBaseDirection::LeftToRight,
                 },
                 SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),

@@ -66,6 +66,8 @@ fn collapsed_space_cuts(first: text::Wrap, second: text::Wrap, ancestor: text::W
             }],
             scopes: vec![
                 text::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: text::SourceProcessingTopology::Unknown,
                     trim: text::WhiteSpaceTrim::default(),
@@ -73,6 +75,7 @@ fn collapsed_space_cuts(first: text::Wrap, second: text::Wrap, ancestor: text::W
                     used_direction: text::ParagraphBaseDirection::LeftToRight,
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: text::WhiteSpaceTrim::default(),
@@ -80,6 +83,7 @@ fn collapsed_space_cuts(first: text::Wrap, second: text::Wrap, ancestor: text::W
                     boundaries: None,
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: text::WhiteSpaceTrim::default(),

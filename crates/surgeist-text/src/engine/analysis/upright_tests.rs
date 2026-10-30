@@ -81,6 +81,8 @@ fn contextual(source: Source) -> ContextualSourceInput {
         boundary_policies: vec![],
         replacements: vec![],
         scopes: vec![SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: SourceProcessingTopology::Unknown,
             used_direction: LTR,
@@ -444,6 +446,7 @@ fn actual_contextual_computed_edges_cut_used_bodies_without_inserting_source_tex
         ancestor_wrap: Wrap::Word,
     }];
     input.scopes.push(SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         trim: WhiteSpaceTrim::default(),

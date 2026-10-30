@@ -33,6 +33,8 @@ fn system() -> System {
 
 fn block(topology: SourceProcessingTopology) -> SourceProcessingScope {
     SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         font_reference: None,
         topology,
         trim: WhiteSpaceTrim::default(),
@@ -138,6 +140,7 @@ fn continuation(enabled: bool, known: bool) -> Arc<ProcessedSource> {
                     SourceProcessingTopology::Unknown
                 }),
                 SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: WhiteSpaceTrim::default(),
@@ -383,6 +386,8 @@ fn same_anchor_atomic_domains_retain_the_exact_nominated_occurrence() {
         }
         let child = match kind {
             InlineBoxKind::InFlow => SourceProcessingScope::AtomicBlock {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: SourceProcessingTopology::Unknown,
                 trim: WhiteSpaceTrim::default(),
@@ -391,6 +396,8 @@ fn same_anchor_atomic_domains_retain_the_exact_nominated_occurrence() {
                 atomic: 0,
             },
             InlineBoxKind::OutOfFlow => SourceProcessingScope::OutOfFlowBlock {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: SourceProcessingTopology::Unknown,
                 trim: WhiteSpaceTrim::default(),
@@ -484,6 +491,7 @@ fn empty_nested_owners_keep_distinct_same_anchor_endpoints_without_emitting() {
         affinity: Affinity::After,
     };
     let inline = |start, end| SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         trim: WhiteSpaceTrim::default(),

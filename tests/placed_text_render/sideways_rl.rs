@@ -39,6 +39,8 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![text::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: text::SourceProcessingTopology::Unknown,
                 used_direction: text::ParagraphBaseDirection::LeftToRight,

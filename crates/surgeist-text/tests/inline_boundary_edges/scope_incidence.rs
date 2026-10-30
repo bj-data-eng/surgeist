@@ -10,6 +10,8 @@ fn base() -> t::Style {
 }
 fn block(base: t::Style) -> t::SourceProcessingScope {
     t::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         font_reference: None,
         topology: t::SourceProcessingTopology::Complete,
         trim: Default::default(),
@@ -474,6 +476,7 @@ fn cross_tcu_logical_scope_membership_does_not_inherit_a_layout_pairing_limit() 
         let mut value = input("A\u{301}B", base(), &[(0, 1), (1, 3)]);
         value.scopes.extend([
             t::SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
                 trim: Default::default(),
@@ -482,6 +485,7 @@ fn cross_tcu_logical_scope_membership_does_not_inherit_a_layout_pairing_limit() 
                     .then_some(t::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
             },
             t::SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
                 trim: Default::default(),
@@ -838,6 +842,7 @@ fn context_custody_errors_are_precise_and_real_domain_holes_stay_distinct() {
     value.scopes = vec![
         block(base()),
         t::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             trim: Default::default(),
@@ -846,6 +851,7 @@ fn context_custody_errors_are_precise_and_real_domain_holes_stay_distinct() {
         },
         block(base()),
         t::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             trim: Default::default(),

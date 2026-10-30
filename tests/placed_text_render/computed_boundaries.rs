@@ -129,6 +129,8 @@ fn computed_scope_before_keeps_original_receiving_caret_and_two_painted_lines() 
             replacements: vec![],
             scopes: vec![
                 text::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: text::SourceProcessingTopology::Complete,
                     trim: Default::default(),
@@ -136,6 +138,7 @@ fn computed_scope_before_keeps_original_receiving_caret_and_two_painted_lines() 
                     used_direction: text::ParagraphBaseDirection::LeftToRight,
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),

@@ -86,6 +86,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
         let mut source = t::Source::identified("AB", t::Id::from_u64(652900), 9);
         source.span(t::Range::new(0, 2), style.clone());
         let inline = || t::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             trim: Default::default(),
@@ -132,6 +133,8 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 },
                 scopes: vec![
                     t::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
                         font_reference: None,
                         topology: t::SourceProcessingTopology::Complete,
                         trim: Default::default(),

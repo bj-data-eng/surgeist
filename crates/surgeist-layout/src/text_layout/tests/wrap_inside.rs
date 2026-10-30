@@ -78,6 +78,8 @@ fn captured_with_profile(
     let mut source = Source::new(raw);
     source.span(text::Range::new(0, units.len()), style.clone());
     let mut scopes = vec![text::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         font_reference: None,
         topology,
         trim: Default::default(),
@@ -85,6 +87,7 @@ fn captured_with_profile(
         used_direction: direction,
     }];
     scopes.extend(ranges.iter().map(|_| text::SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         trim: Default::default(),

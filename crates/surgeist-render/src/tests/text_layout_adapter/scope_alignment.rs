@@ -96,6 +96,8 @@ fn captured(effects: bool) -> Arc<text::ProcessedSource> {
             replacements: vec![],
             scopes: vec![
                 text::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     topology: text::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: authored(effects),
@@ -103,6 +105,7 @@ fn captured(effects: bool) -> Arc<text::ProcessedSource> {
                     font_reference: Some(reference(*b"Latn")),
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     trim: Default::default(),
                     style: Some(authored(effects)),
                     boundaries: None,
@@ -110,6 +113,7 @@ fn captured(effects: bool) -> Arc<text::ProcessedSource> {
                     font_reference: Some(reference(*b"Grek")),
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     trim: Default::default(),
                     style: Some(authored(effects)),
                     boundaries: None,

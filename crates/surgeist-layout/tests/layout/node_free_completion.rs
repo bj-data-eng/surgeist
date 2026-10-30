@@ -67,6 +67,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
             ..t::Style::default()
         };
         let inline = || t::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             trim: Default::default(),
@@ -94,6 +95,8 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 },
                 scopes: vec![
                     t::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
                         font_reference: None,
                         topology: t::SourceProcessingTopology::Complete,
                         trim: Default::default(),
@@ -615,6 +618,7 @@ impl<S: l::LayoutScalar> SharedGap<S> {
             t::ParagraphBaseDirection::RightToLeft
         };
         let inline = || t::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             trim: Default::default(),
@@ -644,6 +648,8 @@ impl<S: l::LayoutScalar> SharedGap<S> {
                 ],
                 scopes: vec![
                     t::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
                         font_reference: None,
                         topology: t::SourceProcessingTopology::Complete,
                         trim: Default::default(),
@@ -1154,6 +1160,8 @@ impl<S: l::LayoutScalar> BlockFence<S> {
         let mut source = t::Source::identified("X", t::Id::from_u64(658302), 53);
         source.span(t::Range::new(0, 1), style.clone());
         let block = || t::SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: t::SourceProcessingTopology::Complete,
             trim: Default::default(),
@@ -1161,6 +1169,7 @@ impl<S: l::LayoutScalar> BlockFence<S> {
             used_direction: base,
         };
         let inline = || t::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             trim: Default::default(),
@@ -1869,6 +1878,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
             side: t::SourceBoxSide::After,
         };
         let inline = || t::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             trim: Default::default(),
@@ -1893,6 +1903,8 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 },
                 scopes: vec![
                     t::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
                         font_reference: None,
                         topology: t::SourceProcessingTopology::Complete,
                         trim: Default::default(),

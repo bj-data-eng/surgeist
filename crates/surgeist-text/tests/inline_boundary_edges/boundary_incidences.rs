@@ -5,6 +5,8 @@ use t::CapturedScopeIncidence as R;
 
 fn block(base: t::Style) -> t::SourceProcessingScope {
     t::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         font_reference: None,
         topology: t::SourceProcessingTopology::Complete,
         trim: Default::default(),
@@ -14,6 +16,7 @@ fn block(base: t::Style) -> t::SourceProcessingScope {
 }
 fn inline() -> t::SourceProcessingScope {
     t::SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         trim: Default::default(),
@@ -704,6 +707,8 @@ fn incidence_capabilities_keep_preparation_capture_role_and_domain_errors_distin
     domain.scopes.extend([
         inline(),
         t::SourceProcessingScope::OutOfFlowBlock {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: t::SourceProcessingTopology::Complete,
             trim: Default::default(),

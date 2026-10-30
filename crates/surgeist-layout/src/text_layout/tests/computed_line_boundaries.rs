@@ -65,6 +65,8 @@ fn base_input(rtl: bool, strut: text::ParagraphStrut) -> text::ContextualSourceI
         }],
         replacements: vec![],
         scopes: vec![text::SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: text::SourceProcessingTopology::Complete,
             trim: Default::default(),
@@ -103,6 +105,7 @@ fn control_event(control: usize) -> E {
 fn scope_input(rtl: bool, side: Side, forced: bool) -> text::ContextualSourceInput {
     let mut input = base_input(rtl, text::ParagraphStrut::DefaultFont);
     input.scopes.push(text::SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         trim: Default::default(),
@@ -158,6 +161,7 @@ fn paired_input(rtl: bool, side: Side) -> text::ContextualSourceInput {
         },
     ];
     input.scopes.push(text::SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         trim: Default::default(),
@@ -244,6 +248,7 @@ fn empty_input(anchors: bool, strut: text::ParagraphStrut) -> text::ContextualSo
     input.connections.clear();
     input.boundary_policies.clear();
     input.scopes.push(text::SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         trim: Default::default(),
@@ -752,6 +757,7 @@ fn computed_atomic_edges_split_original_flow_and_keep_the_actual_atomic_geometry
 fn whole_scope_input(rtl: bool, side: Side) -> text::ContextualSourceInput {
     let mut input = base_input(rtl, text::ParagraphStrut::DefaultFont);
     input.scopes.push(text::SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         trim: Default::default(),

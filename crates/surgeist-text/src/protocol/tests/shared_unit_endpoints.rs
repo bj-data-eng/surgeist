@@ -111,6 +111,8 @@ fn capture(endpoints: bool, anywhere: bool) -> PreparedText {
             replacements: vec![],
             scopes: vec![
                 SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: SourceProcessingTopology::Complete,
                     trim: Default::default(),
@@ -118,6 +120,7 @@ fn capture(endpoints: bool, anywhere: bool) -> PreparedText {
                     used_direction: ParagraphBaseDirection::LeftToRight,
                 },
                 SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),
@@ -475,6 +478,8 @@ fn nested_capture(text: &str) -> PreparedText {
             replacements: vec![],
             scopes: vec![
                 SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: SourceProcessingTopology::Complete,
                     trim: Default::default(),
@@ -482,6 +487,7 @@ fn nested_capture(text: &str) -> PreparedText {
                     used_direction: ParagraphBaseDirection::LeftToRight,
                 },
                 SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),
@@ -489,6 +495,7 @@ fn nested_capture(text: &str) -> PreparedText {
                     boundaries: Some(SourceProcessingScopeBoundaries { start: 0, end: 3 }),
                 },
                 SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),

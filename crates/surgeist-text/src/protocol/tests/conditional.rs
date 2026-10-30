@@ -1713,6 +1713,8 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
         }],
         scopes: vec![
             SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: crate::SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,
@@ -1723,6 +1725,8 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
                 },
             },
             SourceProcessingScope::OutOfFlowBlock {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: crate::SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,

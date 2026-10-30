@@ -13,6 +13,8 @@ fn enclosing_edges_localize_to_their_paragraph_and_remote_same_domain_is_outside
         envelope: crate::SourceProcessingEnvelope::Complete,
         scopes: vec![
             crate::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: crate::SourceProcessingTopology::Complete,
                 trim: Default::default(),
@@ -20,6 +22,7 @@ fn enclosing_edges_localize_to_their_paragraph_and_remote_same_domain_is_outside
                 used_direction: ParagraphBaseDirection::LeftToRight,
             },
             crate::SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
                 trim: Default::default(),

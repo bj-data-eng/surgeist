@@ -71,6 +71,8 @@ impl Case {
             2
         };
         let mut scopes = vec![text::SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: text::SourceProcessingTopology::Complete,
             trim: Default::default(),
@@ -79,6 +81,7 @@ impl Case {
         }];
         for _ in 0..count {
             scopes.push(text::SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
                 trim: Default::default(),
@@ -1146,6 +1149,8 @@ fn pinned_after_s(direction: Direction) -> Case {
             }],
             scopes: vec![
                 text::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: text::SourceProcessingTopology::Complete,
                     trim: Default::default(),
@@ -1153,6 +1158,7 @@ fn pinned_after_s(direction: Direction) -> Case {
                     used_direction: base,
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),
@@ -1160,6 +1166,7 @@ fn pinned_after_s(direction: Direction) -> Case {
                     boundaries: None,
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),
@@ -1637,6 +1644,8 @@ fn realization_case(direction: Direction, force: bool) -> Case {
             }],
             scopes: vec![
                 text::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: text::SourceProcessingTopology::Complete,
                     trim: Default::default(),
@@ -1644,6 +1653,7 @@ fn realization_case(direction: Direction, force: bool) -> Case {
                     used_direction: base,
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),
@@ -1651,6 +1661,7 @@ fn realization_case(direction: Direction, force: bool) -> Case {
                     boundaries: None,
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),
@@ -2036,6 +2047,8 @@ fn exterior_case(direction: Direction, trailing: bool) -> Case {
             }],
             scopes: vec![
                 text::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: text::SourceProcessingTopology::Complete,
                     trim: Default::default(),
@@ -2043,6 +2056,7 @@ fn exterior_case(direction: Direction, trailing: bool) -> Case {
                     used_direction: base,
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),

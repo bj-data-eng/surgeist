@@ -114,6 +114,8 @@ fn prepare(
         replacements: vec![],
         computed_line_boundaries: vec![],
         scopes: vec![text::SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: text::SourceProcessingTopology::Complete,
             used_direction: text::ParagraphBaseDirection::LeftToRight,

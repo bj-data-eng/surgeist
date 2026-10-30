@@ -568,6 +568,7 @@ fn edge_leaves(orientation: LineOrientation) -> (PreparedText, CapturedScope) {
     // independent whole-scope allocations or a proxy for the parent's text.
     for child in 0..4 {
         input.scopes.push(SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
             trim: Default::default(),
             style: Some(decorated()),
             boundaries: Some(SourceProcessingScopeBoundaries {

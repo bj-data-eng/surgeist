@@ -40,6 +40,7 @@ fn native_only_input(direction: layout::Direction, empty: bool) -> text::Context
     assert!(raw.computed_line_boundaries.is_empty());
     if empty {
         raw.scopes.push(text::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             trim: Default::default(),

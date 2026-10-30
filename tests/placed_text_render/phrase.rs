@@ -146,6 +146,8 @@ fn capture(
         vec![]
     };
     let mut scopes = vec![text::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         font_reference: None,
         trim: text::WhiteSpaceTrim::default(),
         base_style: owner.clone(),
@@ -158,6 +160,7 @@ fn capture(
     ];
     if inline {
         scopes.push(text::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             trim: text::WhiteSpaceTrim::default(),

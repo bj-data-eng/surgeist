@@ -221,6 +221,8 @@ fn mixed_input(
     ]);
     let mut scopes = vec![
         text::SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: text::SourceProcessingTopology::Complete,
             trim: Default::default(),
@@ -232,6 +234,7 @@ fn mixed_input(
             used_direction: base,
         },
         text::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             trim: Default::default(),
@@ -241,6 +244,7 @@ fn mixed_input(
     ];
     if empty {
         scopes.push(text::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             trim: Default::default(),

@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 
 fn inline() -> crate::SourceProcessingScope {
     crate::SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         trim: Default::default(),
@@ -22,6 +23,8 @@ fn capture(paragraph_count: usize, padding_scopes: usize) -> Arc<crate::Processe
     assert!(paragraph_count >= 2);
     let source = Source::new("A B".repeat(paragraph_count));
     let mut scopes = vec![crate::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         font_reference: None,
         topology: crate::SourceProcessingTopology::Complete,
         trim: Default::default(),

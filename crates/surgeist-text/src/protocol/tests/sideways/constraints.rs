@@ -284,6 +284,8 @@ fn actual_computed_scope_mandatory_keeps_cause_and_source_without_a_control_prox
             }],
             scopes: vec![
                 crate::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: crate::SourceProcessingTopology::Complete,
                     trim: Default::default(),
@@ -291,6 +293,7 @@ fn actual_computed_scope_mandatory_keeps_cause_and_source_without_a_control_prox
                     used_direction: ParagraphBaseDirection::LeftToRight,
                 },
                 crate::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),

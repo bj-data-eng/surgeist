@@ -76,6 +76,8 @@ fn continuation_case() -> Case {
                 .collect(),
             scopes: vec![
                 text::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     topology: text::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: style.clone(),
@@ -83,6 +85,7 @@ fn continuation_case() -> Case {
                     font_reference: Some(reference()),
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     trim: Default::default(),
                     style: Some(style),
                     boundaries: Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
@@ -92,6 +95,7 @@ fn continuation_case() -> Case {
                 // Actual represented child, with numeric endpoint/box geometry.
                 // It has neither an invented Initial classification nor a font demand.
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     trim: Default::default(),
                     style: None,
                     boundaries: Some(text::SourceProcessingScopeBoundaries { start: 2, end: 3 }),

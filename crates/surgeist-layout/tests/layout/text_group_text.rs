@@ -403,6 +403,8 @@ impl Paragraph {
         }
         events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
         let mut scopes = vec![t::SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: t::SourceProcessingTopology::Complete,
             trim: Default::default(),
@@ -411,6 +413,7 @@ impl Paragraph {
         }];
         if let Some(boundaries) = boundary_pair {
             scopes.push(t::SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
                 trim: Default::default(),

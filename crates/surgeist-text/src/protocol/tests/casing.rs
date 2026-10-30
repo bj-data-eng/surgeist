@@ -231,6 +231,8 @@ fn authored_forced_origin_seam_stops_lithuanian_dot_removal_and_unit_context() {
                 }],
                 replacements: Vec::new(),
                 scopes: vec![SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: SourceProcessingTopology::Complete,
                     used_direction: ParagraphBaseDirection::LeftToRight,

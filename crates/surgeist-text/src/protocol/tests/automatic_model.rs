@@ -779,6 +779,8 @@ fn transparent_child_holes_keep_automatic_source_anchor_separate_from_mixed_cut_
             .collect(),
         scopes: vec![
             SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: crate::SourceProcessingTopology::Unknown,
                 trim: WhiteSpaceTrim::default(),
@@ -786,6 +788,8 @@ fn transparent_child_holes_keep_automatic_source_anchor_separate_from_mixed_cut_
                 used_direction: ParagraphBaseDirection::LeftToRight,
             },
             SourceProcessingScope::OutOfFlowBlock {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: crate::SourceProcessingTopology::Unknown,
                 trim: WhiteSpaceTrim::default(),

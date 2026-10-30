@@ -579,6 +579,8 @@ fn declared_tuple_survives_validation_source_spans_and_contextual_capture() {
                     boundary_policies: vec![],
                     replacements: vec![],
                     scopes: vec![t::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
                         font_reference: None,
                         topology: t::SourceProcessingTopology::Complete,
                         trim: t::WhiteSpaceTrim::default(),

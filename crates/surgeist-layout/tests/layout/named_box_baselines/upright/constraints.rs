@@ -65,6 +65,8 @@ fn native(raw: &str, height: f64, forced: bool, whitespace: t::WhiteSpace) -> Na
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![t::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: t::SourceProcessingTopology::Complete,
                 trim: Default::default(),

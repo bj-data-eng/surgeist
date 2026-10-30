@@ -6,6 +6,8 @@ fn block(mut base: t::Style, rtl: bool, break_all: bool) -> t::SourceProcessingS
         base.word_break = t::WordBreak::BreakAll;
     }
     t::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         font_reference: None,
         topology: t::SourceProcessingTopology::Complete,
         trim: t::WhiteSpaceTrim::default(),

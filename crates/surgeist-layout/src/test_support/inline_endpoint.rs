@@ -184,6 +184,8 @@ impl Fixture {
                 replacements: vec![],
                 scopes: vec![
                     text::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
                         font_reference: None,
                         topology: text::SourceProcessingTopology::Complete,
                         trim: Default::default(),
@@ -191,6 +193,7 @@ impl Fixture {
                         used_direction: direction,
                     },
                     text::SourceProcessingScope::Inline {
+                        horizontal_inner_direction: None,
                         alignment_boundary: None,
                         font_reference: None,
                         trim: Default::default(),

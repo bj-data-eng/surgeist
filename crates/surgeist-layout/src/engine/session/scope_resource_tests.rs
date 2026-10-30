@@ -88,6 +88,8 @@ impl Fixture {
                 }],
                 scopes: vec![
                     text::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
                         topology: text::SourceProcessingTopology::Complete,
                         trim: Default::default(),
                         base_style: style.clone(),
@@ -95,6 +97,7 @@ impl Fixture {
                         font_reference: Some(reference),
                     },
                     text::SourceProcessingScope::Inline {
+                        horizontal_inner_direction: None,
                         trim: Default::default(),
                         style: Some(style),
                         boundaries: Some(text::SourceProcessingScopeBoundaries {

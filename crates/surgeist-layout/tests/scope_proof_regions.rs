@@ -97,6 +97,7 @@ fn inline(
         },
     ]);
     scopes.push(text::SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         trim: text::WhiteSpaceTrim::default(),
@@ -145,6 +146,8 @@ fn fixture_with_child_topology(
         ..plain.clone()
     };
     let block = |base_style, topology| text::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         font_reference: None,
         topology,
         trim: text::WhiteSpaceTrim::default(),
@@ -812,6 +815,8 @@ fn nonempty_domain_with_terminal_empty_paragraph() -> IncidenceFixture {
         })
         .collect();
     let block = || text::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         font_reference: None,
         topology: text::SourceProcessingTopology::Complete,
         trim: text::WhiteSpaceTrim::default(),
