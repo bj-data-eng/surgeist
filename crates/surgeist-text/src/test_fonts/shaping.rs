@@ -8,6 +8,8 @@ const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 #[path = "casing.rs"]
 mod casing;
+#[path = "combined_width.rs"]
+mod combined_width;
 #[path = "kana.rs"]
 mod kana;
 #[path = "math.rs"]
