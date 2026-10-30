@@ -149,6 +149,7 @@ fn finalize(
         })
         .collect();
     let request = LineSelectionRequest {
+        segment: crate::test_wrapping::only_source_segment(prepared),
         boundary_context: vec![],
         incoming: None,
         start,

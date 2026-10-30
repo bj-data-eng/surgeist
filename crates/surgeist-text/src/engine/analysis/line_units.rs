@@ -1,4 +1,4 @@
-//! Khmer-specific line indivisibility over the unchanged Unicode17 EGC owner.
+//! Operation-specific line indivisibility over unchanged Unicode17 EGCs.
 
 use std::ops::Range;
 
@@ -14,10 +14,14 @@ use crate::projection::SourceProjection;
 #[derive(Clone)]
 pub(crate) struct LineBreakUnits {
     suppressed: Vec<usize>,
+    cells: Vec<Range<usize>>,
 }
 
 impl LineBreakUnits {
-    pub(crate) fn new(projection: &SourceProjection) -> crate::Result<Self> {
+    pub(crate) fn new(
+        projection: &SourceProjection,
+        combination: Option<&crate::transform::combined::CombinedOutput>,
+    ) -> crate::Result<Self> {
         let properties = CodePointMapData::<IndicConjunctBreak>::new();
         let scripts = ScriptWithExtensions::new();
         let mut barriers = projection.barrier_atoms.clone();
@@ -52,15 +56,43 @@ impl LineBreakUnits {
             follows_coeng = atom.code_point == 0x17d2
                 || follows_coeng && property == IndicConjunctBreak::Extend;
         }
-        Ok(Self { suppressed })
+        // Retain cell indivisibility separately: before/after CSS class
+        // conversion must still consume the actual content's own TCUs.
+        let cells = super::storage::collect(
+            combination
+                .into_iter()
+                .flat_map(|output| output.bindings.iter().map(|binding| binding.atoms.clone())),
+        )?;
+        Ok(Self { suppressed, cells })
     }
 
     pub(crate) fn permits_edge(&self, atom: usize) -> bool {
+        let next = self.cells.partition_point(|cell| cell.start < atom);
         self.suppressed.binary_search(&atom).is_err()
+            && !next
+                .checked_sub(1)
+                .is_some_and(|index| atom < self.cells[index].end)
+    }
+
+    /// Whole outer line units, including actual completed cell restrictions.
+    pub(crate) fn ranges<'a>(
+        &'a self,
+        graphemes: &'a [Range<usize>],
+    ) -> impl Iterator<Item = Range<usize>> + 'a {
+        let mut units = self.content_ranges(graphemes).peekable();
+        std::iter::from_fn(move || {
+            let mut unit = units.next()?;
+            while !self.permits_edge(unit.end)
+                && units.peek().is_some_and(|next| next.start == unit.end)
+            {
+                unit.end = units.next().expect("actual adjacent content unit").end;
+            }
+            Some(unit)
+        })
     }
 
     /// Merge whole adjacent EGCs; do not resegment or drop any of their marks.
-    pub(crate) fn ranges<'a>(
+    pub(crate) fn content_ranges<'a>(
         &'a self,
         graphemes: &'a [Range<usize>],
     ) -> impl Iterator<Item = Range<usize>> + 'a {

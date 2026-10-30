@@ -65,6 +65,9 @@ fn split(p: &PreparedText, at: usize) -> (FinalizedLine, FinalizedLine) {
         unreachable!()
     };
     let offers = p
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &first.start,
             None,
@@ -591,6 +594,9 @@ fn expansion_preserves_normal_alphabetic_no_break_and_distinct_conditional_permi
         let start = p.boundary_views().next().unwrap().handle();
         let ceiling = p.opportunity_views().next().unwrap().handle();
         let offers = p
+            .source_segments()
+            .next()
+            .unwrap()
             .conditional_search(
                 &start,
                 None,
@@ -989,8 +995,14 @@ fn consecutive_greek_removals_retain_distinct_relation_cuts_and_exact_source() {
         p.analyzed_source().inner.transform.events(),
         [
             crate::transform::relation::RelationEvent::Text { atom: 0 },
-            crate::transform::relation::RelationEvent::Removal { row: 1 },
-            crate::transform::relation::RelationEvent::Removal { row: 2 },
+            crate::transform::relation::RelationEvent::Removal {
+                row: 1,
+                selection_part: _
+            },
+            crate::transform::relation::RelationEvent::Removal {
+                row: 2,
+                selection_part: _
+            },
         ]
     ));
     let line = p

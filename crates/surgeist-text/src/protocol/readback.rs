@@ -489,18 +489,16 @@ impl PreparedVirtualSeparatorView<'_> {
 }
 
 impl PreparedText {
-    /// Canonical contextual paragraph, including when no virtual output exists.
-    /// Flat and standalone preparation have no contextual capture authority.
+    /// Actual Raw/Joint output authority, including metadata-only outputs.
     #[must_use]
-    pub fn captured_paragraph(&self) -> Option<CapturedParagraph> {
+    pub fn captured_owner(&self) -> Option<crate::CapturedAnalysisOwner<'_>> {
         self.inner
             .analyzed
             .paragraph
             .scope_topology
             .as_ref()
-            .map(|topology| CapturedParagraph {
-                capture: Arc::clone(&topology.capture),
-                index: topology.paragraph,
+            .map(|topology| crate::CapturedAnalysisOwner {
+                owner: &topology.owner,
             })
     }
 
@@ -978,7 +976,10 @@ impl PreparedBoundaryView<'_> {
     }
 }
 
-impl PreparedOpportunityView<'_> {
+impl<'a> PreparedOpportunityView<'a> {
+    pub(super) fn new(prepared: &'a Arc<PreparedData>, index: usize) -> Self {
+        Self { prepared, index }
+    }
     /// The exact prepared boundary at which this opportunity was issued.
     #[must_use]
     pub fn boundary(&self) -> PreparedBoundary {
@@ -1756,9 +1757,21 @@ impl PreparedComputedLineBoundaryView<'_> {
             .scope_topology
             .as_ref()
             .expect("computed capture");
+        let group = &self.prepared.analyzed.paragraph.computed_boundaries[self.data().occurrence];
+        let mut owners = group
+            .causes
+            .iter()
+            .map(|&cause| topology.capture.computed[cause].paragraph);
+        let owner = owners
+            .next()
+            .expect("an effective computed boundary has actual causes");
+        assert!(
+            owners.all(|candidate| candidate == owner),
+            "computed boundary causes must have one admitted raw paragraph owner"
+        );
         CapturedParagraph {
             capture: Arc::clone(&topology.capture),
-            index: topology.paragraph,
+            index: owner,
         }
     }
     /// Genuine computed causes at this one effective mandatory incidence.
@@ -1997,6 +2010,7 @@ mod tests {
             .handle();
         let selected = prepared
             .select(LineSelectionRequest {
+                segment: prepared.source_segments().next().unwrap(),
                 boundary_context: Vec::new(),
                 incoming: None,
                 start: prepared.boundary_views().next().unwrap().handle(),

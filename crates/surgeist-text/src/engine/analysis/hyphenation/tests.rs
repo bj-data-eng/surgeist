@@ -15,6 +15,7 @@ fn analyzed(text: &str) -> (SourceProjection, Words) {
         &[],
         &crate::protocol::paragraph::ParagraphData::standalone(&source),
         crate::AnalysisTypography::HorizontalComposition,
+        super::super::BidiScope::Indication,
     )
     .unwrap();
     let words = Words::new(&projection, &analysis.graphemes, word_ranges);

@@ -995,8 +995,13 @@ fn node_free_computed_paragraph_admits_its_real_capture_without_child_nodes() {
     assert_eq!(actual.container, f.binding.container);
     assert_eq!(actual.prepared, f.binding.prepared);
     assert_eq!(
-        actual.prepared.captured_paragraph(),
-        f.processed.captured_paragraph(0)
+        actual
+            .prepared
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        vec![f.processed.captured_paragraph(0).unwrap()]
     );
     assert!(actual.nodes.is_empty());
     assert!(actual.origins.is_empty());

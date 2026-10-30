@@ -112,7 +112,14 @@ fn native(raw: &str, height: f64, forced: bool, whitespace: t::WhiteSpace) -> Na
             t::PreparationOptions::default().with_orientation(t::LineOrientation::Vertical),
         )
         .unwrap();
-    assert_eq!(prepared.captured_paragraph(), capture.captured_paragraph(0));
+    assert_eq!(
+        prepared
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        vec![capture.captured_paragraph(0).unwrap()]
+    );
     assert_eq!(prepared.analyzed_source().source(), &source);
     assert_eq!(prepared.control_views().count(), usize::from(forced));
     assert_eq!(prepared.atomic_views().count(), 0);
@@ -152,6 +159,7 @@ fn qualify(native: &Native, expected: (f64, f64, f64)) {
         .collect();
     let line = prepared
         .select(t::LineSelectionRequest {
+            segment: prepared.source_segments().next().unwrap(),
             start: prepared.boundary_views().next().unwrap().handle(),
             end: boundary,
             participants: prepared.participants().take(to).collect(),

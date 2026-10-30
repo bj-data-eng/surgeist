@@ -365,7 +365,10 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 side: t::SourceBoxSide::Before
             }
         );
-        let incidences = self.prepared.boundary_incidences(&forced).unwrap();
+        let incidences = self
+            .prepared
+            .boundary_incidences(&self.prepared.source_segments().next().unwrap(), &forced)
+            .unwrap();
         assert_eq!(incidences.len(), 1);
         assert_eq!(incidences[0].boundary(), forced);
         for (scope, expected) in self.scopes.iter().zip([
@@ -381,7 +384,10 @@ impl<S: l::LayoutScalar> Fixture<S> {
         }
         assert_eq!(
             self.prepared
-                .boundary_incidences(&offers[2].view().boundary())
+                .boundary_incidences(
+                    &self.prepared.source_segments().next().unwrap(),
+                    &offers[2].view().boundary()
+                )
                 .unwrap(),
             incidences
         );

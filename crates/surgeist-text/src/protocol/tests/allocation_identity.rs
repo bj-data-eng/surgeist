@@ -305,6 +305,9 @@ fn framed_conditional_search_retains_exact_spacing_amounts_when_geometry_rounds_
         // preparation/start, not a fabricated consumer policy disposition.
         let search = prefix
             .prepared
+            .source_segments()
+            .next()
+            .unwrap()
             .conditional_search(
                 &prefix.start,
                 None,

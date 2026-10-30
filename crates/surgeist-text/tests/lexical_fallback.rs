@@ -214,18 +214,21 @@ fn missing_thai_lexical_capability_normal_publishes_ordinary_letter_pair_cut() {
         let start = p.boundary_views().next().unwrap().handle();
         let ceiling = p.opportunity_views().next().unwrap().handle();
         assert!(
-            p.conditional_search(
-                &start,
-                None,
-                &ceiling,
-                t::ConditionalPurpose::Overflow,
-                &[],
-                None
-            )
-            .and_then(|search| search.begin(&[]))
-            .map(|batch| batch.opportunities().to_vec())
-            .unwrap()
-            .is_empty()
+            p.source_segments()
+                .next()
+                .unwrap()
+                .conditional_search(
+                    &start,
+                    None,
+                    &ceiling,
+                    t::ConditionalPurpose::Overflow,
+                    &[],
+                    None
+                )
+                .and_then(|search| search.begin(&[]))
+                .map(|batch| batch.opportunities().to_vec())
+                .unwrap()
+                .is_empty()
         );
         observations.push((direction, cuts(&p)));
     }
@@ -539,6 +542,7 @@ fn assumed_line_opportunities_do_not_become_detected_word_movement_stops() {
             .handle();
         let line = p
             .select(t::LineSelectionRequest {
+                segment: p.source_segments().next().unwrap(),
                 start,
                 end: end.view().boundary(),
                 participants: p.participants().collect(),

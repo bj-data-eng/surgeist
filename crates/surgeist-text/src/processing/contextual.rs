@@ -234,6 +234,8 @@ pub struct ContextualSourceInput {
 /// The canonical source operation requiring an unavailable relationship.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SourceContinuityOperation {
+    /// Source-unit selection and same-NCA combination lookaround.
+    Combination,
     Decoding,
     WhiteSpace,
     Trimming,
@@ -278,6 +280,12 @@ pub enum SourceProcessingError {
     OutsideParagraph,
     ForeignParagraph,
     ForeignJointFlow,
+    /// Actual required raw members in canonical flow order, not output IDs.
+    MissingJointAnalysisAuthority {
+        first_paragraph: usize,
+        last_paragraph: usize,
+        source: Range,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -348,7 +356,7 @@ pub(crate) struct ScopeCapture {
 #[derive(Clone, Debug)]
 pub(crate) struct ParagraphTopology {
     pub(crate) capture: Arc<ScopeCapture>,
-    pub(crate) paragraph: usize,
+    pub(crate) owner: crate::analyzed::captured::CapturedOwner,
     pub(crate) domain: usize,
     pub(crate) control_orders: Vec<usize>,
 }
@@ -372,6 +380,21 @@ pub struct ProcessedParagraph {
     index: usize,
 }
 impl ProcessedParagraph {
+    /// The original capture-issued paragraph represented by this member.
+    #[must_use]
+    pub fn captured_paragraph(&self) -> CapturedParagraph {
+        let topology = self
+            .data()
+            .scope_topology
+            .as_ref()
+            .expect("issued contextual member");
+        match &topology.owner {
+            crate::analyzed::captured::CapturedOwner::Raw(raw) => raw.clone(),
+            crate::analyzed::captured::CapturedOwner::Joint(_) => {
+                unreachable!("processed member is an admitted raw declaration")
+            }
+        }
+    }
     #[must_use]
     pub fn processed_source(&self) -> &Arc<ProcessedSource> {
         &self.owner
@@ -1206,60 +1229,67 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                 _ => false,
             });
         let data = ParagraphData {
-            computed_boundaries: capture.computed_boundaries,
-            scope_topology: Some(ParagraphTopology {
-                capture: Arc::clone(&topology),
-                paragraph: index,
-                domain: capture.domain,
-                control_orders: capture
-                    .controls
-                    .iter()
-                    .map(|&i| control_orders[i])
-                    .collect(),
-            }),
-            terminal_edge: if terminal {
-                crate::ParagraphTerminalEdge::BlockEnd
-            } else {
-                crate::ParagraphTerminalEdge::NonBlockBoundary
+            context: crate::protocol::paragraph::ParagraphContext {
+                content: crate::protocol::paragraph::ParagraphContent {
+                    computed_boundaries: capture.computed_boundaries,
+                    origin_map: crate::protocol::paragraph::OriginMap::captured(
+                        capture.origin_orders,
+                        capture.origins.len(),
+                    )?,
+                    origins: capture
+                        .origins
+                        .iter()
+                        .map(|i| {
+                            let row = &input.origins[*i];
+                            OriginData {
+                                source: OriginSource::Captured(row.source.clone()),
+                                local: row.local,
+                                aggregate: row.aggregate,
+                                kind: row.kind,
+                                text_node: row.text_node.clone(),
+                            }
+                        })
+                        .collect(),
+                    connections: native_connections,
+                    connection_ends: Some(ends),
+                    connection_anchor_cuts: Some(capture.connection_anchor_cuts),
+                    controls: capture
+                        .controls
+                        .iter()
+                        .map(|i| input.controls[*i].clone())
+                        .collect(),
+                    boundary_policies: policies,
+                    replacements,
+                    anchor_order: capture.anchors,
+                    coverage: Some(coverage),
+                    envelope: Some(extent),
+                },
+                scope_topology: Some(ParagraphTopology {
+                    capture: Arc::clone(&topology),
+                    owner: crate::analyzed::captured::CapturedOwner::Raw(CapturedParagraph {
+                        capture: Arc::clone(&topology),
+                        index,
+                    }),
+                    domain: capture.domain,
+                    control_orders: capture
+                        .controls
+                        .iter()
+                        .map(|&i| control_orders[i])
+                        .collect(),
+                }),
+                terminal_edge: if terminal {
+                    crate::ParagraphTerminalEdge::BlockEnd
+                } else {
+                    crate::ParagraphTerminalEdge::NonBlockBoundary
+                },
+                base_direction: Some(input.paragraphs[index].base_direction),
+                paragraph_strut: input.paragraphs[index].paragraph_strut,
+                domain_style: Some(context.domains[capture.domain].style.clone()),
+                tab_reference: Some(crate::ParagraphTabReference::new(
+                    context.domains[capture.domain].style.clone(),
+                    context.domains[capture.domain].direction,
+                )?),
             },
-            origin_map: crate::protocol::paragraph::OriginMap::captured(
-                capture.origin_orders,
-                capture.origins.len(),
-            )?,
-            origins: capture
-                .origins
-                .iter()
-                .map(|i| {
-                    let row = &input.origins[*i];
-                    OriginData {
-                        source: OriginSource::Captured(row.source.clone()),
-                        local: row.local,
-                        aggregate: row.aggregate,
-                        kind: row.kind,
-                        text_node: row.text_node.clone(),
-                    }
-                })
-                .collect(),
-            connections: native_connections,
-            connection_ends: Some(ends),
-            connection_anchor_cuts: Some(capture.connection_anchor_cuts),
-            controls: capture
-                .controls
-                .iter()
-                .map(|i| input.controls[*i].clone())
-                .collect(),
-            boundary_policies: policies,
-            replacements,
-            anchor_order: capture.anchors,
-            base_direction: Some(input.paragraphs[index].base_direction),
-            paragraph_strut: input.paragraphs[index].paragraph_strut,
-            coverage: Some(coverage),
-            envelope: Some(extent),
-            domain_style: Some(context.domains[capture.domain].style.clone()),
-            tab_reference: Some(crate::ParagraphTabReference::new(
-                context.domains[capture.domain].style.clone(),
-                context.domains[capture.domain].direction,
-            )?),
         };
         for replacement in &data.replacements {
             data.admit(&input.source, replacement.replaced_source())?;

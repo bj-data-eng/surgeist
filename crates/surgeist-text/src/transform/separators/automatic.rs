@@ -68,6 +68,16 @@ pub(in crate::transform) struct PhraseReads {
     runs: Vec<RunRead>,
 }
 impl PhraseReads {
+    /// A source-selection run may demand this stage only when its authentic
+    /// potential site is not proved to belong to another effecting scope.
+    /// Neutral sites retain ready absence; unqualified sites keep the normal
+    /// material topology refusal instead of being cached absent.
+    pub(in crate::transform) fn may_stage_scope(&self, cut: usize, scope: usize) -> bool {
+        match self.sites[cut] {
+            Site::Captured { insertion, .. } => insertion.scope == scope,
+            Site::Neutral | Site::Unqualified(_) => true,
+        }
+    }
     pub(in crate::transform) fn new(
         styles: &[StyleRow<'_>],
         input: &SourceProjection,
@@ -267,7 +277,7 @@ impl PhraseReads {
         analysis.complete(input)?;
         let receipt = map.phrases.len();
         map.phrases.try_reserve(1).map_err(|_| super::capacity())?;
-        map.phrases.push(analysis);
+        map.phrases.push(std::sync::Arc::new(analysis));
         for row in &mut self.runs[start..end] {
             *row = RunRead::Qualified(receipt);
         }
@@ -279,6 +289,7 @@ impl PhraseReads {
 /// whose original rows and owning AnalyzedSource retain its input identity.
 #[derive(Clone, Debug)]
 pub(crate) struct PhraseAnalysis {
+    /// Canonical pre-replacement run coordinates, never output-local row IDs.
     rows: std::ops::Range<usize>,
     model: PhraseModel,
     language: fontique::Language,
@@ -289,6 +300,11 @@ pub(crate) struct PhraseAnalysis {
 }
 
 impl PhraseAnalysis {
+    /// Actual canonical original-row interval of this completed native run.
+    /// Local maps retain the receipt without relabeling these coordinates.
+    pub(in crate::transform) fn canonical_rows(&self) -> std::ops::Range<usize> {
+        self.rows.clone()
+    }
     fn complete(&mut self, projection: &SourceProjection) -> Result<()> {
         // Execute the retained actual provider/language pair, then qualify its
         // native cuts. No scope style or topology for other sites is executed.
@@ -499,7 +515,19 @@ pub(in crate::transform) fn proposal_at<'a>(
     let occurrence = map.virtuals.len();
     map.virtuals.try_reserve(1).map_err(|_| super::capacity())?;
     let control_cut = reads.controls_before[event_cut];
+    let context_origins = [
+        map.original_pieces(pair.left)
+            .first()
+            .expect("actual left source incidence")
+            .origin,
+        map.original_pieces(pair.right)
+            .last()
+            .expect("actual right source incidence")
+            .origin,
+    ];
     map.virtuals.push(VirtualSeparatorData {
+        phrase: receipt,
+        context_origins,
         capture_cut,
         scope: issued_scope,
         source: at,

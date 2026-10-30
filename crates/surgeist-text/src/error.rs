@@ -198,6 +198,10 @@ pub enum ErrorCode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErrorDetail {
+    /// Source-owned text-combination context or preparation capability refusal.
+    TextCombine {
+        reason: crate::TextCombineError,
+    },
     /// A typed captured-scope alignment refusal from its owning phase.
     ScopeAlignment {
         reason: super::ScopeAlignmentError,

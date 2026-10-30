@@ -70,7 +70,12 @@ impl RawRoleBasis<'_> {
             prepared: Arc::clone(prepared),
             index: entry.start,
         };
-        let flow = handle.measurement_flow(&query_start, entry.incoming, target)?;
+        let segment = handle.source_segments().next().ok_or_else(|| {
+            crate::protocol::protocol_error(
+                crate::protocol::ProtocolError::UnsupportedStandaloneAnalysis,
+            )
+        })?;
+        let flow = handle.measurement_flow(&segment, &query_start, entry.incoming, target)?;
         let phrase = matches!(target, PreparedTermination::PhraseMeasurement(_));
         let mut first = if phrase {
             entry.accepted.is_empty()
@@ -211,6 +216,11 @@ pub(super) fn layout(
     options: ValidatedOptions,
     scratch: &mut ShapeContext,
 ) -> Result<PlacedLayout> {
+    if prepared.analyzed.sections.len() != 1 {
+        return Err(crate::protocol::protocol_error(
+            crate::protocol::ProtocolError::UnsupportedStandaloneAnalysis,
+        ));
+    }
     let authored = options.authored();
     let mut lines = Vec::new();
     let mut start = 0;
@@ -608,7 +618,12 @@ fn choose_phrase(
             )));
         }
     }
-    let search = handle.conditional_search(
+    let search = (handle.source_segments().next().ok_or_else(|| {
+        crate::protocol::protocol_error(
+            crate::protocol::ProtocolError::UnsupportedStandaloneAnalysis,
+        )
+    })?)
+    .conditional_search(
         &crate::PreparedBoundary {
             prepared: Arc::clone(prepared),
             index: start,

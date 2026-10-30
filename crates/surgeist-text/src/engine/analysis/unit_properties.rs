@@ -16,11 +16,16 @@ use super::capacity;
 
 /// Appendix E's exception uses raw ScriptExtensions, not a shaping-run script.
 pub(crate) fn has_common_enclosing_mark(atoms: &[OriginalAtom]) -> bool {
+    has_common_enclosing_mark_in(atoms.iter().map(|atom| atom.code_point))
+}
+
+/// The same raw Unicode predicate for source-only transformed scalar streams.
+pub(crate) fn has_common_enclosing_mark_in(values: impl IntoIterator<Item = u32>) -> bool {
     let categories = CodePointMapData::<GeneralCategory>::new();
     let scripts = ScriptWithExtensions::new();
-    atoms.iter().any(|atom| {
-        categories.get32(atom.code_point) == GeneralCategory::EnclosingMark
-            && scripts.has_script32(atom.code_point, Script::Common)
+    values.into_iter().any(|code_point| {
+        categories.get32(code_point) == GeneralCategory::EnclosingMark
+            && scripts.has_script32(code_point, Script::Common)
     })
 }
 

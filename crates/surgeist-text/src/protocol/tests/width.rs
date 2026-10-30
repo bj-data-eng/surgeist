@@ -317,6 +317,9 @@ fn fullwidth_semantics_create_real_normal_opportunities_while_narrow_letters_nee
         unreachable!()
     };
     let conditional = neutral
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &query.start,
             None,

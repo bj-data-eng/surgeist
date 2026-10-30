@@ -146,6 +146,7 @@ fn finish(
         })
         .collect();
     p.select(t::LineSelectionRequest {
+        segment: p.source_segments().next().unwrap(),
         start,
         end: boundary,
         participants,
@@ -856,6 +857,7 @@ fn suppressed_source_shy_retains_whole_word_portion_and_measurement_tail() {
     let to = portion.end().view().participant_offset();
     let measured = p
         .select(t::LineSelectionRequest {
+            segment: p.source_segments().next().unwrap(),
             start: portion.start(),
             end: portion.end(),
             participants: p.participants().skip(from).take(to - from).collect(),

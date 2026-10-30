@@ -220,7 +220,7 @@ fn actual_relation_keeps_reordered_noncontiguous_emissions_and_a_real_removal() 
         [
             RelationEvent::Text { atom: 0 },
             RelationEvent::Text { atom: 1 },
-            RelationEvent::Removal { row: 2 },
+            RelationEvent::Removal { row: 2, .. },
             RelationEvent::Text { atom: 2 }
         ]
     ));
@@ -469,7 +469,7 @@ fn split_origin_dot_and_acute_use_actual_context_through_neutral_oof() {
                 assert!(
                     map.events()
                         .iter()
-                        .any(|event| matches!(event, RelationEvent::Removal { row: 1 }))
+                        .any(|event| matches!(event, RelationEvent::Removal { row: 1, .. }))
                 );
             }
         }

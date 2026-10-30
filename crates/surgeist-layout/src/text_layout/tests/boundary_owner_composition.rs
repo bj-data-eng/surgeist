@@ -239,7 +239,13 @@ fn capture(
     let prepared = system
         .prepare(&analyzed, text::PreparationOptions::default())
         .unwrap();
-    let captured = prepared.captured_paragraph().unwrap();
+    let members = prepared
+        .captured_owner()
+        .unwrap()
+        .members()
+        .collect::<Vec<_>>();
+    assert_eq!(members.len(), 1);
+    let captured = &members[0];
     let inline = captured
         .scope_intersections()
         .map(|i| i.scope())

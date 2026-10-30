@@ -32,13 +32,15 @@ impl LineDirectionFacts {
 
 impl PreparedText {
     /// Observes canonical post-processing body facts at issued mixed boundaries.
-    /// A terminating B belongs to its preceding nonempty range. Empty seams use
-    /// the right/new context; ranges crossing actual bidi contexts are rejected.
+    /// A terminating B belongs to its preceding nonempty range. The genuine
+    /// source segment supplies empty-range context; crossing bodies is refused.
     pub fn line_direction_facts(
         &self,
+        segment: &super::PreparedSourceSegment,
         start: &PreparedBoundary,
         end: &PreparedBoundary,
     ) -> Result<LineDirectionFacts> {
+        super::segments::admit(self, segment)?;
         require_prepared(
             self,
             &start.prepared,
@@ -50,6 +52,7 @@ impl PreparedText {
         if start.index > end.index {
             return Err(invalid());
         }
+        super::segments::admit_points(self, segment, start, end)?;
         let start = self
             .inner
             .tables
@@ -66,7 +69,7 @@ impl PreparedText {
             .inner
             .analyzed
             .direction
-            .query(start.participant, end.participant)
+            .query_in(segment.index, start.participant, end.participant)
             .ok_or_else(invalid)?;
         Ok(LineDirectionFacts {
             paragraph_strong_direction: strong.map(|level| {
@@ -154,25 +157,29 @@ mod tests {
             crate::Direction::RightToLeft
         );
         let b = boundaries(&p);
-        let weak = p.line_direction_facts(&b[0], &b[3]).unwrap();
+        let weak = p
+            .line_direction_facts(&p.source_segments().next().unwrap(), &b[0], &b[3])
+            .unwrap();
         assert_eq!(
             weak.paragraph_strong_direction(),
             Some(ParagraphBaseDirection::LeftToRight)
         );
         assert!(!weak.has_eligible_strong());
         assert!(
-            p.line_direction_facts(&b[3], &b[4])
+            p.line_direction_facts(&p.source_segments().next().unwrap(), &b[3], &b[4])
                 .unwrap()
                 .has_eligible_strong()
         );
         assert!(
-            !p.line_direction_facts(&b[4], &b[4])
+            !p.line_direction_facts(&p.source_segments().next().unwrap(), &b[4], &b[4])
                 .unwrap()
                 .has_eligible_strong()
         );
         let rtl = prepared("\u{200f}A", ParagraphBaseDirection::LeftToRight);
         let b = boundaries(&rtl);
-        let suffix = rtl.line_direction_facts(&b[1], &b[2]).unwrap();
+        let suffix = rtl
+            .line_direction_facts(&rtl.source_segments().next().unwrap(), &b[1], &b[2])
+            .unwrap();
         assert_eq!(
             suffix.paragraph_strong_direction(),
             Some(ParagraphBaseDirection::RightToLeft)
@@ -185,26 +192,34 @@ mod tests {
         let p = prepared("A\nB\n", ParagraphBaseDirection::LeftToRight);
         let b = boundaries(&p);
         assert!(
-            p.line_direction_facts(&b[0], &b[2])
+            p.line_direction_facts(&p.source_segments().next().unwrap(), &b[0], &b[2])
                 .unwrap()
                 .has_eligible_strong()
         );
         assert!(
-            !p.line_direction_facts(&b[2], &b[2])
+            !p.line_direction_facts(&p.source_segments().next().unwrap(), &b[2], &b[2])
                 .unwrap()
                 .has_eligible_strong()
         );
         assert_eq!(
-            p.line_direction_facts(&b[4], &b[4])
+            p.line_direction_facts(&p.source_segments().next().unwrap(), &b[4], &b[4])
                 .unwrap()
                 .paragraph_strong_direction(),
             None
         );
-        assert!(p.line_direction_facts(&b[0], &b[3]).is_err());
-        assert!(p.line_direction_facts(&b[3], &b[2]).is_err());
+        assert!(
+            p.line_direction_facts(&p.source_segments().next().unwrap(), &b[0], &b[3])
+                .is_err()
+        );
+        assert!(
+            p.line_direction_facts(&p.source_segments().next().unwrap(), &b[3], &b[2])
+                .is_err()
+        );
         let foreign = prepared("AB", ParagraphBaseDirection::LeftToRight);
         let other = boundaries(&foreign);
-        let error = p.line_direction_facts(&b[0], &other[1]).unwrap_err();
+        let error = p
+            .line_direction_facts(&p.source_segments().next().unwrap(), &b[0], &other[1])
+            .unwrap_err();
         assert!(matches!(
             error.detail(),
             Some(crate::ErrorDetail::InvalidTextProtocol {
@@ -226,7 +241,13 @@ mod tests {
             [65, 32, 46, 46]
         );
         let b = boundaries(&p);
-        let weak = p.line_direction_facts(&b[2], b.last().unwrap()).unwrap();
+        let weak = p
+            .line_direction_facts(
+                &p.source_segments().next().unwrap(),
+                &b[2],
+                b.last().unwrap(),
+            )
+            .unwrap();
         assert_eq!(
             weak.paragraph_strong_direction(),
             Some(ParagraphBaseDirection::LeftToRight)
@@ -240,7 +261,9 @@ mod tests {
             ParagraphOriginKind::Generated
         );
         let b = boundaries(&p);
-        let facts = p.line_direction_facts(&b[1], &b[2]).unwrap();
+        let facts = p
+            .line_direction_facts(&p.source_segments().next().unwrap(), &b[1], &b[2])
+            .unwrap();
         assert_eq!(
             facts.paragraph_strong_direction(),
             Some(ParagraphBaseDirection::RightToLeft)
@@ -268,7 +291,9 @@ mod tests {
         let b = boundaries(&p);
         assert_eq!(b.len(), 3);
         for pair in b.windows(2) {
-            let facts = p.line_direction_facts(&pair[0], &pair[1]).unwrap();
+            let facts = p
+                .line_direction_facts(&p.source_segments().next().unwrap(), &pair[0], &pair[1])
+                .unwrap();
             assert!(facts.has_eligible_strong());
             assert_eq!(
                 facts.paragraph_strong_direction(),
@@ -310,22 +335,24 @@ mod tests {
             .collect();
         let p = prepare_input(value);
         let b = boundaries(&p);
-        let isolated = p.line_direction_facts(&b[1], &b[2]).unwrap();
+        let isolated = p
+            .line_direction_facts(&p.source_segments().next().unwrap(), &b[1], &b[2])
+            .unwrap();
         assert_eq!(isolated.paragraph_strong_direction(), None);
         assert!(!isolated.has_eligible_strong());
         assert!(
-            !p.line_direction_facts(&b[0], &b[5])
+            !p.line_direction_facts(&p.source_segments().next().unwrap(), &b[0], &b[5])
                 .unwrap()
                 .has_eligible_strong()
         );
         assert_eq!(
-            p.line_direction_facts(&b[5], &b[5])
+            p.line_direction_facts(&p.source_segments().next().unwrap(), &b[5], &b[5])
                 .unwrap()
                 .paragraph_strong_direction(),
             Some(ParagraphBaseDirection::LeftToRight)
         );
         assert!(
-            p.line_direction_facts(&b[5], &b[6])
+            p.line_direction_facts(&p.source_segments().next().unwrap(), &b[5], &b[6])
                 .unwrap()
                 .has_eligible_strong()
         );
@@ -376,7 +403,9 @@ mod tests {
             };
             let view = unit.view();
             if view.empty_origin().is_some() || view.processed_range().is_empty() {
-                let facts = p.line_direction_facts(&b[at], &b[at + 1]).unwrap();
+                let facts = p
+                    .line_direction_facts(&p.source_segments().next().unwrap(), &b[at], &b[at + 1])
+                    .unwrap();
                 assert_eq!(
                     facts.paragraph_strong_direction(),
                     Some(ParagraphBaseDirection::LeftToRight)
@@ -398,7 +427,13 @@ mod tests {
         value.base_style.hyphenate_character = crate::HyphenateCharacter::String("A".into());
         let p = prepare_input(value);
         let b = boundaries(&p);
-        let before = p.line_direction_facts(&b[0], b.last().unwrap()).unwrap();
+        let before = p
+            .line_direction_facts(
+                &p.source_segments().next().unwrap(),
+                &b[0],
+                b.last().unwrap(),
+            )
+            .unwrap();
         assert_eq!(before.paragraph_strong_direction(), None);
         assert!(!before.has_eligible_strong());
         let offer = p
@@ -419,6 +454,7 @@ mod tests {
         let end = offer.view().boundary();
         let to = end.view().participant_offset();
         let request = crate::LineSelectionRequest {
+            segment: p.source_segments().next().unwrap(),
             start: b[0].clone(),
             end,
             termination: crate::PreparedTermination::Ordinary(offer),
@@ -462,7 +498,12 @@ mod tests {
                 .any(|run| run.glyphs().any(|glyph| glyph.id() == a))
         );
         assert_eq!(
-            p.line_direction_facts(&b[0], b.last().unwrap()).unwrap(),
+            p.line_direction_facts(
+                &p.source_segments().next().unwrap(),
+                &b[0],
+                b.last().unwrap()
+            )
+            .unwrap(),
             before
         );
     }

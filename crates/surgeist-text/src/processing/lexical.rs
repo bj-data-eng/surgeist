@@ -18,6 +18,47 @@ use super::{
     overflow, reserve,
 };
 
+/// The final SPACE fold is shared by original execution and fixed-partition
+/// combination replay. It does not rerun delimiter, discard or trim rules.
+pub(crate) enum SpaceClass {
+    Transparent,
+    Collapsible,
+    Other,
+}
+
+pub(crate) struct SpaceCollapse {
+    previous: Adjacency,
+}
+impl SpaceCollapse {
+    pub(crate) fn new() -> Self {
+        Self {
+            previous: Adjacency::No,
+        }
+    }
+    pub(crate) fn missing(&mut self, before_origin: usize, after_origin: usize) {
+        self.previous.cross(Edge {
+            before_origin,
+            after_origin,
+        });
+    }
+    pub(crate) fn step(&mut self, class: SpaceClass) -> Result<Option<bool>> {
+        match class {
+            SpaceClass::Transparent => Ok(None),
+            SpaceClass::Other => {
+                self.previous = Adjacency::No;
+                Ok(None)
+            }
+            SpaceClass::Collapsible => {
+                let zero = self
+                    .previous
+                    .resolve(SourceContinuityOperation::WhiteSpace)?;
+                self.previous = Adjacency::Yes;
+                Ok(Some(!zero))
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Kind {
     Text,
@@ -211,22 +252,21 @@ fn phase_one(tokens: &mut [Token]) -> Result<()> {
         context = Neighbor::context(token.context);
     }
 
-    let mut preceding_space = Adjacency::No;
+    let mut preceding_space = SpaceCollapse::new();
     for token in tokens.iter_mut() {
         if let Kind::Frontier(edge) = token.kind {
-            preceding_space.cross(edge);
+            preceding_space.missing(edge.before_origin, edge.after_origin);
             continue;
         }
-        if token.transparent() {
-            continue;
-        }
-        if token.collapse(Kind::Space) || token.collapse(Kind::Break) {
-            if preceding_space.resolve(SourceContinuityOperation::WhiteSpace)? {
-                token.delete(DeletionCause::CollapsedSpace);
-            }
-            preceding_space = Adjacency::Yes;
+        let class = if token.transparent() {
+            SpaceClass::Transparent
+        } else if token.collapse(Kind::Space) || token.collapse(Kind::Break) {
+            SpaceClass::Collapsible
         } else {
-            preceding_space = Adjacency::No;
+            SpaceClass::Other
+        };
+        if preceding_space.step(class)? == Some(false) {
+            token.delete(DeletionCause::CollapsedSpace);
         }
     }
     Ok(())

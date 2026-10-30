@@ -86,7 +86,14 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
                 .with_orientation(text::LineOrientation::SidewaysClockwise),
         )
         .unwrap();
-    assert_eq!(prepared.captured_paragraph(), capture.captured_paragraph(0));
+    assert_eq!(
+        prepared
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        [capture.captured_paragraph(0).unwrap()]
+    );
     let origin = prepared.origin_views().next().unwrap().handle();
     let tree = Tree {
         inputs: [

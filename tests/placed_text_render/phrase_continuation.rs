@@ -207,18 +207,26 @@ fn capture() -> (
     }
     let canonical = first.captured_scope();
     assert_eq!(
-        canonical.entry_control().unwrap().paragraph(),
-        prepared[0].captured_paragraph().unwrap()
+        prepared[0]
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        [canonical.entry_control().unwrap().paragraph()]
     );
     assert_eq!(
-        canonical.exit_control().unwrap().paragraph(),
-        prepared[2].captured_paragraph().unwrap()
+        prepared[2]
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        [canonical.exit_control().unwrap().paragraph()]
     );
     assert!(first.view().entry_control().is_some());
     assert!(first.view().exit_control().is_none());
     assert!(last.view().entry_control().is_none());
     assert!(last.view().exit_control().is_some());
-    let child = prepared[1].captured_paragraph().unwrap();
+    let child = prepared[1].captured_owner().unwrap();
     assert_ne!(child.domain(), canonical.domain());
     assert_eq!(child.domain().parent(), Some(canonical));
     assert_eq!(

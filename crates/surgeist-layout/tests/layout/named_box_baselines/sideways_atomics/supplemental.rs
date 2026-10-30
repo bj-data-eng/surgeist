@@ -105,6 +105,7 @@ fn profile_line<S: l::LayoutScalar>(
         };
     }
     p.select(t::LineSelectionRequest {
+        segment: p.source_segments().next().unwrap(),
         start: p.boundary_views().next().unwrap().handle(),
         end: end.view().boundary(),
         termination: t::PreparedTermination::Ordinary(end),

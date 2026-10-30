@@ -1,4 +1,5 @@
 //! Selected original UBA and indication-local domains, with separate level spaces.
+use super::super::{PreparedSourceSegment, ProtocolError, protocol_error};
 use super::*;
 use crate::engine::{
     analysis::{Analysis, CharInfo},
@@ -172,14 +173,11 @@ pub(super) fn local_levels(
     bidi.resolve(
         atoms.clone().map(|i| {
             (
-                projection.atoms[i].glyph,
-                (
-                    crate::engine::analysis::used_bidi_class(
-                        typography,
-                        analysis.infos[i].0.bidi_class,
-                    ),
-                    analysis.infos[i].0.bracket,
+                crate::engine::analysis::used_bidi_class(
+                    typography,
+                    analysis.infos[i].0.bidi_class,
                 ),
+                Some((projection.atoms[i].glyph, analysis.infos[i].0.bracket)),
             )
         }),
         Some(base),
@@ -612,11 +610,12 @@ pub(super) fn select(
         infos: output.infos,
         levels: output.levels,
         graphemes,
-        line_units: crate::engine::analysis::line_units::LineBreakUnits::new(&projection)?,
+        line_units: crate::engine::analysis::line_units::LineBreakUnits::new(&projection, None)?,
         base_level: analysis.base_level,
         box_levels: analysis.box_levels.clone(),
         control_levels: analysis.control_levels.clone(),
         computed_levels: analysis.computed_levels.clone(),
+        cell_levels: Vec::new(),
     };
     let mut scopes = vec![DirectionalScope::Outer(0); projection.atoms.len()];
     for unit in &output.output.units {
@@ -698,7 +697,8 @@ pub(super) fn select(
             &scopes,
         )?
     };
-    let relation_end = if end.participant == tables.participants.len()
+    let relation_end = if prepared.analyzed.paragraph.scope_topology.is_none()
+        && end.participant == tables.participants.len()
         && request.context.end == crate::LineEnd::Paragraph
     {
         prepared.analyzed.transform.events().len()
@@ -710,9 +710,10 @@ pub(super) fn select(
         prepared,
         &output.output.units,
         &output.originals,
-        start.participant,
+        request.segment,
+        start.participant..end.participant,
         relation.clone(),
-    );
+    )?;
     let map = &prepared.analyzed.transform;
     let source = selected_relation
         .events
@@ -747,10 +748,31 @@ fn selected_relation(
     prepared: &crate::engine::PreparedData,
     units: &[PresentationUnit],
     originals: &[Option<usize>],
-    start_participant: usize,
+    segment: &PreparedSourceSegment,
+    participants: IndexRange<usize>,
     relation: IndexRange<usize>,
-) -> SelectedRelation {
+) -> crate::Result<SelectedRelation> {
     let map = &prepared.analyzed.transform;
+    let invalid = || {
+        protocol_error(ProtocolError::InvalidSourceSegment {
+            segment: segment.index,
+        })
+    };
+    let section = prepared
+        .analyzed
+        .sections
+        .get(segment.index)
+        .ok_or_else(invalid)?;
+    if participants.start > participants.end
+        || participants.start < section.participants.start
+        || participants.end > section.participants.end
+        || relation.start > relation.end
+        || relation.start < section.events.start
+        || relation.end > section.events.end
+    {
+        return Err(invalid());
+    }
+    let captured = prepared.analyzed.paragraph.scope_topology.is_some();
     let mut output = SelectedRelation {
         atom_events: vec![usize::MAX; originals.len()],
         ..SelectedRelation::default()
@@ -760,7 +782,25 @@ fn selected_relation(
     for (unit, row) in units.iter().enumerate() {
         let first = output.events.len();
         if let Some(participant) = row.participant {
-            let end = map.cut_for_participant(start_participant + participant + 1);
+            let prefix = participants
+                .start
+                .checked_add(participant)
+                .and_then(|value| value.checked_add(1))
+                .ok_or_else(invalid)?;
+            if prefix > participants.end {
+                return Err(invalid());
+            }
+            // A canonical prefix may own following participant-free events
+            // across a child hole. The admitted captured endpoint is the real
+            // end of this interval, even when the next section has no units.
+            let end = if captured && prefix == participants.end {
+                relation.end
+            } else {
+                map.cut_for_participant(prefix)
+            };
+            if end < cursor || end > relation.end {
+                return Err(invalid());
+            }
             for event in cursor..end {
                 base_positions[event - relation.start] = Some(output.events.len());
                 output.events.push(SelectedRelationEvent::Base { event });
@@ -768,9 +808,13 @@ fn selected_relation(
             cursor = end;
             for atom in row.atoms.clone() {
                 if let Some(original) = originals[atom] {
-                    output.atom_events[atom] = base_positions
-                        [map.emission_for_atom(original).event - relation.start]
-                        .expect("selected body atom has its actual base event");
+                    let event = map.emission_for_atom(original).event;
+                    output.atom_events[atom] = event
+                        .checked_sub(relation.start)
+                        .and_then(|offset| base_positions.get(offset))
+                        .copied()
+                        .flatten()
+                        .ok_or_else(invalid)?;
                 }
             }
         } else {
@@ -788,7 +832,7 @@ fn selected_relation(
         output.events.push(SelectedRelationEvent::Base { event });
     }
     debug_assert!(output.atom_events.iter().all(|event| *event != usize::MAX));
-    output
+    Ok(output)
 }
 
 fn reset_originals(

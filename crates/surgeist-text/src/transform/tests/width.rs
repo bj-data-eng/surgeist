@@ -349,7 +349,9 @@ fn source_local_processing_lends_real_preservation_to_the_transform_owner() {
             crate::ValidatedStyle::for_processed(executed.base_style().clone()).unwrap();
         let mut styles =
             crate::engine::resolve::analyze_styles(&source, &[], &validated, &paragraph);
-        let (actual, _) = super::super::apply(input, &mut styles, &executed, &paragraph).unwrap();
+        let actual = super::super::apply(input, &mut styles, &executed, &paragraph)
+            .unwrap()
+            .projection;
         assert_eq!(actual.text, expected);
         assert_eq!(executed.source(), &source);
     }

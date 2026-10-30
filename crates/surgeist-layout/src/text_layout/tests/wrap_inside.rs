@@ -238,9 +238,13 @@ fn captured_with_profile(
     let prepared = system
         .prepare(&analyzed, text::PreparationOptions::default())
         .unwrap();
-    let scopes = prepared
-        .captured_paragraph()
+    let members = prepared
+        .captured_owner()
         .unwrap()
+        .members()
+        .collect::<Vec<_>>();
+    assert_eq!(members.len(), 1);
+    let scopes = members[0]
         .scope_intersections()
         .map(|i| i.scope())
         .filter(|s| s.role() == text::ScopeRole::Inline)
@@ -1221,7 +1225,10 @@ fn captured_physical_interior_tcu_pairs_admit_and_wrap_only_at_whole_units() {
             .find(|offer| offer.kind() == text::PreparedBreakKind::Allowed)
             .unwrap()
             .handle();
-        let search = prepared
+        let mut source_segments = prepared.source_segments();
+        let source_segment = source_segments.next().expect("fixture source segment");
+        assert_eq!(source_segments.count(), 0, "one structural fixture segment");
+        let search = source_segment
             .conditional_search(
                 &start,
                 None,
@@ -2222,6 +2229,9 @@ fn assert_mixed_facts(f: &Captured, reverse: bool) {
         before(&exit, &end);
     }
     let p = &f.binding.prepared;
+    let mut segments = p.source_segments();
+    let segment = segments.next().expect("fixture source segment");
+    assert!(segments.next().is_none(), "one structural fixture segment");
     let cut = p
         .opportunity_views()
         .find(|offer| {
@@ -2240,7 +2250,7 @@ fn assert_mixed_facts(f: &Captured, reverse: bool) {
             .unwrap()
     );
     assert!(
-        p.boundary_inside_captured_scope(&cut, &f.scopes[0])
+        p.boundary_inside_captured_scope(&segment, &cut, &f.scopes[0])
             .unwrap()
     );
     for at in [1, 7] {
@@ -2254,7 +2264,7 @@ fn assert_mixed_facts(f: &Captured, reverse: bool) {
             .unwrap()
             .boundary();
         assert_eq!(
-            p.boundary_inside_captured_scope(&cut, &f.scopes[0])
+            p.boundary_inside_captured_scope(&segment, &cut, &f.scopes[0])
                 .unwrap(),
             reverse
         );

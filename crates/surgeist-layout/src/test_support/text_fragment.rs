@@ -33,6 +33,7 @@ pub(crate) fn fragment_for(
                 crate::Direction::Ltr,
             ),
             prepared,
+            segment: prepared.source_segments().next().unwrap(),
             scope_alignments: &scope_alignments,
             available: crate::text_layout::fit::Available::Maximum,
             base_direction: surgeist_text::ParagraphBaseDirection::LeftToRight,

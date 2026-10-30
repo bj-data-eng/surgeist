@@ -24,6 +24,7 @@ use super::paragraph::{ParagraphControlKind, SemanticAnchor, SemanticAnchorItem}
 /// Immutable logical participants and their exact occurrence/boundary tables.
 #[derive(Debug)]
 pub(crate) struct PreparedTables {
+    pub(crate) source_segments: Vec<super::segments::SegmentData>,
     pub(crate) profile: crate::engine::PreparationProfile,
     pub(crate) words: Vec<super::hyphenation::WordData>,
     pub(crate) hyphenation_cuts: Vec<super::hyphenation::CutData>,
@@ -138,6 +139,7 @@ pub enum PreparedBreakKind {
 
 #[derive(Debug)]
 pub(crate) struct OpportunityData {
+    pub(crate) source_segment: Option<usize>,
     pub(crate) boundary: usize,
     pub(crate) kind: PreparedBreakKind,
     pub(crate) alternatives: Vec<usize>,
@@ -348,6 +350,7 @@ pub(crate) fn prepare_tables(
         }
     }
     let mut tables = PreparedTables {
+        source_segments: Vec::new(),
         profile,
         words: super::hyphenation::words(analyzed)?,
         hyphenation_cuts: Vec::new(),
@@ -648,6 +651,7 @@ pub(crate) fn prepare_tables(
             .push(tables.auto_phrase_prefix.last().copied().unwrap() + usize::from(owns));
     }
     issue_opportunities(catalogue, analyzed, styles, &mut tables)?;
+    super::segments::prepare(&mut tables, analyzed)?;
     tables
         .suppressed
         .sort_unstable_by_key(|row| (row.boundary, row.phrase));
@@ -1029,6 +1033,7 @@ fn issue_opportunities(
                     .extend(visible_alternatives);
             } else {
                 tables.opportunities.push(OpportunityData {
+                    source_segment: None,
                     boundary: attached,
                     kind,
                     alternatives: visible_alternatives,
@@ -1038,12 +1043,6 @@ fn issue_opportunities(
             tables.hyphenation_cuts[cut].boundary = attached;
         }
     }
-    let boundary = tables.boundaries.len() - 1;
-    tables.opportunities.push(OpportunityData {
-        boundary,
-        kind: PreparedBreakKind::ParagraphEnd,
-        alternatives: Vec::new(),
-    });
     Ok(())
 }
 
@@ -1155,8 +1154,12 @@ fn soft_boundary(
     } else {
         Vec::new()
     };
-    let mut lower = 0;
-    let mut upper = tables.participants.len();
+    let section = super::segments::preceding_section(analyzed, participant)
+        .map(|index| &analyzed.sections[index]);
+    let mut lower = section.map_or(0, |section| section.participants.start);
+    let mut upper = section.map_or(tables.participants.len(), |section| {
+        section.participants.end
+    });
     for seam in seams {
         if seam.upper <= participant {
             lower = lower.max(seam.upper);
@@ -1207,7 +1210,10 @@ fn soft_boundary(
     Ok(tables
         .boundaries
         .iter()
-        .position(|row| row.participant == participant)
+        .position(|row| {
+            row.participant == participant
+                && row.relation_cut == analyzed.transform.cut_for_participant(participant)
+        })
         .unwrap_or(index))
 }
 
@@ -1852,6 +1858,7 @@ pub(crate) fn prepare_indication_fonts(
             analyzed.processed.source().boxes(),
             &analyzed.paragraph,
             analyzed.typography,
+            crate::engine::analysis::BidiScope::Indication,
         )?;
         for (atom, original) in original_atoms.iter().enumerate() {
             if let Some(original) = *original {
@@ -1909,8 +1916,12 @@ pub(crate) fn prepare_indication_fonts(
                 box_levels: analysis.box_levels.clone(),
                 control_levels: analysis.control_levels.clone(),
                 computed_levels: analysis.computed_levels.clone(),
+                cell_levels: Vec::new(),
                 graphemes,
-                line_units: crate::engine::analysis::line_units::LineBreakUnits::new(&projection)?,
+                line_units: crate::engine::analysis::line_units::LineBreakUnits::new(
+                    &projection,
+                    None,
+                )?,
             };
             let inserted_atoms = inserted_atoms.start - offset..inserted_atoms.end - offset;
             let catalogue_identity = catalogue.identity().clone();

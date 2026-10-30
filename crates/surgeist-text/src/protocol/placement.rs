@@ -19,27 +19,21 @@ pub(crate) struct PlacedCoverage {
 
 impl PlacedCoverage {
     pub(crate) fn whole(prepared: &Arc<PreparedData>) -> Result<Self> {
-        if prepared
+        let first = prepared
             .tables
-            .boundaries
+            .source_segments
             .first()
-            .is_none_or(|row| row.participant != 0)
-        {
-            return Err(protocol_error(ProtocolError::EmptyPlacement));
-        }
-        let end = prepared
-            .tables
-            .boundaries
-            .len()
-            .checked_sub(1)
-            .filter(|&index| {
-                prepared.tables.boundaries[index].participant == prepared.tables.participants.len()
-            })
             .ok_or_else(|| protocol_error(ProtocolError::EmptyPlacement))?;
+        let last = prepared
+            .tables
+            .source_segments
+            .last()
+            .ok_or_else(|| protocol_error(ProtocolError::EmptyPlacement))?;
+        let end = last.end;
         Ok(Self {
             start: PreparedBoundary {
                 prepared: Arc::clone(prepared),
-                index: 0,
+                index: first.start,
             },
             end: PreparedBoundary {
                 prepared: Arc::clone(prepared),
@@ -192,6 +186,18 @@ pub(crate) fn place_request(
         source,
     };
     let mut next = start;
+    let mut source_segment = match request.coverage {
+        PlacementCoverage::WholeParagraph => 0,
+        PlacementCoverage::Range { .. } => {
+            request.entries[0]
+                .finalized_line()
+                .inner
+                .selected
+                .request
+                .segment
+                .index
+        }
+    };
     let mut incoming = None;
     let mut seen = BTreeSet::new();
     let count = request.entries.len();
@@ -249,6 +255,17 @@ pub(crate) fn place_request(
                 line: ordinal,
             }));
         }
+        super::segments::admit(&request.prepared, &selected.request.segment)?;
+        if selected.request.segment.index != source_segment {
+            return Err(protocol_error(ProtocolError::MismatchedSourceSegment {
+                expected: source_segment,
+                actual: selected.request.segment.index,
+            }));
+        }
+        let section = &prepared.tables.source_segments[source_segment];
+        let completes_segment = matches!(&selected.request.termination, super::PreparedTermination::Ordinary(offer) if offer.index == section.end_opportunity)
+            && selected.request.end.index == section.end
+            && selected.request.context.end == super::LineEnd::Paragraph;
         if selected.request.start != next {
             return Err(protocol_error(ProtocolError::IncompleteLineCoverage {
                 line: ordinal,
@@ -272,25 +289,45 @@ pub(crate) fn place_request(
         }
         let from = row(&selected.request.start)?.participant;
         let to = row(&selected.request.end)?.participant;
-        if to < from || to > end_participant || (to == from && ordinal + 1 != count) {
+        if to < from
+            || to > end_participant
+            || (to == from && !completes_segment && ordinal + 1 != count)
+        {
             return Err(protocol_error(ProtocolError::IncompleteLineCoverage {
                 line: ordinal,
             }));
         }
-        if selected.request.context.end == super::LineEnd::Paragraph && ordinal + 1 != count {
-            return Err(protocol_error(ProtocolError::IncompleteLineCoverage {
-                line: ordinal,
-            }));
-        }
-        if ordinal + 1 == count
-            && matches!(request.coverage, PlacementCoverage::WholeParagraph)
-            && selected.request.context.end != super::LineEnd::Paragraph
+        if (selected.request.context.end == super::LineEnd::Paragraph
+            || (ordinal + 1 == count
+                && matches!(request.coverage, PlacementCoverage::WholeParagraph)))
+            && !completes_segment
         {
             return Err(protocol_error(ProtocolError::IncompleteLineCoverage {
                 line: ordinal,
             }));
         }
         next = selected.request.end.clone();
+        if completes_segment {
+            if incoming.is_some() {
+                return Err(crate::hyphenation::error(
+                    crate::HyphenationError::InvalidContinuation,
+                ));
+            }
+            source_segment += 1;
+            if ordinal + 1 < count {
+                let following = prepared
+                    .tables
+                    .source_segments
+                    .get(source_segment)
+                    .ok_or_else(|| {
+                        protocol_error(ProtocolError::IncompleteLineCoverage { line: ordinal })
+                    })?;
+                next = PreparedBoundary {
+                    prepared: Arc::clone(&prepared),
+                    index: following.start,
+                };
+            }
+        }
         if placement.orientation == LineOrientation::Vertical
             && prepared.options.orientation() != LineOrientation::Vertical
         {
@@ -542,7 +579,10 @@ pub(crate) fn place_request(
         )?;
         lines.push(placed);
     }
-    if next != end {
+    if next != end
+        || (matches!(request.coverage, PlacementCoverage::WholeParagraph)
+            && source_segment != prepared.tables.source_segments.len())
+    {
         return Err(protocol_error(ProtocolError::IncompleteLineCoverage {
             line: count,
         }));

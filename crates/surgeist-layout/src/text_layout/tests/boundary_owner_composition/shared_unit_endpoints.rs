@@ -135,8 +135,10 @@ fn qualify_source(p: &TextParagraphBinding<u32>, rtl: bool, nested: bool) {
         .expect("actual Anywhere endpoint2 remains available")
         .handle();
     let start = p.prepared.boundary_views().next().unwrap().handle();
-    let search = p
-        .prepared
+    let mut source_segments = p.prepared.source_segments();
+    let source_segment = source_segments.next().expect("fixture source segment");
+    assert_eq!(source_segments.count(), 0, "one structural fixture segment");
+    let search = source_segment
         .conditional_search(
             &start,
             None,
@@ -160,7 +162,14 @@ fn qualify_source(p: &TextParagraphBinding<u32>, rtl: bool, nested: bool) {
         assert_eq!(p.nodes, [100, 1, 101, 102, 2, 103]);
     }
     assert_eq!(p.controls.len(), if nested { 6 } else { 4 });
-    let captured = p.prepared.captured_paragraph().unwrap();
+    let members = p
+        .prepared
+        .captured_owner()
+        .unwrap()
+        .members()
+        .collect::<Vec<_>>();
+    assert_eq!(members.len(), 1);
+    let captured = &members[0];
     let scopes = captured
         .scope_intersections()
         .map(|row| row.scope())

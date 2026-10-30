@@ -857,7 +857,11 @@ fn a_published_phrase_separator_keeps_its_actual_virtual_owner_through_interword
     let prepared = system
         .prepare(&analysis, PreparationOptions::default())
         .unwrap();
-    assert!(prepared.captured_paragraph().is_some());
+    assert!(
+        prepared
+            .captured_owner()
+            .is_some_and(|owner| owner.members().next().is_some())
+    );
     let virtuals = prepared.virtual_separators().collect::<Vec<_>>();
     assert_eq!(virtuals.len(), 1);
     assert_eq!(virtuals[0].view().source_position().get(), 3);

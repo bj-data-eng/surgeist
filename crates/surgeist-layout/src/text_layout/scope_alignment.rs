@@ -182,9 +182,10 @@ fn require_prepared_scope(
     scope: &CapturedScope,
 ) -> surgeist_text::Result<()> {
     let captured = prepared
-        .captured_paragraph()
+        .captured_owner()
         .ok_or_else(|| refusal(ScopeAlignmentError::MissingCapture))?;
     if !captured
+        .domain()
         .enter_position()
         .same_capture(&scope.enter_position())
     {
@@ -193,10 +194,11 @@ fn require_prepared_scope(
     if captured.domain() != scope.domain() || scope.role() != surgeist_text::ScopeRole::Inline {
         return Err(refusal(ScopeAlignmentError::WrongDomain));
     }
-    if !captured
-        .scope_intersections()
-        .any(|intersection| intersection.scope() == *scope)
-    {
+    if !captured.members().any(|member| {
+        member
+            .scope_intersections()
+            .any(|intersection| intersection.scope() == *scope)
+    }) {
         return Err(refusal(ScopeAlignmentError::UnrepresentedOwnership {
             scope: scope.capture_ordinal(),
         }));
@@ -351,10 +353,11 @@ impl<S: LayoutScalar> ScopeAlignmentSnapshot<S> {
             let mut represented = false;
             for paragraph in paragraphs {
                 work.visit()?;
-                let Some(captured) = paragraph.prepared.captured_paragraph() else {
+                let Some(captured) = paragraph.prepared.captured_owner() else {
                     continue;
                 };
                 if !captured
+                    .domain()
                     .enter_position()
                     .same_capture(&row.scope.enter_position())
                 {
@@ -366,10 +369,16 @@ impl<S: LayoutScalar> ScopeAlignmentSnapshot<S> {
                 }
                 same_domain = true;
                 let mut intersects = false;
-                for intersection in captured.scope_intersections() {
+                for member in captured.members() {
                     work.visit()?;
-                    if intersection.scope() == row.scope {
-                        intersects = true;
+                    for intersection in member.scope_intersections() {
+                        work.visit()?;
+                        if intersection.scope() == row.scope {
+                            intersects = true;
+                            break;
+                        }
+                    }
+                    if intersects {
                         break;
                     }
                 }
@@ -382,7 +391,7 @@ impl<S: LayoutScalar> ScopeAlignmentSnapshot<S> {
                 return Err(refusal(
                     if paragraphs
                         .iter()
-                        .any(|p| p.prepared.captured_paragraph().is_some())
+                        .any(|p| p.prepared.captured_owner().is_some())
                     {
                         ScopeAlignmentError::ForeignCapture
                     } else {
@@ -428,7 +437,7 @@ impl<S: LayoutScalar> ScopeAlignmentSnapshot<S> {
             };
             let captured = paragraph
                 .prepared
-                .captured_paragraph()
+                .captured_owner()
                 .ok_or_else(|| refusal(ScopeAlignmentError::MissingCapture))?;
             let limits = captured
                 .domain()

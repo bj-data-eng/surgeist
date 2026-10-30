@@ -8,7 +8,7 @@ use crate::{
     ProcessedSource, Range, Result,
     engine::{OriginalAtom, analysis::wrapping::Event, resolve::AnalyzedStyleRun},
     projection::SourceProjection,
-    protocol::paragraph::ParagraphData,
+    protocol::paragraph::ParagraphContext,
 };
 use icu_normalizer::properties::CanonicalCombiningClassMap;
 use std::sync::Arc;
@@ -17,15 +17,65 @@ pub(super) fn apply(
     input: SourceProjection,
     styles: &mut Vec<AnalyzedStyleRun>,
     processed: &ProcessedSource,
-    paragraph: &ParagraphData,
-) -> Result<(SourceProjection, Arc<TransformMap>)> {
+    paragraph: &ParagraphContext,
+) -> Result<super::CompletedTransform> {
     let context = super::context::SourceContext::surrounding(processed, paragraph)?;
+    let mut canonical = canonical(context, input)?;
+    let combination = if canonical.context.combination_requested()
+        && canonical.context.scope_topology.is_some()
+    {
+        let topology = canonical
+            .context
+            .scope_topology
+            .expect("captured selection");
+        let outputs = super::context::collect_rows(
+            (0..topology.capture.paragraphs.len())
+                .map(|raw| Some(usize::from(!topology.owner.contains_paragraph(raw)))),
+        )?;
+        let mut outputs = super::combined::complete(&mut canonical, &outputs)?;
+        Some(outputs.remove(0))
+    } else {
+        None
+    };
+    let Canonical {
+        context,
+        source_styles,
+        projection,
+        map,
+        ..
+    } = canonical;
+    let (projection, relation) =
+        super::project::finish(&context, &source_styles, styles, projection, map)?;
+    let combination = combination
+        .map(|output| output.bind(&relation, &processed.lexical).map(Arc::new))
+        .transpose()?;
+    Ok(super::CompletedTransform {
+        projection,
+        relation,
+        combination,
+    })
+}
+
+pub(super) struct Canonical<'a> {
+    pub(super) context: super::context::SourceContext<'a>,
+    pub(super) source_styles: Vec<super::context::StyleRow<'a>>,
+    pub(super) projection: SourceProjection,
+    pub(super) map: TransformMap,
+    pub(super) selection_scopes: Option<Vec<bool>>,
+}
+
+/// One completed map-once transaction. Output ownership is lowered separately.
+pub(super) fn canonical<'a>(
+    context: super::context::SourceContext<'a>,
+    input: SourceProjection,
+) -> Result<Canonical<'a>> {
     let input = context.projection(input)?;
     let super::transaction::Completed {
         input,
         styles: source_styles,
         mut map,
         captured,
+        selection_scopes,
         mappings:
             super::mapping::Mappings {
                 output,
@@ -73,6 +123,7 @@ pub(super) fn apply(
         let start = map.emissions.len();
         for (subposition, &code_point) in output[span.clone()].iter().enumerate() {
             map.emissions.push(Emission {
+                selection_part: None,
                 component: row,
                 subposition,
                 code_point,
@@ -110,7 +161,10 @@ pub(super) fn apply(
                     let ComponentOwner::Original(original) = map.components[row].owner else {
                         unreachable!("separator literals are not case removals")
                     };
-                    map.events.push(RelationEvent::Removal { row: original });
+                    map.events.push(RelationEvent::Removal {
+                        row: original,
+                        selection_part: None,
+                    });
                 }
                 let postpone = casing::postpones_iota(
                     values[row],
@@ -236,7 +290,13 @@ pub(super) fn apply(
             projection.anchor_atoms[order] = Some(component_ends[cut]);
         }
     }
-    super::project::finish(&context, &source_styles, styles, projection, map)
+    Ok(Canonical {
+        context,
+        source_styles,
+        projection,
+        map,
+        selection_scopes,
+    })
 }
 
 fn emit(id: usize, atoms: &mut Vec<OriginalAtom>, map: &mut TransformMap) -> Result<()> {

@@ -5,7 +5,7 @@ use std::ops::Range as IndexRange;
 
 use crate::engine::analysis::wrapping::{Event, LogicalEvent};
 use crate::processing::lexical_inventory::LexicalDeletion;
-use crate::protocol::paragraph::{FlowOriginKey, ParagraphData, SemanticAnchorItem};
+use crate::protocol::paragraph::{FlowOriginKey, ParagraphContext, SemanticAnchorItem};
 use crate::{Range, Source};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -47,6 +47,11 @@ pub(crate) struct ScopeData {
 
 #[derive(Clone, Debug)]
 pub(crate) struct VirtualSeparatorData {
+    /// The actual completed canonical phrase receipt which issued this site.
+    pub(crate) phrase: usize,
+    /// Genuine incident source endpoints for bounded diagnostics. These do
+    /// not authorize output membership or replace the captured insertion cut.
+    pub(crate) context_origins: [FlowOriginKey; 2],
     /// Actual insertion cut in the canonical captured event stream.
     pub(crate) capture_cut: usize,
     pub(crate) scope: usize,
@@ -67,6 +72,9 @@ pub(crate) struct Component {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct Emission {
+    /// Actual frozen source-selection occurrence, when domain selection ran.
+    /// This is correspondence, not a provider ordinal or standalone authority.
+    pub(crate) selection_part: Option<usize>,
     pub(crate) component: usize,
     pub(crate) subposition: usize,
     pub(crate) code_point: u32,
@@ -84,6 +92,14 @@ pub(crate) enum RelationEvent {
     },
     Removal {
         row: usize,
+        selection_part: Option<usize>,
+    },
+    /// A genuinely generated separator was selected, then suppressed by the
+    /// fixed cell's inner processing. Its real component remains source
+    /// custody; this event contributes no ordinary logical participant.
+    GeneratedSuppression {
+        component: usize,
+        selection_part: usize,
     },
     PhaseIDeleted {
         source: Range,
@@ -97,7 +113,7 @@ pub(crate) enum RelationEvent {
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct TransformMap {
-    pub(crate) phrases: Vec<super::separators::automatic::PhraseAnalysis>,
+    pub(crate) phrases: Vec<std::sync::Arc<super::separators::automatic::PhraseAnalysis>>,
     pub(crate) scopes: Vec<ScopeData>,
     pub(crate) virtuals: Vec<VirtualSeparatorData>,
     pub(crate) rows: Vec<InputRow>,
@@ -110,6 +126,9 @@ pub(crate) struct TransformMap {
     /// Canonical cut after each real presentation participant, with only the
     /// consecutive removals in that exact local mixed seam consumed.
     pub(crate) participant_cuts: Vec<usize>,
+    /// Exact relation cut -> logical participant prefix. Unlike participant_cuts,
+    /// this preserves genuine frontiers inside consecutive removed mappings.
+    pub(super) logical_prefix: Vec<usize>,
 }
 
 impl TransformMap {
@@ -126,18 +145,25 @@ impl TransformMap {
             .map_err(|_| super::context::capacity())?;
         for atom in &projection.atoms {
             let first = map.pieces.len();
-            for piece in paragraph.origins.iter().filter_map(|origin| {
-                let start = origin.aggregate.start.max(atom.source.start);
-                let end = origin.aggregate.end.min(atom.source.end);
-                (start < end).then(|| OriginalPiece {
-                    origin: origin.key,
-                    aggregate: Range::new(start, end),
-                    local: Range::new(
-                        origin.local.start + (start - origin.aggregate.start),
-                        origin.local.start + (end - origin.aggregate.start),
-                    ),
+            let original_start = paragraph
+                .origins
+                .partition_point(|origin| origin.aggregate.end <= atom.source.start);
+            for piece in paragraph.origins[original_start..]
+                .iter()
+                .take_while(|origin| origin.aggregate.start < atom.source.end)
+                .filter_map(|origin| {
+                    let start = origin.aggregate.start.max(atom.source.start);
+                    let end = origin.aggregate.end.min(atom.source.end);
+                    (start < end).then(|| OriginalPiece {
+                        origin: origin.key,
+                        aggregate: Range::new(start, end),
+                        local: Range::new(
+                            origin.local.start + (start - origin.aggregate.start),
+                            origin.local.start + (end - origin.aggregate.start),
+                        ),
+                    })
                 })
-            }) {
+            {
                 super::context::push(&mut map.pieces, piece)?;
             }
             map.rows.push(InputRow {
@@ -154,6 +180,7 @@ impl TransformMap {
 
     pub(super) fn finish_cuts(&mut self) -> crate::Result<()> {
         self.participant_cuts.clear();
+        self.logical_prefix.clear();
         let count = self
             .events
             .len()
@@ -163,10 +190,24 @@ impl TransformMap {
             .try_reserve_exact(count)
             .map_err(|_| super::context::capacity())?;
         self.participant_cuts.push(0);
+        self.logical_prefix
+            .try_reserve_exact(count)
+            .map_err(|_| super::context::capacity())?;
+        self.logical_prefix.push(0);
+        let mut logical = 0usize;
         let mut owns_following_removals = false;
         for (index, event) in self.events.iter().enumerate() {
+            if !matches!(
+                event,
+                RelationEvent::Removal { .. } | RelationEvent::GeneratedSuppression { .. }
+            ) {
+                logical = logical
+                    .checked_add(1)
+                    .ok_or_else(super::context::capacity)?;
+            }
+            self.logical_prefix.push(logical);
             match event {
-                RelationEvent::Removal { .. } => {
+                RelationEvent::Removal { .. } | RelationEvent::GeneratedSuppression { .. } => {
                     if owns_following_removals {
                         *self.participant_cuts.last_mut().expect("initial boundary") = index + 1;
                     }
@@ -231,12 +272,15 @@ impl TransformMap {
     pub(crate) fn event_source(
         &self,
         event: usize,
-        paragraph: &ParagraphData,
+        paragraph: &ParagraphContext,
         source: &Source,
     ) -> Range {
         match self.events[event] {
             RelationEvent::Text { atom } => self.component_for_atom(atom).source,
-            RelationEvent::Removal { row } => self.rows[row].source,
+            RelationEvent::Removal { row, .. } => self.rows[row].source,
+            RelationEvent::GeneratedSuppression { component, .. } => {
+                self.components[component].source
+            }
             RelationEvent::PhaseIDeleted { source, .. } => source,
             RelationEvent::Anchor { order } => {
                 let at = match paragraph.anchor_order[order].item {
@@ -257,10 +301,13 @@ impl TransformMap {
     pub(crate) fn cut_for_participant(&self, boundary: usize) -> usize {
         self.participant_cuts[boundary]
     }
+    pub(crate) fn logical_prefix_at_cut(&self, cut: usize) -> Option<usize> {
+        self.logical_prefix.get(cut).copied()
+    }
 
     pub(crate) fn logical_events(
         &self,
-        paragraph: &ParagraphData,
+        paragraph: &ParagraphContext,
         source: &Source,
     ) -> Vec<LogicalEvent> {
         let mut atom = 0;
@@ -272,7 +319,9 @@ impl TransformMap {
                         atom = index;
                         Event::Text(index)
                     }
-                    RelationEvent::Removal { .. } => return None,
+                    RelationEvent::Removal { .. } | RelationEvent::GeneratedSuppression { .. } => {
+                        return None;
+                    }
                     RelationEvent::PhaseIDeleted {
                         source,
                         processed,

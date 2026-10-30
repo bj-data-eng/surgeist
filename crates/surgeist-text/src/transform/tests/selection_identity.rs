@@ -277,7 +277,7 @@ fn delayed_iota_preserves_repeated_noncontiguous_correspondence_and_real_removal
         [
             RelationEvent::Text { atom: 0 },
             RelationEvent::Text { atom: 1 },
-            RelationEvent::Removal { row: 2 },
+            RelationEvent::Removal { row: 2, .. },
             RelationEvent::Text { atom: 2 }
         ]
     ));

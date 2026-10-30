@@ -5,8 +5,8 @@ fn qualify_preparation(paragraph: &Paragraph, orientation: t::LineOrientation) {
     let p = &paragraph.prepared;
     assert_eq!(p.orientation(), orientation);
     assert_eq!(
-        p.captured_paragraph(),
-        paragraph.capture.captured_paragraph(0)
+        p.captured_owner().unwrap().members().collect::<Vec<_>>(),
+        vec![paragraph.capture.captured_paragraph(0).unwrap()]
     );
     assert_eq!(p.analyzed_source().source().text().code_units(), [65, 66]);
     assert_eq!(
@@ -36,6 +36,7 @@ fn qualify_preparation(paragraph: &Paragraph, orientation: t::LineOrientation) {
         .handle();
     let line = p
         .select(t::LineSelectionRequest {
+            segment: p.source_segments().next().unwrap(),
             start: p.boundary_views().next().unwrap().handle(),
             end: end.view().boundary(),
             termination: t::PreparedTermination::Ordinary(end),

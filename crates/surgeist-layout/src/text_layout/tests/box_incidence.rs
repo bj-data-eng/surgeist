@@ -149,7 +149,12 @@ impl EmptyBox {
             .find(|o| o.kind() == text::PreparedBreakKind::Allowed)
             .unwrap()
             .boundary();
-        let incidences = prepared.boundary_incidences(&soft).unwrap();
+        let mut source_segments = prepared.source_segments();
+        let source_segment = source_segments.next().expect("fixture source segment");
+        assert_eq!(source_segments.count(), 0, "one structural fixture segment");
+        let incidences = prepared
+            .boundary_incidences(&source_segment, &soft)
+            .unwrap();
         assert_eq!(incidences.len(), 2);
         assert_eq!(
             incidences

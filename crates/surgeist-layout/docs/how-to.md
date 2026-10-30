@@ -99,7 +99,7 @@ With the default test dependencies available, run:
 CARGO_NET_OFFLINE=true just parity-all
 ```
 
-This explicitly selects the otherwise ignored full XML parity test and clears
+This explicitly selects the ordinary full XML parity test and clears
 `SURGEIST_PARITY_FILTER`. The expected successful result is the selected test
 passing after comparing the full checked-in corpus. Inspect any reported
 geometry mismatches in the test output. The command uses existing XML and does

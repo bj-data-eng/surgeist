@@ -4,8 +4,15 @@ use super::*;
 use CapturedFlowEvent as F;
 use SourceProcessingEvent as E;
 
-fn captured(prepared: &PreparedText) -> CapturedParagraph {
-    prepared.captured_paragraph().unwrap()
+pub(super) fn captured(prepared: &PreparedText) -> CapturedParagraph {
+    let owner = prepared.captured_owner().unwrap();
+    let mut members = owner.members();
+    assert_eq!(
+        members.len(),
+        1,
+        "this flow fixture requires one actual raw paragraph"
+    );
+    members.next().unwrap()
 }
 
 fn original(prepared: &PreparedText, index: usize) -> F {

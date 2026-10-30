@@ -197,8 +197,12 @@ fn capture(
         )
         .expect("the actual Text producer must succeed before any Layout geometry assertion");
     assert_eq!(
-        prepared.captured_paragraph(),
-        processed.captured_paragraph(0)
+        prepared
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        vec![processed.captured_paragraph(0).unwrap()]
     );
     assert_eq!(prepared.analyzed_source().identity(), analysis.identity());
     assert_eq!(prepared.orientation(), orientation);
@@ -248,6 +252,7 @@ fn selected(parent: &Captured, kind: t::InlineBoxKind) -> t::FinalizedLine {
         .unwrap()
         .handle();
     p.select(t::LineSelectionRequest {
+        segment: p.source_segments().next().unwrap(),
         start: p.boundary_views().next().unwrap().handle(),
         end: end.view().boundary(),
         termination: t::PreparedTermination::Ordinary(end),

@@ -166,8 +166,9 @@ fn soft(p: &PreparedText, paragraph: usize) -> PreparedBoundary {
 
 fn query(capture: &Arc<crate::ProcessedSource>, p: &PreparedText, paragraph: usize) -> Duration {
     let b = soft(p, paragraph);
+    let source_segment = p.source_segments().next().unwrap();
     let started = Instant::now();
-    let incidences = p.boundary_incidences(&b).unwrap();
+    let incidences = p.boundary_incidences(&source_segment, &b).unwrap();
     let query_time = started.elapsed();
     assert_eq!(incidences.len(), 1);
     assert_eq!(incidences[0].boundary(), b);
@@ -207,7 +208,10 @@ fn query(capture: &Arc<crate::ProcessedSource>, p: &PreparedText, paragraph: usi
             );
         }
     }
-    assert_eq!(p.boundary_incidences(&b).unwrap(), incidences);
+    assert_eq!(
+        p.boundary_incidences(&source_segment, &b).unwrap(),
+        incidences
+    );
     query_time
 }
 
@@ -335,7 +339,8 @@ fn shared_capture_keeps_local_global_cut_and_foreign_preparation_custody() {
             } else {
                 p.boundary_views().last().unwrap().handle()
             };
-            let incidences = p.boundary_incidences(&b).unwrap();
+            let source_segment = p.source_segments().next().unwrap();
+            let incidences = p.boundary_incidences(&source_segment, &b).unwrap();
             let actual: Vec<Vec<_>> = incidences
                 .iter()
                 .map(|incidence| {
@@ -355,10 +360,15 @@ fn shared_capture_keeps_local_global_cut_and_foreign_preparation_custody() {
     let original = &paragraphs[0].1;
     let other = &prepare(&mut fonts, &capture, 1)[0].1;
     let b = soft(original, 0);
-    let incidence = original.boundary_incidences(&b).unwrap().remove(0);
+    let source_segment = original.source_segments().next().unwrap();
+    let other_segment = other.source_segments().next().unwrap();
+    let incidence = original
+        .boundary_incidences(&source_segment, &b)
+        .unwrap()
+        .remove(0);
     let scope = capture.captured_scope(1).unwrap();
     assert!(matches!(
-        reason(&other.boundary_incidences(&b).unwrap_err()),
+        reason(&other.boundary_incidences(&other_segment, &b).unwrap_err()),
         ProtocolError::ForeignPreparation {
             kind: ProtocolHandleKind::Boundary,
             ..

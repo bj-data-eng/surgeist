@@ -642,6 +642,9 @@ fn a_real_intrinsic_conditional_cut_rebuilds_the_tibetan_prefix_context() {
         .unwrap()
         .handle();
     let batch = p
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &start(&p),
             None,
@@ -830,8 +833,10 @@ fn actual_native_indication_portions_and_flows_keep_each_selected_side() {
 
             // The flow target is this genuine issued native word portion.
             // Ordinary/conditional Tibetan offers are not invented flow targets.
+            let source_segment = p.source_segments().next().unwrap();
             let flow = p
                 .measurement_flow(
+                    &source_segment,
                     &start(&p),
                     None,
                     &PreparedTermination::Measurement(portion.clone()),

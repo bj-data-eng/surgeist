@@ -111,6 +111,7 @@ fn select(
         .collect();
     prepared
         .select(LineSelectionRequest {
+            segment: crate::test_wrapping::only_source_segment(prepared),
             boundary_context: Vec::new(),
             incoming: None,
             start,

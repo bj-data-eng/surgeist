@@ -11,6 +11,29 @@ use std::{borrow::Cow, ops::Range};
 
 use super::greek;
 
+pub(super) const CAPITAL_SIGMA: u32 = 0x3a3;
+const FINAL_SIGMA: u32 = 0x3c2;
+
+/// Complete locale-independent alternatives of the native lower-Sigma rule.
+/// This reads canonical case data; it does not choose a contextual mapping or
+/// publish an emission for a component which the request does not own.
+pub(super) fn lower_sigma_family() -> Result<[u32; 2], MappingError> {
+    let mapper = Mapper::new()?;
+    let ordinary = match mapper.ordinary(CAPITAL_SIGMA, Operation::Lower)? {
+        Mapping::Scalar(cp) => cp,
+        Mapping::Text(text) => {
+            let mut chars = text.chars();
+            let first = chars.next().ok_or(MappingError::InvalidException)?;
+            if chars.next().is_some() {
+                return Err(MappingError::InvalidException);
+            }
+            u32::from(first)
+        }
+        _ => return Err(MappingError::InvalidException),
+    };
+    Ok([ordinary, FINAL_SIGMA])
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Operation {
     Lower,
@@ -473,8 +496,8 @@ impl Mapper {
             if cp == 0x130 {
                 return Ok(text("i\u{307}"));
             }
-            if cp == 0x3a3 && self.final_sigma(before, after)? {
-                return Ok(Mapping::Scalar(0x3c2));
+            if cp == CAPITAL_SIGMA && self.final_sigma(before, after)? {
+                return Ok(Mapping::Scalar(FINAL_SIGMA));
             }
         }
         if upper {

@@ -862,7 +862,7 @@ fn irish_uppercase_suffix_removes_only_its_own_hyphen_with_real_prefix_continuit
                         .transform
                         .events()
                         .iter()
-                        .filter(|event| matches!(event, RelationEvent::Removal { row: 0 }))
+                        .filter(|event| matches!(event, RelationEvent::Removal { row: 0, .. }))
                         .count(),
                     1
                 );

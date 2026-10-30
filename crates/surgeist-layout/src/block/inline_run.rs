@@ -38,8 +38,8 @@ where
 {
     let captured_end = tree.text_computation().and_then(|state| {
         state
-            .paragraph_starting(container, &children[index - 1..])
-            .map(|binding| index - 1 + binding.nodes.len())
+            .run_starting(container, &children[index - 1..])
+            .map(|run| index - 1 + run.nodes().len())
     });
     while index < captured_end.unwrap_or(children.len()).min(semantic_end) {
         if captured_end.is_none()
@@ -144,7 +144,7 @@ fn validate_inline_control_flow<Node, S: LayoutScalar, M>(
 pub(super) struct VisibleInlineRunTransition {
     pub(super) start: usize,
     pub(super) end: usize,
-    semantic: Option<surgeist_text::PreparedText>,
+    semantic: Option<surgeist_text::PreparedSourceSegment>,
 }
 
 impl VisibleInlineRunTransition {
@@ -155,13 +155,11 @@ impl VisibleInlineRunTransition {
             semantic: None,
         }
     }
-    pub(super) fn semantic<Node>(
-        slot: &crate::text_layout::capture::SemanticParagraphSlot<Node>,
-    ) -> Self {
+    pub(super) fn semantic(slot: &crate::text_layout::capture::NativeRunSlot) -> Self {
         Self {
             start: slot.gap,
             end: slot.gap,
-            semantic: Some(slot.prepared.clone()),
+            semantic: Some(slot.segment.clone()),
         }
     }
 
@@ -203,9 +201,9 @@ impl VisibleInlineRunTransition {
         let adjoining_margin = active_margin.resolve();
         context.cursor_block = *cursor_block;
         let constants = context.constants;
-        let semantic = self.semantic.as_ref().map(|prepared| {
+        let semantic = self.semantic.as_ref().map(|segment| {
             tree.text_computation()
-                .and_then(|state| state.semantic_paragraph(node, prepared))
+                .and_then(|state| state.semantic_run(node, segment))
                 .expect("semantic transition retains its validated actual binding")
         });
         let mut placement = layout_inline_run_children(
@@ -413,7 +411,7 @@ fn inline_boundary_control<S: LayoutScalar>(
 }
 
 struct InlineRunRequest<'context, 'input, Node, S: LayoutScalar> {
-    semantic: Option<&'input crate::TextParagraphBinding<Node>>,
+    semantic: Option<crate::text_layout::AdmittedRun<'input, Node>>,
     context: InlineRunContext<'context, S>,
     adjoining_margin: S,
 }
@@ -469,10 +467,22 @@ where
     let mut participants = Vec::new();
     let mut atomic_children = Vec::new();
     let mut control_children = Vec::new();
-    let text_binding = semantic.or_else(|| {
+    let text_run = semantic.or_else(|| {
         tree.text_computation()
-            .and_then(|state| state.paragraph(container, run))
+            .and_then(|state| state.run(container, run))
     });
+    let text_binding = text_run.as_ref().map(|run| run.binding);
+    if text_run.as_ref().is_some_and(|run| {
+        run.nodes().is_empty()
+            && run.binding.line_strut.is_none()
+            && run.segment.start().view().participant_offset()
+                == run.segment.end().view().participant_offset()
+    }) {
+        // A genuine metadata-only structural section retains its Text receipt
+        // without inventing an anonymous line box or consuming adjoining margins.
+        margin = InlineRunMargin::Adjoins;
+        cursor_block = uncollapsed_cursor_block;
+    }
     let text_orientation = text_binding
         .map(|binding| {
             crate::text_layout::run::text_orientation(
@@ -736,7 +746,9 @@ where
                 super::float_text::FloatEvent::new(
                     pending,
                     packet,
-                    text_binding.expect("actual float is in captured paragraph"),
+                    text_run
+                        .as_ref()
+                        .expect("actual float is in captured native run"),
                     &tree
                         .text_computation()
                         .expect("captured float keeps source registry")
@@ -880,7 +892,16 @@ where
         let formatted = tree
             .text_computation()
             .map(|state| {
-                state.formatted_snapshot(container, run, &binding.prepared, input, formatted_mode)
+                state.formatted_snapshot(
+                    container,
+                    run,
+                    &text_run
+                        .as_ref()
+                        .expect("actual native source segment")
+                        .segment,
+                    input,
+                    formatted_mode,
+                )
             })
             .unwrap_or_default();
         let group_snapshot = tree
@@ -897,7 +918,7 @@ where
                 crate::text_layout::run::WrappingProjection::new(
                     context,
                     graph,
-                    binding,
+                    text_run.as_ref().expect("actual admitted native run"),
                     &associations,
                 )
                 .map(|projection| projection.with_incoming(box_frontier.clone()))
@@ -1022,7 +1043,7 @@ where
             quality_replay,
         ));
         let result = crate::text_layout::run::layout(
-            binding,
+            text_run.as_ref().expect("actual admitted native run"),
             &associations,
             &text_atomics,
             &text_controls,
@@ -1130,7 +1151,10 @@ where
             state.formatted_merge_run(
                 container,
                 run,
-                &binding.prepared,
+                &text_run
+                    .as_ref()
+                    .expect("actual native source segment")
+                    .segment,
                 input,
                 formatted_mode,
                 output.formatted.clone(),
@@ -1528,6 +1552,7 @@ where
             for row in text_binding
                 .into_iter()
                 .flat_map(|binding| binding.origins.iter())
+                .filter(|row| run.contains(&row.node))
             {
                 if !groups.iter().any(|(node, _, _, _)| *node == row.node) {
                     groups.push((row.node, Vec::new(), None, None));
@@ -2152,6 +2177,7 @@ pub(super) fn text_run_error<Node: Copy, S: LayoutScalar, M>(
             return crate::inline_wrapping::wrapping_error(node, error);
         }
         crate::text_layout::fit::FitError::Text(error) => LayoutErrorKindOf::Text(error),
+        crate::text_layout::fit::FitError::Allocation => LayoutErrorKindOf::Allocation,
         crate::text_layout::fit::FitError::FeedbackCycle => LayoutErrorKindOf::TextFeedbackCycle,
         crate::text_layout::fit::FitError::SpacingBudget { available, advance } => {
             LayoutErrorKindOf::TextSpacingBudget { available, advance }

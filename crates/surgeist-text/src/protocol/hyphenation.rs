@@ -289,7 +289,7 @@ impl PreparedWordView<'_> {
                 crate::transform::relation::RelationEvent::Text { atom } => {
                     map.original_row_for_atom(atom)
                 }
-                crate::transform::relation::RelationEvent::Removal { row } => Some(row),
+                crate::transform::relation::RelationEvent::Removal { row, .. } => Some(row),
                 _ => None,
             })
             .collect();
@@ -541,15 +541,46 @@ impl PreparedWordView<'_> {
             .ok_or_else(|| super::protocol_error(super::ProtocolError::InvalidWordPortion))?;
         let last = tables.participants.iter().rposition(|part| matches!(*part, super::prepared::ParticipantData::Text(i) if tables.units[i].atoms.contains(&(word.atoms.end - 1))))
             .ok_or_else(|| super::protocol_error(super::ProtocolError::InvalidWordPortion))? + 1;
-        let mut start = tables
-            .boundaries
-            .iter()
-            .position(|row| row.participant == first)
+        let section_index = self
+            .prepared
+            .analyzed
+            .sections
+            .partition_point(|section| section.atoms.end <= word.atoms.start);
+        let section = self
+            .prepared
+            .analyzed
+            .sections
+            .get(section_index)
+            .filter(|section| {
+                section.atoms.start <= word.atoms.start && word.atoms.end <= section.atoms.end
+            })
             .ok_or_else(|| super::protocol_error(super::ProtocolError::InvalidWordPortion))?;
-        let end = tables
-            .boundaries
-            .iter()
-            .position(|row| row.participant == last)
+        let boundary = |participant, edge, atom| {
+            let cut = self
+                .prepared
+                .analyzed
+                .transform
+                .cut_for_participant(participant);
+            let index = if edge {
+                tables.source_segments[section_index].end
+            } else {
+                tables.source_segments[section_index].start
+            };
+            let row = &tables.boundaries[index];
+            if row.participant == participant && row.atom == atom {
+                return Some(index);
+            }
+            if section.events.contains(&cut) || cut == section.events.end {
+                return tables
+                    .boundaries
+                    .iter()
+                    .position(|row| row.participant == participant && row.relation_cut == cut);
+            }
+            None
+        };
+        let mut start = boundary(first, false, word.atoms.start)
+            .ok_or_else(|| super::protocol_error(super::ProtocolError::InvalidWordPortion))?;
+        let end = boundary(last, true, word.atoms.end)
             .ok_or_else(|| super::protocol_error(super::ProtocolError::InvalidWordPortion))?;
         let mut result = Vec::new();
         let mut incoming = vec![None];

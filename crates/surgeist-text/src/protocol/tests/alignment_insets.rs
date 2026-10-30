@@ -140,15 +140,18 @@ fn geometry_search_identity_keeps_insets_while_conditional_selection_accepts_a_n
         unreachable!()
     };
     let search = |frame: &FinalizedLine| {
-        p.conditional_search(
-            &zero.start,
-            None,
-            ceiling,
-            ConditionalPurpose::Overflow,
-            &[],
-            Some(frame),
-        )
-        .unwrap()
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &zero.start,
+                None,
+                ceiling,
+                ConditionalPurpose::Overflow,
+                &[],
+                Some(frame),
+            )
+            .unwrap()
     };
     let first_search = search(&first);
     let second_search = search(&second);

@@ -464,7 +464,14 @@ impl Paragraph {
         let prepared = system
             .prepare(&analyzed.with_wrapping_policies(wrapping).unwrap(), options)
             .unwrap();
-        assert_eq!(prepared.captured_paragraph(), capture.captured_paragraph(0));
+        assert_eq!(
+            prepared
+                .captured_owner()
+                .unwrap()
+                .members()
+                .collect::<Vec<_>>(),
+            vec![capture.captured_paragraph(0).unwrap()]
+        );
         assert_eq!(prepared.origin_views().count(), origin_nodes.len());
         assert_eq!(prepared.control_views().count(), control_nodes.len());
         assert_eq!(prepared.atomic_views().count(), atomic_nodes.len());

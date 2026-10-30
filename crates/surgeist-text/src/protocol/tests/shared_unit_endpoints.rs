@@ -552,10 +552,15 @@ fn nested_physical_pairs_retain_distinct_coincident_end_events_and_shared_glyphs
     assert_eq!(controls.len(), 4);
     assert_eq!(units.len(), 3);
     let scopes = p
-        .captured_paragraph()
+        .captured_owner()
         .unwrap()
-        .scope_intersections()
-        .map(|intersection| intersection.scope())
+        .members()
+        .flat_map(|member| {
+            member
+                .scope_intersections()
+                .map(|intersection| intersection.scope())
+                .collect::<Vec<_>>()
+        })
         .filter(|scope| scope.role() == crate::ScopeRole::Inline)
         .collect::<Vec<_>>();
     assert_eq!(scopes.len(), 2);
@@ -969,10 +974,15 @@ fn odd_shared_unit_keeps_each_nested_end_interval_on_its_actual_visual_side() {
     // Exact canonical pairs are retained even though their source positions
     // coincide. No array/source-offset pairing convention supplies authority.
     let scopes = p
-        .captured_paragraph()
+        .captured_owner()
         .unwrap()
-        .scope_intersections()
-        .map(|i| i.scope())
+        .members()
+        .flat_map(|member| {
+            member
+                .scope_intersections()
+                .map(|i| i.scope())
+                .collect::<Vec<_>>()
+        })
         .filter(|s| s.role() == crate::ScopeRole::Inline)
         .collect::<Vec<_>>();
     assert_eq!(scopes.len(), 2);

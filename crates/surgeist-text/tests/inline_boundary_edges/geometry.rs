@@ -60,6 +60,7 @@ fn request(
         })
         .collect();
     t::LineSelectionRequest {
+        segment: p.source_segments().next().unwrap(),
         start,
         end: boundary,
         participants,

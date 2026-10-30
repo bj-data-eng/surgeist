@@ -472,6 +472,9 @@ fn conditional_automatic_dispositions_preserve_variant_custody_and_semantic_iden
         .map(crate::ConditionalDisposition::AutoFitExhausted)
         .collect::<Vec<_>>();
     let cuts = p
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &start,
             None,
@@ -491,20 +494,23 @@ fn conditional_automatic_dispositions_preserve_variant_custody_and_semantic_iden
     );
     assert_eq!(
         cuts,
-        p.conditional_search(
-            &start,
-            None,
-            &ceiling,
-            ConditionalPurpose::Overflow,
-            &receipts(20.0)
-                .into_iter()
-                .map(crate::ConditionalDisposition::AutoFitExhausted)
-                .collect::<Vec<_>>(),
-            None
-        )
-        .and_then(|search| search.begin(&[]))
-        .map(|batch| batch.opportunities().to_vec())
-        .unwrap()
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &start,
+                None,
+                &ceiling,
+                ConditionalPurpose::Overflow,
+                &receipts(20.0)
+                    .into_iter()
+                    .map(crate::ConditionalDisposition::AutoFitExhausted)
+                    .collect::<Vec<_>>(),
+                None
+            )
+            .and_then(|search| search.begin(&[]))
+            .map(|batch| batch.opportunities().to_vec())
+            .unwrap()
     );
     for bad in [
         vec![],
@@ -512,31 +518,37 @@ fn conditional_automatic_dispositions_preserve_variant_custody_and_semantic_iden
         vec![dispositions[0].clone(), dispositions[0].clone()],
     ] {
         assert!(
-            p.conditional_search(
+            p.source_segments()
+                .next()
+                .unwrap()
+                .conditional_search(
+                    &start,
+                    None,
+                    &ceiling,
+                    ConditionalPurpose::Overflow,
+                    &bad,
+                    None
+                )
+                .and_then(|search| search.begin(&[]))
+                .map(|batch| batch.opportunities().to_vec())
+                .is_err()
+        );
+    }
+    assert!(
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
                 &start,
                 None,
                 &ceiling,
-                ConditionalPurpose::Overflow,
-                &bad,
+                ConditionalPurpose::MinContent,
+                &dispositions,
                 None
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
             .is_err()
-        );
-    }
-    assert!(
-        p.conditional_search(
-            &start,
-            None,
-            &ceiling,
-            ConditionalPurpose::MinContent,
-            &dispositions,
-            None
-        )
-        .and_then(|search| search.begin(&[]))
-        .map(|batch| batch.opportunities().to_vec())
-        .is_err()
     );
     let intrinsic = automatic
         .iter()
@@ -547,6 +559,9 @@ fn conditional_automatic_dispositions_preserve_variant_custody_and_semantic_iden
         })
         .collect::<Vec<_>>();
     let minimum = p
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &start,
             None,
@@ -566,17 +581,20 @@ fn conditional_automatic_dispositions_preserve_variant_custody_and_semantic_iden
         [1, 2, 3, 4, 5, 6, 7, 8]
     );
     assert!(
-        p.conditional_search(
-            &start,
-            None,
-            &ceiling,
-            ConditionalPurpose::Overflow,
-            &intrinsic,
-            None
-        )
-        .and_then(|search| search.begin(&[]))
-        .map(|batch| batch.opportunities().to_vec())
-        .is_err()
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &start,
+                None,
+                &ceiling,
+                ConditionalPurpose::Overflow,
+                &intrinsic,
+                None
+            )
+            .and_then(|search| search.begin(&[]))
+            .map(|batch| batch.opportunities().to_vec())
+            .is_err()
     );
     let foreign = prepare(input(Source::new("associate"), &[0, 9]));
     let wrong = ordinary_trial(
@@ -589,17 +607,20 @@ fn conditional_automatic_dispositions_preserve_variant_custody_and_semantic_iden
     let mut bad = dispositions.clone();
     bad[0] = crate::ConditionalDisposition::AutoFitExhausted(wrong);
     assert!(
-        p.conditional_search(
-            &start,
-            None,
-            &ceiling,
-            ConditionalPurpose::Overflow,
-            &bad,
-            None
-        )
-        .and_then(|search| search.begin(&[]))
-        .map(|batch| batch.opportunities().to_vec())
-        .is_err()
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &start,
+                None,
+                &ceiling,
+                ConditionalPurpose::Overflow,
+                &bad,
+                None
+            )
+            .and_then(|search| search.begin(&[]))
+            .map(|batch| batch.opportunities().to_vec())
+            .is_err()
     );
 }
 #[test]
@@ -648,44 +669,53 @@ fn automatic_manual_priority_requires_exact_admitted_portion_and_measurements_ne
         portion: portion.clone(),
     }];
     assert!(
-        !p.conditional_search(
-            &part.start(),
-            None,
-            &ceiling,
-            ConditionalPurpose::Overflow,
-            &dispositions,
-            None
-        )
-        .and_then(|search| search.begin(&[]))
-        .map(|batch| batch.opportunities().to_vec())
-        .unwrap()
-        .is_empty()
+        !p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &part.start(),
+                None,
+                &ceiling,
+                ConditionalPurpose::Overflow,
+                &dispositions,
+                None
+            )
+            .and_then(|search| search.begin(&[]))
+            .map(|batch| batch.opportunities().to_vec())
+            .unwrap()
+            .is_empty()
     );
     assert!(
-        p.conditional_search(
-            &part.start(),
-            None,
-            &ceiling,
-            ConditionalPurpose::Overflow,
-            &[crate::ConditionalDisposition::Phantom(portion.clone())],
-            None
-        )
-        .and_then(|search| search.begin(&[]))
-        .map(|batch| batch.opportunities().to_vec())
-        .is_err()
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &part.start(),
+                None,
+                &ceiling,
+                ConditionalPurpose::Overflow,
+                &[crate::ConditionalDisposition::Phantom(portion.clone())],
+                None
+            )
+            .and_then(|search| search.begin(&[]))
+            .map(|batch| batch.opportunities().to_vec())
+            .is_err()
     );
     assert!(
-        p.conditional_search(
-            &part.start(),
-            None,
-            &ceiling,
-            ConditionalPurpose::Overflow,
-            &[crate::ConditionalDisposition::AutoFitExhausted(portion)],
-            None
-        )
-        .and_then(|search| search.begin(&[]))
-        .map(|batch| batch.opportunities().to_vec())
-        .is_err()
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &part.start(),
+                None,
+                &ceiling,
+                ConditionalPurpose::Overflow,
+                &[crate::ConditionalDisposition::AutoFitExhausted(portion)],
+                None
+            )
+            .and_then(|search| search.begin(&[]))
+            .map(|batch| batch.opportunities().to_vec())
+            .is_err()
     );
     let manual = p
         .alternative_views()
@@ -701,17 +731,20 @@ fn automatic_manual_priority_requires_exact_admitted_portion_and_measurements_ne
         manual,
     )];
     assert!(
-        p.conditional_search(
-            &p.boundary_views().next().unwrap().handle(),
-            None,
-            &ceiling,
-            ConditionalPurpose::MinContent,
-            &impossible,
-            None
-        )
-        .and_then(|search| search.begin(&[]))
-        .map(|batch| batch.opportunities().to_vec())
-        .is_err()
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &p.boundary_views().next().unwrap().handle(),
+                None,
+                &ceiling,
+                ConditionalPurpose::MinContent,
+                &impossible,
+                None
+            )
+            .and_then(|search| search.begin(&[]))
+            .map(|batch| batch.opportunities().to_vec())
+            .is_err()
     );
 }
 
@@ -1316,6 +1349,9 @@ fn automatic_allowed_endpoint_keeps_its_nonhyphenating_variant_as_a_real_barrier
         // An automatic disposition cannot discharge that endpoint's real None
         // variant, even when the exact automatic trial itself is supplied.
         let error = p
+            .source_segments()
+            .next()
+            .unwrap()
             .conditional_search(
                 &start,
                 None,
@@ -1331,6 +1367,9 @@ fn automatic_allowed_endpoint_keeps_its_nonhyphenating_variant_as_a_real_barrier
             matches!(reason(&error), ProtocolError::InvalidConditionalReceipt { receipt: 0, opportunity } if *opportunity == offer.index)
         );
         let error = p
+            .source_segments()
+            .next()
+            .unwrap()
             .conditional_search(
                 &start,
                 None,
@@ -1361,6 +1400,9 @@ fn automatic_allowed_endpoint_keeps_its_nonhyphenating_variant_as_a_real_barrier
                 crate::ConditionalDisposition::AutoIntrinsicRefinement(auto.clone())
             };
             let cuts = p
+                .source_segments()
+                .next()
+                .unwrap()
                 .conditional_search(
                     &start,
                     None,
@@ -1466,7 +1508,10 @@ fn line_limit_dispositions_authenticate_exact_automatic_variants_and_purpose() {
     let zero = dispositions(0);
     let finite = dispositions(1);
     let query = |purpose, rows: &[_]| {
-        p.conditional_search(&start, None, &ceiling, purpose, rows, None)
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(&start, None, &ceiling, purpose, rows, None)
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
     };
@@ -1541,6 +1586,9 @@ fn line_limit_dispositions_authenticate_exact_automatic_variants_and_purpose() {
     };
     assert!(
         manual
+            .source_segments()
+            .next()
+            .unwrap()
             .conditional_search(
                 &manual.boundary_views().next().unwrap().handle(),
                 None,

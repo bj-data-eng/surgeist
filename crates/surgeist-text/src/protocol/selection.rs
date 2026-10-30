@@ -353,6 +353,7 @@ fn admit(
 ) -> Result<super::prepared::SelectedPresentation> {
     let input = super::input::RequestInput::from(request);
     let (start, end) = admit_range(prepared, input)?;
+    let segment = super::segments::admit(prepared, &request.segment)?;
     let tables = &prepared.inner.tables;
     let bounds_error = || {
         protocol_error(ProtocolError::InvalidBoundaryRange {
@@ -363,6 +364,7 @@ fn admit(
     };
     let ordinary = match &request.termination {
         super::PreparedTermination::Ordinary(termination) => {
+            super::segments::admit_opportunity(prepared, &request.segment, termination)?;
             require_prepared(
                 prepared,
                 &termination.prepared,
@@ -377,6 +379,14 @@ fn admit(
             if opportunity.boundary != request.end.index {
                 return Err(protocol_error(ProtocolError::IllegalOpportunity {
                     opportunity: termination.index,
+                }));
+            }
+            if let Some(actual) = opportunity.source_segment
+                && actual != request.segment.index
+            {
+                return Err(protocol_error(ProtocolError::MismatchedSourceSegment {
+                    expected: request.segment.index,
+                    actual,
                 }));
             }
             Some((termination.index, opportunity))
@@ -407,7 +417,10 @@ fn admit(
         .enumerate()
         .skip(first)
         .take_while(|(_, row)| tables.boundaries[row.boundary].participant <= end.participant)
-        .find(|(_, row)| row.kind == PreparedBreakKind::Forced)
+        .find(|(_, row)| {
+            row.kind == PreparedBreakKind::Forced
+                && row.source_segment == Some(request.segment.index)
+        })
         .is_some_and(|(index, _)| ordinary.is_none_or(|(actual, _)| index != actual))
     {
         return Err(protocol_error(match ordinary {
@@ -433,7 +446,8 @@ fn admit(
             field: ProtocolContextField::LineEnd,
         }));
     }
-    let actual_start = if start.participant == 0 {
+    let segment_start = &tables.boundaries[segment.start];
+    let actual_start = if start.participant == segment_start.participant {
         LineStart::Paragraph
     } else {
         LineStart::Continuation
@@ -482,7 +496,8 @@ pub(crate) fn admit_range<'a>(
     &'a super::prepared::BoundaryData,
     &'a super::prepared::BoundaryData,
 )> {
-    super::continuation::validate(prepared, request.start, request.incoming)?;
+    super::segments::admit(prepared, request.segment)?;
+    super::continuation::validate(prepared, request.segment, request.start, request.incoming)?;
     let tables = &prepared.inner.tables;
     require_prepared(
         prepared,
@@ -512,11 +527,13 @@ pub(crate) fn admit_range<'a>(
         .get(request.end.index)
         .ok_or_else(bounds_error)?;
     if start.participant > end.participant
+        || start.relation_cut > end.relation_cut
         || end.participant > tables.participants.len()
         || request.participants.len() != end.participant - start.participant
     {
         return Err(bounds_error());
     }
+    super::segments::admit_boundaries(prepared, request.segment, request.start, request.end)?;
     for (position, (actual, expected)) in request
         .participants
         .iter()
@@ -822,6 +839,12 @@ pub(crate) fn scope_request_roots(
 ) -> Result<()> {
     require_data(
         prepared,
+        &request.segment.prepared,
+        ProtocolHandleKind::SourceSegment,
+        request.segment.index,
+    )?;
+    require_data(
+        prepared,
         &request.start.prepared,
         ProtocolHandleKind::Boundary,
         request.start.index,
@@ -1055,6 +1078,9 @@ pub(crate) fn standalone_request(
     if tables.profile != crate::engine::PreparationProfile::Standalone {
         return Err(invalid());
     }
+    if tables.source_segments.len() != 1 {
+        return Err(protocol_error(ProtocolError::UnsupportedStandaloneAnalysis));
+    }
     let ending = match &termination {
         super::PreparedTermination::Ordinary(offer) => match tables.opportunities[offer.index].kind
         {
@@ -1077,6 +1103,7 @@ pub(crate) fn standalone_request(
     let participants = handle.participants().skip(from).take(to - from).collect();
     let atomics = standalone_atomics(&prepared, start, end)?;
     let request = LineSelectionRequest {
+        segment: handle.source_segments().next().ok_or_else(invalid)?,
         boundary_context: Vec::new(),
         incoming: None,
         start: PreparedBoundary {

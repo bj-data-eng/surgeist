@@ -66,6 +66,7 @@ pub(in super::super) fn fit_with_allocation(
                 crate::Direction::Ltr,
             ),
             prepared: &paragraph.prepared,
+            segment: paragraph.prepared.source_segments().next().unwrap(),
             scope_alignments: &scope_alignments,
             available: Available::Definite(available),
             base_direction: ParagraphBaseDirection::LeftToRight,

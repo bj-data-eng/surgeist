@@ -189,7 +189,14 @@ fn fixture_empty<S: l::LayoutScalar>()
                 .collect();
             let a = a.with_wrapping_policies(missing).unwrap();
             let prepared = fonts.prepare(&a, t::PreparationOptions::default()).unwrap();
-            assert_eq!(prepared.captured_paragraph(), capture.captured_paragraph(i));
+            assert_eq!(
+                prepared
+                    .captured_owner()
+                    .unwrap()
+                    .members()
+                    .collect::<Vec<_>>(),
+                vec![capture.captured_paragraph(i).unwrap()]
+            );
             let (container, nodes, origins) = if i < 2 {
                 let node = if i == 0 { 1 } else { 3 };
                 let origin = prepared.origin_views().next().unwrap().handle();

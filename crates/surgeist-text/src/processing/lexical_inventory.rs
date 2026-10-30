@@ -182,19 +182,33 @@ impl LexicalDeletion {
         &self,
         state: &'a LexicalState,
     ) -> impl Iterator<Item = &'a LexicalRecord> {
+        self.indexed_occurrences(state).map(|(_, record)| record)
+    }
+
+    /// Allocation-local ledger indices preserve occurrence multiplicity across
+    /// several relation fragments referring to the same executed character.
+    pub(crate) fn indexed_occurrences<'a>(
+        &self,
+        state: &'a LexicalState,
+    ) -> impl Iterator<Item = (usize, &'a LexicalRecord)> {
         let LexicalState::Executed { records, .. } = state else {
             unreachable!("a lexical deletion is issued only by executed processing")
         };
         let source = self.source;
         let cause = self.cause;
-        records[self.first..self.end].iter().filter(move |record| {
-            matches!(record.kind,
+        let first = self.first;
+        records[self.first..self.end]
+            .iter()
+            .enumerate()
+            .filter_map(move |(offset, record)| {
+                matches!(record.kind,
                 LexicalRecordKind::Character {
                     source: original,
                     disposition: LexicalDisposition::Deleted { cause: actual, .. },
                     ..
                 } if actual == cause && original.start < source.end && source.start < original.end)
-        })
+                .then_some((first + offset, record))
+            })
     }
 
     /// Reconstitutes the existing event fragment from its actual occurrence

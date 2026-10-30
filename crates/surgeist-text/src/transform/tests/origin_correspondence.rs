@@ -489,7 +489,7 @@ fn delayed_greek_outputs_keep_one_typed_origin_and_exact_noncontiguous_local_pie
             RelationEvent::Anchor { .. },
             RelationEvent::Text { atom: 0 },
             RelationEvent::Text { atom: 1 },
-            RelationEvent::Removal { row: 2 },
+            RelationEvent::Removal { row: 2, .. },
             RelationEvent::Text { atom: 2 },
         ]
     ));

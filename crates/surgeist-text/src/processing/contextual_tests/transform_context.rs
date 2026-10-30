@@ -452,7 +452,7 @@ fn lithuanian_dot_uses_connected_soft_dotted_context_but_emits_only_its_own_remo
     assert!(analyzed.inner.transform.emissions.is_empty());
     assert!(matches!(
         analyzed.inner.transform.events(),
-        [RelationEvent::Removal { row: 0 }]
+        [RelationEvent::Removal { row: 0, .. }]
     ));
     // The source dot and its independent raw paragraph remain published;
     // removal is real transform correspondence, not source deletion or union.

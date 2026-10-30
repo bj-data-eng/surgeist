@@ -55,7 +55,7 @@ fn break_all_projection_maps_supplementary_representatives_to_exact_original_byt
     let text = "\u{10400}אב\u{301}א";
     let projection = SourceProjection::new(&crate::Source::new(text)).unwrap();
     let egcs = graphemes(&projection);
-    let units = super::super::line_units::LineBreakUnits::new(&projection).unwrap();
+    let units = super::super::line_units::LineBreakUnits::new(&projection, None).unwrap();
     let css = BreakAll::new(
         &projection,
         &egcs,
@@ -120,7 +120,7 @@ fn only_actual_letter_units_are_promoted_and_already_supported_input_stays_borro
     ] {
         let projection = SourceProjection::new(&crate::Source::new(text)).unwrap();
         let egcs = graphemes(&projection);
-        let units = super::super::line_units::LineBreakUnits::new(&projection).unwrap();
+        let units = super::super::line_units::LineBreakUnits::new(&projection, None).unwrap();
         let css = BreakAll::new(
             &projection,
             &egcs,
@@ -133,7 +133,7 @@ fn only_actual_letter_units_are_promoted_and_already_supported_input_stays_borro
     let text = "abc123";
     let projection = SourceProjection::new(&crate::Source::new(text)).unwrap();
     let egcs = graphemes(&projection);
-    let units = super::super::line_units::LineBreakUnits::new(&projection).unwrap();
+    let units = super::super::line_units::LineBreakUnits::new(&projection, None).unwrap();
     let css = BreakAll::new(
         &projection,
         &egcs,

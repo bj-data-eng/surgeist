@@ -259,7 +259,7 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
             return Ok(None);
         }
         let root = prepared
-            .captured_paragraph()
+            .captured_owner()
             .ok_or_else(|| refusal(ScopeAlignmentError::MissingCapture))?
             .domain();
         let limits = root
@@ -462,7 +462,7 @@ impl ScopeOperation<'_> {
         }
         let scope = line
             .prepared_text()
-            .captured_paragraph()
+            .captured_owner()
             .ok_or_else(|| refusal(ScopeAlignmentError::MissingCapture))?
             .domain()
             .capture_ordinal();

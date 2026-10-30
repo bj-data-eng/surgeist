@@ -337,8 +337,12 @@ fn capture(
     assert_eq!(prepared.preparation_options(), options);
     assert_eq!(prepared.analyzed_source().identity(), analysis.identity());
     assert_eq!(
-        prepared.captured_paragraph(),
-        processed.captured_paragraph(0)
+        prepared
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        vec![processed.captured_paragraph(0).unwrap()]
     );
     assert_eq!(prepared.orientation(), orientation);
     assert_eq!(prepared.atomic_views().count(), usize::from(atomic));
@@ -358,6 +362,7 @@ fn select(
     parent
         .prepared
         .select(t::LineSelectionRequest {
+            segment: parent.prepared.source_segments().next().unwrap(),
             start,
             end,
             termination: t::PreparedTermination::Ordinary(offer),

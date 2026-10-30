@@ -17,7 +17,7 @@ use crate::{
     },
     projection::SourceProjection,
     protocol::paragraph::{
-        ComputedBoundaryData, FlowOriginKey, OriginData, ParagraphControl, ParagraphData,
+        ComputedBoundaryData, FlowOriginKey, OriginData, ParagraphContext, ParagraphControl,
         SemanticAnchor, SemanticAnchorItem,
     },
 };
@@ -146,7 +146,7 @@ impl StyleRow<'_> {
 /// references, not equal source offsets, authorize final local conversion.
 #[derive(Clone, Copy)]
 struct AnchorOwner<'a> {
-    paragraph: &'a ParagraphData,
+    paragraph: &'a ParagraphContext,
     local: usize,
     order: usize,
 }
@@ -177,11 +177,12 @@ impl SourceFence {
 
 pub(crate) struct SourceContext<'a> {
     pub(super) processed: &'a ProcessedSource,
-    pub(super) requested: &'a ParagraphData,
+    pub(super) requested: &'a ParagraphContext,
+    pub(super) whole_domain: bool,
     pub(super) scope_topology: Option<&'a ParagraphTopology>,
     pub(super) origins: Vec<Original<'a>>,
     pub(super) controls: Vec<&'a ParagraphControl>,
-    control_owners: Vec<(&'a ParagraphData, usize)>,
+    control_owners: Vec<(&'a ParagraphContext, usize)>,
     pub(super) computed_boundaries: Vec<&'a ComputedBoundaryData>,
     pub(super) connections: Vec<Connection>,
     pub(super) connection_ends: Option<Vec<(usize, usize)>>,
@@ -192,6 +193,64 @@ pub(crate) struct SourceContext<'a> {
 }
 
 impl<'a> SourceContext<'a> {
+    pub(super) fn combination_requested(&self) -> bool {
+        let authored =
+            self.processed.base_style().text_combine_upright != crate::TextCombineUpright::None
+                || self.processed.source().spans().iter().any(|span| {
+                    span.style().text_combine_upright != crate::TextCombineUpright::None
+                });
+        authored
+            || self.scope_topology.is_some_and(|topology| {
+                topology.capture.scopes.iter().any(|scope| {
+                    scope.domain == topology.domain
+                        && scope.style.as_ref().is_some_and(|style| {
+                            style.text_combine_upright != crate::TextCombineUpright::None
+                        })
+                })
+            })
+    }
+    /// Once-built custody for actual captured insertion cuts. The ordered
+    /// output declarations supply authority; equal byte positions do not.
+    pub(super) fn output_cuts(
+        &self,
+        owners: &[&crate::analyzed::captured::CapturedOwner],
+    ) -> Result<Vec<Option<usize>>> {
+        let topology = self.scope_topology.expect("captured output lowering");
+        let capture = &topology.capture;
+        let mut result = filled(
+            capture.events.len().checked_add(1).ok_or_else(capacity)?,
+            None,
+        )?;
+        let bounds = collect_rows(owners.iter().map(|owner| {
+            (
+                capture.paragraphs[owner.member(0).index].enter,
+                capture.paragraphs[owner.member(owner.len() - 1).index].exit,
+            )
+        }))?;
+        let mut next = 0;
+        for &cut in &capture.flow_orders[topology.domain] {
+            while bounds.get(next).is_some_and(|(_, last)| *last < cut) {
+                next += 1;
+            }
+            if let Some(&(first, _)) = bounds.get(next)
+                && first <= cut
+                && owners[next].owns_cut(cut)
+            {
+                result[cut] = Some(next);
+            }
+        }
+        Ok(result)
+    }
+    pub(super) fn anchor_paragraph(&self, order: usize) -> Option<usize> {
+        self.anchor_owners[order]
+            .paragraph
+            .scope_topology
+            .as_ref()
+            .and_then(|topology| match &topology.owner {
+                crate::analyzed::captured::CapturedOwner::Raw(raw) => Some(raw.index),
+                crate::analyzed::captured::CapturedOwner::Joint(_) => None,
+            })
+    }
     pub(super) fn separator_events(
         &self,
         projection: &SourceProjection,
@@ -305,20 +364,29 @@ impl<'a> SourceContext<'a> {
     /// their source context. The actual analysis request uses `surrounding`.
     pub(crate) fn exact(
         processed: &'a ProcessedSource,
-        paragraph: &'a ParagraphData,
+        paragraph: &'a ParagraphContext,
     ) -> Result<Self> {
         Self::new(processed, paragraph, false)
     }
     pub(super) fn surrounding(
         processed: &'a ProcessedSource,
-        paragraph: &'a ParagraphData,
+        paragraph: &'a ParagraphContext,
     ) -> Result<Self> {
         Self::new(processed, paragraph, true)
     }
 
+    pub(super) fn domain(
+        processed: &'a ProcessedSource,
+        member: &'a ParagraphContext,
+    ) -> Result<Self> {
+        let mut context = Self::new(processed, member, true)?;
+        context.whole_domain = true;
+        Ok(context)
+    }
+
     fn new(
         processed: &'a ProcessedSource,
-        requested: &'a ParagraphData,
+        requested: &'a ParagraphContext,
         surrounding: bool,
     ) -> Result<Self> {
         let topology = requested.scope_topology.as_ref();
@@ -329,7 +397,7 @@ impl<'a> SourceContext<'a> {
                     other.domain == topology.domain
                         && Arc::ptr_eq(&other.capture, &topology.capture)
                 }) {
-                    push(&mut members, &record.data)?;
+                    push(&mut members, &record.data.context)?;
                 }
             }
         } else {
@@ -338,6 +406,7 @@ impl<'a> SourceContext<'a> {
         let mut result = Self {
             processed,
             requested,
+            whole_domain: false,
             scope_topology: topology,
             origins: Vec::new(),
             controls: Vec::new(),
@@ -580,7 +649,7 @@ impl<'a> SourceContext<'a> {
 
     /// Original events use their admitted origin identity; anchors retain their
     /// actual captured occurrence. This is never a generated-output lookup.
-    fn event_order(
+    pub(super) fn event_order(
         &self,
         event: &crate::engine::analysis::wrapping::LogicalEvent,
         projection: &SourceProjection,
@@ -591,7 +660,10 @@ impl<'a> SourceContext<'a> {
             Event::Deleted(source, ..) => source,
             Event::Anchor(anchor) => return Some(self.capture_order(anchor.item)),
         };
-        self.origins
+        let first = self
+            .origins
+            .partition_point(|origin| origin.aggregate.end <= source.start);
+        self.origins[first..]
             .iter()
             .find(|origin| {
                 origin.aggregate.start < source.end && source.start < origin.aggregate.end
@@ -615,7 +687,16 @@ impl<'a> SourceContext<'a> {
     }
 
     pub(super) fn origin_index(&self, key: FlowOriginKey) -> Option<usize> {
-        self.origins.iter().position(|row| row.key == key)
+        let ordinal = match key {
+            FlowOriginKey::CapturedEvent(order) | FlowOriginKey::ExactOrdinal(order) => order,
+        };
+        let index = self
+            .origins
+            .binary_search_by_key(&ordinal, |row| match row.key {
+                FlowOriginKey::CapturedEvent(order) | FlowOriginKey::ExactOrdinal(order) => order,
+            })
+            .ok()?;
+        (self.origins[index].key == key).then_some(index)
     }
     pub(super) fn missing_between(
         &self,
@@ -636,11 +717,13 @@ impl<'a> SourceContext<'a> {
         let Some(topology) = self.scope_topology else {
             return false;
         };
-        topology
-            .capture
-            .events
-            .get(cut)
-            .is_some_and(|event| event.paragraph == Some(topology.paragraph))
+        if self.whole_domain {
+            topology.capture.flow_orders[topology.domain]
+                .binary_search(&cut)
+                .is_ok()
+        } else {
+            topology.owner.owns_cut(cut)
+        }
     }
     pub(super) fn intersections(&self, source: Range) -> impl Iterator<Item = Range> + '_ {
         self.origins.iter().filter_map(move |origin| {
@@ -686,8 +769,11 @@ impl<'a> SourceContext<'a> {
         )
     }
     pub(super) fn local_anchor(&self, order: usize) -> Option<usize> {
+        if self.whole_domain {
+            return Some(order);
+        }
         let owner = &self.anchor_owners[order];
-        // Requested ParagraphData is an immutable clone of its issued row.
+        // Requested ParagraphContext is an immutable clone of its issued row.
         // Captured event correspondence supplies its actual original occurrence.
         let anchor = owner.paragraph.anchor_order[owner.local];
         self.requested.anchor_order.iter().position(|candidate| {
@@ -737,6 +823,9 @@ impl<'a> SourceContext<'a> {
         })
     }
     pub(super) fn local_control(&self, control: usize) -> Option<usize> {
+        if self.whole_domain {
+            return Some(control);
+        }
         self.anchor_order
             .iter()
             .position(|anchor| anchor.item == SemanticAnchorItem::Control(control))

@@ -243,9 +243,10 @@ where
             AvailableOf::Definite(_)
         );
     let mut tail_ledger = crate::hyphenation::BlockTailLedger::default();
-    let slots = tree
-        .text_computation()
-        .map_or_else(Vec::new, |state| state.semantic_slots(node));
+    let slots = match tree.text_computation() {
+        Some(state) => state.semantic_slots(node)?,
+        None => Vec::new(),
+    };
     let mut slot_cursor = 0;
     while index < children.len() || slot_cursor < slots.len() {
         let source_index = index;
@@ -268,7 +269,7 @@ where
             // hidden computation and absolute static-position side effects.
             let captured_start = tree
                 .text_computation()
-                .is_some_and(|state| state.paragraph_starting(node, &children[index..]).is_some());
+                .is_some_and(|state| state.run_starting(node, &children[index..]).is_some());
             let child_start = if captured_start {
                 let run_start = index;
                 index = inline_run_end(tree, node, children, constants, index + 1, semantic_end)?;

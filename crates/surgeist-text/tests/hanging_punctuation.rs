@@ -114,6 +114,7 @@ fn request(
         })
         .collect();
     t::LineSelectionRequest {
+        segment: p.source_segments().next().unwrap(),
         start: p.boundary_views().next().unwrap().handle(),
         end: end.view().boundary(),
         termination: t::PreparedTermination::Ordinary(end),
@@ -1324,10 +1325,15 @@ fn captured_enclosing_inline_continues_without_its_later_end_decoration() {
         .prepare(&analyzed, t::PreparationOptions::default())
         .unwrap();
     let scope = p
-        .captured_paragraph()
+        .captured_owner()
         .unwrap()
-        .scope_intersections()
-        .map(|i| i.scope())
+        .members()
+        .flat_map(|member| {
+            member
+                .scope_intersections()
+                .map(|i| i.scope())
+                .collect::<Vec<_>>()
+        })
         .find(|s| s.role() == t::ScopeRole::Inline)
         .unwrap();
     let entry = p

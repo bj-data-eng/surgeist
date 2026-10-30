@@ -781,8 +781,15 @@ fn deferred_entry_cannot_donate_a_later_inline_parent_to_an_earlier_atomic() {
 fn deferred_content_can_follow_its_nominated_atomics_parent_paragraph_exit() {
     let (tree, bindings) =
         atomic_domain_shape(text::InlineBoxKind::InFlow, DomainShape::ClosedParent);
-    let parent = bindings[0].prepared.captured_paragraph().unwrap();
-    let child = bindings[1].prepared.captured_paragraph().unwrap().domain();
+    let parent_members = bindings[0]
+        .prepared
+        .captured_owner()
+        .unwrap()
+        .members()
+        .collect::<Vec<_>>();
+    assert_eq!(parent_members.len(), 1);
+    let parent = &parent_members[0];
+    let child = bindings[1].prepared.captured_owner().unwrap().domain();
     assert!(parent.exit_position() < child.enter_position());
     let capture = LayoutFlowInput::try_new(
         &tree,

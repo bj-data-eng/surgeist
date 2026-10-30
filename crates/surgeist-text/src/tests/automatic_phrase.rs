@@ -253,6 +253,7 @@ fn whole(prepared: &PreparedText) -> FinalizedLine {
         .handle();
     prepared
         .select(LineSelectionRequest {
+            segment: prepared.source_segments().next().unwrap(),
             boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),

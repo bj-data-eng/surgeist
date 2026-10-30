@@ -169,6 +169,7 @@ fn select_line_in_direction(
     let terminal = offer.view().kind() == t::PreparedBreakKind::ParagraphEnd;
     prepared
         .select(t::LineSelectionRequest {
+            segment: prepared.source_segments().next().unwrap(),
             start,
             end,
             participants: prepared.participants().skip(from).take(to - from).collect(),

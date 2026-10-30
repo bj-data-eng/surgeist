@@ -9,8 +9,8 @@
 use std::sync::Arc;
 
 use crate::{
-    Alignment, BidiLevel, Error, ErrorCode, InlineWhitespaceEdge, LineBoxDirection, Point, Rect,
-    Result, SuppliedInlineParticipant, SuppliedLine, TextNumericError, TextNumericPhase,
+    Alignment, BidiLevel, Error, ErrorCode, LineBoxDirection, Point, Rect, Result,
+    SuppliedInlineParticipant, SuppliedLine, TextNumericError, TextNumericPhase,
 };
 
 use super::super::{
@@ -2380,18 +2380,14 @@ fn edge_dispositions_accounted(
                     .style
                     .authored()
                     .white_space;
-                let edge = if cluster.whitespace == Whitespace::Space && mode.collapses_spaces() {
-                    InlineWhitespaceEdge::DiscardAtBoth
-                } else if selected.metric_policy == LineMetricPolicy::Native
-                    && mode.collapses_spaces()
-                    && selected.presentation.projection.atoms[cluster.atoms.clone()]
+                let edge = crate::engine::analysis::edge::whitespace_edge(
+                    cluster.whitespace == Whitespace::Space,
+                    selected.presentation.projection.atoms[cluster.atoms.clone()]
                         .iter()
-                        .all(|atom| atom.code_point == 0x1680)
-                {
-                    InlineWhitespaceEdge::DiscardAtLineEnd
-                } else {
-                    InlineWhitespaceEdge::Preserve
-                };
+                        .all(|atom| atom.code_point == 0x1680),
+                    mode,
+                    selected.metric_policy == LineMetricPolicy::Native,
+                );
                 account::push(
                     ledger,
                     &mut projected,
@@ -3291,6 +3287,7 @@ mod tests {
             .collect();
         prepared
             .select(LineSelectionRequest {
+                segment: crate::test_wrapping::only_source_segment(&prepared),
                 boundary_context: Vec::new(),
                 incoming: None,
                 start: boundaries[0].clone(),
@@ -3691,6 +3688,7 @@ mod tests {
             .handle();
         let line = prepared
             .select(LineSelectionRequest {
+                segment: crate::test_wrapping::only_source_segment(&prepared),
                 boundary_context: Vec::new(),
                 incoming: None,
                 start: prepared.boundary_views().next().unwrap().handle(),
@@ -4205,6 +4203,7 @@ mod tests {
             crate::test_wrapping::select_neutral(
                 &prepared,
                 LineSelectionRequest {
+                    segment: crate::test_wrapping::only_source_segment(&prepared),
                     boundary_context: Vec::new(),
                     incoming: None,
                     start,

@@ -195,6 +195,7 @@ fn compose(
         .handle();
     let line = prepared
         .select(text::LineSelectionRequest {
+            segment: prepared.source_segments().next().unwrap(),
             start: prepared.boundary_views().next().unwrap().handle(),
             end: end.view().boundary(),
             termination: text::PreparedTermination::Ordinary(end),

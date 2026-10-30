@@ -34,12 +34,16 @@ mod supplied_line;
 mod system;
 mod text;
 mod transform;
+pub use transform::TextCombineError;
 mod views;
 mod wrapping;
 
 #[cfg(feature = "text-accessibility")]
 pub use accessibility::Accessibility;
-pub use analyzed::{AnalysisIdentity, AnalysisTypography, AnalyzedSource};
+pub use analyzed::{
+    AnalysisIdentity, AnalysisTypography, AnalyzedCombinedCell, AnalyzedCombinedSourcePiece,
+    AnalyzedDomain, AnalyzedSource, CapturedAnalysisOwner,
+};
 pub use cache::{FontGeneration, Key, OptionsKey, SourceKey, Stats, StyleKey};
 pub use catalogue::{FontCatalogueIdentity, FontCatalogueMode};
 pub use composer::{Composer, Mark, compose, source};
@@ -123,10 +127,10 @@ pub use protocol::{
     PreparedFlowSegment, PreparedHyphenationCut, PreparedHyphenationCutView,
     PreparedMeasurementFlow, PreparedOpportunity, PreparedOrigin, PreparedParticipant,
     PreparedPhrase, PreparedPhrasePiece, PreparedPhrasePieceOwner, PreparedPhrasePortion,
-    PreparedPhraseProvenance, PreparedScope, PreparedScopeMetrics, PreparedTermination,
-    PreparedText, PreparedUnit, PreparedVirtualSeparator, PreparedWord, PreparedWordPortion,
-    PreparedWordView, PresentationRange, ProtocolContextField, ProtocolError, ProtocolHandleKind,
-    ScopeAlignmentAllowance, ScopeAlignmentCensus, ScopeAlignmentCensusInput,
+    PreparedPhraseProvenance, PreparedScope, PreparedScopeMetrics, PreparedSourceSegment,
+    PreparedTermination, PreparedText, PreparedUnit, PreparedVirtualSeparator, PreparedWord,
+    PreparedWordPortion, PreparedWordView, PresentationRange, ProtocolContextField, ProtocolError,
+    ProtocolHandleKind, ScopeAlignmentAllowance, ScopeAlignmentCensus, ScopeAlignmentCensusInput,
     ScopeAlignmentProduct, ScopeAlignmentProducts, ScopeAlignmentRetention,
     ScopeAlignmentWeakProduct, ScopeAllocation, ScopeAllocations, ScopeFrameAllocation,
     ScopeMetricContribution, SelectedLine, SelectedScope, SpacingAllocation, SpacingAllocations,

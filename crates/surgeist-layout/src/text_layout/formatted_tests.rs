@@ -6,6 +6,7 @@ use crate::inline::{
 };
 use crate::test_support::text::{PreparedParagraph, ahem_style};
 use crate::{AvailableOf, ComputeInputOf, Direction, FlowAxes, Size, WritingMode};
+use surgeist_text::PreparedText;
 
 fn prepared() -> PreparedText {
     PreparedParagraph::plain(
@@ -48,7 +49,7 @@ fn state(prepared: &PreparedText) -> (FormattedState<u32, f64>, RunBinding<u32, 
     let binding = state.binding(
         0,
         &[1],
-        prepared,
+        &prepared.source_segments().next().unwrap(),
         input(),
         super::super::fit::Available::Definite(40.0),
     );
@@ -61,14 +62,27 @@ fn unavailable_and_foreign_snapshots_do_not_manufacture_false_authority() {
     let end = endpoint(&p);
     assert!(
         FormattedTailSnapshot::default()
-            .resolve(&end.boundary, None)
+            .resolve(&p.source_segments().next().unwrap(), &end.boundary, None)
             .is_none()
     );
-    let known = FormattedTailSnapshot::known(p.clone(), None);
+    let known = FormattedTailSnapshot::known(p.source_segments().next().unwrap(), None);
     assert!(!known.observes());
-    assert!(!known.resolve(&end.boundary, None).unwrap().last());
+    assert!(
+        !known
+            .resolve(&p.source_segments().next().unwrap(), &end.boundary, None)
+            .unwrap()
+            .last()
+    );
     let foreign = prepared();
-    assert!(known.resolve(&endpoint(&foreign).boundary, None).is_none());
+    assert!(
+        known
+            .resolve(
+                &p.source_segments().next().unwrap(),
+                &endpoint(&foreign).boundary,
+                None
+            )
+            .is_none()
+    );
 }
 
 #[test]
@@ -76,10 +90,13 @@ fn external_completion_is_not_target_membership_in_accepted_endpoints() {
     let p = prepared();
     let (mut state, binding) = state(&p);
     let target = p.boundary_views().nth(1).unwrap().handle();
-    let ordinary = state.snapshot(&binding).resolve(&target, None).unwrap();
+    let ordinary = state
+        .snapshot(&binding)
+        .resolve(&p.source_segments().next().unwrap(), &target, None)
+        .unwrap();
     let external = state
         .snapshot(&binding)
-        .resolve_external(&target, None)
+        .resolve_external(&p.source_segments().next().unwrap(), &target, None)
         .unwrap();
     state.record(FormattedFlow {
         frame: None,
@@ -159,11 +176,11 @@ fn genuine_empty_forced_numeric_lines_disprove_both_tail_predicates() {
     let end = endpoint(&p);
     let ordinary = state
         .snapshot(&binding)
-        .resolve(&end.boundary, None)
+        .resolve(&p.source_segments().next().unwrap(), &end.boundary, None)
         .unwrap();
     let external = state
         .snapshot(&binding)
-        .resolve_external(&end.boundary, None)
+        .resolve_external(&p.source_segments().next().unwrap(), &end.boundary, None)
         .unwrap();
     let lines = numeric_forced_lines();
     state.record(FormattedFlow {
@@ -184,7 +201,7 @@ fn summary_receipts_exist_only_in_the_actual_invocation_and_replay() {
     let end = endpoint(&p);
     let assignment = state
         .snapshot(&binding)
-        .resolve(&end.boundary, None)
+        .resolve(&p.source_segments().next().unwrap(), &end.boundary, None)
         .unwrap();
     assert!(state.receipt(0, &input()).is_none());
     state.merge(
@@ -228,7 +245,7 @@ fn no_demand_keeps_summary_collection_and_cache_requirements_absent() {
     let snapshot = computation.formatted_snapshot(
         0,
         &[1],
-        &p,
+        &p.source_segments().next().unwrap(),
         input(),
         super::super::fit::Available::Definite(40.0),
     );
@@ -238,7 +255,7 @@ fn no_demand_keeps_summary_collection_and_cache_requirements_absent() {
             .formatted_merge_run(
                 0,
                 &[1],
-                &p,
+                &p.source_segments().next().unwrap(),
                 input(),
                 super::super::fit::Available::Definite(40.0),
                 FormattedTailUses::default()

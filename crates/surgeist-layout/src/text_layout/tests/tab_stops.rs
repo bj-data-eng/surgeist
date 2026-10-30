@@ -264,19 +264,49 @@ fn intrinsic_with_indent(
     indent: crate::text_indent::ResolvedTextIndent<f64>,
 ) -> Result<super::super::run::Output<u32, f64>, super::super::fit::FitError> {
     let binding = prepared.binding(0);
+    let tree = prepared.flat_text_tree::<f64>(
+        0,
+        NodeInputOf {
+            display: Display::Block,
+            writing_mode: WritingMode::HorizontalTb,
+            direction: if block_rtl {
+                Direction::Rtl
+            } else {
+                Direction::Ltr
+            },
+            line_box_direction_policy: crate::LineBoxDirectionPolicy::Normal,
+            text_indent: crate::TextIndentOf {
+                amount: crate::LengthPercentageOf::px(indent.amount).unwrap(),
+                each_line: indent.each_line,
+                hanging: indent.hanging,
+            },
+            ..NodeInputOf::default()
+        },
+    );
+    let flow = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![binding],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+        Vec::new(),
+    )
+    .unwrap();
+    let [row] = flow.associations.runs() else {
+        panic!("flat intrinsic fixture has one actual admitted native run");
+    };
+    let admitted = flow.associations.admitted_run(&flow.paragraphs, row);
+    let binding = admitted.binding;
     super::super::run::layout(
-        &binding,
-        &Default::default(),
+        &admitted,
+        &flow.associations,
         &[],
         &[],
         super::super::run::Context {
             scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
-                crate::text_layout::scope_alignment::ScopeAlignmentSnapshot::admit(
-                    Vec::new(),
-                    std::slice::from_ref(&binding),
-                )
-                .unwrap()
-                .freeze(),
+                flow.scope_alignments.clone(),
             ),
             orientation: super::super::run::text_orientation(
                 WritingMode::HorizontalTb,

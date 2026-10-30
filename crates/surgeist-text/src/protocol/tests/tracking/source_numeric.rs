@@ -591,7 +591,11 @@ fn actual_phrase_separator_remains_a_virtual_endpoint_and_out_of_original_source
             PreparationOptions::default(),
         )
         .unwrap();
-    assert!(prepared.captured_paragraph().is_some());
+    assert!(
+        prepared
+            .captured_owner()
+            .is_some_and(|owner| owner.members().next().is_some())
+    );
     let virtuals = prepared.virtual_separators().collect::<Vec<_>>();
     assert_eq!(virtuals.len(), 1);
     let owner = virtuals[0].clone();

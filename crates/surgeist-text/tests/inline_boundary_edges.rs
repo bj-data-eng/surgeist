@@ -281,6 +281,7 @@ fn finish(
         })
         .collect();
     let mut request = t::LineSelectionRequest {
+        segment: prepared.source_segments().next().unwrap(),
         start,
         end: boundary,
         termination: t::PreparedTermination::Ordinary(end.clone()),

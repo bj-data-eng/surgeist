@@ -217,6 +217,7 @@ fn fitting_ordinary_trials(
                 crate::Direction::Ltr,
             ),
             prepared: &paragraph.prepared,
+            segment: paragraph.prepared.source_segments().next().unwrap(),
             scope_alignments: &scope_alignments,
             available: Available::Definite(60.0),
             base_direction: ParagraphBaseDirection::LeftToRight,

@@ -99,7 +99,10 @@ fn enclosing_edges_localize_to_their_paragraph_and_remote_same_domain_is_outside
         } else {
             paragraph.boundary_views().last().unwrap().handle()
         };
-        let incidences = paragraph.boundary_incidences(&boundary).unwrap();
+        let source_segment = paragraph.source_segments().next().unwrap();
+        let incidences = paragraph
+            .boundary_incidences(&source_segment, &boundary)
+            .unwrap();
         assert_eq!(incidences.len(), 1);
         assert_eq!(
             paragraph

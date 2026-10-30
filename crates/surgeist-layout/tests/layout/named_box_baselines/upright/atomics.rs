@@ -295,7 +295,14 @@ fn captured_parent(bytes: &[u8], size: t::Size, atomic_only: bool, id: t::Id) ->
         .expect(
             "the real captured InFlow parent must satisfy the independently GREEN Text producer",
         );
-    assert_eq!(prepared.captured_paragraph(), capture.captured_paragraph(0));
+    assert_eq!(
+        prepared
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        vec![capture.captured_paragraph(0).unwrap()]
+    );
     assert_eq!(prepared.analyzed_source().identity(), analysis.identity());
     assert_eq!(
         prepared.origin_views().count(),
@@ -336,6 +343,7 @@ fn qualify_parent_text(prepared: &t::PreparedText, atomic: t::PreparedAtomic) {
         .handle();
     let line = prepared
         .select(t::LineSelectionRequest {
+            segment: prepared.source_segments().next().unwrap(),
             start,
             end: end.view().boundary(),
             termination: t::PreparedTermination::Ordinary(end),

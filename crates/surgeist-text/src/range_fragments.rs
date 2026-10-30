@@ -509,7 +509,7 @@ impl Layout {
                     crate::transform::relation::RelationEvent::Text { atom } => {
                         map.original_row_for_atom(atom)
                     }
-                    crate::transform::relation::RelationEvent::Removal { row } => Some(row),
+                    crate::transform::relation::RelationEvent::Removal { row, .. } => Some(row),
                     _ => None,
                 };
                 if let Some(row) = row {

@@ -4,6 +4,17 @@ use std::sync::Arc;
 
 mod combination_facts;
 mod continuity;
+mod domain_analysis;
+mod domain_cell_bidi;
+mod domain_cell_forces;
+mod domain_cell_outer_levels;
+mod domain_combination;
+mod domain_digit_eligibility;
+mod domain_exact_scope;
+mod domain_segment_custody;
+mod domain_segment_search;
+mod domain_structural_bidi;
+mod domain_used_payload;
 mod joint_flow;
 mod math;
 mod phase_two;
@@ -317,6 +328,7 @@ fn line(prepared: &PreparedText) -> FinalizedLine {
     };
     let selected = prepared
         .select(LineSelectionRequest {
+            segment: crate::test_wrapping::only_source_segment(prepared),
             boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
@@ -1188,6 +1200,7 @@ fn contextual_source_defined_replacement_remains_presentation_only() {
     let termination = alternative.view().opportunity().unwrap();
     let selected = prepared
         .select(LineSelectionRequest {
+            segment: crate::test_wrapping::only_source_segment(&prepared),
             boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
@@ -1639,6 +1652,7 @@ fn selected_soft_wrap_does_not_reset_plaintext_context_or_copy_line_edge_deletio
     let count = boundary.view().participant_offset();
     let selected = prepared
         .select(LineSelectionRequest {
+            segment: crate::test_wrapping::only_source_segment(&prepared),
             boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
@@ -2036,6 +2050,7 @@ fn right_line(prepared: &PreparedText) -> FinalizedLine {
     };
     let selected = prepared
         .select(LineSelectionRequest {
+            segment: crate::test_wrapping::only_source_segment(prepared),
             boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().nth(2).unwrap().handle(),

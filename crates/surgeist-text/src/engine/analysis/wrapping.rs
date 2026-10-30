@@ -4,7 +4,7 @@ use crate::engine::{OriginalAtom, resolve::AnalyzedStyleRun};
 use crate::processing::lexical_inventory::LexicalDeletion;
 use crate::projection::SourceProjection;
 use crate::protocol::paragraph::{
-    ParagraphBoundaryDefinition, ParagraphControlKind, ParagraphData, SemanticAnchor,
+    ParagraphBoundaryDefinition, ParagraphContext, ParagraphControlKind, SemanticAnchor,
     SemanticAnchorItem,
 };
 use crate::{InlineBoxKind, ProcessedSource, Range, Wrap, WrappingNeighbor};
@@ -61,7 +61,7 @@ impl Influence {
         }
     }
 
-    fn starts_hard_separator(self, atoms: &[OriginalAtom], paragraph: &ParagraphData) -> bool {
+    fn starts_hard_separator(self, atoms: &[OriginalAtom], paragraph: &ParagraphContext) -> bool {
         match self {
             Self::Text { atom, .. } => is_hard_separator(atoms[atom].code_point),
             Self::Control { occurrence, .. } => {
@@ -97,52 +97,93 @@ pub(crate) struct LogicalParagraph {
     pub(crate) relation_indices: Vec<usize>,
 }
 
+/// The canonical mixed source stream and its already completed cell partition
+/// are interpreted together. Cells change effects, never occurrence custody.
+pub(crate) struct LogicalInput<'a> {
+    pub(crate) events: Vec<LogicalEvent>,
+    pub(crate) combination: Option<&'a crate::transform::combined::CombinedOutput>,
+}
+
 impl LogicalParagraph {
     pub(crate) fn new(
         processed: &ProcessedSource,
-        paragraph: &ParagraphData,
+        paragraph: &ParagraphContext,
         projection: &SourceProjection,
         styles: &[AnalyzedStyleRun],
         analysis: &Analysis,
+        input: LogicalInput<'_>,
     ) -> crate::Result<Self> {
         use icu_properties::{CodePointMapData, props::LineBreak};
-        let events = events(processed, paragraph, projection, styles)?;
+        let LogicalInput {
+            events,
+            combination,
+        } = input;
+        let bindings = combination.map_or(&[][..], |output| output.bindings.as_slice());
+        let mut cell = 0;
         let influences: Vec<_> = events
             .iter()
             .enumerate()
-            .filter_map(|(participant, event)| match event.kind {
-                Event::Text(atom) => Some(Influence::Text { participant, atom }),
-                Event::Anchor(SemanticAnchor {
-                    item: SemanticAnchorItem::Atomic(occurrence),
-                    ..
-                }) if processed.source().boxes()[occurrence].kind() == InlineBoxKind::InFlow => {
-                    Some(Influence::Atomic {
-                        participant,
-                        occurrence,
-                    })
+            .filter_map(|(participant, event)| {
+                while bindings
+                    .get(cell)
+                    .is_some_and(|binding| binding.participants.end <= participant)
+                {
+                    cell += 1;
                 }
-                Event::Anchor(SemanticAnchor {
-                    item: SemanticAnchorItem::Control(control),
-                    ..
-                }) => {
-                    let kind = &paragraph.controls[control].kind;
-                    match kind {
-                        ParagraphControlKind::ForcedBreak
-                        | ParagraphControlKind::OptionalBreak { .. }
-                        | ParagraphControlKind::DiscretionaryBreak { .. } => {
-                            Some(Influence::Control {
-                                participant,
-                                occurrence: control,
-                            })
-                        }
-                        _ => None,
+                let in_cell = bindings
+                    .get(cell)
+                    .is_some_and(|binding| binding.participants.contains(&participant));
+                let suppressed = in_cell
+                    && match event.kind {
+                        Event::Anchor(SemanticAnchor {
+                            item: SemanticAnchorItem::ComputedLineBoundary(_),
+                            ..
+                        }) => true,
+                        Event::Anchor(SemanticAnchor {
+                            item: SemanticAnchorItem::Control(control),
+                            ..
+                        }) => paragraph.controls[control].kind == ParagraphControlKind::ForcedBreak,
+                        _ => false,
+                    };
+                if suppressed {
+                    return None;
+                }
+                match event.kind {
+                    Event::Text(atom) => Some(Influence::Text { participant, atom }),
+                    Event::Anchor(SemanticAnchor {
+                        item: SemanticAnchorItem::Atomic(occurrence),
+                        ..
+                    }) if processed.source().boxes()[occurrence].kind()
+                        == InlineBoxKind::InFlow =>
+                    {
+                        Some(Influence::Atomic {
+                            participant,
+                            occurrence,
+                        })
                     }
+                    Event::Anchor(SemanticAnchor {
+                        item: SemanticAnchorItem::Control(control),
+                        ..
+                    }) => {
+                        let kind = &paragraph.controls[control].kind;
+                        match kind {
+                            ParagraphControlKind::ForcedBreak
+                            | ParagraphControlKind::OptionalBreak { .. }
+                            | ParagraphControlKind::DiscretionaryBreak { .. } => {
+                                Some(Influence::Control {
+                                    participant,
+                                    occurrence: control,
+                                })
+                            }
+                            _ => None,
+                        }
+                    }
+                    Event::Anchor(SemanticAnchor {
+                        item: SemanticAnchorItem::ComputedLineBoundary(_),
+                        ..
+                    }) => Some(Influence::ComputedLineBoundary { participant }),
+                    _ => None,
                 }
-                Event::Anchor(SemanticAnchor {
-                    item: SemanticAnchorItem::ComputedLineBoundary(_),
-                    ..
-                }) => Some(Influence::ComputedLineBoundary { participant }),
-                _ => None,
             })
             .collect();
         let classes = CodePointMapData::<LineBreak>::new();
@@ -282,7 +323,7 @@ fn neighbor(
     influence: Influence,
     following: bool,
     processed: &ProcessedSource,
-    paragraph: &ParagraphData,
+    paragraph: &ParagraphContext,
     projection: &SourceProjection,
 ) -> Option<WrappingNeighbor> {
     match influence {
@@ -303,45 +344,4 @@ fn neighbor(
         }
         Influence::Control { .. } | Influence::ComputedLineBoundary { .. } => None,
     }
-}
-
-pub(crate) fn events(
-    processed: &ProcessedSource,
-    paragraph: &ParagraphData,
-    projection: &SourceProjection,
-    styles: &[AnalyzedStyleRun],
-) -> crate::Result<Vec<LogicalEvent>> {
-    if let Some(map) = &projection.transform {
-        return Ok(map.logical_events(paragraph, processed.source()));
-    }
-    transform_events(processed, paragraph, projection, styles)
-}
-
-/// Wbr expansion needs its real scalar seam before typography reconstruction.
-pub(crate) fn transform_events(
-    processed: &ProcessedSource,
-    paragraph: &ParagraphData,
-    projection: &SourceProjection,
-    styles: &[AnalyzedStyleRun],
-) -> crate::Result<Vec<LogicalEvent>> {
-    capture_events(processed, paragraph, projection, styles, false)
-}
-
-fn capture_events(
-    processed: &ProcessedSource,
-    paragraph: &ParagraphData,
-    projection: &SourceProjection,
-    styles: &[AnalyzedStyleRun],
-    scalar_seams: bool,
-) -> crate::Result<Vec<LogicalEvent>> {
-    let context = crate::transform::context::SourceContext::exact(processed, paragraph)?;
-    let mut cuts = Vec::new();
-    cuts.try_reserve_exact(styles.len()).map_err(|_| {
-        crate::Error::new(
-            crate::ErrorCode::SourceProcessingCapacity,
-            "source event style cuts unavailable",
-        )
-    })?;
-    cuts.extend(styles.iter().filter_map(AnalyzedStyleRun::source_range));
-    context.capture_events(projection, &cuts, scalar_seams)
 }

@@ -164,7 +164,7 @@ impl SourceProjection {
     /// replacement. Genuine Wbr also separates decoding without resetting context.
     pub(crate) fn host(
         source: &Source,
-        paragraph: &crate::protocol::paragraph::ParagraphData,
+        paragraph: &crate::protocol::paragraph::ParagraphContext,
     ) -> Result<Self> {
         if paragraph.base_direction.is_none() {
             return Self::new(source);
@@ -230,7 +230,7 @@ impl SourceProjection {
     /// pieces before any removed original units can falsely join surrogate halves.
     pub(crate) fn from_processed(
         processed: &crate::ProcessedSource,
-        paragraph: &crate::protocol::paragraph::ParagraphData,
+        paragraph: &crate::protocol::paragraph::ParagraphContext,
     ) -> Result<Self> {
         use crate::processing::MappingKind;
         let source = processed.source();
@@ -447,7 +447,7 @@ impl SourceProjection {
 /// separate original units.
 fn admit_physical_endpoint_cuts(
     atoms: &[OriginalAtom],
-    paragraph: &crate::protocol::paragraph::ParagraphData,
+    paragraph: &crate::protocol::paragraph::ParagraphContext,
 ) -> Result<()> {
     if paragraph.base_direction.is_none() {
         return Ok(());
@@ -474,7 +474,7 @@ fn admit_physical_endpoint_cuts(
 
 fn paragraph_barriers(
     source: &Source,
-    paragraph: &crate::protocol::paragraph::ParagraphData,
+    paragraph: &crate::protocol::paragraph::ParagraphContext,
 ) -> Vec<usize> {
     let mut barriers: Vec<_> = paragraph.disconnections().collect();
     barriers.extend(
@@ -513,7 +513,7 @@ fn paragraph_barriers(
 /// Decoding cuts are consumed before original atoms are frozen. Only the real
 /// context barriers are retained by the rebuilt projection and its consumers.
 fn paragraph_decode_boundaries(
-    paragraph: &crate::protocol::paragraph::ParagraphData,
+    paragraph: &crate::protocol::paragraph::ParagraphContext,
     barriers: &[usize],
 ) -> Vec<usize> {
     let mut cuts = barriers.to_vec();
@@ -526,7 +526,7 @@ fn paragraph_decode_boundaries(
 fn admit_connected(
     source: &Source,
     decode_boundaries: &[usize],
-    paragraph: &crate::protocol::paragraph::ParagraphData,
+    paragraph: &crate::protocol::paragraph::ParagraphContext,
 ) -> Result<()> {
     let owned_text = paragraph
         .coverage

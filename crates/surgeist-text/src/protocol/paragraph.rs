@@ -249,7 +249,7 @@ pub struct ParagraphBoundaryPolicy {
 }
 
 impl ParagraphBoundaryPolicy {
-    pub(crate) fn at(self, paragraph: &ParagraphData, boxes: &[crate::InlineBox]) -> usize {
+    pub(crate) fn at(self, paragraph: &ParagraphContext, boxes: &[crate::InlineBox]) -> usize {
         match self.definition {
             ParagraphBoundaryDefinition::Connection(i) => paragraph.connections[i].at,
             ParagraphBoundaryDefinition::AtomicBefore(i)
@@ -535,32 +535,64 @@ impl OriginMap {
 }
 
 /// Validated occurrence/context facts retained by the actual analysis allocation.
+/// Canonical admitted occurrence inventory, independent of an output's used
+/// bidi/strut facts or its Raw/Joint authority.
 #[derive(Clone, Debug)]
-pub(crate) struct ParagraphData {
-    pub(crate) scope_topology: Option<crate::processing::contextual::ParagraphTopology>,
-    pub(crate) terminal_edge: ParagraphTerminalEdge,
+pub(crate) struct ParagraphContent {
     pub(crate) origins: Vec<OriginData>,
     pub(crate) origin_map: OriginMap,
     pub(crate) connections: Vec<ParagraphConnection>,
-    /// Real preceding/following original endpoints for contextual connections.
     pub(crate) connection_ends: Option<Vec<(usize, usize)>>,
-    /// Actual contextual Connection event rank among this paragraph’s anchors.
     pub(crate) connection_anchor_cuts: Option<Vec<usize>>,
     pub(crate) controls: Vec<ParagraphControl>,
     pub(crate) boundary_policies: Vec<ParagraphBoundaryPolicy>,
     pub(crate) replacements: Vec<ParagraphReplacement>,
     pub(crate) anchor_order: Vec<SemanticAnchor>,
     pub(crate) computed_boundaries: Vec<ComputedBoundaryData>,
-    /// None is the standalone front's genuine Auto policy.
+    pub(crate) coverage: Option<Vec<Range>>,
+    pub(crate) envelope: Option<Range>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ParagraphContext {
+    pub(crate) content: ParagraphContent,
+    pub(crate) scope_topology: Option<crate::processing::contextual::ParagraphTopology>,
+    pub(crate) terminal_edge: ParagraphTerminalEdge,
     pub(crate) base_direction: Option<ParagraphBaseDirection>,
     pub(crate) paragraph_strut: ParagraphStrut,
     pub(crate) tab_reference: Option<crate::ParagraphTabReference>,
-    pub(crate) coverage: Option<Vec<Range>>,
-    pub(crate) envelope: Option<Range>,
     pub(crate) domain_style: Option<Style>,
 }
+impl std::ops::Deref for ParagraphContext {
+    type Target = ParagraphContent;
+    fn deref(&self) -> &Self::Target {
+        &self.content
+    }
+}
+impl std::ops::DerefMut for ParagraphContext {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.content
+    }
+}
 
-impl ParagraphData {
+/// An admitted raw input; completed output lowering never constructs this type.
+#[derive(Clone, Debug)]
+pub(crate) struct ParagraphData {
+    pub(crate) context: ParagraphContext,
+}
+impl std::ops::Deref for ParagraphData {
+    type Target = ParagraphContext;
+    fn deref(&self) -> &Self::Target {
+        &self.context
+    }
+}
+impl std::ops::DerefMut for ParagraphData {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.context
+    }
+}
+
+impl ParagraphContent {
     pub(crate) fn captured_origin_event(&self, origin: usize) -> Option<usize> {
         self.origin_map
             .flow_origin(self.origin_map.view(origin)?)
@@ -575,9 +607,6 @@ impl ParagraphData {
         })
     }
 
-    pub(crate) fn base_style<'a>(&'a self, processed: &'a ProcessedSource) -> &'a Style {
-        self.domain_style.as_ref().unwrap_or(processed.base_style())
-    }
     pub(crate) fn extent_in(&self, source: &Source) -> Range {
         self.envelope.unwrap_or(Range::new(0, source.text().len()))
     }
@@ -649,59 +678,6 @@ impl ParagraphData {
                 }
                 result
             }
-        }
-    }
-
-    pub(crate) fn standalone(source: &Source) -> Self {
-        let source_len = source.text().len();
-        let mut anchors: Vec<_> = source
-            .boxes()
-            .iter()
-            .enumerate()
-            .map(|(i, b)| (b.index(), i))
-            .collect();
-        anchors.sort_unstable();
-        let mut anchor_order: Vec<_> = anchors
-            .into_iter()
-            .map(|(_, i)| SemanticAnchor {
-                item: SemanticAnchorItem::Atomic(i),
-                affinity: Affinity::After,
-            })
-            .collect();
-        if source_len == 0 {
-            anchor_order.insert(
-                0,
-                SemanticAnchor {
-                    item: SemanticAnchorItem::EmptyOrigin(0),
-                    affinity: Affinity::Before,
-                },
-            );
-        }
-        Self {
-            scope_topology: None,
-            computed_boundaries: Vec::new(),
-            terminal_edge: ParagraphTerminalEdge::Unknown,
-            origin_map: OriginMap::exact(1),
-            origins: vec![OriginData {
-                source: OriginSource::Canonical,
-                local: Range::new(0, source_len),
-                aggregate: Range::new(0, source_len),
-                kind: ParagraphOriginKind::Authored,
-                text_node: None,
-            }],
-            connections: Vec::new(),
-            connection_ends: None,
-            connection_anchor_cuts: None,
-            controls: Vec::new(),
-            boundary_policies: Vec::new(),
-            replacements: Vec::new(),
-            anchor_order,
-            base_direction: None,
-            paragraph_strut: ParagraphStrut::DefaultFont,
-            tab_reference: None,
-            coverage: None,
-            envelope: None,
-            domain_style: None,
         }
     }
 
@@ -790,6 +766,71 @@ impl ParagraphData {
     }
 }
 
+impl ParagraphContext {
+    pub(crate) fn base_style<'a>(&'a self, processed: &'a ProcessedSource) -> &'a Style {
+        self.domain_style.as_ref().unwrap_or(processed.base_style())
+    }
+}
+
+impl ParagraphData {
+    pub(crate) fn standalone(source: &Source) -> Self {
+        let source_len = source.text().len();
+        let mut anchors: Vec<_> = source
+            .boxes()
+            .iter()
+            .enumerate()
+            .map(|(i, b)| (b.index(), i))
+            .collect();
+        anchors.sort_unstable();
+        let mut anchor_order: Vec<_> = anchors
+            .into_iter()
+            .map(|(_, i)| SemanticAnchor {
+                item: SemanticAnchorItem::Atomic(i),
+                affinity: Affinity::After,
+            })
+            .collect();
+        if source_len == 0 {
+            anchor_order.insert(
+                0,
+                SemanticAnchor {
+                    item: SemanticAnchorItem::EmptyOrigin(0),
+                    affinity: Affinity::Before,
+                },
+            );
+        }
+        Self {
+            context: ParagraphContext {
+                content: ParagraphContent {
+                    computed_boundaries: Vec::new(),
+                    origin_map: OriginMap::exact(1),
+                    origins: vec![OriginData {
+                        source: OriginSource::Canonical,
+                        local: Range::new(0, source_len),
+                        aggregate: Range::new(0, source_len),
+                        kind: ParagraphOriginKind::Authored,
+                        text_node: None,
+                    }],
+                    connections: Vec::new(),
+                    connection_ends: None,
+                    connection_anchor_cuts: None,
+                    controls: Vec::new(),
+                    boundary_policies: Vec::new(),
+                    replacements: Vec::new(),
+                    anchor_order,
+                    coverage: None,
+                    envelope: None,
+                },
+                scope_topology: None,
+                terminal_edge: ParagraphTerminalEdge::Unknown,
+                base_direction: None,
+                paragraph_strut: ParagraphStrut::DefaultFont,
+                tab_reference: None,
+                domain_style: None,
+            },
+        }
+    }
+}
+
 fn origin_precedes(origin: &OriginData, start: usize) -> bool {
     origin.aggregate.end < start || (origin.aggregate.end == start && !origin.aggregate.is_empty())
 }
@@ -847,33 +888,37 @@ impl AnalyzedSource {
             anchor_order,
         } = input;
         let paragraph = ParagraphData {
-            scope_topology: None,
-            computed_boundaries: Vec::new(),
-            terminal_edge,
-            origin_map: OriginMap::exact(origins.len()),
-            origins: origins
-                .into_iter()
-                .map(|origin| OriginData {
-                    source: OriginSource::Captured(origin.source),
-                    local: origin.local,
-                    aggregate: origin.aggregate,
-                    kind: origin.kind,
-                    text_node: origin.text_node,
-                })
-                .collect(),
-            connections,
-            connection_ends: None,
-            connection_anchor_cuts: None,
-            controls,
-            boundary_policies,
-            replacements,
-            anchor_order: anchor_order.into_iter().map(SemanticAnchor::from).collect(),
-            base_direction: Some(base_direction),
-            paragraph_strut,
-            tab_reference,
-            coverage: None,
-            envelope: None,
-            domain_style: None,
+            context: ParagraphContext {
+                content: crate::protocol::paragraph::ParagraphContent {
+                    computed_boundaries: Vec::new(),
+                    origin_map: OriginMap::exact(origins.len()),
+                    origins: origins
+                        .into_iter()
+                        .map(|origin| OriginData {
+                            source: OriginSource::Captured(origin.source),
+                            local: origin.local,
+                            aggregate: origin.aggregate,
+                            kind: origin.kind,
+                            text_node: origin.text_node,
+                        })
+                        .collect(),
+                    connections,
+                    connection_ends: None,
+                    connection_anchor_cuts: None,
+                    controls,
+                    boundary_policies,
+                    replacements,
+                    anchor_order: anchor_order.into_iter().map(SemanticAnchor::from).collect(),
+                    coverage: None,
+                    envelope: None,
+                },
+                scope_topology: None,
+                terminal_edge,
+                base_direction: Some(base_direction),
+                paragraph_strut,
+                tab_reference,
+                domain_style: None,
+            },
         };
         let processed = Arc::new(crate::processing::process_paragraph(
             source,

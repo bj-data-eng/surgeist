@@ -10,7 +10,10 @@ use crate::{
 };
 use std::sync::Arc;
 
-fn refused(source: Range) -> Error {
+mod batch;
+pub(super) use batch::{ProjectTarget, ProjectedOutput, batch};
+
+pub(super) fn refused(source: Range) -> Error {
     Error::new(
         ErrorCode::UnsupportedFeature,
         "completed transformed unit exceeds exact output coverage",
@@ -21,6 +24,9 @@ fn refused(source: Range) -> Error {
 }
 
 pub(super) fn owns_component(context: &SourceContext<'_>, map: &TransformMap, row: usize) -> bool {
+    if context.whole_domain {
+        return true;
+    }
     match map.components[row].owner {
         ComponentOwner::Original(original) => map.original_pieces(original).iter().any(|piece| {
             context
@@ -264,9 +270,32 @@ pub(super) fn finish(
                 context::push(&mut atoms, input.atoms[atom].clone())?;
                 context::push(&mut result.events, RelationEvent::Text { atom: local })?;
             }
-            RelationEvent::Removal { row } => {
+            RelationEvent::Removal {
+                row,
+                selection_part,
+            } => {
                 if let Some(row) = rows[row] {
-                    context::push(&mut result.events, RelationEvent::Removal { row })?;
+                    context::push(
+                        &mut result.events,
+                        RelationEvent::Removal {
+                            row,
+                            selection_part,
+                        },
+                    )?;
+                }
+            }
+            RelationEvent::GeneratedSuppression {
+                component,
+                selection_part,
+            } => {
+                if let Some(component) = components[component] {
+                    context::push(
+                        &mut result.events,
+                        RelationEvent::GeneratedSuppression {
+                            component,
+                            selection_part,
+                        },
+                    )?;
                 }
             }
             RelationEvent::PhaseIDeleted { source, .. } => {

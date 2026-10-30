@@ -73,7 +73,7 @@ pub(crate) fn analyze_styles(
     source: &Source,
     spans: &[crate::source_model::ValidatedSpan],
     default_style: &ValidatedStyle,
-    paragraph: &crate::protocol::paragraph::ParagraphData,
+    paragraph: &crate::protocol::paragraph::ParagraphContext,
 ) -> Vec<AnalyzedStyleRun> {
     let extent = paragraph.extent_in(source);
     let mut boundaries = vec![extent.start, extent.end];

@@ -257,6 +257,7 @@ pub(crate) struct ReusableLine {
 }
 
 pub(crate) enum FitError {
+    Allocation,
     Text(surgeist_text::Error),
     TextWritingMode(crate::WritingMode),
     Wrapping(crate::inline_wrapping::WrappingScopeError),
@@ -302,6 +303,7 @@ pub(crate) struct FitInput<'a> {
     pub formatted: &'a FormattedTailSnapshot,
     pub line_box_context: crate::line_box::LineBoxContext,
     pub prepared: &'a PreparedText,
+    pub segment: surgeist_text::PreparedSourceSegment,
     pub scope_alignments: &'a dyn super::scope_alignment::ScopeAlignmentFacts,
     pub available: Available,
     pub base_direction: ParagraphBaseDirection,
@@ -1866,7 +1868,7 @@ where
             policy: input.hyphenate_limit_zone,
             references: Vec::new(),
         };
-        for offer in input.prepared.opportunity_views() {
+        for offer in input.segment.opportunity_views() {
             let boundary = offer.boundary().view().participant_offset();
             if boundary <= start {
                 continue;
@@ -1908,7 +1910,7 @@ where
             }
             skipped.extend(choice.dispositions);
         }
-        let search = input.prepared.conditional_search(
+        let search = input.segment.conditional_search(
             query.start,
             query.incoming,
             &recipe.ceiling,
@@ -2188,7 +2190,7 @@ fn selection_request(
 ) -> Result<LineSelectionRequest, FitError> {
     let facts = input
         .prepared
-        .line_direction_facts(start, &endpoint.boundary)?;
+        .line_direction_facts(&input.segment, start, &endpoint.boundary)?;
     let strong = if facts.has_eligible_strong() {
         facts.paragraph_strong_direction()
     } else {
@@ -2226,6 +2228,7 @@ fn selection_request(
         .cloned()
         .collect();
     Ok(LineSelectionRequest {
+        segment: input.segment.clone(),
         start: start.clone(),
         end: endpoint.boundary,
         participants,
@@ -2238,7 +2241,7 @@ fn selection_request(
             line_box_direction,
             base_direction: input.base_direction,
             orientation: input.orientation,
-            start: if from == 0 {
+            start: if *start == input.segment.start() {
                 LineStart::Paragraph
             } else {
                 LineStart::Continuation
@@ -2292,13 +2295,8 @@ pub(crate) fn fit(
         reset: reset_candidate,
         checkpoint_group,
     } = encounters;
-    let boundaries: Vec<_> = input
-        .prepared
-        .boundary_views()
-        .map(|view| (view.participant_offset(), view.handle()))
-        .collect();
     let opportunities: Vec<_> = input
-        .prepared
+        .segment
         .opportunity_views()
         .map(|view| {
             let boundary = view.boundary();
@@ -2324,11 +2322,7 @@ pub(crate) fn fit(
         reset: reset_candidate,
     };
     let entry = SequenceEntry {
-        boundary: boundaries
-            .first()
-            .ok_or(FitError::InvalidGeometry)?
-            .1
-            .clone(),
+        boundary: input.segment.start(),
         logical_start: 0.0,
         minimum_block: None,
         indent_state: input.indent_state,
@@ -2725,7 +2719,7 @@ where
                             frame: frame.clone(),
                             ceiling: ceiling.clone(),
                         });
-                        let search = input.prepared.conditional_search(
+                        let search = input.segment.conditional_search(
                             &start_boundary,
                             incoming.as_ref(),
                             &ceiling,

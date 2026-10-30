@@ -161,7 +161,7 @@ pub(super) fn prepare(lines: &[PlacedLine], cuts: &[usize]) -> Vec<Position> {
             let SelectedRelationEvent::Base { event: base } = *entry else {
                 continue;
             };
-            let RelationEvent::Removal { row } = transform.events()[base] else {
+            let RelationEvent::Removal { row, .. } = transform.events()[base] else {
                 continue;
             };
             let original = &transform.rows[row];
@@ -517,9 +517,10 @@ pub(crate) fn selection(
                             pieces.extend_from_slice(transform.original_pieces(row));
                         }
                     }
-                    RelationEvent::Removal { row } => {
+                    RelationEvent::Removal { row, .. } => {
                         pieces.extend_from_slice(transform.original_pieces(row));
                     }
+                    RelationEvent::GeneratedSuppression { .. } => selected_slot = true,
                     RelationEvent::PhaseIDeleted { source, .. } => {
                         append_source_pieces(layout, source, &mut pieces);
                     }
@@ -1114,6 +1115,7 @@ mod tests {
         let end = termination.view().boundary();
         let line = prepared
             .select(LineSelectionRequest {
+                segment: crate::test_wrapping::only_source_segment(&prepared),
                 boundary_context: Vec::new(),
                 incoming: None,
                 start,
@@ -1702,6 +1704,7 @@ mod tests {
             let to = end.view().participant_offset();
             let selected = prepared
                 .select(LineSelectionRequest {
+                    segment: crate::test_wrapping::only_source_segment(&prepared),
                     boundary_context: Vec::new(),
                     incoming: None,
                     start: start.clone(),
@@ -1958,6 +1961,7 @@ mod tests {
             .collect();
         let selected = prepared
             .select(LineSelectionRequest {
+                segment: crate::test_wrapping::only_source_segment(&prepared),
                 boundary_context: Vec::new(),
                 incoming: None,
                 start: start.clone(),
@@ -2207,6 +2211,7 @@ mod tests {
             .handle();
         let selected = prepared
             .select(LineSelectionRequest {
+                segment: crate::test_wrapping::only_source_segment(&prepared),
                 boundary_context: Vec::new(),
                 incoming: None,
                 start: prepared.boundary_views().next().unwrap().handle(),
@@ -2595,6 +2600,7 @@ mod tests {
                 .collect();
             let selected = prepared
                 .select(LineSelectionRequest {
+                    segment: crate::test_wrapping::only_source_segment(&prepared),
                     boundary_context: Vec::new(),
                     incoming: None,
                     start: start.clone(),

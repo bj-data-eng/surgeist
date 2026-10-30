@@ -88,6 +88,8 @@ pub enum LayoutErrorKindOf<S: LayoutScalar = DefaultScalar, M = core::convert::I
     MissingContext(LayoutMissingContext),
     UnsupportedCapability(LayoutUnsupportedCapability),
     Measurement(M),
+    /// Layout could not allocate its actual owned native working storage.
+    Allocation,
     /// The actual Text owner refused the captured protocol operation.
     Text(surgeist_text::Error),
     /// A complete canonical Text feedback basis repeated without acceptance.

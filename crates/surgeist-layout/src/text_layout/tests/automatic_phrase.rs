@@ -659,8 +659,18 @@ fn empty_domain_capture_identity_and_remote_endpoint_invalidation_rebuild_warm_o
     let before = tree.retained.clone();
     let (next_tree, next) = super::scope_continuation::empty_block_capture();
     assert_ne!(
-        first[1].prepared.captured_paragraph(),
-        next[1].prepared.captured_paragraph()
+        first[1]
+            .prepared
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        next[1]
+            .prepared
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>()
     );
     assert!(next[1].nodes.is_empty());
     assert_eq!(next[1].prepared.participants().count(), 0);

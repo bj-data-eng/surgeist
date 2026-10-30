@@ -28,6 +28,7 @@ use surgeist_text::{
 /// Actual per-run incidence projection. Errors remain data until a real soft
 /// choice comparison needs the corresponding requested scope.
 pub(crate) struct WrappingProjection<Node> {
+    segment: surgeist_text::PreparedSourceSegment,
     scope_alignment_active: bool,
     context: std::sync::Arc<crate::inline_wrapping::WrappingContext<Node>>,
     flow: Node,
@@ -112,25 +113,26 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
     pub(crate) fn new(
         context: &std::sync::Arc<crate::inline_wrapping::WrappingContext<Node>>,
         graph: &crate::engine::validation::ValidationGraph<Node>,
-        binding: &TextParagraphBinding<Node>,
+        run: &super::AdmittedRun<'_, Node>,
         associations: &super::capture::ScopeAssociations<Node>,
     ) -> Option<Self> {
+        let binding = run.binding;
         use super::capture::CapturedScopeRelation;
         use crate::inline_wrapping::{ScopeEndpoint, WrappingScopeError};
         let native_projection = |pair: (Node, Node)| -> Result<
             crate::inline_wrapping::NativePairProjection<Node>,
             WrappingScopeError,
         > {
-            if let Some(slot) = associations.semantic_slot(&binding.prepared) {
+            if run.nodes().is_empty() {
                 let owner = graph
-                    .index(slot.container)
+                    .index(binding.container)
                     .ok_or(WrappingScopeError::NodeNotReachable)?;
                 let endpoint = |node| -> Result<ScopeEndpoint<Node>, WrappingScopeError> {
                     let rank = graph.children[owner]
                         .iter()
                         .position(|&index| graph.nodes[index] == node)
                         .ok_or(WrappingScopeError::DifferentFlow)?;
-                    Ok(if rank < slot.gap {
+                    Ok(if rank < run.native.start {
                         ScopeEndpoint::BeforeRun
                     } else {
                         ScopeEndpoint::AfterRun
@@ -141,7 +143,7 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
                     end: endpoint(pair.1)?,
                 })
             } else {
-                context.native_pair_projection(graph, binding.container, &binding.nodes, pair)
+                context.native_pair_projection(graph, binding.container, run.nodes(), pair)
             }
         };
         let project = |row: &crate::inline_wrapping::ScopeRow<Node>| {
@@ -200,9 +202,9 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
                 }
                 let position = native_projection((node, node)).and_then(|pair| match pair.start {
                     ScopeEndpoint::BeforeRun => Ok((0, 0)),
-                    ScopeEndpoint::AfterRun => Ok((binding.nodes.len(), binding.nodes.len())),
-                    ScopeEndpoint::Local(node) => binding
-                        .nodes
+                    ScopeEndpoint::AfterRun => Ok((run.nodes().len(), run.nodes().len())),
+                    ScopeEndpoint::Local(node) => run
+                        .nodes()
                         .iter()
                         .position(|actual| *actual == node)
                         .map(|at| (at, at + 1))
@@ -221,9 +223,9 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
                 }
                 let position = native_projection((node, node)).and_then(|pair| match pair.start {
                     ScopeEndpoint::BeforeRun => Ok((0, 0)),
-                    ScopeEndpoint::AfterRun => Ok((binding.nodes.len(), binding.nodes.len())),
-                    ScopeEndpoint::Local(node) => binding
-                        .nodes
+                    ScopeEndpoint::AfterRun => Ok((run.nodes().len(), run.nodes().len())),
+                    ScopeEndpoint::Local(node) => run
+                        .nodes()
                         .iter()
                         .position(|actual| *actual == node)
                         .map(|at| (at, at + 1))
@@ -275,28 +277,30 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
                 crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::NativePair{start,end})=>physical_edge((*start,*end),edge.side),
             }; (id,incidence)
         }).collect::<Vec<_>>();
-        let unlisted = binding
-            .prepared
-            .captured_paragraph()
-            .map_or_else(Vec::new, |paragraph| {
-                paragraph
-                    .scope_intersections()
-                    .map(|intersection| intersection.scope())
-                    .filter(|scope| {
-                        scope.role() == surgeist_text::ScopeRole::Inline
-                            && !context
-                                .box_rows(binding.container)
-                                .any(|(_, row)| row.capture.as_ref() == Some(scope))
-                    })
-                    .collect()
-            });
+        let mut unlisted = Vec::new();
+        if let Some(owner) = binding.prepared.captured_owner() {
+            for member in owner.members() {
+                for intersection in member.scope_intersections() {
+                    let scope = intersection.scope();
+                    if scope.role() == surgeist_text::ScopeRole::Inline
+                        && !context
+                            .box_rows(binding.container)
+                            .any(|(_, row)| row.capture.as_ref() == Some(&scope))
+                        && !unlisted.contains(&scope)
+                    {
+                        unlisted.push(scope);
+                    }
+                }
+            }
+        }
         (!rows.is_empty()
             || !edges.is_empty()
-            || associations.semantic_slot(&binding.prepared).is_some() && !unlisted.is_empty()
+            || run.nodes().is_empty() && !unlisted.is_empty()
             || boxes
                 .iter()
                 .any(|(_, row, _)| row.metric_contribution.is_some()))
         .then(|| Self {
+            segment: run.segment.clone(),
             scope_alignment_active: false,
             context: context.clone(),
             flow: binding.container,
@@ -315,6 +319,7 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
                     };
                     associations
                         .computed_cut(boundary)
+                        .and_then(|cut| cut.relative_to(run.inventory.clone()))
                         .map(|cut| (boundary.clone(), cut))
                 })
                 .collect(),
@@ -343,7 +348,7 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
         if binding.prepared.scope_alignment_retention().is_none() {
             return Ok(());
         }
-        let Some(paragraph) = binding.prepared.captured_paragraph() else {
+        let Some(paragraph) = binding.prepared.captured_owner() else {
             return Ok(());
         };
         let limits = paragraph.domain().scope_alignment_limits().ok_or_else(|| {
@@ -415,7 +420,7 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
             {
                 ScopeIncidence::Outside => Ok(false),
                 ScopeIncidence::Captured(scope) => {
-                    Ok(prepared.boundary_inside_captured_scope(end, scope)?)
+                    Ok(prepared.boundary_inside_captured_scope(&self.segment, end, scope)?)
                 }
                 ScopeIncidence::Native {
                     start,
@@ -1077,7 +1082,7 @@ pub(crate) struct LineEnvironment<Band, Clear, Replay, Accept, Reset, Checkpoint
 }
 
 pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
-    binding: &TextParagraphBinding<Node>,
+    run: &super::AdmittedRun<'_, Node>,
     associations: &super::capture::ScopeAssociations<Node>,
     atomics: &[Atomic<Node, S>],
     controls: &[Control<Node, S>],
@@ -1092,6 +1097,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
         impl FnMut(),
     >,
 ) -> Result<Output<Node, S>, FitError> {
+    let binding = run.binding;
     let LineEnvironment {
         band: band_source,
         reset: reset_candidate,
@@ -1165,6 +1171,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
     let allocations = binding
         .atomics
         .iter()
+        .filter(|row| run.nodes().contains(&row.node))
         .map(|row| {
             if row.occurrence.view().original_box().kind()
                 == surgeist_text::InlineBoxKind::OutOfFlow
@@ -1213,6 +1220,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
             formatted: &context.formatted,
             line_box_context: context.line_box_context,
             prepared: &binding.prepared,
+            segment: run.segment.clone(),
             scope_alignments: &context.scope_alignments,
             available,
             base_direction: direction,
@@ -1276,7 +1284,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
         },
     )?;
     output(
-        binding,
+        run,
         associations,
         atomics,
         controls,
@@ -1696,7 +1704,7 @@ fn finalized_anchor<Node, S: LayoutScalar>(
 }
 
 fn output<Node: Copy + Eq, S: LayoutScalar>(
-    binding: &TextParagraphBinding<Node>,
+    run: &super::AdmittedRun<'_, Node>,
     associations: &super::capture::ScopeAssociations<Node>,
     atomics: &[Atomic<Node, S>],
     controls: &[Control<Node, S>],
@@ -1704,6 +1712,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     origin: Point<f64>,
     lines: Vec<FittedLine>,
 ) -> Result<Output<Node, S>, FitError> {
+    let binding = run.binding;
     let frame = context.line_frame(origin);
     let orientation = frame.orientation();
     let named = named_baseline(
@@ -2127,6 +2136,11 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             atomics: atomic_placements,
         }));
     }
+    let mut nodes = Vec::new();
+    nodes
+        .try_reserve_exact(run.nodes().len())
+        .map_err(|_| FitError::Allocation)?;
+    nodes.extend_from_slice(run.nodes());
     let indent_end = report.indent_state;
     let hyphenation_end = report.hyphenation_state;
     let line_box_end = report.line_box_context;
@@ -2140,8 +2154,10 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         static_positions,
         nonformatted_controls,
         paragraph: PendingParagraph {
+            binding_index: run.binding_index,
+            segment: run.segment.clone(),
             container: binding.container,
-            nodes: binding.nodes.clone(),
+            nodes,
             prepared: binding.prepared.clone(),
             entries: placements,
             wrap_style: context.wrap_style,
@@ -2345,9 +2361,10 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
         let mut unavailable_native = false;
         for (id, row, projected) in &self.boxes {
             let captured = row.capture.as_ref().filter(|scope| {
-                prepared.captured_paragraph().is_some_and(|paragraph| {
+                prepared.captured_owner().is_some_and(|paragraph| {
                     paragraph.domain() == scope.domain()
                         && paragraph
+                            .domain()
                             .enter_position()
                             .same_capture(&scope.enter_position())
                 })
@@ -2476,24 +2493,31 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
         } else {
             super::boxes::NativeBoxCut::Prefix
         };
-        Ok(super::boxes::BoxFrontier::boundary(
+        super::boxes::BoxFrontier::boundary(
+            self.segment.clone(),
             boundary.clone(),
             incidence,
             native,
             relations,
-        ))
+        )
     }
 
     // A local box that really exits before the paragraph must be discharged
     // by an issued outgoing incidence. A retained force pin cannot stand in for
     // that completion, and a scope continuing into another paragraph is exempt.
-    fn closes_paragraph(&self, outgoing: &super::boxes::BoxFrontier) -> Result<bool, FitError> {
+    fn closes_segment(
+        &self,
+        outgoing: &super::boxes::BoxFrontier,
+        segment: &surgeist_text::PreparedSourceSegment,
+    ) -> Result<bool, FitError> {
         use surgeist_text::CapturedScopeIncidence as R;
         let prepared = outgoing.boundary.prepared_text();
-        let Some(paragraph) = prepared.captured_paragraph() else {
+        let Some(paragraph) = prepared.captured_owner() else {
             return Ok(true);
         };
-        let paragraph_exit = paragraph.exit_position();
+        let Some(paragraph_exit) = segment.exit_position() else {
+            return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
+        };
         for scope in self
             .boxes
             .iter()
@@ -2519,11 +2543,11 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
         boundary: &surgeist_text::PreparedBoundary,
     ) -> Result<Vec<super::boxes::BoxFrontier>, FitError> {
         let prepared = boundary.prepared_text();
-        if prepared.captured_paragraph().is_none() {
+        if prepared.captured_owner().is_none() {
             return Ok(vec![self.cut(boundary, None)?]);
         }
-        let mut incidences = prepared.boundary_incidences(boundary)?;
-        let forced = prepared.opportunity_views().any(|offer| {
+        let mut incidences = prepared.boundary_incidences(&self.segment, boundary)?;
+        let forced = self.segment.opportunity_views().any(|offer| {
             offer.boundary() == *boundary
                 && offer.kind() == surgeist_text::PreparedBreakKind::Forced
         });
@@ -2535,9 +2559,10 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
             let mut excluded = vec![false; incidences.len()];
             for (id, row, _) in &self.boxes {
                 let Some(scope) = row.capture.as_ref().filter(|scope| {
-                    prepared.captured_paragraph().is_some_and(|paragraph| {
+                    prepared.captured_owner().is_some_and(|paragraph| {
                         paragraph.domain() == scope.domain()
                             && paragraph
+                                .domain()
                                 .enter_position()
                                 .same_capture(&scope.enter_position())
                     })
@@ -2592,9 +2617,21 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
         use surgeist_text::CapturedScopeIncidence as R;
         // The receiver's Text progress boundary keeps its own spelling. The
         // original frontier stays with its issuer across administrative runs.
+        let source_segment = choice.source_segment();
+        if source_segment != self.segment
+            || choice
+                .incoming
+                .is_some_and(|entry| entry.frontier().segment != source_segment)
+        {
+            return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
+        }
+        // A preceding native run's receipt retains its issuer. A new structural
+        // segment establishes its own genuine entry incidence, even at an equal
+        // PreparedBoundary; no old prefix is relabeled to the new segment.
         let entry = choice.incoming.or(self
             .incoming
             .as_ref()
+            .filter(|frontier| frontier.segment == source_segment)
             .map(super::boxes::BoxEntry::ConsumedTo));
         let incoming = entry.map(super::boxes::BoxEntry::frontier);
         let starts = if let Some(incoming) = incoming {
@@ -2632,21 +2669,21 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
                 // when it already discharges all local boxes.
                 let mut completed = Vec::new();
                 for outgoing in ends {
-                    if self.closes_paragraph(&outgoing)? {
+                    if self.closes_segment(&outgoing, &choice.source_segment())? {
                         completed.push(outgoing);
                     }
                 }
                 ends = completed.into_iter().last().into_iter().collect();
-                if ends.is_empty()
-                    && start == end
-                    && let Some(paragraph) = end.prepared_text().captured_paragraph()
+                if ends.is_empty() && start == end && end.prepared_text().captured_owner().is_some()
                 {
                     let mut relations = Vec::new();
                     for (id, row, _) in &self.boxes {
                         let relation = row
                             .capture
                             .as_ref()
-                            .map(|scope| super::boxes::horizon_relation(&paragraph, scope))
+                            .map(|scope| {
+                                super::boxes::horizon_relation(&choice.source_segment(), scope)
+                            })
                             .transpose()?
                             .flatten()
                             .or_else(|| incoming.relation(*id));
@@ -2656,7 +2693,7 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
                     }
                     if let Some(completion) =
                         super::boxes::BoxFrontier::complete(&incoming, &choice, relations)?
-                        && self.closes_paragraph(&completion)?
+                        && self.closes_segment(&completion, &choice.source_segment())?
                     {
                         ends.push(completion);
                     }
@@ -2719,6 +2756,7 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
                                         && declared != &owner
                                     {
                                         let reason = if !declared
+                                            .domain()
                                             .enter_position()
                                             .same_capture(&owner.enter_position())
                                         {
@@ -2733,7 +2771,7 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
                                     strut.scope = Some(owner);
                                 } else if self.scope_alignment_active || strut.scope.is_some() {
                                     let scope = strut.scope.as_ref().map_or_else(|| {
-                                        start.prepared_text().captured_paragraph()
+                                        start.prepared_text().captured_owner()
                                             .expect("active scope alignment has a captured paragraph").domain().capture_ordinal()
                                     }, surgeist_text::CapturedScope::capture_ordinal);
                                     return Err(super::scope_alignment::refusal(surgeist_text::ScopeAlignmentError::UnrepresentedOwnership { scope }).into());

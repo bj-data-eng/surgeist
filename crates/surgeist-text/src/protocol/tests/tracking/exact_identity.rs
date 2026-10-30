@@ -201,6 +201,9 @@ fn rounded_equal_character_replacements_keep_exact_framed_conditional_identity()
     let query = |frame: &FinalizedLine| {
         let search = prefix
             .prepared
+            .source_segments()
+            .next()
+            .unwrap()
             .conditional_search(
                 &prefix.start,
                 None,

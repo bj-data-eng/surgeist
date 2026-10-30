@@ -338,8 +338,16 @@ fn computed_scope_cause_has_its_own_canonical_capture_and_prepared_participant()
     assert_eq!(participant.view().source_position().get(), 1);
     assert_eq!(participant.view().processed_position().get(), 1);
     assert_eq!(p.participants().filter(|part| matches!(part, PreparedParticipant::ComputedLineBoundary(c) if *c == participant)).count(), 1);
+    let mut segments = p.source_segments();
+    assert_eq!(
+        segments.len(),
+        1,
+        "this inline-seam fixture has one genuine source segment"
+    );
+    let segment = segments.next().unwrap();
+    drop(segments);
     assert!(
-        !p.boundary_inside_captured_scope(&forced[0].boundary(), &scope)
+        !p.boundary_inside_captured_scope(&segment, &forced[0].boundary(), &scope)
             .unwrap()
     );
     let lines = finish(&p);

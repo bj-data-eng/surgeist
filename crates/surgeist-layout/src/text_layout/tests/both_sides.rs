@@ -535,6 +535,7 @@ fn assert_outgoing_counter_once_with_style(
                 Direction::Ltr,
             ),
             prepared: p,
+            segment: p.source_segments().next().unwrap(),
             scope_alignments: &scope_alignments,
             available: fit::Available::Definite(40.0),
             base_direction: text::ParagraphBaseDirection::LeftToRight,
