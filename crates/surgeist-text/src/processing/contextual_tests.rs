@@ -3,6 +3,7 @@ use crate::*;
 use std::sync::Arc;
 
 mod combination_facts;
+mod continuity;
 mod joint_flow;
 mod math;
 mod phase_two;
