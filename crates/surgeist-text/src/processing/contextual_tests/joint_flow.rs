@@ -226,8 +226,17 @@ fn explicit_flow_keeps_empty_member_facts_owner_and_event_ordered_raw_records() 
 fn equal_facts_and_continuous_connections_do_not_supply_joint_authority() {
     let mut undeclared = three_members();
     undeclared.joint_flows.clear();
-    let error = process_contextual_source(undeclared.clone()).unwrap_err();
-    assert!(matches!(reason(&error), SourceProcessingError::Connection));
+    let independent = Arc::new(process_contextual_source(undeclared.clone()).unwrap());
+    assert!(independent.captured_joint_flow(0).is_none());
+    for ordinal in 0..3 {
+        assert!(
+            independent
+                .captured_paragraph(ordinal)
+                .unwrap()
+                .joint_flow()
+                .is_none()
+        );
+    }
 
     // Independent old raw records remain valid without cross-view joins.
     undeclared.connections.clear();
@@ -660,7 +669,7 @@ fn designated_owner_and_exact_used_direction_and_strut_are_required() {
 }
 
 #[test]
-fn cross_view_connections_require_actual_successive_endpoints_position_and_authority() {
+fn cross_view_connections_require_actual_successive_endpoints_and_position() {
     use SourceProcessingJointFlowError as J;
     let mut missing = two_members(ParagraphConnectionKind::Continuous);
     missing.connections.clear();
@@ -709,7 +718,19 @@ fn cross_view_connections_require_actual_successive_endpoints_position_and_autho
 
     let mut undeclared_edge = two_members(ParagraphConnectionKind::Continuous);
     undeclared_edge.joint_flows[0].paragraphs = vec![1];
-    refuses(undeclared_edge, J::UndeclaredConnection { connection: 0 });
+    let independent_edge = Arc::new(process_contextual_source(undeclared_edge).unwrap());
+    let declared = independent_edge.captured_joint_flow(0).unwrap();
+    assert_eq!(
+        declared.members().collect::<Vec<_>>(),
+        [independent_edge.captured_paragraph(1).unwrap()]
+    );
+    assert!(
+        independent_edge
+            .captured_paragraph(0)
+            .unwrap()
+            .joint_flow()
+            .is_none()
+    );
 }
 
 #[test]

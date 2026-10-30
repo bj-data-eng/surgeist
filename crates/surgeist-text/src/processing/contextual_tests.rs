@@ -6,6 +6,7 @@ mod combination_facts;
 mod joint_flow;
 mod math;
 mod phase_two;
+mod source_connections;
 mod wbr_connections;
 mod wbr_decoding;
 mod wbr_decoding_continuity;
