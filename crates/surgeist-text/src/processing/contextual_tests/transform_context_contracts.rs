@@ -1328,3 +1328,34 @@ fn short_ascii_phrase_run_retains_one_native_receipt_without_inserting_space() {
 fn long_ascii_phrase_run_retains_one_native_receipt_without_inserting_space() {
     one_captured_ascii_phrase_run_preserves_its_original_output(16_400);
 }
+
+#[test]
+fn exact_unconditional_greek_alpha_does_not_transform_unknown_preceding_sigma() {
+    let following = Style {
+        text_transform: lower(),
+        ..neighbor()
+    };
+    let processed = capture(input("ΟΣΑ", 2, None, following));
+    let raw = processed.paragraphs().collect::<Vec<_>>();
+    let alpha = AnalyzedSource::from_processed_paragraph(
+        raw[1].clone(),
+        AnalysisTypography::HorizontalComposition,
+    )
+    .expect("unconditional Alpha needs no preceding Sigma transformation");
+    exact(&alpha, &processed, 1, Range::new(2, 3), "α");
+    let error = AnalyzedSource::from_processed_paragraph(
+        raw[0].clone(),
+        AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap_err();
+    assert!(matches!(
+        error.detail(),
+        Some(ErrorDetail::SourceProcessing {
+            reason: SourceProcessingError::MissingSourceContinuity {
+                before_origin: 0,
+                after_origin: 1,
+                operation: SourceContinuityOperation::Transformation,
+            },
+        })
+    ));
+}
