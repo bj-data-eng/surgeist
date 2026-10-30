@@ -1007,6 +1007,10 @@ pub fn parlance::font::FontStyle::from(slant: surgeist_text::Slant) -> Self
 pub enum surgeist_text::SourceBoxSide
 pub surgeist_text::SourceBoxSide::After
 pub surgeist_text::SourceBoxSide::Before
+pub enum surgeist_text::SourceContinuityOperation
+pub surgeist_text::SourceContinuityOperation::Decoding
+pub surgeist_text::SourceContinuityOperation::Trimming
+pub surgeist_text::SourceContinuityOperation::WhiteSpace
 pub enum surgeist_text::SourceProcessingConnectionError
 pub surgeist_text::SourceProcessingConnectionError::Domain
 pub surgeist_text::SourceProcessingConnectionError::Domain::connection: usize
@@ -1033,6 +1037,10 @@ pub surgeist_text::SourceProcessingError::ForeignParagraph
 pub surgeist_text::SourceProcessingError::IncompleteExterior
 pub surgeist_text::SourceProcessingError::JointFlow
 pub surgeist_text::SourceProcessingError::JointFlow::reason: surgeist_text::SourceProcessingJointFlowError
+pub surgeist_text::SourceProcessingError::MissingSourceContinuity
+pub surgeist_text::SourceProcessingError::MissingSourceContinuity::after_origin: usize
+pub surgeist_text::SourceProcessingError::MissingSourceContinuity::before_origin: usize
+pub surgeist_text::SourceProcessingError::MissingSourceContinuity::operation: surgeist_text::SourceContinuityOperation
 pub surgeist_text::SourceProcessingError::Nesting
 pub surgeist_text::SourceProcessingError::Occurrence
 pub surgeist_text::SourceProcessingError::OriginCorrespondence

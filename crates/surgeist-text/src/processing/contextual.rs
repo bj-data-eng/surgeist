@@ -15,7 +15,7 @@ pub(crate) mod alignment;
 pub(crate) mod canonical;
 mod capture;
 mod computed;
-mod connection;
+pub(super) mod connection;
 mod joint_flow;
 pub use alignment::{
     ScopeAlignmentBoundary, ScopeAlignmentError, ScopeAlignmentLimitKind, ScopeAlignmentLimits,
@@ -231,9 +231,26 @@ pub struct ContextualSourceInput {
     pub events: Vec<SourceProcessingEvent>,
 }
 
-/// Typed atomic capture/view rejection.
+/// The canonical source operation requiring an unavailable relationship.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SourceContinuityOperation {
+    Decoding,
+    WhiteSpace,
+    Trimming,
+}
+
+/// Typed atomic capture/view rejection or unavailable source context.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SourceProcessingError {
+    /// Source context needed by the bounded qualifier to establish a complete
+    /// result. This does not assert that every hypothetical completion differs.
+    /// Endpoints index [`ContextualSourceInput::origins`]. No completed processed
+    /// owner is published on this failure.
+    MissingSourceContinuity {
+        before_origin: usize,
+        after_origin: usize,
+        operation: SourceContinuityOperation,
+    },
     SourceConnection {
         reason: SourceProcessingConnectionError,
     },
@@ -979,7 +996,6 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
         &mut context,
     )?;
     joint_flow::validate_connections(&topology, &captures, &provided)?;
-    drop(provided);
     computed::admit(&input, &mut topology, &mut captures, &mut context)?;
     let topology = Arc::new(topology);
     for barrier in &context.barriers {
@@ -1275,7 +1291,10 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
         context: &context,
         capture: &topology,
         modes: &modes,
+        origins: &input.origins,
+        provided: &provided,
     })?;
+    drop(provided);
     let preserved_spaces = super::preserved_spaces(&units, &plaintext_tokens)?;
     Ok(ProcessedSource {
         source: input.source,

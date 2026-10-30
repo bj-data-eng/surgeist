@@ -51,6 +51,28 @@ fn refusal(reason: SourceProcessingConnectionError) -> crate::Error {
     invalid(SourceProcessingError::SourceConnection { reason })
 }
 
+/// Walk the sole capture's actual per-domain original sequence. Empty
+/// occurrences participate; child-domain originals never replace parent ones.
+pub(in crate::processing) fn visit_source_neighbors(
+    capture: &ScopeCapture,
+    mut visit: impl FnMut(usize, usize, usize) -> Result<()>,
+) -> Result<()> {
+    let mut previous = Vec::new();
+    reserve(&mut previous, capture.domain_scopes.len())?;
+    previous.resize(capture.domain_scopes.len(), None);
+    for event in &capture.events {
+        if let SourceProcessingEvent::Origin { origin, .. } = event.event {
+            let paragraph = event.paragraph.expect("admitted original has a paragraph");
+            let domain = capture.paragraphs[paragraph].domain;
+            if let Some(before) = previous[domain] {
+                visit(domain, before, origin)?;
+            }
+            previous[domain] = Some(origin);
+        }
+    }
+    Ok(())
+}
+
 /// Validate every supplied edge against the full original event stream. The
 /// returned scratch index contains only supplied, validated relationships:
 /// absence is unknown and does not infer continuity or a disconnected fence.
@@ -62,29 +84,18 @@ pub(super) fn admit(
     context: &mut ProcessingContext,
 ) -> Result<Vec<Option<usize>>> {
     let mut next: Vec<Option<usize>> = Vec::new();
-    let mut previous: Vec<Option<usize>> = Vec::new();
     let mut provided: Vec<Option<usize>> = Vec::new();
     reserve(&mut next, input.origins.len())?;
-    reserve(&mut previous, topology.domain_scopes.len())?;
     reserve(&mut provided, input.origins.len())?;
     next.resize(input.origins.len(), None);
-    previous.resize(topology.domain_scopes.len(), None);
     provided.resize(input.origins.len(), None);
     // This is allowable endpoint adjacency, not a source-connection graph.
     // Empty origins remain occurrences; child-domain originals occupy their
     // own flow and do not replace the actual parent-domain neighbors.
-    for event in &topology.events {
-        if let SourceProcessingEvent::Origin { origin, .. } = event.event {
-            let paragraph = event
-                .paragraph
-                .expect("an admitted original has a paragraph");
-            let domain = topology.paragraphs[paragraph].domain;
-            if let Some(before) = previous[domain] {
-                next[before] = Some(origin);
-            }
-            previous[domain] = Some(origin);
-        }
-    }
+    visit_source_neighbors(topology, |_, before, after| {
+        next[before] = Some(after);
+        Ok(())
+    })?;
 
     reserve(&mut topology.connections, input.connections.len())?;
     for (connection, (fact, &order)) in input.connections.iter().zip(connection_orders).enumerate()
