@@ -135,7 +135,10 @@ fn actual_css_tab_reference_keeps_latin_metrics_and_does_not_merge_distinct_scri
             let line = prepared
                 .select(selection)
                 .unwrap()
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap();
             let only_tab = text == "\t";
             // Four real one-em spaces create a40px interval. Greek10 then
@@ -334,7 +337,10 @@ fn real_selected_greek_indication_uses_its_own_reference_and_retains_original_so
         let first = prepared
             .select(prefix)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         let terminal = prepared
             .opportunity_views()
@@ -346,7 +352,10 @@ fn real_selected_greek_indication_uses_its_own_reference_and_retains_original_so
         let second = prepared
             .select(suffix)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(
             first.selected_line().request().alternative,

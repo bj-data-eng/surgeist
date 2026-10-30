@@ -97,6 +97,8 @@ fn inline(
         },
     ]);
     scopes.push(text::SourceProcessingScope::Inline {
+        alignment_boundary: None,
+        font_reference: None,
         trim: text::WhiteSpaceTrim::default(),
         style: Some(style),
         boundaries: Some(text::SourceProcessingScopeBoundaries {
@@ -143,6 +145,7 @@ fn fixture_with_child_topology(
         ..plain.clone()
     };
     let block = |base_style, topology| text::SourceProcessingScope::Block {
+        font_reference: None,
         topology,
         trim: text::WhiteSpaceTrim::default(),
         base_style,
@@ -306,6 +309,7 @@ fn fixture_with_child_topology(
     let control_facts = controls.clone();
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -548,6 +552,7 @@ fn compute(fixture: &Fixture, with_child: bool) -> layout::CompletedLayoutBatch<
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     layout::compute_layout_with_flow(&capture, 0, request()).unwrap()
@@ -566,6 +571,7 @@ fn rejects(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("invalid scope association must refuse {reason:?}")
     };
@@ -735,6 +741,7 @@ fn distinct_empty_paragraphs_share_their_real_empty_domain_slot_in_any_inventory
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let associated = layout::compute_layout_with_flow(&capture, 0, request()).unwrap();
@@ -805,6 +812,7 @@ fn nonempty_domain_with_terminal_empty_paragraph() -> IncidenceFixture {
         })
         .collect();
     let block = || text::SourceProcessingScope::Block {
+        font_reference: None,
         topology: text::SourceProcessingTopology::Complete,
         trim: text::WhiteSpaceTrim::default(),
         base_style: style.clone(),
@@ -817,6 +825,7 @@ fn nonempty_domain_with_terminal_empty_paragraph() -> IncidenceFixture {
     };
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source,
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -961,6 +970,7 @@ fn an_empty_paragraph_in_a_nonempty_domain_uses_its_authentic_terminal_run_slot(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let baseline = layout::compute_layout_with_flow(&baseline_capture, 0, request()).unwrap();
@@ -974,6 +984,7 @@ fn an_empty_paragraph_in_a_nonempty_domain_uses_its_authentic_terminal_run_slot(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let associated = layout::compute_layout_with_flow(&capture, 0, request()).unwrap();
@@ -1020,6 +1031,7 @@ fn one_empty_paragraph_cannot_certify_a_nonempty_domain_with_its_real_neighbor_o
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("missing genuine neighbor flow cannot establish empty-paragraph incidence")
     };
@@ -1150,6 +1162,7 @@ fn flat_empty_preparation_without_canonical_paragraph_identity_cannot_associate_
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("empty output alone cannot provide canonical paragraph/domain authority")
     };

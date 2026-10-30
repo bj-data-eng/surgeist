@@ -288,6 +288,7 @@ fn compute_with_style<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let input =
@@ -515,6 +516,14 @@ fn assert_outgoing_counter_once_with_style(
             boundary: None,
         })
         .collect::<Vec<_>>();
+    let scope_alignments = crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
+        crate::text_layout::scope_alignment::ScopeAlignmentSnapshot::<f64>::admit::<()>(
+            Vec::new(),
+            &[],
+        )
+        .unwrap()
+        .freeze(),
+    );
     let fitted = fit::fit(
         fit::FitInput {
             groups: crate::group_alignment::Snapshot::default(),
@@ -526,6 +535,7 @@ fn assert_outgoing_counter_once_with_style(
                 Direction::Ltr,
             ),
             prepared: p,
+            scope_alignments: &scope_alignments,
             available: fit::Available::Definite(40.0),
             base_direction: text::ParagraphBaseDirection::LeftToRight,
             block_direction: text::ParagraphBaseDirection::LeftToRight,

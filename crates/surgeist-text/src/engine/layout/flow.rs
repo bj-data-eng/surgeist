@@ -1,4 +1,5 @@
 //! Nonplaceable selected-presentation participation observations.
+use super::data::OrdinalMap;
 use crate::engine::shape::ShapeContext;
 use crate::protocol::{
     boundary,
@@ -10,7 +11,6 @@ use crate::{
     FlowObservation, FlowObservationRequest, PreparedFlowSegment, PreparedText, ProtocolError,
     Result,
 };
-use std::collections::BTreeMap;
 
 pub(crate) fn observe(
     prepared: &PreparedText,
@@ -18,6 +18,7 @@ pub(crate) fn observe(
     request: &FlowObservationRequest,
     profile: LineMetricPolicy,
     scratch: &mut ShapeContext,
+    allowance: Option<crate::ScopeAlignmentAllowance>,
 ) -> Result<FlowObservation> {
     let participants: Vec<_> = segment.participants().collect();
     let start = segment.start();
@@ -30,6 +31,8 @@ pub(crate) fn observe(
             occurrence: missing.index,
         }));
     }
+    segment.scope_input_roots(&prepared.inner, request)?;
+    crate::engine::scope_alignment::operation_limits(&prepared.inner, allowance)?;
     let input = PresentationInput {
         prepared: &prepared.inner,
         presentation: &presentation,
@@ -39,27 +42,26 @@ pub(crate) fn observe(
         metric_policy: profile,
         controls: &request.controls,
     };
-    let (shaped, _, dispositions) = super::finalize::shape_and_collapse(input, scratch)?;
-    let atomics: BTreeMap<_, _> = request
-        .atomics
-        .iter()
-        .map(|row| {
-            (
-                prepared.inner.tables.atomics[row.occurrence.index].occurrence,
-                row,
-            )
-        })
-        .collect();
-    let controls: BTreeMap<_, _> = request
-        .controls
-        .iter()
-        .map(|row| {
-            (
-                prepared.inner.tables.controls[row.occurrence.index].occurrence,
-                row,
-            )
-        })
-        .collect();
+    let (shaped, _, dispositions) = super::finalize::shape_and_collapse(
+        input,
+        scratch,
+        allowance,
+        crate::engine::scope_alignment::PlanInput::Flow { segment, request },
+    )?;
+    let mut atomics = OrdinalMap::default();
+    for row in &request.atomics {
+        atomics.insert(
+            prepared.inner.tables.atomics[row.occurrence.index].occurrence,
+            row,
+        );
+    }
+    let mut controls = OrdinalMap::default();
+    for row in &request.controls {
+        controls.insert(
+            prepared.inner.tables.controls[row.occurrence.index].occurrence,
+            row,
+        );
+    }
     let retained = shaped.items.iter().any(|item| {
         crate::protocol::prefix::retained_item(input, item, &atomics, &controls, &dispositions)
     });

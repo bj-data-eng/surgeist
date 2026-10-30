@@ -54,6 +54,7 @@ pub(super) fn run<S: l::LayoutScalar>(
         0,
         paragraphs.iter().map(|p| p.binding.clone()).collect(),
         l::WrappingInput::default(),
+        Vec::new(),
     )
     .unwrap();
     let request = l::LayoutRootRequestOf::viewport(available).unwrap();

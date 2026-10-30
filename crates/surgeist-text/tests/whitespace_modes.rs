@@ -221,7 +221,10 @@ fn finish(
             },
         })
         .unwrap()
-        .finalize(t::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: t::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap()
 }
 
@@ -363,6 +366,7 @@ fn contextual(value: &str, base: t::Style, trim: t::WhiteSpaceTrim) -> Arc<t::Pr
     use t::SourceProcessingEvent as E;
     Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
@@ -374,12 +378,15 @@ fn contextual(value: &str, base: t::Style, trim: t::WhiteSpaceTrim) -> Arc<t::Pr
             replacements: vec![],
             scopes: vec![
                 t::SourceProcessingScope::Block {
+                    font_reference: None,
                     topology: t::SourceProcessingTopology::Complete,
                     trim: t::WhiteSpaceTrim::default(),
                     base_style: base,
                     used_direction: LTR,
                 },
                 t::SourceProcessingScope::Inline {
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim,
                     style: None,
                     boundaries: None,
@@ -921,6 +928,7 @@ fn preserve_breaks_does_not_collapse_across_distinct_real_block_domains() {
     let source = source("A \tB");
     let base = style(t::WhiteSpace::PreserveBreaks, t::Wrap::Word);
     let block = || t::SourceProcessingScope::Block {
+        font_reference: None,
         topology: t::SourceProcessingTopology::Complete,
         trim: t::WhiteSpaceTrim::default(),
         base_style: base.clone(),
@@ -932,6 +940,7 @@ fn preserve_breaks_does_not_collapse_across_distinct_real_block_domains() {
     };
     let processed = Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,

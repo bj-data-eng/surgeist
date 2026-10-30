@@ -62,7 +62,7 @@ struct DispositionIdentity {
     alternative: Option<usize>,
     portion: Option<super::PreparedWordPortion>,
     line_limit: Option<usize>,
-    policy_context: Vec<u64>,
+    policy_context: PolicyContext,
     controls: Vec<(usize, bool)>,
     atomics: Vec<(usize, bool)>,
 }
@@ -436,7 +436,7 @@ fn validate_frontier(
                 alternative: variant,
                 portion: None,
                 line_limit: None,
-                policy_context: Vec::new(),
+                policy_context: PolicyContext::default(),
                 controls: Vec::new(),
                 atomics: Vec::new(),
             };
@@ -710,14 +710,134 @@ pub(crate) fn request_context(request: super::input::RequestInput<'_>) -> Vec<u6
     }
     values
 }
-fn policy_context(line: &FinalizedLine) -> Vec<u64> {
+/// The native numeric proof remains unchanged. New scope identity borrows the
+/// actual completed immutable owner, rather than copying a shadow transcript.
+/// Completed frames precede each search/request: Prepared has no reverse cache.
+#[derive(Clone, Debug, Default)]
+struct PolicyContext {
+    native: Vec<u64>,
+    scope_frame: Option<FinalizedLine>,
+}
+impl PolicyContext {
+    fn scopes(&self) -> &[crate::ScopeFrameAllocation] {
+        self.scope_frame
+            .as_ref()
+            .map_or(&[], |frame| frame.scope_allocations())
+    }
+}
+impl PartialEq for PolicyContext {
+    fn eq(&self, other: &Self) -> bool {
+        self.native == other.native && self.scopes() == other.scopes()
+    }
+}
+impl Eq for PolicyContext {}
+impl Hash for PolicyContext {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.native.hash(state);
+        self.scopes().len().hash(state);
+        for row in self.scopes() {
+            row.scope.hash(state);
+            for value in [row.displacement.get(), row.cumulative_displacement.get()] {
+                (if value == 0.0 { 0 } else { value.to_bits() }).hash(state);
+            }
+        }
+    }
+}
+fn policy_context(line: &FinalizedLine) -> PolicyContext {
     let selected = line.selected_line();
     let mut values = request_context(selected.request().into());
     number(&mut values, line.feedback().advance);
     for &amount in &line.inner.data.spacing_amounts {
         number(&mut values, amount);
     }
-    values
+    PolicyContext {
+        native: values,
+        scope_frame: (!line.scope_allocations().is_empty()).then(|| line.clone()),
+    }
+}
+
+/// Bounded owner inspection, not an execution or source-membership transcript.
+pub(crate) enum ScopeProofVisit<'a> {
+    Work(usize),
+    Frame(&'a FinalizedLine),
+}
+fn visit_scope_policy<'a>(
+    context: &'a PolicyContext,
+    emit: &mut dyn FnMut(ScopeProofVisit<'a>) -> crate::Result<()>,
+) -> crate::Result<()> {
+    emit(ScopeProofVisit::Work(1))?;
+    if let Some(frame) = &context.scope_frame {
+        emit(ScopeProofVisit::Frame(frame))?;
+    }
+    Ok(())
+}
+fn visit_scope_dispositions<'a>(
+    rows: &'a [DispositionIdentity],
+    emit: &mut dyn FnMut(ScopeProofVisit<'a>) -> crate::Result<()>,
+) -> crate::Result<()> {
+    emit(ScopeProofVisit::Work(rows.len()))?;
+    for row in rows {
+        visit_scope_policy(&row.policy_context, emit)?;
+    }
+    Ok(())
+}
+fn visit_scope_receipts<'a>(
+    rows: &'a [ConditionalDisposition],
+    emit: &mut dyn FnMut(ScopeProofVisit<'a>) -> crate::Result<()>,
+) -> crate::Result<()> {
+    emit(ScopeProofVisit::Work(rows.len()))?;
+    for row in rows {
+        if let Some(frame) = row.receipt() {
+            emit(ScopeProofVisit::Frame(frame))?;
+        }
+    }
+    Ok(())
+}
+fn visit_scope_search_identity<'a>(
+    search: &'a SearchIdentity,
+    emit: &mut dyn FnMut(ScopeProofVisit<'a>) -> crate::Result<()>,
+) -> crate::Result<()> {
+    visit_scope_policy(&search.frame, emit)?;
+    visit_scope_dispositions(&search.ordinary, emit)
+}
+fn visit_scope_search<'a>(
+    search: &'a PreparedConditionalSearch,
+    emit: &mut dyn FnMut(ScopeProofVisit<'a>) -> crate::Result<()>,
+) -> crate::Result<()> {
+    visit_scope_search_identity(&search.identity, emit)?;
+    visit_scope_receipts(&search.skipped, emit)
+}
+pub(crate) fn visit_termination_scope_frames<'a>(
+    termination: &'a super::PreparedTermination,
+    emit: &mut dyn FnMut(ScopeProofVisit<'a>) -> crate::Result<()>,
+) -> crate::Result<()> {
+    emit(ScopeProofVisit::Work(1))?;
+    match termination {
+        super::PreparedTermination::Conditional(opportunity) => {
+            visit_scope_receipts(&opportunity.skipped, emit)?;
+            visit_scope_dispositions(&opportunity.identities, emit)?;
+            if let Some(search) = &opportunity.search {
+                visit_scope_search_identity(search, emit)?;
+            }
+            emit(ScopeProofVisit::Work(opportunity.decisions.len()))?;
+            for decision in &opportunity.decisions {
+                visit_scope_policy(&decision.context, emit)?;
+                visit_scope_search(&decision.portion.query, emit)?;
+            }
+            visit_scope_dispositions(&opportunity.history, emit)?;
+        }
+        super::PreparedTermination::PhraseMeasurement(portion) => {
+            visit_scope_search(&portion.query, emit)?
+        }
+        super::PreparedTermination::Ordinary(_) | super::PreparedTermination::Measurement(_) => {}
+    }
+    Ok(())
+}
+pub(crate) fn visit_request_scope_frames<'a>(
+    request: &'a LineSelectionRequest,
+    emit: &mut dyn FnMut(ScopeProofVisit<'a>) -> crate::Result<()>,
+) -> crate::Result<()> {
+    visit_termination_scope_frames(&request.termination, emit)
 }
 
 /// Ordered finite relaxation tiers; intrinsic queries use only Arbitrary.
@@ -739,7 +859,7 @@ pub enum PhraseOverflowDecision {
 struct PhraseDecisionIdentity {
     portion: super::PreparedPhrasePortion,
     overflows: bool,
-    context: Vec<u64>,
+    context: PolicyContext,
 }
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(super) struct SearchIdentity {
@@ -749,7 +869,7 @@ pub(super) struct SearchIdentity {
     ceiling: usize,
     purpose: ConditionalPurpose,
     ordinary: Vec<DispositionIdentity>,
-    frame: Vec<u64>,
+    frame: PolicyContext,
     selection_context: Vec<u64>,
     auto_phrase: bool,
 }
@@ -842,7 +962,7 @@ impl PreparedText {
             selection = selection_context(&request.context);
             policy_context(frame)
         } else {
-            Vec::new()
+            PolicyContext::default()
         };
         Ok(PreparedConditionalSearch {
             identity: SearchIdentity {
@@ -1102,7 +1222,7 @@ impl PreparedConditionalBatch {
                 alternative: candidate.alternative,
                 portion: None,
                 line_limit: None,
-                policy_context: Vec::new(),
+                policy_context: PolicyContext::default(),
                 controls: Vec::new(),
                 atomics: Vec::new(),
             };

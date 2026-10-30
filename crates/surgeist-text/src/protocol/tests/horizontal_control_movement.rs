@@ -115,7 +115,10 @@ fn horizontal_next_line_refuses_an_ambiguous_real_control_only_target() {
         r.termination = crate::PreparedTermination::Ordinary(end);
         p.select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap()
     };
     let end = p

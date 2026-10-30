@@ -136,7 +136,12 @@ fn whole(prepared: &PreparedText) -> FinalizedLine {
     request.context.available_inline = None;
     request.context.spacing = SpacingPolicy::None;
     let selected = prepared.select(request).unwrap();
-    let line = selected.finalize(SpacingAllocations::None).unwrap();
+    let line = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(line.selected_line(), selected);
     assert_eq!(line.prepared_text(), *prepared);
     line

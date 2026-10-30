@@ -1057,6 +1057,17 @@ query order and finite cache history cannot change their result. Actual policy,
 containing basis, incoming accepted state and resolved candidate context remain
 part of captured pass/request/replay identity.
 
+### Captured-scope alignment
+
+The [captured-scope contract](../crates/surgeist-text/docs/scope-alignment.md)
+owns early formatting facts, authentic glyph-free parent metrics, selected
+allocation and feature-local resource accounting. Layout admits scalar-typed
+alignment facts through actual scope associations and resolves line-relative
+aligned subtrees. Text retains lexical custody while executing each participating
+frame once; Top/Bottom children remain independent containing-line groups.
+Font references are context, not invented struts. Raw/named reference bridges,
+signed fitting, replay and OOF static edges use the actual retained frame.
+
 ### Native text-group alignment
 
 The [native group-alignment determination](../references/text-group-alignment--native-determination.md)

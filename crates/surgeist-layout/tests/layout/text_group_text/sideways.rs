@@ -63,7 +63,10 @@ fn qualify_preparation(paragraph: &Paragraph, orientation: t::LineOrientation) {
             },
         })
         .unwrap()
-        .finalize(t::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: t::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(
         (line.feedback().advance, line.feedback().line_height),
@@ -130,6 +133,7 @@ fn finite<S: l::LayoutScalar>() {
             0,
             vec![paragraph.binding.clone()],
             l::WrappingInput::default(),
+            Vec::new(),
         )
         .unwrap();
         let request = l::LayoutRootRequestOf::viewport(l::Size::new(

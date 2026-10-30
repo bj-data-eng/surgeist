@@ -58,7 +58,8 @@ impl<S: l::LayoutScalar> WarmRoot<'_, S> {
         f: &Fixture<S>,
         inventory: l::WrappingInput<u32>,
     ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
-        let capture = l::LayoutFlowInput::try_new(self, 0, vec![f.binding()], inventory)?;
+        let capture =
+            l::LayoutFlowInput::try_new(self, 0, vec![f.binding()], inventory, Vec::new())?;
         l::compute_layout_with_flow(&capture, 0, Self::request())
     }
 }
@@ -169,7 +170,10 @@ fn warm_semantic_custody<S: l::LayoutScalar>(direction: l::Direction) {
     );
     assert_struts(
         &receipt.selected_line().request().line_box_struts,
-        &[metric(24.0, 40.0), metric(12.0, 30.0)],
+        &[
+            expected_metric(&f.scopes[0], 24.0, 40.0),
+            expected_metric(&f.scopes[1], 12.0, 30.0),
+        ],
     );
     assert_ne!(first.placed_text()[0].layout().key(), layout.key());
     assert_semantic_output(&f, &first);

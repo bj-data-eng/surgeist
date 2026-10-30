@@ -70,6 +70,7 @@ fn input(text: &str, operation: WordSpaceTransform, cuts: &[usize]) -> Contextua
         SourceProcessingEvent::ExitScope(0),
     ]);
     ContextualSourceInput {
+        scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source,
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -80,6 +81,7 @@ fn input(text: &str, operation: WordSpaceTransform, cuts: &[usize]) -> Contextua
         boundary_policies,
         replacements: vec![],
         scopes: vec![SourceProcessingScope::Block {
+            font_reference: None,
             topology: SourceProcessingTopology::Complete,
             trim: WhiteSpaceTrim::default(),
             base_style: style(operation),
@@ -159,6 +161,8 @@ fn wrap_inline(input: &mut ContextualSourceInput, governing: Option<Style>) {
     ]);
     let scope = input.scopes.len();
     input.scopes.push(SourceProcessingScope::Inline {
+        alignment_boundary: None,
+        font_reference: None,
         trim: WhiteSpaceTrim::default(),
         style: governing,
         boundaries: Some(SourceProcessingScopeBoundaries {
@@ -204,6 +208,8 @@ fn wrap_origin(input: &mut ContextualSourceInput, origin: usize) {
     ]);
     let scope = input.scopes.len();
     input.scopes.push(SourceProcessingScope::Inline {
+        alignment_boundary: None,
+        font_reference: None,
         trim: WhiteSpaceTrim::default(),
         style: Some(style(WordSpaceTransform::SpaceAutoPhrase)),
         boundaries: Some(SourceProcessingScopeBoundaries {
@@ -284,7 +290,10 @@ fn whole(prepared: &PreparedText) -> FinalizedLine {
             },
         })
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 
@@ -632,7 +641,10 @@ fn selecting_a_real_shy_indication_keeps_virtual_owner_font_and_mapping() {
     request.context.end = LineEnd::Soft;
     let selected = crate::test_wrapping::select_neutral(&prepared, request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert!(
         selected
@@ -859,6 +871,8 @@ fn text_empty_parent_and_empty_seam_scope_keep_the_outer_actual_font_and_style()
     ]);
     let scope = capture.scopes.len();
     capture.scopes.push(SourceProcessingScope::Inline {
+        alignment_boundary: None,
+        font_reference: None,
         trim: WhiteSpaceTrim::default(),
         style: None,
         boundaries: Some(SourceProcessingScopeBoundaries {
@@ -948,6 +962,7 @@ fn out_of_flow_child_interiors_do_not_split_parent_analysis_but_in_flow_atomics_
         let child_style = style(WordSpaceTransform::None);
         capture.scopes.push(match kind {
             InlineBoxKind::OutOfFlow => SourceProcessingScope::OutOfFlowBlock {
+                font_reference: None,
                 topology: SourceProcessingTopology::Complete,
                 trim: WhiteSpaceTrim::default(),
                 base_style: child_style,
@@ -955,6 +970,7 @@ fn out_of_flow_child_interiors_do_not_split_parent_analysis_but_in_flow_atomics_
                 atomic: 0,
             },
             InlineBoxKind::InFlow => SourceProcessingScope::AtomicBlock {
+                font_reference: None,
                 topology: SourceProcessingTopology::Complete,
                 trim: WhiteSpaceTrim::default(),
                 base_style: child_style,

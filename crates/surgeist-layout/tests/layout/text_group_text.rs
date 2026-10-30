@@ -403,6 +403,7 @@ impl Paragraph {
         }
         events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
         let mut scopes = vec![t::SourceProcessingScope::Block {
+            font_reference: None,
             topology: t::SourceProcessingTopology::Complete,
             trim: Default::default(),
             base_style: style.clone(),
@@ -410,6 +411,8 @@ impl Paragraph {
         }];
         if let Some(boundaries) = boundary_pair {
             scopes.push(t::SourceProcessingScope::Inline {
+                alignment_boundary: None,
+                font_reference: None,
                 trim: Default::default(),
                 style: None,
                 boundaries: Some(boundaries),
@@ -417,6 +420,7 @@ impl Paragraph {
         }
         let capture = Arc::new(
             t::process_contextual_source(t::ContextualSourceInput {
+                scope_alignment_limits: None,
                 source,
                 segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
                 envelope: t::SourceProcessingEnvelope::Complete,
@@ -524,6 +528,7 @@ fn compute<S: l::LayoutScalar>(
             .map(|paragraph| paragraph.binding.clone())
             .collect(),
         l::WrappingInput::default(),
+        Vec::new(),
     )
     .unwrap();
     let request = l::LayoutRootRequestOf::viewport(l::Size::new(

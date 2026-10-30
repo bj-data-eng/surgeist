@@ -283,6 +283,7 @@ fn composition(bytes: &[u8], mode: layout::WritingMode) {
             line_strut: None,
         }],
         layout::WrappingInput::default(),
+        Vec::new(),
     )
     .unwrap();
     let batch = layout::compute_layout_with_flow(

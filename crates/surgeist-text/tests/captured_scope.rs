@@ -33,6 +33,7 @@ fn system() -> System {
 
 fn block(topology: SourceProcessingTopology) -> SourceProcessingScope {
     SourceProcessingScope::Block {
+        font_reference: None,
         topology,
         trim: WhiteSpaceTrim::default(),
         base_style: style(WordSpaceTransform::None),
@@ -106,6 +107,7 @@ fn continuation(enabled: bool, known: bool) -> Arc<ProcessedSource> {
     };
     Arc::new(
         process_contextual_source(ContextualSourceInput {
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -136,6 +138,8 @@ fn continuation(enabled: bool, known: bool) -> Arc<ProcessedSource> {
                     SourceProcessingTopology::Unknown
                 }),
                 SourceProcessingScope::Inline {
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: WhiteSpaceTrim::default(),
                     style: known.then(|| {
                         style(if enabled {
@@ -379,6 +383,7 @@ fn same_anchor_atomic_domains_retain_the_exact_nominated_occurrence() {
         }
         let child = match kind {
             InlineBoxKind::InFlow => SourceProcessingScope::AtomicBlock {
+                font_reference: None,
                 topology: SourceProcessingTopology::Unknown,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style(WordSpaceTransform::None),
@@ -386,6 +391,7 @@ fn same_anchor_atomic_domains_retain_the_exact_nominated_occurrence() {
                 atomic: 0,
             },
             InlineBoxKind::OutOfFlow => SourceProcessingScope::OutOfFlowBlock {
+                font_reference: None,
                 topology: SourceProcessingTopology::Unknown,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style(WordSpaceTransform::None),
@@ -395,6 +401,7 @@ fn same_anchor_atomic_domains_retain_the_exact_nominated_occurrence() {
         };
         let processed = Arc::new(
             process_contextual_source(ContextualSourceInput {
+                scope_alignment_limits: None,
                 computed_line_boundaries: vec![],
                 source: source.clone(),
                 segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -477,12 +484,15 @@ fn empty_nested_owners_keep_distinct_same_anchor_endpoints_without_emitting() {
         affinity: Affinity::After,
     };
     let inline = |start, end| SourceProcessingScope::Inline {
+        alignment_boundary: None,
+        font_reference: None,
         trim: WhiteSpaceTrim::default(),
         style: None,
         boundaries: Some(SourceProcessingScopeBoundaries { start, end }),
     };
     let processed = Arc::new(
         process_contextual_source(ContextualSourceInput {
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: Source::new(""),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,

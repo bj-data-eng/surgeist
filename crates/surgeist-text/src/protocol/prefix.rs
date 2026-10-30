@@ -1,8 +1,10 @@
 //! Occurrence-qualified observations of an actual finalized logical prefix.
 
-use std::{collections::BTreeMap, ops::Range as Indices, sync::Arc};
+use crate::engine::scope_alignment::accounting::{self as account, Ledger};
+use crate::processing::contextual::alignment::operations;
+use std::{ops::Range as Indices, sync::Arc};
 
-use crate::engine::layout::data::{ShapedData, ShapedItem, Whitespace};
+use crate::engine::layout::data::{OrdinalMap, ShapedData, ShapedItem, Whitespace};
 use crate::{ErrorDetail, Range, Result, SourcePosition, TextNumericError, TextNumericPhase};
 
 use super::prepared::PresentationUnitKind;
@@ -206,35 +208,56 @@ pub(crate) struct PrefixData {
     retained_sources: Vec<Vec<Range>>,
     content_sources: Vec<Vec<Range>>,
     participants: Vec<Option<Indices<usize>>>,
-    origins: BTreeMap<usize, Vec<OriginSpan>>,
-    participant_indices: BTreeMap<(u8, usize), usize>,
+    origins: OrdinalMap<Vec<OriginSpan>>,
+    participant_indices: Vec<((u8, usize), usize)>,
 }
 
 impl PrefixData {
     pub(crate) fn new(
         selected: &SelectedData,
         shaped: &ShapedData,
-        atomics: &BTreeMap<usize, &super::AtomicAllocation>,
-        controls: &BTreeMap<usize, &super::ControlAllocation>,
+        atomics: &OrdinalMap<&super::AtomicAllocation>,
+        controls: &OrdinalMap<&super::ControlAllocation>,
         dispositions: &[super::SpacingSlotDisposition],
         receipts: Vec<f64>,
-    ) -> Self {
+        ledger: &mut Ledger,
+    ) -> Result<Self> {
         let units = &selected.presentation.units;
         let mut result = Self {
             receipts,
-            unit_cuts: vec![0..0; units.len()],
-            retained_prefix: vec![false],
-            content_prefix: vec![false],
-            retained_sources: vec![Vec::new(); units.len()],
-            content_sources: vec![Vec::new(); units.len()],
-            participants: vec![None; selected.request.participants.len()],
+            unit_cuts: account::filled(ledger, units.len(), 0..0)?,
+            retained_prefix: account::filled(ledger, 1, false)?,
+            content_prefix: account::filled(ledger, 1, false)?,
+            retained_sources: account::filled(ledger, units.len(), Vec::new())?,
+            content_sources: account::filled(ledger, units.len(), Vec::new())?,
+            participants: account::filled(ledger, selected.request.participants.len(), None)?,
             ..Self::default()
         };
         for (i, participant) in selected.request.participants.iter().enumerate() {
-            result
-                .participant_indices
-                .insert(participant_key(participant), i);
+            account::push(
+                ledger,
+                &mut result.participant_indices,
+                (participant_key(participant), i),
+            )?;
         }
+        operations::order_by(
+            &mut result.participant_indices,
+            ledger.as_mut(),
+            |left, right| left.cmp(right),
+        )?;
+        // The prior sparse index retained the last actual occurrence for a
+        // repeated key. Preserve that policy without opaque map storage.
+        // Each input after the first performs exactly one adjacent probe,
+        // including its bounded survivor update and compaction.
+        account::work(ledger, result.participant_indices.len().saturating_sub(1))?;
+        result.participant_indices.dedup_by(|later, previous| {
+            if later.0 == previous.0 {
+                previous.1 = later.1;
+                true
+            } else {
+                false
+            }
+        });
         let replacement_owner = |alternative: usize| {
             let definition = selected.prepared.tables.alternatives[alternative].definition;
             selected
@@ -260,8 +283,8 @@ impl PrefixData {
                 })
         };
         let mut owner = 0;
-        let mut item_units = Vec::with_capacity(shaped.items.len());
-        let mut values = Vec::with_capacity(shaped.items.len());
+        let mut item_units = Vec::new();
+        let mut values = Vec::new();
         for item in &shaped.items {
             let unit = match *item {
                 ShapedItem::Anchor { unit, .. } => unit,
@@ -289,12 +312,14 @@ impl PrefixData {
                 dispositions,
             );
             if retained && let ShapedItem::TextCluster(index) = *item {
-                result.retained_sources[unit].extend(
-                    selected.presentation.projection.atoms[shaped.clusters[index].atoms.clone()]
-                        .iter()
-                        .map(|atom| atom.source)
-                        .filter(|range| !range.is_empty()),
-                );
+                for source in selected.presentation.projection.atoms
+                    [shaped.clusters[index].atoms.clone()]
+                .iter()
+                .map(|atom| atom.source)
+                .filter(|range| !range.is_empty())
+                {
+                    account::push(ledger, &mut result.retained_sources[unit], source)?;
+                }
             }
             let content = in_flow_item(
                 selected.presentation_input(),
@@ -305,22 +330,22 @@ impl PrefixData {
                 dispositions,
             );
             result.has_in_flow_content |= content;
-            result
-                .content_prefix
-                .push(*result.content_prefix.last().unwrap() || content);
+            let next = *result.content_prefix.last().unwrap() || content;
+            account::push(ledger, &mut result.content_prefix, next)?;
             if content && let ShapedItem::TextCluster(index) = *item {
-                result.content_sources[unit].extend(
-                    selected.presentation.projection.atoms[shaped.clusters[index].atoms.clone()]
-                        .iter()
-                        .map(|atom| atom.source)
-                        .filter(|range| !range.is_empty()),
-                );
+                for source in selected.presentation.projection.atoms
+                    [shaped.clusters[index].atoms.clone()]
+                .iter()
+                .map(|atom| atom.source)
+                .filter(|range| !range.is_empty())
+                {
+                    account::push(ledger, &mut result.content_sources[unit], source)?;
+                }
             }
-            result
-                .retained_prefix
-                .push(*result.retained_prefix.last().unwrap() || retained);
-            item_units.push(unit);
-            values.push(match *item {
+            let next = *result.retained_prefix.last().unwrap() || retained;
+            account::push(ledger, &mut result.retained_prefix, next)?;
+            account::push(ledger, &mut item_units, unit)?;
+            let value = match *item {
                 ShapedItem::TextCluster(index)
                     if shaped.clusters[index].whitespace != Whitespace::Newline =>
                 {
@@ -341,7 +366,8 @@ impl PrefixData {
                     super::boundary::advance(selected.presentation_input(), unit)
                 }
                 _ => 0.0,
-            });
+            };
+            account::push(ledger, &mut values, value)?;
         }
         let mut item = 0;
         for (index, unit) in units.iter().enumerate() {
@@ -377,12 +403,17 @@ impl PrefixData {
                 },
             );
             if let PresentationUnitKind::EmptyOrigin { origin } = unit.kind {
-                result.origins.entry(origin).or_default().push(OriginSpan {
-                    source: unit.source,
-                    actual_source: unit.source,
-                    unit: index,
-                    cuts,
-                });
+                append_origin(
+                    ledger,
+                    &mut result.origins,
+                    origin,
+                    OriginSpan {
+                        source: unit.source,
+                        actual_source: unit.source,
+                        unit: index,
+                        cuts,
+                    },
+                )?;
             } else if !unit.source.is_empty()
                 && !matches!(unit.kind, PresentationUnitKind::Replacement { .. })
             {
@@ -397,18 +428,23 @@ impl PrefixData {
                         row.aggregate.end.min(unit.source.end),
                     );
                     if !source.is_empty() {
-                        result.origins.entry(origin).or_default().push(OriginSpan {
-                            source,
-                            actual_source: unit.source,
-                            unit: index,
-                            cuts: cuts.clone(),
-                        });
+                        append_origin(
+                            ledger,
+                            &mut result.origins,
+                            origin,
+                            OriginSpan {
+                                source,
+                                actual_source: unit.source,
+                                unit: index,
+                                cuts: cuts.clone(),
+                            },
+                        )?;
                     }
                 }
             }
         }
         let count = selected.presentation.projection.atoms.len();
-        let mut atom_items = vec![0; count];
+        let mut atom_items = account::filled(ledger, count, 0)?;
         for (item, value) in shaped.items.iter().enumerate() {
             if let ShapedItem::TextCluster(i) = *value {
                 for atom in shaped.clusters[i].atoms.clone() {
@@ -416,7 +452,8 @@ impl PrefixData {
                 }
             }
         }
-        for group in super::boundary::groups(selected, shaped) {
+        let groups = super::boundary::groups_accounted(selected, shaped, ledger)?;
+        for group in &groups {
             let start = group.start;
             let end = group.end;
             let first = atom_items[start];
@@ -428,19 +465,77 @@ impl PrefixData {
             let advance = values[first..last]
                 .iter()
                 .fold(Contribution::Value(0.0), |a, &v| a.add(v));
-            result.groups.push(SharedUnit {
-                atoms: start..end,
-                items: first..last,
-                units: item_units[first]..item_units[last - 1] + 1,
-                source,
-                presentation: Range::new(
-                    atoms[0].presentation.start,
-                    atoms[atoms.len() - 1].presentation.end,
-                ),
-                advance,
-            });
+            account::push(
+                ledger,
+                &mut result.groups,
+                SharedUnit {
+                    atoms: start..end,
+                    items: first..last,
+                    units: item_units[first]..item_units[last - 1] + 1,
+                    source,
+                    presentation: Range::new(
+                        atoms[0].presentation.start,
+                        atoms[atoms.len() - 1].presentation.end,
+                    ),
+                    advance,
+                },
+            )?;
         }
-        result
+        account::drop_vec(ledger, groups)?;
+        account::drop_vec(ledger, atom_items)?;
+        account::drop_vec(ledger, item_units)?;
+        account::drop_vec(ledger, values)?;
+        Ok(result)
+    }
+}
+
+fn append_origin(
+    ledger: &mut Ledger,
+    rows: &mut OrdinalMap<Vec<OriginSpan>>,
+    origin: usize,
+    row: OriginSpan,
+) -> Result<()> {
+    if rows.get(&origin).is_none() {
+        account::insert(ledger, rows, origin, Vec::new())?;
+    }
+    account::push(ledger, rows.get_mut(&origin).expect("inserted origin"), row)
+}
+
+impl PrefixData {
+    pub(crate) fn visit_scope_allocations(
+        &self,
+        visit: &mut crate::engine::scope_alignment::census::AllocationVisitor<'_>,
+    ) -> Result<()> {
+        use crate::engine::scope_alignment::census::AllocationWitness as W;
+        visit(W::buffer(&self.receipts, self.receipts.len())?)?;
+        visit(W::buffer(&self.groups, self.groups.len())?)?;
+        visit(W::buffer(&self.unit_cuts, self.unit_cuts.len())?)?;
+        visit(W::buffer(
+            &self.retained_prefix,
+            self.retained_prefix.len(),
+        )?)?;
+        visit(W::buffer(&self.content_prefix, self.content_prefix.len())?)?;
+        visit(W::buffer(
+            &self.retained_sources,
+            self.retained_sources.len(),
+        )?)?;
+        visit(W::buffer(
+            &self.content_sources,
+            self.content_sources.len(),
+        )?)?;
+        visit(W::buffer(&self.participants, self.participants.len())?)?;
+        visit(W::buffer(&self.origins.rows, self.origins.rows.len())?)?;
+        visit(W::buffer(
+            &self.participant_indices,
+            self.participant_indices.len(),
+        )?)?;
+        for rows in self.retained_sources.iter().chain(&self.content_sources) {
+            visit(W::buffer(rows, rows.len())?)?;
+        }
+        for (_, rows) in &self.origins.rows {
+            visit(W::buffer(rows, rows.len())?)?;
+        }
+        Ok(())
     }
 }
 
@@ -462,9 +557,12 @@ impl FinalizedLine {
                 {
                     return Err(protocol_error(ProtocolError::ForeignSelectedLine));
                 }
-                let index = *data
+                let key = participant_key(p);
+                let index = data
                     .participant_indices
-                    .get(&participant_key(p))
+                    .binary_search_by_key(&key, |row| row.0)
+                    .ok()
+                    .map(|index| data.participant_indices[index].1)
                     .ok_or_else(invalid)?;
                 let row = data.participants[index].as_ref().ok_or_else(invalid)?;
                 let cut = if matches!(seam, TextSeam::BeforeParticipant(_)) {
@@ -577,8 +675,8 @@ pub(crate) fn in_flow_item(
     input: super::input::PresentationInput<'_>,
     shaped: &ShapedData,
     item: &ShapedItem,
-    atomics: &BTreeMap<usize, &super::AtomicAllocation>,
-    controls: &BTreeMap<usize, &super::ControlAllocation>,
+    atomics: &OrdinalMap<&super::AtomicAllocation>,
+    controls: &OrdinalMap<&super::ControlAllocation>,
     dispositions: &[super::SpacingSlotDisposition],
 ) -> bool {
     let retained = retained_item(input, item, atomics, controls, dispositions);
@@ -594,8 +692,8 @@ pub(crate) fn in_flow_item(
 pub(crate) fn retained_item(
     input: super::input::PresentationInput<'_>,
     item: &ShapedItem,
-    atomics: &BTreeMap<usize, &super::AtomicAllocation>,
-    controls: &BTreeMap<usize, &super::ControlAllocation>,
+    atomics: &OrdinalMap<&super::AtomicAllocation>,
+    controls: &OrdinalMap<&super::ControlAllocation>,
     dispositions: &[super::SpacingSlotDisposition],
 ) -> bool {
     match *item {

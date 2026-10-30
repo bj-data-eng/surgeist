@@ -448,7 +448,10 @@ mod tests {
         let finalized = p
             .select(request)
             .unwrap()
-            .finalize(super::super::SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: super::super::SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         let font = skrifa::FontRef::new(include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf"))
             .unwrap();

@@ -89,7 +89,10 @@ fn split(p: &PreparedText, at: usize) -> (FinalizedLine, FinalizedLine) {
     let first = p
         .select(first)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let mut second = request(p);
     second.start = first.selected_line().request().end.clone();
@@ -100,7 +103,10 @@ fn split(p: &PreparedText, at: usize) -> (FinalizedLine, FinalizedLine) {
     let second = p
         .select(second)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     (first, second)
 }
@@ -189,6 +195,7 @@ fn authored_forced_origin_seam_stops_lithuanian_dot_removal_and_unit_context() {
         ]);
         let processed = Arc::new(
             crate::process_contextual_source(ContextualSourceInput {
+                scope_alignment_limits: None,
                 computed_line_boundaries: vec![],
                 source: source.clone(),
                 segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -224,6 +231,7 @@ fn authored_forced_origin_seam_stops_lithuanian_dot_removal_and_unit_context() {
                 }],
                 replacements: Vec::new(),
                 scopes: vec![SourceProcessingScope::Block {
+                    font_reference: None,
                     topology: SourceProcessingTopology::Complete,
                     used_direction: ParagraphBaseDirection::LeftToRight,
                     trim: WhiteSpaceTrim::default(),
@@ -336,7 +344,10 @@ fn authored_forced_origin_seam_stops_lithuanian_dot_removal_and_unit_context() {
             let line = prepared
                 .select(selected)
                 .unwrap()
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap();
             start = line.selected_line().request().end.clone();
             lines.push(line);
@@ -707,7 +718,10 @@ fn canonical_greek_title_sequences_use_the_same_real_glyph_without_changing_sour
         let line = p
             .select(request(&p))
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         // The fixture's independent None controls qualify both canonical forms
         // at the title glyph192, with a genuine10px advance.
@@ -756,7 +770,10 @@ fn irish_inserted_hyphen_and_mapped_vowel_keep_the_vowel_row_as_their_real_emitt
     let line = p
         .select(request(&p))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 30.0);
     let placed = layout(p, vec![line], false);
@@ -921,7 +938,10 @@ fn actual_casing_after_phase_i_deletion_never_fuses_two_original_opaque_halves()
     let line = p
         .select(request(&p))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(ids(&line), [35, 35]);
     assert_eq!(line.feedback().advance, 20.0);
@@ -961,7 +981,10 @@ fn consecutive_greek_removals_retain_distinct_relation_cuts_and_exact_source() {
     let line = p
         .select(request(&p))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 10.0);
     assert_eq!(ids(&line), vec![35]);

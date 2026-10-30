@@ -295,6 +295,7 @@ fn actual_prepared_collapse_keeps_original_source_while_suppressing_line_edges_b
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let batch = compute_layout_with_flow(

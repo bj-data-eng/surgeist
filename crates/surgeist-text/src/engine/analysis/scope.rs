@@ -339,6 +339,7 @@ mod tests {
             })
             .collect();
         let input = ContextualSourceInput {
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source,
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -370,8 +371,11 @@ mod tests {
                         ..Style::default()
                     },
                     used_direction: ParagraphBaseDirection::LeftToRight,
+                    font_reference: None,
                 },
                 SourceProcessingScope::Inline {
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: WhiteSpaceTrim::default(),
                     style: None,
                     boundaries: None,

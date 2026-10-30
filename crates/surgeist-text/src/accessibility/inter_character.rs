@@ -292,11 +292,21 @@ fn projected(layout: &Layout, orientation: LineOrientation, gap: f64) {
 
 fn qualifies(orientation: LineOrientation) {
     let (control_prepared, control_selected) = selected(orientation, 0.0);
-    let control = control_selected.finalize(SpacingAllocations::None).unwrap();
+    let control = control_selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(control.feedback().advance, 30.0);
     projected(&place(&control_prepared, control), orientation, 0.0);
     let (prepared, selected) = selected(orientation, 4.0);
-    let natural = selected.finalize(SpacingAllocations::None).unwrap();
+    let natural = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(natural.feedback().advance, 38.0);
     projected(&place(&prepared, natural.clone()), orientation, 4.0);
     let zero = natural.with_spacing(amounts(&selected, 0.0)).unwrap();

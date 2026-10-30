@@ -5,6 +5,7 @@ use crate::{LineBoxAlignment, LineBoxStrut, LineHeight, LineStrut, Range};
 
 fn row(baseline: f64, line_extent: f64, alignment: LineBoxAlignment) -> LineBoxStrut {
     LineBoxStrut {
+        scope: None,
         metrics: LineStrut {
             baseline,
             line_extent,
@@ -56,7 +57,10 @@ fn allocated_empty_paragraph_uses_only_real_box_metric_groups() {
     let no_allocations = p
         .select(request(&p))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap_err();
     assert!(matches!(
         no_allocations.detail(),
@@ -90,7 +94,10 @@ fn allocated_empty_paragraph_uses_only_real_box_metric_groups() {
         let line = p
             .select(input)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(
             (line.feedback().baseline, line.feedback().line_height),

@@ -160,7 +160,10 @@ fn selected_request(
 fn whole(p: &PreparedText) -> FinalizedLine {
     p.select(selected_request(p, start(p), terminal(p)))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn entries(p: &PreparedText, rows: Vec<(FinalizedLine, f64, f64)>) -> Vec<crate::PlacementEntry> {
@@ -474,14 +477,20 @@ fn adjacent_movement_preserves_true_u_instead_of_inverse_caret_hull_top_left() {
     let first = p
         .select(a)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let mut b = selected_request(&p, forced.view().boundary(), terminal(&p));
     b.context.spacing = SpacingPolicy::InterCharacter;
     let second = p
         .select(b)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(
         (first.feedback().advance, second.feedback().advance),

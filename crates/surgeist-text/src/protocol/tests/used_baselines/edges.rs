@@ -152,7 +152,10 @@ fn actual_captured_rtl_keeps_odd_level_source_order_and_carets_in_both_named_fra
         let line = prepared
             .select(selection)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(
             (
@@ -389,7 +392,12 @@ fn an_actual_nonzero_font_displacement_cannot_vanish_in_an_enormous_native_line(
         selection.context.orientation = orientation;
         selection.context.spacing = SpacingPolicy::None;
         let selected = huge.select(selection).unwrap();
-        let error = selected.finalize(SpacingAllocations::None).unwrap_err();
+        let error = selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap_err();
         assert_eq!(error.code, crate::ErrorCode::InvalidTextNumeric);
         assert_eq!(
             error.detail(),
@@ -462,7 +470,10 @@ fn signed_native_font_struts_do_not_relax_supplied_line_or_control_strut_contain
         let native = prepared
             .select(selection.clone())
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(
             (native.feedback().baseline, native.feedback().line_height),

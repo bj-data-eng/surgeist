@@ -28,6 +28,7 @@ use surgeist_text::{
 /// Actual per-run incidence projection. Errors remain data until a real soft
 /// choice comparison needs the corresponding requested scope.
 pub(crate) struct WrappingProjection<Node> {
+    scope_alignment_active: bool,
     context: std::sync::Arc<crate::inline_wrapping::WrappingContext<Node>>,
     flow: Node,
     edges: Vec<(
@@ -296,6 +297,7 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
                 .iter()
                 .any(|(_, row, _)| row.metric_contribution.is_some()))
         .then(|| Self {
+            scope_alignment_active: false,
             context: context.clone(),
             flow: binding.container,
             rows,
@@ -329,6 +331,67 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
     pub(crate) fn with_incoming(mut self, incoming: Option<super::boxes::BoxFrontier>) -> Self {
         self.incoming = incoming;
         self
+    }
+
+    fn align_scope_metrics<S: LayoutScalar>(
+        &mut self,
+        binding: &TextParagraphBinding<Node>,
+        associations: &super::capture::ScopeAssociations<Node>,
+        resources: &super::scope_alignment::ScopeAlignmentResources<S>,
+    ) -> Result<(), FitError> {
+        use super::scope_alignment::ScopeAlignmentFacts;
+        if binding.prepared.scope_alignment_retention().is_none() {
+            return Ok(());
+        }
+        let Some(paragraph) = binding.prepared.captured_paragraph() else {
+            return Ok(());
+        };
+        let limits = paragraph.domain().scope_alignment_limits().ok_or_else(|| {
+            super::scope_alignment::refusal(surgeist_text::ScopeAlignmentError::LimitsRequired)
+        })?;
+        let facts = resources.snapshot();
+        let mut active = false;
+        for row in facts.rows() {
+            ScopeAlignmentFacts::visit(resources, limits, 1)?;
+            if row.scope.domain() == paragraph.domain() {
+                active = true;
+                break;
+            }
+        }
+        if !active {
+            return Ok(());
+        }
+        self.scope_alignment_active = true;
+        for (_, row, _) in &mut self.boxes {
+            ScopeAlignmentFacts::visit(resources, limits, 1)?;
+            let mut own = None;
+            for fact in facts.rows() {
+                ScopeAlignmentFacts::visit(resources, limits, 1)?;
+                let matches = if row.capture.as_ref() == Some(&fact.scope) {
+                    true
+                } else {
+                    ScopeAlignmentFacts::visit(
+                        resources,
+                        limits,
+                        associations.captured_binding_work(&fact.scope),
+                    )?;
+                    matches!(associations.captured_binding(&fact.scope),
+                        Some(super::TextScopeAssociation::Inline { start, end }) if row.pair == Some((start, end)))
+                };
+                if matches {
+                    own = Some(fact);
+                    break;
+                }
+            }
+            if let Some(own) = own
+                && let Some(crate::InlineBoxMetricContribution::Strut(strut)) =
+                    &mut row.metric_contribution
+            {
+                strut.alignment =
+                    super::scope_alignment::intrinsic_alignment(own, strut.alignment)?;
+            }
+        }
+        Ok(())
     }
 
     fn classify_boundary(
@@ -402,6 +465,7 @@ pub(crate) enum Frame<S: LayoutScalar> {
 }
 
 pub(crate) struct Context<Node, S: LayoutScalar> {
+    pub scope_alignments: super::scope_alignment::ScopeAlignmentResources<S>,
     pub orientation: LineOrientation,
     pub inline_baseline_context: crate::InlineBaselineContext,
     pub groups: crate::group_alignment::Snapshot,
@@ -648,6 +712,7 @@ impl LineFrame {
         feedback: surgeist_text::LineFeedback,
         metrics: surgeist_text::LineStrut,
         alignment: surgeist_text::LineBoxAlignment,
+        scope_displacement: f64,
     ) -> Result<surgeist_text::LineStrut, FitError> {
         let over = if self.vertical_cell() {
             let offset = match alignment {
@@ -683,6 +748,14 @@ impl LineFrame {
         } else {
             over
         };
+        let over = add(
+            over,
+            if self.vertical_cell() {
+                scope_displacement
+            } else {
+                -scope_displacement
+            },
+        )?;
         self.strut(over, metrics.baseline, metrics.line_extent)
     }
 
@@ -728,6 +801,43 @@ impl LineFrame {
         ))
     }
 
+    fn qualify_scope_position<S: LayoutScalar>(
+        self,
+        point: Point<f64>,
+        displacement: f64,
+    ) -> Result<(), FitError> {
+        if displacement == 0.0 {
+            return Ok(());
+        }
+        let (matched, actual, origin) = if self.vertical_cell() {
+            (add(point.x, -displacement)?, point.x, self.origin.x)
+        } else {
+            (add(point.y, displacement)?, point.y, self.origin.y)
+        };
+        qualify_shift_coordinate::<S>(add(matched, -origin)?, add(actual, -origin)?)
+    }
+
+    fn qualify_scope_frames<S: LayoutScalar>(
+        self,
+        anchor: LineAnchor,
+        line: &FinalizedLine,
+    ) -> Result<(), FitError> {
+        for allocation in line.scope_allocations() {
+            // This is the actually allocated native frame origin, at the same
+            // accepted common baseline. It covers continuation lines without
+            // a selected endpoint control as well as glyph-bearing frames.
+            let cumulative = allocation.cumulative_displacement.get();
+            let mut point = self.anchor_point(anchor);
+            if self.vertical_cell() {
+                point.x = add(point.x, cumulative)?;
+            } else {
+                point.y = add(point.y, -cumulative)?;
+            }
+            self.qualify_scope_position::<S>(point, allocation.displacement.get())?;
+        }
+        Ok(())
+    }
+
     fn anchor_point(self, anchor: LineAnchor) -> Point<f64> {
         if self.vertical_cell() {
             Point::new(anchor.baseline, anchor.inline_origin)
@@ -744,13 +854,24 @@ impl LineFrame {
         baseline: f64,
         height: f64,
         inline: f64,
+        scope_displacement: f64,
     ) -> Result<Point<S>, FitError> {
         let cross = if self.vertical_cell() && !self.decreasing_block() {
             height
         } else {
             0.0
         };
-        self.relative_point(self.point(anchor, baseline, inline, cross)?)
+        let matched = self.point(anchor, baseline, inline, cross)?;
+        let actual = self.point(anchor, baseline, inline, add(cross, -scope_displacement)?)?;
+        if scope_displacement != 0.0 {
+            let (matched, actual, origin) = if self.vertical_cell() {
+                (matched.x, actual.x, self.origin.x)
+            } else {
+                (matched.y, actual.y, self.origin.y)
+            };
+            qualify_shift_coordinate::<S>(matched - origin, actual - origin)?;
+        }
+        self.relative_point(actual)
     }
 
     fn physical_rect(
@@ -960,7 +1081,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
     associations: &super::capture::ScopeAssociations<Node>,
     atomics: &[Atomic<Node, S>],
     controls: &[Control<Node, S>],
-    context: Context<Node, S>,
+    mut context: Context<Node, S>,
     reusable: &[fit::ReusableLine],
     environment: LineEnvironment<
         impl FnMut(f64, f64) -> Result<Band, FitError>,
@@ -984,6 +1105,63 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
         Frame::Canonical { origin, .. } => origin,
     };
     let frame = context.line_frame(origin);
+    // Only actual nominated own-box endpoints are intrinsic here. Their scope
+    // property is executed by the scope allocator, while independent child
+    // controls keep their own line-edge alignment.
+    let mut intrinsic = None;
+    let mut first_own = None;
+    for control in controls {
+        if control.allocation.strut.is_some()
+            && let Some(row) = super::scope_alignment::nominated_endpoint(
+                &context.scope_alignments,
+                associations,
+                control.node,
+                &control.allocation.occurrence,
+            )?
+        {
+            first_own = Some(row);
+            break;
+        }
+    }
+    if let Some(first) = first_own {
+        let (mut owned, lease) = context
+            .scope_alignments
+            .preparation_buffer::<Control<Node, S>>(
+                &binding.prepared,
+                &first.scope,
+                controls.len(),
+            )?;
+        for control in controls {
+            let own_box = super::scope_alignment::nominated_endpoint(
+                &context.scope_alignments,
+                associations,
+                control.node,
+                &control.allocation.occurrence,
+            )?;
+            let mut allocation = control.allocation.clone();
+            if let Some(row) = own_box
+                && let Some(strut) = &mut allocation.strut
+            {
+                strut.alignment =
+                    super::scope_alignment::intrinsic_alignment(row, strut.alignment)?;
+            }
+            owned.push(Control {
+                node: control.node,
+                source_index: control.source_index,
+                kind: control.kind,
+                allocation,
+                endpoint: control.endpoint,
+            });
+        }
+        intrinsic = Some((owned, lease));
+    }
+    let controls = intrinsic
+        .as_ref()
+        .map(|(values, _)| values.as_slice())
+        .unwrap_or(controls);
+    if let Some(wrapping) = &mut context.wrapping {
+        wrapping.align_scope_metrics(binding, associations, &context.scope_alignments)?;
+    }
     let allocations = binding
         .atomics
         .iter()
@@ -1035,6 +1213,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
             formatted: &context.formatted,
             line_box_context: context.line_box_context,
             prepared: &binding.prepared,
+            scope_alignments: &context.scope_alignments,
             available,
             base_direction: direction,
             block_direction: match context.axes.direction() {
@@ -1263,6 +1442,17 @@ fn canonical_allocations<Node: Copy + Eq, S: LayoutScalar>(
             let slot_cross = frame.atomic_cross(anchor, feedback.baseline, slot.origin, 0.0)?;
             let left = round(raw_x)?;
             let top = round(raw_y)?;
+            if slot.scope_displacement.get() != 0.0 {
+                let amount = slot.scope_displacement.get();
+                let (matched, shifted, parent) = if frame.vertical_cell() {
+                    (raw_x - amount, left, frame.origin.x)
+                } else {
+                    (raw_y + amount, top, frame.origin.y)
+                };
+                // Scope placement precedes this same actual edge policy. Its
+                // contribution is not applied again to the published box.
+                qualify_shift_coordinate::<S>((matched + 0.5).floor() - parent, shifted - parent)?;
+            }
             if let InlineControlAlignment::Shift(offset) = item.alignment
                 && offset.get() != S::ZERO
             {
@@ -1359,6 +1549,14 @@ fn canonical_controls<Node: Copy + Eq, S: LayoutScalar>(
                 .iter()
                 .find(|control| control.allocation.occurrence == allocation.occurrence)
                 .expect("selected control retains its original Layout allocation");
+            let scope_displacement = match line
+                .control_slots()
+                .find(|slot| slot.control() == allocation.occurrence)
+            {
+                Some(slot) => slot.scope_displacement().get(),
+                None if line.scope_allocations().is_empty() => 0.0,
+                None => return Err(FitError::Dependency),
+            };
             let strut = original
                 .allocation
                 .strut
@@ -1371,6 +1569,7 @@ fn canonical_controls<Node: Copy + Eq, S: LayoutScalar>(
                             line_extent: strut.line_extent,
                         },
                         strut.alignment,
+                        scope_displacement,
                     )?;
                     Ok::<_, FitError>(surgeist_text::ControlStrut {
                         baseline: metrics.baseline,
@@ -1410,13 +1609,20 @@ fn canonical_box_struts<Node, S: LayoutScalar>(
     )?;
     originals
         .iter()
-        .map(|strut| {
+        .enumerate()
+        .map(|(index, strut)| {
+            let displacement = line
+                .line_box_strut_scope_displacement(index)
+                .ok_or(FitError::Dependency)?
+                .get();
             Ok(surgeist_text::LineBoxStrut {
+                scope: strut.scope.clone(),
                 metrics: context.line_frame(origin).aligned_strut(
                     anchor,
                     feedback,
                     strut.metrics,
                     strut.alignment,
+                    displacement,
                 )?,
                 alignment: strut.alignment,
             })
@@ -1543,6 +1749,8 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     let mut bands = Vec::new();
     let mut flows = Vec::new();
     let mut amounts = Vec::new();
+    let scope_bases =
+        super::scope_alignment::ScopeBases::from_lines(&lines, &context.scope_alignments)?;
     let mut encounters = Vec::new();
     let mut zones = Vec::new();
     let mut phrases = Vec::new();
@@ -1654,6 +1862,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 0.0,
                 0.0,
             )?;
+            frame.qualify_scope_frames::<S>(used, &line.finalized)?;
             for slot in line.finalized.control_slots() {
                 let actual = binding
                     .controls
@@ -1661,10 +1870,9 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                     .find(|row| row.occurrence == slot.control())
                     .expect("retained nonformatted control has actual capture ownership");
                 let (left, _) = slot.inline_bounds();
-                nonformatted_controls.push((
-                    actual.node,
-                    frame.relative_point(frame.point(used, 0.0, left, 0.0)?)?,
-                ));
+                let point = frame.point(used, 0.0, left, slot.slot().y)?;
+                frame.qualify_scope_position::<S>(point, slot.scope_displacement().get())?;
+                nonformatted_controls.push((actual.node, frame.relative_point(point)?));
             }
             for slot in line.finalized.atomic_slots() {
                 let actual = binding
@@ -1677,7 +1885,13 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 }
                 static_positions.push((
                     actual.node,
-                    frame.static_position(used, 0.0, 0.0, slot.origin.x)?,
+                    frame.static_position(
+                        used,
+                        0.0,
+                        0.0,
+                        slot.origin.x,
+                        slot.scope_displacement.get(),
+                    )?,
                 ));
                 outflows.push((entry_index, slot.occurrence, actual.node));
             }
@@ -1694,6 +1908,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             ));
             continue;
         }
+        frame.qualify_scope_frames::<S>(anchor, &line.finalized)?;
         // Keep the accepted physical anchor in its actual used box frame.
         // In particular, an indefinite end-affine frame is resolved only when
         // the owning block knows its final border-box extent.
@@ -1805,6 +2020,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             let (left, right) = slot.inline_bounds();
             let inline_extent = number(finite(right - left)?)?;
             let physical = frame.point(anchor, feedback.baseline, left, slot.slot().y)?;
+            frame.qualify_scope_position::<S>(physical, slot.scope_displacement().get())?;
             if let Some(strut) = control.allocation.strut
                 && let surgeist_text::LineBoxAlignment::Shift(offset) = strut.alignment
                 && offset.get() != 0.0
@@ -1843,6 +2059,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                         feedback.baseline,
                         feedback.line_height,
                         slot.origin.x,
+                        slot.scope_displacement.get(),
                     )?,
                 ));
                 outflows.push((entry_index, slot.occurrence, binding.node));
@@ -1934,6 +2151,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             bands,
             flows,
             amounts,
+            scopes: scope_bases,
             encounters,
             zones,
             phrases,
@@ -2479,7 +2697,7 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
                                 .and_then(|allocation| allocation.strut)
                         })
                         .collect();
-                    let allocation = match row.metric_contribution {
+                    let allocation = match &row.metric_contribution {
                         Some(M::NoContribution) => {
                             if !owned.is_empty() {
                                 return Err(crate::WrappingScopeError::ConflictingBoxMetrics.into());
@@ -2493,6 +2711,33 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
                                     || actual.alignment != strut.alignment
                             }) {
                                 return Err(crate::WrappingScopeError::ConflictingBoxMetrics.into());
+                            }
+                            let mut strut = strut.clone();
+                            if owned.is_empty() || strut.scope.is_some() {
+                                if let Some(owner) = row.source_owner() {
+                                    if let Some(declared) = &strut.scope
+                                        && declared != &owner
+                                    {
+                                        let reason = if !declared
+                                            .enter_position()
+                                            .same_capture(&owner.enter_position())
+                                        {
+                                            surgeist_text::ScopeAlignmentError::ForeignCapture
+                                        } else {
+                                            surgeist_text::ScopeAlignmentError::BoundaryMismatch {
+                                                scope: owner.capture_ordinal(),
+                                            }
+                                        };
+                                        return Err(super::scope_alignment::refusal(reason).into());
+                                    }
+                                    strut.scope = Some(owner);
+                                } else if self.scope_alignment_active || strut.scope.is_some() {
+                                    let scope = strut.scope.as_ref().map_or_else(|| {
+                                        start.prepared_text().captured_paragraph()
+                                            .expect("active scope alignment has a captured paragraph").domain().capture_ordinal()
+                                    }, surgeist_text::CapturedScope::capture_ordinal);
+                                    return Err(super::scope_alignment::refusal(surgeist_text::ScopeAlignmentError::UnrepresentedOwnership { scope }).into());
+                                }
                             }
                             owned.is_empty().then_some(strut)
                         }

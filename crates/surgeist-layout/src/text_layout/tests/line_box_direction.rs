@@ -142,6 +142,7 @@ fn compute<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     compute_layout_with_flow(&capture, 0, request(width)).unwrap()
@@ -356,6 +357,7 @@ fn chronology<S: LayoutScalar>() {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         compute_layout_with_flow(&capture, 0, request(40.0)).unwrap()
@@ -470,6 +472,14 @@ fn intrinsic<S: LayoutScalar>(
         &[],
         &[],
         super::super::run::Context {
+            scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
+                crate::text_layout::scope_alignment::ScopeAlignmentSnapshot::admit(
+                    Vec::new(),
+                    std::slice::from_ref(&binding),
+                )
+                .unwrap()
+                .freeze(),
+            ),
             orientation: super::super::run::text_orientation(
                 WritingMode::HorizontalTb,
                 &binding.prepared,
@@ -727,6 +737,7 @@ fn numeric_overflow_cases<S: LayoutScalar>(
                     scopes: Vec::new(),
                     child_order: Vec::new(),
                 },
+                Vec::new(),
             )
             .unwrap();
             let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();

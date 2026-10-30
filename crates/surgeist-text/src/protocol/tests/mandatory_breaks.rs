@@ -111,7 +111,10 @@ fn finalized_forced(p: &PreparedText) -> FinalizedLine {
         opportunity(p, PreparedBreakKind::Forced),
     ))
     .unwrap()
-    .finalize(SpacingAllocations::None)
+    .finalize(crate::LineAllocations {
+        spacing: SpacingAllocations::None,
+        scopes: crate::ScopeAllocations::None,
+    })
     .unwrap()
 }
 
@@ -213,7 +216,10 @@ fn consumed_terminal_forced_boundary_accepts_a_real_empty_paragraph_end_line() {
                 opportunity(&p, PreparedBreakKind::ParagraphEnd),
             ))
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert!(last.selected_line().request().participants.is_empty());
         assert_eq!(
@@ -310,7 +316,10 @@ fn authored_forced_break_stops_rtl_receiver_neutral_context() {
             request.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
             p.select(request)
                 .unwrap()
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap()
         };
         let first = finish(p.boundary_views().next().unwrap().handle(), ending);

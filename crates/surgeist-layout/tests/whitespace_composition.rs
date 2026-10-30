@@ -205,6 +205,7 @@ fn fixture(case: Case<'_>) -> Fixture {
         use text::SourceProcessingEvent as E;
         let processed = Arc::new(
             text::process_contextual_source(text::ContextualSourceInput {
+                scope_alignment_limits: None,
                 computed_line_boundaries: vec![],
                 source,
                 segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -216,12 +217,15 @@ fn fixture(case: Case<'_>) -> Fixture {
                 replacements: vec![],
                 scopes: vec![
                     text::SourceProcessingScope::Block {
+                        font_reference: None,
                         topology: text::SourceProcessingTopology::Unknown,
                         trim: text::WhiteSpaceTrim::default(),
                         base_style: style,
                         used_direction: direction,
                     },
                     text::SourceProcessingScope::Inline {
+                        alignment_boundary: None,
+                        font_reference: None,
                         style: None,
                         boundaries: None,
                         trim: text::WhiteSpaceTrim {
@@ -380,6 +384,7 @@ fn compute(fixture: &Fixture, width: layout::Available) -> layout::CompletedLayo
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     layout::compute_layout_with_flow(
@@ -777,6 +782,7 @@ fn collapsed_sibling_space_permission_controls_actual_narrow_layout() {
             use text::SourceProcessingEvent as E;
             let processed = Arc::new(
                 text::process_contextual_source(text::ContextualSourceInput {
+                    scope_alignment_limits: None,
                     computed_line_boundaries: vec![],
                     source: source.clone(),
                     segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -797,17 +803,22 @@ fn collapsed_sibling_space_permission_controls_actual_narrow_layout() {
                     replacements: vec![],
                     scopes: vec![
                         text::SourceProcessingScope::Block {
+                            font_reference: None,
                             topology: text::SourceProcessingTopology::Unknown,
                             trim: text::WhiteSpaceTrim::default(),
                             base_style: style(ancestor),
                             used_direction: text::ParagraphBaseDirection::LeftToRight,
                         },
                         text::SourceProcessingScope::Inline {
+                            alignment_boundary: None,
+                            font_reference: None,
                             trim: text::WhiteSpaceTrim::default(),
                             style: Some(style(first)),
                             boundaries: None,
                         },
                         text::SourceProcessingScope::Inline {
+                            alignment_boundary: None,
+                            font_reference: None,
                             trim: text::WhiteSpaceTrim::default(),
                             style: Some(style(second)),
                             boundaries: None,

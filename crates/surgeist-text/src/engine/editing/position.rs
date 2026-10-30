@@ -245,18 +245,23 @@ pub(super) fn inline(layout: &PlacedLayout, index: usize) -> Result<f64> {
     let position = row(layout, index)?;
     Ok(local_x(&layout.lines[position.line], position.target))
 }
+pub(super) fn reference(layout: &PlacedLayout, index: usize) -> Result<Option<f64>> {
+    let position = row(layout, index)?;
+    let data = &layout.lines[position.line].finalized.data;
+    Ok(match position.target {
+        Target::Cluster { cluster, .. } => data.clusters[cluster].reference,
+        Target::Anchor { anchor, .. } => data.anchors[anchor].reference,
+        Target::Strut => None,
+    })
+}
 pub(crate) fn geometry(layout: &PlacedLayout, index: usize) -> Result<CursorGeometry> {
     let position = row(layout, index)?;
     let line = &layout.lines[position.line];
-    let metrics = line.finalized.data.metrics;
+    let data = &line.finalized.data;
+    let reference = reference(layout, index)?;
     Ok(CursorGeometry::new(crate::layout::line_rect(
         line,
-        Rect::new(
-            local_x(line, position.target),
-            metrics.block_min,
-            1.0,
-            metrics.block_max - metrics.block_min,
-        ),
+        data.cell_rect(local_x(line, position.target), 1.0, reference),
     )))
 }
 
@@ -285,6 +290,27 @@ pub(super) fn deleted_position(layout: &PlacedLayout, value: Cursor) -> Option<u
         })
 }
 pub(crate) fn hit(layout: &PlacedLayout, point: Point) -> Option<usize> {
+    if layout
+        .lines
+        .iter()
+        .any(|line| line.finalized.data.scope_cell_band.is_some())
+    {
+        // Different scope frames may share an inline coordinate. Compare their
+        // actual two-dimensional geometry, retaining the native unit/half owner
+        // when two source sides share the same nearest physical edge.
+        let source = super::cursor::from_point(layout, point);
+        return layout
+            .interaction
+            .positions
+            .iter()
+            .enumerate()
+            .min_by(|(a, left), (b, right)| {
+                position_distance(layout, *a, point)
+                    .total_cmp(&position_distance(layout, *b, point))
+                    .then_with(|| (left.source != source).cmp(&(right.source != source)))
+            })
+            .map(|(index, _)| index);
+    }
     let source = super::cursor::from_point(layout, point);
     let vertical_axis_line =
         if layout.prepared.options.orientation() != crate::LineOrientation::Horizontal {
@@ -1123,7 +1149,10 @@ mod tests {
                 line_strut: None,
             })
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         Layout::from_finalized_lines(PlacementRequest {
             prepared,
@@ -1725,7 +1754,12 @@ mod tests {
                         None
                     }
                 });
-            let line = selected.finalize(SpacingAllocations::None).unwrap();
+            let line = selected
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
+                .unwrap();
             if let Some(expected) = expected_control {
                 assert_eq!(line.control_slots().next().unwrap().control(), expected);
                 assert!(line.fragment_views().any(|fragment| matches!(fragment.owner(),
@@ -1936,7 +1970,12 @@ mod tests {
                 line_strut: None,
             })
             .unwrap();
-        let line = selected.finalize(SpacingAllocations::None).unwrap();
+        let line = selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         Layout::from_finalized_lines(PlacementRequest {
             prepared,
             coverage: PlacementCoverage::Range { start, end },
@@ -2187,7 +2226,12 @@ mod tests {
                 line_strut: None,
             })
             .unwrap();
-        let line = selected.finalize(SpacingAllocations::None).unwrap();
+        let line = selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         Layout::from_finalized_lines(PlacementRequest {
             prepared,
             coverage: PlacementCoverage::WholeParagraph,
@@ -2572,7 +2616,12 @@ mod tests {
                 })
                 .unwrap();
             lines.push(LinePlacement {
-                line: selected.finalize(SpacingAllocations::None).unwrap(),
+                line: selected
+                    .finalize(crate::LineAllocations {
+                        spacing: SpacingAllocations::None,
+                        scopes: crate::ScopeAllocations::None,
+                    })
+                    .unwrap(),
                 anchor: LineAnchor {
                     inline_origin: 0.0,
                     baseline: 16.0 + index as f64 * 40.0,

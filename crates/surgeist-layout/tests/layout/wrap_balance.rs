@@ -104,6 +104,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
         events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
         let capture = Arc::new(
             t::process_contextual_source(t::ContextualSourceInput {
+                scope_alignment_limits: None,
                 source: source.clone(),
                 segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
                 envelope: t::SourceProcessingEnvelope::Complete,
@@ -147,6 +148,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 replacements: vec![],
                 computed_line_boundaries: vec![],
                 scopes: vec![t::SourceProcessingScope::Block {
+                    font_reference: None,
                     topology: t::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: style,
@@ -286,6 +288,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
             0,
             vec![self.binding.clone()],
             l::WrappingInput::default(),
+            Vec::new(),
         )
         .unwrap();
         let request = l::LayoutRootRequestOf::viewport(l::Size::new(
@@ -552,6 +555,7 @@ fn compute_changed_wrap_style<S: l::LayoutScalar>(
         0,
         vec![fixture.binding.clone()],
         l::WrappingInput::default(),
+        Vec::new(),
     )
     .unwrap();
     let request = l::LayoutRootRequestOf::viewport(l::Size::new(

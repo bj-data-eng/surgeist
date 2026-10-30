@@ -67,7 +67,10 @@ fn selected_line(
             line_box_struts: Vec::new(),
         })
         .unwrap()
-        .finalize(text::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: text::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap()
 }
 
@@ -144,9 +147,14 @@ fn lane<S: LayoutScalar>() {
             },
         );
     }
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![binding.clone()], WrappingInput::default())
-            .unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![binding.clone()],
+        WrappingInput::default(),
+        Vec::new(),
+    )
+    .unwrap();
     let mut owner = crate::engine::ComputeSession::with_flow(&capture, Vec::new());
     let child_request = ComputeInputOf::for_child(
         RunMode::PerformLayout,

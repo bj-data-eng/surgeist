@@ -18,6 +18,17 @@ mod conditional;
 pub(crate) use conditional::request_context;
 mod continuation;
 mod direction;
+pub(crate) mod scope_alignment;
+mod scope_census;
+pub use scope_alignment::{
+    LineAllocations, PreparedScopeMetrics, ScopeAlignmentAllowance, ScopeAlignmentRetention,
+    ScopeAllocation, ScopeAllocations, ScopeFrameAllocation, ScopeMetricContribution,
+    SelectedScope,
+};
+pub use scope_census::{
+    ScopeAlignmentCensus, ScopeAlignmentCensusInput, ScopeAlignmentProduct, ScopeAlignmentProducts,
+    ScopeAlignmentWeakProduct, scope_alignment_census,
+};
 mod wrapping_scope;
 pub use wrapping_scope::{
     CapturedScopeIncidence, PreparedBoundaryIncidence, WrappingScopeQueryError,
@@ -505,8 +516,10 @@ pub struct LineStrut {
 }
 
 /// One actual allocated line-box contribution, independent of a control.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct LineBoxStrut {
+    /// Authentic captured owner of this own-box contribution; None is common line.
+    pub scope: Option<crate::CapturedScope>,
     pub metrics: LineStrut,
     pub alignment: LineBoxAlignment,
 }
@@ -900,6 +913,10 @@ pub struct AtomicSlotFeedback {
     pub occurrence: PreparedAtomic,
     /// Actual line-local flow baseline, before physical line-anchor mapping.
     pub origin: Point,
+    /// Actual cumulative scope contribution, positive toward line-over.
+    /// In-flow origins already contain it; OOF static-anchor policy consumes
+    /// this contribution once without reconstructing it from an absolute slot.
+    pub scope_displacement: crate::BaselineShift,
     pub allocation: AtomicLineAllocation,
 }
 

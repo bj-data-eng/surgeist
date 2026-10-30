@@ -83,7 +83,9 @@ fn compute_space<S: l::LayoutScalar>(
     changed: &[u32],
     space: l::Size<l::AvailableOf<S>>,
 ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
-    let flow = l::LayoutFlowInput::try_new(host, 0, bindings, l::WrappingInput::default()).unwrap();
+    let flow =
+        l::LayoutFlowInput::try_new(host, 0, bindings, l::WrappingInput::default(), Vec::new())
+            .unwrap();
     l::compute_layout_with_flow_invalidated(
         &flow,
         0,

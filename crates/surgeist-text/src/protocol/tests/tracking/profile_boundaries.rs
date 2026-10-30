@@ -130,7 +130,10 @@ fn selection(
 fn ordinary(prepared: &PreparedText) -> FinalizedLine {
     selection(prepared, SpacingPolicy::None, None)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 
@@ -676,7 +679,10 @@ fn an_actual_atomic_at_the_egc_endpoint_uses_its_own_exterior_value_and_remains_
     assert_eq!(attached_selection.spacing_slots().len(), 2);
     assert_eq!(
         attached_selection
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .unwrap()
             .feedback()
             .advance,
@@ -685,7 +691,12 @@ fn an_actual_atomic_at_the_egc_endpoint_uses_its_own_exterior_value_and_remains_
     let source = marked_source(2, InlineBoxKind::InFlow, 8.0);
     let prepared = prepared(&mut system, &source, own(4.0)).unwrap();
     let selected = selection(&prepared, SpacingPolicy::InterCharacter, Some(42.0)).unwrap();
-    let natural = selected.finalize(SpacingAllocations::None).unwrap();
+    let natural = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(raw(&natural, &bytes), expected);
     assert_eq!(natural.feedback().advance, 42.0);
     let rows = natural.spacing_slots().collect::<Vec<_>>();
@@ -739,7 +750,12 @@ fn positioned_atomic_and_ignored_format_keep_the_two_supported_endpoint_units() 
         assert_eq!(control.feedback().advance, 20.0);
         let prepared = prepared(&mut system, &source, own(4.0)).unwrap();
         let selected = selection(&prepared, SpacingPolicy::InterCharacter, Some(26.0)).unwrap();
-        let natural = selected.finalize(SpacingAllocations::None).unwrap();
+        let natural = selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_eq!(natural.feedback().advance, 24.0);
         assert_eq!(raw(&natural, &bytes), provider);
         assert_eq!(selected.spacing_slots().len(), 1);
@@ -804,7 +820,12 @@ fn declared_en_does_not_misclassify_unambiguous_hebrew_or_arabic_as_latin_member
         assert_eq!(natural.feedback().advance, 24.0);
         assert_eq!(raw(&natural, &bytes), expected);
         let selected = selection(&prepared, SpacingPolicy::InterCharacter, Some(26.0)).unwrap();
-        let actual = selected.finalize(allocations(&selected, &[2.0])).unwrap();
+        let actual = selected
+            .finalize(crate::LineAllocations {
+                spacing: allocations(&selected, &[2.0]),
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_eq!(actual.feedback().advance, 26.0);
         assert_eq!(actual.measurements().alignment().advance(), 26.0);
         assert_eq!(raw(&actual, &bytes), expected);

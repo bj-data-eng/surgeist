@@ -283,7 +283,12 @@ fn select_range(
 
 fn finish(prepared: &PreparedText, method: SpacingPolicy) -> FinalizedLine {
     let selected = select_range(prepared, 0, prepared.participants().len(), method);
-    let line = selected.finalize(SpacingAllocations::None).unwrap();
+    let line = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(line.selected_line(), selected);
     line
 }
@@ -547,7 +552,12 @@ fn source_free_atomic_run_and_genuine_selected_cuts_suppress_only_actual_outer_e
         (2, 4, 29.0, vec![(Y, 0.0)], vec![(Range::new(1, 2), 19.0)]),
     ] {
         let selected = select_range(&prepared, from, to, SpacingPolicy::InterCharacter);
-        let line = selected.finalize(SpacingAllocations::None).unwrap();
+        let line = selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_eq!(line.selected_line(), selected);
         assert_eq!(line.feedback().advance, total);
         positions(&line, &boxes);

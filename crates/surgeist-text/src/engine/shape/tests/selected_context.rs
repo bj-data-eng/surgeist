@@ -128,7 +128,10 @@ fn selected_computed_beh(separate_instance: bool) -> Vec<(Range, u32, f32)> {
     let line = prepared
         .select(request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let mut glyphs = Vec::new();
     for run in line.run_views() {

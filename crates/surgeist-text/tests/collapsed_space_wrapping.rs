@@ -247,6 +247,7 @@ fn contextual_style_span_gate_survives_casing_and_genuine_wbr_expansion() {
     use text::SourceProcessingEvent as E;
     let processed = std::sync::Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source,
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -266,6 +267,7 @@ fn contextual_style_span_gate_survives_casing_and_genuine_wbr_expansion() {
             boundary_policies: vec![],
             replacements: vec![],
             scopes: vec![text::SourceProcessingScope::Block {
+                font_reference: None,
                 topology: text::SourceProcessingTopology::Unknown,
                 trim: text::WhiteSpaceTrim::default(),
                 base_style: style(text::Wrap::None),
@@ -405,7 +407,10 @@ fn finish(
             },
         })
         .unwrap()
-        .finalize(text::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: text::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap()
 }
 

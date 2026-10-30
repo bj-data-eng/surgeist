@@ -172,6 +172,12 @@ pub(crate) enum ShapedItem {
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ShapedData {
+    /// Feature-only custody appended at each actual non-residual glyph insertion;
+    /// it follows the same extraction ordering and clone lifetime as glyphs.
+    pub(crate) scope_glyph_custody: Vec<super::super::scope_alignment::GlyphCustody>,
+    /// Actual extraction-time operand relations in captured frame domains.
+    /// This arena follows the same native output lifetime as glyph custody.
+    pub(crate) scope_relations: Vec<super::super::scope_alignment::ScopeRelation>,
     pub(crate) font_queries: Vec<super::super::shape::FontQueryWitness>,
     pub(crate) runs: Vec<PreparedRun>,
     pub(crate) clusters: Vec<PreparedCluster>,
@@ -185,12 +191,59 @@ pub(crate) struct ShapedData {
         Option<Arc<super::super::spacing::character::PlanRequirements>>,
     /// Complete invocation-mapped DI exclusions; absence means eligible input.
     pub(crate) character_exclusions:
-        std::collections::BTreeMap<usize, super::super::spacing::character::Exclusion>,
-    pub(crate) atomic_gaps: std::collections::BTreeMap<usize, f64>,
+        Arc<std::collections::BTreeMap<usize, super::super::spacing::character::Exclusion>>,
+    pub(crate) atomic_gaps: OrdinalMap<f64>,
     pub(crate) word_spacing: Vec<super::super::spacing::WordSpacingUnit>,
     pub(crate) items: Vec<ShapedItem>,
     /// An actual admitted default face with zero source/glyph extent, for empty metrics.
     pub(crate) empty_run: Option<PreparedRun>,
+}
+
+/// Sparse native occurrence index with visible owned buffer capacity. Its
+/// sorted keys carry actual ordinals; equal metric values never supply identity.
+#[derive(Clone, Debug)]
+pub(crate) struct OrdinalMap<T> {
+    pub(crate) rows: Vec<(usize, T)>,
+}
+impl<T> Default for OrdinalMap<T> {
+    fn default() -> Self {
+        Self { rows: Vec::new() }
+    }
+}
+impl<T> OrdinalMap<T> {
+    pub(crate) fn get(&self, key: &usize) -> Option<&T> {
+        self.rows
+            .binary_search_by_key(key, |row| row.0)
+            .ok()
+            .map(|index| &self.rows[index].1)
+    }
+    pub(crate) fn get_mut(&mut self, key: &usize) -> Option<&mut T> {
+        self.rows
+            .binary_search_by_key(key, |row| row.0)
+            .ok()
+            .map(|index| &mut self.rows[index].1)
+    }
+    pub(crate) fn insert(&mut self, key: usize, value: T) -> Option<T> {
+        match self.rows.binary_search_by_key(&key, |row| row.0) {
+            Ok(index) => Some(std::mem::replace(&mut self.rows[index].1, value)),
+            Err(index) => {
+                self.rows.insert(index, (key, value));
+                None
+            }
+        }
+    }
+    pub(crate) fn clear(&mut self) {
+        self.rows.clear();
+    }
+    pub(crate) fn values(&self) -> impl Iterator<Item = &T> {
+        self.rows.iter().map(|row| &row.1)
+    }
+}
+impl<T> std::ops::Index<&usize> for OrdinalMap<T> {
+    type Output = T;
+    fn index(&self, key: &usize) -> &T {
+        self.get(key).expect("admitted native ordinal")
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -225,6 +278,8 @@ pub(crate) struct LineMetrics {
 /// canonical f32; logical run-local pens and the run origin remain f64.
 #[derive(Clone, Debug)]
 pub(crate) struct FinalizedRun {
+    /// Executed common reference, distinct from the font-design paint origin.
+    pub(crate) reference: Option<f64>,
     pub(crate) run: usize,
     pub(crate) style: usize,
     pub(crate) level: u8,
@@ -257,6 +312,7 @@ pub(crate) struct WordSpacingAnchor {
 
 #[derive(Clone, Debug)]
 pub(crate) struct FinalizedCluster {
+    pub(crate) reference: Option<f64>,
     /// The actually selected component's resolved font-backed line height.
     pub(crate) line_height: f64,
     /// Actual provider contribution before caller-owned spacing.
@@ -283,6 +339,7 @@ pub(crate) struct FinalizedBox {
     pub(crate) occurrence: usize,
     pub(crate) atomic: crate::protocol::PreparedAtomic,
     pub(crate) slot: crate::Point,
+    pub(crate) scope_displacement: crate::BaselineShift,
     pub(crate) geometry: FinalizedBoxGeometry,
     pub(crate) following_gap: f64,
 }
@@ -320,8 +377,10 @@ pub(crate) enum FinalizedVisualItem {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct FinalizedAnchor {
+    pub(crate) reference: Option<f64>,
     pub(crate) unit: usize,
     pub(crate) slot: crate::Point,
+    pub(crate) scope_displacement: crate::BaselineShift,
     pub(crate) level: u8,
     pub(crate) inline_end: f64,
 }
@@ -345,6 +404,11 @@ pub(crate) struct FinalizedSpacingSlot {
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FinalizedLineData {
+    /// Preserved unallocated source-cell sizing policy, relative to a reference.
+    pub(crate) scope_cell_band: Option<(f64, f64)>,
+    pub(crate) scope_allocations: Vec<crate::ScopeFrameAllocation>,
+    pub(crate) scope_retention: Option<crate::ScopeAlignmentRetention>,
+    pub(crate) scope_usage: Option<crate::ScopeAlignmentUsage>,
     pub(crate) measurements: Option<crate::LineMeasurements>,
     pub(crate) font_runs: Vec<PreparedRun>,
     pub(crate) runs: Vec<FinalizedRun>,
@@ -364,6 +428,77 @@ pub(crate) struct FinalizedLineData {
     pub(crate) metrics: LineMetrics,
     pub(crate) prefix: crate::protocol::prefix::PrefixData,
     pub(crate) fragments: Vec<FinalizedFragmentData>,
+}
+
+impl FinalizedLineData {
+    /// Visit actual owned output arenas; the enclosing FinalizedLine header
+    /// already includes every embedded fixed header in this row.
+    pub(crate) fn visit_scope_allocations(
+        &self,
+        visit: &mut crate::engine::scope_alignment::census::AllocationVisitor<'_>,
+    ) -> crate::Result<()> {
+        use crate::engine::scope_alignment::census::AllocationWitness as W;
+        visit(W::buffer(
+            &self.scope_allocations,
+            self.scope_allocations.len(),
+        )?)?;
+        visit(W::buffer(&self.font_runs, self.font_runs.len())?)?;
+        for run in &self.font_runs {
+            visit(W::buffer(&run.coords, run.coords.len())?)?;
+            visit(W::resource(run.font.bytes()))?;
+        }
+        visit(W::buffer(&self.runs, self.runs.len())?)?;
+        visit(W::buffer(&self.clusters, self.clusters.len())?)?;
+        visit(W::buffer(&self.glyphs, self.glyphs.len())?)?;
+        visit(W::buffer(&self.word_anchors, self.word_anchors.len())?)?;
+        visit(W::buffer(
+            &self.character_anchors,
+            self.character_anchors.len(),
+        )?)?;
+        visit(W::buffer(&self.boxes, self.boxes.len())?)?;
+        visit(W::buffer(&self.visual_order, self.visual_order.len())?)?;
+        visit(W::buffer(&self.anchors, self.anchors.len())?)?;
+        visit(W::buffer(&self.spacing_slots, self.spacing_slots.len())?)?;
+        for row in &self.spacing_slots {
+            visit(W::buffer(&row.members, row.members.len())?)?;
+        }
+        visit(W::buffer(
+            &self.spacing_amounts,
+            self.spacing_amounts.len(),
+        )?)?;
+        visit(W::buffer(&self.fragments, self.fragments.len())?)?;
+        if let Some(measurements) = &self.measurements {
+            visit(W::buffer(&measurements.edges, measurements.edges.len())?)?;
+        }
+        self.prefix.visit_scope_allocations(visit)
+    }
+
+    /// Source-cell sizing is retained before scope allocation. Only its actual
+    /// occurrence reference moves; final line extrema are not another cell size.
+    pub(crate) fn cell_band(&self, reference: Option<f64>) -> (f64, f64) {
+        match (self.scope_cell_band, reference) {
+            (Some((before, after)), Some(reference)) => (reference - before, before + after),
+            _ => (
+                self.metrics.block_min,
+                self.metrics.block_max - self.metrics.block_min,
+            ),
+        }
+    }
+
+    pub(crate) fn cell_rect(&self, inline: f64, advance: f64, reference: Option<f64>) -> Rect {
+        let (top, height) = self.cell_band(reference);
+        Rect::new(inline, top, advance, height)
+    }
+}
+
+impl crate::engine::FinalizedLine {
+    pub(crate) fn visit_scope_allocations(
+        &self,
+        visit: &mut crate::engine::scope_alignment::census::AllocationVisitor<'_>,
+    ) -> crate::Result<()> {
+        visit(crate::engine::scope_alignment::census::AllocationWitness::object(self, 0))?;
+        self.data.visit_scope_allocations(visit)
+    }
 }
 
 /// One authentic selected origin intersection and its actual local association geometry.

@@ -141,7 +141,12 @@ fn real_external_context_retains_a_complete_constrained_zero_basis_and_precise_m
             )]
         );
     }
-    let natural = selected.finalize(SpacingAllocations::None).unwrap();
+    let natural = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(glyphs(&natural, &bytes), expected);
     assert_eq!(natural.feedback().advance, 20.0);
     assert_eq!(natural.measurements().alignment().advance(), 20.0);
@@ -296,7 +301,12 @@ fn same_script_joining_is_protected_without_inventing_an_external_uncertainty() 
         assert_eq!(glyphs(&authored, &bytes), expected);
         assert_eq!(authored.feedback().advance, 20.0);
         let selected = selected(&prepared);
-        let natural = selected.finalize(SpacingAllocations::None).unwrap();
+        let natural = selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_eq!(glyphs(&natural, &bytes), expected);
         assert_eq!(
             paints(&natural),
@@ -391,7 +401,12 @@ fn a_real_nonjoining_endpoint_admits_disjoint_script_tracking_and_character_allo
         [(Range::new(0, 1), 14.0), (Range::new(1, 2), 0.0)]
     );
     let selected = selected(&prepared);
-    let natural = selected.finalize(SpacingAllocations::None).unwrap();
+    let natural = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     independent(&natural, 4.0, 0.0);
     let allocated = natural
         .with_spacing(allocations(&selected, &[2.0]))
@@ -461,7 +476,12 @@ fn a_genuine_disconnected_origin_connection_bounds_both_joining_contexts_and_adm
             }]
         );
     }
-    let natural = selected.finalize(SpacingAllocations::None).unwrap();
+    let natural = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     independent(&natural, 4.0, 0.0);
     let allocated = natural
         .with_spacing(allocations(&selected, &[2.0]))
@@ -507,7 +527,12 @@ fn independent_outside_allocation_translates_the_whole_external_context_pair() {
         ]
     );
     let selected = selected(&prepared);
-    let natural = selected.finalize(SpacingAllocations::None).unwrap();
+    let natural = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(glyphs(&natural, &bytes), expected);
     assert_eq!(natural.feedback().advance, 30.0);
     let rows = natural.spacing_slots().collect::<Vec<_>>();

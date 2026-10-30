@@ -81,7 +81,10 @@ fn finish(p: &PreparedText, origin: Option<f64>, indent: f64) -> crate::Result<F
     r.context.available_inline = None;
     r.context.alignment = crate::Alignment::Left;
     r.context.spacing = SpacingPolicy::None;
-    p.select(r)?.finalize(SpacingAllocations::None)
+    p.select(r)?.finalize(crate::LineAllocations {
+        spacing: SpacingAllocations::None,
+        scopes: crate::ScopeAllocations::None,
+    })
 }
 
 fn qualify_font_and_signed_space() {
@@ -106,7 +109,10 @@ fn qualify_font_and_signed_space() {
     let line = p
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 19.0); // (20 - 21) + 20
     let mut glyphs = Vec::new();

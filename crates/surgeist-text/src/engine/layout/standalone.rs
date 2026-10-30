@@ -115,6 +115,7 @@ impl RawRoleBasis<'_> {
                 &observation_request,
                 profile,
                 scratch,
+                None,
             )?);
         }
         flow.validate_observations(&observations)?;

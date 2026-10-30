@@ -48,6 +48,7 @@ fn native(raw: &str, height: f64, forced: bool, whitespace: t::WhiteSpace) -> Na
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     let capture = Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
             envelope: t::SourceProcessingEnvelope::Complete,
@@ -64,6 +65,7 @@ fn native(raw: &str, height: f64, forced: bool, whitespace: t::WhiteSpace) -> Na
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![t::SourceProcessingScope::Block {
+                font_reference: None,
                 topology: t::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
@@ -178,7 +180,10 @@ fn qualify(native: &Native, expected: (f64, f64, f64)) {
             },
         })
         .unwrap()
-        .finalize(t::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: t::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(
         (
@@ -254,9 +259,14 @@ fn compute<S: l::LayoutScalar>(
     binding: &l::TextParagraphBinding<u32>,
     inline: f64,
 ) -> l::CompletedLayoutBatchOf<u32, S> {
-    let flow =
-        l::LayoutFlowInput::try_new(host, 0, vec![binding.clone()], l::WrappingInput::default())
-            .unwrap();
+    let flow = l::LayoutFlowInput::try_new(
+        host,
+        0,
+        vec![binding.clone()],
+        l::WrappingInput::default(),
+        Vec::new(),
+    )
+    .unwrap();
     l::compute_layout_with_flow(&flow, 0, request(inline)).unwrap()
 }
 
@@ -510,6 +520,7 @@ impl<S: l::LayoutScalar> ShapeHost<S> {
             0,
             vec![binding.clone()],
             l::WrappingInput::default(),
+            Vec::new(),
         )
         .unwrap();
         l::compute_layout_with_flow_invalidated(&flow, 0, request(4.0), changed)

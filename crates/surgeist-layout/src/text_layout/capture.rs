@@ -196,6 +196,35 @@ impl<Node> Default for ScopeAssociations<Node> {
     }
 }
 impl<Node: Copy + Eq> ScopeAssociations<Node> {
+    /// Exact canonical descriptor bound for a fallible caller to admit before
+    /// the pure association search. No second lookup index is retained.
+    pub(crate) fn captured_binding_work(&self, scope: &CapturedScope) -> usize {
+        if scope.role() == ScopeRole::Domain {
+            self.domains.len()
+        } else {
+            self.inline.len()
+        }
+    }
+
+    pub(crate) fn captured_binding(
+        &self,
+        scope: &CapturedScope,
+    ) -> Option<TextScopeAssociation<Node>> {
+        if scope.role() == ScopeRole::Domain {
+            self.domains
+                .iter()
+                .find(|row| &row.scope == scope)
+                .map(|row| TextScopeAssociation::ParagraphContainer(row.container))
+        } else {
+            self.inline
+                .iter()
+                .find(|row| &row.scope == scope)
+                .map(|row| TextScopeAssociation::Inline {
+                    start: row.start,
+                    end: row.end,
+                })
+        }
+    }
     pub(crate) fn semantic_slots(
         &self,
         container: Node,
@@ -393,6 +422,56 @@ struct Proof<'a, Tree: crate::LayoutTree> {
     wrapping: Vec<CapturedScope>,
     native: Vec<NativeRegion<Tree::Node>>,
     computed: Vec<(usize, surgeist_text::PreparedComputedLineBoundary)>,
+    activation: Option<&'a mut super::scope_alignment::AdmissionWork>,
+    activation_storage: ActivationStorage,
+}
+
+#[derive(Default)]
+struct ActivationStorage {
+    // Each receipt follows this actual canonical vector, never a parallel fact
+    // index. Known/scopes and proof copies are scratch. Domains moves into the
+    // retained structural inventory; regions/inline already belong to the
+    // retained associations. Native graph, ExpectedFlow and slot-order buffers
+    // are not transferred to this feature owner.
+    known: super::scope_alignment::ScopeCensus,
+    scopes: super::scope_alignment::ScopeCensus,
+    domains: super::scope_alignment::ScopeCensus,
+    regions: super::scope_alignment::ScopeCensus,
+    inline: super::scope_alignment::ScopeCensus,
+}
+
+pub(super) fn activation_error<Tree: crate::LayoutTree>(
+    node: Tree::Node,
+    error: surgeist_text::Error,
+) -> crate::LayoutErrorOf<Tree::Node, Tree::Scalar, Tree::MeasureError> {
+    crate::LayoutErrorOf::new(
+        crate::LayoutErrorSiteOf::Node(node),
+        crate::LayoutOperation::TextCapture,
+        crate::LayoutErrorKindOf::Text(error),
+    )
+}
+
+fn activation_unique<Tree: crate::LayoutTree, T: PartialEq>(
+    work: Option<&mut super::scope_alignment::AdmissionWork>,
+    held: &mut super::scope_alignment::ScopeCensus,
+    values: &mut Vec<T>,
+    value: T,
+    retained: bool,
+    node: Tree::Node,
+) -> ResultOf<Tree, ()> {
+    let Some(work) = work else {
+        push_unique(values, value);
+        return Ok(());
+    };
+    for old in values.iter() {
+        work.visits(1)
+            .map_err(|error| activation_error::<Tree>(node, error))?;
+        if old == &value {
+            return Ok(());
+        }
+    }
+    work.push(values, value, held, retained)
+        .map_err(|error| activation_error::<Tree>(node, error))
 }
 
 pub(super) fn resolve<Tree: crate::LayoutTree>(
@@ -402,6 +481,7 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
     wrapping_scopes: &[WrappingScopeInput<Tree::Node>],
     inventory_scopes: &[CapturedScope],
     canonical_orders: bool,
+    alignment: &mut super::scope_alignment::ScopeAlignmentAdmission<Tree::Scalar>,
 ) -> ResultOf<Tree, CaptureResolution<Tree::Node>> {
     if paragraphs.is_empty() {
         return Ok(CaptureResolution {
@@ -409,6 +489,7 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
             wrapping: Vec::new(),
         });
     }
+    let (alignment_inputs, activation) = alignment.capture_parts();
     let (enter, exit) = graph_order(graph);
     let mut proof = Proof {
         tree,
@@ -438,24 +519,51 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
         wrapping: Vec::new(),
         native: Vec::new(),
         computed: Vec::new(),
+        activation: None,
+        activation_storage: ActivationStorage::default(),
     };
     proof.index()?;
+    proof.activation = activation;
+    if !wrapping_scopes.is_empty() || !inventory_scopes.is_empty() || !alignment_inputs.is_empty() {
+        proof.index_scope_inventory(wrapping_scopes.is_empty() && inventory_scopes.is_empty())?;
+    }
+    proof.activate_alignments(alignment_inputs)?;
     proof.activate_computed()?;
     proof.activate_wrapping(wrapping_scopes, inventory_scopes)?;
     proof.prepare_observations()?;
     // A is selected from producer topology before resolving its supplied rows.
-    let regions = proof.result.regions.clone();
+    let (regions, region_copy) = if let Some(work) = proof.activation.as_deref_mut() {
+        work.copy(&proof.result.regions)
+            .map_err(|error| activation_error::<Tree>(graph.nodes[0], error))?
+    } else {
+        (
+            proof.result.regions.clone(),
+            super::scope_alignment::ScopeCensus::default(),
+        )
+    };
+    if let Some(work) = proof.activation.as_deref_mut() {
+        let passes = regions.len().checked_mul(3).ok_or_else(|| {
+            activation_error::<Tree>(
+                graph.nodes[0],
+                super::scope_alignment::overflow(
+                    surgeist_text::ScopeAlignmentLimitKind::StructuralWork,
+                ),
+            )
+        })?;
+        work.visits(passes)
+            .map_err(|error| activation_error::<Tree>(graph.nodes[0], error))?;
+    }
     for region in &regions {
-        for event in proof
-            .selected(region)
-            .iter()
-            .map(|entry| entry.event.clone())
-            .collect::<Vec<_>>()
-        {
-            proof.require_expected(&event)?;
+        let (events, event_copy) = proof.activation_events(region)?;
+        for event in events.iter() {
+            proof.require_expected(event)?;
             if let Event::BlockStart(child) | Event::BlockEnd(child) = event {
-                push_unique(&mut proof.domains, child);
+                proof.activation_domain(child.clone())?;
             }
+        }
+        drop(events);
+        if let Some(work) = proof.activation.as_deref_mut() {
+            work.release(event_copy);
         }
     }
     let native = proof.active_native_regions();
@@ -468,7 +576,7 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
         {
             proof.require_expected(&event)?;
             if let Event::BlockStart(child) | Event::BlockEnd(child) = event {
-                push_unique(&mut proof.domains, child);
+                proof.activation_domain(child)?;
             }
         }
     }
@@ -478,12 +586,12 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
     // structural identities need validation but never activate another A region.
     for region in &regions {
         for child in proof.region_domains(region)? {
-            push_unique(&mut proof.domains, child);
+            proof.activation_domain(child)?;
         }
     }
     for region in &native {
         for child in proof.domains_in_roots(&region.domain(), proof.native_roots(region))? {
-            push_unique(&mut proof.domains, child);
+            proof.activation_domain(child)?;
         }
     }
     proof.close_associations()?;
@@ -522,6 +630,14 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
     }
     let wrapping = proof.wrapping_proofs(canonical_orders)?;
     proof.result.structural = proof.domains;
+    drop(regions);
+    if let Some(work) = proof.activation.as_deref_mut() {
+        work.release(region_copy);
+        work.release(proof.activation_storage.known);
+        work.release(proof.activation_storage.scopes);
+        work.retain_existing(proof.activation_storage.domains)
+            .map_err(|error| activation_error::<Tree>(graph.nodes[0], error))?;
+    }
     Ok(CaptureResolution {
         associations: proof.result,
         wrapping,
@@ -529,6 +645,157 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
 }
 
 impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
+    // Only activation inventories and scope-owned copies enter this ledger.
+    // Graph arrays, ExpectedFlow maps, native topology validation and the
+    // preexisting ordinary wrapping inventory retain their native owners.
+    fn activation_events(
+        &mut self,
+        scope: &CapturedScope,
+    ) -> ResultOf<Tree, (Vec<Event>, super::scope_alignment::ScopeCensus)> {
+        if let Some(work) = self.activation.as_deref_mut() {
+            let events = &self.expected[&scope.domain()].events;
+            let start = scope.enter_position();
+            let end = scope.exit_position();
+            let first = events.partition_point(|event| event.position <= start);
+            let last = events.partition_point(|event| event.position < end);
+            return work
+                .copy_map(&events[first..last], |entry| entry.event.clone())
+                .map_err(|error| activation_error::<Tree>(self.graph.nodes[0], error));
+        }
+        Ok((
+            self.selected(scope)
+                .iter()
+                .map(|entry| entry.event.clone())
+                .collect(),
+            super::scope_alignment::ScopeCensus::default(),
+        ))
+    }
+
+    fn activation_scope(&mut self, scope: CapturedScope) -> ResultOf<Tree, ()> {
+        activation_unique::<Tree, _>(
+            self.activation.as_deref_mut(),
+            &mut self.activation_storage.scopes,
+            &mut self.scopes,
+            scope,
+            false,
+            self.graph.nodes[0],
+        )
+    }
+
+    fn activation_domain(&mut self, scope: CapturedScope) -> ResultOf<Tree, ()> {
+        activation_unique::<Tree, _>(
+            self.activation.as_deref_mut(),
+            &mut self.activation_storage.domains,
+            &mut self.domains,
+            scope,
+            false,
+            self.graph.nodes[0],
+        )
+    }
+
+    fn activation_region(&mut self, scope: CapturedScope) -> ResultOf<Tree, ()> {
+        let node = self.graph.nodes[0];
+        let Some(work) = self.activation.as_deref_mut() else {
+            add_region(&mut self.result.regions, scope);
+            return Ok(());
+        };
+        for region in &self.result.regions {
+            work.visits(1)
+                .map_err(|error| activation_error::<Tree>(node, error))?;
+            if region.domain() == scope.domain()
+                && region.enter_position() <= scope.enter_position()
+                && scope.exit_position() <= region.exit_position()
+            {
+                return Ok(());
+            }
+        }
+        work.visits(self.result.regions.len())
+            .map_err(|error| activation_error::<Tree>(node, error))?;
+        work.pin(
+            &self.result.regions,
+            &mut self.activation_storage.regions,
+            true,
+        )
+        .map_err(|error| activation_error::<Tree>(node, error))?;
+        self.result.regions.retain(|region| {
+            region.domain() != scope.domain()
+                || !(scope.enter_position() <= region.enter_position()
+                    && region.exit_position() <= scope.exit_position())
+        });
+        work.pin(
+            &self.result.regions,
+            &mut self.activation_storage.regions,
+            true,
+        )
+        .map_err(|error| activation_error::<Tree>(node, error))?;
+        work.push(
+            &mut self.result.regions,
+            scope,
+            &mut self.activation_storage.regions,
+            true,
+        )
+        .map_err(|error| activation_error::<Tree>(node, error))
+    }
+
+    fn index_scope_inventory(&mut self, feature_only: bool) -> ResultOf<Tree, ()> {
+        for paragraph in &self.result.paragraphs {
+            if let Some(captured) = &paragraph.captured {
+                for intersection in captured.scope_intersections() {
+                    let scope = intersection.scope();
+                    if scope.role() == ScopeRole::Inline {
+                        activation_unique::<Tree, _>(
+                            if feature_only {
+                                self.activation.as_deref_mut()
+                            } else {
+                                None
+                            },
+                            &mut self.activation_storage.known,
+                            &mut self.known,
+                            scope,
+                            false,
+                            self.graph.nodes[0],
+                        )?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn activate_alignments(
+        &mut self,
+        inputs: &[super::TextScopeAlignmentInputOf<Tree::Scalar>],
+    ) -> ResultOf<Tree, ()> {
+        for input in inputs {
+            let scope = &input.scope;
+            if let Some(work) = self.activation.as_deref_mut() {
+                work.visits(self.known.len().checked_add(1).ok_or_else(|| {
+                    activation_error::<Tree>(
+                        self.graph.nodes[0],
+                        super::scope_alignment::overflow(
+                            surgeist_text::ScopeAlignmentLimitKind::StructuralWork,
+                        ),
+                    )
+                })?)
+                .map_err(|error| activation_error::<Tree>(self.graph.nodes[0], error))?;
+            }
+            if !self.known.contains(scope) {
+                return Err(binding_error(
+                    self.graph.nodes[0],
+                    E::ScopeOccurrenceMembership,
+                ));
+            }
+            // An actual endpoint pair proves this inline box in the host tree.
+            // Semantic parent-font context does not fabricate such a pair.
+            if scope.entry_control().is_none() || scope.exit_control().is_none() {
+                return Err(binding_error(self.graph.nodes[0], E::ScopeBoundaryCapture));
+            }
+            self.activation_scope(scope.clone())?;
+            self.activation_domain(scope.domain())?;
+            self.activation_region(scope.clone())?;
+        }
+        Ok(())
+    }
     fn computed_error(
         &self,
         paragraph: usize,
@@ -589,7 +856,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                                 return Err(self.computed_error(index));
                             }
                             if scope.entry_control().is_some() || scope.exit_control().is_some() {
-                                push_unique(&mut self.scopes, scope.clone());
+                                self.activation_scope(scope.clone())?;
                             } else {
                                 push_unique(&mut self.semantic, scope.clone());
                             }
@@ -618,7 +885,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                         }
                     }
                 }
-                push_unique(&mut self.domains, captured.domain());
+                self.activation_domain(captured.domain())?;
                 self.computed.push((index, boundary));
             }
         }
@@ -841,16 +1108,6 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
         if inputs.is_empty() && inventory_scopes.is_empty() {
             return Ok(());
         }
-        for paragraph in &self.result.paragraphs {
-            if let Some(captured) = &paragraph.captured {
-                for intersection in captured.scope_intersections() {
-                    let scope = intersection.scope();
-                    if scope.role() == ScopeRole::Inline {
-                        push_unique(&mut self.known, scope);
-                    }
-                }
-            }
-        }
         let mut native_observations = Vec::new();
         let mut forest_scopes = Vec::new();
         for input in inputs {
@@ -956,7 +1213,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                             active,
                         });
                     }
-                    push_unique(&mut self.domains, domain);
+                    self.activation_domain(domain)?;
                 }
             }
             if let WrappingScopeInput::Captured {
@@ -1025,30 +1282,38 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
         }
         // Known physical pairing is metadata, not a request to validate every
         // unrelated interior. Resolve only actual supplied endpoint bindings.
-        for scope in &self.known {
-            let start = scope
-                .entry_control()
-                .and_then(|c| self.controls.iter().find(|r| r.captured == c));
-            let end = scope
-                .exit_control()
-                .and_then(|c| self.controls.iter().find(|r| r.captured == c));
+        let known_count = self.known.len();
+        for index in 0..known_count {
+            let scope = self.known[index].clone();
+            let start = scope.entry_control().and_then(|c| {
+                self.controls
+                    .iter()
+                    .find(|r| r.captured == c)
+                    .map(|r| r.node)
+            });
+            let end = scope.exit_control().and_then(|c| {
+                self.controls
+                    .iter()
+                    .find(|r| r.captured == c)
+                    .map(|r| r.node)
+            });
             match (start, end) {
                 (Some(start), Some(end)) => {
-                    push_unique(&mut self.scopes, scope.clone());
-                    push_unique(&mut self.domains, scope.domain());
+                    self.activation_scope(scope.clone())?;
+                    self.activation_domain(scope.domain())?;
                     push_unique(&mut self.wrapping, scope.clone());
                     if inputs.iter().any(|input| {
                         matches!(input, WrappingScopeInput::NativePair {
                             start:a, end:b, wrap_inside, edges, metric_contribution,
-                        } if start.node == *a && end.node == *b && (*wrap_inside==WrapInside::Avoid || metric_contribution.is_some() || edges.has_effect(crate::inline_wrapping::WrappingMode::Inline)))
+                        } if start == *a && end == *b && (*wrap_inside==WrapInside::Avoid || metric_contribution.is_some() || edges.has_effect(crate::inline_wrapping::WrappingMode::Inline)))
                     }) {
-                        add_region(&mut self.result.regions, scope.clone());
+                        self.activation_region(scope.clone())?;
                     }
                 }
                 (start, end) => {
                     if inputs.iter().any(|input| {
                         matches!(input, WrappingScopeInput::NativePair {start:a,end:b,..}
-                        if start.is_some_and(|r|r.node==*a) || end.is_some_and(|r|r.node==*b))
+                        if start.is_some_and(|node|node==*a) || end.is_some_and(|node|node==*b))
                     }) {
                         return Err(crate::inline_wrapping::wrapping_error(
                             self.graph.nodes[0],
@@ -1092,14 +1357,14 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
             push_unique(&mut self.wrapping, scope.clone());
             current = scope.parent();
         }
-        push_unique(&mut self.domains, scope.domain());
+        self.activation_domain(scope.domain())?;
         if scope.entry_control().is_some() || scope.exit_control().is_some() {
-            push_unique(&mut self.scopes, scope.clone());
+            self.activation_scope(scope.clone())?;
         } else {
             push_unique(&mut self.semantic, scope.clone());
         }
         if active {
-            add_region(&mut self.result.regions, scope.clone());
+            self.activation_region(scope.clone())?;
         }
         Ok(())
     }
@@ -1438,14 +1703,18 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
             self.nearest.insert(parent, nearest.clone());
         }
         if let Some(parent) = &nearest {
-            push_unique(&mut self.scopes, parent.clone());
+            self.activation_scope(parent.clone())?;
         }
         // Processing that B work item closes the remaining complete ancestors.
         Ok(nearest)
     }
     fn scope_association(&mut self, scope: CapturedScope) -> ResultOf<Tree, ()> {
+        if let Some(work) = self.activation.as_deref_mut() {
+            work.visits(1)
+                .map_err(|error| activation_error::<Tree>(self.graph.nodes[0], error))?;
+        }
         let domain = self.domain(&scope.domain())?;
-        push_unique(&mut self.domains, scope.domain());
+        self.activation_domain(scope.domain())?;
         let parent = self.ancestors(scope.parent(), &scope.domain(), None, domain.container)?;
         self.enclosing.insert(scope.clone(), parent);
         if scope.role() == ScopeRole::Domain || self.result.inline.iter().any(|s| s.scope == scope)
@@ -1478,11 +1747,22 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
         }
         self.require_node(start.node)?;
         self.require_node(end.node)?;
-        self.result.inline.push(InlineScope {
+        let row = InlineScope {
             scope,
             start: start.node,
             end: end.node,
-        });
+        };
+        if let Some(work) = self.activation.as_deref_mut() {
+            work.push(
+                &mut self.result.inline,
+                row,
+                &mut self.activation_storage.inline,
+                true,
+            )
+            .map_err(|error| activation_error::<Tree>(self.graph.nodes[0], error))?;
+        } else {
+            self.result.inline.push(row);
+        }
         Ok(())
     }
     fn domain_association(&mut self, scope: CapturedScope) -> ResultOf<Tree, ()> {
@@ -1515,7 +1795,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                     let enclosing =
                         self.ancestors(scope.parent(), &parent, None, domain.container)?;
                     self.enclosing.insert(scope.clone(), enclosing);
-                    push_unique(&mut self.domains, parent);
+                    self.activation_domain(parent)?;
                 }
             }
             CapturedDomainDefinition::AtomicBlock { atomic }
@@ -1552,7 +1832,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                 let enclosing =
                     self.ancestors(scope.parent(), &parent, Some(&atomic), domain.container)?;
                 self.enclosing.insert(scope.clone(), enclosing);
-                push_unique(&mut self.domains, parent);
+                self.activation_domain(parent)?;
             }
         }
         Ok(())
@@ -2641,7 +2921,14 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                 .flatten()
             {
                 if let Event::BlockStart(child) | Event::BlockEnd(child) = &flow.events[i].event {
-                    push_unique(&mut self.domains, child.clone());
+                    activation_unique::<Tree, _>(
+                        self.activation.as_deref_mut(),
+                        &mut self.activation_storage.domains,
+                        &mut self.domains,
+                        child.clone(),
+                        false,
+                        self.graph.nodes[0],
+                    )?;
                 }
             }
         }

@@ -335,6 +335,7 @@ fn assert_duplicate_run_nodes<S: LayoutScalar>(nodes: &[u32]) {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     );
     let error = match result {
         Ok(_) => panic!("repeated actual run node must be refused"),

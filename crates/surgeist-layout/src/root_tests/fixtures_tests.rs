@@ -170,6 +170,7 @@ pub(super) fn prepared_source_batch<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )?;
     let available = FlowAxes::new(writing_mode, direction)
         .physical_size(LogicalSizeOf::new(available, AvailableOf::MAX_CONTENT));
@@ -353,6 +354,7 @@ pub(super) fn prepared_mixed_batch<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     compute_layout_with_flow(
@@ -379,6 +381,7 @@ pub(super) fn prepared_tree_batch<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     compute_layout_with_flow(&capture, 0, request).unwrap()
@@ -1375,6 +1378,7 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )?;
         compute_layout_with_flow(&capture, 0, request)
     }
@@ -1392,6 +1396,7 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )?;
         compute_layout_with_flow_invalidated(&capture, 0, request, dirty)
     }

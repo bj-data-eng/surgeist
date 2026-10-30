@@ -150,6 +150,7 @@ impl Fixture {
         }
         let processed = Arc::new(
             text::process_contextual_source(text::ContextualSourceInput {
+                scope_alignment_limits: None,
                 computed_line_boundaries: vec![],
                 source: source.clone(),
                 segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -183,12 +184,15 @@ impl Fixture {
                 replacements: vec![],
                 scopes: vec![
                     text::SourceProcessingScope::Block {
+                        font_reference: None,
                         topology: text::SourceProcessingTopology::Complete,
                         trim: Default::default(),
                         base_style: style.clone(),
                         used_direction: direction,
                     },
                     text::SourceProcessingScope::Inline {
+                        alignment_boundary: None,
+                        font_reference: None,
                         trim: Default::default(),
                         style: Some(owner),
                         boundaries: Some(text::SourceProcessingScopeBoundaries {
@@ -362,6 +366,7 @@ impl Fixture {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         compute_layout_with_flow(

@@ -1,6 +1,10 @@
 //! Canonical preparation tables; handles borrow these actual issued rows.
 
+mod fragments;
 pub(crate) mod presentation;
+#[cfg(test)]
+pub(crate) use fragments::selected_origin_intersections;
+pub(crate) use fragments::visit_selected_origin_intersections;
 #[cfg(test)]
 mod tests;
 
@@ -1961,6 +1965,8 @@ pub(crate) fn prepare_indication_fonts(
             let mut font_queries = crate::engine::shape::capture_fonts(
                 catalogue,
                 crate::engine::ShapingInput {
+                    formatting_breaks: &[],
+                    scope_custody: None,
                     characters: None,
                     separator_geometry: false,
                     profile: shaping_profile(),
@@ -1986,6 +1992,8 @@ pub(crate) fn prepare_indication_fonts(
                 font_queries.extend(crate::engine::shape::capture_fonts(
                     catalogue,
                     crate::engine::ShapingInput {
+                        formatting_breaks: &[],
+                        scope_custody: None,
                         characters: None,
                         separator_geometry: false,
                         profile: shaping_profile(),
@@ -2281,88 +2289,4 @@ fn push_presentation_unit(
         },
     });
     Ok(())
-}
-
-/// Actual selected occurrence associations, including distinct selected empty
-/// origins and source-less native controls/alternatives. No inclusive numeric
-/// anchor query invents an occurrence on the adjacent line.
-pub(crate) fn selected_origin_intersections(
-    selected: &super::selection::SelectedData,
-) -> Vec<super::paragraph::FragmentAssociation> {
-    use super::paragraph::{FragmentAssociation, FragmentOwner};
-    let paragraph = &selected.prepared.analyzed.paragraph;
-    let processed = &selected.prepared.analyzed.processed;
-    let mut fragments = Vec::new();
-    for unit in &selected.presentation.units {
-        match unit.kind {
-            PresentationUnitKind::Control { occurrence }
-            | PresentationUnitKind::GeneratedSeparator {
-                owner: GeneratedSeparatorOwner::Control(occurrence),
-            } => fragments.push(FragmentAssociation {
-                owner: FragmentOwner::Control(occurrence),
-                source: None,
-            }),
-            PresentationUnitKind::GeneratedSeparator {
-                owner: GeneratedSeparatorOwner::Virtual(index),
-            } => fragments.push(FragmentAssociation {
-                owner: FragmentOwner::VirtualSeparator(index),
-                source: None,
-            }),
-            PresentationUnitKind::Replacement { alternative, .. } => {
-                let row = &selected.prepared.tables.alternatives[alternative];
-                let origin = match row.definition {
-                    AlternativeDefinition::Source { origin, .. } => Some(origin),
-                    AlternativeDefinition::Control { origin, .. } => origin,
-                    AlternativeDefinition::Automatic { origin, .. } => Some(origin),
-                };
-                let source = origin.map(|origin| {
-                    let row = &paragraph.origins[origin];
-                    let at = unit.source.start;
-                    let local = row.local.start + at - row.aggregate.start;
-                    super::paragraph::OriginIntersection {
-                        origin,
-                        aggregate: unit.source,
-                        local: Range::new(local, local),
-                        processed: unit.processed,
-                    }
-                });
-                let association = FragmentAssociation {
-                    owner: FragmentOwner::Alternative(alternative),
-                    source,
-                };
-                if !fragments
-                    .last()
-                    .is_some_and(|row: &FragmentAssociation| row.owner == association.owner)
-                {
-                    fragments.push(association);
-                }
-            }
-            PresentationUnitKind::EmptyOrigin { origin } => {
-                let row = &paragraph.origins[origin];
-                fragments.push(FragmentAssociation {
-                    owner: FragmentOwner::Origin(origin),
-                    source: Some(super::paragraph::OriginIntersection {
-                        origin,
-                        aggregate: row.aggregate,
-                        local: row.local,
-                        processed: unit.processed,
-                    }),
-                });
-            }
-            PresentationUnitKind::Text | PresentationUnitKind::Deleted => {
-                fragments.extend(
-                    paragraph
-                        .origin_intersections(processed, unit.source)
-                        .filter(|i| !paragraph.origins[i.origin].aggregate.is_empty())
-                        .map(|source| FragmentAssociation {
-                            owner: FragmentOwner::Origin(source.origin),
-                            source: Some(source),
-                        }),
-                );
-            }
-            PresentationUnitKind::Atomic { .. }
-            | PresentationUnitKind::ComputedLineBoundary { .. } => {}
-        }
-    }
-    fragments
 }

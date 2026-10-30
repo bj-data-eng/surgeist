@@ -65,7 +65,10 @@ fn prepared(system: &mut System, a: &AnalyzedSource) -> PreparedText {
 fn line(p: &PreparedText) -> FinalizedLine {
     p.select(request(p))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn glyphs(line: &FinalizedLine) -> Vec<(u32, f32)> {

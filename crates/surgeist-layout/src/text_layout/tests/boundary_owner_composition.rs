@@ -56,6 +56,7 @@ fn capture(
         ..styles[0].clone()
     };
     let mut scopes = vec![text::SourceProcessingScope::Block {
+        font_reference: None,
         topology: text::SourceProcessingTopology::Complete,
         trim: Default::default(),
         base_style: base.clone(),
@@ -78,6 +79,8 @@ fn capture(
             ]);
         }
         scopes.push(text::SourceProcessingScope::Inline {
+            alignment_boundary: None,
+            font_reference: None,
             trim: Default::default(),
             style: Some(scope_style),
             boundaries: endpoints.then_some(text::SourceProcessingScopeBoundaries {
@@ -159,6 +162,7 @@ fn capture(
         .collect();
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source,
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -347,6 +351,7 @@ fn compute<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     compute_layout_with_flow(
@@ -700,6 +705,7 @@ fn either_side_anywhere_obeys_actual_common_ancestor_and_rejects_stale_bindings(
                         scopes: Vec::new(),
                         child_order: Vec::new(),
                     },
+                    Vec::new(),
                 ) else {
                     panic!("new NCA context cannot reuse old preparation handles")
                 };

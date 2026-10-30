@@ -104,7 +104,12 @@ fn prefix() -> Prefix {
         }]
     );
     assert_eq!(slot.selected_line(), selected);
-    let natural = selected.finalize(SpacingAllocations::None).unwrap();
+    let natural = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(natural.feedback().advance, 20.0);
     assert_eq!(natural.spacing_slots().next().unwrap().advance, 10.0);
     assert!(natural.has_in_flow_content());
@@ -149,10 +154,13 @@ fn raw_glyphs(line: &FinalizedLine) -> Vec<(Range, u32, f64, f32, f32, f32)> {
 fn allocated(prefix: &Prefix, amount: f64) -> FinalizedLine {
     let line = prefix
         .selected
-        .finalize(SpacingAllocations::Complete(vec![SpacingAllocation {
-            slot: prefix.slot.clone(),
-            amount,
-        }]))
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
+                slot: prefix.slot.clone(),
+                amount,
+            }]),
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.prepared_text(), prefix.prepared);
     assert_eq!(line.selected_line(), prefix.selected);

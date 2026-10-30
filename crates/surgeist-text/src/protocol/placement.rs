@@ -328,33 +328,81 @@ pub(crate) fn place_request(
         line_cuts.push(cut);
         let metrics = placed.finalized.data.metrics;
         for item in &placed.finalized.data.boxes {
-            if let crate::engine::layout::data::FinalizedBoxGeometry::InFlow {
-                alignment: super::LineBoxAlignment::Shift(shift),
-                box_geometry,
-                ..
-            } = item.geometry
-            {
-                qualify_allocated_shift(&placed, shift, item.slot.x, box_geometry.baseline)?;
+            let (own, local) = match item.geometry {
+                crate::engine::layout::data::FinalizedBoxGeometry::InFlow {
+                    alignment: super::LineBoxAlignment::Shift(shift),
+                    box_geometry,
+                    ..
+                } => (shift.get(), box_geometry.baseline),
+                _ => (0.0, 0.0),
+            };
+            let displacement = checked_add(
+                "placed composed atomic frame",
+                item.scope_displacement.get(),
+                own,
+            )?;
+            qualify_allocated_shift(
+                &placed,
+                crate::BaselineShift::try_new(displacement)?,
+                item.slot.x,
+                local,
+            )?;
+        }
+        for allocation in &selected.request.controls {
+            if let Some(strut) = allocation.strut {
+                let occurrence =
+                    selected.prepared.tables.controls[allocation.occurrence.index].occurrence;
+                let anchor=placed.finalized.data.anchors.iter().find(|anchor|matches!(
+                    selected.presentation.units[anchor.unit].kind,super::prepared::PresentationUnitKind::Control{occurrence:actual} if actual==occurrence));
+                let scope = anchor.map_or(0.0, |anchor| anchor.scope_displacement.get());
+                let own = match strut.alignment {
+                    super::LineBoxAlignment::Shift(shift) => shift.get(),
+                    _ => 0.0,
+                };
+                let displacement = checked_add("placed composed control frame", scope, own)?;
+                qualify_allocated_shift(
+                    &placed,
+                    crate::BaselineShift::try_new(displacement)?,
+                    anchor.map_or(0.0, |anchor| anchor.slot.x),
+                    0.0,
+                )?;
             }
         }
-        for strut in selected
-            .request
-            .controls
-            .iter()
-            .filter_map(|allocation| allocation.strut)
-        {
-            if let super::LineBoxAlignment::Shift(shift) = strut.alignment {
-                qualify_allocated_shift(&placed, shift, 0.0, 0.0)?;
-            }
-        }
-        for strut in &selected.request.line_box_struts {
-            if let super::LineBoxAlignment::Shift(shift) = strut.alignment {
-                qualify_allocated_shift(&placed, shift, 0.0, 0.0)?;
+        for (index, strut) in selected.request.line_box_struts.iter().enumerate() {
+            if !matches!(
+                strut.alignment,
+                super::LineBoxAlignment::Top | super::LineBoxAlignment::Bottom
+            ) {
+                let owner = selected.scopes.strut_owners.get(index).copied().flatten();
+                let scope = owner.map_or(0.0, |owner| {
+                    placed.finalized.data.scope_allocations[owner]
+                        .cumulative_displacement
+                        .get()
+                });
+                let own = match strut.alignment {
+                    super::LineBoxAlignment::Shift(shift) => shift.get(),
+                    _ => 0.0,
+                };
+                let displacement = checked_add("placed composed box-strut frame", scope, own)?;
+                qualify_allocated_shift(
+                    &placed,
+                    crate::BaselineShift::try_new(displacement)?,
+                    0.0,
+                    0.0,
+                )?;
             }
         }
         // Glyph-outline axes are independent from the line's cell frame.
         // Qualify every actual emitted origin before publishing placement.
         for run in &placed.finalized.data.runs {
+            if let Some(reference) = run.reference {
+                qualify_allocated_shift(
+                    &placed,
+                    crate::BaselineShift::try_new(metrics.baseline - reference)?,
+                    run.x,
+                    0.0,
+                )?;
+            }
             let shaped = &placed.finalized.data.font_runs[run.run];
             let vector = crate::layout::line_vector(
                 &placed,
@@ -425,6 +473,31 @@ pub(crate) fn place_request(
             ),
         );
         include(&mut bounds, metric_rect)?;
+        for anchor in &placed.finalized.data.anchors {
+            if !matches!(
+                selected.presentation.units[anchor.unit].kind,
+                super::prepared::PresentationUnitKind::Control { .. }
+            ) {
+                qualify_allocated_shift(&placed, anchor.scope_displacement, anchor.slot.x, 0.0)?;
+            }
+            if anchor.reference.is_some() {
+                let rect = placed.finalized.data.cell_rect(
+                    anchor.slot.x,
+                    anchor.inline_end - anchor.slot.x,
+                    anchor.reference,
+                );
+                // Source-only anchors still participate in the placed geometry
+                // qualification without creating another metric strut.
+                let rect = crate::layout::line_rect(&placed, rect);
+                finite("placed scope anchor x", rect.origin.x)?;
+                finite("placed scope anchor y", rect.origin.y)?;
+                finite("placed scope anchor right", rect.origin.x + rect.size.width)?;
+                finite(
+                    "placed scope anchor bottom",
+                    rect.origin.y + rect.size.height,
+                )?;
+            }
+        }
         for cluster in &placed.finalized.data.clusters {
             let x0 = cluster.x.min(cluster.x + cluster.advance);
             let width = cluster.advance.abs();
@@ -432,12 +505,10 @@ pub(crate) fn place_request(
                 &mut bounds,
                 crate::layout::line_rect(
                     &placed,
-                    Rect::new(
-                        x0,
-                        metrics.block_min,
-                        width,
-                        metrics.block_max - metrics.block_min,
-                    ),
+                    placed
+                        .finalized
+                        .data
+                        .cell_rect(x0, width, cluster.reference),
                 ),
             )?;
         }

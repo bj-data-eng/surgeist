@@ -176,6 +176,28 @@ impl PreparedFlowSegment {
         let to = tables.boundaries[self.row().end].participant;
         self.flow.prepared.participants().skip(from).take(to - from)
     }
+    pub(crate) fn scope_input_roots(
+        &self,
+        prepared: &crate::engine::PreparedData,
+        request: &FlowObservationRequest,
+    ) -> Result<()> {
+        if !std::ptr::eq(prepared, self.flow.prepared.inner.as_ref()) {
+            return Err(invalid());
+        }
+        selection::scope_allocation_roots(
+            prepared,
+            &request.atomics,
+            &request.controls,
+            &request.boundary_context,
+            &request.line_box_struts,
+        )
+    }
+    pub(crate) fn visit_scope_frames<'a>(
+        &'a self,
+        emit: &mut dyn FnMut(super::scope_alignment::ScopeProofVisit<'a>) -> Result<()>,
+    ) -> Result<()> {
+        super::conditional::visit_termination_scope_frames(&self.flow.target, emit)
+    }
     pub(crate) fn admit<'a>(
         &'a self,
         prepared: &PreparedText,
@@ -420,6 +442,23 @@ impl PreparedText {
             request,
             LineMetricPolicy::Native,
             &mut crate::engine::shape::ShapeContext::default(),
+            None,
+        )
+    }
+    /// Nonplaceable flow observation under the caller's reduced feature policy.
+    pub fn observe_flow_with_scope_allowance(
+        &self,
+        segment: &PreparedFlowSegment,
+        request: &FlowObservationRequest,
+        allowance: crate::ScopeAlignmentAllowance,
+    ) -> Result<FlowObservation> {
+        crate::engine::layout::flow::observe(
+            self,
+            segment,
+            request,
+            LineMetricPolicy::Native,
+            &mut crate::engine::shape::ShapeContext::default(),
+            Some(allowance),
         )
     }
 }
@@ -733,7 +772,10 @@ mod tests {
         let frame = prepared
             .select(trial)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert!(frame.measurements().fit().advance() > 1.0);
         let query = prepared

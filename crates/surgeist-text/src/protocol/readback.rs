@@ -1376,6 +1376,7 @@ pub struct FinalizedControlView<'a> {
     prepared: &'a Arc<PreparedData>,
     occurrence: usize,
     slot: Point,
+    scope_displacement: crate::BaselineShift,
     level: u8,
     inline_end: f64,
 }
@@ -1388,6 +1389,11 @@ impl fmt::Debug for FinalizedControlView<'_> {
     }
 }
 impl FinalizedControlView<'_> {
+    /// Actual inherited contribution applied to this occurrence. Escaped
+    /// Top/Bottom control leaves retain zero inherited contribution.
+    pub const fn scope_displacement(&self) -> crate::BaselineShift {
+        self.scope_displacement
+    }
     #[must_use]
     pub fn control(&self) -> PreparedControl {
         PreparedControl {
@@ -1421,6 +1427,7 @@ impl FinalizedLine {
                 prepared: &self.inner.selected.prepared,
                 occurrence,
                 slot: anchor.slot,
+                scope_displacement: anchor.scope_displacement,
                 level: anchor.level,
                 inline_end: anchor.inline_end,
             })
@@ -2021,7 +2028,12 @@ mod tests {
                 line_strut: None,
             })
             .unwrap();
-        let line = selected.finalize(SpacingAllocations::None).unwrap();
+        let line = selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_eq!(line.feedback().baseline, 26.0);
         assert_eq!(line.feedback().line_height, 40.0);
         let empty = line

@@ -256,7 +256,12 @@ fn native_in_flow_atomic_keeps_physical_box_and_cross_baseline_through_public_pl
         allocation: allocation(),
     }];
     let selected = prepared.select(request).unwrap();
-    let line = selected.finalize(SpacingAllocations::None).unwrap();
+    let line = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(line.prepared_text(), prepared);
     assert_eq!(
         (

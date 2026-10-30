@@ -35,6 +35,7 @@ fn nf_input(raw: &str, mode: WhiteSpace) -> crate::ContextualSourceInput {
     };
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     crate::ContextualSourceInput {
+        scope_alignment_limits: None,
         source,
         segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
         envelope: crate::SourceProcessingEnvelope::Complete,
@@ -45,6 +46,7 @@ fn nf_input(raw: &str, mode: WhiteSpace) -> crate::ContextualSourceInput {
         replacements: vec![],
         computed_line_boundaries: vec![],
         scopes: vec![crate::SourceProcessingScope::Block {
+            font_reference: None,
             topology: crate::SourceProcessingTopology::Complete,
             trim: Default::default(),
             base_style: nf_style(mode),
@@ -77,6 +79,7 @@ fn nf_prepare(value: crate::ContextualSourceInput) -> PreparedText {
 }
 fn nf_allocation() -> LineBoxStrut {
     LineBoxStrut {
+        scope: None,
         metrics: LineStrut {
             baseline: 12.0,
             line_extent: 20.0,
@@ -119,7 +122,10 @@ fn nf_line(
     r.line_box_struts = vec![nf_allocation()];
     p.select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn nf_whole(p: &PreparedText) -> FinalizedLine {
@@ -324,7 +330,10 @@ fn nonformatted_eligibility_rejects_forced_text_and_real_zero_inflow_atomic() {
     let line = p
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 0.0);
     assert_eq!(line.atomic_slots().count(), 1);
@@ -613,7 +622,10 @@ fn explicit_placement_key_tracks_alignment_and_replays_semantic_requests() {
         let line = p
             .select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         let layout = place(p.clone(), line.clone(), 7.0, 11.0).unwrap();
         (line, layout)

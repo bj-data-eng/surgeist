@@ -6,6 +6,7 @@ fn block(mut base: t::Style, rtl: bool, break_all: bool) -> t::SourceProcessingS
         base.word_break = t::WordBreak::BreakAll;
     }
     t::SourceProcessingScope::Block {
+        font_reference: None,
         topology: t::SourceProcessingTopology::Complete,
         trim: t::WhiteSpaceTrim::default(),
         base_style: base,
@@ -121,7 +122,10 @@ fn answer(p: &t::PreparedText, request: &mut t::LineSelectionRequest, facts: &[(
 fn finalize(p: &t::PreparedText, request: t::LineSelectionRequest) -> t::FinalizedLine {
     p.select(request)
         .unwrap()
-        .finalize(t::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: t::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap()
 }
 

@@ -162,6 +162,8 @@ pub(crate) fn prepare(
             )?;
             let block_styles = [block_style];
             let input = crate::engine::ShapingInput {
+                formatting_breaks: &[],
+                scope_custody: None,
                 characters: None,
                 separator_geometry: false,
                 profile: crate::engine::upright::original_profile(
@@ -201,6 +203,8 @@ pub(crate) fn prepare(
         }
         if metric.period != 0.0 {
             let input = crate::engine::ShapingInput {
+                formatting_breaks: &[],
+                scope_custody: None,
                 characters: None,
                 separator_geometry: false,
                 profile: crate::engine::upright::original_profile(

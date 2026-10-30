@@ -238,6 +238,7 @@ fn qualify<S: LayoutScalar>(control: bool) {
         0,
         vec![paragraph.binding.clone()],
         crate::WrappingInput::default(),
+        Vec::new(),
     )
     .unwrap();
     let request = LayoutRootRequestOf::viewport(Size::new(

@@ -25,6 +25,11 @@ internal child text remains outside the parent view. Both fronts share whitespac
 correspondence and partial plaintext without inserting presentation characters.
 See [contextual processing](docs/reference.md#contextual-source-processing).
 
+[Captured-scope alignment](docs/scope-alignment.md) retains genuine parent font
+context and allocates complete selected subtrees. Its early formatting facts,
+line-relative edge groups and feature limits remain separate from a standalone
+inline-box request.
+
 `Text` retains exact UTF-16 code units, and public source positions and ranges
 count those units. Edits can split or join surrogate pairs. `AnalyzedSource`
 retains original source and pre-font semantic analysis. Its constructors take

@@ -290,7 +290,7 @@ it keeps the first alternative when an indivisible candidate must overflow.
 allocated strut. Its direction, wrapping, and source-less alternative facts stay
 Text-owned. Existing line breaks and inline boundaries instead supply their real
 Layout strut metrics and must match the corresponding issued semantic role.
-`LayoutFlowInput::try_new(tree, root, paragraphs, wrapping)` also admits
+`LayoutFlowInput::try_new(tree, root, paragraphs, wrapping, scope_alignments)` also admits
 box/control-only flow with no Text paragraphs. `WrappingInput` supplies actual
 scope declarations and generated child-order proofs. `WrappingScopeInput::NativePair`
 declares genuine normalized endpoints; `Captured` declares an authentic inline
@@ -298,6 +298,16 @@ capture identity. `WrapInside::Avoid` ranks permitted fitting breaks through the
 same validated scope forest. A captured scope without endpoints supplies semantic
 ownership and no physical border or padding authority. Ordinary `compute_layout`
 keeps automatic wrapping without a declared scope context.
+
+The `scope_alignments` vector supplies `TextScopeAlignmentInputOf<Tree::Scalar>`
+for authentic captured inline scopes. An empty vector supplies no alignment
+requests. Admission checks the actual capture association and its early formatting
+classification. Length/percentage normalization uses the scope's retained own
+line height; native subscript/superscript normalization uses the actual parent's
+used font size. Layout fits the selected scope contributions and passes complete
+allocations to Text, including explicit zero, then consumes the executed frame
+once. See [captured-scope alignment](../../surgeist-text/docs/scope-alignment.md)
+for early producer facts, edge-subtree behavior and transaction resource limits.
 
 Avoidance prefers a fitting cut outside an avoided box over one inside it, then
 prefers an outer cut over a cut inside a nested avoided box. Incomparable sibling
@@ -346,8 +356,9 @@ An explicitly declared native pair retains its real endpoint-control identity
 when the input has no matching inline scope.
 
 After normal Text preparation and host binding, `LayoutFlowInput::try_new_with_edges`
-accepts the current tree, actual paragraph bindings, final `WrappingInput`, and a
-borrowed receipt. The tree also supplies a fresh `WrapEdgeSource` projection.
+accepts the current tree, actual paragraph bindings, final `WrappingInput`,
+normalized scope alignments, and a borrowed receipt. The tree also supplies a
+fresh `WrapEdgeSource` projection.
 Admission checks current roles, declarations, relevant generated order and
 source/cause associations against both the receipt and actual prepared inputs.
 Changed semantic evidence returns `PlanMismatch`; invalid source associations
@@ -375,6 +386,10 @@ leaves the evidence unsupplied. Influential boxes need a real witness unless an
 actually selected same-box control allocation already owns that contribution.
 Glyph or descendant-font containment cannot establish the box's own strut.
 Aliases share one supplied witness; contributions are not duplicated.
+A native pair's source enclosure alone does not prove that it owns the enclosing
+captured box. A continuation without a selected same-box endpoint needs that
+box's explicit witness. A zero strut remains a contribution and differs from
+`NoContribution`.
 Missing, invalid and contradictory evidence return `MissingBoxMetrics`,
 `InvalidBoxMetrics` and `ConflictingBoxMetrics`, respectively. See the
 [metric ownership contract](../../../references/text-wrap-edges--native-determination.md#actual-box-metrics).

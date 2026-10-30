@@ -253,7 +253,7 @@ pub use inline_wrapping::{
 pub use text_layout::{
     LayoutFlowInput, TextAtomicBinding, TextBindingError, TextControlBinding,
     TextControlParticipation, TextOriginBinding, TextParagraphBinding, TextParticipation,
-    TextScopeAssociation, TextScopeBinding,
+    TextScopeAlignmentInput, TextScopeAlignmentInputOf, TextScopeAssociation, TextScopeBinding,
 };
 mod scalar;
 mod scroll;

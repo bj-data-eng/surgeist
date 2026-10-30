@@ -833,7 +833,7 @@ where
     let mut text_output = None;
     let mut formatted_item = None;
     let mut report = if let Some(binding) = text_binding {
-        let (frame, frames, reusable, associations) = {
+        let (frame, frames, reusable, associations, scope_alignments) = {
             let state = tree
                 .text_computation()
                 .expect("capture-backed branch retains its session state");
@@ -842,6 +842,7 @@ where
                 state.frames.clone(),
                 state.reusable.clone(),
                 state.associations.clone(),
+                state.scope_resources.clone(),
             )
         };
         let canonical_exclusions = float_exclusions
@@ -887,6 +888,7 @@ where
             .map(|groups| groups.snapshot())
             .unwrap_or_default();
         let context = crate::text_layout::run::Context {
+            scope_alignments,
             orientation: text_orientation
                 .expect("the actual Text binding has its resolved orientation"),
             inline_baseline_context: constants.inline_baseline_context,

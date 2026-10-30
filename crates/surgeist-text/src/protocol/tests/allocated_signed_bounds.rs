@@ -98,7 +98,10 @@ fn actual_fontless_signed_atomic_keeps_ten_unit_occupied_extent_without_a_parent
     let line = p
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     // The actual box occupies [-20,-10] relative to its baseline: extent10,
     // wholly on one side. No glyph, font strut, root strut or zero is donated.

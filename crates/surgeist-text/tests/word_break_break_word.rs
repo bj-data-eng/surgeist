@@ -237,7 +237,10 @@ fn finish(
         },
     })
     .unwrap()
-    .finalize(t::SpacingAllocations::None)
+    .finalize(surgeist_text::LineAllocations {
+        spacing: t::SpacingAllocations::None,
+        scopes: surgeist_text::ScopeAllocations::None,
+    })
     .unwrap()
 }
 
@@ -565,6 +568,7 @@ fn declared_tuple_survives_validation_source_spans_and_contextual_capture() {
             use t::SourceProcessingEvent as E;
             let processed = Arc::new(
                 t::process_contextual_source(t::ContextualSourceInput {
+                    scope_alignment_limits: None,
                     computed_line_boundaries: vec![],
                     source: request.source,
                     segment_breaks: request.segment_breaks,
@@ -575,6 +579,7 @@ fn declared_tuple_survives_validation_source_spans_and_contextual_capture() {
                     boundary_policies: vec![],
                     replacements: vec![],
                     scopes: vec![t::SourceProcessingScope::Block {
+                        font_reference: None,
                         topology: t::SourceProcessingTopology::Complete,
                         trim: t::WhiteSpaceTrim::default(),
                         base_style: base.clone(),

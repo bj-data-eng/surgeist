@@ -88,8 +88,14 @@ fn allocated<S: LayoutScalar>(orientation: text::LineOrientation, mode: WritingM
             1,
             LayoutInputOf::inline_text(TextParticipation::new(origin.clone())),
         );
-    let flow =
-        LayoutFlowInput::try_new(&tree, 0, vec![binding], crate::WrappingInput::default()).unwrap();
+    let flow = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![binding],
+        crate::WrappingInput::default(),
+        Vec::new(),
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(
         &flow,
         0,

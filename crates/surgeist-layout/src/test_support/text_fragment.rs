@@ -14,6 +14,14 @@ pub(crate) fn fragment() -> surgeist_text::FinalizedFragment {
 pub(crate) fn fragment_for(
     prepared: &surgeist_text::PreparedText,
 ) -> surgeist_text::FinalizedFragment {
+    let scope_alignments = crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
+        crate::text_layout::scope_alignment::ScopeAlignmentSnapshot::<f64>::admit::<()>(
+            Vec::new(),
+            &[],
+        )
+        .unwrap()
+        .freeze(),
+    );
     let lines = crate::text_layout::fit::fit(
         crate::text_layout::fit::FitInput {
             groups: crate::group_alignment::Snapshot::default(),
@@ -25,6 +33,7 @@ pub(crate) fn fragment_for(
                 crate::Direction::Ltr,
             ),
             prepared,
+            scope_alignments: &scope_alignments,
             available: crate::text_layout::fit::Available::Maximum,
             base_direction: surgeist_text::ParagraphBaseDirection::LeftToRight,
             block_direction: surgeist_text::ParagraphBaseDirection::LeftToRight,

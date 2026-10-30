@@ -143,7 +143,10 @@ fn mixed_authored_endpoint_means_and_ic_replacements_retain_raw_axes_and_shared_
     let ordinary_source = Source::new("X一X");
     let ordinary = prepare(&mut system, &ordinary_source, own(0.0, 0.0));
     let control = selected(&ordinary, SpacingPolicy::None)
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(control.feedback().advance, 32.0);
     let mut source = Source::identified("X一X", crate::Id::from_u64(1570060), 1);
@@ -168,7 +171,12 @@ fn mixed_authored_endpoint_means_and_ic_replacements_retain_raw_axes_and_shared_
             full
         );
     }
-    let natural = basis.finalize(SpacingAllocations::None).unwrap();
+    let natural = basis
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     // Raw32 plus6+6. Outer4/2 halves are absent, including at the R edges.
     assert_eq!(natural.feedback().advance, 44.0);
     assert_eq!(offsets(&natural, &bytes), [0.0, 16.0, 34.0]);
@@ -216,13 +224,21 @@ fn mixed_word_and_letter_spacing_add_to_interword_halves_without_changing_provid
     let mut system = system_with(&bytes);
     let ordinary = prepare(&mut system, &source, own(0.0, 0.0));
     let control = selected(&ordinary, SpacingPolicy::None)
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(control.feedback().advance, 32.0);
     let prepared = prepare(&mut system, &source, own(4.0, 6.0));
     let basis = selected(&prepared, SpacingPolicy::InterWord);
     separator(&basis, &prepared, Range::new(1, 2));
-    let natural = basis.finalize(SpacingAllocations::None).unwrap();
+    let natural = basis
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     // Raw32 + two tracking4 boundaries + word6; half3 shifts SPACE paint.
     assert_eq!(natural.feedback().advance, 46.0);
     assert_eq!(offsets(&natural, &bytes), [0.0, 17.0, 34.0]);
@@ -264,7 +280,10 @@ fn mixed_real_soft_cut_suppresses_outer_tracking_and_replays_hanging_interword_s
     let mut system = system_with(&bytes);
     let prepared = prepare(&mut system, &source, own(4.0, 6.0));
     let whole = selected(&prepared, SpacingPolicy::None)
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(whole.feedback().advance, 60.0);
     let offer = prepared
@@ -291,7 +310,12 @@ fn mixed_real_soft_cut_suppresses_outer_tracking_and_replays_hanging_interword_s
     first.termination = PreparedTermination::Ordinary(offer.clone());
     let basis = prepared.select(first).unwrap();
     separator(&basis, &prepared, Range::new(2, 3));
-    let natural = basis.finalize(SpacingAllocations::None).unwrap();
+    let natural = basis
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(natural.feedback().advance, 46.0);
     assert_eq!(
         (
@@ -327,7 +351,10 @@ fn mixed_real_soft_cut_suppresses_outer_tracking_and_replays_hanging_interword_s
     let second = prepared
         .select(receiver)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(second.feedback().advance, 10.0);
     assert_eq!(offsets(&second, &bytes), [25.0]);

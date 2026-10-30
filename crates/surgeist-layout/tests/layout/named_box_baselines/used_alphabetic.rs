@@ -254,6 +254,7 @@ fn capture(
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     let processed = Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
             envelope: t::SourceProcessingEnvelope::Complete,
@@ -289,6 +290,7 @@ fn capture(
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![t::SourceProcessingScope::Block {
+                font_reference: None,
                 topology: t::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
@@ -393,7 +395,10 @@ fn select(
             },
         })
         .unwrap()
-        .finalize(t::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: t::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn terminal(p: &t::PreparedText) -> t::PreparedOpportunity {
@@ -425,8 +430,9 @@ fn solve<S: l::LayoutScalar>(
     width: f64,
     height: f64,
 ) -> l::CompletedLayoutBatchOf<u32, S> {
-    let flow = l::LayoutFlowInput::try_new(host, 0, bindings, l::WrappingInput::default())
-        .expect("actual issued origins/atomic must bind to real tree members");
+    let flow =
+        l::LayoutFlowInput::try_new(host, 0, bindings, l::WrappingInput::default(), Vec::new())
+            .expect("actual issued origins/atomic must bind to real tree members");
     l::compute_layout_with_flow(
         &flow,
         0,

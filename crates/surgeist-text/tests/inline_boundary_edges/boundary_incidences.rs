@@ -5,6 +5,7 @@ use t::CapturedScopeIncidence as R;
 
 fn block(base: t::Style) -> t::SourceProcessingScope {
     t::SourceProcessingScope::Block {
+        font_reference: None,
         topology: t::SourceProcessingTopology::Complete,
         trim: Default::default(),
         base_style: base,
@@ -13,6 +14,8 @@ fn block(base: t::Style) -> t::SourceProcessingScope {
 }
 fn inline() -> t::SourceProcessingScope {
     t::SourceProcessingScope::Inline {
+        alignment_boundary: None,
+        font_reference: None,
         trim: Default::default(),
         style: None,
         boundaries: None,
@@ -29,6 +32,7 @@ fn input(text: &str, ranges: &[(usize, usize)]) -> t::ContextualSourceInput {
     }
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     t::ContextualSourceInput {
+        scope_alignment_limits: None,
         source: source.clone(),
         segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
         envelope: t::SourceProcessingEnvelope::Complete,
@@ -700,6 +704,7 @@ fn incidence_capabilities_keep_preparation_capture_role_and_domain_errors_distin
     domain.scopes.extend([
         inline(),
         t::SourceProcessingScope::OutOfFlowBlock {
+            font_reference: None,
             topology: t::SourceProcessingTopology::Complete,
             trim: Default::default(),
             base_style: style(t::WhiteSpace::Preserve),

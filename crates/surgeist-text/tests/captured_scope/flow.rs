@@ -98,6 +98,7 @@ fn deferred(kind: InlineBoxKind, closed_parent: bool) -> Arc<ProcessedSource> {
     }
     let domain = |atomic| match kind {
         InlineBoxKind::InFlow => SourceProcessingScope::AtomicBlock {
+            font_reference: None,
             topology: SourceProcessingTopology::Unknown,
             trim: WhiteSpaceTrim::default(),
             base_style: style(WordSpaceTransform::None),
@@ -105,6 +106,7 @@ fn deferred(kind: InlineBoxKind, closed_parent: bool) -> Arc<ProcessedSource> {
             atomic,
         },
         InlineBoxKind::OutOfFlow => SourceProcessingScope::OutOfFlowBlock {
+            font_reference: None,
             topology: SourceProcessingTopology::Unknown,
             trim: WhiteSpaceTrim::default(),
             base_style: style(WordSpaceTransform::None),
@@ -114,6 +116,7 @@ fn deferred(kind: InlineBoxKind, closed_parent: bool) -> Arc<ProcessedSource> {
     };
     Arc::new(
         process_contextual_source(ContextualSourceInput {
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -154,6 +157,8 @@ fn deferred(kind: InlineBoxKind, closed_parent: bool) -> Arc<ProcessedSource> {
                 domain(0),
                 domain(1),
                 SourceProcessingScope::Inline {
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: WhiteSpaceTrim::default(),
                     style: None,
                     boundaries: Some(SourceProcessingScopeBoundaries { start: 0, end: 1 }),
@@ -267,6 +272,7 @@ fn deferred_atomic_and_out_of_flow_contents_have_independent_complete_sequences(
 fn zero_source_nested_blocks_retain_all_empty_paragraphs_and_parent_markers() {
     let processed = Arc::new(
         process_contextual_source(ContextualSourceInput {
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: Source::new(""),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -348,6 +354,7 @@ fn inline_and_connection_facts_do_not_add_flow_events_or_hide_originals() {
     let source = Source::new("AB");
     let processed = Arc::new(
         process_contextual_source(ContextualSourceInput {
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -369,6 +376,8 @@ fn inline_and_connection_facts_do_not_add_flow_events_or_hide_originals() {
             scopes: vec![
                 block(SourceProcessingTopology::Unknown),
                 SourceProcessingScope::Inline {
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: WhiteSpaceTrim::default(),
                     style: None,
                     boundaries: None,

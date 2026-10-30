@@ -123,7 +123,10 @@ fn first(p: &PreparedText, cut: &PreparedHyphenationCut) -> FinalizedLine {
         .collect();
     p.select(value)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn place_first(p: &PreparedText, line: FinalizedLine) -> crate::Layout {
@@ -353,7 +356,10 @@ fn measurement_portions_keep_indication_and_refuse_placement_and_foreign_owners(
         let line = p
             .select(value.clone())
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         values.push(line.feedback().advance);
         let error = crate::Layout::from_finalized_lines(PlacementRequest {
@@ -419,7 +425,10 @@ fn ordinary_trial(
     value.context.available_inline = width;
     p.select(value)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 #[test]
@@ -617,7 +626,10 @@ fn automatic_manual_priority_requires_exact_admitted_portion_and_measurements_ne
     let portion = p
         .select(value)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(portion.feedback().advance, 70.0);
     let automatic = p
@@ -723,6 +735,7 @@ fn transparent_child_holes_keep_automatic_source_anchor_separate_from_mixed_cut_
         Size::new(5.0, 10.0),
     ));
     let capture = ContextualSourceInput {
+        scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -766,12 +779,14 @@ fn transparent_child_holes_keep_automatic_source_anchor_separate_from_mixed_cut_
             .collect(),
         scopes: vec![
             SourceProcessingScope::Block {
+                font_reference: None,
                 topology: crate::SourceProcessingTopology::Unknown,
                 trim: WhiteSpaceTrim::default(),
                 base_style: automatic_style(10.0),
                 used_direction: ParagraphBaseDirection::LeftToRight,
             },
             SourceProcessingScope::OutOfFlowBlock {
+                font_reference: None,
                 topology: crate::SourceProcessingTopology::Unknown,
                 trim: WhiteSpaceTrim::default(),
                 base_style: automatic_style(10.0),
@@ -1015,7 +1030,10 @@ fn automatic_mixed_directional_occurrences_retain_actual_insertion_side() {
         let line = p
             .select(value)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         let attachment = line.inner.selected.presentation.domains[0].attachment;
         let super::super::prepared::presentation::Attachment::Before { participant, atom } =
@@ -1501,7 +1519,10 @@ fn line_limit_dispositions_authenticate_exact_automatic_variants_and_purpose() {
     let line = p
         .select(request.clone())
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 10.0);
     request.context.available_inline = None;
@@ -1748,7 +1769,10 @@ fn ordinary_word_fallbacks_preserve_transparent_mixed_cut_family() {
         let line = p
             .select(value)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(line.feedback().advance, 20.0);
         assert_eq!(
@@ -1847,7 +1871,10 @@ fn before_auto_uses_the_actual_lri_occurrence_in_an_rtl_paragraph() {
         let line = p
             .select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(line.feedback().advance, 60.0);
         let presentation = &line.inner.selected.presentation;

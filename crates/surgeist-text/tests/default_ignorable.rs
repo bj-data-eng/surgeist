@@ -133,7 +133,10 @@ fn try_observe(
                 spacing: text::SpacingPolicy::Spaces,
             },
         })?
-        .finalize(text::SpacingAllocations::None)?;
+        .finalize(surgeist_text::LineAllocations {
+            spacing: text::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })?;
     let feedback = line.feedback();
     let mut glyphs = Vec::new();
     for run in line.run_views() {

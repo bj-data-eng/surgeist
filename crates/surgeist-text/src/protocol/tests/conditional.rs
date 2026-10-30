@@ -202,7 +202,10 @@ fn conditional_capabilities_preserve_query_identity_and_do_not_claim_fit() {
     let line = prepared
         .select(selection(&prepared, &first[0]))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     // Eligibility is not fit: this actual20px glyph was selected for a1px span.
     assert_eq!(line.feedback().advance, 20.0);
@@ -318,7 +321,10 @@ fn conditional_cuts_reshape_optional_ligatures_with_the_retained_instance() {
     let whole = prepared
         .select(request(&prepared))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(glyphs(&whole), [(Range::new(0, 2), 58)]);
     assert_eq!(whole.feedback().advance, 20.0);
@@ -328,7 +334,10 @@ fn conditional_cuts_reshape_optional_ligatures_with_the_retained_instance() {
     let line = prepared
         .select(selection(&prepared, &cuts[0]))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(glyphs(&line), [(Range::new(0, 1), 35)]);
     assert_eq!(line.feedback().advance, 20.0);
@@ -356,7 +365,10 @@ fn conditional_cut_and_continuation_keep_actual_arabic_base_context() {
     let whole = prepared
         .select(control)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(
         glyphs(&whole),
@@ -374,7 +386,10 @@ fn conditional_cut_and_continuation_keep_actual_arabic_base_context() {
     let first = prepared
         .select(first_request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(glyphs(&first), [(Range::new(0, 1), 100)]);
     let second_start = cuts[0].boundary();
@@ -397,7 +412,10 @@ fn conditional_cut_and_continuation_keep_actual_arabic_base_context() {
     let second = prepared
         .select(second_request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(glyphs(&second), [(Range::new(1, 2), 277)]);
     let mut last_request = request(&prepared);
@@ -409,7 +427,10 @@ fn conditional_cut_and_continuation_keep_actual_arabic_base_context() {
     let last = prepared
         .select(last_request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(glyphs(&last), [(Range::new(2, 3), 82)]);
     for line in [first, second, last] {
@@ -458,7 +479,12 @@ fn conditional_termination_cannot_select_failed_ordinary_replacement() {
     ));
     let selected = prepared.select(selection(&prepared, &cuts[0])).unwrap();
     assert!(selected.request().alternative.is_none());
-    let line = selected.finalize(SpacingAllocations::None).unwrap();
+    let line = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(glyphs(&line), [(Range::new(0, 1), 35)]);
     assert_eq!(line.feedback().advance, 20.0);
     assert_eq!(prepared.analyzed_source().source().text(), &original);
@@ -524,7 +550,10 @@ fn wrapping_binding_has_new_context_identity_and_preserves_the_executed_core() {
         prepared
             .select(selection(&prepared, &prior[0]))
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .unwrap()
             .feedback()
             .advance,
@@ -542,12 +571,18 @@ fn wrapping_binding_has_new_context_identity_and_preserves_the_executed_core() {
     let old_line = prepared
         .select(request(&prepared))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let new_line = other
         .select(request(&other))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let old_layout = place(prepared.clone(), old_line, 0.0, 16.0).unwrap();
     let new_layout = place(other.clone(), new_line, 0.0, 16.0).unwrap();
@@ -655,7 +690,10 @@ fn missing_wrapping_fact_is_refused_only_on_the_path_that_consumes_it() {
         prepared
             .select(request(&prepared))
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .unwrap()
             .feedback()
             .advance,
@@ -744,7 +782,10 @@ fn ordinary_receipt(
     prepared
         .select(value)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 
@@ -788,7 +829,10 @@ fn phantom_receipt_preserves_leading_original_custody_and_continuation() {
     let first = prepared
         .select(selection(&prepared, &cuts[0]))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(first.selected_line().request().start, start);
     assert_eq!(first.selected_line().request().participants.len(), 2);
@@ -905,7 +949,10 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
             prepared
                 .select(value)
                 .unwrap()
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap()
         })
         .collect();
@@ -992,7 +1039,10 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
             prepared
                 .select(value)
                 .unwrap()
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap()
         })
         .collect();
@@ -1012,7 +1062,10 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
     let minimum_line = prepared
         .select(selection(&prepared, &minimum[0]))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(minimum_line.feedback().advance, 20.0);
 }
@@ -1320,7 +1373,10 @@ fn true_outer_permission_does_not_vote_immediate_empty_chain_facts_or_collapse_c
             assert_eq!(selected.request().participants.len(), index + 1);
             assert_eq!(
                 selected
-                    .finalize(SpacingAllocations::None)
+                    .finalize(crate::LineAllocations {
+                        spacing: SpacingAllocations::None,
+                        scopes: crate::ScopeAllocations::None
+                    })
                     .unwrap()
                     .feedback()
                     .advance,
@@ -1444,7 +1500,10 @@ fn conditional_context_uses_base_capture_after_actual_hyphen_variant_trial() {
     let whole = prepared
         .select(whole_request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert!(glyphs(&whole).contains(&(Range::new(1, 2), 100)));
     let first = prepared.opportunity_views().next().unwrap();
@@ -1464,7 +1523,10 @@ fn conditional_context_uses_base_capture_after_actual_hyphen_variant_trial() {
     let trial = prepared
         .select(trial)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert!(trial.feedback().advance > 20.0);
     assert!(trial.selected_line().request().alternative.is_some());
@@ -1476,7 +1538,10 @@ fn conditional_context_uses_base_capture_after_actual_hyphen_variant_trial() {
     let line = prepared
         .select(selected)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(
         glyphs(&line),
@@ -1507,7 +1572,10 @@ fn conditional_provider_and_numeric_refusals_leave_prior_actual_results_valid() 
     let whole = prepared
         .select(whole_request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let prior = glyphs(&whole);
     assert!(prior.contains(&(Range::new(0, 1), 100)));
@@ -1616,6 +1684,7 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
         Size::new(5.0, 10.0),
     ));
     let capture = ContextualSourceInput {
+        scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -1644,6 +1713,7 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
         }],
         scopes: vec![
             SourceProcessingScope::Block {
+                font_reference: None,
                 topology: crate::SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
@@ -1653,6 +1723,7 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
                 },
             },
             SourceProcessingScope::OutOfFlowBlock {
+                font_reference: None,
                 topology: crate::SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
@@ -1721,7 +1792,10 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
     let first = prepared
         .select(selection(&prepared, &cuts[1]))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(first.selected_line().request().participants.len(), 2);
     assert_eq!(glyphs(&first), [(Range::new(0, 1), 35)]);
@@ -1880,7 +1954,10 @@ fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
     let first = p
         .select(trial.clone())
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(first.feedback().advance, 30.0);
     assert!(first.has_in_flow_content());
@@ -1928,14 +2005,20 @@ fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
     let line = p
         .select(selected)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 70.0);
     assert!(line.selected_line().request().alternative.is_none());
     let second = p
         .select(trial)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(
         cuts,
@@ -2023,7 +2106,10 @@ fn finite_consumer_policy_receipts_preserve_barriers_start_and_context_identity(
         r.context.available_inline = Some(width);
         p.select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap()
     };
     let query = |line| {
@@ -2051,7 +2137,10 @@ fn finite_consumer_policy_receipts_preserve_barriers_start_and_context_identity(
     let ordinary = p
         .select(ordinary)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert!(
         query(ordinary).is_err(),
@@ -2075,7 +2164,10 @@ fn finite_consumer_policy_receipts_preserve_barriers_start_and_context_identity(
     let line = plain
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert!(line.has_in_flow_content());
     let end = plain

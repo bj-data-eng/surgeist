@@ -135,7 +135,10 @@ fn whole(p: &PreparedText) -> FinalizedLine {
     };
     p.select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 
@@ -220,7 +223,10 @@ fn ordinary_trial(
         Some(width),
     ))
     .unwrap()
-    .finalize(SpacingAllocations::None)
+    .finalize(crate::LineAllocations {
+        spacing: SpacingAllocations::None,
+        scopes: crate::ScopeAllocations::None,
+    })
     .unwrap()
 }
 
@@ -234,7 +240,10 @@ fn phrase_trial(p: &PreparedText, portion: &PreparedPhrasePortion, width: f64) -
         Some(width),
     ))
     .unwrap()
-    .finalize(SpacingAllocations::None)
+    .finalize(crate::LineAllocations {
+        spacing: SpacingAllocations::None,
+        scopes: crate::ScopeAllocations::None,
+    })
     .unwrap()
 }
 
@@ -253,7 +262,10 @@ fn conditional_trial(
         width,
     ))
     .unwrap()
-    .finalize(SpacingAllocations::None)
+    .finalize(crate::LineAllocations {
+        spacing: SpacingAllocations::None,
+        scopes: crate::ScopeAllocations::None,
+    })
     .unwrap()
 }
 

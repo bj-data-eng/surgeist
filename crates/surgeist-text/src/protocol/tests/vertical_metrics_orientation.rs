@@ -54,7 +54,10 @@ fn successful_nominal_vertical_metrics_do_not_enable_nonhorizontal_selection() {
     let line = p
         .select(input.clone())
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 20.0);
     assert_eq!(
@@ -108,7 +111,10 @@ fn successful_nominal_vertical_metrics_do_not_enable_nonhorizontal_placement() {
     let line = p
         .select(request(&p))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     observe_actual_instance(&line, system.font_catalogue_identity());
     let horizontal = place(p.clone(), line.clone(), 0.0, 30.0).unwrap();

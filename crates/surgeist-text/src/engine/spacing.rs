@@ -1,6 +1,8 @@
 //! Actual separator-unit geometry shared by authored and selected spacing.
 
 pub(crate) mod character;
+use super::scope_alignment::accounting::{self as account, Ledger};
+use crate::processing::contextual::alignment::operations;
 
 use std::{
     collections::BTreeSet,
@@ -338,21 +340,36 @@ pub(crate) fn geometry(
     members: &[usize],
     atoms: AtomRange<usize>,
 ) -> Result<(crate::SpacingSlotGeometry, Option<AtomRange<usize>>)> {
-    let mut membership = BTreeSet::new();
+    geometry_accounted(shaped, members, atoms, &mut None)
+}
+pub(crate) fn geometry_accounted(
+    shaped: &ShapedData,
+    members: &[usize],
+    atoms: AtomRange<usize>,
+    ledger: &mut Ledger,
+) -> Result<(crate::SpacingSlotGeometry, Option<AtomRange<usize>>)> {
+    let mut membership = Vec::new();
     for &index in members {
         let cluster = &shaped.clusters[index];
         if cluster.content.font_run().is_some() {
-            membership.insert(cluster.provider_receipt.ok_or_else(|| {
+            let receipt = cluster.provider_receipt.ok_or_else(|| {
                 Error::new(
                     ErrorCode::LayoutFailed,
                     "separator component lacks its actual provider receipt",
                 )
-            })?);
+            })?;
+            account::work(ledger, membership.len().saturating_add(1))?;
+            if !membership.contains(&receipt) {
+                account::push(ledger, &mut membership, receipt)?;
+            }
         }
     }
     let mut intrinsic = 0.0;
     let mut shared = None;
-    for index in membership {
+    operations::order_by(&mut membership, ledger.as_mut(), |left, right| {
+        left.cmp(right)
+    })?;
+    for &index in &membership {
         let group = &shaped.provider_groups[index];
         assert!(
             group.run < shaped.runs.len() && group.glyphs.end <= shaped.glyphs.len(),
@@ -369,6 +386,7 @@ pub(crate) fn geometry(
             )?;
         }
     }
+    account::drop_vec(ledger, membership)?;
     Ok((
         if shared.is_some() {
             crate::SpacingSlotGeometry::SharedProviderGroup
@@ -422,13 +440,25 @@ pub(crate) fn visual_authored(
     order: &crate::SuppliedVisualOrder<'_, '_>,
     dispositions: &[SpacingSlotDisposition],
 ) -> Result<Vec<WordSpacingPlacement>> {
-    let mut rank = vec![0; shaped.clusters.len()];
+    visual_authored_accounted(shaped, order, dispositions, &mut None)
+}
+pub(crate) fn visual_authored_accounted(
+    shaped: &mut ShapedData,
+    order: &crate::SuppliedVisualOrder<'_, '_>,
+    dispositions: &[SpacingSlotDisposition],
+    ledger: &mut Ledger,
+) -> Result<Vec<WordSpacingPlacement>> {
+    let mut rank = account::filled(ledger, shaped.clusters.len(), 0)?;
     for (position, (ordinal, _)) in order.iter().enumerate() {
         if let ShapedItem::TextCluster(cluster) = shaped.items[ordinal] {
             rank[cluster] = position;
         }
     }
-    let mut halves = vec![WordSpacingPlacement::default(); shaped.clusters.len()];
+    let mut halves = account::filled(
+        ledger,
+        shaped.clusters.len(),
+        WordSpacingPlacement::default(),
+    )?;
     for unit in &shaped.word_spacing {
         let extra = super::layout::add(
             "separator spacing total",
@@ -473,6 +503,7 @@ pub(crate) fn visual_authored(
             shaped.clusters[index].logical_adjustments[2] = unit.allocation;
         }
     }
+    account::drop_vec(ledger, rank)?;
     Ok(halves)
 }
 

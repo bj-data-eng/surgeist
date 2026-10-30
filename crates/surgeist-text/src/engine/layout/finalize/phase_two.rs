@@ -52,10 +52,12 @@ fn transparent(selected: &SelectedData, cluster: &PreparedCluster) -> bool {
 fn positions(
     selected: &SelectedData,
     shaped: &ShapedData,
-    atomics: &BTreeMap<usize, &AtomicAllocation>,
+    atomics: &OrdinalMap<&AtomicAllocation>,
     order: &crate::SuppliedVisualOrder<'_, '_>,
+    ledger: &mut Ledger,
 ) -> Result<(Vec<(f64, f64)>, f64)> {
-    let mut rows = vec![(0.0, 0.0); shaped.clusters.len()];
+    account::work(ledger, shaped.items.len())?;
+    let mut rows = account::filled(ledger, shaped.clusters.len(), (0.0, 0.0))?;
     let mut pen = 0.0;
     for (ordinal, _) in order.iter() {
         let advance = match shaped.items[ordinal] {
@@ -146,8 +148,12 @@ fn overflows(side: Side, rows: &[usize], positions: &[(f64, f64)], edge: Option<
         })
     })
 }
-fn raw_trailing(selected: &SelectedData, shaped: &ShapedData) -> Vec<bool> {
-    let mut rows = vec![false; shaped.clusters.len()];
+fn raw_trailing(
+    selected: &SelectedData,
+    shaped: &ShapedData,
+    ledger: &mut Ledger,
+) -> Result<Vec<bool>> {
+    let mut rows = account::filled(ledger, shaped.clusters.len(), false)?;
     for item in shaped.items.iter().rev() {
         match *item {
             ShapedItem::Anchor { unit } => {
@@ -159,7 +165,7 @@ fn raw_trailing(selected: &SelectedData, shaped: &ShapedData) -> Vec<bool> {
             _ => break,
         }
     }
-    rows
+    Ok(rows)
 }
 fn role(selected: &SelectedData, first: bool, usage: &mut FormattedLineUsage) -> Result<bool> {
     let context = selected.request.context.formatted_line;
@@ -185,11 +191,12 @@ fn role(selected: &SelectedData, first: bool, usage: &mut FormattedLineUsage) ->
 pub(super) fn natural(
     selected: &SelectedData,
     shaped: &ShapedData,
-    atomics: &BTreeMap<usize, &AtomicAllocation>,
+    atomics: &OrdinalMap<&AtomicAllocation>,
     order: &crate::SuppliedVisualOrder<'_, '_>,
     dispositions: &[SpacingSlotDisposition],
+    ledger: &mut Ledger,
 ) -> Result<Natural> {
-    let (positions, total) = positions(selected, shaped, atomics, order)?;
+    let (positions, total) = positions(selected, shaped, atomics, order, ledger)?;
     let native = selected.metric_policy == LineMetricPolicy::Native;
     let body_side = if selected.presentation.analysis.base_level & 1 != 0 {
         Side::Start
@@ -207,30 +214,32 @@ pub(super) fn natural(
     } else {
         Side::Start
     };
-    let units = punctuation::units(selected);
-    let mut row_unit = vec![None; shaped.clusters.len()];
-    let mut unit_rows = vec![Vec::new(); units.len()];
+    let units = punctuation::units(selected, ledger)?;
+    let mut row_unit = account::filled(ledger, shaped.clusters.len(), None)?;
+    let mut unit_rows = account::filled(ledger, units.len(), Vec::new())?;
     for (i, cluster) in shaped.clusters.iter().enumerate() {
         let unit = units.partition_point(|unit| unit.atoms.end <= cluster.atoms.start);
         if units.get(unit).is_some_and(|unit| {
             unit.atoms.start <= cluster.atoms.start && cluster.atoms.end <= unit.atoms.end
         }) {
             row_unit[i] = Some(unit);
-            unit_rows[unit].push(i);
+            account::push(ledger, &mut unit_rows[unit], i)?;
         }
     }
     let mut result = Natural {
         causes: Vec::new(),
-        removed: dispositions
-            .iter()
-            .map(|d| *d == SpacingSlotDisposition::DiscardedAtLineEdge)
-            .collect(),
+        removed: account::collect(
+            ledger,
+            dispositions
+                .iter()
+                .map(|d| *d == SpacingSlotDisposition::DiscardedAtLineEdge),
+        )?,
         raw_trim: if native {
-            vec![false; shaped.clusters.len()]
+            account::filled(ledger, shaped.clusters.len(), false)?
         } else {
-            raw_trailing(selected, shaped)
+            raw_trailing(selected, shaped, ledger)?
         },
-        deferred: vec![None; shaped.clusters.len()],
+        deferred: account::filled(ledger, shaped.clusters.len(), None)?,
         usage: FormattedLineUsage {
             first: false,
             last: false,
@@ -239,17 +248,17 @@ pub(super) fn natural(
         positions: Vec::new(),
         total,
     };
-    let mut covered = vec![false; units.len()];
+    let mut covered = account::filled(ledger, units.len(), false)?;
     for side in [start_side, end_side] {
-        let mut visual: Vec<_> = order.iter().map(|(ordinal, _)| ordinal).collect();
+        let mut visual = account::collect(ledger, order.iter().map(|(ordinal, _)| ordinal))?;
         if side == Side::End {
             visual.reverse()
         }
         let mut terminal = [true; 4];
         let mut deferred: Option<crate::SpacingDeferredCause> = None;
         let mut quota = false;
-        let mut handled = vec![false; units.len()];
-        for ordinal in visual {
+        let mut handled = account::filled(ledger, units.len(), false)?;
+        for &ordinal in &visual {
             let row = match shaped.items[ordinal] {
                 ShapedItem::Anchor { unit } => {
                     if crate::protocol::boundary::advance(selected.presentation_input(), unit) > 0.0
@@ -300,11 +309,13 @@ pub(super) fn natural(
                     }
                 }
                 if let Some(conditional) = permission {
-                    let rows: Vec<_> = unit_rows[unit]
-                        .iter()
-                        .copied()
-                        .filter(|&i| !result.removed[i])
-                        .collect();
+                    let rows = account::collect(
+                        ledger,
+                        unit_rows[unit]
+                            .iter()
+                            .copied()
+                            .filter(|&i| !result.removed[i]),
+                    )?;
                     let edge =
                         if conditional && rows.iter().any(|&i| shaped.clusters[i].advance != 0.0) {
                             natural_capacity(&mut result.capacity, selected)?
@@ -326,19 +337,24 @@ pub(super) fn natural(
                             }
                             result.deferred[i] = Some((cause, side));
                         }
+                        account::drop_vec(ledger, rows)?;
                     } else {
                         if first && effects.into_iter().all(|value| value) {
                             covered[unit] = true
                         }
-                        result.causes.push(Cause {
-                            rows,
-                            side,
-                            effects,
-                            conditional,
-                            eligible,
-                            punctuation: Some(tcu.presentation),
-                            first,
-                        });
+                        account::push(
+                            ledger,
+                            &mut result.causes,
+                            Cause {
+                                rows,
+                                side,
+                                effects,
+                                conditional,
+                                eligible,
+                                punctuation: Some(tcu.presentation),
+                                first,
+                            },
+                        )?;
                     }
                     handled[unit] = true;
                     quota = true;
@@ -409,26 +425,40 @@ pub(super) fn natural(
             .map(|b| physical_edge(side, b, total))
             .transpose()?;
             let eligible = conditional && overflows(side, &[row], &positions, edge);
-            result.causes.push(Cause {
-                rows: vec![row],
-                side,
-                effects: if conditional {
-                    [true, eligible, true, false]
-                } else {
-                    terminal
+            let cause_rows = account::filled(ledger, 1, row)?;
+            account::push(
+                ledger,
+                &mut result.causes,
+                Cause {
+                    rows: cause_rows,
+                    side,
+                    effects: if conditional {
+                        [true, eligible, true, false]
+                    } else {
+                        terminal
+                    },
+                    conditional,
+                    eligible,
+                    punctuation: None,
+                    first: false,
                 },
-                conditional,
-                eligible,
-                punctuation: None,
-                first: false,
-            });
+            )?;
             if conditional {
                 terminal[FIT] &= eligible;
                 terminal[ALIGN] &= eligible;
                 terminal[MAX] = false
             }
         }
+        account::drop_vec(ledger, visual)?;
+        account::drop_vec(ledger, handled)?;
     }
+    for rows in &mut unit_rows {
+        account::drop_vec(ledger, std::mem::take(rows))?;
+    }
+    account::drop_vec(ledger, unit_rows)?;
+    account::drop_vec(ledger, row_unit)?;
+    account::drop_vec(ledger, covered)?;
+    account::drop_vec(ledger, units)?;
     result.positions = positions;
     Ok(result)
 }
@@ -511,12 +541,13 @@ struct Baseline {
 fn measure(
     selected: &SelectedData,
     shaped: &ShapedData,
-    atomics: &BTreeMap<usize, &AtomicAllocation>,
-    order: &crate::SuppliedVisualOrder<'_, '_>,
+    atomics: &OrdinalMap<&AtomicAllocation>,
     positions: &[(f64, f64)],
     exclusions: &[Exclusion],
     baseline: Baseline,
+    ledger: &mut Ledger,
 ) -> Result<InlineMeasure> {
+    account::work(ledger, shaped.items.len())?;
     let mut advance = baseline.raw_advance.unwrap_or(0.0);
     let mut bounds = None;
     let mut anchor = 0.0;
@@ -585,7 +616,9 @@ fn measure(
         include(&mut bounds, anchor, anchor)
     }
     let mut pen = 0.0;
-    for (ordinal, _) in order.iter() {
+    // Finalization has already admitted this exact selected permutation. A
+    // measurement view changes exclusions, never the retained traversal.
+    for &ordinal in &selected.basis.order {
         let contribution = match shaped.items[ordinal] {
             ShapedItem::TextCluster(i) => {
                 if shaped.clusters[i].whitespace != Whitespace::Newline
@@ -656,9 +689,10 @@ pub(super) fn spacing_responses(
     shaped: &ShapedData,
     order: &crate::SuppliedVisualOrder<'_, '_>,
     natural: &Natural,
+    ledger: &mut Ledger,
 ) -> Result<Vec<(crate::SpacingStretchability, usize)>> {
     use crate::SpacingStretchability as Response;
-    let mut exclusions = vec![Exclusion::default(); shaped.clusters.len()];
+    let mut exclusions = account::filled(ledger, shaped.clusters.len(), Exclusion::default())?;
     for (i, exclusion) in exclusions.iter_mut().enumerate() {
         exclusion.flow = natural.removed[i] || natural.raw_trim[i];
     }
@@ -679,10 +713,9 @@ pub(super) fn spacing_responses(
             }
         }
     }
-    let mut result: Vec<_> = exclusions
-        .iter()
-        .enumerate()
-        .map(|(i, exclusion)| {
+    let mut result = account::collect(
+        ledger,
+        exclusions.iter().enumerate().map(|(i, exclusion)| {
             let response = if let Some((cause, _)) = natural.deferred[i] {
                 Response::Deferred(cause)
             } else if exclusion.flow
@@ -698,14 +731,14 @@ pub(super) fn spacing_responses(
                 Response::Direct
             };
             (response, 0)
-        })
-        .collect();
-    let mut traversal: Vec<_> = order.iter().map(|(ordinal, _)| ordinal).collect();
+        }),
+    )?;
+    let mut traversal = account::collect(ledger, order.iter().map(|(ordinal, _)| ordinal))?;
     if selected.presentation.analysis.base_level & 1 != 0 {
         traversal.reverse();
     }
     let mut intercepted = false;
-    for (rank, ordinal) in traversal.into_iter().enumerate().rev() {
+    for (rank, &ordinal) in traversal.iter().enumerate().rev() {
         if let ShapedItem::TextCluster(index) = shaped.items[ordinal] {
             result[index].1 = rank;
             if matches!(shaped.clusters[index].content, ClusterContent::CssTab(_))
@@ -720,16 +753,19 @@ pub(super) fn spacing_responses(
             }
         }
     }
+    account::drop_vec(ledger, traversal)?;
+    account::drop_vec(ledger, exclusions)?;
     Ok(result)
 }
 
 pub(super) fn allocated(
     selected: &SelectedData,
     shaped: &ShapedData,
-    atomics: &BTreeMap<usize, &AtomicAllocation>,
+    atomics: &OrdinalMap<&AtomicAllocation>,
     order: &crate::SuppliedVisualOrder<'_, '_>,
     natural: Natural,
     metrics: &mut LineMetrics,
+    ledger: &mut Ledger,
 ) -> Result<LineMeasurements> {
     for (i, cause) in natural.deferred.iter().enumerate() {
         if let Some((cause, _)) = cause
@@ -744,7 +780,7 @@ pub(super) fn allocated(
     } else {
         Side::End
     };
-    let (positions, total) = positions(selected, shaped, atomics, order)?;
+    let (positions, total) = positions(selected, shaped, atomics, order, ledger)?;
     let needs_edge = natural.causes.iter().any(|cause| {
         cause
             .rows
@@ -759,33 +795,39 @@ pub(super) fn allocated(
     } else {
         None
     };
-    let mut plans: [Vec<Exclusion>; 4] =
-        std::array::from_fn(|_| vec![Exclusion::default(); shaped.clusters.len()]);
-    let mut rows: Vec<_> = shaped
-        .clusters
-        .iter()
-        .enumerate()
-        .map(|(i, cluster)| EdgeRow {
-            disposition: if natural.removed[i] {
-                Edge::Removed
-            } else if let Some((_, side)) = natural.deferred[i] {
-                Edge::UnconsumedTerminal { side }
-            } else if natural.raw_trim[i] {
-                Edge::Unconditional {
-                    side: body_side,
-                    terminal: true,
-                }
-            } else {
-                Edge::Ordinary
-            },
-            atoms: cluster.atoms.clone(),
-            excluded: 0.0,
-            overlap: 0.0,
-            punctuation_unit: None,
-        })
-        .collect();
-    let mut priority = vec![0; rows.len()];
-    let mut placement = vec![body_side; rows.len()];
+    let mut plans = [
+        account::filled(ledger, shaped.clusters.len(), Exclusion::default())?,
+        account::filled(ledger, shaped.clusters.len(), Exclusion::default())?,
+        account::filled(ledger, shaped.clusters.len(), Exclusion::default())?,
+        account::filled(ledger, shaped.clusters.len(), Exclusion::default())?,
+    ];
+    let mut rows = account::collect(
+        ledger,
+        shaped
+            .clusters
+            .iter()
+            .enumerate()
+            .map(|(i, cluster)| EdgeRow {
+                disposition: if natural.removed[i] {
+                    Edge::Removed
+                } else if let Some((_, side)) = natural.deferred[i] {
+                    Edge::UnconsumedTerminal { side }
+                } else if natural.raw_trim[i] {
+                    Edge::Unconditional {
+                        side: body_side,
+                        terminal: true,
+                    }
+                } else {
+                    Edge::Ordinary
+                },
+                atoms: cluster.atoms.clone(),
+                excluded: 0.0,
+                overlap: 0.0,
+                punctuation_unit: None,
+            }),
+    )?;
+    let mut priority = account::filled(ledger, rows.len(), 0)?;
+    let mut placement = account::filled(ledger, rows.len(), body_side)?;
     for i in 0..rows.len() {
         for (view, plan) in plans.iter_mut().enumerate() {
             if natural.removed[i] {
@@ -925,40 +967,40 @@ pub(super) fn allocated(
         selected,
         shaped,
         atomics,
-        order,
         &positions,
         &plans[FIT],
         Baseline {
             fit_anchor: !native,
             ..baseline
         },
+        ledger,
     )?;
     let minimum = measure(
         selected,
         shaped,
         atomics,
-        order,
         &positions,
         &plans[MIN],
         baseline,
+        ledger,
     )?;
     let maximum = measure(
         selected,
         shaped,
         atomics,
-        order,
         &positions,
         &plans[MAX],
         baseline,
+        ledger,
     )?;
     let alignment = measure(
         selected,
         shaped,
         atomics,
-        order,
         &positions,
         &plans[ALIGN],
         baseline,
+        ledger,
     )?;
     let physical_capacity = if needs_edge {
         Some(match capacity {
@@ -1010,14 +1052,33 @@ pub(super) fn allocated(
             .max(0.0);
         }
     }
+    let formatted_usage = natural.usage;
+    for plan in plans {
+        account::drop_vec(ledger, plan)?;
+    }
+    account::drop_vec(ledger, positions)?;
+    account::drop_vec(ledger, priority)?;
+    account::drop_vec(ledger, placement)?;
+    drop_natural(ledger, natural)?;
     Ok(LineMeasurements {
         fit,
         alignment,
         minimum,
         maximum,
         edges: rows,
-        formatted_usage: natural.usage,
+        formatted_usage,
     })
+}
+
+fn drop_natural(ledger: &mut Ledger, mut natural: Natural) -> Result<()> {
+    for cause in &mut natural.causes {
+        account::drop_vec(ledger, std::mem::take(&mut cause.rows))?;
+    }
+    account::drop_vec(ledger, natural.causes)?;
+    account::drop_vec(ledger, natural.removed)?;
+    account::drop_vec(ledger, natural.raw_trim)?;
+    account::drop_vec(ledger, natural.deferred)?;
+    account::drop_vec(ledger, natural.positions)
 }
 
 #[cfg(test)]

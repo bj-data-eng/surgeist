@@ -400,6 +400,7 @@ mod tests {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         ) else {
             panic!("a first valid block parent does not hide the flex parent role");
         };
@@ -422,6 +423,7 @@ mod tests {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
     }

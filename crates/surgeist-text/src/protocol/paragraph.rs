@@ -603,6 +603,41 @@ impl ParagraphData {
             })
     }
 
+    /// Fallible ownership facet of the same original-origin overlap operation.
+    /// Inspect is emitted before each searched/candidate row is read. It carries
+    /// no resource-policy dependency and performs no geometry projection.
+    pub(crate) fn visit_origin_indices(
+        &self,
+        selected: Range,
+        mut visit: impl FnMut(OriginVisit) -> crate::Result<()>,
+    ) -> crate::Result<()> {
+        let mut first = 0;
+        let mut end = self.origins.len();
+        while first < end {
+            let middle = first + (end - first) / 2;
+            visit(OriginVisit::Inspect)?;
+            if origin_precedes(&self.origins[middle], selected.start) {
+                first = middle + 1;
+            } else {
+                end = middle;
+            }
+        }
+        for index in first..self.origins.len() {
+            visit(OriginVisit::Inspect)?;
+            let origin = &self.origins[index];
+            if origin.aggregate.start > selected.end {
+                break;
+            }
+            if let Some(aggregate) = origin_overlap(origin, selected) {
+                visit(OriginVisit::Intersection {
+                    origin: index,
+                    aggregate,
+                })?;
+            }
+        }
+        Ok(())
+    }
+
     /// Candidate origin intersections in original vector order, including
     /// incident empty anchors. Selected participant coverage decides which
     /// same-offset empty occurrences belong to a particular line.
@@ -611,30 +646,16 @@ impl ParagraphData {
         processed: &'a ProcessedSource,
         selected: Range,
     ) -> impl Iterator<Item = OriginIntersection> + 'a {
-        let first = self.origins.partition_point(|origin| {
-            origin.aggregate.end < selected.start
-                || (origin.aggregate.end == selected.start && !origin.aggregate.is_empty())
-        });
+        let first = self
+            .origins
+            .partition_point(|origin| origin_precedes(origin, selected.start));
         self.origins
             .iter()
             .enumerate()
             .skip(first)
             .take_while(move |(_, origin)| origin.aggregate.start <= selected.end)
             .filter_map(move |(index, origin)| {
-                let aggregate = if origin.aggregate.is_empty() {
-                    let at = origin.aggregate.start;
-                    if at < selected.start || at > selected.end {
-                        return None;
-                    }
-                    origin.aggregate
-                } else {
-                    let start = origin.aggregate.start.max(selected.start);
-                    let end = origin.aggregate.end.min(selected.end);
-                    if start >= end {
-                        return None;
-                    }
-                    Range::new(start, end)
-                };
+                let aggregate = origin_overlap(origin, selected)?;
                 let local = Range::new(
                     origin.local.start + aggregate.start - origin.aggregate.start,
                     origin.local.start + aggregate.end - origin.aggregate.start,
@@ -651,6 +672,28 @@ impl ParagraphData {
                 })
             })
     }
+}
+
+fn origin_precedes(origin: &OriginData, start: usize) -> bool {
+    origin.aggregate.end < start || (origin.aggregate.end == start && !origin.aggregate.is_empty())
+}
+fn origin_overlap(origin: &OriginData, selected: Range) -> Option<Range> {
+    if origin.aggregate.is_empty() {
+        let at = origin.aggregate.start;
+        (at >= selected.start && at <= selected.end).then_some(origin.aggregate)
+    } else {
+        let start = origin.aggregate.start.max(selected.start);
+        let end = origin.aggregate.end.min(selected.end);
+        if start < end {
+            Some(Range::new(start, end))
+        } else {
+            None
+        }
+    }
+}
+pub(crate) enum OriginVisit {
+    Inspect,
+    Intersection { origin: usize, aggregate: Range },
 }
 
 /// Exact actual source occurrence association used by finalized fragment views.

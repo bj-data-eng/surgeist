@@ -83,7 +83,10 @@ fn whole(p: &PreparedText) -> FinalizedLine {
         .collect();
     p.select(value)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn selected(p: &PreparedText, offer: PreparedOpportunity) -> FinalizedLine {
@@ -119,7 +122,10 @@ fn selected(p: &PreparedText, offer: PreparedOpportunity) -> FinalizedLine {
         .collect();
     p.select(value)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn error_reason(error: &crate::Error) -> HyphenationError {
@@ -500,7 +506,10 @@ fn automatic_points_use_their_own_preceding_styles_and_keep_rejected_shy_identit
         let measured = p
             .select(value)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(measured.feedback().advance, 90.0);
         let mut system = system();

@@ -229,7 +229,10 @@ fn compose(
             },
         })
         .unwrap()
-        .finalize(text::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: text::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     let layout = text::Layout::from_finalized_lines(text::PlacementRequest {
         prepared,

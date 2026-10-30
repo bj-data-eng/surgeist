@@ -11,9 +11,14 @@ use crate::{
 };
 use std::sync::Arc;
 
+pub(crate) mod alignment;
 pub(crate) mod canonical;
 mod capture;
 mod computed;
+pub use alignment::{
+    ScopeAlignmentBoundary, ScopeAlignmentError, ScopeAlignmentLimitKind, ScopeAlignmentLimits,
+    ScopeAlignmentUsage, ScopeFontReference,
+};
 pub use capture::*;
 pub use computed::{ComputedLineBoundaryError, ComputedLineBoundaryInput, SourceBoxSide};
 
@@ -46,12 +51,15 @@ pub enum SourceProcessingScope {
         trim: WhiteSpaceTrim,
         style: Option<Style>,
         boundaries: Option<SourceProcessingScopeBoundaries>,
+        alignment_boundary: Option<ScopeAlignmentBoundary>,
+        font_reference: Option<ScopeFontReference>,
     },
     Block {
         topology: SourceProcessingTopology,
         trim: WhiteSpaceTrim,
         base_style: Style,
         used_direction: ParagraphBaseDirection,
+        font_reference: Option<ScopeFontReference>,
     },
     AtomicBlock {
         topology: SourceProcessingTopology,
@@ -59,6 +67,7 @@ pub enum SourceProcessingScope {
         base_style: Style,
         used_direction: ParagraphBaseDirection,
         atomic: usize,
+        font_reference: Option<ScopeFontReference>,
     },
     OutOfFlowBlock {
         topology: SourceProcessingTopology,
@@ -66,9 +75,26 @@ pub enum SourceProcessingScope {
         base_style: Style,
         used_direction: ParagraphBaseDirection,
         atomic: usize,
+        font_reference: Option<ScopeFontReference>,
     },
 }
 impl SourceProcessingScope {
+    fn alignment_boundary(&self) -> Option<ScopeAlignmentBoundary> {
+        match self {
+            Self::Inline {
+                alignment_boundary, ..
+            } => *alignment_boundary,
+            Self::Block { .. } | Self::AtomicBlock { .. } | Self::OutOfFlowBlock { .. } => None,
+        }
+    }
+    fn font_reference(&self) -> Option<ScopeFontReference> {
+        match self {
+            Self::Inline { font_reference, .. }
+            | Self::Block { font_reference, .. }
+            | Self::AtomicBlock { font_reference, .. }
+            | Self::OutOfFlowBlock { font_reference, .. } => *font_reference,
+        }
+    }
     fn trim(&self) -> WhiteSpaceTrim {
         match self {
             Self::Inline { trim, .. }
@@ -128,6 +154,10 @@ pub enum SourceProcessingEnvelope {
 /// once in `events`; ranges and nesting are not repeated in scope/paragraph facts.
 #[derive(Clone, Debug)]
 pub struct ContextualSourceInput {
+    /// Explicit limits for supplied scope-alignment facts and their later use.
+    /// None preserves non-demanding captures; any supplied alignment fact needs
+    /// limits before capture can retain its feature payload.
+    pub scope_alignment_limits: Option<ScopeAlignmentLimits>,
     /// Computed mandatory causes at actual input-local box edges.
     pub computed_line_boundaries: Vec<ComputedLineBoundaryInput>,
     pub source: Source,
@@ -208,6 +238,7 @@ pub(crate) struct ScopedEvent {
 #[derive(Clone, Debug)]
 pub(crate) struct ScopeCapture {
     canonical: canonical::CanonicalCache,
+    scope_alignment: Option<alignment::ScopeAlignmentCapture>,
     pub(crate) computed_input_rows: Vec<usize>,
     pub(crate) computed: Vec<computed::CapturedComputedBoundaryData>,
     pub(crate) origin_orders: Vec<usize>,
@@ -415,6 +446,8 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
     }
     crate::source_model::validate_structure(&input.source)?;
     super::validate_delimiters(&input.source, &input.segment_breaks)?;
+    let scope_alignment =
+        alignment::ScopeAlignmentCapture::capture(&input.scopes, input.scope_alignment_limits)?;
     let mut scopes = vec![false; input.scopes.len()];
     let mut paragraphs = vec![false; input.paragraphs.len()];
     let mut origins = vec![false; input.origins.len()];
@@ -437,6 +470,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
     let mut cursor = 0;
     let mut topology = ScopeCapture {
         canonical: canonical::CanonicalCache::default(),
+        scope_alignment,
         computed_input_rows: Vec::new(),
         computed: Vec::new(),
         origin_orders: vec![0; input.origins.len()],

@@ -240,7 +240,12 @@ fn mixed_css_tab_uses_the_actual_horizontal_scalar_space_resource() {
     value.context.spacing = SpacingPolicy::None;
     value.context.tabs = TabContext::CssStops { origin: Some(0.0) };
     let selected = prepared.select(value).unwrap();
-    let line = selected.finalize(SpacingAllocations::None).unwrap();
+    let line = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     // R X10 reaches the next2*SPACE10 stop20, followed by upright Han12.
     assert_eq!(line.feedback().advance, 32.0);
     assert_eq!(

@@ -40,8 +40,14 @@ fn solve<S: l::LayoutScalar>(
     space: l::Size<l::AvailableOf<S>>,
     changed: &[u32],
 ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
-    let flow = l::LayoutFlowInput::try_new(host, 0, bindings.to_vec(), l::WrappingInput::default())
-        .expect("actual capture, host and issued origin must form a valid binding");
+    let flow = l::LayoutFlowInput::try_new(
+        host,
+        0,
+        bindings.to_vec(),
+        l::WrappingInput::default(),
+        Vec::new(),
+    )
+    .expect("actual capture, host and issued origin must form a valid binding");
     l::compute_layout_with_flow_invalidated(
         &flow,
         0,

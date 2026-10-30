@@ -79,7 +79,10 @@ impl PartialEq for CompletionPredecessor {
             ) => {
                 // Keep the capability, but compare its deterministic admitted
                 // inputs, not the allocation identity of fresh finalization.
-                a.selected_line().request() == b.selected_line().request() && aa == ba && ac == bc
+                a.selected_line().request() == b.selected_line().request()
+                    && aa == ba
+                    && ac == bc
+                    && a.scope_allocations() == b.scope_allocations()
             }
             (
                 Self::Observed {
@@ -336,7 +339,7 @@ impl BoxAssignment {
     pub fn struts(&self) -> Vec<LineBoxStrut> {
         self.contributions
             .iter()
-            .map(|allocation| allocation.original)
+            .map(|allocation| allocation.original.clone())
             .collect()
     }
 }

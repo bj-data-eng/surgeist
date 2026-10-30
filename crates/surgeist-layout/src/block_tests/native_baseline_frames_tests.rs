@@ -188,8 +188,14 @@ fn measured<S: LayoutScalar>(
             1,
             LayoutInputOf::inline_text(TextParticipation::new(binding.origins[0].origin.clone())),
         );
-    let capture =
-        LayoutFlowInput::try_new(&tree, 0, vec![binding], WrappingInput::default()).unwrap();
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![binding],
+        WrappingInput::default(),
+        Vec::new(),
+    )
+    .unwrap();
     let mut owner = crate::engine::ComputeSession::with_flow(&capture, Vec::new());
     let known = if vertical(mode) {
         Size::new(known_cross.map(n), None)
@@ -400,7 +406,8 @@ fn scene_measure<Tree: LayoutTree<Node = u32>>(
 where
     Tree::MeasureError: core::fmt::Debug,
 {
-    let capture = LayoutFlowInput::try_new(tree, 0, bindings, WrappingInput::default()).unwrap();
+    let capture =
+        LayoutFlowInput::try_new(tree, 0, bindings, WrappingInput::default(), Vec::new()).unwrap();
     let mut owner = crate::engine::ComputeSession::with_flow(&capture, Vec::new());
     let output = owner
         .compute_child(0, scene_request(Size::NONE, 100.0))
@@ -518,9 +525,14 @@ fn unknown_and_absent<S: LayoutScalar>() {
                 // width is genuinely measured, not a supplied baseline fact.
                 tree = tree.with_measurement(2, Size::new(n(4.0), n(100.0)));
             }
-            let capture =
-                LayoutFlowInput::try_new(&tree, 0, vec![binding.clone()], WrappingInput::default())
-                    .unwrap();
+            let capture = LayoutFlowInput::try_new(
+                &tree,
+                0,
+                vec![binding.clone()],
+                WrappingInput::default(),
+                Vec::new(),
+            )
+            .unwrap();
             let mut owner = crate::engine::ComputeSession::with_flow(&capture, Vec::new());
             let request = scene_request(Size::NONE, 100.0);
             let child_output = owner.compute_child(2, request).unwrap();
@@ -587,9 +599,14 @@ fn nested<S: LayoutScalar>() {
                     binding.origins[0].origin.clone(),
                 )),
             );
-        let capture =
-            LayoutFlowInput::try_new(&tree, 0, vec![binding.clone()], WrappingInput::default())
-                .unwrap();
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![binding.clone()],
+            WrappingInput::default(),
+            Vec::new(),
+        )
+        .unwrap();
         let mut owner = crate::engine::ComputeSession::with_flow(&capture, Vec::new());
         let request = scene_request(Size::NONE, 100.0);
         // Resolve the actual child in its own20px box first. Inheritance then
@@ -685,9 +702,14 @@ impl<S: LayoutScalar> MemoTree<S> {
         request: ComputeInputOf<S>,
         hit: bool,
     ) -> ComputeOutputOf<S> {
-        let capture =
-            LayoutFlowInput::try_new(self, 0, vec![paragraph.binding()], WrappingInput::default())
-                .unwrap();
+        let capture = LayoutFlowInput::try_new(
+            self,
+            0,
+            vec![paragraph.binding()],
+            WrappingInput::default(),
+            Vec::new(),
+        )
+        .unwrap();
         let mut owner = crate::engine::ComputeSession::with_flow(&capture, Vec::new());
         self.lookups.borrow_mut().clear();
         let output = owner.compute_child(0, request).unwrap();
@@ -899,8 +921,14 @@ fn genuine_refinement<S: LayoutScalar>() {
         set: crate::output::NamedBaselineSet::First,
     });
     {
-        let capture =
-            LayoutFlowInput::try_new(&tree, 0, vec![binding], WrappingInput::default()).unwrap();
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![binding],
+            WrappingInput::default(),
+            Vec::new(),
+        )
+        .unwrap();
         let mut owner = crate::engine::ComputeSession::with_flow(&capture, Vec::new());
         // The existing definite-size front may skip baseline inspection when
         // its only child is out of flow. A genuine named demand inspects the

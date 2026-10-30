@@ -333,7 +333,10 @@ fn composed_line(
     let line = prepared
         .select(input)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     (prepared, line)
 }

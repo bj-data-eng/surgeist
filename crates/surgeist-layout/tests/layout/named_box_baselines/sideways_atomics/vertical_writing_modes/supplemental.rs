@@ -57,7 +57,10 @@ fn standalone(parent: &Captured, kind: Option<t::InlineBoxKind>) -> t::Finalized
             },
         })
         .unwrap()
-        .finalize(t::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: t::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     let text_advance = if parent.source.text().is_empty() {
         0.0
@@ -710,7 +713,10 @@ fn forced_line(
             },
         })
         .unwrap()
-        .finalize(t::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: t::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn forced<S: l::LayoutScalar>() {
@@ -888,9 +894,14 @@ impl<S: l::LayoutScalar> ShapeHost<S> {
         bindings: &[l::TextParagraphBinding<u32>],
         changed: &[u32],
     ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S, Refusal>> {
-        let flow =
-            l::LayoutFlowInput::try_new(self, 0, bindings.to_vec(), l::WrappingInput::default())
-                .unwrap();
+        let flow = l::LayoutFlowInput::try_new(
+            self,
+            0,
+            bindings.to_vec(),
+            l::WrappingInput::default(),
+            Vec::new(),
+        )
+        .unwrap();
         l::compute_layout_with_flow_invalidated(
             &flow,
             0,

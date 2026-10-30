@@ -70,6 +70,7 @@ fn prepare(
         vec![text::Range::new(0, 1)]
     };
     let capture = text::process_contextual_source(text::ContextualSourceInput {
+        scope_alignment_limits: None,
         source: source.clone(),
         segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
         envelope: text::SourceProcessingEnvelope::Complete,
@@ -113,6 +114,7 @@ fn prepare(
         replacements: vec![],
         computed_line_boundaries: vec![],
         scopes: vec![text::SourceProcessingScope::Block {
+            font_reference: None,
             topology: text::SourceProcessingTopology::Complete,
             used_direction: text::ParagraphBaseDirection::LeftToRight,
             trim: text::WhiteSpaceTrim::default(),
@@ -308,6 +310,7 @@ fn assert_composition(kind: text::InlineBoxKind) {
             },
         ],
         layout::WrappingInput::default(),
+        Vec::new(),
     )
     .unwrap();
     let batch = layout::compute_layout_with_flow(

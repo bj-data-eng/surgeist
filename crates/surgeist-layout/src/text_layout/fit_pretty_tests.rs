@@ -259,6 +259,7 @@ fn pretty_ordinary_closure_replays_the_real_float_journal_and_agrees_with_a_fres
             0,
             vec![paragraph.binding(0)],
             crate::WrappingInput::default(),
+            Vec::new(),
         )
         .unwrap();
         let compute = || {

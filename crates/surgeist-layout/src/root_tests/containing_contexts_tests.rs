@@ -1444,6 +1444,7 @@ fn fri06_c02_block_text_containing_baselines_align_flex_items_both_scalars() {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let batch = compute_layout_with_flow(

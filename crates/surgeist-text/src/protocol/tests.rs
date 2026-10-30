@@ -29,6 +29,7 @@ mod metric_heights;
 mod negative_tabs;
 mod phase_two;
 mod raw_automatic_hyphenation;
+mod scope_alignment;
 mod scope_incidence_locality;
 mod separators;
 mod shared_unit_endpoints;
@@ -185,10 +186,13 @@ fn prepared_selected_finalized_placed_share_actual_resources_and_fractional_anch
     let slots: Vec<_> = selected.spacing_slots().collect();
     assert_eq!(slots.len(), 1);
     let line = selected
-        .finalize(SpacingAllocations::Complete(vec![SpacingAllocation {
-            slot: slots[0].clone(),
-            amount: 0.25,
-        }]))
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
+                slot: slots[0].clone(),
+                amount: 0.25,
+            }]),
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 60.25);
     assert_eq!(
@@ -240,7 +244,10 @@ fn selection_refuses_foreign_and_incomplete_captures_and_spacing_custody() {
     assert!(matches!(
         reason(
             &a_selected
-                .finalize(SpacingAllocations::Complete(vec![]))
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::Complete(vec![]),
+                    scopes: crate::ScopeAllocations::None
+                })
                 .unwrap_err()
         ),
         ProtocolError::MissingSpacingSlot { slot: 0 }
@@ -249,10 +256,13 @@ fn selection_refuses_foreign_and_incomplete_captures_and_spacing_custody() {
     assert_eq!(
         reason(
             &a_selected
-                .finalize(SpacingAllocations::Complete(vec![SpacingAllocation {
-                    slot,
-                    amount: 1.0
-                }]))
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
+                        slot,
+                        amount: 1.0
+                    }]),
+                    scopes: crate::ScopeAllocations::None
+                })
                 .unwrap_err()
         ),
         &ProtocolError::ForeignSelectedLine
@@ -261,13 +271,16 @@ fn selection_refuses_foreign_and_incomplete_captures_and_spacing_custody() {
     assert!(matches!(
         reason(
             &a_selected
-                .finalize(SpacingAllocations::Complete(vec![
-                    SpacingAllocation {
-                        slot: slot.clone(),
-                        amount: 1.0
-                    },
-                    SpacingAllocation { slot, amount: 2.0 }
-                ]))
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::Complete(vec![
+                        SpacingAllocation {
+                            slot: slot.clone(),
+                            amount: 1.0
+                        },
+                        SpacingAllocation { slot, amount: 2.0 }
+                    ]),
+                    scopes: crate::ScopeAllocations::None
+                })
                 .unwrap_err()
         ),
         ProtocolError::DuplicateSpacingSlot { slot: 0 }
@@ -281,7 +294,10 @@ fn explicit_placement_retains_exact_preparation_and_rejects_foreign_lines() {
     let line = a
         .select(request(&a))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert!(matches!(
         reason(&place(b, line.clone(), 0.0, 16.0).unwrap_err()),
@@ -303,7 +319,10 @@ fn composed_whitespace_executes_correspondence_and_phase_catalogue_is_truthful()
     let line = p
         .select(request(&p))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 60.0);
     assert_eq!(
@@ -345,7 +364,10 @@ fn font_advance_tab_is_the_actual_retained_glyph_not_a_space_approximation() {
     let line = p
         .select(native)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 60.0);
     let glyphs: Vec<_> = line
@@ -366,7 +388,10 @@ fn font_advance_tab_is_the_actual_retained_glyph_not_a_space_approximation() {
     let line = tab
         .select(native)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 20.0);
     assert_eq!(line.feedback().trailing_whitespace, 20.0);
@@ -512,7 +537,12 @@ fn selected_empty_control(policy: ParagraphStrut) -> SelectedLine {
 #[test]
 fn allocated_empty_line_keeps_explicit_zero_without_borrowing_body_font_metrics() {
     let selected = selected_empty_control(ParagraphStrut::AllocatedContributions);
-    let line = selected.finalize(SpacingAllocations::None).unwrap();
+    let line = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(line.feedback().line_height, 0.0);
     assert_eq!(line.feedback().baseline, 0.0);
     assert_eq!(line.run_views().count(), 0);
@@ -521,7 +551,12 @@ fn allocated_empty_line_keeps_explicit_zero_without_borrowing_body_font_metrics(
 #[test]
 fn default_empty_line_uses_the_captured_base_font_instead_of_overriding_body_span() {
     let selected = selected_empty_control(ParagraphStrut::DefaultFont);
-    let line = selected.finalize(SpacingAllocations::None).unwrap();
+    let line = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(line.feedback().line_height, 10.0);
     assert_eq!(line.feedback().baseline, 8.0);
     assert_eq!(line.run_views().next().unwrap().font_size(), 10.0);
@@ -685,7 +720,10 @@ fn native_unforced_break_keeps_arabic_joining_on_both_sides() {
     let whole = prepared
         .select(whole_request.clone())
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     // arabic_ahem's literal Beh forms are isol35/init100/medi277/fina82.
     // CSS Text4 §6.5 requires joining forms as if the word remained whole
@@ -720,7 +758,10 @@ fn native_unforced_break_keeps_arabic_joining_on_both_sides() {
     let first = prepared
         .select(first_request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let mut continuation_request = whole_request;
     continuation_request.start = cut;
@@ -730,7 +771,10 @@ fn native_unforced_break_keeps_arabic_joining_on_both_sides() {
     let continuation = prepared
         .select(continuation_request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(first.selected_line().request().context.end, LineEnd::Soft);
     assert_eq!(

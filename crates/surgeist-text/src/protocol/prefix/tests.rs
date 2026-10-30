@@ -105,7 +105,10 @@ fn whole(prepared: &PreparedText) -> FinalizedLine {
         .unwrap()
         .handle();
     selected_end(prepared, termination, None)
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn native(
@@ -495,7 +498,12 @@ fn finalized_prefix_optional_unit_failure_does_not_poison_other_actual_queries()
         })
         .unwrap();
     assert_eq!(selected.inner.presentation.analysis.graphemes, [0..1, 1..3]);
-    let line = selected.finalize(SpacingAllocations::None).unwrap();
+    let line = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(
         line.run_views()
             .flat_map(|run| {
@@ -695,7 +703,12 @@ fn finalized_prefix_replacement_is_bundled_with_its_real_defining_control() {
         alternative.view().opportunity().unwrap(),
         Some(alternative.clone()),
     );
-    let line = selected.finalize(SpacingAllocations::None).unwrap();
+    let line = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     let control = prepared.control_views().next().unwrap().handle();
     let before = TextSeam::BeforeParticipant(PreparedParticipant::Control(control.clone()));
     let after = TextSeam::AfterParticipant(PreparedParticipant::Control(control));
@@ -740,7 +753,10 @@ fn finalized_prefix_break_reshaping_replaces_the_actual_shared_association() {
         .unwrap()
         .handle();
     let line = selected_end(&prepared, termination, None)
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 12.5);
     assert!(line.prefix_at(&query).unwrap().interior_unit().is_none());
@@ -872,7 +888,10 @@ fn finalized_original_prefix_membership_uses_actual_control_bundle_and_allocated
     let line = prepared
         .select(request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let controls: Vec<_> = prepared
         .control_views()
@@ -935,7 +954,10 @@ fn finalized_original_prefix_membership_uses_actual_control_bundle_and_allocated
         first_alternative.view().opportunity().unwrap(),
         Some(first_alternative.clone()),
     )
-    .finalize(SpacingAllocations::None)
+    .finalize(crate::LineAllocations {
+        spacing: SpacingAllocations::None,
+        scopes: crate::ScopeAllocations::None,
+    })
     .unwrap();
     assert_eq!(first.feedback().advance, 25.0);
     let alternative = prepared.alternative_views().nth(1).unwrap().handle();
@@ -956,7 +978,10 @@ fn finalized_original_prefix_membership_uses_actual_control_bundle_and_allocated
     let line = prepared
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let control = PreparedParticipant::Control(prepared.control_views().nth(1).unwrap().handle());
     assert!(
@@ -1095,7 +1120,10 @@ fn finalized_original_prefix_source_replacement_keeps_its_defining_source_bundle
         first_alternative.view().opportunity().unwrap(),
         Some(first_alternative.clone()),
     )
-    .finalize(SpacingAllocations::None)
+    .finalize(crate::LineAllocations {
+        spacing: SpacingAllocations::None,
+        scopes: crate::ScopeAllocations::None,
+    })
     .unwrap();
     assert_eq!(first.feedback().advance, 25.0);
     let alternative = prepared.alternative_views().nth(1).unwrap().handle();
@@ -1115,7 +1143,10 @@ fn finalized_original_prefix_source_replacement_keeps_its_defining_source_bundle
     let line = prepared
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let defining=prepared.participants().find(|p|matches!(p,PreparedParticipant::Text(unit) if unit.view().source_range()==Range::new(3,4))).unwrap();
     assert!(
@@ -1184,7 +1215,10 @@ fn finalized_content_is_distinct_from_separator_and_strut_flow_participation() {
         .unwrap()
         .handle();
     let line = selected_end(&prepared, forced, None)
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert!(!line.has_in_flow_content());
     assert!(
@@ -1213,7 +1247,10 @@ fn finalized_content_is_distinct_from_separator_and_strut_flow_participation() {
     let line = prepared
         .select(request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert!(!line.has_in_flow_content());
     let participant =

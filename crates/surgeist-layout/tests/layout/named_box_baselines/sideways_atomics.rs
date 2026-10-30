@@ -114,6 +114,7 @@ fn capture(
     }
     let processed = Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
             envelope: t::SourceProcessingEnvelope::Complete,
@@ -149,6 +150,7 @@ fn capture(
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![t::SourceProcessingScope::Block {
+                font_reference: None,
                 topology: t::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
@@ -270,7 +272,10 @@ fn selected(parent: &Captured, kind: t::InlineBoxKind) -> t::FinalizedLine {
         },
     })
     .unwrap()
-    .finalize(t::SpacingAllocations::None)
+    .finalize(surgeist_text::LineAllocations {
+        spacing: t::SpacingAllocations::None,
+        scopes: surgeist_text::ScopeAllocations::None,
+    })
     .unwrap()
 }
 
@@ -404,7 +409,9 @@ fn run<S: l::LayoutScalar>(
     changed: &[u32],
     space: l::Size<l::AvailableOf<S>>,
 ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
-    let flow = l::LayoutFlowInput::try_new(host, 0, bindings, l::WrappingInput::default()).unwrap();
+    let flow =
+        l::LayoutFlowInput::try_new(host, 0, bindings, l::WrappingInput::default(), Vec::new())
+            .unwrap();
     l::compute_layout_with_flow_invalidated(
         &flow,
         0,
