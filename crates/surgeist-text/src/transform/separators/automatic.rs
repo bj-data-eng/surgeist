@@ -103,7 +103,8 @@ fn anchor_order(
     match item {
         SemanticAnchorItem::Control(index) => topology.control_orders[index],
         SemanticAnchorItem::ComputedLineBoundary(index) => paragraph.computed_boundaries[index].capture_cut,
-        SemanticAnchorItem::EmptyOrigin(index) => topology.origin_orders[index],
+        SemanticAnchorItem::EmptyOrigin(index) => paragraph.captured_origin_event(index)
+            .expect("captured empty origin retains its event"),
         SemanticAnchorItem::Atomic(index) => topology.capture.events.iter().position(|event| matches!(event.event, SourceProcessingEvent::Atomic { atomic, .. } if atomic == index)).expect("admitted atomic occurrence"),
     }
 }
@@ -122,8 +123,12 @@ fn custody(
     let right_origin = incident_origins(paragraph, input.atoms[atom].source)
         .next()
         .expect("actual right original contribution");
-    let left = topology.origin_orders[left_origin];
-    let right = topology.origin_orders[right_origin];
+    let left = paragraph
+        .captured_origin_event(left_origin)
+        .expect("captured left origin retains its event");
+    let right = paragraph
+        .captured_origin_event(right_origin)
+        .expect("captured right origin retains its event");
     let mut owner = topology.capture.events[left]
         .before
         .expect("origin has actual scope");

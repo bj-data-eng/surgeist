@@ -639,15 +639,12 @@ impl PreparedOriginView<'_> {
     /// Genuine original occurrence in global mixed-event order, when captured.
     #[must_use]
     pub fn capture_position(&self) -> Option<CapturedEventPosition> {
-        self.prepared
-            .analyzed
-            .paragraph
-            .scope_topology
-            .as_ref()
-            .map(|topology| CapturedEventPosition {
-                capture: Arc::clone(&topology.capture),
-                index: topology.origin_orders[self.index],
-            })
+        let paragraph = &self.prepared.analyzed.paragraph;
+        let topology = paragraph.scope_topology.as_ref()?;
+        Some(CapturedEventPosition {
+            capture: Arc::clone(&topology.capture),
+            index: paragraph.captured_origin_event(self.index)?,
+        })
     }
 
     /// Retains the actual occurrence capability; equal Source values do not alias it.

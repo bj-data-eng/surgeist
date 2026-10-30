@@ -325,7 +325,6 @@ pub(crate) struct ParagraphTopology {
     pub(crate) capture: Arc<ScopeCapture>,
     pub(crate) paragraph: usize,
     pub(crate) domain: usize,
-    pub(crate) origin_orders: Vec<usize>,
     pub(crate) control_orders: Vec<usize>,
 }
 pub(crate) fn invalid(reason: SourceProcessingError) -> crate::Error {
@@ -1240,7 +1239,6 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                 capture: Arc::clone(&topology),
                 paragraph: index,
                 domain: capture.domain,
-                origin_orders: capture.origin_orders.clone(),
                 control_orders: capture
                     .controls
                     .iter()
@@ -1252,6 +1250,10 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
             } else {
                 crate::ParagraphTerminalEdge::NonBlockBoundary
             },
+            origin_map: crate::protocol::paragraph::OriginMap::captured(
+                capture.origin_orders,
+                capture.origins.len(),
+            )?,
             origins: capture
                 .origins
                 .iter()

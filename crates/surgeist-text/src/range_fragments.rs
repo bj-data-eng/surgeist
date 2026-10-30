@@ -463,6 +463,13 @@ impl Layout {
             view.aggregate_range().start + (local.end - captured.start),
         );
         let analyzed = &self.inner.prepared.analyzed;
+        let origin_key = analyzed.paragraph.origin_map.flow_origin(
+            analyzed
+                .paragraph
+                .origin_map
+                .view(origin.index)
+                .expect("admitted placed origin belongs to its actual view"),
+        );
         analyzed
             .paragraph
             .admit(analyzed.processed.source(), aggregate)?;
@@ -510,7 +517,7 @@ impl Layout {
                         custody.extend(
                             map.original_pieces(row)
                                 .iter()
-                                .filter(|piece| piece.origin == origin.index)
+                                .filter(|piece| piece.origin == origin_key)
                                 .filter_map(|piece| overlap(piece.aggregate, aggregate)),
                         );
                     }

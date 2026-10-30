@@ -262,7 +262,11 @@ fn original_atom_owners(
             for piece in &analyzed.transform.pieces[analyzed.transform.rows[row].pieces.clone()] {
                 budget.work(1)?;
                 insert(
-                    topology.capture.events[topology.origin_orders[piece.origin]].before,
+                    topology.capture.events[piece
+                        .origin
+                        .captured_event()
+                        .expect("captured transform origin retains its event")]
+                    .before,
                     budget,
                 )?;
             }
@@ -651,7 +655,9 @@ fn alternative_owner(
     let topology = analyzed.paragraph.scope_topology.as_ref()?;
     let order = match definition {
         AlternativeDefinition::Source { origin, .. }
-        | AlternativeDefinition::Automatic { origin, .. } => *topology.origin_orders.get(origin)?,
+        | AlternativeDefinition::Automatic { origin, .. } => {
+            analyzed.paragraph.captured_origin_event(origin)?
+        }
         AlternativeDefinition::Control { control, .. } => *topology.control_orders.get(control)?,
     };
     topology
@@ -703,7 +709,14 @@ fn visit_unit_source_owners(
     let owner = match unit.kind {
         K::Atomic { occurrence } => capture.events[capture.atomic_orders[occurrence]].before,
         K::Control { occurrence } => capture.events[topology.control_orders[occurrence]].before,
-        K::EmptyOrigin { origin } => capture.events[topology.origin_orders[origin]].before,
+        K::EmptyOrigin { origin } => {
+            capture.events[prepared
+                .analyzed
+                .paragraph
+                .captured_origin_event(origin)
+                .expect("captured empty origin retains its event")]
+            .before
+        }
         K::Replacement { alternative, .. } => alternative_owner(
             &prepared.analyzed,
             prepared.tables.alternatives[alternative].definition,
@@ -730,8 +743,12 @@ fn visit_unit_source_owners(
                         } => {
                             if !aggregate.is_empty() {
                                 budget.work(1)?;
-                                if let Some(owner) =
-                                    capture.events[topology.origin_orders[origin]].before
+                                if let Some(owner) = capture.events[prepared
+                                    .analyzed
+                                    .paragraph
+                                    .captured_origin_event(origin)
+                                    .expect("captured source origin retains its event")]
+                                .before
                                 {
                                     emit(owner, budget)?;
                                 }

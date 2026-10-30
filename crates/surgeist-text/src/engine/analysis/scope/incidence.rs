@@ -97,7 +97,12 @@ impl IncidenceIndex {
                         ComponentOwner::Original(row) => support.extend(
                             core.transform.pieces[core.transform.rows[row].pieces.clone()]
                                 .iter()
-                                .map(|piece| topology.origin_orders[piece.origin]),
+                                .map(|piece| {
+                                    piece
+                                        .origin
+                                        .captured_event()
+                                        .expect("captured transform origin retains its event")
+                                }),
                         ),
                         ComponentOwner::Wbr(control) => {
                             support.push(topology.control_orders[control])
@@ -121,7 +126,12 @@ impl IncidenceIndex {
                     support.extend(
                         core.transform.pieces[core.transform.rows[row].pieces.clone()]
                             .iter()
-                            .map(|piece| topology.origin_orders[piece.origin]),
+                            .map(|piece| {
+                                piece
+                                    .origin
+                                    .captured_event()
+                                    .expect("captured transform removal retains its event")
+                            }),
                     );
                     if support.is_empty() {
                         represented = false;
@@ -132,16 +142,22 @@ impl IncidenceIndex {
                         core.paragraph
                             .origin_intersections(&core.processed, source)
                             .filter(|piece| !piece.aggregate.is_empty())
-                            .map(|piece| topology.origin_orders[piece.origin]),
+                            .map(|piece| {
+                                core.paragraph
+                                    .captured_origin_event(piece.origin)
+                                    .expect("captured deletion retains its original occurrence")
+                            }),
                     );
                     if support.is_empty() {
                         represented = false;
                     }
                 }
                 RelationEvent::Anchor { order } => match core.paragraph.anchor_order[order].item {
-                    SemanticAnchorItem::EmptyOrigin(origin) => {
-                        support.push(topology.origin_orders[origin])
-                    }
+                    SemanticAnchorItem::EmptyOrigin(origin) => support.push(
+                        core.paragraph
+                            .captured_origin_event(origin)
+                            .expect("captured empty origin retains its event"),
+                    ),
                     SemanticAnchorItem::Atomic(atomic) => {
                         support.push(capture.atomic_orders[atomic])
                     }

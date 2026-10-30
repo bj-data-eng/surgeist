@@ -449,7 +449,17 @@ fn split_origin_dot_and_acute_use_actual_context_through_neutral_oof() {
             for row in 0..2 {
                 let piece = &map.original_pieces(row)[0];
                 assert_eq!(
-                    (piece.origin, piece.local, piece.aggregate),
+                    (
+                        analyzed
+                            .inner
+                            .paragraph
+                            .origin_map
+                            .view_origin(piece.origin)
+                            .expect("original contribution belongs to this view")
+                            .get(),
+                        piece.local,
+                        piece.aggregate,
+                    ),
                     (row, Range::new(0, 1), Range::new(row, row + 1))
                 );
             }

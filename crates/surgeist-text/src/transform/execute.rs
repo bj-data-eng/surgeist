@@ -303,10 +303,14 @@ pub(super) fn apply(
                 };
                 if !pieces.is_empty()
                     && pieces.iter().all(|piece| {
-                        paragraph.origins[piece.origin]
-                            .text_node
-                            .as_ref()
-                            .is_some_and(|node| super::math::eligible(node.text()))
+                        paragraph.origins[paragraph
+                            .origin_map
+                            .view_origin(piece.origin)
+                            .expect("transform input retains its actual original declaration")
+                            .get()]
+                        .text_node
+                        .as_ref()
+                        .is_some_and(|node| super::math::eligible(node.text()))
                     })
                     && let Some(target) = super::math::map(values[row])
                 {

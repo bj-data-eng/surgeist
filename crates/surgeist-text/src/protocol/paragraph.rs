@@ -426,12 +426,121 @@ impl OriginData {
     }
 }
 
+/// An original occurrence in the retained source context, never a view index.
+/// Captured event ordinals are interpreted only with that context's capture.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum FlowOriginKey {
+    CapturedEvent(usize),
+    ExactOrdinal(usize),
+}
+impl FlowOriginKey {
+    pub(crate) const fn captured_event(self) -> Option<usize> {
+        match self {
+            Self::CapturedEvent(order) => Some(order),
+            Self::ExactOrdinal(_) => None,
+        }
+    }
+}
+
+/// A checked index in this exact view's original declaration inventory.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ViewOriginIndex(usize);
+impl ViewOriginIndex {
+    pub(crate) const fn get(self) -> usize {
+        self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+enum OriginBasis {
+    Captured(Vec<usize>),
+    Exact(usize),
+}
+
+/// The sole correspondence between original context keys and this view's rows.
+/// The captured vector is moved from capture admission, not duplicated.
+#[derive(Clone, Debug)]
+pub(crate) struct OriginMap {
+    basis: OriginBasis,
+}
+impl OriginMap {
+    pub(crate) const fn exact(count: usize) -> Self {
+        Self {
+            basis: OriginBasis::Exact(count),
+        }
+    }
+
+    pub(crate) fn captured(orders: Vec<usize>, count: usize) -> Result<Self> {
+        if orders.len() != count || orders.windows(2).any(|pair| pair[0] >= pair[1]) {
+            return Err(crate::processing::contextual::invalid(
+                crate::SourceProcessingError::OriginCorrespondence,
+            ));
+        }
+        Ok(Self {
+            basis: OriginBasis::Captured(orders),
+        })
+    }
+
+    pub(crate) fn view(&self, index: usize) -> Option<ViewOriginIndex> {
+        let count = match &self.basis {
+            OriginBasis::Captured(orders) => orders.len(),
+            OriginBasis::Exact(count) => *count,
+        };
+        (index < count).then_some(ViewOriginIndex(index))
+    }
+
+    pub(crate) fn flow_origin(&self, view: ViewOriginIndex) -> FlowOriginKey {
+        match &self.basis {
+            OriginBasis::Captured(orders) => FlowOriginKey::CapturedEvent(orders[view.0]),
+            OriginBasis::Exact(count) => {
+                assert!(view.0 < *count, "checked origin belongs to this exact view");
+                FlowOriginKey::ExactOrdinal(view.0)
+            }
+        }
+    }
+
+    pub(crate) fn view_origin(&self, key: FlowOriginKey) -> Option<ViewOriginIndex> {
+        self.visit_view_origin(key, || Ok(()))
+            .expect("borrowed origin correspondence has no fallible inspection")
+    }
+
+    /// Inspect precedes each searched captured row. The source owner does not
+    /// depend on a consuming phase's resource policy.
+    pub(crate) fn visit_view_origin(
+        &self,
+        key: FlowOriginKey,
+        mut inspect: impl FnMut() -> Result<()>,
+    ) -> Result<Option<ViewOriginIndex>> {
+        match (&self.basis, key) {
+            (OriginBasis::Exact(count), FlowOriginKey::ExactOrdinal(index)) => {
+                Ok((index < *count).then_some(ViewOriginIndex(index)))
+            }
+            (OriginBasis::Captured(orders), FlowOriginKey::CapturedEvent(order)) => {
+                let mut first = 0;
+                let mut end = orders.len();
+                while first < end {
+                    let middle = first + (end - first) / 2;
+                    inspect()?;
+                    match orders[middle].cmp(&order) {
+                        std::cmp::Ordering::Less => first = middle + 1,
+                        std::cmp::Ordering::Greater => end = middle,
+                        std::cmp::Ordering::Equal => return Ok(Some(ViewOriginIndex(middle))),
+                    }
+                }
+                Ok(None)
+            }
+            _ => Ok(None),
+        }
+    }
+}
+
 /// Validated occurrence/context facts retained by the actual analysis allocation.
 #[derive(Clone, Debug)]
 pub(crate) struct ParagraphData {
     pub(crate) scope_topology: Option<crate::processing::contextual::ParagraphTopology>,
     pub(crate) terminal_edge: ParagraphTerminalEdge,
     pub(crate) origins: Vec<OriginData>,
+    pub(crate) origin_map: OriginMap,
     pub(crate) connections: Vec<ParagraphConnection>,
     /// Real preceding/following original endpoints for contextual connections.
     pub(crate) connection_ends: Option<Vec<(usize, usize)>>,
@@ -452,6 +561,12 @@ pub(crate) struct ParagraphData {
 }
 
 impl ParagraphData {
+    pub(crate) fn captured_origin_event(&self, origin: usize) -> Option<usize> {
+        self.origin_map
+            .flow_origin(self.origin_map.view(origin)?)
+            .captured_event()
+    }
+
     /// Genuine Wbr separates original decoding, regardless of its replacement.
     /// These positions do not disconnect lexical or typographic context.
     pub(crate) fn wbr_decode_boundaries(&self) -> impl Iterator<Item = usize> + '_ {
@@ -566,6 +681,7 @@ impl ParagraphData {
             scope_topology: None,
             computed_boundaries: Vec::new(),
             terminal_edge: ParagraphTerminalEdge::Unknown,
+            origin_map: OriginMap::exact(1),
             origins: vec![OriginData {
                 source: OriginSource::Canonical,
                 local: Range::new(0, source_len),
@@ -734,6 +850,7 @@ impl AnalyzedSource {
             scope_topology: None,
             computed_boundaries: Vec::new(),
             terminal_edge,
+            origin_map: OriginMap::exact(origins.len()),
             origins: origins
                 .into_iter()
                 .map(|origin| OriginData {

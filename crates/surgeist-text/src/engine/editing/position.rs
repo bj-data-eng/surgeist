@@ -668,6 +668,7 @@ pub(crate) fn selection(
 }
 
 fn append_source_pieces(layout: &PlacedLayout, source: Range, pieces: &mut Vec<OriginalPiece>) {
+    let paragraph = &layout.prepared.analyzed.paragraph;
     pieces.extend(
         layout
             .prepared
@@ -676,7 +677,12 @@ fn append_source_pieces(layout: &PlacedLayout, source: Range, pieces: &mut Vec<O
             .origin_intersections(&layout.prepared.analyzed.processed, source)
             .filter(|piece| !piece.aggregate.is_empty())
             .map(|piece| OriginalPiece {
-                origin: piece.origin,
+                origin: paragraph.origin_map.flow_origin(
+                    paragraph
+                        .origin_map
+                        .view(piece.origin)
+                        .expect("source intersection belongs to its placed view"),
+                ),
                 aggregate: piece.aggregate,
                 local: piece.local,
             }),
@@ -689,25 +695,35 @@ fn normalize_pieces(
 ) -> Result<Vec<crate::PlacedSelectionPiece>> {
     // Normalize original occurrences only after event coverage has been chosen.
     // Equal text in another occurrence remains distinct; holes stay holes.
+    let paragraph = &layout.prepared.analyzed.paragraph;
     pieces.sort_unstable_by_key(|piece| {
         (
             piece.aggregate.start,
-            piece.origin,
+            paragraph
+                .origin_map
+                .view_origin(piece.origin)
+                .expect("placed correspondence retains its actual view origin")
+                .get(),
             piece.local.start,
             piece.local.end,
         )
     });
     let mut normalized: Vec<crate::PlacedSelectionPiece> = Vec::new();
     for piece in pieces {
+        let view_origin = paragraph
+            .origin_map
+            .view_origin(piece.origin)
+            .expect("placed correspondence retains its actual view origin")
+            .get();
         let origin = layout
             .prepared
             .analyzed
             .paragraph
             .origins
-            .get(piece.origin)
+            .get(view_origin)
             .ok_or_else(|| {
                 protocol_error(ProtocolError::InvalidOriginRange {
-                    origin: piece.origin,
+                    origin: view_origin,
                     local: piece.local,
                     aggregate: piece.aggregate,
                 })
@@ -723,7 +739,7 @@ fn normalize_pieces(
             || piece.local.len() != piece.aggregate.len()
         {
             return Err(protocol_error(ProtocolError::InvalidOriginRange {
-                origin: piece.origin,
+                origin: view_origin,
                 local: piece.local,
                 aggregate: piece.aggregate,
             }));
@@ -732,7 +748,7 @@ fn normalize_pieces(
             continue;
         }
         if let Some(previous) = normalized.last_mut()
-            && previous.origin.index == piece.origin
+            && previous.origin.index == view_origin
             && piece.local.start <= previous.local.end
             && piece.aggregate.start <= previous.aggregate.end
         {
@@ -742,7 +758,7 @@ fn normalize_pieces(
             normalized.push(crate::PlacedSelectionPiece {
                 origin: crate::PreparedOrigin {
                     prepared: Arc::clone(&layout.prepared),
-                    index: piece.origin,
+                    index: view_origin,
                 },
                 local: piece.local,
                 aggregate: piece.aggregate,

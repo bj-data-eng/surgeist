@@ -102,7 +102,12 @@ impl PreparedPhrase {
                             owner: PreparedPhrasePieceOwner::Original {
                                 origin: PreparedOrigin {
                                     prepared: Arc::clone(&self.prepared.inner),
-                                    index: piece.origin,
+                                    index: analyzed
+                                        .paragraph
+                                        .origin_map
+                                        .view_origin(piece.origin)
+                                        .expect("phrase piece retains its actual view origin")
+                                        .get(),
                                 },
                                 aggregate: piece.aggregate,
                                 local: piece.local,

@@ -107,7 +107,19 @@ fn full_width_parent_projection_keeps_real_child_holes_and_each_domain_style() {
                         .transform
                         .original_pieces(row)
                         .iter()
-                        .map(|piece| (piece.origin, piece.aggregate, piece.local))
+                        .map(|piece| {
+                            (
+                                analyzed
+                                    .inner
+                                    .paragraph
+                                    .origin_map
+                                    .view_origin(piece.origin)
+                                    .expect("original contribution belongs to this view")
+                                    .get(),
+                                piece.aggregate,
+                                piece.local,
+                            )
+                        })
                 })
                 .collect::<Vec<_>>()
         };

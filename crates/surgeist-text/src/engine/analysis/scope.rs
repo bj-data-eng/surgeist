@@ -154,13 +154,19 @@ impl ScopeCutIndex {
                         .paragraph
                         .origin_intersections(&core.processed, source)
                         .filter(|piece| !piece.aggregate.is_empty())
-                        .map(|piece| topology.origin_orders[piece.origin]);
+                        .map(|piece| {
+                            core.paragraph
+                                .captured_origin_event(piece.origin)
+                                .expect("captured deletion retains its original occurrence")
+                        });
                     witness_orders(&mut orders)
                 }
                 RelationEvent::Anchor { order } => match core.paragraph.anchor_order[order].item {
-                    SemanticAnchorItem::EmptyOrigin(origin) => {
-                        known(topology.origin_orders[origin])
-                    }
+                    SemanticAnchorItem::EmptyOrigin(origin) => known(
+                        core.paragraph
+                            .captured_origin_event(origin)
+                            .expect("captured empty origin retains its event"),
+                    ),
                     SemanticAnchorItem::Atomic(atomic) => {
                         known(topology.capture.atomic_orders[atomic])
                     }
@@ -253,15 +259,15 @@ fn witness_orders(orders: &mut impl Iterator<Item = usize>) -> EventWitness {
 }
 
 fn original(core: &AnalyzedCore, row: usize) -> EventWitness {
-    let topology = core
-        .paragraph
-        .scope_topology
-        .as_ref()
-        .expect("captured index");
     witness_orders(
         &mut core.transform.pieces[core.transform.rows[row].pieces.clone()]
             .iter()
-            .map(|piece| topology.origin_orders[piece.origin]),
+            .map(|piece| {
+                piece
+                    .origin
+                    .captured_event()
+                    .expect("captured transform origin retains its event")
+            }),
     )
 }
 

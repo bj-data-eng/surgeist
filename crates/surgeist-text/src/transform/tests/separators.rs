@@ -404,7 +404,15 @@ fn deleted_rows_empty_origins_and_oof_remain_transparent_to_the_actual_forced_ne
         a.inner.transform.original_pieces(1)[0].aggregate,
         Range::new(2, 3)
     );
-    assert_eq!(a.inner.transform.original_pieces(1)[0].origin, 2);
+    assert_eq!(
+        a.inner
+            .paragraph
+            .origin_map
+            .view_origin(a.inner.transform.original_pieces(1)[0].origin)
+            .expect("original contribution belongs to this view")
+            .get(),
+        2
+    );
 }
 
 #[test]

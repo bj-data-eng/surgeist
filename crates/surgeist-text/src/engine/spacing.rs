@@ -216,7 +216,12 @@ fn original_pieces(analyzed: &AnalyzedData, atom: usize, output: &mut Vec<Spacin
                 push_piece(
                     output,
                     SpacingPiece::Source {
-                        origin: piece.origin,
+                        origin: analyzed
+                            .paragraph
+                            .origin_map
+                            .view_origin(piece.origin)
+                            .expect("spacing piece retains its actual view origin")
+                            .get(),
                         local: piece.local,
                         aggregate: piece.aggregate,
                     },

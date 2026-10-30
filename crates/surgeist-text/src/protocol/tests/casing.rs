@@ -261,7 +261,19 @@ fn authored_forced_origin_seam_stops_lithuanian_dot_removal_and_unit_context() {
         );
         let correspondence = (0..analyzed.inner.transform.rows.len())
             .flat_map(|row| analyzed.inner.transform.original_pieces(row))
-            .map(|piece| (piece.origin, piece.aggregate, piece.local))
+            .map(|piece| {
+                (
+                    analyzed
+                        .inner
+                        .paragraph
+                        .origin_map
+                        .view_origin(piece.origin)
+                        .expect("original contribution belongs to this view")
+                        .get(),
+                    piece.aggregate,
+                    piece.local,
+                )
+            })
             .collect::<Vec<_>>();
         assert_eq!(
             correspondence,

@@ -5,12 +5,12 @@ use std::ops::Range as IndexRange;
 
 use crate::engine::analysis::wrapping::{Event, LogicalEvent};
 use crate::processing::lexical_inventory::LexicalDeletion;
-use crate::protocol::paragraph::{ParagraphData, SemanticAnchorItem};
+use crate::protocol::paragraph::{FlowOriginKey, ParagraphData, SemanticAnchorItem};
 use crate::{ProcessedSource, Range, Source};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct OriginalPiece {
-    pub(crate) origin: usize,
+    pub(crate) origin: FlowOriginKey,
     pub(crate) aggregate: Range,
     pub(crate) local: Range,
 }
@@ -131,7 +131,12 @@ impl TransformMap {
                     .origin_intersections(processed, atom.source)
                     .filter(|piece| !piece.aggregate.is_empty())
                     .map(|piece| OriginalPiece {
-                        origin: piece.origin,
+                        origin: paragraph.origin_map.flow_origin(
+                            paragraph
+                                .origin_map
+                                .view(piece.origin)
+                                .expect("admitted original intersection belongs to its view"),
+                        ),
                         aggregate: piece.aggregate,
                         local: piece.local,
                     }),
