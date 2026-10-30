@@ -8,6 +8,7 @@ mod joint_flow;
 mod math;
 mod phase_two;
 mod source_connections;
+mod transform_context;
 mod wbr_connections;
 mod wbr_decoding;
 mod wbr_decoding_continuity;
