@@ -106,5 +106,5 @@ changes are reviewed together.
 
 Use [Reference](reference.md) for interfaces and source locations, and
 [How-to](how-to.md) for maintenance procedures. [NOTICE.md](../NOTICE.md) owns
-attribution and source provenance. Issues and the GitHub Project track current
+attribution and source provenance. GitHub issues and labels track current
 work under [repository administration](../.agents/skills/surgeist-admin/SKILL.md).
