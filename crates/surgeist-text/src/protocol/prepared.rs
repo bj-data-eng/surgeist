@@ -463,7 +463,7 @@ pub(crate) fn prepare_tables(
                 atom_cursor = index + 1;
                 preliminary = item;
             }
-            Event::Deleted(range, at) => {
+            Event::Deleted(range, at, _) => {
                 if let Some(wrap) = collapsed_follower_wrap(analyzed, range) {
                     collapsed_space_wrap = Some(wrap);
                 }

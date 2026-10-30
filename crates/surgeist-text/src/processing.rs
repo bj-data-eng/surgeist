@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 
 pub(crate) mod contextual;
 mod lexical;
+pub(crate) mod lexical_inventory;
 pub use contextual::*;
 
 use crate::{
@@ -128,6 +129,7 @@ pub struct ProcessedSource {
     plaintext_tokens: Vec<PlaintextToken>,
     /// Actual preserved U+0020 output, in Phase-I coordinates.
     preserved_spaces: Vec<Range>,
+    pub(crate) lexical: lexical_inventory::LexicalState,
 }
 
 /// Executes the selected source-local whitespace mode.
@@ -250,15 +252,19 @@ fn process_with_boundaries(
         decode_boundaries.sort_unstable();
         decode_boundaries.dedup();
     }
-    let (units, map, tokens) =
-        lexical::execute(lexical::ValidatedProcessingRequest::SourceLocal {
-            source: &source,
-            breaks: &segment_breaks,
-            modes: &modes,
-            box_order: &box_order,
-            barriers,
-            decode_boundaries: &decode_boundaries,
-        })?;
+    let lexical_inventory::LexicalOutput {
+        units,
+        map,
+        plaintext_tokens: tokens,
+        lexical,
+    } = lexical::execute(lexical::ValidatedProcessingRequest::SourceLocal {
+        source: &source,
+        breaks: &segment_breaks,
+        modes: &modes,
+        box_order: &box_order,
+        barriers,
+        decode_boundaries: &decode_boundaries,
+    })?;
     let preserved_spaces = preserved_spaces(&units, &tokens)?;
     Ok(ProcessedSource {
         source,
@@ -270,6 +276,7 @@ fn process_with_boundaries(
         paragraphs: Vec::new(),
         plaintext_tokens: Vec::new(),
         preserved_spaces,
+        lexical,
     })
 }
 
@@ -305,6 +312,7 @@ pub(crate) fn identity(source: Source, base_style: Style) -> Result<ProcessedSou
         paragraphs: Vec::new(),
         plaintext_tokens: Vec::new(),
         preserved_spaces,
+        lexical: lexical_inventory::LexicalState::Untransformed,
     })
 }
 

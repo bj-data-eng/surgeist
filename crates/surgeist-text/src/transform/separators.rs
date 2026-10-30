@@ -178,7 +178,7 @@ pub(crate) fn connection_seams(
                 SemanticAnchorItem::ComputedLineBoundary(i) => computed_events[i] = index + 1,
             },
             Event::Text(i) => text_edges.push((input.atoms[i].source.end, index + 1, index)),
-            Event::Deleted(range, _) => text_edges.push((range.end, index + 1, index)),
+            Event::Deleted(range, _, _) => text_edges.push((range.end, index + 1, index)),
         }
     }
     text_edges.sort_unstable();

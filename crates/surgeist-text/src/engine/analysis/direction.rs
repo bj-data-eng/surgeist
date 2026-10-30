@@ -271,6 +271,20 @@ mod tests {
     #[test]
     fn real_owner_binding_preserves_control_empty_deleted_and_source_zero_custody() {
         use BidiClass as B;
+        let processed = crate::process_source_whitespace(
+            crate::Source::new(" "),
+            crate::Style {
+                white_space: crate::WhiteSpace::Discard,
+                ..crate::Style::default()
+            },
+            crate::DocumentSegmentBreaks::LineFeedDefault,
+        )
+        .unwrap();
+        assert!(processed.processed_text().is_empty());
+        let deleted = processed.lexical.deletion(
+            crate::Range::new(0, 1),
+            crate::processing::DeletionCause::Discard,
+        );
         let anchor = |item| {
             Event::Anchor(
                 ParagraphAnchor {
@@ -283,7 +297,7 @@ mod tests {
         let events = [
             anchor(ParagraphAnchorItem::EmptyOrigin(0)),
             Event::Text(0),
-            Event::Deleted(crate::Range::new(0, 1), 0),
+            Event::Deleted(crate::Range::new(0, 1), 0, deleted),
             anchor(ParagraphAnchorItem::Control(1)),
             anchor(ParagraphAnchorItem::EmptyOrigin(1)),
             Event::Text(1),
