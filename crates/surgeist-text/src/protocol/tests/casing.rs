@@ -195,6 +195,7 @@ fn authored_forced_origin_seam_stops_lithuanian_dot_removal_and_unit_context() {
         ]);
         let processed = Arc::new(
             crate::process_contextual_source(ContextualSourceInput {
+                joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 computed_line_boundaries: vec![],
                 source: source.clone(),

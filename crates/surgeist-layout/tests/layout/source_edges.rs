@@ -300,6 +300,7 @@ fn source(before: bool, direction: layout::Direction) -> text::ContextualSourceI
     }
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     text::ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         source,
         segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -702,6 +703,7 @@ fn semantic_source(
     // Each source occurrence selects its real half-range from the same exact
     // aggregate source, matching the lower Text scalar/delimiter fixture.
     text::ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         source: source.clone(),
         segment_breaks: delimiters,

@@ -37,6 +37,7 @@ impl EmptyBox {
         source.span(text::Range::new(0, 2), style.clone());
         let processed = Arc::new(
             text::process_contextual_source(text::ContextualSourceInput {
+                joint_flows: Vec::new(),
                 scope_alignment_limits,
                 source,
                 segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,

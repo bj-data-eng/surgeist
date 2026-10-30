@@ -95,6 +95,7 @@ fn contextual(text: &str, mode: WhiteSpace) -> ContextualSourceInput {
     let source = Source::new(text);
     let len = source.text().len();
     ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),

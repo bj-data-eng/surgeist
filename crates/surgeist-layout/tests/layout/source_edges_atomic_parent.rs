@@ -200,6 +200,7 @@ fn source(siblings_inside: bool, direction: layout::Direction) -> text::Contextu
         ancestor_wrap: text::Wrap::None,
     };
     text::ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         source,
         segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,

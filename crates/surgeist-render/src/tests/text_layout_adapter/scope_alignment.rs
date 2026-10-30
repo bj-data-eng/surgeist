@@ -61,6 +61,7 @@ fn captured(effects: bool) -> Arc<text::ProcessedSource> {
     };
     Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: Some(text::ScopeAlignmentLimits::new(
                 4096, 4096, 1_000_000, 16_777_216,
             )),

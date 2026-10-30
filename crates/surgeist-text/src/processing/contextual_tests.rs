@@ -3,6 +3,7 @@ use crate::*;
 use std::sync::Arc;
 
 mod combination_facts;
+mod joint_flow;
 mod math;
 mod phase_two;
 mod wbr_connections;
@@ -173,6 +174,7 @@ fn input(text: impl Into<Text>, mode: WhiteSpace) -> ContextualSourceInput {
     let source = Source::new(text);
     let len = source.text().len();
     ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),

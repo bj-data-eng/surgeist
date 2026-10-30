@@ -15,12 +15,14 @@ pub(crate) mod alignment;
 pub(crate) mod canonical;
 mod capture;
 mod computed;
+mod joint_flow;
 pub use alignment::{
     ScopeAlignmentBoundary, ScopeAlignmentError, ScopeAlignmentLimitKind, ScopeAlignmentLimits,
     ScopeAlignmentUsage, ScopeFontReference,
 };
 pub use capture::*;
 pub use computed::{ComputedLineBoundaryError, ComputedLineBoundaryInput, SourceBoxSide};
+pub use joint_flow::{SourceProcessingJointFlow, SourceProcessingJointFlowError};
 
 /// Computed non-inherited trim facts for one actual inline or block box.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -221,12 +223,18 @@ pub struct ContextualSourceInput {
     pub replacements: Vec<ParagraphReplacement>,
     pub scopes: Vec<SourceProcessingScope>,
     pub paragraphs: Vec<SourceProcessingParagraph>,
+    /// Explicit authority over existing raw paragraph coverage, not inferred
+    /// from equal facts, adjacent source ranges or Continuous connections.
+    pub joint_flows: Vec<SourceProcessingJointFlow>,
     pub events: Vec<SourceProcessingEvent>,
 }
 
 /// Typed atomic capture/view rejection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SourceProcessingError {
+    JointFlow {
+        reason: SourceProcessingJointFlowError,
+    },
     ComputedLineBoundary {
         request: usize,
         reason: ComputedLineBoundaryError,
@@ -244,6 +252,7 @@ pub enum SourceProcessingError {
     Replacement,
     OutsideParagraph,
     ForeignParagraph,
+    ForeignJointFlow,
 }
 
 #[derive(Clone, Debug)]
@@ -267,11 +276,13 @@ pub(crate) enum CapturedDomainData {
     OutOfFlowBlock(usize),
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct CapturedParagraphData {
     pub(crate) domain: usize,
     pub(crate) enter: usize,
     pub(crate) exit: usize,
+    pub(crate) facts: SourceProcessingParagraph,
+    pub(crate) joint_flow: Option<usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -301,6 +312,8 @@ pub(crate) struct ScopeCapture {
     pub(crate) complete: Vec<bool>,
     pub(crate) domain_scopes: Vec<usize>,
     pub(crate) paragraphs: Vec<CapturedParagraphData>,
+    pub(crate) joint_flows: Vec<joint_flow::CapturedJointFlowData>,
+    pub(crate) connections: Vec<joint_flow::CapturedConnectionData>,
     pub(crate) controls: Vec<CapturedControlData>,
     pub(crate) atomic_orders: Vec<usize>,
     /// Stable projection indices into the sole original event stream.
@@ -506,6 +519,9 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
     let mut paragraphs = vec![false; input.paragraphs.len()];
     let mut origins = vec![false; input.origins.len()];
     let mut connections = vec![false; input.connections.len()];
+    let mut connection_orders = Vec::new();
+    super::reserve(&mut connection_orders, input.connections.len())?;
+    connection_orders.resize(input.connections.len(), usize::MAX);
     let mut atomics = vec![false; input.source.boxes().len()];
     let mut controls = vec![false; input.controls.len()];
     let mut associations = vec![false; input.source.boxes().len()];
@@ -561,7 +577,19 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
         events: Vec::new(),
         complete: Vec::new(),
         domain_scopes: Vec::new(),
-        paragraphs: vec![CapturedParagraphData::default(); input.paragraphs.len()],
+        paragraphs: input
+            .paragraphs
+            .iter()
+            .map(|facts| CapturedParagraphData {
+                domain: 0,
+                enter: 0,
+                exit: 0,
+                facts: *facts,
+                joint_flow: None,
+            })
+            .collect(),
+        joint_flows: Vec::new(),
+        connections: Vec::new(),
         controls: input
             .controls
             .iter()
@@ -737,11 +765,8 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                 }
                 captures[index].start = cursor;
                 captures[index].domain = own;
-                topology.paragraphs[index] = CapturedParagraphData {
-                    domain: own,
-                    enter: order,
-                    exit: 0,
-                };
+                topology.paragraphs[index].domain = own;
+                topology.paragraphs[index].enter = order;
                 active_paragraphs[own] = Some(index);
             }
             SourceProcessingEvent::ExitParagraph(index) => {
@@ -797,20 +822,73 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
             }
             SourceProcessingEvent::Connection(index) => {
                 take(&mut connections, index)?;
-                let p = paragraph.ok_or_else(|| invalid(SourceProcessingError::Domain))?;
                 let row = input.connections[index];
-                if captures[p].origins.last() != Some(&row.before_origin)
-                    || input
+                let local = if input.joint_flows.is_empty() {
+                    let p = paragraph.ok_or_else(|| invalid(SourceProcessingError::Domain))?;
+                    if captures[p].origins.last() != Some(&row.before_origin)
+                        || input
+                            .origins
+                            .get(row.after_origin)
+                            .is_none_or(|origin| origin.aggregate.start != cursor)
+                    {
+                        return Err(invalid(SourceProcessingError::Connection));
+                    }
+                    Some(p)
+                } else {
+                    if input
                         .origins
                         .get(row.after_origin)
                         .is_none_or(|origin| origin.aggregate.start != cursor)
-                {
-                    return Err(invalid(SourceProcessingError::Connection));
+                    {
+                        return Err(invalid(SourceProcessingError::JointFlow {
+                            reason: SourceProcessingJointFlowError::ConnectionPosition {
+                                connection: index,
+                            },
+                        }));
+                    }
+                    if let Some(p) = paragraph
+                        .filter(|&p| captures[p].origins.last() == Some(&row.before_origin))
+                    {
+                        Some(p)
+                    } else {
+                        if !origins.get(row.before_origin).copied().unwrap_or(false)
+                            || origins.get(row.after_origin).copied().unwrap_or(true)
+                            || paragraph.is_some_and(|p| !captures[p].origins.is_empty())
+                        {
+                            return Err(invalid(SourceProcessingError::JointFlow {
+                                reason: SourceProcessingJointFlowError::ConnectionEndpoints {
+                                    connection: index,
+                                },
+                            }));
+                        }
+                        let before = topology.events[topology.origin_orders[row.before_origin]]
+                            .paragraph
+                            .expect("the already admitted origin belongs to a raw paragraph");
+                        let prospective = input.joint_flows.iter().any(|flow| {
+                            domain
+                                .and_then(|domain| topology.domain_scopes.get(domain))
+                                .copied()
+                                == Some(flow.scope)
+                                && flow.paragraphs.contains(&before)
+                                && paragraph.is_none_or(|p| flow.paragraphs.contains(&p))
+                        });
+                        if !prospective {
+                            return Err(invalid(SourceProcessingError::JointFlow {
+                                reason: SourceProcessingJointFlowError::UndeclaredConnection {
+                                    connection: index,
+                                },
+                            }));
+                        }
+                        None
+                    }
+                };
+                connection_orders[index] = order;
+                if let Some(p) = local {
+                    captures[p].connections.push(index);
+                    captures[p].connection_orders.push(order);
+                    let cut = captures[p].anchors.len();
+                    captures[p].connection_anchor_cuts.push(cut);
                 }
-                captures[p].connections.push(index);
-                captures[p].connection_orders.push(order);
-                let cut = captures[p].anchors.len();
-                captures[p].connection_anchor_cuts.push(cut);
             }
             SourceProcessingEvent::Atomic { atomic, affinity } => {
                 take(&mut atomics, atomic)?;
@@ -942,6 +1020,14 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
             boundary_controls[boundaries.end] = true;
         }
     }
+    joint_flow::admit(
+        &input,
+        &mut topology,
+        &mut captures,
+        &paragraph_order,
+        &connection_orders,
+        &mut context,
+    )?;
     computed::admit(&input, &mut topology, &mut captures, &mut context)?;
     let topology = Arc::new(topology);
     for barrier in &context.barriers {
@@ -975,7 +1061,17 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
     let modes = super::contextual_modes(&input.source, &context)?;
     super::validate_modes(&modes, &input.segment_breaks)?;
     let mut records = Vec::new();
-    let mut used_policies = vec![false; input.boundary_policies.len()];
+    let mut used_policies: Vec<_> = input
+        .boundary_policies
+        .iter()
+        .map(|policy| match policy.definition {
+            ParagraphBoundaryDefinition::Connection(connection) => topology
+                .connections
+                .get(connection)
+                .is_some_and(|connection| connection.boundary_policy.is_some()),
+            _ => false,
+        })
+        .collect();
     let mut used_replacements = vec![false; input.replacements.len()];
     for (index, capture) in captures.into_iter().enumerate() {
         for &origin in &capture.origins {

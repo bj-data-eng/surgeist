@@ -27,6 +27,7 @@ fn captured(text: &str, at: usize, style: Style, force: bool) -> Arc<crate::Proc
     let source = Source::new(text);
     let ranges = [Range::new(0, at), Range::new(at, source.text().len())];
     let input = ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         source: source.clone(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,

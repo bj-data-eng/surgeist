@@ -34,6 +34,7 @@ fn input(text: &str, ranges: &[Range]) -> ContextualSourceInput {
     }
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         source: source.clone(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,

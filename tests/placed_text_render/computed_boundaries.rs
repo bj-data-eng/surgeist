@@ -95,6 +95,7 @@ fn computed_scope_before_keeps_original_receiving_caret_and_two_painted_lines() 
     };
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![text::ComputedLineBoundaryInput::Scope {
                 scope: 1,

@@ -72,6 +72,7 @@ fn fixture(classified: bool) -> Fixture {
         });
     }
     let input = ContextualSourceInput {
+        joint_flows: Vec::new(),
         source: source.clone(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
         envelope: SourceProcessingEnvelope::Complete,

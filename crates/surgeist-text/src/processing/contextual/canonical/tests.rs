@@ -5,6 +5,7 @@ fn processed(forced: bool) -> Arc<ProcessedSource> {
     let source = Source::new("A");
     Arc::new(
         process_contextual_source(ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,

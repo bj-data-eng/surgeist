@@ -70,6 +70,7 @@ fn native(source: Source) -> ParagraphInput {
 }
 fn contextual(source: Source) -> ContextualSourceInput {
     ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         origins: vec![origin(&source, Range::new(0, source.text().len()))],
         source,

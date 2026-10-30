@@ -46,6 +46,7 @@ fn continuation_case() -> Case {
     ];
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: Some(text::ScopeAlignmentLimits::new(
                 10000,
                 100,

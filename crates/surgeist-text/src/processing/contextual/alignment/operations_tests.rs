@@ -70,6 +70,7 @@ fn capture(count: usize) -> Arc<ProcessedSource> {
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     Arc::new(
         process_contextual_source(ContextualSourceInput {
+            joint_flows: Vec::new(),
             source: source.clone(),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
             envelope: SourceProcessingEnvelope::Complete,

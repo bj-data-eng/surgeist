@@ -251,6 +251,7 @@ fn actual_computed_scope_mandatory_keeps_cause_and_source_without_a_control_prox
     let original = source("AB");
     let processed = std::sync::Arc::new(
         crate::process_contextual_source(crate::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: original.clone(),
             segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,

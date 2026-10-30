@@ -44,6 +44,7 @@ fn fixture() -> Fixture {
     let mut source = Source::identified("XXX", Id::from_u64(1578070), 41);
     source.span(Range::new(0, 3), style.clone());
     let input = ContextualSourceInput {
+        joint_flows: Vec::new(),
         source: source.clone(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
         envelope: SourceProcessingEnvelope::Complete,

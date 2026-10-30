@@ -43,6 +43,7 @@ fn captured_parent(bytes: &[u8], size: t::Size, atomic_only: bool, id: t::Id) ->
     use t::SourceProcessingEvent as E;
     let capture = Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,

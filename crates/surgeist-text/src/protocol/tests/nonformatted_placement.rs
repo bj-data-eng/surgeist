@@ -35,6 +35,7 @@ fn nf_input(raw: &str, mode: WhiteSpace) -> crate::ContextualSourceInput {
     };
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     crate::ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         source,
         segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,

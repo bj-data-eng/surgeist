@@ -366,6 +366,7 @@ fn contextual(value: &str, base: t::Style, trim: t::WhiteSpaceTrim) -> Arc<t::Pr
     use t::SourceProcessingEvent as E;
     Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
@@ -945,6 +946,7 @@ fn preserve_breaks_does_not_collapse_across_distinct_real_block_domains() {
     };
     let processed = Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),

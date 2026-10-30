@@ -520,6 +520,7 @@ fn contextual(source: &Source, style: Style, cuts: &[usize]) -> AnalyzedSource {
     let wrap = style.wrap;
     let processed = std::sync::Arc::new(
         crate::process_contextual_source(crate::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,

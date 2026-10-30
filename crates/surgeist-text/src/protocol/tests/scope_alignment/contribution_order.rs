@@ -174,6 +174,7 @@ fn nested_direct_and_common_chains_preserve_signed_rows_and_global_descendant_or
     }
     let capture = Arc::new(
         process_contextual_source(ContextualSourceInput {
+            joint_flows: Vec::new(),
             source: source.clone(),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
             envelope: SourceProcessingEnvelope::Complete,

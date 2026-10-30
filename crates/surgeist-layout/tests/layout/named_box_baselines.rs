@@ -1124,6 +1124,7 @@ fn actual_text_unknown<S: l::LayoutScalar>() {
     use t::SourceProcessingEvent as E;
     let capture = Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
@@ -2268,6 +2269,7 @@ fn packet_text_float_binding() -> l::TextParagraphBinding<u32> {
     use t::SourceProcessingEvent as E;
     let capture = Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source,
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,

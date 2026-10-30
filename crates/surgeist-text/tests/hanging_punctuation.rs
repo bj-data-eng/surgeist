@@ -1229,6 +1229,7 @@ fn captured_enclosing_inline_continues_without_its_later_end_decoration() {
     let source = t::Source::identified("A. B", t::Id::from_u64(71074), 5);
     let processed = std::sync::Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),

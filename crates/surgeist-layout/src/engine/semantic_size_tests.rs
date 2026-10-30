@@ -19,6 +19,7 @@ fn fixture<S: LayoutScalar>(
     };
     let captured = std::sync::Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: t::Source::identified("", t::Id::from_u64(658300), 51),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,

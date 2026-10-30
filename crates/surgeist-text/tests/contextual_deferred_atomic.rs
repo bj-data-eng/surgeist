@@ -89,6 +89,7 @@ fn capture(
     }
     events.push(E::ExitScope(0));
     text::ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source,

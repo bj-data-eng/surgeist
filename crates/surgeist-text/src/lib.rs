@@ -74,17 +74,18 @@ pub use layout::{
 };
 pub use options::{Alignment, Indent, Options, TextAlignLast, TextOverflow, ValidatedOptions};
 pub use processing::{
-    CapturedComputedLineBoundary, CapturedComputedLineBoundaryTarget, CapturedControl,
-    CapturedDomainDefinition, CapturedEventPosition, CapturedFlowEvent, CapturedParagraph,
-    CapturedScope, CapturedScopeIntersection, ComputedLineBoundaryError, ComputedLineBoundaryInput,
-    ContextualSourceInput, DocumentSegmentBreaks, PlaintextItem, PlaintextItems,
-    ProcessedInlineBox, ProcessedParagraph, ProcessedPosition, ProcessedRange, ProcessedSource,
-    ProcessedSpan, ProcessedText, ScopeAlignmentBoundary, ScopeAlignmentError,
-    ScopeAlignmentLimitKind, ScopeAlignmentLimits, ScopeAlignmentUsage, ScopeFontReference,
-    ScopeRole, SourceBoxSide, SourceProcessingConnection, SourceProcessingEnvelope,
-    SourceProcessingError, SourceProcessingEvent, SourceProcessingParagraph, SourceProcessingScope,
-    SourceProcessingScopeBoundaries, SourceProcessingTopology, SourceWritingAxis, WhiteSpaceTrim,
-    process_contextual_source, process_source_whitespace,
+    CapturedComputedLineBoundary, CapturedComputedLineBoundaryTarget, CapturedConnection,
+    CapturedControl, CapturedDomainDefinition, CapturedEventPosition, CapturedFlowEvent,
+    CapturedJointFlow, CapturedParagraph, CapturedScope, CapturedScopeIntersection,
+    ComputedLineBoundaryError, ComputedLineBoundaryInput, ContextualSourceInput,
+    DocumentSegmentBreaks, PlaintextItem, PlaintextItems, ProcessedInlineBox, ProcessedParagraph,
+    ProcessedPosition, ProcessedRange, ProcessedSource, ProcessedSpan, ProcessedText,
+    ScopeAlignmentBoundary, ScopeAlignmentError, ScopeAlignmentLimitKind, ScopeAlignmentLimits,
+    ScopeAlignmentUsage, ScopeFontReference, ScopeRole, SourceBoxSide, SourceProcessingConnection,
+    SourceProcessingEnvelope, SourceProcessingError, SourceProcessingEvent,
+    SourceProcessingJointFlow, SourceProcessingJointFlowError, SourceProcessingParagraph,
+    SourceProcessingScope, SourceProcessingScopeBoundaries, SourceProcessingTopology,
+    SourceWritingAxis, WhiteSpaceTrim, process_contextual_source, process_source_whitespace,
 };
 pub use protocol::paragraph::{
     CompleteTextNodeContribution, ParagraphAnchor, ParagraphAnchorItem,

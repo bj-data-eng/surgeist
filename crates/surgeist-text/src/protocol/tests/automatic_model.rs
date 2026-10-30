@@ -735,6 +735,7 @@ fn transparent_child_holes_keep_automatic_source_anchor_separate_from_mixed_cut_
         Size::new(5.0, 10.0),
     ));
     let capture = ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),

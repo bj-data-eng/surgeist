@@ -8,6 +8,7 @@ fn input(left: Text, right: Text) -> ContextualSourceInput {
     let source = Source::new(Text::from_code_units(units));
     let end = source.text().len();
     ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         computed_line_boundaries: Vec::new(),
         source: source.clone(),

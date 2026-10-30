@@ -500,6 +500,7 @@ fn phrase_analysis(source: &Source, tracking: f64) -> AnalyzedSource {
     use crate::SourceProcessingEvent as E;
     let processed = std::sync::Arc::new(
         crate::process_contextual_source(crate::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,

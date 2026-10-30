@@ -990,6 +990,7 @@ fn contextual_holes_remain_real_pieces_of_shared_units_and_generated_origins_are
         Size::new(5.0, 10.0),
     ));
     let capture = ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),

@@ -478,6 +478,7 @@ fn original_separator_at_disconnected_join(
         SourceProcessingEvent::ExitScope(0),
     ]);
     let input = ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),

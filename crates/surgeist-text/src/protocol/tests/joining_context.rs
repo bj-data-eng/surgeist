@@ -503,6 +503,7 @@ fn child_domain_hole_is_excluded_from_parent_joining_context() {
         Size::new(5.0, 10.0),
     ));
     let capture = ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),

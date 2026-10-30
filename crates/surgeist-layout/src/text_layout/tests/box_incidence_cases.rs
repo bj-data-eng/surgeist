@@ -136,6 +136,7 @@ impl Case {
         ]);
         let processed = Arc::new(
             text::process_contextual_source(text::ContextualSourceInput {
+                joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 source,
                 segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -1115,6 +1116,7 @@ fn pinned_after_s(direction: Direction) -> Case {
     source.span(text::Range::new(0, 2), style.clone());
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source,
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -1602,6 +1604,7 @@ fn realization_case(direction: Direction, force: bool) -> Case {
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source,
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -2012,6 +2015,7 @@ fn exterior_case(direction: Direction, trailing: bool) -> Case {
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source,
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,

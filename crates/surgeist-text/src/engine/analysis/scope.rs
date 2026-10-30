@@ -339,6 +339,7 @@ mod tests {
             })
             .collect();
         let input = ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source,

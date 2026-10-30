@@ -109,6 +109,7 @@ fn continuation(enabled: bool, known: bool) -> Arc<ProcessedSource> {
     };
     Arc::new(
         process_contextual_source(ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
@@ -408,6 +409,7 @@ fn same_anchor_atomic_domains_retain_the_exact_nominated_occurrence() {
         };
         let processed = Arc::new(
             process_contextual_source(ContextualSourceInput {
+                joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 computed_line_boundaries: vec![],
                 source: source.clone(),
@@ -500,6 +502,7 @@ fn empty_nested_owners_keep_distinct_same_anchor_endpoints_without_emitting() {
     };
     let processed = Arc::new(
         process_contextual_source(ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: Source::new(""),

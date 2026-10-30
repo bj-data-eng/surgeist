@@ -253,6 +253,7 @@ fn mixed_input(
         });
     }
     text::ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         source: text::Source::identified("PAQ", text::Id::from_u64(659100), 23),
         segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,

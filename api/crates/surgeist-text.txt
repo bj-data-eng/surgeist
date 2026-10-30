@@ -1018,8 +1018,11 @@ pub surgeist_text::SourceProcessingError::ComputedLineBoundary::request: usize
 pub surgeist_text::SourceProcessingError::Connection
 pub surgeist_text::SourceProcessingError::DelimiterCrossing
 pub surgeist_text::SourceProcessingError::Domain
+pub surgeist_text::SourceProcessingError::ForeignJointFlow
 pub surgeist_text::SourceProcessingError::ForeignParagraph
 pub surgeist_text::SourceProcessingError::IncompleteExterior
+pub surgeist_text::SourceProcessingError::JointFlow
+pub surgeist_text::SourceProcessingError::JointFlow::reason: surgeist_text::SourceProcessingJointFlowError
 pub surgeist_text::SourceProcessingError::Nesting
 pub surgeist_text::SourceProcessingError::Occurrence
 pub surgeist_text::SourceProcessingError::OriginCorrespondence
@@ -1042,6 +1045,61 @@ pub surgeist_text::SourceProcessingEvent::ExitScope(usize)
 pub surgeist_text::SourceProcessingEvent::Origin
 pub surgeist_text::SourceProcessingEvent::Origin::affinity: surgeist_text::Affinity
 pub surgeist_text::SourceProcessingEvent::Origin::origin: usize
+pub enum surgeist_text::SourceProcessingJointFlowError
+pub surgeist_text::SourceProcessingJointFlowError::ConnectionDomain
+pub surgeist_text::SourceProcessingJointFlowError::ConnectionDomain::connection: usize
+pub surgeist_text::SourceProcessingJointFlowError::ConnectionEndpoints
+pub surgeist_text::SourceProcessingJointFlowError::ConnectionEndpoints::connection: usize
+pub surgeist_text::SourceProcessingJointFlowError::ConnectionPosition
+pub surgeist_text::SourceProcessingJointFlowError::ConnectionPosition::connection: usize
+pub surgeist_text::SourceProcessingJointFlowError::DirectionMismatch
+pub surgeist_text::SourceProcessingJointFlowError::DirectionMismatch::declaration: usize
+pub surgeist_text::SourceProcessingJointFlowError::DirectionMismatch::owner: usize
+pub surgeist_text::SourceProcessingJointFlowError::DirectionMismatch::paragraph: usize
+pub surgeist_text::SourceProcessingJointFlowError::DuplicateConnection
+pub surgeist_text::SourceProcessingJointFlowError::DuplicateConnection::connection: usize
+pub surgeist_text::SourceProcessingJointFlowError::DuplicateConnection::first_connection: usize
+pub surgeist_text::SourceProcessingJointFlowError::DuplicateMember
+pub surgeist_text::SourceProcessingJointFlowError::DuplicateMember::declaration: usize
+pub surgeist_text::SourceProcessingJointFlowError::DuplicateMember::paragraph: usize
+pub surgeist_text::SourceProcessingJointFlowError::EmptyMembers
+pub surgeist_text::SourceProcessingJointFlowError::EmptyMembers::declaration: usize
+pub surgeist_text::SourceProcessingJointFlowError::FactsOwnerNotMember
+pub surgeist_text::SourceProcessingJointFlowError::FactsOwnerNotMember::declaration: usize
+pub surgeist_text::SourceProcessingJointFlowError::FactsOwnerNotMember::paragraph: usize
+pub surgeist_text::SourceProcessingJointFlowError::InvalidMember
+pub surgeist_text::SourceProcessingJointFlowError::InvalidMember::declaration: usize
+pub surgeist_text::SourceProcessingJointFlowError::InvalidMember::paragraph: usize
+pub surgeist_text::SourceProcessingJointFlowError::InvalidScope
+pub surgeist_text::SourceProcessingJointFlowError::InvalidScope::declaration: usize
+pub surgeist_text::SourceProcessingJointFlowError::InvalidScope::scope: usize
+pub surgeist_text::SourceProcessingJointFlowError::MemberAlreadyAssigned
+pub surgeist_text::SourceProcessingJointFlowError::MemberAlreadyAssigned::declaration: usize
+pub surgeist_text::SourceProcessingJointFlowError::MemberAlreadyAssigned::first_declaration: usize
+pub surgeist_text::SourceProcessingJointFlowError::MemberAlreadyAssigned::paragraph: usize
+pub surgeist_text::SourceProcessingJointFlowError::MemberOrder
+pub surgeist_text::SourceProcessingJointFlowError::MemberOrder::declaration: usize
+pub surgeist_text::SourceProcessingJointFlowError::MemberOrder::paragraph: usize
+pub surgeist_text::SourceProcessingJointFlowError::MemberOrder::previous: usize
+pub surgeist_text::SourceProcessingJointFlowError::MissingConnection
+pub surgeist_text::SourceProcessingJointFlowError::MissingConnection::after_origin: usize
+pub surgeist_text::SourceProcessingJointFlowError::MissingConnection::before_origin: usize
+pub surgeist_text::SourceProcessingJointFlowError::MissingConnection::declaration: usize
+pub surgeist_text::SourceProcessingJointFlowError::NotDomainRoot
+pub surgeist_text::SourceProcessingJointFlowError::NotDomainRoot::declaration: usize
+pub surgeist_text::SourceProcessingJointFlowError::NotDomainRoot::scope: usize
+pub surgeist_text::SourceProcessingJointFlowError::SkippedMember
+pub surgeist_text::SourceProcessingJointFlowError::SkippedMember::declaration: usize
+pub surgeist_text::SourceProcessingJointFlowError::SkippedMember::paragraph: usize
+pub surgeist_text::SourceProcessingJointFlowError::StrutMismatch
+pub surgeist_text::SourceProcessingJointFlowError::StrutMismatch::declaration: usize
+pub surgeist_text::SourceProcessingJointFlowError::StrutMismatch::owner: usize
+pub surgeist_text::SourceProcessingJointFlowError::StrutMismatch::paragraph: usize
+pub surgeist_text::SourceProcessingJointFlowError::UndeclaredConnection
+pub surgeist_text::SourceProcessingJointFlowError::UndeclaredConnection::connection: usize
+pub surgeist_text::SourceProcessingJointFlowError::WrongDomain
+pub surgeist_text::SourceProcessingJointFlowError::WrongDomain::declaration: usize
+pub surgeist_text::SourceProcessingJointFlowError::WrongDomain::paragraph: usize
 pub enum surgeist_text::SourceProcessingScope
 pub surgeist_text::SourceProcessingScope::AtomicBlock
 pub surgeist_text::SourceProcessingScope::AtomicBlock::atomic: usize
@@ -1602,6 +1660,20 @@ impl core::fmt::Debug for surgeist_text::CapturedComputedLineBoundary
 pub fn surgeist_text::CapturedComputedLineBoundary::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::hash::Hash for surgeist_text::CapturedComputedLineBoundary
 pub fn surgeist_text::CapturedComputedLineBoundary::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_text::CapturedConnection
+impl surgeist_text::CapturedConnection
+pub fn surgeist_text::CapturedConnection::after_origin(&self) -> surgeist_text::CapturedEventPosition
+pub fn surgeist_text::CapturedConnection::before_origin(&self) -> surgeist_text::CapturedEventPosition
+pub fn surgeist_text::CapturedConnection::boundary_policy(&self) -> core::option::Option<surgeist_text::ParagraphBoundaryPolicy>
+pub fn surgeist_text::CapturedConnection::event_position(&self) -> surgeist_text::CapturedEventPosition
+pub fn surgeist_text::CapturedConnection::kind(&self) -> surgeist_text::ParagraphConnectionKind
+impl core::cmp::Eq for surgeist_text::CapturedConnection
+impl core::cmp::PartialEq for surgeist_text::CapturedConnection
+pub fn surgeist_text::CapturedConnection::eq(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_text::CapturedConnection
+pub fn surgeist_text::CapturedConnection::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for surgeist_text::CapturedConnection
+pub fn surgeist_text::CapturedConnection::hash<H: core::hash::Hasher>(&self, state: &mut H)
 pub struct surgeist_text::CapturedControl
 impl surgeist_text::CapturedControl
 pub fn surgeist_text::CapturedControl::event_position(&self) -> surgeist_text::CapturedEventPosition
@@ -1628,11 +1700,30 @@ impl core::fmt::Debug for surgeist_text::CapturedEventPosition
 pub fn surgeist_text::CapturedEventPosition::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::hash::Hash for surgeist_text::CapturedEventPosition
 pub fn surgeist_text::CapturedEventPosition::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_text::CapturedJointFlow
+impl surgeist_text::CapturedJointFlow
+pub fn surgeist_text::CapturedJointFlow::base_direction(&self) -> surgeist_text::ParagraphBaseDirection
+pub fn surgeist_text::CapturedJointFlow::connections(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::CapturedConnection> + '_
+pub fn surgeist_text::CapturedJointFlow::domain(&self) -> surgeist_text::CapturedScope
+pub fn surgeist_text::CapturedJointFlow::facts_owner(&self) -> surgeist_text::CapturedParagraph
+pub fn surgeist_text::CapturedJointFlow::members(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::CapturedParagraph> + '_
+pub fn surgeist_text::CapturedJointFlow::paragraph_strut(&self) -> surgeist_text::ParagraphStrut
+pub fn surgeist_text::CapturedJointFlow::scope(&self) -> surgeist_text::CapturedScope
+impl core::cmp::Eq for surgeist_text::CapturedJointFlow
+impl core::cmp::PartialEq for surgeist_text::CapturedJointFlow
+pub fn surgeist_text::CapturedJointFlow::eq(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_text::CapturedJointFlow
+pub fn surgeist_text::CapturedJointFlow::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for surgeist_text::CapturedJointFlow
+pub fn surgeist_text::CapturedJointFlow::hash<H: core::hash::Hasher>(&self, state: &mut H)
 pub struct surgeist_text::CapturedParagraph
 impl surgeist_text::CapturedParagraph
+pub fn surgeist_text::CapturedParagraph::base_direction(&self) -> surgeist_text::ParagraphBaseDirection
 pub fn surgeist_text::CapturedParagraph::domain(&self) -> surgeist_text::CapturedScope
 pub fn surgeist_text::CapturedParagraph::enter_position(&self) -> surgeist_text::CapturedEventPosition
 pub fn surgeist_text::CapturedParagraph::exit_position(&self) -> surgeist_text::CapturedEventPosition
+pub fn surgeist_text::CapturedParagraph::joint_flow(&self) -> core::option::Option<surgeist_text::CapturedJointFlow>
+pub fn surgeist_text::CapturedParagraph::paragraph_strut(&self) -> surgeist_text::ParagraphStrut
 pub fn surgeist_text::CapturedParagraph::scope_intersections(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::CapturedScopeIntersection> + '_
 impl core::cmp::Eq for surgeist_text::CapturedParagraph
 impl core::cmp::PartialEq for surgeist_text::CapturedParagraph
@@ -1706,6 +1797,7 @@ pub surgeist_text::ContextualSourceInput::connections: alloc::vec::Vec<surgeist_
 pub surgeist_text::ContextualSourceInput::controls: alloc::vec::Vec<surgeist_text::ParagraphControl>
 pub surgeist_text::ContextualSourceInput::envelope: surgeist_text::SourceProcessingEnvelope
 pub surgeist_text::ContextualSourceInput::events: alloc::vec::Vec<surgeist_text::SourceProcessingEvent>
+pub surgeist_text::ContextualSourceInput::joint_flows: alloc::vec::Vec<surgeist_text::SourceProcessingJointFlow>
 pub surgeist_text::ContextualSourceInput::origins: alloc::vec::Vec<surgeist_text::ParagraphOrigin>
 pub surgeist_text::ContextualSourceInput::paragraphs: alloc::vec::Vec<surgeist_text::SourceProcessingParagraph>
 pub surgeist_text::ContextualSourceInput::replacements: alloc::vec::Vec<surgeist_text::ParagraphReplacement>
@@ -2899,6 +2991,16 @@ pub const fn surgeist_text::ProcessedRange::len(self) -> usize
 pub const fn surgeist_text::ProcessedRange::start(self) -> surgeist_text::ProcessedPosition
 pub struct surgeist_text::ProcessedSource
 impl surgeist_text::ProcessedSource
+pub fn surgeist_text::ProcessedSource::admit_joint_flow(&self, flow: &surgeist_text::CapturedJointFlow) -> surgeist_text::Result<()>
+pub fn surgeist_text::ProcessedSource::captured_atomic(&self, input_ordinal: usize) -> core::option::Option<surgeist_text::CapturedEventPosition>
+pub fn surgeist_text::ProcessedSource::captured_computed_line_boundary(&self, input_ordinal: usize) -> core::option::Option<surgeist_text::CapturedComputedLineBoundary>
+pub fn surgeist_text::ProcessedSource::captured_control(&self, input_ordinal: usize) -> core::option::Option<surgeist_text::CapturedControl>
+pub fn surgeist_text::ProcessedSource::captured_joint_flow(&self, input_ordinal: usize) -> core::option::Option<surgeist_text::CapturedJointFlow>
+pub fn surgeist_text::ProcessedSource::captured_origin(&self, input_ordinal: usize) -> core::option::Option<surgeist_text::CapturedEventPosition>
+pub fn surgeist_text::ProcessedSource::captured_paragraph(&self, input_ordinal: usize) -> core::option::Option<surgeist_text::CapturedParagraph>
+pub fn surgeist_text::ProcessedSource::captured_scope(&self, input_ordinal: usize) -> core::option::Option<surgeist_text::CapturedScope>
+pub fn surgeist_text::ProcessedSource::joint_flow_paragraphs(self: &alloc::sync::Arc<Self>, flow: &surgeist_text::CapturedJointFlow) -> surgeist_text::Result<impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::ProcessedParagraph> + '_>
+impl surgeist_text::ProcessedSource
 pub fn surgeist_text::ProcessedSource::admit_paragraph(self: &alloc::sync::Arc<Self>, paragraph: &surgeist_text::ProcessedParagraph) -> surgeist_text::Result<()>
 pub fn surgeist_text::ProcessedSource::paragraphs(self: &alloc::sync::Arc<Self>) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::ProcessedParagraph> + '_
 impl surgeist_text::ProcessedSource
@@ -2913,13 +3015,6 @@ pub const fn surgeist_text::ProcessedSource::segment_breaks(&self) -> &surgeist_
 pub const fn surgeist_text::ProcessedSource::source(&self) -> &surgeist_text::Source
 pub fn surgeist_text::ProcessedSource::source_to_processed(&self, at: surgeist_text::SourcePosition, affinity: surgeist_text::Affinity) -> surgeist_text::Result<surgeist_text::ProcessedPosition>
 pub fn surgeist_text::ProcessedSource::spans(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::ProcessedSpan<'_>>
-impl surgeist_text::ProcessedSource
-pub fn surgeist_text::ProcessedSource::captured_atomic(&self, input_ordinal: usize) -> core::option::Option<surgeist_text::CapturedEventPosition>
-pub fn surgeist_text::ProcessedSource::captured_computed_line_boundary(&self, input_ordinal: usize) -> core::option::Option<surgeist_text::CapturedComputedLineBoundary>
-pub fn surgeist_text::ProcessedSource::captured_control(&self, input_ordinal: usize) -> core::option::Option<surgeist_text::CapturedControl>
-pub fn surgeist_text::ProcessedSource::captured_origin(&self, input_ordinal: usize) -> core::option::Option<surgeist_text::CapturedEventPosition>
-pub fn surgeist_text::ProcessedSource::captured_paragraph(&self, input_ordinal: usize) -> core::option::Option<surgeist_text::CapturedParagraph>
-pub fn surgeist_text::ProcessedSource::captured_scope(&self, input_ordinal: usize) -> core::option::Option<surgeist_text::CapturedScope>
 pub struct surgeist_text::ProcessedSpan<'a>
 impl<'a> surgeist_text::ProcessedSpan<'a>
 pub const fn surgeist_text::ProcessedSpan<'a>::ordinal(self) -> usize
@@ -3154,6 +3249,10 @@ pub struct surgeist_text::SourceProcessingConnection
 pub surgeist_text::SourceProcessingConnection::after_origin: usize
 pub surgeist_text::SourceProcessingConnection::before_origin: usize
 pub surgeist_text::SourceProcessingConnection::kind: surgeist_text::ParagraphConnectionKind
+pub struct surgeist_text::SourceProcessingJointFlow
+pub surgeist_text::SourceProcessingJointFlow::facts_owner: usize
+pub surgeist_text::SourceProcessingJointFlow::paragraphs: alloc::vec::Vec<usize>
+pub surgeist_text::SourceProcessingJointFlow::scope: usize
 pub struct surgeist_text::SourceProcessingParagraph
 pub surgeist_text::SourceProcessingParagraph::base_direction: surgeist_text::ParagraphBaseDirection
 pub surgeist_text::SourceProcessingParagraph::paragraph_strut: surgeist_text::ParagraphStrut

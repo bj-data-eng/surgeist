@@ -423,6 +423,7 @@ impl Paragraph {
         }
         let capture = Arc::new(
             t::process_contextual_source(t::ContextualSourceInput {
+                joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 source,
                 segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,

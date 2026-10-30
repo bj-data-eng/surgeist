@@ -276,6 +276,7 @@ fn child_domain_hole_cannot_supply_or_remove_the_parent_words_counting_units() {
             })
             .collect();
         let capture = ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),

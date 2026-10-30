@@ -67,6 +67,7 @@ fn capture(endpoints: bool, anywhere: bool) -> PreparedText {
     }
     let processed = Arc::new(
         crate::process_contextual_source(ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: Source::identified("A\u{301}B", Id::from_u64(1_507_000), 7),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -440,6 +441,7 @@ fn nested_capture(text: &str) -> PreparedText {
     };
     let processed = Arc::new(
         crate::process_contextual_source(ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: input.source.clone(),
             segment_breaks: input.segment_breaks,

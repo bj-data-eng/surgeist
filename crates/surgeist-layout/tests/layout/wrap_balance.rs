@@ -104,6 +104,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
         events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
         let capture = Arc::new(
             t::process_contextual_source(t::ContextualSourceInput {
+                joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 source: source.clone(),
                 segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,

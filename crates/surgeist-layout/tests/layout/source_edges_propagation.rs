@@ -431,6 +431,7 @@ fn source(case: Case) -> t::ContextualSourceInput {
         E::ExitScope(0),
     ]);
     t::ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         source,
         segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,

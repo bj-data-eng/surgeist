@@ -85,6 +85,7 @@ fn capture(paragraph_count: usize, padding_scopes: usize) -> Arc<crate::Processe
     events.push(E::ExitScope(0));
     Arc::new(
         crate::process_contextual_source(crate::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source,
             segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,

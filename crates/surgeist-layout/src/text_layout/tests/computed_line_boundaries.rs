@@ -35,6 +35,7 @@ fn base_input(rtl: bool, strut: text::ParagraphStrut) -> text::ContextualSourceI
         Source::identified("A", text::Id::from_u64(650_752), 12),
     ];
     text::ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: Source::identified("AA", text::Id::from_u64(650_750), 12),

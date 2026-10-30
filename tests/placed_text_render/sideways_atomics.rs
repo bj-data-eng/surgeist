@@ -70,6 +70,7 @@ fn prepare(
         vec![text::Range::new(0, 1)]
     };
     let capture = text::process_contextual_source(text::ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         source: source.clone(),
         segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,

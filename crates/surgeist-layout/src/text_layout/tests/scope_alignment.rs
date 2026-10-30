@@ -378,6 +378,7 @@ impl Case {
         let input_control_count = controls.len();
         let processed = Arc::new(
             text::process_contextual_source(text::ContextualSourceInput {
+                joint_flows: Vec::new(),
                 scope_alignment_limits: Some(limits),
                 source,
                 segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,

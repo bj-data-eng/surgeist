@@ -312,6 +312,7 @@ fn fixture_with_child_topology(
     let control_facts = controls.clone();
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
@@ -830,6 +831,7 @@ fn nonempty_domain_with_terminal_empty_paragraph() -> IncidenceFixture {
     };
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source,

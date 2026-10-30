@@ -1684,6 +1684,7 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
         Size::new(5.0, 10.0),
     ));
     let capture = ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),
