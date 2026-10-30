@@ -160,6 +160,7 @@ pub(crate) struct PreparedCluster {
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum ShapedItem {
     TextCluster(usize),
+    Cell(usize),
     InlineBox {
         occurrence: usize,
         level: u8,
@@ -168,6 +169,49 @@ pub(crate) enum ShapedItem {
     Anchor {
         unit: usize,
     },
+}
+
+/// Actual horizontal coordinates inside the cell square: x points right and
+/// y points down. They are independent of the outer native line axes.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CellFrame {
+    pub(crate) x_scale: f64,
+    pub(crate) x_offset: f64,
+    pub(crate) baseline: f64,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CellClusterPosition {
+    pub(crate) cluster: usize,
+    pub(crate) pen: f64,
+}
+
+/// Provider input absence is source-proved; glyph/ink emptiness is not absence.
+#[derive(Clone, Debug)]
+pub(crate) enum CellPayload {
+    NoProviderInput,
+    Shaped {
+        runs: IndexRange<usize>,
+        clusters: IndexRange<usize>,
+        glyphs: IndexRange<usize>,
+        scope_relations: IndexRange<usize>,
+        advance: IndexRange<f64>,
+        positions: Vec<CellClusterPosition>,
+        frame: CellFrame,
+    },
+}
+
+/// One genuine source cell and its already executed horizontal normal payload.
+#[derive(Clone, Debug)]
+pub(crate) struct PreparedCell {
+    /// Local ordinal in the analyzed output's actual CombinedOutput bindings.
+    pub(crate) binding: usize,
+    pub(crate) metrics: usize,
+    pub(crate) level: u8,
+    pub(crate) extent: f64,
+    pub(crate) before: f64,
+    pub(crate) after: f64,
+    pub(crate) payload: CellPayload,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -195,6 +239,7 @@ pub(crate) struct ShapedData {
     pub(crate) atomic_gaps: OrdinalMap<f64>,
     pub(crate) word_spacing: Vec<super::super::spacing::WordSpacingUnit>,
     pub(crate) items: Vec<ShapedItem>,
+    pub(crate) cells: Vec<PreparedCell>,
     /// An actual admitted default face with zero source/glyph extent, for empty metrics.
     pub(crate) empty_run: Option<PreparedRun>,
 }
@@ -278,6 +323,7 @@ pub(crate) struct LineMetrics {
 /// canonical f32; logical run-local pens and the run origin remain f64.
 #[derive(Clone, Debug)]
 pub(crate) struct FinalizedRun {
+    pub(crate) frame: FinalizedRunFrame,
     /// Executed common reference, distinct from the font-design paint origin.
     pub(crate) reference: Option<f64>,
     pub(crate) run: usize,
@@ -290,6 +336,27 @@ pub(crate) struct FinalizedRun {
     /// alignment reference remains in LineMetrics::baseline.
     pub(crate) y: f64,
     pub(crate) advance: f64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum FinalizedRunFrame {
+    Line,
+    Cell(usize),
+}
+
+/// The actual outer square has already received its enclosing scope shift.
+/// The retained shift records custody and must not be applied a second time.
+#[derive(Clone, Debug)]
+pub(crate) struct FinalizedCell {
+    pub(crate) unit: usize,
+    pub(crate) cell: usize,
+    pub(crate) binding: usize,
+    pub(crate) reference: f64,
+    pub(crate) inline: IndexRange<f64>,
+    pub(crate) under: IndexRange<f64>,
+    pub(crate) scope_displacement: crate::BaselineShift,
+    pub(crate) level: u8,
+    pub(crate) frame: Option<CellFrame>,
 }
 
 /// One actual logical glyph position, separate from its canonical provider offsets.
@@ -371,6 +438,7 @@ impl FinalizedBox {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum FinalizedVisualItem {
     Cluster(usize),
+    Cell(usize),
     InlineBox(usize),
     Anchor(usize),
 }
@@ -419,6 +487,7 @@ pub(crate) struct FinalizedLineData {
     pub(crate) word_anchors: Vec<WordSpacingAnchor>,
     pub(crate) character_anchors: Vec<WordSpacingAnchor>,
     pub(crate) boxes: Vec<FinalizedBox>,
+    pub(crate) cells: Vec<FinalizedCell>,
     pub(crate) visual_order: Vec<FinalizedVisualItem>,
     pub(crate) anchors: Vec<FinalizedAnchor>,
     pub(crate) spacing_slots: Vec<FinalizedSpacingSlot>,
@@ -456,6 +525,7 @@ impl FinalizedLineData {
             self.character_anchors.len(),
         )?)?;
         visit(W::buffer(&self.boxes, self.boxes.len())?)?;
+        visit(W::buffer(&self.cells, self.cells.len())?)?;
         visit(W::buffer(&self.visual_order, self.visual_order.len())?)?;
         visit(W::buffer(&self.anchors, self.anchors.len())?)?;
         visit(W::buffer(&self.spacing_slots, self.spacing_slots.len())?)?;

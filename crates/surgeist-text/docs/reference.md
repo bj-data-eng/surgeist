@@ -470,15 +470,17 @@ validated all-zero default axes omitted by the provider. Malformed instance
 metadata and unresolved faux-bold/skew return typed failures. These views retain
 no independent layout or preparation identity; their lifetime comes from the
 original immutable Layout.
-`RunView::origin()` is physical; `FinalizedRunView::origin()` is line-local
-`(inline, line-under)`. Both views and owned `Run` expose the actual shaping
+`RunView::origin()` is physical. `FinalizedRunView::origin()` is line-local
+`(inline, line-under)` for an ordinary run; a run with `cell()` retains its
+intrinsic horizontal inner offsets before the cell frame. Both views and owned
+`Run` expose the actual shaping
 run's retained `glyph_basis()`, independently of the placed line frame. Native
 Horizontal and whole-upright Vertical retain `GlyphBasis::Unrotated`;
 SidewaysClockwise retains `Clockwise` and SidewaysCounterclockwise retains
 `Counterclockwise`. `Run::new` takes the outline basis explicitly. The logical
-pen advances along the line's inline axis independently of raw font-x and
-converted font-y offsets. With physical run origin `(X,Y)`, pen `p` and raw
-scaled offsets `(dx,dy)`, glyph origins are:
+pen of an ordinary run advances along the line's inline axis independently of
+raw font-x and converted font-y offsets. With physical run origin `(X,Y)`, pen
+`p` and raw scaled offsets `(dx,dy)`, ordinary-run glyph origins are:
 
 | Line frame | Outline basis | Physical glyph origin |
 | --- | --- | --- |
@@ -496,6 +498,16 @@ Vertical and SidewaysClockwise line **cells** share a physical mapping from inli
 line-under coordinates; that map does not rotate upright outlines. Raw glyph
 offsets are never rotated in storage. Logical spacing changes the pen without
 rewriting the provider advance. Decoration rectangles are already physical.
+
+Borrowed `RunView::glyph_frame()` and owned `Run::glyph_frame()` retain the
+executed physical origin, outline-axis vectors and pen direction in outline
+coordinates. A combined cell keeps horizontal inner pens and unrotated outlines
+even in a vertical line. Its frame applies horizontal-only scale to both the pen
+and raw glyph x; glyph y remains downward and unscaled. The actual physical cell
+square receives the enclosing scope displacement once, before inner placement.
+The run's canonical font size, raw advances and retained resource remain
+independent of that geometric scale. Provider-input-empty cells have a square
+without a synthetic body run.
 
 ## Source-local whitespace processing
 
@@ -623,8 +635,20 @@ member inventory with one designated facts owner. Source continuity supplies
 context, not permission to merge outputs. The exact single-view constructor
 keeps its original coverage when an indivisible unit requires domain analysis.
 Combination reads the captured writing axis and inner direction; typography
-does not supply either fact. Selected cells currently return
-`TextCombineError::UnsupportedCellPreparation` at preparation, before font work.
+does not supply either fact. Native cell preparation supports matching explicit
+Vertical composition when its normal horizontal payload fits one em and contains
+at most one actual provider scalar, or source processing proves no provider input.
+It demands the genuine text-containing Inline or same-domain inherited
+RootInline font reference and captured limits, including for glyph-free cells.
+The cell's outer advance is one em; its inner runs retain their actual horizontal
+advances. Multi-scalar and overwide payloads, nonzero inner word spacing, and
+interior endpoint or directional controls still return
+`TextCombineError::UnsupportedCellPreparation`. An in-cell TAB with deferred CSS
+tab stops is also unsupported; source processing retains genuine forced-break
+removal and glyph-free input provenance. A cell without a raw logical participant
+retains its actual relation-event interval for direction queries. Its whole
+occurrence can supply an eligible strong bidi contribution when a raw empty point cannot;
+the complete body context still determines isolate eligibility.
 
 `combined_cells()` borrows completed source-cell facts, including separate
 selection and used unit counts, inner direction and exact original-resource

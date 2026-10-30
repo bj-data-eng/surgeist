@@ -325,6 +325,7 @@ fn raw_soft_admitted(prepared: &PreparedData, start: usize, end: usize) -> bool 
             .iter()
             .any(|participant| match *participant {
                 ParticipantData::Text(i) => !tables.units[i].atoms.is_empty(),
+                ParticipantData::Cell(_) => true,
                 ParticipantData::Atomic(i) => {
                     prepared.analyzed.processed.source().boxes()[tables.atomics[i].occurrence]
                         .kind()

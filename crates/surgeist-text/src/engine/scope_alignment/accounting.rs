@@ -1,7 +1,7 @@
 //! Operation-local allocation accounting for scope finalization and replay.
 //! Native input resources stay with their retained owner. Every new buffer is
 //! reserved before mutation; dropped scratch releases bytes, never record work.
-use crate::engine::layout::data::{OrdinalMap, PreparedRun, ShapedData};
+use crate::engine::layout::data::{CellPayload, OrdinalMap, PreparedCell, PreparedRun, ShapedData};
 use crate::processing::contextual::alignment::ScopeAlignmentBudget;
 use crate::{Result, ScopeAlignmentError, ScopeAlignmentLimitKind};
 
@@ -29,6 +29,59 @@ pub(crate) fn header<T>(ledger: &mut Ledger) -> Result<()> {
     }
     Ok(())
 }
+/// The Cell-created outer item arena has one persistent header and one actual
+/// shared backing. Prepared body payloads otherwise retain native ownership.
+pub(crate) fn visit_cell_items(
+    shaped: &ShapedData,
+    visit: &mut super::census::AllocationVisitor<'_>,
+) -> Result<()> {
+    use super::census::AllocationWitness as W;
+    visit(W::object(&shaped.items, 0))?;
+    visit(W::buffer(&shaped.items, shaped.items.len())?)
+}
+
+/// Canonical selected Cell ownership inventory. Once Cell copies enter these
+/// arenas, each whole shared allocation is owned, including ordinary rows that
+/// already occupy its capacity. Nested coordinates have embedded headers.
+pub(crate) fn visit_cell_arenas(
+    shaped: &ShapedData,
+    visit: &mut super::census::AllocationVisitor<'_>,
+) -> Result<()> {
+    use super::census::AllocationWitness as W;
+    visit(W::object(&shaped.runs, 0))?;
+    visit(W::buffer(&shaped.runs, shaped.runs.len())?)?;
+    for run in &shaped.runs {
+        visit(W::buffer(&run.coords, run.coords.len())?)?;
+    }
+    visit(W::object(&shaped.clusters, 0))?;
+    visit(W::buffer(&shaped.clusters, shaped.clusters.len())?)?;
+    visit(W::object(&shaped.glyphs, 0))?;
+    visit(W::buffer(&shaped.glyphs, shaped.glyphs.len())?)?;
+    visit(W::object(&shaped.provider_groups, 0))?;
+    visit(W::buffer(
+        &shaped.provider_groups,
+        shaped.provider_groups.len(),
+    )?)?;
+    visit_cell_items(shaped, visit)
+}
+
+/// Transfer the actual existing selected shared arenas to Cell ownership once,
+/// before their first Cell copy or growth. Subsequent mutation uses reserve/push
+/// on this same ledger; no capacity that preceded adoption is debited unfunded.
+pub(crate) fn adopt_cell_arenas(ledger: &mut Ledger, shaped: &ShapedData) -> Result<()> {
+    let Some(budget) = ledger else { return Ok(()) };
+    visit_cell_arenas(shaped, &mut |allocation| {
+        let inspections = allocation.records().checked_add(1).ok_or_else(|| {
+            super::refusal(ScopeAlignmentError::Overflow {
+                kind: ScopeAlignmentLimitKind::StructuralWork,
+            })
+        })?;
+        budget.work(inspections)?;
+        budget.add_records(allocation.records())?;
+        budget.retain_bytes(allocation.payload_bytes())
+    })
+}
+
 pub(crate) fn reserve_vec<T>(
     ledger: &mut Ledger,
     values: &mut Vec<T>,
@@ -115,6 +168,38 @@ pub(crate) fn clone_run(ledger: &mut Ledger, row: &PreparedRun) -> Result<Prepar
         metrics: row.metrics,
     })
 }
+fn clone_cell(ledger: &mut Ledger, row: &PreparedCell) -> Result<PreparedCell> {
+    work(ledger, 1)?;
+    let payload = match &row.payload {
+        CellPayload::NoProviderInput => CellPayload::NoProviderInput,
+        CellPayload::Shaped {
+            runs,
+            clusters,
+            glyphs,
+            scope_relations,
+            advance,
+            positions,
+            frame,
+        } => CellPayload::Shaped {
+            runs: runs.clone(),
+            clusters: clusters.clone(),
+            glyphs: glyphs.clone(),
+            scope_relations: scope_relations.clone(),
+            advance: advance.clone(),
+            positions: clone_vec(ledger, positions)?,
+            frame: *frame,
+        },
+    };
+    Ok(PreparedCell {
+        binding: row.binding,
+        metrics: row.metrics,
+        level: row.level,
+        extent: row.extent,
+        before: row.before,
+        after: row.after,
+        payload,
+    })
+}
 pub(crate) fn clone_shaped(ledger: &mut Ledger, source: &ShapedData) -> Result<ShapedData> {
     header::<ShapedData>(ledger)?;
     let mut runs = Vec::new();
@@ -169,6 +254,11 @@ pub(crate) fn clone_shaped(ledger: &mut Ledger, source: &ShapedData) -> Result<S
         };
         push(ledger, &mut word_spacing, row)?;
     }
+    let mut cells = Vec::new();
+    for row in &source.cells {
+        let row = clone_cell(ledger, row)?;
+        push(ledger, &mut cells, row)?;
+    }
     Ok(ShapedData {
         scope_glyph_custody: clone_vec(ledger, &source.scope_glyph_custody)?,
         scope_relations: clone_vec(ledger, &source.scope_relations)?,
@@ -188,6 +278,7 @@ pub(crate) fn clone_shaped(ledger: &mut Ledger, source: &ShapedData) -> Result<S
         },
         word_spacing,
         items: clone_vec(ledger, &source.items)?,
+        cells,
         empty_run: source
             .empty_run
             .as_ref()
@@ -227,6 +318,12 @@ pub(crate) fn drop_shaped(ledger: &mut Ledger, source: ShapedData) -> Result<()>
         for row in &source.word_spacing {
             include(bytes(&row.components)?)?;
         }
+        for row in &source.cells {
+            work(ledger, 1)?;
+            if let CellPayload::Shaped { positions, .. } = &row.payload {
+                include(bytes(positions)?)?;
+            }
+        }
         include(bytes(&source.scope_glyph_custody)?)?;
         include(bytes(&source.scope_relations)?)?;
         include(bytes(&source.runs)?)?;
@@ -238,6 +335,7 @@ pub(crate) fn drop_shaped(ledger: &mut Ledger, source: ShapedData) -> Result<()>
         include(bytes(&source.atomic_gaps.rows)?)?;
         include(bytes(&source.word_spacing)?)?;
         include(bytes(&source.items)?)?;
+        include(bytes(&source.cells)?)?;
         total
     } else {
         0

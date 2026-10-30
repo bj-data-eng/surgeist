@@ -69,7 +69,11 @@ impl PreparedText {
             .inner
             .analyzed
             .direction
-            .query_in(segment.index, start.participant, end.participant)
+            .query_source_in(
+                segment.index,
+                start.source_participant..end.source_participant,
+                start.relation_cut..end.relation_cut,
+            )
             .ok_or_else(invalid)?;
         Ok(LineDirectionFacts {
             paragraph_strong_direction: strong.map(|level| {

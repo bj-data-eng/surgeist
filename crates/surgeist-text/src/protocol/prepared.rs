@@ -1,5 +1,6 @@
 //! Canonical preparation tables; handles borrow these actual issued rows.
 
+pub(crate) mod cells;
 mod fragments;
 pub(crate) mod presentation;
 #[cfg(test)]
@@ -30,6 +31,9 @@ pub(crate) struct PreparedTables {
     pub(crate) hyphenation_cuts: Vec<super::hyphenation::CutData>,
     pub(crate) participants: Vec<ParticipantData>,
     pub(crate) units: Vec<UnitData>,
+    pub(crate) cells: Vec<cells::CellData>,
+    /// Actual original logical spans, one per outer participant when cells exist.
+    pub(crate) source_participants: Vec<IndexRange<usize>>,
     pub(crate) atomics: Vec<AtomicData>,
     pub(crate) controls: Vec<ControlData>,
     pub(crate) computed_boundaries: Vec<ComputedBoundaryData>,
@@ -49,6 +53,18 @@ pub(crate) struct PreparedTables {
 }
 
 impl PreparedTables {
+    pub(crate) fn source_prefix(&self, outer: usize) -> Option<usize> {
+        if outer > self.participants.len() {
+            return None;
+        }
+        if self.cells.is_empty() {
+            return Some(outer);
+        }
+        self.source_participants
+            .get(outer)
+            .map(|range| range.start)
+            .or_else(|| self.source_participants.last().map(|range| range.end))
+    }
     pub(crate) fn auto_phrase_between(&self, start: usize, end: usize) -> bool {
         self.auto_phrase_prefix[self.boundaries[start].participant]
             != self.auto_phrase_prefix[self.boundaries[end].participant]
@@ -58,6 +74,7 @@ impl PreparedTables {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ParticipantData {
     Text(usize),
+    Cell(usize),
     Atomic(usize),
     Control(usize),
     ComputedLineBoundary(usize),
@@ -116,6 +133,8 @@ pub(crate) struct ComputedBoundaryData {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct BoundaryData {
     pub(crate) participant: usize,
+    /// Original mixed-source prefix; cells have a different outer cardinality.
+    pub(crate) source_participant: usize,
     pub(crate) atom: usize,
     pub(crate) processed: usize,
     pub(crate) relation_cut: usize,
@@ -287,6 +306,7 @@ pub(crate) struct PresentationUnit {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PresentationUnitKind {
     Text,
+    Cell { cell: usize },
     Deleted,
     EmptyOrigin { origin: usize },
     Atomic { occurrence: usize },
@@ -329,6 +349,7 @@ pub(crate) fn prepare_tables(
     analyzed: &AnalyzedData,
     shaped: &ShapedData,
     profile: crate::engine::PreparationProfile,
+    ledger: &mut crate::engine::scope_alignment::accounting::Ledger,
 ) -> crate::Result<PreparedTables> {
     use crate::engine::analysis::wrapping::Event;
     let projection = &analyzed.projection;
@@ -346,6 +367,16 @@ pub(crate) fn prepare_tables(
                 }
             }
             ShapedItem::InlineBox { occurrence, .. } => item_for_box[occurrence] = Some(item),
+            ShapedItem::Cell(cell) => {
+                let output = analyzed
+                    .combination
+                    .as_deref()
+                    .expect("a shaped cell is issued from its retained completed source binding");
+                let binding = &output.bindings[shaped.cells[cell].binding];
+                for atom in binding.atoms.clone() {
+                    item_for_atom[atom] = Some(item);
+                }
+            }
             ShapedItem::Anchor { .. } => {}
         }
     }
@@ -356,6 +387,8 @@ pub(crate) fn prepare_tables(
         hyphenation_cuts: Vec::new(),
         participants: Vec::new(),
         units: Vec::new(),
+        cells: Vec::new(),
+        source_participants: Vec::new(),
         atomics: Vec::new(),
         controls: Vec::new(),
         computed_boundaries: Vec::new(),
@@ -398,6 +431,7 @@ pub(crate) fn prepare_tables(
     let mut collapsed_space_wrap = None;
     tables.boundaries.push(BoundaryData {
         participant: 0,
+        source_participant: 0,
         atom: 0,
         relation_cut: 0,
         processed: analyzed
@@ -618,6 +652,7 @@ pub(crate) fn prepare_tables(
                 .is_some_and(|cluster| shaped.clusters[cluster].ligature_component);
             tables.boundaries.push(BoundaryData {
                 participant: tables.participants.len(),
+                source_participant: tables.participants.len(),
                 relation_cut: analyzed
                     .transform
                     .cut_for_participant(tables.participants.len()),
@@ -631,6 +666,7 @@ pub(crate) fn prepare_tables(
             });
         }
     }
+    cells::lower(&mut tables, analyzed, shaped, ledger)?;
     for participant in &tables.participants {
         let owns = match *participant {
             ParticipantData::Text(index) => tables.units[index].atoms.clone().any(|atom| {
@@ -644,14 +680,23 @@ pub(crate) fn prepare_tables(
                 matches!(&paragraph.controls[tables.controls[index].occurrence].kind,
                 ParagraphControlKind::DiscretionaryBreak {style} if style.effective_breaking().auto_phrase)
             }
-            ParticipantData::Atomic(_) | ParticipantData::ComputedLineBoundary(_) => false,
+            ParticipantData::Cell(_)
+            | ParticipantData::Atomic(_)
+            | ParticipantData::ComputedLineBoundary(_) => false,
         };
-        tables
-            .auto_phrase_prefix
-            .push(tables.auto_phrase_prefix.last().copied().unwrap() + usize::from(owns));
+        let next = tables.auto_phrase_prefix.last().copied().unwrap() + usize::from(owns);
+        if tables.cells.is_empty() {
+            tables.auto_phrase_prefix.push(next);
+        } else {
+            crate::engine::scope_alignment::accounting::push(
+                ledger,
+                &mut tables.auto_phrase_prefix,
+                next,
+            )?;
+        }
     }
     issue_opportunities(catalogue, analyzed, styles, &mut tables)?;
-    super::segments::prepare(&mut tables, analyzed)?;
+    super::segments::prepare(&mut tables, analyzed, ledger)?;
     tables
         .suppressed
         .sort_unstable_by_key(|row| (row.boundary, row.phrase));
@@ -685,6 +730,13 @@ pub(crate) fn prepare_tables(
     Ok(tables)
 }
 
+pub(crate) fn visit_cell_allocations(
+    tables: &PreparedTables,
+    visit: &mut crate::engine::scope_alignment::census::AllocationVisitor<'_>,
+) -> crate::Result<()> {
+    cells::visit_allocations(tables, visit)
+}
+
 fn issue_opportunities(
     catalogue: &mut crate::catalogue::Catalogue,
     analyzed: &AnalyzedData,
@@ -709,11 +761,11 @@ fn issue_opportunities(
     for index in 1..tables.boundaries.len() {
         let boundary_value = tables.boundaries[index];
         let boundary = &boundary_value;
-        let computed_break = matches!(
-            tables.participants.get(boundary.participant - 1),
-            Some(ParticipantData::ComputedLineBoundary(_))
-        );
-        let previous = tables.participants.get(boundary.participant - 1);
+        let previous = boundary
+            .participant
+            .checked_sub(1)
+            .and_then(|i| tables.participants.get(i));
+        let computed_break = matches!(previous, Some(ParticipantData::ComputedLineBoundary(_)));
         let control = previous.and_then(|item| match *item {
             ParticipantData::Control(i) => {
                 Some(&analyzed.paragraph.controls[tables.controls[i].occurrence].kind)
@@ -806,7 +858,7 @@ fn issue_opportunities(
         if let Some((definition, anchor, style)) = owner {
             let authored = analyzed.styles[style].style.authored();
             let before_hard = analyzed.paragraph.base_direction.is_some()
-                && analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]]
+                && analyzed.logical.relations[analyzed.logical.cuts[boundary.source_participant]]
                     .before_hard_separator;
             let count_admitted = tables.profile == crate::engine::PreparationProfile::Standalone
                 || analyzed
@@ -873,7 +925,7 @@ fn issue_opportunities(
         {
             Some(PreparedBreakKind::Forced)
         } else if analyzed.paragraph.base_direction.is_some()
-            && analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]]
+            && analyzed.logical.relations[analyzed.logical.cuts[boundary.source_participant]]
                 .before_hard_separator
         {
             // UAX #14 LB4/LB5 mandatory-after rules precede LB6. Only
@@ -882,7 +934,8 @@ fn issue_opportunities(
             None
         } else if hyphenation {
             let atomic = atomic_permission(analyzed, boundary)?.unwrap_or_else(|| {
-                analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]].atomic
+                analyzed.logical.relations[analyzed.logical.cuts[boundary.source_participant]]
+                    .atomic
                     && standalone_atomic_opportunity(analyzed, tables, boundary)
             });
             if atomic
@@ -1056,7 +1109,7 @@ fn suppressed_phrase(
     if control.is_some() || atomic_permission(analyzed, boundary)?.is_some() {
         return Ok(None);
     }
-    let relation = &analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]];
+    let relation = &analyzed.logical.relations[analyzed.logical.cuts[boundary.source_participant]];
     if let (Some(Influence::Text { atom: before, .. }), Some(Influence::Text { atom: after, .. })) =
         (relation.before, relation.after)
         && [before, after].into_iter().any(|atom| {
@@ -1135,7 +1188,8 @@ fn soft_boundary(
         return Ok(index);
     }
     let mut participant = tables.boundaries[index].participant;
-    let owner = analyzed.logical.cuts[participant];
+    let source_participant = tables.boundaries[index].source_participant;
+    let owner = analyzed.logical.cuts[source_participant];
     let seams = if analyzed
         .paragraph
         .connections
@@ -1154,22 +1208,22 @@ fn soft_boundary(
     } else {
         Vec::new()
     };
-    let section = super::segments::preceding_section(analyzed, participant)
+    let section = super::segments::preceding_section(analyzed, source_participant)
         .map(|index| &analyzed.sections[index]);
     let mut lower = section.map_or(0, |section| section.participants.start);
-    let mut upper = section.map_or(tables.participants.len(), |section| {
+    let mut upper = section.map_or(analyzed.logical.events.len(), |section| {
         section.participants.end
     });
     for seam in seams {
-        if seam.upper <= participant {
+        if seam.upper <= source_participant {
             lower = lower.max(seam.upper);
         }
-        if seam.lower >= participant {
+        if seam.lower >= source_participant {
             upper = upper.min(seam.lower);
         }
-        if seam.lower < participant && participant < seam.upper {
-            lower = participant;
-            upper = participant;
+        if seam.lower < source_participant && source_participant < seam.upper {
+            lower = source_participant;
+            upper = source_participant;
         }
     }
     let endpoint = |at: usize, kind: ParagraphControlKind| {
@@ -1187,10 +1241,16 @@ fn soft_boundary(
             .code_point()
             .is_some(),
         ParticipantData::Text(unit) => tables.units[unit].empty_origin.is_some(),
-        ParticipantData::Atomic(_) | ParticipantData::ComputedLineBoundary(_) => false,
+        ParticipantData::Cell(_)
+        | ParticipantData::Atomic(_)
+        | ParticipantData::ComputedLineBoundary(_) => false,
     };
     let mut scan = participant;
-    while scan > lower && analyzed.logical.cuts[scan - 1] == owner {
+    while scan > 0
+        && tables
+            .source_prefix(scan - 1)
+            .is_some_and(|source| source >= lower && analyzed.logical.cuts[source] == owner)
+    {
         scan -= 1;
         if endpoint(scan, ParagraphControlKind::InlineBoundaryStart) {
             participant = scan;
@@ -1199,7 +1259,11 @@ fn soft_boundary(
         }
     }
     scan = participant;
-    while scan < upper && analyzed.logical.cuts[scan + 1] == owner {
+    while scan < tables.participants.len()
+        && tables
+            .source_prefix(scan + 1)
+            .is_some_and(|source| source <= upper && analyzed.logical.cuts[source] == owner)
+    {
         if endpoint(scan, ParagraphControlKind::InlineBoundaryEnd) {
             participant = scan + 1;
         } else if !neutral(scan) {
@@ -1212,7 +1276,9 @@ fn soft_boundary(
         .iter()
         .position(|row| {
             row.participant == participant
-                && row.relation_cut == analyzed.transform.cut_for_participant(participant)
+                && tables.source_prefix(participant).is_some_and(|source| {
+                    row.relation_cut == analyzed.transform.cut_for_participant(source)
+                })
         })
         .unwrap_or(index))
 }
@@ -1378,7 +1444,7 @@ fn automatic_cut(
         || authored.effective_breaking().word == OrdinaryWordBreak::BreakAll
         || authored.line_break == crate::LineBreak::Anywhere
         || authored.wrap != crate::Wrap::Word
-        || analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]]
+        || analyzed.logical.relations[analyzed.logical.cuts[boundary.source_participant]]
             .before_hard_separator
     {
         return Ok(None);
@@ -1415,7 +1481,7 @@ fn ordinary_after_source_shy(
     {
         return Ok(false);
     }
-    let relation = &analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]];
+    let relation = &analyzed.logical.relations[analyzed.logical.cuts[boundary.source_participant]];
     if !matches!(relation.after,
         Some(crate::engine::analysis::wrapping::Influence::Text { atom, .. }) if atom == boundary.atom)
     {
@@ -1492,7 +1558,7 @@ fn indication(
 }
 
 fn native_permission(analyzed: &AnalyzedData, boundary: &BoundaryData) -> crate::Result<bool> {
-    let relation = analyzed.logical.cuts[boundary.participant];
+    let relation = analyzed.logical.cuts[boundary.source_participant];
     if analyzed.logical.relations[relation].neighbors.is_none() {
         return Ok(false);
     }
@@ -1514,7 +1580,7 @@ fn ordinary_text_opportunity(
     if !analyzed.analysis.line_units.permits_edge(boundary.atom) {
         return Ok(false);
     }
-    let relation = &analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]];
+    let relation = &analyzed.logical.relations[analyzed.logical.cuts[boundary.source_participant]];
     let (
         Some(Influence::Text {
             participant,
@@ -1526,7 +1592,7 @@ fn ordinary_text_opportunity(
         return Ok(false);
     };
     // One real defining cut; later source-free custody does not clone it.
-    if boundary.participant != participant + 1
+    if boundary.source_participant != participant + 1
         || boundary.atom != after
         || is_hard_separator(analyzed.projection.atoms[before].code_point)
         || is_hard_separator(analyzed.projection.atoms[after].code_point)
@@ -1563,7 +1629,7 @@ fn atomic_permission(
     if analyzed.paragraph.base_direction.is_none() {
         return Ok(None);
     }
-    let relation = &analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]];
+    let relation = &analyzed.logical.relations[analyzed.logical.cuts[boundary.source_participant]];
     if !relation.atomic {
         return Ok(None);
     }
@@ -1641,7 +1707,8 @@ pub(crate) fn conditional_boundaries(
         if !analyzed.analysis.line_units.permits_edge(boundary.atom) {
             continue;
         }
-        let relation = &analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]];
+        let relation =
+            &analyzed.logical.relations[analyzed.logical.cuts[boundary.source_participant]];
         let (
             Some(Influence::Text {
                 participant: before_participant,
@@ -2196,7 +2263,7 @@ fn replacement_projection(
             if let Some((participant, _)) = analyzed.logical.events.iter().enumerate().find(|(_, event)| {
                 event.atom == start && matches!(event.kind, crate::engine::analysis::wrapping::Event::Anchor(actual) if actual == *anchor)
             }) {
-                projection.anchor_atoms[order] = Some(if participant < boundary.participant { inserted.start } else { inserted.end });
+                projection.anchor_atoms[order] = Some(if participant < boundary.source_participant { inserted.start } else { inserted.end });
             }
         }
     }
@@ -2242,7 +2309,7 @@ struct UnitCapture {
 fn push_presentation_unit(
     output: &mut PresentationOutput,
     projection: &SourceProjection,
-    source_atoms: &[usize],
+    source_atoms: impl ExactSizeIterator<Item = usize> + Clone,
     capture: UnitCapture,
 ) -> crate::Result<()> {
     let UnitCapture {
@@ -2255,7 +2322,16 @@ fn push_presentation_unit(
     } = capture;
     let start = output.position;
     let atom_start = output.atoms.len();
-    for &index in source_atoms {
+    let code_point =
+        if source_atoms.len() == 1 && !matches!(kind, PresentationUnitKind::Cell { .. }) {
+            source_atoms
+                .clone()
+                .next()
+                .map(|index| projection.atoms[index].code_point)
+        } else {
+            None
+        };
+    for index in source_atoms {
         let mut atom = projection.atoms[index].clone();
         let end = output
             .position
@@ -2267,8 +2343,6 @@ fn push_presentation_unit(
         output.indices.push(index);
     }
     let presentation = Range::new(start, output.position);
-    let code_point =
-        (source_atoms.len() == 1).then(|| projection.atoms[source_atoms[0]].code_point);
     output.units.push(PresentationUnit {
         source,
         processed,

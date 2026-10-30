@@ -143,6 +143,7 @@ pub(crate) fn admit<'a>(
 pub(crate) fn prepare(
     tables: &mut super::prepared::PreparedTables,
     analyzed: &crate::engine::AnalyzedData,
+    ledger: &mut crate::engine::scope_alignment::accounting::Ledger,
 ) -> Result<()> {
     use super::prepared::{OpportunityData, PreparedBreakKind};
     let native_count = tables.boundaries.len();
@@ -178,21 +179,19 @@ pub(crate) fn prepare(
             (
                 frontier(
                     tables,
+                    analyzed,
                     native_count,
                     index,
-                    section.participants.start,
-                    section.atoms.start,
-                    section.events.start,
-                    section.entry_cursor,
+                    Frontier::Entry,
+                    ledger,
                 )?,
                 frontier(
                     tables,
+                    analyzed,
                     native_count,
                     index,
-                    section.participants.end,
-                    section.atoms.end,
-                    section.events.end,
-                    section.exit_cursor,
+                    Frontier::Exit,
+                    ledger,
                 )?,
             )
         };
@@ -213,16 +212,54 @@ pub(crate) fn prepare(
     // Native opportunities were analyzed on native cuts only. Frontier aliases
     // cannot invent another soft/forced opportunity. All handles are still
     // private; put genuine cuts in order and remap every existing cut link.
-    let mut boundaries = std::mem::take(&mut tables.boundaries)
-        .into_iter()
-        .enumerate()
-        .collect::<Vec<_>>();
-    boundaries.sort_unstable_by_key(|(old, row)| (row.participant, row.relation_cut, *old));
-    let mut boundary_map = vec![0; boundaries.len()];
+    let cell_owned = !tables.cells.is_empty();
+    let native = std::mem::take(&mut tables.boundaries);
+    let mut boundaries = if cell_owned {
+        let result = crate::engine::scope_alignment::accounting::collect(
+            ledger,
+            native.iter().copied().enumerate(),
+        )?;
+        crate::engine::scope_alignment::accounting::drop_vec(ledger, native)?;
+        result
+    } else {
+        native.into_iter().enumerate().collect::<Vec<_>>()
+    };
+    if cell_owned {
+        crate::processing::contextual::alignment::operations::order_by(
+            &mut boundaries,
+            ledger.as_mut(),
+            |(left_old, left), (right_old, right)| {
+                (left.participant, left.relation_cut, *left_old).cmp(&(
+                    right.participant,
+                    right.relation_cut,
+                    *right_old,
+                ))
+            },
+        )?;
+    } else {
+        boundaries.sort_unstable_by_key(|(old, row)| (row.participant, row.relation_cut, *old));
+    }
+    let mut boundary_map = if cell_owned {
+        crate::engine::scope_alignment::accounting::filled(ledger, boundaries.len(), 0)?
+    } else {
+        vec![0; boundaries.len()]
+    };
+    if cell_owned {
+        crate::engine::scope_alignment::accounting::work(ledger, boundaries.len())?;
+    }
     for (new, (old, _)) in boundaries.iter().enumerate() {
         boundary_map[*old] = new;
     }
-    tables.boundaries = boundaries.into_iter().map(|(_, row)| row).collect();
+    tables.boundaries = if cell_owned {
+        let result = crate::engine::scope_alignment::accounting::collect(
+            ledger,
+            boundaries.iter().map(|(_, row)| *row),
+        )?;
+        crate::engine::scope_alignment::accounting::drop_vec(ledger, boundaries)?;
+        result
+    } else {
+        boundaries.into_iter().map(|(_, row)| row).collect()
+    };
     for row in &mut tables.opportunities {
         row.boundary = boundary_map[row.boundary];
     }
@@ -242,10 +279,13 @@ pub(crate) fn prepare(
         row.start = boundary_map[row.start];
         row.end = boundary_map[row.end];
     }
+    if cell_owned {
+        crate::engine::scope_alignment::accounting::drop_vec(ledger, boundary_map)?;
+    }
     let boundaries = &tables.boundaries;
     let source_segments = &tables.source_segments;
     let native_owner =
-        |boundary: usize| preceding_section(analyzed, boundaries[boundary].participant);
+        |boundary: usize| preceding_section(analyzed, boundaries[boundary].source_participant);
     let native_endpoint = |boundary: usize| -> Result<usize> {
         let Some(owner) = native_owner(boundary) else {
             return Ok(boundary);
@@ -257,7 +297,7 @@ pub(crate) fn prepare(
         }
         // A canonical participant cut can absorb later filtered removals.
         // The actual preceding participant still ends at its own proved edge.
-        if row.participant == section.participants.end && row.atom == section.atoms.end {
+        if row.source_participant == section.participants.end && row.atom == section.atoms.end {
             Ok(source_segments[owner].end)
         } else {
             Err(protocol_error(ProtocolError::InvalidSourceSegment {
@@ -355,19 +395,48 @@ pub(crate) fn prepare(
     Ok(())
 }
 
+enum Frontier {
+    Entry,
+    Exit,
+}
+
 fn frontier(
     tables: &mut super::prepared::PreparedTables,
+    analyzed: &crate::engine::AnalyzedData,
     native_count: usize,
     segment: usize,
-    participant: usize,
-    atom: usize,
-    cut: usize,
-    cursor: crate::engine::analysis::structural::Cursor,
+    side: Frontier,
+    ledger: &mut crate::engine::scope_alignment::accounting::Ledger,
 ) -> Result<usize> {
+    let section = &analyzed.sections[segment];
+    let (source_participant, atom, cut, cursor) = match side {
+        Frontier::Entry => (
+            section.participants.start,
+            section.atoms.start,
+            section.events.start,
+            section.entry_cursor,
+        ),
+        Frontier::Exit => (
+            section.participants.end,
+            section.atoms.end,
+            section.events.end,
+            section.exit_cursor,
+        ),
+    };
+    let participant =
+        super::prepared::cells::outer_cut(tables, analyzed, source_participant, cut, ledger)?
+            .ok_or_else(|| protocol_error(ProtocolError::InvalidSourceSegment { segment }))?;
     // Native typography-safe cuts are ordered but can omit participant prefixes
     // inside an indivisible unit. Aliases never supply that missing safety proof.
-    let native =
-        tables.boundaries[..native_count].partition_point(|row| row.participant < participant);
+    let native = if tables.cells.is_empty() {
+        tables.boundaries[..native_count].partition_point(|row| row.participant < participant)
+    } else {
+        crate::processing::contextual::alignment::operations::partition_point(
+            &tables.boundaries[..native_count],
+            ledger.as_mut(),
+            |row| row.participant < participant,
+        )?
+    };
     let mut row = *tables
         .boundaries
         .get(native)
@@ -390,11 +459,16 @@ fn frontier(
         return Ok(tables.boundaries.len() - 1);
     }
     row.relation_cut = cut;
+    row.source_participant = source_participant;
     row.processed = cursor.processed;
     row.source_before = cursor.source_before;
     row.source_after = cursor.source_after;
     let index = tables.boundaries.len();
-    tables.boundaries.push(row);
+    if tables.cells.is_empty() {
+        tables.boundaries.push(row);
+    } else {
+        crate::engine::scope_alignment::accounting::push(ledger, &mut tables.boundaries, row)?;
+    }
     Ok(index)
 }
 
@@ -495,10 +569,10 @@ fn admit_boundary_range(
             }
             let within = |position| lower <= position && position <= upper;
             let point = |boundary: &super::prepared::BoundaryData| {
-                let entry = boundary.participant == section.participants.start
+                let entry = boundary.source_participant == section.participants.start
                     && boundary.atom == section.atoms.start
                     && boundary.relation_cut == section.events.start;
-                let exit = boundary.participant == section.participants.end
+                let exit = boundary.source_participant == section.participants.end
                     && boundary.atom == section.atoms.end
                     && boundary.relation_cut == section.events.end;
                 let after = within(boundary.source_after);

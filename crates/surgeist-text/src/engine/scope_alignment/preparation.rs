@@ -19,6 +19,192 @@ pub(crate) struct ScopeMetricsData {
     pub(crate) upright_provenance: Option<UprightMetricProvenance>,
 }
 
+/// Cells demand the genuine text container before any body trial, including
+/// when source processing proved that there is no provider input. An Inline
+/// owns its own metrics; a domain's derived RootInline uses that same actual
+/// Block/AtomicBlock/OutOfFlowBlock scope, never its lexical parent.
+pub(crate) fn prepare_cell_resources(
+    data: &mut PreparedScopes,
+    catalogue: &mut crate::catalogue::Catalogue,
+    analyzed: &AnalyzedData,
+    options: crate::PreparationOptions,
+    budget: &mut Option<ScopeAlignmentBudget>,
+) -> Result<()> {
+    let Some(output) = analyzed
+        .combination
+        .as_ref()
+        .filter(|output| !output.cells.is_empty())
+    else {
+        return Ok(());
+    };
+    if analyzed.paragraph.scope_topology.is_none() {
+        return Err(refusal(ScopeAlignmentError::MissingCapture));
+    }
+    let budget = budget
+        .as_mut()
+        .ok_or_else(|| refusal(ScopeAlignmentError::LimitsRequired))?;
+    let mut pinned = retained_pins(data, budget)?;
+    for binding in 0..output.bindings.len() {
+        let scope = cell_container(analyzed, binding, budget)?;
+        ensure_metric(
+            data,
+            catalogue,
+            analyzed,
+            options,
+            (scope, [false; 2]),
+            budget,
+            &mut pinned,
+        )?;
+    }
+    drop_scratch(pinned, budget)?;
+    data.usage = Some(budget.usage());
+    Ok(())
+}
+
+/// Read only the metric row already demanded by this actual cell container.
+/// The caller retains its index, not a donated body font or duplicate receipt.
+pub(crate) fn cell_metric_index(
+    data: &PreparedScopes,
+    scope: usize,
+    budget: &mut accounting::Ledger,
+) -> Result<usize> {
+    let budget = budget
+        .as_mut()
+        .ok_or_else(|| refusal(ScopeAlignmentError::LimitsRequired))?;
+    metric_row(data, scope, budget)?
+        .ok_or_else(|| refusal(ScopeAlignmentError::MissingMetrics { scope }))
+}
+
+fn metric_row(
+    data: &PreparedScopes,
+    scope: usize,
+    budget: &mut ScopeAlignmentBudget,
+) -> Result<Option<usize>> {
+    for (index, row) in data.metrics.iter().enumerate() {
+        budget.work(1)?;
+        if row.scope.index == scope {
+            return Ok(Some(index));
+        }
+    }
+    Ok(None)
+}
+
+fn remember_pin(
+    pinned: &mut Vec<(usize, usize)>,
+    resource: (usize, usize),
+    budget: &mut ScopeAlignmentBudget,
+) -> Result<()> {
+    for existing in pinned.iter() {
+        budget.work(1)?;
+        if *existing == resource {
+            return Ok(());
+        }
+    }
+    push(budget, pinned, resource)
+}
+
+fn retained_pins(
+    data: &PreparedScopes,
+    budget: &mut ScopeAlignmentBudget,
+) -> Result<Vec<(usize, usize)>> {
+    let mut pinned = Vec::new();
+    for row in &data.metrics {
+        budget.work(1)?;
+        remember_pin(
+            &mut pinned,
+            (row.font.bytes().as_ptr() as usize, row.font.bytes().len()),
+            budget,
+        )?;
+    }
+    Ok(pinned)
+}
+
+/// One canonical resource/metric owner serves both early cell demands and
+/// later scope demands. Reuse preserves the selected resource, normalized
+/// coordinates, query count and ongoing live/peak accounting.
+fn ensure_metric(
+    data: &mut PreparedScopes,
+    catalogue: &mut crate::catalogue::Catalogue,
+    analyzed: &AnalyzedData,
+    options: crate::PreparationOptions,
+    (scope, mut names): (usize, [bool; 2]),
+    budget: &mut ScopeAlignmentBudget,
+    pinned: &mut Vec<(usize, usize)>,
+) -> Result<usize> {
+    let capture = &analyzed
+        .paragraph
+        .scope_topology
+        .as_ref()
+        .expect("admitted metric capture")
+        .capture;
+    let reference = capture
+        .scope_alignment_fact_with_budget(scope, budget)?
+        .and_then(|row| row.font_reference)
+        .ok_or_else(|| refusal(ScopeAlignmentError::MissingFontReference { scope }))?;
+    let axis = if options.orientation() == crate::LineOrientation::Vertical {
+        crate::FontBaselineAxis::VerticalX
+    } else {
+        crate::FontBaselineAxis::HorizontalY
+    };
+    if reference.axis != axis {
+        return Err(refusal(ScopeAlignmentError::UnsupportedReference { scope }));
+    }
+    names[baseline_index(reference.baseline)] = true;
+    if let Some(native) = options.resolved_baseline_reference() {
+        names[baseline_index(native)] = true;
+    }
+    if let Some(index) = metric_row(data, scope, budget)? {
+        measure_baselines(&mut data.metrics[index], names, budget)?;
+        return Ok(index);
+    }
+    let captured = CapturedScope {
+        capture: Arc::clone(capture),
+        index: scope,
+    };
+    let style = captured
+        .style()
+        .ok_or_else(|| refusal(ScopeAlignmentError::MissingStyle { scope }))?;
+    let resolved = crate::engine::resolve::resolve_scope(
+        catalogue.collection_mut(),
+        style,
+        options.scale(),
+        budget,
+    )?;
+    let script = icu_properties::PropertyParser::<icu_properties::props::Script>::new()
+        .get_strict_utf8(&reference.script.iso15924())
+        .ok_or_else(|| refusal(ScopeAlignmentError::UnsupportedReference { scope }))?;
+    let catalogue_identity = catalogue.identity().clone();
+    let instance = crate::engine::shape::scope_font(
+        catalogue.query(),
+        &resolved,
+        script,
+        &catalogue_identity,
+        budget,
+        pinned,
+    )?;
+    remember_pin(
+        pinned,
+        (
+            instance.font.bytes().as_ptr() as usize,
+            instance.font.bytes().len(),
+        ),
+        budget,
+    )?;
+    let metrics = measure_scope(
+        captured,
+        reference,
+        instance,
+        resolved.line_height,
+        options,
+        budget,
+    )?;
+    crate::engine::resolve::drop_scope_style(resolved, budget)?;
+    let index = data.metrics.len();
+    push(budget, &mut data.metrics, metrics)?;
+    measure_baselines(&mut data.metrics[index], names, budget)?;
+    Ok(index)
+}
+
 /// Resolve the actual target/parent inventory, including selectable indications,
 /// before publishing preparation. Context-only scopes induce no query by themselves.
 pub(crate) fn prepare_resources(
@@ -85,6 +271,12 @@ pub(crate) fn prepare_resources(
         for owner in [relation.first, relation.second].into_iter().flatten() {
             activate(owner, &mut budget)?;
         }
+    }
+    for cell in &shaped.cells {
+        budget.work(1)?;
+        // Even source-proved empty input participates in the real enclosing
+        // frame. Its glyph-free receipt, not surviving glyphs, names the owner.
+        visit_cell_frame_owners(analyzed, cell.binding, &mut budget, &mut activate)?;
     }
     for anchor in &analyzed.paragraph.anchor_order {
         use crate::protocol::paragraph::SemanticAnchorItem;
@@ -168,72 +360,30 @@ pub(crate) fn prepare_resources(
             current = fact.parent;
         }
     }
-    let mut pinned = Vec::new();
+    let mut pinned = retained_pins(data, &mut budget)?;
     for &(scope, names) in &demands {
-        let captured = CapturedScope {
-            capture: Arc::clone(capture),
-            index: scope,
-        };
-        let reference = capture
-            .scope_alignment_fact_with_budget(scope, &mut budget)?
-            .and_then(|row| row.font_reference)
-            .expect("admitted reference demand");
-        let style = captured
-            .style()
-            .ok_or_else(|| refusal(ScopeAlignmentError::MissingStyle { scope }))?;
-        let resolved = crate::engine::resolve::resolve_scope(
-            catalogue.collection_mut(),
-            style,
-            options.scale(),
-            &mut budget,
-        )?;
-        let script = icu_properties::PropertyParser::<icu_properties::props::Script>::new()
-            .get_strict_utf8(&reference.script.iso15924())
-            .ok_or_else(|| refusal(ScopeAlignmentError::UnsupportedReference { scope }))?;
-        let catalogue_identity = catalogue.identity().clone();
-        let instance = crate::engine::shape::scope_font(
-            catalogue.query(),
-            &resolved,
-            script,
-            &catalogue_identity,
-            &mut budget,
-            &pinned,
-        )?;
-        let resource = (
-            instance.font.bytes().as_ptr() as usize,
-            instance.font.bytes().len(),
-        );
-        // Conservative duplicate-check/insertion admission, not a comparison trace.
-        budget.work(checked_sum(
-            crate::ScopeAlignmentLimitKind::StructuralWork,
-            pinned.len(),
-            1,
-        )?)?;
-        // scope_font charged the actual first pinned backing before building
-        // its coordinates; this list is only bounded duplicate-check scratch.
-        if !pinned.contains(&resource) {
-            push(&mut budget, &mut pinned, resource)?;
-        }
-        let metrics = measure_scope(
-            captured,
-            reference,
-            instance,
-            resolved.line_height,
+        ensure_metric(
+            data,
+            catalogue,
+            analyzed,
             options,
+            (scope, names),
             &mut budget,
+            &mut pinned,
         )?;
-        crate::engine::resolve::drop_scope_style(resolved, &mut budget)?;
-        push(&mut budget, &mut data.metrics, metrics)?;
-        // Measure only the names actually demanded by this target/parent graph.
-        let index = data.metrics.len() - 1;
-        measure_baselines(&mut data.metrics[index], names, &mut budget)?;
     }
     // Release only after the allocations actually cease to coexist. Record
     // charges remain monotonic materialization counts for this transaction.
     drop_scratch(demands, &mut budget)?;
     drop_scratch(active, &mut budget)?;
     drop_scratch(pinned, &mut budget)?;
-    data.retention = Some(prepared_retention(data, analyzed, shaped, &mut budget)?);
+    data.retention = Some(prepared_retention(
+        data,
+        analyzed,
+        shaped,
+        tables,
+        &mut budget,
+    )?);
     data.usage = Some(budget.usage());
     Ok(())
 }
@@ -416,6 +566,14 @@ fn measure_baselines(
     names: [bool; 2],
     budget: &mut ScopeAlignmentBudget,
 ) -> Result<()> {
+    let mut needed = [false; 2];
+    for index in 0..needed.len() {
+        budget.work(1)?;
+        needed[index] = names[index] && data.matching[index].is_none();
+    }
+    if !needed.into_iter().any(|name| name) {
+        return Ok(());
+    }
     let instance = crate::EffectiveFontInstance::qualify_synthesized(
         data.font.face(),
         data.font_size,
@@ -424,7 +582,7 @@ fn measure_baselines(
     )?;
     for name in [FontBaseline::Alphabetic, FontBaseline::Central] {
         let index = baseline_index(name);
-        if !names[index] {
+        if !needed[index] {
             continue;
         }
         metric_work(&data.font, &[*b"BASE"], budget)?;
@@ -468,6 +626,7 @@ pub(crate) fn visit_prepared_allocations(
     data: &PreparedScopes,
     analyzed: &AnalyzedData,
     shaped: &crate::engine::layout::data::ShapedData,
+    tables: &crate::protocol::prepared::PreparedTables,
     visit: &mut super::census::AllocationVisitor<'_>,
 ) -> Result<()> {
     use super::census::AllocationWitness;
@@ -499,6 +658,11 @@ pub(crate) fn visit_prepared_allocations(
         visit(AllocationWitness::buffer(&row.coords, row.coords.len())?)?;
         visit(AllocationWitness::resource(row.font.bytes()))?;
     }
+    visit_cell_allocations(shaped, visit)?;
+    if !shaped.cells.is_empty() {
+        accounting::visit_cell_items(shaped, visit)?;
+    }
+    crate::protocol::prepared::visit_cell_allocations(tables, visit)?;
     visit(AllocationWitness::object(&shaped.scope_glyph_custody, 0))?;
     visit(AllocationWitness::buffer(
         &shaped.scope_glyph_custody,
@@ -512,11 +676,36 @@ pub(crate) fn visit_prepared_allocations(
     Ok(())
 }
 
+/// Shared by prepared and selected owners. The outer cell buffer includes each
+/// payload's Vec header; only the nested position backing is a second allocation.
+pub(crate) fn visit_cell_allocations(
+    shaped: &crate::engine::layout::data::ShapedData,
+    visit: &mut super::census::AllocationVisitor<'_>,
+) -> Result<()> {
+    use super::census::AllocationWitness;
+    if shaped.cells.is_empty() && shaped.cells.capacity() == 0 {
+        return Ok(());
+    }
+    visit(AllocationWitness::object(&shaped.cells, 0))?;
+    // This row census also admits the following per-cell payload inspections.
+    visit(AllocationWitness::buffer(
+        &shaped.cells,
+        shaped.cells.len(),
+    )?)?;
+    for cell in &shaped.cells {
+        if let crate::engine::layout::data::CellPayload::Shaped { positions, .. } = &cell.payload {
+            visit(AllocationWitness::buffer(positions, positions.len())?)?;
+        }
+    }
+    Ok(())
+}
+
 fn prepared_retention(
     data: &PreparedScopes,
     analyzed: &AnalyzedData,
     shaped: &crate::engine::layout::data::ShapedData,
+    tables: &crate::protocol::prepared::PreparedTables,
     budget: &mut ScopeAlignmentBudget,
 ) -> Result<crate::ScopeAlignmentRetention> {
-    super::census::retained_prepared(data, analyzed, shaped, budget)
+    super::census::retained_prepared(data, analyzed, shaped, tables, budget)
 }

@@ -369,3 +369,363 @@ fn source_empty_combined_payload_still_measures_one_em_without_a_body_glyph() {
         processed.source()
     );
 }
+
+fn glyph_frame_font_premises(bytes: &[u8]) {
+    use skrifa::{
+        GlyphId, MetadataProvider,
+        instance::{LocationRef, Size},
+        raw::TableProvider,
+    };
+    let font = skrifa::FontRef::new(bytes).unwrap();
+    assert_eq!(font.head().unwrap().units_per_em(), 1000);
+    assert_eq!(font.hhea().unwrap().ascender().to_i16(), 800);
+    assert_eq!(font.hhea().unwrap().descender().to_i16(), -200);
+    assert_eq!(font.charmap().map('A'), Some(GlyphId::new(35)));
+    let glyphs = font.glyph_metrics(Size::unscaled(), LocationRef::default());
+    assert_eq!(glyphs.advance_width(GlyphId::new(35)), Some(1000.0));
+    let bounds = glyphs.bounds(GlyphId::new(35)).unwrap();
+    assert_eq!(
+        [bounds.x_min, bounds.y_min, bounds.x_max, bounds.y_max],
+        [0.0, -200.0, 1000.0, 800.0]
+    );
+    let table = font.base().unwrap();
+    let axis = table.vert_axis().unwrap().unwrap();
+    assert_eq!(
+        axis.base_tag_list()
+            .unwrap()
+            .unwrap()
+            .baseline_tags()
+            .iter()
+            .map(|tag| tag.get().to_be_bytes())
+            .collect::<Vec<_>>(),
+        [*b"ideo", *b"idtp"]
+    );
+    let scripts = axis.base_script_list().unwrap();
+    assert_eq!(scripts.base_script_records().len(), 1);
+    let script = &scripts.base_script_records()[0];
+    assert_eq!(script.base_script_tag().to_be_bytes(), *b"latn");
+    let values = script
+        .base_script(scripts.offset_data())
+        .unwrap()
+        .base_values()
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        values
+            .base_coords()
+            .iter()
+            .map(|coordinate| coordinate.unwrap().coordinate())
+            .collect::<Vec<_>>(),
+        [0, 1200]
+    );
+}
+
+fn placed_vertical_cell(prepared: &PreparedText, line: FinalizedLine) -> Layout {
+    Layout::from_finalized_lines(PlacementRequest {
+        prepared: prepared.clone(),
+        coverage: PlacementCoverage::WholeParagraph,
+        entries: vec![PlacementEntry::Formatted(LinePlacement {
+            line,
+            anchor: LineAnchor {
+                inline_origin: 20.0,
+                baseline: 100.0,
+            },
+            orientation: LineOrientation::Vertical,
+            atomics: vec![],
+        })],
+    })
+    .unwrap()
+}
+
+#[test]
+fn a_native_vertical_cell_exposes_its_horizontal_glyph_frame_in_borrowed_and_owned_runs() {
+    let (mut system, processed, analyzed, body) = setup("A", WhiteSpace::Preserve);
+    glyph_frame_font_premises(&body);
+    let prepared = system
+        .prepare(
+            &analyzed,
+            PreparationOptions::default().with_orientation(LineOrientation::Vertical),
+        )
+        .unwrap();
+    let line = finalize(&prepared);
+    one_em(&line);
+    let layout = placed_vertical_cell(&prepared, line);
+    assert_eq!(layout.source(), processed.source());
+    assert_eq!(layout.analyzed_source().identity(), analyzed.identity());
+    assert_eq!(layout.lines().len(), 1);
+    // Actual Inline's BASE edges are0/12 with Central6 at size10: O6/U-6
+    // about the supplied common baseline100. E10 therefore spans x95..105;
+    // inline20 gives y20..30. No lexical-root or aggregate-line metrics enter.
+    assert_eq!(
+        layout.lines()[0].bounds(),
+        Rect::new(95.0, 20.0, 10.0, 10.0)
+    );
+    let borrowed = layout
+        .run_views()
+        .filter(|run| run.glyphs().next().is_some())
+        .collect::<Vec<_>>();
+    let owned = layout
+        .glyph_runs()
+        .into_iter()
+        .filter(|run| !run.glyphs().is_empty())
+        .collect::<Vec<_>>();
+    assert_eq!(borrowed.len(), 1);
+    assert_eq!(owned.len(), 1);
+    let view = &borrowed[0];
+    let packet = &owned[0];
+    assert_eq!(view.orientation(), LineOrientation::Vertical);
+    assert_eq!(packet.orientation(), LineOrientation::Vertical);
+    assert_eq!(view.glyph_basis(), GlyphBasis::Unrotated);
+    assert_eq!(packet.glyph_basis(), GlyphBasis::Unrotated);
+    assert_eq!(view.face().bytes(), body.as_slice());
+    assert_eq!(packet.font().bytes(), body.as_slice());
+    assert_eq!(view.range(), Range::new(0, 1));
+    assert_eq!(packet.range(), Range::new(0, 1));
+    assert_eq!(packet.glyphs()[0].range(), Range::new(0, 1));
+    assert_eq!(
+        view.glyphs()
+            .map(|glyph| (
+                glyph.id(),
+                glyph.pen(),
+                glyph.x(),
+                glyph.y(),
+                glyph.advance()
+            ))
+            .collect::<Vec<_>>(),
+        [(35, 0.0, 0.0, 0.0, 10.0)]
+    );
+    assert_eq!(
+        packet
+            .glyphs()
+            .iter()
+            .map(|glyph| (
+                glyph.id(),
+                glyph.pen(),
+                glyph.x(),
+                glyph.y(),
+                glyph.advance()
+            ))
+            .collect::<Vec<_>>(),
+        [(35, 0.0, 0.0, 0.0, 10.0)]
+    );
+    let frame = view.glyph_frame();
+    assert_eq!(packet.glyph_frame(), frame);
+    // Normal A occupies horizontal[0,10], so scale1 and centering offset0.
+    // Its verified hhea8/-2 metric box already has heightE10: baseline8.
+    // The font-design origin is thus square-left95, square-top20+8=28.
+    assert_eq!(frame.origin(), Point::new(95.0, 28.0));
+    assert_eq!(view.origin(), Point::new(95.0, 28.0));
+    assert_eq!(packet.origin(), Point::new(95.0, 28.0));
+    assert_eq!(frame.pen_direction(), Point::new(1.0, 0.0));
+    assert_eq!(frame.outline_x(), Point::new(1.0, 0.0));
+    assert_eq!(frame.outline_y(), Point::new(0.0, 1.0));
+    // Qualified A ink is0..10 x -8..2 in converted layout coordinates.
+    // Use the observed executable axes with the independent literal corners.
+    let top = Point::new(
+        frame.origin().x - 8.0 * frame.outline_y().x,
+        frame.origin().y - 8.0 * frame.outline_y().y,
+    );
+    let bottom = Point::new(
+        frame.origin().x + 10.0 * frame.outline_x().x + 2.0 * frame.outline_y().x,
+        frame.origin().y + 10.0 * frame.outline_x().y + 2.0 * frame.outline_y().y,
+    );
+    assert_eq!(top, Point::new(95.0, 20.0));
+    assert_eq!(bottom, Point::new(105.0, 30.0));
+    let prepared_source = prepared.analyzed_source();
+    let cell = prepared_source.combined_cells().next().unwrap();
+    let original = cell.source_pieces().next().unwrap();
+    assert_eq!(original.source(), processed.source());
+    assert_eq!(original.aggregate(), Range::new(0, 1));
+    assert_eq!(
+        original.origin_position(),
+        processed.captured_origin(0).unwrap()
+    );
+}
+
+#[test]
+fn an_accepted_source_empty_cell_places_a_real_one_em_square_without_a_glyph_run() {
+    let (mut system, processed, analyzed, body) = setup(" ", WhiteSpace::Collapse);
+    glyph_frame_font_premises(&body);
+    let cell = analyzed.combined_cells().next().unwrap();
+    assert_eq!(cell.selection_unit_count(), 1);
+    assert_eq!(cell.used_unit_count(), 0);
+    assert_eq!(cell.presentation_code_points().len(), 0);
+    let prepared = system
+        .prepare(
+            &analyzed,
+            PreparationOptions::default().with_orientation(LineOrientation::Vertical),
+        )
+        .unwrap();
+    let line = finalize(&prepared);
+    one_em(&line);
+    assert_eq!(
+        line.run_views()
+            .map(|run| run.glyphs().len())
+            .sum::<usize>(),
+        0
+    );
+    let layout = placed_vertical_cell(&prepared, line);
+    assert_eq!(layout.source(), processed.source());
+    assert_eq!(layout.source().text(), &Text::from(" "));
+    assert!(layout.source().boxes().is_empty());
+    assert_eq!(layout.lines().len(), 1);
+    assert_eq!(layout.nonformatted_lines().count(), 0);
+    // Same actual composition font and anchor as the A case. Empty provider
+    // input has no fake run/frame/glyph, but keeps the E10 metric square.
+    assert_eq!(
+        layout.lines()[0].bounds(),
+        Rect::new(95.0, 20.0, 10.0, 10.0)
+    );
+    assert_eq!(
+        layout
+            .run_views()
+            .map(|run| run.glyphs().count())
+            .sum::<usize>(),
+        0
+    );
+    let prepared_source = prepared.analyzed_source();
+    let original = prepared_source
+        .combined_cells()
+        .next()
+        .unwrap()
+        .source_pieces()
+        .next()
+        .unwrap();
+    assert_eq!(original.source(), processed.source());
+    assert_eq!(original.local(), Range::new(0, 1));
+    assert_eq!(original.aggregate(), Range::new(0, 1));
+    assert!(!original.is_used());
+    assert_eq!(
+        original.origin_position(),
+        processed.captured_origin(0).unwrap()
+    );
+}
+
+fn cell_interaction_contract(text: &str, whitespace: WhiteSpace, plaintext: &str) {
+    let (mut system, processed, analyzed, body) = setup(text, whitespace);
+    glyph_frame_font_premises(&body);
+    let prepared = system
+        .prepare(
+            &analyzed,
+            PreparationOptions::default().with_orientation(LineOrientation::Vertical),
+        )
+        .unwrap();
+    let layout = placed_vertical_cell(&prepared, finalize(&prepared));
+    let start = Cursor::new(0, Affinity::After);
+    let end = Cursor::new(1, Affinity::Before);
+    let positions = layout.positions().collect::<Vec<_>>();
+    // One indivisible outer cell has two real selected-event edges. Neither a
+    // provider glyph nor an executed removal introduces an inner outer caret.
+    assert_eq!(
+        positions
+            .iter()
+            .map(PlacedPosition::source_cursor)
+            .collect::<Vec<_>>(),
+        [start, end]
+    );
+    let before = Rect::new(95.0, 20.0, 10.0, 1.0);
+    let after = Rect::new(95.0, 30.0, 10.0, 1.0);
+    // Genuine Inline1 font BASE gives O6/U-6 and E10. At physical anchor
+    // inline20/baseline100 the square is95,20,10,10; carets span its cross axis.
+    for (position, source, expected) in
+        [(&positions[0], start, before), (&positions[1], end, after)]
+    {
+        assert_eq!(layout.position_geometry(position).unwrap().rect(), expected);
+        assert_eq!(layout.cursor(source).unwrap().rect(), expected);
+    }
+    for movement in [
+        Movement::NextCluster,
+        Movement::NextWord,
+        Movement::LineEnd,
+        Movement::DocumentEnd,
+    ] {
+        let moved = layout.move_position(&positions[0], movement).unwrap();
+        assert_eq!(moved, positions[1]);
+        assert_eq!(layout.move_cursor(start, movement).unwrap(), end);
+        assert_eq!(layout.position_geometry(&moved).unwrap().rect(), after);
+    }
+    for movement in [
+        Movement::PreviousCluster,
+        Movement::PreviousWord,
+        Movement::LineStart,
+        Movement::DocumentStart,
+    ] {
+        let moved = layout.move_position(&positions[1], movement).unwrap();
+        assert_eq!(moved, positions[0]);
+        assert_eq!(layout.move_cursor(end, movement).unwrap(), start);
+        assert_eq!(layout.position_geometry(&moved).unwrap().rect(), before);
+    }
+    for (point, expected) in [
+        (Point::new(100.0, 21.0), &positions[0]),
+        (Point::new(100.0, 25.0), &positions[0]),
+        (Point::new(100.0, 29.0), &positions[1]),
+    ] {
+        let Hit::Text(hit) = layout.hit(point) else {
+            panic!("the real cell square is text hit geometry");
+        };
+        assert_eq!(&hit, expected);
+    }
+    let square = SelectionGeometry::new(vec![SelectionRect::new(
+        Rect::new(95.0, 20.0, 10.0, 10.0),
+        0,
+    )]);
+    assert_eq!(
+        layout.selection(Selection::new(start, end)).unwrap(),
+        square
+    );
+    assert_eq!(
+        layout.selection(Selection::new(end, start)).unwrap(),
+        square
+    );
+    for (anchor, focus) in [
+        (&positions[0], &positions[1]),
+        (&positions[1], &positions[0]),
+    ] {
+        let selected = layout.position_selection(anchor, focus).unwrap();
+        assert!(!selected.is_collapsed());
+        assert_eq!(selected.geometry(), &square);
+        assert_eq!(selected.source_text(), &Text::from(text));
+        assert_eq!(selected.plaintext(), &Text::from(plaintext));
+        let [piece] = selected.source_pieces() else {
+            panic!("one actual captured source occurrence");
+        };
+        assert_eq!(piece.local_range(), Range::new(0, 1));
+        assert_eq!(piece.aggregate_range(), Range::new(0, 1));
+        assert_eq!(piece.code_units(), processed.source().text().code_units());
+        assert_eq!(
+            piece.origin(),
+            &prepared.origin_views().next().unwrap().handle()
+        );
+        assert_eq!(
+            piece.origin().view().capture_position(),
+            Some(processed.captured_origin(0).unwrap())
+        );
+    }
+    assert!(
+        layout
+            .position_selection(&positions[0], &positions[0])
+            .unwrap()
+            .is_collapsed()
+    );
+    assert!(
+        layout
+            .selection(Selection::collapsed(start))
+            .unwrap()
+            .rects()
+            .is_empty()
+    );
+    assert_eq!(layout.source(), processed.source());
+}
+
+#[test]
+fn combined_a_interaction_uses_actual_cell_edges_square_and_original_occurrence() {
+    cell_interaction_contract("A", WhiteSpace::Preserve, "A");
+}
+
+#[test]
+fn collapsed_space_cell_interaction_keeps_the_original_source_without_a_provider_glyph() {
+    cell_interaction_contract(" ", WhiteSpace::Collapse, "");
+}
+
+#[path = "combined_cell_resources.rs"]
+mod resources;

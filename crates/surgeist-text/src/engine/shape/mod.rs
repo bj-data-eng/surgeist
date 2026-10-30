@@ -4,6 +4,7 @@
 // replace scalar-source/compressed carriers; actual provider status gates rows.
 
 mod cache;
+mod cell;
 mod font_instance;
 pub(crate) use font_instance::{CanonicalFontInstance, scope_font};
 use font_instance::{ResourceSelection, canonical_instance, selected_resource};
@@ -438,7 +439,44 @@ pub(crate) fn shape(
     scratch: &mut ShapeContext,
     scope_budget: &mut super::scope_alignment::accounting::Ledger,
 ) -> Result<ShapedData> {
-    shape_impl(catalogue, input, scratch, false, scope_budget)
+    shape_impl(catalogue, input, scratch, false, scope_budget, None)
+}
+
+pub(crate) fn admit_cells(
+    analyzed: &super::AnalyzedData,
+    tabs: crate::TabPreparation,
+) -> Result<()> {
+    cell::admit(analyzed, tabs)
+}
+
+/// Execute real native source cells alongside ordinary body shaping. Each
+/// normal inner invocation uses its retained horizontal levels and settings.
+pub(crate) fn prepare(
+    catalogue: &mut crate::catalogue::Catalogue,
+    input: ShapingInput<'_>,
+    scratch: &mut ShapeContext,
+    analyzed: &super::AnalyzedData,
+    scopes: &super::scope_alignment::PreparedScopes,
+    scope_budget: &mut super::scope_alignment::accounting::Ledger,
+) -> Result<ShapedData> {
+    if !analyzed
+        .combination
+        .as_ref()
+        .is_some_and(|output| !output.cells.is_empty())
+    {
+        return shape(catalogue, input, scratch, scope_budget);
+    }
+    let mut cells = cell::Inputs::new(analyzed, scopes, input.styles, scope_budget)?;
+    let mut output = shape_impl(
+        catalogue,
+        input,
+        scratch,
+        false,
+        scope_budget,
+        Some(&mut cells),
+    )?;
+    cells.finish(&mut output, scope_budget)?;
+    Ok(output)
 }
 
 /// Actual matching/instance capture without a redundant glyph-shaping operation.
@@ -447,7 +485,7 @@ pub(crate) fn capture_fonts(
     input: ShapingInput<'_>,
     scratch: &mut ShapeContext,
 ) -> Result<Vec<FontQueryWitness>> {
-    shape_impl(catalogue, input, scratch, true, &mut None).map(|output| output.font_queries)
+    shape_impl(catalogue, input, scratch, true, &mut None, None).map(|output| output.font_queries)
 }
 
 fn shape_impl(
@@ -456,6 +494,7 @@ fn shape_impl(
     scratch: &mut ShapeContext,
     capture_only: bool,
     scope_budget: &mut super::scope_alignment::accounting::Ledger,
+    mut cells: Option<&mut cell::Inputs>,
 ) -> Result<ShapedData> {
     let intrinsic = if input
         .projection
@@ -475,6 +514,21 @@ fn shape_impl(
     let mut queries = Vec::new();
     let sources = AnalysisDataSources;
     let barriers = shaping_barriers(&input);
+    let horizontal = ShapingInput {
+        formatting_breaks: input.formatting_breaks,
+        scope_custody: input.scope_custody,
+        separator_geometry: input.separator_geometry,
+        characters: None,
+        profile: super::upright::ShapingProfile::Horizontal,
+        baseline_reference: Some(crate::FontBaseline::Alphabetic),
+        projection: input.projection,
+        analysis: input.analysis,
+        styles: input.styles,
+        boxes: input.boxes,
+        font_catalogue: input.font_catalogue,
+        paragraph: input.paragraph,
+        css_tabs: input.css_tabs,
+    };
     let count = input.projection.atoms.len();
     // Empty/default-font metrics are an explicit preparation-profile operation.
     // Body shaping never infers that policy from source content or body style.
@@ -488,14 +542,32 @@ fn shape_impl(
             .find(|script| real_script(*script))
             .unwrap_or(Script::Latin);
         while item_start < count {
+            let cell = cells.as_deref().and_then(|cells| cells.owner(item_start));
+            let input = if cell.is_some() { &horizontal } else { &input };
+            if let Some(cell) = cell {
+                cells
+                    .as_deref_mut()
+                    .expect("actual cells")
+                    .begin(cell, output.scope_relations.len());
+            }
             if input.css_tabs && input.projection.atoms[item_start].code_point == 9 {
-                append_tab(&input, item_start, None, &mut output);
+                append_tab(input, item_start, None, &mut output);
+                if let Some(cell) = cell {
+                    cells
+                        .as_deref_mut()
+                        .expect("actual cells")
+                        .end(cell, output.scope_relations.len());
+                }
                 item_start += 1;
                 continue;
             }
             let style_index = input.analysis.infos[item_start].1;
             let style = &input.styles[style_index].style;
-            let level = input.analysis.levels[item_start];
+            let level = cells
+                .as_deref()
+                .map_or(input.analysis.levels[item_start], |cells| {
+                    cells.level(item_start, input.analysis.levels[item_start])
+                });
             if real_script(input.analysis.infos[item_start].0.script) {
                 script = input.analysis.infos[item_start].0.script;
             }
@@ -508,7 +580,20 @@ fn shape_impl(
                     script
                 };
                 if (input.css_tabs && input.projection.atoms[item_end].code_point == 9)
-                    || input.analysis.levels[item_end] != level
+                    || cells
+                        .as_deref()
+                        .map_or(input.analysis.levels[item_end], |cells| {
+                            cells.level(item_end, input.analysis.levels[item_end])
+                        })
+                        != level
+                    || cells
+                        .as_deref()
+                        .is_some_and(|cells| cells.owner(item_end) != cell)
+                    || if let Some(cells) = cells.as_deref() {
+                        cells.boundary(item_end, scope_budget)?
+                    } else {
+                        false
+                    }
                     || next_script != script
                     || !same_shaping_style(style, &input.styles[next_style].style)
                     || barriers.contains(&item_end)
@@ -533,7 +618,12 @@ fn shape_impl(
                 .analysis
                 .graphemes
                 .partition_point(|range| range.start < item_end);
-            let context = bounded_context(item_start..item_end, 0..count, &barriers);
+            let domain = if let Some(cells) = cells.as_deref() {
+                cells.context(item_start, count, scope_budget)?
+            } else {
+                0..count
+            };
+            let context = bounded_context(item_start..item_end, domain, &barriers);
             for range in input.analysis.graphemes[grapheme_start..grapheme_end]
                 .iter()
                 .flat_map(|grapheme| {
@@ -543,7 +633,7 @@ fn shape_impl(
                     )
                 })
             {
-                fill_cluster(&input, range.clone(), &mut scratch.cluster);
+                fill_cluster(input, range.clone(), &mut scratch.cluster);
                 queries.push((
                     range.clone(),
                     scratch.cluster.chars.clone(),
@@ -569,7 +659,7 @@ fn shape_impl(
                 if current.as_ref().is_some_and(|font| font != &selected) {
                     let old = current.take().expect("the selected segment owns a font");
                     append_selected(
-                        &input,
+                        input,
                         SelectedSegment {
                             atoms: segment_start..range.start,
                             style: style_index,
@@ -589,7 +679,7 @@ fn shape_impl(
             }
             let selected = current.ok_or_else(no_font)?;
             append_selected(
-                &input,
+                input,
                 SelectedSegment {
                     atoms: segment_start..item_end,
                     style: style_index,
@@ -603,6 +693,12 @@ fn shape_impl(
                 scope_budget,
                 capture_only,
             )?;
+            if let Some(cell) = cell {
+                cells
+                    .as_deref_mut()
+                    .expect("actual cells")
+                    .end(cell, output.scope_relations.len());
+            }
             item_start = item_end;
         }
     }
@@ -628,7 +724,9 @@ fn shape_impl(
     }
     if !capture_only {
         retain_external_invocations(&mut output);
-        install_mixed_order(&mut output, &input);
+        if cells.is_none() {
+            install_mixed_order(&mut output, &input);
+        }
     }
     Ok(output)
 }
@@ -694,9 +792,20 @@ pub(crate) fn finalize(
     use crate::protocol::prepared::PresentationUnitKind;
     let prepared = &selected.prepared;
     let presentation = &selected.presentation;
+    if spacing != crate::SpacingPolicy::None
+        && presentation
+            .units
+            .iter()
+            .any(|unit| matches!(unit.kind, PresentationUnitKind::Cell { .. }))
+    {
+        return Err(crate::transform::combined::refused(
+            crate::TextCombineError::UnsupportedCellPreparation,
+        ));
+    }
     let mut scope_plan =
         super::scope_alignment::selection_plan(prepared, presentation, allowance, scope_input)?;
     let mut scope_budget = scope_plan.budget.take();
+    let mut cells = cell::SelectedCells::new(prepared, presentation, &mut scope_budget)?;
     let characters = super::spacing::character::plan(
         &presentation.projection,
         &presentation.analysis,
@@ -831,6 +940,9 @@ pub(crate) fn finalize(
         let mut original_barriers = shaping_barriers(&original_input);
         original_barriers.extend(selected.boundaries.original.iter().copied());
         for assignment in assignments {
+            if cells.assignment(assignment.atoms.clone(), &mut scope_budget)? {
+                continue;
+            }
             let run = &assignment.run;
             if input.role(assignment.atoms.start) == super::upright::RunRole::Upright {
                 let mut first = assignment.atoms.start;
@@ -1004,6 +1116,9 @@ pub(crate) fn finalize(
     }
     if input.css_tabs {
         for atom in 0..input.projection.atoms.len() {
+            if cells.assignment(atom..atom + 1, &mut scope_budget)? {
+                continue;
+            }
             if input.projection.atoms[atom].code_point == 9 {
                 let style = input.analysis.infos[atom].1;
                 let font = if let Some(run) = prepared.tab_metrics[style]
@@ -1025,33 +1140,54 @@ pub(crate) fn finalize(
     }
     retain_external_invocations(&mut output);
     super::spacing::authored_selected(selected, &mut output, separator_feedback)?;
+    cells.retain(prepared, presentation, &mut output, &mut scope_budget)?;
     // Each real atom receives one extracted cluster; ligature components lend
     // their actual shared glyph association rather than duplicating glyphs.
     let mut clusters = output.clusters.iter().enumerate().peekable();
     for (unit, value) in presentation.units.iter().enumerate() {
         match value.kind {
+            PresentationUnitKind::Cell { cell } => {
+                cells.push_item(
+                    &mut output.items,
+                    ShapedItem::Cell(cells.cell(cell)),
+                    &mut scope_budget,
+                )?;
+            }
             PresentationUnitKind::Atomic { occurrence } => {
                 if input.boxes[occurrence].kind() == crate::InlineBoxKind::InFlow {
-                    output.items.push(ShapedItem::InlineBox {
-                        occurrence,
-                        level: value.level,
-                    });
+                    cells.push_item(
+                        &mut output.items,
+                        ShapedItem::InlineBox {
+                            occurrence,
+                            level: value.level,
+                        },
+                        &mut scope_budget,
+                    )?;
                 }
             }
-            _ if value.atoms.is_empty() => output.items.push(ShapedItem::Anchor { unit }),
+            _ if value.atoms.is_empty() => cells.push_item(
+                &mut output.items,
+                ShapedItem::Anchor { unit },
+                &mut scope_budget,
+            )?,
             _ => {
                 while let Some(&(index, cluster)) = clusters.peek() {
                     if cluster.atoms.start >= value.atoms.end {
                         break;
                     }
                     if cluster.atoms.start >= value.atoms.start {
-                        output.items.push(ShapedItem::TextCluster(index));
+                        cells.push_item(
+                            &mut output.items,
+                            ShapedItem::TextCluster(index),
+                            &mut scope_budget,
+                        )?;
                     }
                     clusters.next();
                 }
             }
         }
     }
+    cells.finish(&mut scope_budget)?;
     scope_plan.budget = scope_budget;
     Ok((
         output,
@@ -1256,6 +1392,9 @@ fn install_mixed_order(data: &mut ShapedData, input: &ShapingInput<'_>) {
             (positions[occurrence].0, 0, positions[occurrence].1)
         }
         ShapedItem::Anchor { unit, .. } => (0, 0, unit),
+        ShapedItem::Cell(_) => {
+            unreachable!("source cells are installed after ordinary mixed order")
+        }
     });
 }
 

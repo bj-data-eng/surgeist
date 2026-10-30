@@ -41,7 +41,7 @@ pub(super) fn shape_and_collapse(
     Arc<crate::protocol::prepared::SelectedMapping>,
     Vec<SpacingSlotDisposition>,
 )> {
-    let (mut shaped, mapping, _scope_plan) = shape::finalize(
+    let (mut shaped, mapping, mut scope_plan) = shape::finalize(
         input,
         scratch,
         crate::SpacingPolicy::None,
@@ -51,9 +51,10 @@ pub(super) fn shape_and_collapse(
     validate_rows(input, &shaped)?;
     let dispositions = collapse_edges(input, &mut shaped)?;
     let ordered = crate::protocol::prepared::presentation::order_presentation(
+        input.prepared,
         input.presentation,
-        input.prepared.analyzed.processed.source().boxes(),
         &shaped,
+        &mut scope_plan.budget,
     )?;
     let levels = item_levels(input.presentation, &shaped);
     let participants = levels
@@ -136,6 +137,10 @@ fn metric_only_run<'a>(
     has_paint: bool,
 ) -> Option<&'a PreparedRun> {
     if has_paint
+        || shaped
+            .items
+            .iter()
+            .any(|item| matches!(item, ShapedItem::Cell(_)))
         || !((shaped.empty_run.is_some()
             && !participants
                 .iter()
@@ -508,6 +513,18 @@ fn execute(
         account::work(&mut ledger, 1)?;
         let level = levels[ordinal];
         match shaped.items[ordinal] {
+            ShapedItem::Cell(cell) => {
+                pen = append_cell(
+                    &selected,
+                    &shaped,
+                    &scopes,
+                    cell,
+                    Point::new(pen, metrics.baseline),
+                    &mut data,
+                    &mut ledger,
+                )?;
+                last_run = None;
+            }
             ShapedItem::Anchor { unit, .. } => {
                 let advance =
                     crate::protocol::boundary::advance(selected.presentation_input(), unit);
@@ -819,6 +836,7 @@ fn execute(
                                 &mut ledger,
                                 &mut data.runs,
                                 FinalizedRun {
+                                    frame: FinalizedRunFrame::Line,
                                     reference,
                                     run: cluster
                                         .content
@@ -959,6 +977,7 @@ fn execute(
             &mut ledger,
             &mut data.runs,
             FinalizedRun {
+                frame: FinalizedRunFrame::Line,
                 reference: scope_cell_band.map(|_| metrics.baseline),
                 run: run_index,
                 style: shaped.runs[run_index].style,
@@ -1023,8 +1042,11 @@ fn execute(
     operations::order_by(&mut owned_fragments, ledger.as_mut(), |left, right| {
         left.cmp(right)
     })?;
-    for cluster in &data.clusters {
+    for (cluster_index, cluster) in data.clusters.iter().enumerate() {
         account::work(&mut ledger, 1)?;
+        if cell_for_cluster(&shaped, cluster_index, &mut ledger)?.is_some() {
+            continue;
+        }
         let end = add(
             "fragment cluster end",
             TextNumericPhase::Finalization,
@@ -1102,6 +1124,78 @@ fn execute(
             }
         }
     }
+    for cell in &data.cells {
+        let output = selected
+            .prepared
+            .analyzed
+            .combination
+            .as_deref()
+            .ok_or_else(|| invalid("finalized cell has no source operation"))?;
+        let binding = &output.bindings[cell.binding];
+        let group = &output.plan.groups[binding.group];
+        let rect = Rect::new(
+            cell.inline.start,
+            cell.under.start,
+            cell.inline.end - cell.inline.start,
+            cell.under.end - cell.under.start,
+        );
+        for part in &output.plan.parts[group.parts.clone()] {
+            account::work(&mut ledger, 1)?;
+            for piece in &part.pieces {
+                add_fragment_bounds(
+                    &source_fragments,
+                    &mut data.fragments,
+                    piece.aggregate,
+                    rect,
+                    &mut ledger,
+                )?;
+            }
+        }
+        use crate::transform::relation::{ComponentOwner, RelationEvent};
+        for event in &selected.prepared.analyzed.transform.events()[binding.events.clone()] {
+            account::work(&mut ledger, 1)?;
+            let component_owner = |owner| match owner {
+                ComponentOwner::Wbr(control) => {
+                    Some(crate::protocol::paragraph::FragmentOwner::Control(control))
+                }
+                ComponentOwner::Virtual(index) => Some(
+                    crate::protocol::paragraph::FragmentOwner::VirtualSeparator(index),
+                ),
+                ComponentOwner::Original(_) => None,
+            };
+            let owner = match *event {
+                RelationEvent::Text { atom } => component_owner(
+                    selected
+                        .prepared
+                        .analyzed
+                        .transform
+                        .component_for_atom(atom)
+                        .owner,
+                ),
+                RelationEvent::GeneratedSuppression { component, .. } => component_owner(
+                    selected.prepared.analyzed.transform.components[component].owner,
+                ),
+                RelationEvent::Anchor { order } => {
+                    match selected.prepared.analyzed.paragraph.anchor_order[order].item {
+                        crate::protocol::paragraph::SemanticAnchorItem::Control(control) => {
+                            Some(crate::protocol::paragraph::FragmentOwner::Control(control))
+                        }
+                        _ => None,
+                    }
+                }
+                _ => None,
+            };
+            if let Some(owner) = owner {
+                add_owned_fragment_bounds(
+                    &owned_fragments,
+                    &mut data.fragments,
+                    owner,
+                    rect,
+                    &mut ledger,
+                )?;
+            }
+        }
+    }
     for anchor in &data.anchors {
         let unit = &selected.presentation.units[anchor.unit];
         let rect = data.cell_rect(
@@ -1155,6 +1249,10 @@ fn execute(
     let mut occupied_end = metrics.offset;
     for item in &data.visual_order {
         let (start, end) = match *item {
+            FinalizedVisualItem::Cell(index) => {
+                let cell = &data.cells[index];
+                (cell.inline.start, cell.inline.end)
+            }
             FinalizedVisualItem::Cluster(index) => {
                 let cluster = &data.clusters[index];
                 (
@@ -1247,6 +1345,203 @@ fn execute(
     scopes.budget = ledger;
     super::super::scope_alignment::finish_frames(&selected, &mut data, scopes)?;
     Ok(FinalizedLine { selected, data })
+}
+
+/// Execute a retained horizontal payload inside its genuine outer square.
+/// Inner pens and font origins stay intrinsic; the owning cell frame is applied
+/// only by physical placement, after this one enclosing-scope displacement.
+fn cell_for_cluster(
+    shaped: &ShapedData,
+    cluster: usize,
+    ledger: &mut Ledger,
+) -> Result<Option<usize>> {
+    for (index, cell) in shaped.cells.iter().enumerate() {
+        account::work(ledger, 1)?;
+        if matches!(&cell.payload, CellPayload::Shaped { clusters, .. } if clusters.contains(&cluster))
+        {
+            return Ok(Some(index));
+        }
+    }
+    Ok(None)
+}
+
+fn append_cell(
+    selected: &SelectedData,
+    shaped: &ShapedData,
+    scopes: &super::super::scope_alignment::FrameAllocations,
+    cell_index: usize,
+    origin: Point,
+    data: &mut FinalizedLineData,
+    ledger: &mut Ledger,
+) -> Result<f64> {
+    let cell = &shaped.cells[cell_index];
+    let mut unit = None;
+    for (index, candidate) in selected.presentation.units.iter().enumerate() {
+        account::work(ledger, 1)?;
+        if matches!(candidate.kind, crate::protocol::prepared::PresentationUnitKind::Cell { cell: original }
+            if selected.prepared.shaped.cells[original].binding == cell.binding)
+        {
+            unit = Some(index);
+            break;
+        }
+    }
+    let unit = unit.ok_or_else(|| invalid("cell has no actual selected participant"))?;
+    let owner = selected
+        .scopes
+        .unit_owners
+        .get(unit)
+        .copied()
+        .ok_or_else(|| invalid("cell has no admitted scope ownership"))?;
+    let delta = scopes.displacement(owner);
+    let shift = crate::BaselineShift::try_new(delta)?;
+    let reference = scoped_reference(origin.y, delta)?;
+    qualify_local_shift(origin.y, reference, -cell.before, shift)?;
+    qualify_local_shift(origin.y, reference, cell.after, shift)?;
+    let end = add(
+        "cell inline end",
+        TextNumericPhase::Finalization,
+        origin.x,
+        cell.extent,
+    )?;
+    let top = add(
+        "cell square over edge",
+        TextNumericPhase::Finalization,
+        reference,
+        -cell.before,
+    )?;
+    let bottom = add(
+        "cell square under edge",
+        TextNumericPhase::Finalization,
+        reference,
+        cell.after,
+    )?;
+    let frame = match &cell.payload {
+        CellPayload::NoProviderInput => None,
+        CellPayload::Shaped { frame, .. } => Some(*frame),
+    };
+    let index = data.cells.len();
+    account::push(
+        ledger,
+        &mut data.cells,
+        FinalizedCell {
+            cell: cell_index,
+            unit,
+            binding: cell.binding,
+            reference,
+            inline: origin.x..end,
+            under: top..bottom,
+            scope_displacement: shift,
+            level: selected.presentation.units[unit].line_level,
+            frame,
+        },
+    )?;
+    account::push(
+        ledger,
+        &mut data.visual_order,
+        FinalizedVisualItem::Cell(index),
+    )?;
+    let CellPayload::Shaped { positions, .. } = &cell.payload else {
+        return Ok(end);
+    };
+    let mut last_run: Option<usize> = None;
+    for position in positions {
+        account::work(ledger, 1)?;
+        let cluster = &shaped.clusters[position.cluster];
+        data.clusters[position.cluster].x = position.pen;
+        data.clusters[position.cluster].reference = Some(reference);
+        let mut glyph_pen = 0.0;
+        for glyph in &shaped.glyphs[cluster.glyphs.clone()] {
+            account::work(ledger, 1)?;
+            let font = cluster
+                .content
+                .font_run()
+                .ok_or_else(|| invalid("cell provider glyph has no retained font"))?;
+            let actual = add(
+                "cell glyph horizontal pen",
+                TextNumericPhase::Finalization,
+                position.pen,
+                glyph_pen,
+            )?;
+            let run = if let Some(run) = last_run.filter(|&run| {
+                let run = &data.runs[run];
+                run.run == font && run.style == glyph.style && run.level == shaped.runs[font].level
+            }) {
+                run
+            } else {
+                let run = data.runs.len();
+                account::push(
+                    ledger,
+                    &mut data.runs,
+                    FinalizedRun {
+                        frame: FinalizedRunFrame::Cell(index),
+                        reference: Some(reference),
+                        run: font,
+                        style: glyph.style,
+                        level: shaped.runs[font].level,
+                        source: glyph.source,
+                        glyphs: data.glyphs.len()..data.glyphs.len(),
+                        x: actual,
+                        y: shaped.runs[font].metrics.font_origin_offset(),
+                        advance: 0.0,
+                    },
+                )?;
+                last_run = Some(run);
+                run
+            };
+            let relative = add(
+                "cell run-local horizontal pen",
+                TextNumericPhase::Finalization,
+                actual,
+                -data.runs[run].x,
+            )?;
+            account::push(
+                ledger,
+                &mut data.glyphs,
+                FinalizedGlyph {
+                    glyph: *glyph,
+                    pen: relative,
+                    pen_base: relative,
+                    word_half: 0.0,
+                },
+            )?;
+            data.runs[run].glyphs.end = data.glyphs.len();
+            data.runs[run].source.start = data.runs[run].source.start.min(glyph.source.start);
+            data.runs[run].source.end = data.runs[run].source.end.max(glyph.source.end);
+            glyph_pen = add(
+                "cell provider glyph advance",
+                TextNumericPhase::Finalization,
+                glyph_pen,
+                f64::from(glyph.advance),
+            )?;
+            data.runs[run].advance = add(
+                "cell glyph run advance",
+                TextNumericPhase::Finalization,
+                add(
+                    "cell glyph end",
+                    TextNumericPhase::Finalization,
+                    position.pen,
+                    glyph_pen,
+                )?,
+                -data.runs[run].x,
+            )?;
+        }
+        if let Some(run) = last_run
+            && cluster.content.font_run() == Some(data.runs[run].run)
+        {
+            data.runs[run].advance = add(
+                "cell cluster run advance",
+                TextNumericPhase::Finalization,
+                add(
+                    "cell cluster end",
+                    TextNumericPhase::Finalization,
+                    position.pen,
+                    cluster.advance,
+                )?,
+                -data.runs[run].x,
+            )?;
+        }
+    }
+    Ok(end)
 }
 
 struct SharedEndpointGeometry {
@@ -1345,7 +1640,7 @@ fn shared_endpoint_offsets(
                     }
                 }
             }
-            ShapedItem::InlineBox { .. } => {}
+            ShapedItem::Cell(_) | ShapedItem::InlineBox { .. } => {}
         }
     }
     // Even endpoints occupy the physical trailing side. Only the suffix needed
@@ -1373,7 +1668,7 @@ fn shared_endpoint_offsets(
                     }
                 }
             }
-            ShapedItem::InlineBox { .. } => {}
+            ShapedItem::Cell(_) | ShapedItem::InlineBox { .. } => {}
         }
     }
     account::drop_vec(ledger, ordinals)?;
@@ -1853,6 +2148,9 @@ fn validate_rows(selected: PresentationInput<'_>, shaped: &ShapedData) -> Result
             ShapedItem::TextCluster(index) if *index >= shaped.clusters.len() => {
                 return Err(invalid("selected text item has no cluster"));
             }
+            ShapedItem::Cell(index) if *index >= shaped.cells.len() => {
+                return Err(invalid("selected cell item has no retained cell"));
+            }
             ShapedItem::InlineBox { occurrence, .. }
                 if *occurrence >= selected.prepared.analyzed.processed.source().boxes().len() =>
             {
@@ -1880,6 +2178,17 @@ fn line_metrics(
     account::push(ledger, prefix_receipts, 0.0)?;
     for item in &shaped.items {
         match *item {
+            ShapedItem::Cell(cell) => {
+                let cell = &shaped.cells[cell];
+                result.advance = add(
+                    "line cell advance",
+                    TextNumericPhase::Finalization,
+                    result.advance,
+                    cell.extent,
+                )?;
+                result.line_height = result.line_height.max(cell.extent);
+                have_cluster_height = true;
+            }
             ShapedItem::Anchor { unit } => {
                 result.advance = add(
                     "line boundary advance",
@@ -1936,6 +2245,11 @@ fn line_metrics(
     }
     for item in shaped.items.iter().rev() {
         match *item {
+            ShapedItem::Cell(cell) => {
+                result.ascent = result.ascent.max(shaped.cells[cell].before);
+                result.descent = result.descent.max(shaped.cells[cell].after);
+                have_metrics = true;
+            }
             ShapedItem::Anchor { .. } => {}
             ShapedItem::TextCluster(index) => {
                 let cluster = &shaped.clusters[index];
@@ -2265,8 +2579,15 @@ fn native_metrics_scoped(
         let (before, after) = font_strut(font.metrics)?;
         groups.include(before, after, LineBoxAlignment::Baseline)?;
     }
-    for cluster in &shaped.clusters {
-        if let Some(run) = cluster.content.font_run() {
+    for item in &shaped.items {
+        if let ShapedItem::Cell(cell) = *item {
+            let cell = &shaped.cells[cell];
+            groups.include(cell.before, cell.after, LineBoxAlignment::Baseline)?;
+        }
+        if let ShapedItem::TextCluster(cluster) = *item
+            && let Some(run) = shaped.clusters[cluster].content.font_run()
+        {
+            let cluster = &shaped.clusters[cluster];
             let metrics = RunMetrics {
                 line_height: cluster.line_height,
                 ..shaped.runs[run].metrics
@@ -2348,6 +2669,17 @@ fn edge_dispositions_accounted(
     let mut clusters = Vec::new();
     for item in &shaped.items {
         match *item {
+            ShapedItem::Cell(cell) => {
+                account::push(
+                    ledger,
+                    &mut projected,
+                    SuppliedInlineParticipant::Cell {
+                        level: BidiLevel::try_new(shaped.cells[cell].level)
+                            .map_err(|_| invalid("invalid cell edge level"))?,
+                    },
+                )?;
+                account::push(ledger, &mut clusters, None)?;
+            }
             ShapedItem::Anchor { .. } => {}
             ShapedItem::InlineBox { occurrence, level } => {
                 if selected.prepared.analyzed.processed.source().boxes()[occurrence].kind()
@@ -2904,6 +3236,7 @@ fn item_levels_accounted(
     account::collect(
         ledger,
         shaped.items.iter().map(|item| match *item {
+            ShapedItem::Cell(cell) => shaped.cells[cell].level,
             ShapedItem::Anchor { unit } => presentation.units[unit].line_level,
             ShapedItem::InlineBox { level, .. } => level,
             ShapedItem::TextCluster(i) => presentation
@@ -2964,6 +3297,7 @@ fn resolve_tabs(
     }
     for &ordinal in &ordinals {
         let advance = match shaped.items[ordinal] {
+            ShapedItem::Cell(cell) => shaped.cells[cell].extent,
             ShapedItem::Anchor { unit } => {
                 crate::protocol::boundary::advance(selected.presentation_input(), unit)
             }

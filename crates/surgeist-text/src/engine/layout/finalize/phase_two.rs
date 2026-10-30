@@ -61,6 +61,7 @@ fn positions(
     let mut pen = 0.0;
     for (ordinal, _) in order.iter() {
         let advance = match shaped.items[ordinal] {
+            ShapedItem::Cell(cell) => shaped.cells[cell].extent,
             ShapedItem::TextCluster(i) => {
                 let advance = if shaped.clusters[i].whitespace == Whitespace::Newline {
                     0.0
@@ -267,7 +268,7 @@ pub(super) fn natural(
                     }
                     continue;
                 }
-                ShapedItem::InlineBox { .. } => break,
+                ShapedItem::Cell(_) | ShapedItem::InlineBox { .. } => break,
                 ShapedItem::TextCluster(row) => row,
             };
             if result.removed[row] {
@@ -553,6 +554,13 @@ fn measure(
     let mut anchor = 0.0;
     for item in &shaped.items {
         let contribution = match *item {
+            ShapedItem::Cell(cell) => {
+                if baseline.raw_advance.is_some() {
+                    0.0
+                } else {
+                    shaped.cells[cell].extent
+                }
+            }
             ShapedItem::TextCluster(i) if shaped.clusters[i].whitespace != Whitespace::Newline => {
                 let excluded = exclusions[i].excluded(positions[i], shaped.clusters[i].advance)?;
                 if baseline.fit_anchor && exclusions[i].punctuation_start {
@@ -620,6 +628,20 @@ fn measure(
     // measurement view changes exclusions, never the retained traversal.
     for &ordinal in &selected.basis.order {
         let contribution = match shaped.items[ordinal] {
+            ShapedItem::Cell(cell) => {
+                let extent = shaped.cells[cell].extent;
+                include(
+                    &mut bounds,
+                    pen,
+                    add(
+                        "occupied cell end",
+                        TextNumericPhase::Finalization,
+                        pen,
+                        extent,
+                    )?,
+                );
+                extent
+            }
             ShapedItem::TextCluster(i) => {
                 if shaped.clusters[i].whitespace != Whitespace::Newline
                     && let Some((a, b)) = exclusions[i].clip(positions[i])

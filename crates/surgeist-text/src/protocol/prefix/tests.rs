@@ -549,6 +549,7 @@ fn finalized_prefix_optional_unit_failure_does_not_poison_other_actual_queries()
                     (0, atoms.start, atoms.end)
                 }
                 ShapedItem::InlineBox { occurrence, .. } => (1, occurrence, occurrence),
+                ShapedItem::Cell(_) => panic!("this source has no combined cell"),
                 ShapedItem::Anchor { unit } => {
                     let PresentationUnitKind::Control { occurrence } =
                         selected.inner.presentation.units[unit].kind

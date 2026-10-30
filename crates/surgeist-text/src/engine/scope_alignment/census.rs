@@ -124,10 +124,11 @@ pub(crate) fn retained_prepared(
     data: &PreparedScopes,
     analyzed: &AnalyzedData,
     shaped: &super::super::layout::data::ShapedData,
+    tables: &crate::protocol::prepared::PreparedTables,
     budget: &mut ScopeAlignmentBudget,
 ) -> Result<crate::ScopeAlignmentRetention> {
     let mut set = AllocationSet::new();
-    preparation::visit_prepared_allocations(data, analyzed, shaped, &mut |allocation| {
+    preparation::visit_prepared_allocations(data, analyzed, shaped, tables, &mut |allocation| {
         set.observe(allocation, budget).map(|_| ())
     })?;
     set.finish(budget)
@@ -145,6 +146,7 @@ fn visit_selected_own_allocations(
         &prepared.scope_alignment,
         &prepared.analyzed,
         &prepared.shaped,
+        &prepared.tables,
         visit,
     )?;
     visit(AllocationWitness::object(scopes, 0))?;
@@ -192,6 +194,10 @@ fn visit_selected_own_allocations(
         &shaped.scope_relations,
         shaped.scope_relations.len(),
     )?)?;
+    preparation::visit_cell_allocations(shaped, visit)?;
+    if !shaped.cells.is_empty() {
+        accounting::visit_cell_arenas(shaped, visit)?;
+    }
     for run in shaped.runs.iter().chain(shaped.empty_run.iter()) {
         visit(AllocationWitness::resource(run.font.bytes()))?;
     }
@@ -363,6 +369,7 @@ fn visit_prepared(prepared: &PreparedData, visit: &mut AllocationVisitor<'_>) ->
         &prepared.scope_alignment,
         &prepared.analyzed,
         &prepared.shaped,
+        &prepared.tables,
         visit,
     )
 }

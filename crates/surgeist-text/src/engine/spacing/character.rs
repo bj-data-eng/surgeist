@@ -1298,6 +1298,7 @@ fn original_members(shaped: &ShapedData) -> Result<Vec<Member>> {
         .map(|item| {
             let level = match *item {
                 ShapedItem::TextCluster(i) => shaped.clusters[i].level,
+                ShapedItem::Cell(i) => shaped.cells[i].level,
                 ShapedItem::InlineBox { level, .. } => level,
                 ShapedItem::Anchor { .. } => 0,
             };

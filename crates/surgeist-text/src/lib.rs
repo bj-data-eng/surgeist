@@ -67,7 +67,7 @@ pub use font::{
     GlyphOutlineGeometry, StrikeoutMetrics, UprightFontMetrics, UprightMetricProvenance,
     UprightMetricReference, VerticalGlyphMetricProvenance, VerticalGlyphMetrics,
 };
-pub use geometry::{GlyphBasis, Point, Rect, Size};
+pub use geometry::{GlyphBasis, GlyphFrame, Point, Rect, Size};
 pub use id::Id;
 pub use layout::{
     Affinity, BaselineShiftFact, Cluster, Cursor, CursorGeometry, DecorationKind, DecorationRun,
@@ -100,12 +100,12 @@ pub use protocol::paragraph::{
 };
 pub use protocol::prefix::{FinalizedPrefixView, FinalizedSharedUnitView, TextSeam};
 pub use protocol::readback::{
-    FinalizedControlView, FinalizedFragmentOwner, FinalizedFragmentView, FinalizedGlyphView,
-    FinalizedRunView, LineOutlineInk, PreparedAlternativeDefinition, PreparedAlternativeView,
-    PreparedAtomicView, PreparedBoundaryView, PreparedComputedLineBoundaryView,
-    PreparedControlView, PreparedOpportunityView, PreparedOriginIntersectionView,
-    PreparedOriginView, PreparedScopeView, PreparedUnitView, PreparedVirtualSeparatorView,
-    PresentationMappingKind, SelectedMappingView,
+    FinalizedCellView, FinalizedControlView, FinalizedFragmentOwner, FinalizedFragmentView,
+    FinalizedGlyphView, FinalizedRunView, LineOutlineInk, PreparedAlternativeDefinition,
+    PreparedAlternativeView, PreparedAtomicView, PreparedBoundaryView, PreparedCellView,
+    PreparedComputedLineBoundaryView, PreparedControlView, PreparedOpportunityView,
+    PreparedOriginIntersectionView, PreparedOriginView, PreparedScopeView, PreparedUnitView,
+    PreparedVirtualSeparatorView, PresentationMappingKind, SelectedMappingView,
 };
 pub use protocol::{
     AtomicAllocation, AtomicBoxAllocation, AtomicFlowAllocation, AtomicLineAllocation,
@@ -122,7 +122,7 @@ pub use protocol::{
     ParagraphTerminalEdge, PhaseTwoContext, PhraseOverflowDecision, PlacementCoverage,
     PlacementEntry, PlacementRequest, PreparationOptions, PreparedAlternative,
     PreparedAlternativeAvailability, PreparedAtomic, PreparedBoundary, PreparedBoundaryIncidence,
-    PreparedBreakKind, PreparedComputedLineBoundary, PreparedConditionalBatch,
+    PreparedBreakKind, PreparedCell, PreparedComputedLineBoundary, PreparedConditionalBatch,
     PreparedConditionalOpportunity, PreparedConditionalSearch, PreparedControl,
     PreparedFlowSegment, PreparedHyphenationCut, PreparedHyphenationCutView,
     PreparedMeasurementFlow, PreparedOpportunity, PreparedOrigin, PreparedParticipant,

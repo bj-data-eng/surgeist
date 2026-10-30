@@ -717,6 +717,7 @@ pub surgeist_text::PreparedBreakKind::Forced
 pub surgeist_text::PreparedBreakKind::ParagraphEnd
 pub enum surgeist_text::PreparedParticipant
 pub surgeist_text::PreparedParticipant::Atomic(surgeist_text::PreparedAtomic)
+pub surgeist_text::PreparedParticipant::Cell(surgeist_text::PreparedCell)
 pub surgeist_text::PreparedParticipant::ComputedLineBoundary(surgeist_text::PreparedComputedLineBoundary)
 pub surgeist_text::PreparedParticipant::Control(surgeist_text::PreparedControl)
 pub surgeist_text::PreparedParticipant::Text(surgeist_text::PreparedUnit)
@@ -914,6 +915,7 @@ pub surgeist_text::ProtocolHandleKind::Alternative
 pub surgeist_text::ProtocolHandleKind::Atomic
 pub surgeist_text::ProtocolHandleKind::Boundary
 pub surgeist_text::ProtocolHandleKind::BoundaryIncidence
+pub surgeist_text::ProtocolHandleKind::Cell
 pub surgeist_text::ProtocolHandleKind::ComputedLineBoundary
 pub surgeist_text::ProtocolHandleKind::ConditionalOpportunity
 pub surgeist_text::ProtocolHandleKind::Control
@@ -1275,6 +1277,8 @@ pub surgeist_text::SuppliedInlineParticipant::Atomic
 pub surgeist_text::SuppliedInlineParticipant::Atomic::level: surgeist_text::BidiLevel
 pub surgeist_text::SuppliedInlineParticipant::Boundary
 pub surgeist_text::SuppliedInlineParticipant::Boundary::level: surgeist_text::BidiLevel
+pub surgeist_text::SuppliedInlineParticipant::Cell
+pub surgeist_text::SuppliedInlineParticipant::Cell::level: surgeist_text::BidiLevel
 pub surgeist_text::SuppliedInlineParticipant::Text
 pub surgeist_text::SuppliedInlineParticipant::Text::edge: surgeist_text::InlineWhitespaceEdge
 pub surgeist_text::SuppliedInlineParticipant::Text::level: surgeist_text::BidiLevel
@@ -1962,6 +1966,14 @@ impl core::error::Error for surgeist_text::Error
 pub fn surgeist_text::Error::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_text::Error
 pub fn surgeist_text::Error::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_text::FinalizedCellView<'a>
+impl surgeist_text::FinalizedCellView<'_>
+pub fn surgeist_text::FinalizedCellView<'_>::finalized_line(&self) -> &surgeist_text::FinalizedLine
+pub fn surgeist_text::FinalizedCellView<'_>::level(&self) -> surgeist_text::BidiLevel
+pub fn surgeist_text::FinalizedCellView<'_>::reference(&self) -> f64
+pub fn surgeist_text::FinalizedCellView<'_>::scope_displacement(&self) -> surgeist_text::BaselineShift
+pub fn surgeist_text::FinalizedCellView<'_>::source_cell(&self) -> surgeist_text::AnalyzedCombinedCell<'_>
+pub fn surgeist_text::FinalizedCellView<'_>::square(&self) -> surgeist_text::Rect
 pub struct surgeist_text::FinalizedControlView<'a>
 impl surgeist_text::FinalizedControlView<'_>
 pub fn surgeist_text::FinalizedControlView<'_>::control(&self) -> surgeist_text::PreparedControl
@@ -2005,6 +2017,8 @@ pub fn surgeist_text::FinalizedLine::feedback(&self) -> surgeist_text::LineFeedb
 pub fn surgeist_text::FinalizedLine::selected_line(&self) -> surgeist_text::SelectedLine
 pub fn surgeist_text::FinalizedLine::with_spacing(&self, allocations: surgeist_text::SpacingAllocations) -> surgeist_text::Result<surgeist_text::FinalizedLine>
 pub fn surgeist_text::FinalizedLine::with_spacing_with_scope_allowance(&self, allocations: surgeist_text::SpacingAllocations, allowance: surgeist_text::ScopeAlignmentAllowance) -> surgeist_text::Result<surgeist_text::FinalizedLine>
+impl surgeist_text::FinalizedLine
+pub fn surgeist_text::FinalizedLine::cell_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::FinalizedCellView<'_>>
 impl surgeist_text::FinalizedLine
 pub fn surgeist_text::FinalizedLine::control_slots(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::FinalizedControlView<'_>>
 impl surgeist_text::FinalizedLine
@@ -2053,6 +2067,7 @@ pub struct surgeist_text::FinalizedRunView<'a>
 impl surgeist_text::FinalizedRunView<'_>
 pub const fn surgeist_text::FinalizedRunView<'_>::advance(&self) -> f64
 pub fn surgeist_text::FinalizedRunView<'_>::brush(&self) -> surgeist_text::Brush
+pub fn surgeist_text::FinalizedRunView<'_>::cell(&self) -> core::option::Option<surgeist_text::FinalizedCellView<'_>>
 pub fn surgeist_text::FinalizedRunView<'_>::effective_instance(&self) -> surgeist_text::Result<surgeist_text::EffectiveFontInstance<'_>>
 pub fn surgeist_text::FinalizedRunView<'_>::face(&self) -> surgeist_text::FontFace<'_>
 pub const fn surgeist_text::FinalizedRunView<'_>::font_size(&self) -> f32
@@ -2198,6 +2213,12 @@ pub const fn surgeist_text::Glyph::pen(self) -> f64
 pub const fn surgeist_text::Glyph::range(self) -> surgeist_text::Range
 pub const fn surgeist_text::Glyph::x(self) -> f32
 pub const fn surgeist_text::Glyph::y(self) -> f32
+pub struct surgeist_text::GlyphFrame
+impl surgeist_text::GlyphFrame
+pub const fn surgeist_text::GlyphFrame::origin(self) -> surgeist_text::Point
+pub const fn surgeist_text::GlyphFrame::outline_x(self) -> surgeist_text::Point
+pub const fn surgeist_text::GlyphFrame::outline_y(self) -> surgeist_text::Point
+pub const fn surgeist_text::GlyphFrame::pen_direction(self) -> surgeist_text::Point
 pub struct surgeist_text::GlyphOutlineGeometry<'a>
 impl<'a> surgeist_text::GlyphOutlineGeometry<'a>
 pub const fn surgeist_text::GlyphOutlineGeometry<'a>::bounds(&self) -> core::option::Option<surgeist_text::Rect>
@@ -2667,6 +2688,30 @@ pub fn surgeist_text::PreparedBoundaryView<'_>::source_after(&self) -> surgeist_
 pub fn surgeist_text::PreparedBoundaryView<'_>::source_before(&self) -> surgeist_text::SourcePosition
 impl core::fmt::Debug for surgeist_text::PreparedBoundaryView<'_>
 pub fn surgeist_text::PreparedBoundaryView<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_text::PreparedCell
+impl surgeist_text::PreparedCell
+pub fn surgeist_text::PreparedCell::prepared_text(&self) -> surgeist_text::PreparedText
+impl surgeist_text::PreparedCell
+pub fn surgeist_text::PreparedCell::view(&self) -> surgeist_text::PreparedCellView<'_>
+impl core::cmp::Eq for surgeist_text::PreparedCell
+impl core::cmp::PartialEq for surgeist_text::PreparedCell
+pub fn surgeist_text::PreparedCell::eq(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_text::PreparedCell
+pub fn surgeist_text::PreparedCell::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for surgeist_text::PreparedCell
+pub fn surgeist_text::PreparedCell::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_text::PreparedCellView<'a>
+impl surgeist_text::PreparedCellView<'_>
+pub fn surgeist_text::PreparedCellView<'_>::after(&self) -> f64
+pub fn surgeist_text::PreparedCellView<'_>::before(&self) -> f64
+pub fn surgeist_text::PreparedCellView<'_>::extent(&self) -> f64
+pub fn surgeist_text::PreparedCellView<'_>::has_provider_input(&self) -> bool
+pub fn surgeist_text::PreparedCellView<'_>::level(&self) -> surgeist_text::BidiLevel
+pub fn surgeist_text::PreparedCellView<'_>::source_cell(&self) -> surgeist_text::AnalyzedCombinedCell<'_>
+impl surgeist_text::PreparedCellView<'_>
+pub fn surgeist_text::PreparedCellView<'_>::handle(&self) -> surgeist_text::PreparedCell
+impl core::fmt::Debug for surgeist_text::PreparedCellView<'_>
+pub fn surgeist_text::PreparedCellView<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_text::PreparedComputedLineBoundary
 impl surgeist_text::PreparedComputedLineBoundary
 pub fn surgeist_text::PreparedComputedLineBoundary::prepared_text(&self) -> surgeist_text::PreparedText
@@ -2934,6 +2979,8 @@ pub fn surgeist_text::PreparedText::alternative_views(&self) -> impl core::iter:
 pub fn surgeist_text::PreparedText::atomic_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedAtomicView<'_>>
 pub fn surgeist_text::PreparedText::boundary_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedBoundaryView<'_>>
 pub fn surgeist_text::PreparedText::captured_owner(&self) -> core::option::Option<surgeist_text::CapturedAnalysisOwner<'_>>
+pub fn surgeist_text::PreparedText::cell_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedCellView<'_>>
+pub fn surgeist_text::PreparedText::cells(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedCell> + '_
 pub fn surgeist_text::PreparedText::control_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedControlView<'_>>
 pub fn surgeist_text::PreparedText::opportunity_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedOpportunityView<'_>>
 pub fn surgeist_text::PreparedText::origin_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedOriginView<'_>>
@@ -3161,6 +3208,7 @@ pub const fn surgeist_text::Run::brush(&self) -> surgeist_text::Brush
 pub fn surgeist_text::Run::font(&self) -> &surgeist_text::FontData
 pub const fn surgeist_text::Run::font_size(&self) -> f32
 pub const fn surgeist_text::Run::glyph_basis(&self) -> surgeist_text::GlyphBasis
+pub const fn surgeist_text::Run::glyph_frame(&self) -> surgeist_text::GlyphFrame
 pub fn surgeist_text::Run::glyphs(&self) -> &[surgeist_text::Glyph]
 pub const fn surgeist_text::Run::line(&self) -> usize
 pub fn surgeist_text::Run::new(line: usize, range: surgeist_text::Range, font: surgeist_text::FontData, style: surgeist_text::Style, brush: surgeist_text::Brush, metrics: surgeist_text::RunMetrics, glyph_basis: surgeist_text::GlyphBasis, glyphs: alloc::vec::Vec<surgeist_text::Glyph>) -> Self
@@ -3195,6 +3243,7 @@ pub fn surgeist_text::RunView<'_>::effective_instance(&self) -> surgeist_text::R
 pub fn surgeist_text::RunView<'_>::face(&self) -> surgeist_text::FontFace<'_>
 pub const fn surgeist_text::RunView<'_>::font_size(&self) -> f32
 pub const fn surgeist_text::RunView<'_>::glyph_basis(&self) -> surgeist_text::GlyphBasis
+pub fn surgeist_text::RunView<'_>::glyph_frame(&self) -> surgeist_text::GlyphFrame
 pub fn surgeist_text::RunView<'_>::glyphs(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::GlyphPlacement> + '_
 pub const fn surgeist_text::RunView<'_>::line(&self) -> usize
 pub const fn surgeist_text::RunView<'_>::orientation(&self) -> surgeist_text::LineOrientation

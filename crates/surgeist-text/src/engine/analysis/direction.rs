@@ -112,6 +112,7 @@ impl DirectionBody {
         let mut consumed = 0;
         let mut count = 0;
         let mut index = 0usize;
+        let mut zero_cells: Vec<ZeroRawCell> = Vec::new();
         while index <= events.len() {
             if let Some(&BidiOwner::CombinedCell(cell)) = self.owners.get(consumed) {
                 let binding = combination
@@ -125,7 +126,34 @@ impl DirectionBody {
                     // A genuine source cell owns one bidi contribution, even
                     // when all of its payload was suppressed. Its owner/body
                     // summary survives an empty logical participant interval.
-                    count += usize::from(self.eligible[consumed]);
+                    if range.is_empty() {
+                        let section = self.sections.partition_point(|range| range.end <= consumed);
+                        if !self
+                            .sections
+                            .get(section)
+                            .is_some_and(|range| range.contains(&consumed))
+                            || binding.events.is_empty()
+                            || zero_cells.last().is_some_and(|previous| {
+                                previous.section > section
+                                    || (previous.section == section
+                                        && (previous.events.end > binding.events.start
+                                            || previous.cut > range.start))
+                            })
+                        {
+                            return Err(invalid());
+                        }
+                        super::storage::push(
+                            &mut zero_cells,
+                            ZeroRawCell {
+                                section,
+                                cut: range.start,
+                                events: binding.events.clone(),
+                                eligible: self.eligible[consumed],
+                            },
+                        )?;
+                    } else {
+                        count += usize::from(self.eligible[consumed]);
+                    }
                     consumed += 1;
                     owner_ends[consumed] = range.end;
                     while index < range.end {
@@ -195,11 +223,25 @@ impl DirectionBody {
             by_section[body.section].end = contexts.len();
         }
         let sections = super::storage::collect(sections.iter().cloned())?;
+        let zero_prefix = if zero_cells.is_empty() {
+            Vec::new()
+        } else {
+            let mut prefix = super::storage::filled(
+                zero_cells.len().checked_add(1).ok_or_else(capacity)?,
+                0usize,
+            )?;
+            for (index, cell) in zero_cells.iter().enumerate() {
+                prefix[index + 1] = prefix[index] + usize::from(cell.eligible);
+            }
+            prefix
+        };
         Ok(DirectionIndex {
             contexts,
             prefix,
             sections,
             by_section,
+            zero_cells,
+            zero_prefix,
         })
     }
 }
@@ -210,13 +252,59 @@ struct DirectionContext {
     strong: Option<u8>,
 }
 
+/// A real opaque cell whose relation events have no raw logical participant.
+/// Eligibility was resolved in the complete canonical body/isolate context.
+struct ZeroRawCell {
+    section: usize,
+    cut: usize,
+    events: std::ops::Range<usize>,
+    eligible: bool,
+}
+
 pub(crate) struct DirectionIndex {
     contexts: Vec<DirectionContext>,
     prefix: Vec<usize>,
     sections: Vec<std::ops::Range<usize>>,
     by_section: Vec<std::ops::Range<usize>>,
+    zero_cells: Vec<ZeroRawCell>,
+    zero_prefix: Vec<usize>,
 }
 impl DirectionIndex {
+    /// Source incidence supplements raw cuts only for an enclosed actual
+    /// zero-raw cell. It does not turn an empty point into a strong range.
+    pub(crate) fn query_source_in(
+        &self,
+        section: usize,
+        participants: std::ops::Range<usize>,
+        relation: std::ops::Range<usize>,
+    ) -> Option<(Option<u8>, bool)> {
+        let (strong, raw_strong) = self.query_in(section, participants.start, participants.end)?;
+        if self.zero_cells.is_empty() {
+            return Some((strong, raw_strong));
+        }
+        if relation.start > relation.end {
+            return None;
+        }
+        let section_start = self
+            .zero_cells
+            .partition_point(|cell| cell.section < section);
+        let section_end = self
+            .zero_cells
+            .partition_point(|cell| cell.section <= section);
+        let cells = &self.zero_cells[section_start..section_end];
+        // Each partition is monotone by the checked canonical owner/event
+        // order. Both event enclosure and raw incidence are required.
+        let first = cells
+            .partition_point(|cell| cell.events.start < relation.start)
+            .max(cells.partition_point(|cell| cell.cut < participants.start));
+        let last = cells
+            .partition_point(|cell| cell.events.end <= relation.end)
+            .min(cells.partition_point(|cell| cell.cut <= participants.end));
+        let cell_strong = first < last
+            && self.zero_prefix[section_start + last] != self.zero_prefix[section_start + first];
+        Some((strong, raw_strong || cell_strong))
+    }
+
     pub(crate) fn query_in(
         &self,
         section: usize,
@@ -247,6 +335,207 @@ mod tests {
     use super::super::wrapping::LogicalEvent;
     use super::*;
     use crate::protocol::paragraph::{ParagraphAnchor, ParagraphAnchorItem};
+
+    /// Actual child InlineAll SPACE followed by an ordinary EN. The cell's
+    /// source SPACE is removed only by its own inner edges. Optional genuine
+    /// captured isolate controls surround that cell, outside its owned parts.
+    fn source_zero_cell(isolate: Option<bool>) -> crate::AnalyzedSource {
+        use crate::*;
+        let source = Source::identified(" 1", Id::from_u64(78491), 3);
+        let style = Style {
+            white_space: WhiteSpace::Collapse,
+            text_transform: TextTransform::none(),
+            ..Style::default()
+        };
+        let origins = [Range::new(0, 1), Range::new(1, 2)]
+            .map(|range| ParagraphOrigin {
+                source: source.clone(),
+                local: range,
+                aggregate: range,
+                kind: ParagraphOriginKind::Authored,
+                text_node: None,
+            })
+            .to_vec();
+        let mut controls = Vec::new();
+        let mut events = vec![
+            SourceProcessingEvent::EnterScope(0),
+            SourceProcessingEvent::EnterParagraph(0),
+        ];
+        if isolate.is_some() {
+            controls.push(ParagraphControl {
+                at: 0,
+                kind: ParagraphControlKind::RightToLeftIsolate,
+            });
+            events.push(SourceProcessingEvent::Control {
+                control: 0,
+                affinity: Affinity::After,
+            });
+        }
+        events.extend([
+            SourceProcessingEvent::EnterScope(1),
+            SourceProcessingEvent::Origin {
+                origin: 0,
+                affinity: Affinity::After,
+            },
+            SourceProcessingEvent::ExitScope(1),
+            SourceProcessingEvent::Connection(0),
+        ]);
+        if isolate == Some(true) {
+            controls.push(ParagraphControl {
+                at: 1,
+                kind: ParagraphControlKind::PopDirectionalIsolate,
+            });
+            events.push(SourceProcessingEvent::Control {
+                control: 1,
+                affinity: Affinity::After,
+            });
+        }
+        events.extend([
+            SourceProcessingEvent::Origin {
+                origin: 1,
+                affinity: Affinity::After,
+            },
+            SourceProcessingEvent::ExitParagraph(0),
+            SourceProcessingEvent::ExitScope(0),
+        ]);
+        let processed = std::sync::Arc::new(
+            process_contextual_source(ContextualSourceInput {
+                source,
+                scope_alignment_limits: None,
+                computed_line_boundaries: Vec::new(),
+                segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+                envelope: SourceProcessingEnvelope::Complete,
+                origins,
+                connections: vec![SourceProcessingConnection {
+                    before_origin: 0,
+                    after_origin: 1,
+                    kind: ParagraphConnectionKind::Continuous,
+                }],
+                controls,
+                boundary_policies: vec![ParagraphBoundaryPolicy {
+                    definition: ParagraphBoundaryDefinition::Connection(0),
+                    preceding_wrap: Wrap::Word,
+                    following_wrap: Wrap::Word,
+                    ancestor_wrap: Wrap::Word,
+                }],
+                replacements: Vec::new(),
+                scopes: vec![
+                    SourceProcessingScope::Block {
+                        topology: SourceProcessingTopology::Complete,
+                        trim: WhiteSpaceTrim::default(),
+                        base_style: style.clone(),
+                        used_direction: ParagraphBaseDirection::LeftToRight,
+                        writing_axis: Some(SourceWritingAxis::Vertical),
+                        horizontal_inner_direction: Some(ParagraphBaseDirection::LeftToRight),
+                        font_reference: None,
+                    },
+                    SourceProcessingScope::Inline {
+                        trim: WhiteSpaceTrim::default(),
+                        style: Some(Style {
+                            text_combine_upright: TextCombineUpright::All,
+                            ..style
+                        }),
+                        boundaries: None,
+                        alignment_boundary: None,
+                        font_reference: None,
+                        horizontal_inner_direction: Some(ParagraphBaseDirection::LeftToRight),
+                    },
+                ],
+                paragraphs: vec![SourceProcessingParagraph {
+                    base_direction: ParagraphBaseDirection::LeftToRight,
+                    paragraph_strut: ParagraphStrut::AllocatedContributions,
+                }],
+                joint_flows: Vec::new(),
+                events,
+            })
+            .unwrap(),
+        );
+        let paragraph = processed.paragraphs().next().unwrap();
+        AnalyzedSource::from_processed_paragraph(
+            paragraph,
+            AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn actual_zero_raw_cell_has_direction_only_when_its_occurrence_is_enclosed() {
+        let analyzed = source_zero_cell(None);
+        let core = &analyzed.inner;
+        let output = core.combination.as_ref().unwrap();
+        assert_eq!(output.bindings.len(), 1);
+        let cell = &output.bindings[0];
+        assert!(cell.atoms.is_empty());
+        assert!(cell.participants.is_empty());
+        assert!(!cell.events.is_empty());
+        assert_eq!(analyzed.source().text(), &crate::Text::from(" 1"));
+        assert_eq!(core.projection.text, "1");
+        assert_eq!(
+            core.direction
+                .query_source_in(0, cell.participants.clone(), cell.events.clone()),
+            Some((Some(0), true)),
+        );
+        for cut in [cell.events.start, cell.events.end] {
+            assert_eq!(
+                core.direction
+                    .query_source_in(0, cell.participants.clone(), cut..cut),
+                Some((Some(0), false)),
+            );
+        }
+        assert_eq!(
+            core.direction
+                .query_in(0, cell.participants.start, cell.participants.end),
+            Some((Some(0), false)),
+        );
+    }
+
+    #[test]
+    fn actual_zero_raw_cell_does_not_bleed_into_its_following_weak_range() {
+        let analyzed = source_zero_cell(None);
+        let core = &analyzed.inner;
+        let event = core
+            .transform
+            .events
+            .iter()
+            .position(|event| {
+                matches!(
+                    event, crate::transform::relation::RelationEvent::Text { atom }
+                        if core.projection.atoms[*atom].code_point == 0x31
+                )
+            })
+            .unwrap();
+        let start = core.transform.logical_prefix_at_cut(event).unwrap();
+        let end = core.transform.logical_prefix_at_cut(event + 1).unwrap();
+        assert!(start < end);
+        assert_eq!(
+            core.direction.query_in(0, start, end),
+            Some((Some(0), false))
+        );
+        assert_eq!(
+            core.direction
+                .query_source_in(0, start..end, event..event + 1),
+            Some((Some(0), false)),
+        );
+    }
+
+    #[test]
+    fn actual_zero_raw_cell_keeps_full_matched_and_unmatched_isolate_eligibility() {
+        for matched in [true, false] {
+            let analyzed = source_zero_cell(Some(matched));
+            let core = &analyzed.inner;
+            let output = core.combination.as_ref().unwrap();
+            assert_eq!(output.bindings.len(), 1);
+            let cell = &output.bindings[0];
+            assert!(cell.participants.is_empty());
+            assert_eq!(core.paragraph.controls.len(), if matched { 2 } else { 1 });
+            assert_eq!(
+                core.direction
+                    .query_source_in(0, cell.participants.clone(), cell.events.clone()),
+                Some((None, false)),
+                "matched={matched}",
+            );
+        }
+    }
 
     fn index(classes: &[BidiClass]) -> DirectionIndex {
         let owners = (0..classes.len()).map(BidiOwner::Atom).collect();

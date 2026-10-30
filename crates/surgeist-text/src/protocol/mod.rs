@@ -265,6 +265,7 @@ prepared_handle!(
     PreparedScope,
     PreparedVirtualSeparator,
     PreparedUnit,
+    PreparedCell,
     PreparedAtomic,
     PreparedControl,
     PreparedComputedLineBoundary,
@@ -279,6 +280,7 @@ prepared_handle!(
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum PreparedParticipant {
     Text(PreparedUnit),
+    Cell(PreparedCell),
     Atomic(PreparedAtomic),
     Control(PreparedControl),
     ComputedLineBoundary(PreparedComputedLineBoundary),
@@ -931,6 +933,7 @@ pub enum ProtocolHandleKind {
     WordPortion,
     Origin,
     Unit,
+    Cell,
     Atomic,
     Control,
     ComputedLineBoundary,

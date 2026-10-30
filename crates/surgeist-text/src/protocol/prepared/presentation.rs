@@ -51,6 +51,12 @@ impl Attachment {
             Some(ParticipantData::Control(i)) if atom.is_none() => {
                 Ok(analyzed.analysis.control_levels[tables.controls[*i].occurrence])
             }
+            Some(ParticipantData::Cell(i))
+                if atom.is_none() && matches!(self, Self::After { .. }) =>
+            {
+                let binding = tables.cells[*i].binding;
+                Ok(analyzed.analysis.cell_levels[binding])
+            }
             Some(ParticipantData::Atomic(i))
                 if atom.is_none()
                     && matches!(self, Self::After { .. })
@@ -113,7 +119,9 @@ pub(super) fn before_attachment(
                         return Err(composition_error());
                     }
                 }
-                ParticipantData::ComputedLineBoundary(_) => return Err(composition_error()),
+                ParticipantData::Cell(_) | ParticipantData::ComputedLineBoundary(_) => {
+                    return Err(composition_error());
+                }
                 ParticipantData::Atomic(i) => {
                     if analyzed.processed.source().boxes()[tables.atomics[i].occurrence].kind()
                         == crate::InlineBoxKind::InFlow
@@ -212,11 +220,28 @@ impl Output {
         capture: UnitCapture,
         original: bool,
     ) -> crate::Result<()> {
-        self.infos.extend(atoms.iter().map(|&i| analysis.infos[i]));
+        self.emit_atoms(
+            projection,
+            analysis,
+            atoms.iter().copied(),
+            capture,
+            original,
+        )
+    }
+
+    fn emit_atoms(
+        &mut self,
+        projection: &SourceProjection,
+        analysis: &Analysis,
+        atoms: impl ExactSizeIterator<Item = usize> + Clone,
+        capture: UnitCapture,
+        original: bool,
+    ) -> crate::Result<()> {
+        self.infos.extend(atoms.clone().map(|i| analysis.infos[i]));
         self.levels
-            .extend(atoms.iter().map(|&i| analysis.levels[i]));
+            .extend(atoms.clone().map(|i| analysis.levels[i]));
         self.originals
-            .extend(atoms.iter().map(|&i| original.then_some(i)));
+            .extend(atoms.clone().map(|i| original.then_some(i)));
         push_presentation_unit(&mut self.output, projection, atoms, capture)
     }
     fn before_indication(
@@ -350,6 +375,30 @@ pub(super) fn select(
             output.before_indication(prepared, i)?;
         }
         match *participant {
+            ParticipantData::Cell(i) => {
+                let row = &tables.cells[i];
+                let cell = &prepared.shaped.cells[row.cell];
+                let output_cells = prepared
+                    .analyzed
+                    .combination
+                    .as_deref()
+                    .ok_or_else(composition_error)?;
+                let binding = &output_cells.bindings[row.binding];
+                output.emit_atoms(
+                    projection,
+                    analysis,
+                    binding.atoms.clone(),
+                    UnitCapture {
+                        source: row.source,
+                        processed: row.processed,
+                        participant: Some(local),
+                        kind: PresentationUnitKind::Cell { cell: row.cell },
+                        level: cell.level,
+                        bidi_class: Some(BidiClass::LeftToRight),
+                    },
+                    true,
+                )?;
+            }
             ParticipantData::Text(i) if !defining => {
                 let row = &tables.units[i];
                 let kind = if let Some(origin) = row.empty_origin {
@@ -478,6 +527,7 @@ pub(super) fn select(
         let receiver_index = output.output.units.iter().position(|unit| {
             ((!unit.atoms.is_empty() && unit.kind == PresentationUnitKind::Text)
                     || (unit.kind == PresentationUnitKind::Deleted && unit.bidi_class.is_some()))
+                || matches!(unit.kind, PresentationUnitKind::Cell { .. })
                 || matches!(unit.kind, PresentationUnitKind::Atomic { occurrence } if prepared.analyzed.processed.source().boxes()[occurrence].kind() == crate::InlineBoxKind::InFlow)
                 || matches!(unit.kind, PresentationUnitKind::Control { .. }) && unit.bidi_class.is_some()
         }).ok_or_else(|| crate::hyphenation::error(crate::HyphenationError::MissingReceivingBidiAuthority))?;
@@ -764,8 +814,14 @@ fn selected_relation(
         .get(segment.index)
         .ok_or_else(invalid)?;
     if participants.start > participants.end
-        || participants.start < section.participants.start
-        || participants.end > section.participants.end
+        || prepared
+            .tables
+            .source_prefix(participants.start)
+            .is_none_or(|source| source < section.participants.start)
+        || prepared
+            .tables
+            .source_prefix(participants.end)
+            .is_none_or(|source| source > section.participants.end)
         || relation.start > relation.end
         || relation.start < section.events.start
         || relation.end > section.events.end
@@ -795,8 +851,18 @@ fn selected_relation(
             // end of this interval, even when the next section has no units.
             let end = if captured && prefix == participants.end {
                 relation.end
+            } else if let PresentationUnitKind::Cell { cell } = row.kind {
+                let cell = &prepared.shaped.cells[cell];
+                prepared
+                    .analyzed
+                    .combination
+                    .as_deref()
+                    .ok_or_else(invalid)?
+                    .bindings[cell.binding]
+                    .events
+                    .end
             } else {
-                map.cut_for_participant(prefix)
+                map.cut_for_participant(prepared.tables.source_prefix(prefix).ok_or_else(invalid)?)
             };
             if end < cursor || end > relation.end {
                 return Err(invalid());
@@ -851,6 +917,11 @@ fn reset_originals(
         .iter()
         .map(|&i| {
             let unit = &units[i];
+            if matches!(unit.kind, PresentationUnitKind::Cell { .. }) {
+                // The actual outer cell is bidi L, independently of every
+                // retained inner scalar and of provider-input absence.
+                return LineReset::Other;
+            }
             if matches!(unit.kind, PresentationUnitKind::Atomic { .. }) {
                 // OOF has no shaped flow item and cannot terminate an L1
                 // whitespace sequence. Its original anchor/custody remains.
@@ -996,14 +1067,29 @@ fn prove_graphemes(
 /// Actual visual item order plus provider joint-unit and run congruence proof.
 /// The selected basis retains this order before publishing complete handles.
 pub(crate) fn order_presentation(
+    prepared: &crate::engine::PreparedData,
     presentation: &SelectedPresentation,
-    boxes: &[crate::InlineBox],
     shaped: &crate::engine::layout::data::ShapedData,
+    ledger: &mut crate::engine::scope_alignment::accounting::Ledger,
 ) -> crate::Result<Vec<usize>> {
     use crate::engine::layout::data::ShapedItem;
+    let boxes = prepared.analyzed.processed.source().boxes();
     let mut by_unit = vec![Vec::new(); presentation.units.len()];
     for (item, value) in shaped.items.iter().enumerate() {
         let unit = match *value {
+            ShapedItem::Cell(cell) => {
+                let mut found = None;
+                for (index, unit) in presentation.units.iter().enumerate() {
+                    crate::engine::scope_alignment::accounting::work(ledger, 1)?;
+                    if matches!(unit.kind, PresentationUnitKind::Cell { cell: original }
+                        if prepared.shaped.cells[original].binding == shaped.cells[cell].binding)
+                    {
+                        found = Some(index);
+                        break;
+                    }
+                }
+                found
+            }
             ShapedItem::Anchor { unit, .. } => Some(unit),
             ShapedItem::InlineBox { occurrence, .. } => presentation
                 .units

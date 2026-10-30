@@ -556,11 +556,12 @@ impl PreparedWordView<'_> {
             })
             .ok_or_else(|| super::protocol_error(super::ProtocolError::InvalidWordPortion))?;
         let boundary = |participant, edge, atom| {
+            let source_participant = tables.source_prefix(participant)?;
             let cut = self
                 .prepared
                 .analyzed
                 .transform
-                .cut_for_participant(participant);
+                .cut_for_participant(source_participant);
             let index = if edge {
                 tables.source_segments[section_index].end
             } else {
@@ -720,8 +721,9 @@ fn ordinary_fallback(
         return false;
     }
     let lexical = &prepared.analyzed.words.rows()[tables.words[word].lexical];
-    let first=tables.participants.iter().position(|part| matches!(part,ParticipantData::Text(i) if tables.units[*i].atoms.contains(&lexical.atoms.start)));
-    let relation =
-        &prepared.analyzed.logical.relations[prepared.analyzed.logical.cuts[boundary.participant]];
+    let first=tables.participants.iter().position(|part| matches!(part,ParticipantData::Text(i) if tables.units[*i].atoms.contains(&lexical.atoms.start)))
+        .and_then(|outer| tables.source_prefix(outer));
+    let relation = &prepared.analyzed.logical.relations
+        [prepared.analyzed.logical.cuts[boundary.source_participant]];
     matches!(relation.after,Some(Influence::Text { atom, participant }) if atom==lexical.atoms.start && Some(participant)==first)
 }

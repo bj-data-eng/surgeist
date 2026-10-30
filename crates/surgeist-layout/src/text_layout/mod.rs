@@ -525,6 +525,25 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                                 .map(|control| control_position(&control)),
                         )
                         .collect::<Vec<_>>(),
+                    surgeist_text::PreparedParticipant::Cell(cell) => cell
+                        .view()
+                        .source_cell()
+                        .source_pieces()
+                        .map(|piece| {
+                            let captured = piece.origin_position();
+                            position(
+                                paragraph
+                                    .origins
+                                    .iter()
+                                    .find(|row| {
+                                        row.origin.view().capture_position().as_ref()
+                                            == Some(&captured)
+                                    })
+                                    .expect("complete cell original occurrence inventory")
+                                    .node,
+                            )
+                        })
+                        .collect::<Vec<_>>(),
                     surgeist_text::PreparedParticipant::Atomic(atomic) => vec![position(
                         paragraph
                             .atomics

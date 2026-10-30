@@ -23,10 +23,10 @@ use crate::{
 
 use super::{
     FinalizedFragment, FinalizedLine, LineSelectionRequest, PreparedAlternative, PreparedAtomic,
-    PreparedBoundary, PreparedComputedLineBoundary, PreparedControl, PreparedOpportunity,
-    PreparedOrigin, PreparedParticipant, PreparedScope, PreparedText, PreparedUnit,
-    PreparedVirtualSeparator, PresentationRange, SelectedLine, SpacingSlot, SpacingSlotFeedback,
-    SpacingSlotOwner,
+    PreparedBoundary, PreparedCell, PreparedComputedLineBoundary, PreparedControl,
+    PreparedOpportunity, PreparedOrigin, PreparedParticipant, PreparedScope, PreparedText,
+    PreparedUnit, PreparedVirtualSeparator, PresentationRange, SelectedLine, SpacingSlot,
+    SpacingSlotFeedback, SpacingSlotOwner,
     paragraph::{FragmentOwner, OriginIntersection, ParagraphControlKind, ParagraphOriginKind},
     prepared::{
         AlternativeData, AlternativeDefinition, AtomicData, BoundaryData, ComputedBoundaryData,
@@ -264,6 +264,63 @@ macro_rules! prepared_view {
 }
 
 prepared_view!(PreparedUnitView, PreparedUnit, units, UnitData);
+prepared_view!(
+    PreparedCellView,
+    PreparedCell,
+    cells,
+    super::prepared::cells::CellData
+);
+
+impl PreparedCellView<'_> {
+    fn shaped(&self) -> &crate::engine::layout::data::PreparedCell {
+        &self.prepared.shaped.cells[self.data().cell]
+    }
+
+    /// The actual completed Source operation that issued this cell.
+    #[must_use]
+    pub fn source_cell(&self) -> crate::AnalyzedCombinedCell<'_> {
+        crate::AnalyzedCombinedCell {
+            core: &self.prepared.analyzed.core,
+            output: self
+                .prepared
+                .analyzed
+                .combination
+                .as_deref()
+                .expect("prepared cells retain their completed source operation"),
+            index: self.data().binding,
+        }
+    }
+
+    /// Outer inline advance and square extent, independently of inner glyphs.
+    #[must_use]
+    pub fn extent(&self) -> f64 {
+        self.shaped().extent
+    }
+
+    #[must_use]
+    pub fn before(&self) -> f64 {
+        self.shaped().before
+    }
+
+    #[must_use]
+    pub fn after(&self) -> f64 {
+        self.shaped().after
+    }
+
+    #[must_use]
+    pub fn level(&self) -> BidiLevel {
+        resolved_level(self.shaped().level)
+    }
+
+    /// Actual provider-input presence; glyph and ink emptiness do not decide it.
+    #[must_use]
+    pub fn has_provider_input(&self) -> bool {
+        matches!(
+            self.shaped().payload,
+            crate::engine::layout::data::CellPayload::Shaped { .. }
+        )
+    }
+}
 prepared_view!(PreparedAtomicView, PreparedAtomic, atomics, AtomicData);
 prepared_view!(PreparedControlView, PreparedControl, controls, ControlData);
 prepared_view!(
@@ -489,6 +546,21 @@ impl PreparedVirtualSeparatorView<'_> {
 }
 
 impl PreparedText {
+    /// Real outer cells, including source-proved cells with no provider input.
+    pub fn cells(&self) -> impl ExactSizeIterator<Item = PreparedCell> + '_ {
+        (0..self.inner.tables.cells.len()).map(|index| PreparedCell {
+            prepared: Arc::clone(&self.inner),
+            index,
+        })
+    }
+
+    pub fn cell_views(&self) -> impl ExactSizeIterator<Item = PreparedCellView<'_>> {
+        (0..self.inner.tables.cells.len()).map(|index| PreparedCellView {
+            prepared: &self.inner,
+            index,
+        })
+    }
+
     /// Actual Raw/Joint output authority, including metadata-only outputs.
     #[must_use]
     pub fn captured_owner(&self) -> Option<crate::CapturedAnalysisOwner<'_>> {
@@ -586,6 +658,10 @@ impl PreparedText {
             .participants
             .iter()
             .map(|participant| match *participant {
+                ParticipantData::Cell(index) => PreparedParticipant::Cell(PreparedCell {
+                    prepared: Arc::clone(&self.inner),
+                    index,
+                }),
                 ParticipantData::Text(index) => PreparedParticipant::Text(PreparedUnit {
                     prepared: Arc::clone(&self.inner),
                     index,
@@ -1565,7 +1641,84 @@ pub struct FinalizedRunView<'a> {
     shaped: &'a PreparedRun,
 }
 
+/// One actual finalized outer square, including a cell without provider input.
+#[derive(Debug)]
+pub struct FinalizedCellView<'a> {
+    line: &'a FinalizedLine,
+    index: usize,
+}
+
+impl FinalizedCellView<'_> {
+    fn data(&self) -> &crate::engine::layout::data::FinalizedCell {
+        &self.line.inner.data.cells[self.index]
+    }
+
+    #[must_use]
+    pub fn finalized_line(&self) -> &FinalizedLine {
+        self.line
+    }
+
+    #[must_use]
+    pub fn source_cell(&self) -> crate::AnalyzedCombinedCell<'_> {
+        let analyzed = &self.line.inner.selected.prepared.analyzed;
+        crate::AnalyzedCombinedCell {
+            core: &analyzed.core,
+            output: analyzed
+                .combination
+                .as_deref()
+                .expect("finalized cells retain their completed source operation"),
+            index: self.data().binding,
+        }
+    }
+
+    /// `(inline,line-under)` square after its one enclosing scope displacement.
+    #[must_use]
+    pub fn square(&self) -> Rect {
+        let cell = self.data();
+        Rect::new(
+            cell.inline.start,
+            cell.under.start,
+            cell.inline.end - cell.inline.start,
+            cell.under.end - cell.under.start,
+        )
+    }
+
+    #[must_use]
+    pub fn reference(&self) -> f64 {
+        self.data().reference
+    }
+
+    #[must_use]
+    pub fn scope_displacement(&self) -> crate::BaselineShift {
+        self.data().scope_displacement
+    }
+
+    #[must_use]
+    pub fn level(&self) -> BidiLevel {
+        resolved_level(self.data().level)
+    }
+}
+
+impl FinalizedLine {
+    pub fn cell_views(&self) -> impl ExactSizeIterator<Item = FinalizedCellView<'_>> {
+        (0..self.inner.data.cells.len()).map(|index| FinalizedCellView { line: self, index })
+    }
+}
+
 impl FinalizedRunView<'_> {
+    /// The genuine outer cell whose horizontal inner frame owns this run.
+    #[must_use]
+    pub fn cell(&self) -> Option<FinalizedCellView<'_>> {
+        match self.run.frame {
+            crate::engine::layout::data::FinalizedRunFrame::Line => None,
+            crate::engine::layout::data::FinalizedRunFrame::Cell(index) => {
+                Some(FinalizedCellView {
+                    line: self.line,
+                    index,
+                })
+            }
+        }
+    }
     /// Actual outline axes retained by this run's shaping operation.
     ///
     /// Horizontal and upright outlines are unrotated. Mixed R outlines are
@@ -1610,7 +1763,9 @@ impl FinalizedRunView<'_> {
     /// composition, this is font-design zero rather than the common alignment
     /// reference retained in the line's feedback.
     ///
-    /// Coordinates are `(inline, line-under)` before physical placement.
+    /// Line-frame coordinates are `(inline, line-under)` before physical placement.
+    /// For a genuine [`Self::cell`], coordinates are intrinsic horizontal inner
+    /// offsets, before that cell's square/frame and enclosing scope translation.
     /// Vertical and SidewaysClockwise cells map `(u,v)` to
     /// `(cross_anchor+local_baseline-v, inline_origin+u)`.
     /// SidewaysCounterclockwise cells map them to
@@ -1622,7 +1777,8 @@ impl FinalizedRunView<'_> {
         Point::new(self.run.x, self.run.y)
     }
 
-    /// Final logical advance, including the admitted spacing allocation.
+    /// Advance in the actual run frame, including admitted spacing. A cell run
+    /// retains its inner horizontal advance; its outer square supplies one em.
     #[must_use]
     pub const fn advance(&self) -> f64 {
         self.run.advance

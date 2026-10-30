@@ -176,7 +176,7 @@ fn select_with_policy(
         controls: &request.controls,
     };
     // No handles exist until this exact selected invocation has completed.
-    let (shaped, mapping, scope_plan) = crate::engine::shape::finalize(
+    let (shaped, mapping, mut scope_plan) = crate::engine::shape::finalize(
         input,
         scratch,
         request.context.spacing,
@@ -199,9 +199,10 @@ fn select_with_policy(
         request.context.spacing == SpacingPolicy::InterCharacter,
     )?;
     let order = super::prepared::presentation::order_presentation(
+        &prepared.inner,
         &presentation,
-        prepared.inner.analyzed.processed.source().boxes(),
         &shaped,
+        &mut scope_plan.budget,
     )?;
     let targets = match request.context.spacing {
         SpacingPolicy::None | SpacingPolicy::InterCharacter => Vec::new(),
@@ -541,6 +542,12 @@ pub(crate) fn admit_range<'a>(
         .enumerate()
     {
         let (owner, index, kind, matches_kind) = match (actual, expected) {
+            (PreparedParticipant::Cell(value), ParticipantData::Cell(index)) => (
+                &value.prepared,
+                value.index,
+                ProtocolHandleKind::Cell,
+                value.index == *index,
+            ),
             (PreparedParticipant::Text(value), ParticipantData::Text(index)) => (
                 &value.prepared,
                 value.index,
@@ -857,6 +864,9 @@ pub(crate) fn scope_request_roots(
     )?;
     for row in &request.participants {
         let (owner, kind, index) = match row {
+            super::PreparedParticipant::Cell(row) => {
+                (&row.prepared, ProtocolHandleKind::Cell, row.index)
+            }
             super::PreparedParticipant::Text(row) => {
                 (&row.prepared, ProtocolHandleKind::Unit, row.index)
             }

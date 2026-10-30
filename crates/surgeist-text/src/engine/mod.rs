@@ -355,11 +355,12 @@ pub(crate) fn prepare(
     profile: PreparationProfile,
     scratch: &mut shape::ShapeContext,
 ) -> crate::Result<Arc<PreparedData>> {
-    if analyzed
+    let has_cells = analyzed
         .combination
         .as_ref()
-        .is_some_and(|output| !output.cells.is_empty())
-    {
+        .is_some_and(|output| !output.cells.is_empty());
+    shape::admit_cells(&analyzed, options.tabs())?;
+    if has_cells && options.orientation() != crate::LineOrientation::Vertical {
         return Err(crate::transform::combined::refused(
             crate::TextCombineError::UnsupportedCellPreparation,
         ));
@@ -439,6 +440,13 @@ pub(crate) fn prepare(
     } else {
         None
     };
+    scope_alignment::prepare_cell_resources(
+        &mut scope_alignment,
+        catalogue,
+        &analyzed,
+        options,
+        &mut scope_budget,
+    )?;
     let font_catalogue = catalogue.identity().clone();
     let characters = spacing::character::plan(
         &analyzed.projection,
@@ -448,7 +456,7 @@ pub(crate) fn prepare(
         None,
         false,
     )?;
-    let mut shaped = shape::shape(
+    let mut shaped = shape::prepare(
         catalogue,
         ShapingInput {
             formatting_breaks: &scope_alignment.breaks,
@@ -471,6 +479,8 @@ pub(crate) fn prepare(
             css_tabs: options.tabs() == crate::TabPreparation::CssStops,
         },
         scratch,
+        &analyzed,
+        &scope_alignment,
         &mut scope_budget,
     )?;
     shaped.character_requirements = Some(characters);
@@ -518,8 +528,14 @@ pub(crate) fn prepare(
             scratch,
         )?);
     }
-    let tables =
-        crate::protocol::prepared::prepare_tables(catalogue, &styles, &analyzed, &shaped, profile)?;
+    let tables = crate::protocol::prepared::prepare_tables(
+        catalogue,
+        &styles,
+        &analyzed,
+        &shaped,
+        profile,
+        &mut scope_budget,
+    )?;
     let indication_fonts = crate::protocol::prepared::prepare_indication_fonts(
         catalogue, &analyzed, &styles, &tables, scratch, options,
     )?;
