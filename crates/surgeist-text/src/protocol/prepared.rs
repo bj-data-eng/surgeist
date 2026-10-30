@@ -1143,10 +1143,14 @@ fn soft_boundary(
         .iter()
         .any(|row| row.kind == crate::ParagraphConnectionKind::Disconnected)
     {
+        let source_context = crate::transform::context::SourceContext::exact(
+            &analyzed.processed,
+            &analyzed.paragraph,
+        )?;
         crate::transform::separators::connection_seams(
             &analyzed.projection,
             &analyzed.logical.events,
-            &analyzed.paragraph,
+            &source_context,
         )?
     } else {
         Vec::new()

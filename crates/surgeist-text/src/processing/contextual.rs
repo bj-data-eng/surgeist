@@ -237,6 +237,8 @@ pub enum SourceContinuityOperation {
     Decoding,
     WhiteSpace,
     Trimming,
+    Transformation,
+    Segmentation,
 }
 
 /// Typed atomic capture/view rejection or unavailable source context.
@@ -244,8 +246,9 @@ pub enum SourceContinuityOperation {
 pub enum SourceProcessingError {
     /// Source context needed by the bounded qualifier to establish a complete
     /// result. This does not assert that every hypothetical completion differs.
-    /// Endpoints index [`ContextualSourceInput::origins`]. No completed processed
-    /// owner is published on this failure.
+    /// Endpoints index [`ContextualSourceInput::origins`]. The requested operation
+    /// publishes no partial result. A previously issued
+    /// processed source remains unchanged when a later transformation refuses.
     MissingSourceContinuity {
         before_origin: usize,
         after_origin: usize,

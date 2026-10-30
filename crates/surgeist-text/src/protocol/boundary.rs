@@ -412,10 +412,14 @@ pub(crate) fn resolve(
         }
     }
     let incidences = incidences(data);
+    let source_context = crate::transform::context::SourceContext::exact(
+        &data.analyzed.processed,
+        &data.analyzed.paragraph,
+    )?;
     let mut stops: Vec<_> = crate::transform::separators::connection_seams(
         &data.analyzed.projection,
         &data.analyzed.logical.events,
-        &data.analyzed.paragraph,
+        &source_context,
     )?
     .into_iter()
     .map(|seam| ContextStop {

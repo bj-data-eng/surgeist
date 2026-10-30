@@ -1,190 +1,17 @@
-use std::{ops::Range as IndexRange, sync::Arc};
-
-use icu_normalizer::properties::CanonicalCombiningClassMap;
-use icu_properties::{
-    CodePointMapData,
-    props::{GeneralCategory, GeneralCategoryGroup, GraphemeClusterBreak, Script},
-    script::ScriptWithExtensions,
-};
-use icu_segmenter::{WordSegmenter, options::WordBreakInvariantOptions};
-
+use super::casing::MappingError;
+use super::mapping::failed;
 use super::{
-    casing::{self, Locale, Mapper, MappingError, Operation},
-    irish,
+    casing,
     relation::{ComponentOwner, Emission, RelationEvent, TransformMap},
 };
 use crate::{
-    CaseTransform, Error, ErrorCode, ErrorDetail, ProcessedSource, Range, Result, TextTransform,
-    TextTransformError,
+    ProcessedSource, Range, Result,
     engine::{OriginalAtom, analysis::wrapping::Event, resolve::AnalyzedStyleRun},
     projection::SourceProjection,
     protocol::paragraph::ParagraphData,
 };
-
-fn failed(reason: MappingError) -> Error {
-    let (code, reason) = match reason {
-        MappingError::DataUnavailable => (
-            ErrorCode::UnsupportedFeature,
-            TextTransformError::CasingDataUnavailable,
-        ),
-        MappingError::InvalidException | MappingError::InvalidScalar => (
-            ErrorCode::InvalidSourceProcessing,
-            TextTransformError::InvalidCasingData,
-        ),
-        MappingError::InvalidLocale => (
-            ErrorCode::InvalidStyle,
-            TextTransformError::InvalidContentLocale,
-        ),
-        MappingError::Storage => (
-            ErrorCode::SourceProcessingCapacity,
-            TextTransformError::Capacity,
-        ),
-    };
-    Error::new(
-        code,
-        "text transformation could not retain its actual mapping",
-    )
-    .with_detail(ErrorDetail::TextTransform { reason })
-}
-
-#[derive(Clone, Copy, Default)]
-struct Initial {
-    title: bool,
-    context: bool,
-}
-
-#[derive(Clone, Copy, Default)]
-struct PrefixEffect {
-    preserve_upper: bool,
-    remove_upper: bool,
-    insert_lower: bool,
-}
-
-fn base(input: &SourceProjection, unit: IndexRange<usize>) -> Option<usize> {
-    let categories = CodePointMapData::<GeneralCategory>::new();
-    let scripts = ScriptWithExtensions::new();
-    if input.atoms[unit.clone()].iter().any(|atom| {
-        categories.get32(atom.code_point) == GeneralCategory::EnclosingMark
-            && scripts.has_script32(atom.code_point, Script::Common)
-    }) {
-        return None;
-    }
-    let gcb = CodePointMapData::<GraphemeClusterBreak>::new();
-    let base = unit
-        .clone()
-        .find(|&row| gcb.get32(input.atoms[row].code_point) != GraphemeClusterBreak::Prepend)?;
-    let category = categories.get32(input.atoms[base].code_point);
-    if category == GeneralCategory::SpaceSeparator && unit.len() > 1 {
-        return None;
-    }
-    (GeneralCategoryGroup::Letter.contains(category)
-        || GeneralCategoryGroup::Number.contains(category))
-    .then_some(base)
-}
-
-fn classify(
-    input: &SourceProjection,
-    values: &[u32],
-    domain: IndexRange<usize>,
-    mapper: &Mapper,
-    initial: &mut [Initial],
-    prefixes: &mut [PrefixEffect],
-) -> Result<()> {
-    let point = |atom: usize| {
-        input
-            .atoms
-            .get(atom)
-            .map_or(input.presentation_end(), |atom| atom.presentation.start)
-    };
-    let byte = input.segmentation_byte(point(domain.start));
-    let end = input.segmentation_byte(point(domain.end));
-    let atom_at = |byte| -> Result<usize> {
-        let point = input.segmentation_unit(byte)?;
-        Ok(input
-            .atoms
-            .partition_point(|atom| atom.presentation.start < point))
-    };
-    let mut previous = domain.start;
-    for (offset, kind) in
-        WordSegmenter::new_for_non_complex_scripts(WordBreakInvariantOptions::default())
-            .segment_str(&input.segmentation[byte..end])
-            .iter_with_word_type()
-    {
-        let next = atom_at(byte + offset)?;
-        if previous < next && kind.is_word_like() {
-            let word = previous..next;
-            let prefix = irish::prefix(&values[word.start..domain.end]);
-            for effect in &mut prefixes[word.start..(word.start + prefix.preserve).min(domain.end)]
-            {
-                effect.preserve_upper = true;
-            }
-            if let Some(row) = prefix
-                .remove
-                .and_then(|row| word.start.checked_add(row))
-                .filter(|&row| row < domain.end)
-            {
-                prefixes[row].remove_upper = true;
-            }
-            if let Some(row) = prefix
-                .insert_before
-                .and_then(|row| word.start.checked_add(row))
-                .filter(|&row| row < domain.end)
-            {
-                prefixes[row].insert_lower = true;
-            }
-            // Seek the first EGC whose end is after this word start. Keep
-            // a unit beginning before the word: its base/context still owns
-            // the initial-unit decision when the ranges genuinely overlap.
-            let word_start = point(word.start);
-            let word_end = point(word.end);
-            let grapheme = input
-                .graphemes
-                .partition_point(|&edge| edge <= word_start)
-                .saturating_sub(1);
-            for pair in input.graphemes[grapheme..]
-                .windows(2)
-                .take_while(|pair| pair[0] < word_end)
-            {
-                let first = input
-                    .atoms
-                    .partition_point(|atom| atom.presentation.start < pair[0]);
-                let last = input
-                    .atoms
-                    .partition_point(|atom| atom.presentation.start < pair[1]);
-                if last <= word.start || first >= word.end {
-                    continue;
-                }
-                let Some(base) = base(input, first..last) else {
-                    continue;
-                };
-                // The first Letter/Number unit occupies this slot, even when
-                // it is a number, uppercase or caseless letter.
-                if mapper.case_type(values[base])
-                    == Some(icu_casemap::provider::data::CaseType::Lower)
-                {
-                    initial[base].title = true;
-                    for (row, unit) in initial.iter_mut().enumerate().take(last).skip(first) {
-                        if row != base {
-                            unit.context = true;
-                        }
-                    }
-                    for row in base + 1..word.end {
-                        if matches!(values[row], 0x6a | 0x4a)
-                            && mapper
-                                .dutch_j(&values[word.start..row], &values[row + 1..word.end])
-                                .map_err(failed)?
-                        {
-                            initial[row].context = true;
-                        }
-                    }
-                }
-                break;
-            }
-        }
-        previous = next;
-    }
-    Ok(())
-}
+use icu_normalizer::properties::CanonicalCombiningClassMap;
+use std::sync::Arc;
 
 pub(super) fn apply(
     input: SourceProjection,
@@ -192,21 +19,22 @@ pub(super) fn apply(
     processed: &ProcessedSource,
     paragraph: &ParagraphData,
 ) -> Result<(SourceProjection, Arc<TransformMap>)> {
-    let captured =
-        crate::engine::analysis::wrapping::transform_events(processed, paragraph, &input, styles);
-    let mut map = TransformMap::identity(&input, styles, processed, paragraph, captured.clone());
-    let proposals =
-        super::separators::automatic::proposals(&input, styles, processed, paragraph, &mut map)?;
-    let input = super::separators::apply(input, &mut map, styles, processed, paragraph)?;
-    let (input, captured) = super::separators::wbr(
-        input, &mut map, captured, styles, processed, paragraph, proposals,
-    )?;
+    let context = super::context::SourceContext::surrounding(processed, paragraph)?;
+    let input = context.projection(input)?;
+    let super::transaction::Completed {
+        input,
+        styles: source_styles,
+        mut map,
+        captured,
+        mappings:
+            super::mapping::Mappings {
+                output,
+                identities,
+                spans,
+                operations,
+            },
+    } = super::transaction::run(&context, input)?;
     let values: Vec<_> = input.atoms.iter().map(|atom| atom.code_point).collect();
-    let casing = map
-        .components
-        .iter()
-        .any(|row| matches!(styles[row.style].style.text_transform(), TextTransform::Set(set) if set.case() != CaseTransform::None));
-    let mapper = casing.then(Mapper::new).transpose().map_err(failed)?;
     let mut stops = input.barrier_atoms.clone();
     stops.extend([0, input.atoms.len()]);
     for (row, &cp) in values.iter().enumerate() {
@@ -216,142 +44,6 @@ pub(super) fn apply(
     }
     stops.sort_unstable();
     stops.dedup();
-    let mut initial = vec![Initial::default(); values.len()];
-    let mut prefixes = vec![PrefixEffect::default(); values.len()];
-    if let Some(mapper) = &mapper {
-        for domain in stops.windows(2) {
-            classify(
-                &input,
-                &values,
-                domain[0]..domain[1],
-                mapper,
-                &mut initial,
-                &mut prefixes,
-            )?;
-        }
-    }
-    let mut locales = vec![None; styles.len()];
-    let mut operations = Vec::new();
-    let mut output = Vec::new();
-    let mut identities = Vec::new();
-    let mut spans = Vec::new();
-    for domain in stops.windows(2) {
-        for row in domain[0]..domain[1] {
-            let style = &styles[map.components[row].style].style;
-            let transform = style.text_transform();
-            let operation = match transform {
-                TextTransform::MathAuto => None,
-                TextTransform::Set(set) => match set.case() {
-                    CaseTransform::None => None,
-                    CaseTransform::Uppercase => Some(Operation::Upper),
-                    CaseTransform::Lowercase => Some(Operation::Lower),
-                    CaseTransform::Capitalize if initial[row].title => Some(Operation::Title),
-                    CaseTransform::Capitalize if initial[row].context => {
-                        Some(Operation::TitleContext)
-                    }
-                    CaseTransform::Capitalize => None,
-                },
-            };
-            operations.push(operation);
-            let start = output.len();
-            let locale = if operation.is_some() {
-                let slot = &mut locales[map.components[row].style];
-                if slot.is_none() {
-                    *slot = Some(Locale::from_tag(style.locale_tag()).map_err(failed)?);
-                }
-                slot.expect("resolved actual component locale")
-            } else {
-                Locale::Root
-            };
-            output
-                .try_reserve(1)
-                .map_err(|_| failed(MappingError::Storage))?;
-            if locale == Locale::Irish
-                && operation == Some(Operation::Upper)
-                && prefixes[row].remove_upper
-            {
-                // The genuine hyphen row has a zero-output correspondence.
-            } else if operation.is_none()
-                || locale == Locale::Irish
-                    && operation == Some(Operation::Upper)
-                    && prefixes[row].preserve_upper
-            {
-                output.push(values[row]);
-            } else {
-                if locale == Locale::Irish
-                    && operation == Some(Operation::Lower)
-                    && prefixes[row].insert_lower
-                {
-                    output.push(0x2d);
-                }
-                mapper
-                    .as_ref()
-                    .expect("actual casing operation")
-                    .map_into(
-                        &values[domain[0]..domain[1]],
-                        row - domain[0],
-                        operation.expect("casing operation"),
-                        locale,
-                        &mut output,
-                    )
-                    .map_err(failed)?;
-            }
-            if transform == TextTransform::MathAuto {
-                let pieces = match map.components[row].owner {
-                    ComponentOwner::Original(original) => map.original_pieces(original),
-                    ComponentOwner::Wbr(_) | ComponentOwner::Virtual(_) => &[],
-                };
-                if !pieces.is_empty()
-                    && pieces.iter().all(|piece| {
-                        paragraph.origins[paragraph
-                            .origin_map
-                            .view_origin(piece.origin)
-                            .expect("transform input retains its actual original declaration")
-                            .get()]
-                        .text_node
-                        .as_ref()
-                        .is_some_and(|node| super::math::eligible(node.text()))
-                    })
-                    && let Some(target) = super::math::map(values[row])
-                {
-                    output[start] = target;
-                }
-            }
-            identities
-                .try_reserve(output.len() - start)
-                .map_err(|_| failed(MappingError::Storage))?;
-            identities.extend(output[start..].iter().copied().map(|cp| {
-                if let TextTransform::Set(set) = transform
-                    && set.full_size_kana()
-                {
-                    super::full_size_kana(cp).map_or(cp, u32::from)
-                } else {
-                    cp
-                }
-            }));
-            if let TextTransform::Set(set) = transform {
-                if set.full_width() {
-                    for cp in &mut output[start..] {
-                        if (*cp != 0x20
-                            || map.components[row].separator_space
-                            || processed.preserves_space_at(map.components[row].processed.start))
-                            && let Some(target) = super::width::map(*cp)
-                        {
-                            *cp = target;
-                        }
-                    }
-                }
-                if set.full_size_kana() {
-                    for cp in &mut output[start..] {
-                        if let Some(target) = super::full_size_kana(*cp) {
-                            *cp = u32::from(target);
-                        }
-                    }
-                }
-            }
-            spans.push(start..output.len());
-        }
-    }
     let changed = spans.iter().enumerate().any(|(row, span)| {
         span.len() != 1
             || match map.components[row].owner {
@@ -364,6 +56,19 @@ pub(super) fn apply(
     map.emissions.clear();
     map.atoms.clear();
     map.events.clear();
+    map.emissions
+        .try_reserve_exact(output.len())
+        .map_err(|_| failed(MappingError::Storage))?;
+    map.atoms
+        .try_reserve_exact(output.len())
+        .map_err(|_| failed(MappingError::Storage))?;
+    let event_capacity = captured
+        .len()
+        .checked_add(output.len())
+        .ok_or_else(|| failed(MappingError::Storage))?;
+    map.events
+        .try_reserve_exact(event_capacity)
+        .map_err(|_| failed(MappingError::Storage))?;
     for (row, span) in spans.iter().enumerate() {
         let start = map.emissions.len();
         for (subposition, &code_point) in output[span.clone()].iter().enumerate() {
@@ -383,6 +88,12 @@ pub(super) fn apply(
     }
     let mut atoms = Vec::new();
     let mut pending = Vec::new();
+    atoms
+        .try_reserve_exact(output.len())
+        .map_err(|_| failed(MappingError::Storage))?;
+    pending
+        .try_reserve_exact(output.len())
+        .map_err(|_| failed(MappingError::Storage))?;
     let classes = CanonicalCombiningClassMap::new();
     for event in captured {
         if stops.binary_search(&event.atom).is_ok()
@@ -409,6 +120,20 @@ pub(super) fn apply(
                         .last()
                         .map(|id| map.emissions[id].selection_identity),
                 );
+                let immediate = range.len().saturating_sub(usize::from(postpone));
+                if immediate > 0 && !pending.is_empty() {
+                    for &id in &pending {
+                        let before = &map.components[map.emissions[id].component];
+                        if let Some(edge) = context.missing.iter().find(|edge| {
+                            before.source.end <= edge.at
+                                && edge.at <= map.components[row].source.start
+                        }) {
+                            return Err(
+                                edge.unavailable(crate::SourceContinuityOperation::Transformation)
+                            );
+                        }
+                    }
+                }
                 for id in range.clone() {
                     if postpone && id + 1 == range.end {
                         pending.push(id);
@@ -425,7 +150,7 @@ pub(super) fn apply(
                 })
             }
             Event::Anchor(anchor) => map.events.push(RelationEvent::Anchor {
-                order: paragraph
+                order: context
                     .anchor_order
                     .iter()
                     .position(|value| *value == anchor)
@@ -434,7 +159,7 @@ pub(super) fn apply(
         }
     }
     flush(&mut pending, &mut atoms, &mut map)?;
-    map.finish_cuts();
+    map.finish_cuts()?;
     let mut end = 0usize;
     for atom in &mut atoms {
         let length = if (0xd800..=0xdfff).contains(&atom.code_point) {
@@ -481,13 +206,13 @@ pub(super) fn apply(
     projection.style_rows = (0..projection.atoms.len())
         .map(|atom| Some(map.component_for_atom(atom).style))
         .collect();
-    projection.anchor_atoms = vec![None; paragraph.anchor_order.len()];
+    projection.anchor_atoms = vec![None; context.anchor_order.len()];
     let mut at = 0;
     for event in &map.events {
         match *event {
             RelationEvent::Text { atom } => {
                 if let ComponentOwner::Wbr(control) = map.component_for_atom(atom).owner {
-                    let order = paragraph
+                    let order = context
                         .anchor_order
                         .iter()
                         .position(|anchor| {
@@ -511,9 +236,7 @@ pub(super) fn apply(
             projection.anchor_atoms[order] = Some(component_ends[cut]);
         }
     }
-    let map = Arc::new(map);
-    projection.transform = Some(Arc::clone(&map));
-    Ok((projection, map))
+    super::project::finish(&context, &source_styles, styles, projection, map)
 }
 
 fn emit(id: usize, atoms: &mut Vec<OriginalAtom>, map: &mut TransformMap) -> Result<()> {

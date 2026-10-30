@@ -477,6 +477,11 @@ pub enum ErrorDetail {
 /// Exact source-transform admission or execution refusal.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TextTransformError {
+    /// Required original-unit envelope for diagnostics. Actual original pieces,
+    /// rather than this envelope, establish membership in the requested view.
+    IndivisibleCoverage {
+        source: crate::Range,
+    },
     InvalidPhraseData,
     MissingPhraseTopology {
         at: usize,

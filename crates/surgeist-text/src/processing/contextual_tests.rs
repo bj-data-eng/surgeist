@@ -9,6 +9,7 @@ mod math;
 mod phase_two;
 mod source_connections;
 mod transform_context;
+mod transform_context_contracts;
 mod wbr_connections;
 mod wbr_decoding;
 mod wbr_decoding_continuity;

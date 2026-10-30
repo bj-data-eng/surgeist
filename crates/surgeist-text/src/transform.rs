@@ -12,13 +12,17 @@
 use crate::{Result, engine::resolve, projection::SourceProjection};
 
 mod casing;
+pub(crate) mod context;
 mod execute;
 mod greek;
 mod irish;
+mod mapping;
 mod math;
 mod math_data;
+mod project;
 pub(crate) mod relation;
 pub(crate) mod separators;
+mod transaction;
 mod width;
 mod width_data;
 

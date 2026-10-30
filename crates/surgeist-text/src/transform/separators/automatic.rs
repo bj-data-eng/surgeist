@@ -1,12 +1,12 @@
 //! Native Japanese phrase proposals and their authentic scoped insertion seams.
+use super::super::context::{SourceContext, StyleRow};
 use super::super::relation::{ScopeData, TransformMap, VirtualSeparatorData};
 use crate::engine::analysis::wrapping::{Event, LogicalEvent};
-use crate::engine::resolve::{AnalyzedStyleOwner, AnalyzedStyleRun};
 use crate::phrase::qualification::{Punctuation, punctuation, separator};
 use crate::phrase::{PhraseError, PhraseModel};
 use crate::processing::contextual::ParagraphTopology;
 use crate::projection::SourceProjection;
-use crate::protocol::paragraph::{ParagraphControlKind, ParagraphData, SemanticAnchorItem};
+use crate::protocol::paragraph::SemanticAnchorItem;
 use crate::{
     Error, ErrorCode, ErrorDetail, InlineBoxKind, Result, SourceProcessingEvent, TextTransformError,
 };
@@ -16,21 +16,325 @@ use icu_properties::{
 };
 
 pub(crate) struct Proposal {
-    pub(super) cut: usize,
-    pub(super) occurrence: usize,
-    pub(super) code_point: u32,
-    pub(super) style: usize,
+    pub(in crate::transform) occurrence: usize,
+    pub(in crate::transform) code_point: u32,
+    pub(in crate::transform) style: usize,
+}
+
+#[derive(Clone, Copy)]
+enum LanguageRead {
+    Unread,
+    Resolved(Option<fontique::Language>),
+}
+
+#[derive(Clone, Copy)]
+enum RunRead {
+    Unread,
+    Unsupported,
+    Qualified(usize),
+}
+
+/// Genuine adjacent original participants and their actual mixed occurrences.
+#[derive(Clone, Copy)]
+struct IncidentPair {
+    left: usize,
+    right: usize,
+    left_event: usize,
+    right_event: usize,
+}
+
+#[derive(Clone, Copy)]
+struct Insertion {
+    scope: usize,
+    source: usize,
+    capture_cut: usize,
+}
+
+#[derive(Clone, Copy)]
+enum Site {
+    Neutral,
+    Unqualified(IncidentPair),
+    Captured {
+        pair: IncidentPair,
+        insertion: Insertion,
+    },
+}
+
+pub(in crate::transform) struct PhraseReads {
+    languages: Vec<LanguageRead>,
+    sites: Vec<Site>,
+    stops: Vec<usize>,
+    controls_before: Vec<usize>,
+    runs: Vec<RunRead>,
+}
+impl PhraseReads {
+    pub(in crate::transform) fn new(
+        styles: &[StyleRow<'_>],
+        input: &SourceProjection,
+        paragraph: &SourceContext<'_>,
+        map: &TransformMap,
+        events: &[LogicalEvent],
+        seams: &[super::ConnectionSeam],
+    ) -> Result<Self> {
+        let length = events.len().checked_add(1).ok_or_else(super::capacity)?;
+        let mut sites = super::super::context::filled(length, Site::Neutral)?;
+        let mut text_events = super::super::context::filled(input.atoms.len(), 0)?;
+        let mut controls_before = Vec::new();
+        let mut controls = 0;
+        for (index, event) in events.iter().enumerate() {
+            super::super::context::push(&mut controls_before, controls)?;
+            match event.kind {
+                Event::Text(row) => text_events[row] = index,
+                Event::Anchor(anchor) if matches!(anchor.item, SemanticAnchorItem::Control(_)) => {
+                    controls += 1
+                }
+                _ => (),
+            }
+        }
+        super::super::context::push(&mut controls_before, controls)?;
+        let mut stops = super::super::context::collect_rows(input.barrier_atoms.iter().copied())?;
+        super::super::context::push(&mut stops, 0)?;
+        super::super::context::push(&mut stops, input.atoms.len())?;
+        for (row, atom) in input.atoms.iter().enumerate() {
+            if crate::engine::analysis::is_hard_separator(atom.code_point) {
+                super::super::context::push(&mut stops, row)?;
+                super::super::context::push(&mut stops, row + 1)?;
+            }
+        }
+        for seam in seams {
+            super::super::context::push(&mut stops, seam.atom)?;
+        }
+        stops.sort_unstable();
+        stops.dedup();
+        for right in 1..input.atoms.len() {
+            let left = right - 1;
+            if ![left, right].iter().any(|&row| {
+                styles[map.rows[row].style]
+                    .style
+                    .authored()
+                    .word_space_transform
+                    .detects_phrases()
+            }) || stops.binary_search(&right).is_ok()
+            {
+                continue;
+            }
+            let pair = IncidentPair {
+                left,
+                right,
+                left_event: text_events[left],
+                right_event: text_events[right],
+            };
+            if events[pair.left_event + 1..pair.right_event]
+                .iter()
+                .any(|event| {
+                    super::forced(event, input, paragraph.processed.source(), paragraph)
+                        == Some(true)
+                        || matches!(event.kind, Event::Anchor(anchor) if matches!(anchor.item,
+                    SemanticAnchorItem::Atomic(index)
+                    if paragraph.processed.source().boxes()[index].kind() == InlineBoxKind::InFlow))
+                })
+            {
+                continue;
+            }
+            if let Some(topology) = paragraph
+                .scope_topology
+                .filter(|topology| topology.capture.complete[topology.domain])
+            {
+                let (scope, cut, source, capture_cut) =
+                    custody(topology, paragraph, input, map, events, pair);
+                sites[cut] = Site::Captured {
+                    pair,
+                    insertion: Insertion {
+                        scope,
+                        source,
+                        capture_cut,
+                    },
+                };
+            } else {
+                // No side/owner is invented. The existing material proposal
+                // path still qualifies topology after actual detector demand.
+                for site in &mut sites[pair.left_event + 1..=pair.right_event] {
+                    *site = Site::Unqualified(pair);
+                }
+            }
+        }
+        Ok(Self {
+            languages: super::super::context::filled(styles.len(), LanguageRead::Unread)?,
+            sites,
+            stops,
+            controls_before,
+            runs: super::super::context::filled(input.atoms.len(), RunRead::Unread)?,
+        })
+    }
+
+    /// This qualifies root output demand only. A foreign site remains readable
+    /// when a genuine casing/unit predicate later needs its context.
+    pub(in crate::transform) fn root_gap(&self, paragraph: &SourceContext<'_>, cut: usize) -> bool {
+        match self.sites[cut] {
+            Site::Captured { insertion, .. } => paragraph.owns_capture_cut(insertion.capture_cut),
+            Site::Neutral | Site::Unqualified(_) => true,
+        }
+    }
+    fn language(
+        &mut self,
+        styles: &[StyleRow<'_>],
+        index: usize,
+    ) -> Result<Option<fontique::Language>> {
+        if let LanguageRead::Resolved(language) = self.languages[index] {
+            return Ok(language);
+        }
+        let language = styles[index].style.phrase_language()?;
+        self.languages[index] = LanguageRead::Resolved(language);
+        Ok(language)
+    }
+
+    fn supported(
+        &mut self,
+        styles: &[StyleRow<'_>],
+        map: &TransformMap,
+        row: usize,
+    ) -> Result<bool> {
+        match self.runs[row] {
+            RunRead::Unsupported => Ok(false),
+            RunRead::Qualified(_) => Ok(true),
+            RunRead::Unread => {
+                let supported =
+                    PhraseModel::for_language(self.language(styles, map.rows[row].style)?)
+                        .is_some();
+                if !supported {
+                    self.runs[row] = RunRead::Unsupported;
+                }
+                Ok(supported)
+            }
+        }
+    }
+
+    /// Discovery and detector execution belong to the first genuine demand.
+    /// Only a fully qualified actual run publishes indexed membership.
+    fn run(
+        &mut self,
+        input: &SourceProjection,
+        styles: &[StyleRow<'_>],
+        paragraph: &SourceContext<'_>,
+        map: &mut TransformMap,
+        pair: IncidentPair,
+    ) -> Result<Option<usize>> {
+        for row in [pair.left, pair.right] {
+            if !self.supported(styles, map, row)? {
+                return Ok(None);
+            }
+        }
+        if let RunRead::Qualified(receipt) = self.runs[pair.left] {
+            return Ok(Some(receipt));
+        }
+        if let RunRead::Qualified(receipt) = self.runs[pair.right] {
+            return Ok(Some(receipt));
+        }
+        let lower = self.stops.partition_point(|&at| at <= pair.left);
+        let hard_start = self.stops[lower - 1];
+        let upper = self.stops.partition_point(|&at| at <= pair.right);
+        let hard_end = self.stops.get(upper).copied().unwrap_or(input.atoms.len());
+        let mut start = pair.left;
+        while start > hard_start && self.supported(styles, map, start - 1)? {
+            start -= 1;
+        }
+        let mut end = pair.right + 1;
+        while end < hard_end && self.supported(styles, map, end)? {
+            end += 1;
+        }
+        if let Some(edge) = paragraph.missing.iter().find(|edge| {
+            input.atoms[start].source.start < edge.at && edge.at < input.atoms[end - 1].source.end
+        }) {
+            return Err(edge.unavailable(crate::SourceContinuityOperation::Transformation));
+        }
+        let language = self
+            .language(styles, map.rows[start].style)?
+            .expect("supported source language");
+        let model = PhraseModel::for_language(Some(language)).expect("supported actual model");
+        let mut analysis = PhraseAnalysis {
+            rows: start..end,
+            model,
+            language,
+            input: super::super::context::collect_rows(
+                input.atoms[start..end].iter().map(|atom| atom.code_point),
+            )?,
+            coverage: super::super::context::collect_rows(
+                input.atoms[start..end].iter().map(|atom| atom.source),
+            )?,
+            cuts: Vec::new(),
+            qualified: Vec::new(),
+        };
+        analysis.complete(input)?;
+        let receipt = map.phrases.len();
+        map.phrases.try_reserve(1).map_err(|_| super::capacity())?;
+        map.phrases.push(analysis);
+        for row in &mut self.runs[start..end] {
+            *row = RunRead::Qualified(receipt);
+        }
+        Ok(Some(receipt))
+    }
 }
 
 /// The retained pre-replacement semantic analysis belongs to this exact map,
 /// whose original rows and owning AnalyzedSource retain its input identity.
 #[derive(Clone, Debug)]
 pub(crate) struct PhraseAnalysis {
+    rows: std::ops::Range<usize>,
     model: PhraseModel,
     language: fontique::Language,
     input: Vec<u32>,
     coverage: Vec<crate::Range>,
     cuts: Vec<usize>,
+    qualified: Vec<bool>,
+}
+
+impl PhraseAnalysis {
+    fn complete(&mut self, projection: &SourceProjection) -> Result<()> {
+        // Execute the retained actual provider/language pair, then qualify its
+        // native cuts. No scope style or topology for other sites is executed.
+        self.cuts = match (self.model, self.language.language()) {
+            (PhraseModel::BudouXJapanese093, "ja") => self.model.boundaries(&self.input),
+            _ => Err(PhraseError::InvalidData),
+        }
+        .map_err(|error| match error {
+            PhraseError::Capacity => super::capacity(),
+            PhraseError::InvalidData => {
+                Error::new(ErrorCode::InvalidSourceProcessing, "invalid phrase model").with_detail(
+                    ErrorDetail::TextTransform {
+                        reason: TextTransformError::InvalidPhraseData,
+                    },
+                )
+            }
+        })?;
+        let length = self
+            .input
+            .len()
+            .checked_add(1)
+            .ok_or_else(super::capacity)?;
+        let mut qualified = super::super::context::filled(length, false)?;
+        for &cut in &self.cuts {
+            qualified[cut] = eligible(projection, &self.input, self.rows.start, cut);
+        }
+        let categories = CodePointMapData::<GeneralCategory>::new();
+        let mut previous = 0;
+        for end in self
+            .cuts
+            .iter()
+            .copied()
+            .chain(std::iter::once(self.input.len()))
+        {
+            if self.input[previous..end]
+                .iter()
+                .all(|&cp| GeneralCategoryGroup::Punctuation.contains(categories.get32(cp)))
+            {
+                qualified[previous] = false;
+                qualified[end] = false;
+            }
+            previous = end;
+        }
+        self.qualified = qualified;
+        Ok(())
+    }
 }
 
 fn refusal(reason: TextTransformError) -> Error {
@@ -69,20 +373,6 @@ fn eligible(input: &SourceProjection, values: &[u32], start: usize, cut: usize) 
     )
 }
 
-fn incident_origins(
-    paragraph: &ParagraphData,
-    source: crate::Range,
-) -> impl DoubleEndedIterator<Item = usize> + '_ {
-    paragraph
-        .origins
-        .iter()
-        .enumerate()
-        .filter_map(move |(index, origin)| {
-            (origin.aggregate.start < source.end && source.start < origin.aggregate.end)
-                .then_some(index)
-        })
-}
-
 fn depth(topology: &ParagraphTopology, mut scope: usize) -> usize {
     let mut depth = 0;
     while let Some(parent) = topology.capture.scopes[scope].parent {
@@ -95,45 +385,30 @@ fn depth(topology: &ParagraphTopology, mut scope: usize) -> usize {
     depth
 }
 
-fn anchor_order(
-    topology: &ParagraphTopology,
-    paragraph: &ParagraphData,
-    item: SemanticAnchorItem,
-) -> usize {
-    match item {
-        SemanticAnchorItem::Control(index) => topology.control_orders[index],
-        SemanticAnchorItem::ComputedLineBoundary(index) => paragraph.computed_boundaries[index].capture_cut,
-        SemanticAnchorItem::EmptyOrigin(index) => paragraph.captured_origin_event(index)
-            .expect("captured empty origin retains its event"),
-        SemanticAnchorItem::Atomic(index) => topology.capture.events.iter().position(|event| matches!(event.event, SourceProcessingEvent::Atomic { atomic, .. } if atomic == index)).expect("admitted atomic occurrence"),
-    }
-}
-
 /// Returns the outermost owner and the earliest actual parent-domain seam.
 fn custody(
     topology: &ParagraphTopology,
-    paragraph: &ParagraphData,
+    paragraph: &SourceContext,
     input: &SourceProjection,
+    map: &TransformMap,
     events: &[LogicalEvent],
-    atom: usize,
+    pair: IncidentPair,
 ) -> (usize, usize, usize, usize) {
-    let left_origin = incident_origins(paragraph, input.atoms[atom - 1].source)
-        .next_back()
-        .expect("actual left original contribution");
-    let right_origin = incident_origins(paragraph, input.atoms[atom].source)
-        .next()
-        .expect("actual right original contribution");
-    let left = paragraph
-        .captured_origin_event(left_origin)
-        .expect("captured left origin retains its event");
-    let right = paragraph
-        .captured_origin_event(right_origin)
-        .expect("captured right origin retains its event");
+    let left = map
+        .original_pieces(pair.left)
+        .last()
+        .and_then(|piece| piece.origin.captured_event())
+        .expect("actual captured left contribution");
+    let right = map
+        .original_pieces(pair.right)
+        .first()
+        .and_then(|piece| piece.origin.captured_event())
+        .expect("actual captured right contribution");
     let mut owner = topology.capture.events[left]
         .before
         .expect("origin has actual scope");
     let mut seam = left;
-    let mut at = input.atoms[atom].source.start;
+    let mut at = input.atoms[pair.right].source.start;
     if left != right {
         for event in &topology.capture.events[left + 1..right] {
             let scope = match event.event {
@@ -158,18 +433,10 @@ fn custody(
             }
         }
     }
-    let left_event = events
-        .iter()
-        .position(|event| matches!(event.kind, Event::Text(index) if index == atom - 1))
-        .expect("left scalar event");
-    let right_event = events
-        .iter()
-        .position(|event| matches!(event.kind, Event::Text(index) if index == atom))
-        .expect("right scalar event");
-    let mut cut = left_event + 1;
-    while cut < right_event {
+    let mut cut = pair.left_event + 1;
+    while cut < pair.right_event {
         let before = match events[cut].kind {
-            Event::Anchor(anchor) => anchor_order(topology, paragraph, anchor.item) < seam,
+            Event::Anchor(anchor) => paragraph.capture_order(anchor.item) < seam,
             Event::Deleted(range, _, _) => range.end <= at,
             Event::Text(_) => false,
         };
@@ -181,227 +448,69 @@ fn custody(
     (owner, cut, at, seam)
 }
 
-pub(crate) fn proposals(
+/// A demanded authentic mixed seam observes its canonical candidate run once.
+/// Other cuts retain unread stage state, rather than becoming absent by default.
+pub(in crate::transform) fn proposal_at<'a>(
     input: &SourceProjection,
-    styles: &mut Vec<AnalyzedStyleRun>,
-    processed: &crate::ProcessedSource,
-    paragraph: &ParagraphData,
+    styles: &mut Vec<StyleRow<'a>>,
+    paragraph: &SourceContext<'a>,
     map: &mut TransformMap,
-) -> Result<Vec<Proposal>> {
-    if !styles.iter().any(|style| {
-        PhraseModel::for_language(style.style.font_locale()).is_some()
-            && style
-                .style
-                .authored()
-                .word_space_transform
-                .detects_phrases()
-    }) {
-        return Ok(Vec::new());
+    event_cut: usize,
+    reads: &mut PhraseReads,
+) -> Result<Option<Proposal>> {
+    let (pair, insertion) = match reads.sites[event_cut] {
+        Site::Neutral => return Ok(None),
+        Site::Unqualified(pair) => (pair, None),
+        Site::Captured { pair, insertion } => (pair, Some(insertion)),
+    };
+    let Some(receipt) = reads.run(input, styles, paragraph, map, pair)? else {
+        return Ok(None);
+    };
+    let analysis = &map.phrases[receipt];
+    let cut = pair.right - analysis.rows.start;
+    if !analysis.qualified[cut] {
+        return Ok(None);
     }
-    let events =
-        crate::engine::analysis::wrapping::separator_events(processed, paragraph, input, styles);
-    let mut stops = input.barrier_atoms.clone();
-    stops.extend([0, input.atoms.len()]);
-    for (atom, value) in input.atoms.iter().enumerate() {
-        let style = &styles[map.rows[atom].style].style;
-        if PhraseModel::for_language(style.font_locale()).is_none()
-            || crate::engine::analysis::is_hard_separator(value.code_point)
-        {
-            stops.extend([atom, atom + 1]);
-        }
-    }
-    for event in &events {
-        if let Event::Anchor(anchor) = event.kind {
-            let barrier = match anchor.item {
-                SemanticAnchorItem::Atomic(index) => {
-                    processed.source().boxes()[index].kind() == InlineBoxKind::InFlow
-                }
-                SemanticAnchorItem::Control(index) => {
-                    paragraph.controls[index].kind == ParagraphControlKind::ForcedBreak
-                }
-                _ => false,
-            };
-            if barrier {
-                stops.push(event.atom);
-            }
-        }
-    }
-    let connection_seams = super::connection_seams(input, &events, paragraph)?;
-    for seam in &connection_seams {
-        stops.push(seam.atom);
-    }
-    stops.sort_unstable();
-    stops.dedup();
-    let mut output = Vec::new();
-    for pair in stops.windows(2) {
-        let (start, end) = (pair[0], pair[1]);
-        if end - start < 2
-            || PhraseModel::for_language(styles[map.rows[start].style].style.font_locale())
-                .is_none()
-        {
-            continue;
-        }
-        if !(start..end).any(|atom| {
-            styles[map.rows[atom].style]
-                .style
-                .authored()
-                .word_space_transform
-                .detects_phrases()
-        }) {
-            continue;
-        }
-        let mut values = Vec::new();
-        values
-            .try_reserve_exact(end - start)
-            .map_err(|_| super::capacity())?;
-        values.extend(input.atoms[start..end].iter().map(|atom| atom.code_point));
-        let mut coverage = Vec::new();
-        coverage
-            .try_reserve_exact(end - start)
-            .map_err(|_| super::capacity())?;
-        coverage.extend(input.atoms[start..end].iter().map(|atom| atom.source));
-        let mut analysis = PhraseAnalysis {
-            model: PhraseModel::for_language(styles[map.rows[start].style].style.font_locale())
-                .expect("supported actual locale selects its model"),
-            language: styles[map.rows[start].style]
-                .style
-                .font_locale()
-                .expect("supported actual locale"),
-            input: values,
-            coverage,
-            cuts: Vec::new(),
-        };
-        analysis.cuts = match (analysis.model, analysis.language.language()) {
-            (PhraseModel::BudouXJapanese093, "ja") => analysis.model.boundaries(&analysis.input),
-            _ => unreachable!("supported language selects its declared model"),
-        }
-        .map_err(|error| match error {
-            PhraseError::Capacity => super::capacity(),
-            PhraseError::InvalidData => Error::new(
-                ErrorCode::InvalidSourceProcessing,
-                "invalid automatic phrase model",
-            )
-            .with_detail(ErrorDetail::TextTransform {
-                reason: TextTransformError::InvalidPhraseData,
-            }),
-        })?;
-        let values = &analysis.input;
-        let mut punctuation_only = Vec::new();
-        punctuation_only
-            .try_reserve_exact(
-                analysis
-                    .cuts
-                    .len()
-                    .checked_add(1)
-                    .and_then(|n| n.checked_mul(2))
-                    .ok_or_else(super::capacity)?,
-            )
-            .map_err(|_| super::capacity())?;
-        let mut previous = 0;
-        let categories = CodePointMapData::<GeneralCategory>::new();
-        for next in analysis
-            .cuts
-            .iter()
-            .copied()
-            .chain(std::iter::once(values.len()))
-        {
-            if values[previous..next]
-                .iter()
-                .all(|&cp| GeneralCategoryGroup::Punctuation.contains(categories.get32(cp)))
-            {
-                punctuation_only.extend([previous, next]);
-            }
-            previous = next;
-        }
-        for &cut in &analysis.cuts {
-            let atom = start + cut;
-            if punctuation_only.contains(&cut) || !eligible(input, values, start, cut) {
-                continue;
-            }
-            if ![atom - 1, atom].iter().any(|&index| {
-                styles[map.rows[index].style]
-                    .style
-                    .authored()
-                    .word_space_transform
-                    .detects_phrases()
-            }) {
-                continue;
-            }
-            // Prove forced suppression in the actual connected mixed seam before
-            // consuming any topology or owner Style.
-            let left = events
-                .iter()
-                .position(|event| matches!(event.kind, Event::Text(index) if index == atom - 1))
-                .expect("actual original scalar");
-            let right = events
-                .iter()
-                .position(|event| matches!(event.kind, Event::Text(index) if index == atom))
-                .expect("actual original scalar");
-            if events[left + 1..right].iter().any(|event| {
-                super::forced(event, input, processed.source(), paragraph) == Some(true)
-            }) {
-                continue;
-            }
-            let at = analysis.coverage[cut].start;
-            let topology = paragraph
-                .scope_topology
-                .as_ref()
-                .filter(|topology| topology.capture.complete[topology.domain])
-                .ok_or_else(|| refusal(TextTransformError::MissingPhraseTopology { at }))?;
-            let (scope, event_cut, at, capture_cut) =
-                custody(topology, paragraph, input, &events, atom);
-            let fact = &topology.capture.scopes[scope];
-            let own_style = fact.style.as_ref().ok_or_else(|| {
-                refusal(TextTransformError::MissingPhraseScopeStyle { scope, at })
-            })?;
-            let Some(code_point) = own_style.word_space_transform.replacement() else {
-                continue;
-            };
-            let style = if let Some(index) = styles.iter().position(
-                |style| matches!(style.owner, AnalyzedStyleOwner::Scope(index) if index == scope),
-            ) {
-                index
-            } else {
-                let index = styles.len();
-                styles.try_reserve(1).map_err(|_| super::capacity())?;
-                styles.push(AnalyzedStyleRun {
-                    owner: AnalyzedStyleOwner::Scope(scope),
-                    style: crate::ValidatedStyle::for_processed(own_style.clone())?,
-                });
-                index
-            };
-            let issued_scope =
-                if let Some(index) = map.scopes.iter().position(|row| row.ordinal == scope) {
-                    index
-                } else {
-                    let index = map.scopes.len();
-                    map.scopes.try_reserve(1).map_err(|_| super::capacity())?;
-                    map.scopes.push(ScopeData { ordinal: scope });
-                    index
-                };
-            let occurrence = map.virtuals.len();
-            map.virtuals.try_reserve(1).map_err(|_| super::capacity())?;
-            let control_cut = events[..event_cut].iter().filter(|event| matches!(event.kind, Event::Anchor(anchor) if matches!(anchor.item, SemanticAnchorItem::Control(_)))).count();
-            map.virtuals.push(VirtualSeparatorData {
-                capture_cut,
-                scope: issued_scope,
-                source: at,
-                processed: processed.project(at, crate::Affinity::After),
-                control_cut,
-            });
-            output.try_reserve(1).map_err(|_| super::capacity())?;
-            output.push(Proposal {
-                cut: event_cut,
-                occurrence,
-                code_point,
-                style,
-            });
-        }
-        map.phrases.try_reserve(1).map_err(|_| super::capacity())?;
-        map.phrases.push(analysis);
-    }
-    output.sort_by_key(|proposal| proposal.cut);
-    Ok(output)
+    let at = analysis.coverage[cut].start;
+    let Insertion {
+        scope,
+        source: at,
+        capture_cut,
+    } = insertion.ok_or_else(|| refusal(TextTransformError::MissingPhraseTopology { at }))?;
+    let topology = paragraph
+        .scope_topology
+        .expect("qualified insertion capture");
+    let own_style = topology.capture.scopes[scope]
+        .style
+        .as_ref()
+        .ok_or_else(|| refusal(TextTransformError::MissingPhraseScopeStyle { scope, at }))?;
+    let Some(code_point) = own_style.word_space_transform.replacement() else {
+        return Ok(None);
+    };
+    let style = paragraph.append_scope_style(styles, scope)?;
+    let issued_scope = if let Some(index) = map.scopes.iter().position(|row| row.ordinal == scope) {
+        index
+    } else {
+        let index = map.scopes.len();
+        map.scopes.try_reserve(1).map_err(|_| super::capacity())?;
+        map.scopes.push(ScopeData { ordinal: scope });
+        index
+    };
+    let occurrence = map.virtuals.len();
+    map.virtuals.try_reserve(1).map_err(|_| super::capacity())?;
+    let control_cut = reads.controls_before[event_cut];
+    map.virtuals.push(VirtualSeparatorData {
+        capture_cut,
+        scope: issued_scope,
+        source: at,
+        processed: paragraph.processed.project(at, crate::Affinity::After),
+        control_cut,
+    });
+    Ok(Some(Proposal {
+        occurrence,
+        code_point,
+        style,
+    }))
 }
 
 #[cfg(test)]

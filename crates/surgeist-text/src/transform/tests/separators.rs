@@ -55,7 +55,16 @@ fn explicit_rows_replace_before_casing_without_changing_original_phase_i_or_plai
         let row = &a.inner.transform.rows[1];
         assert_eq!(row.code_point, 0x200b);
         assert_eq!(row.source, Range::new(1, 2));
-        assert_eq!(row.processed, Range::new(1, 2));
+        let component = a
+            .inner
+            .transform
+            .components
+            .iter()
+            .find(|component| {
+                component.owner == crate::transform::relation::ComponentOwner::Original(1)
+            })
+            .expect("the separator retains its original component");
+        assert_eq!(component.processed, Range::new(1, 2));
         assert_eq!(row.separator_space, operation == WordSpaceTransform::Space);
         assert_eq!(
             a.inner.transform.original_pieces(1)[0].aggregate,

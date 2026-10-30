@@ -6,7 +6,7 @@ use std::ops::Range as IndexRange;
 use crate::engine::analysis::wrapping::{Event, LogicalEvent};
 use crate::processing::lexical_inventory::LexicalDeletion;
 use crate::protocol::paragraph::{FlowOriginKey, ParagraphData, SemanticAnchorItem};
-use crate::{ProcessedSource, Range, Source};
+use crate::{Range, Source};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct OriginalPiece {
@@ -18,7 +18,6 @@ pub(crate) struct OriginalPiece {
 #[derive(Clone, Debug)]
 pub(crate) struct InputRow {
     pub(crate) source: Range,
-    pub(crate) processed: Range,
     pub(crate) code_point: u32,
     /// Actual separator-produced SPACE, eligible for width independently of Phase I.
     pub(crate) separator_space: bool,
@@ -62,8 +61,6 @@ pub(crate) struct Component {
     pub(crate) owner: ComponentOwner,
     pub(crate) source: Range,
     pub(crate) processed: Range,
-    pub(crate) code_point: u32,
-    pub(crate) separator_space: bool,
     pub(crate) style: usize,
     pub(crate) outputs: IndexRange<usize>,
 }
@@ -116,86 +113,55 @@ pub(crate) struct TransformMap {
 }
 
 impl TransformMap {
-    pub(super) fn identity(
+    /// Immutable original incidence only. No component is considered mapped
+    /// until the request transaction records its actual result.
+    pub(super) fn originals(
         projection: &crate::projection::SourceProjection,
-        styles: &[crate::engine::resolve::AnalyzedStyleRun],
-        processed: &ProcessedSource,
-        paragraph: &ParagraphData,
-        input_events: Vec<LogicalEvent>,
-    ) -> Self {
+        styles: &[super::context::StyleRow<'_>],
+        paragraph: &super::context::SourceContext<'_>,
+    ) -> crate::Result<Self> {
         let mut map = Self::default();
-        for (row, atom) in projection.atoms.iter().enumerate() {
+        map.rows
+            .try_reserve_exact(projection.atoms.len())
+            .map_err(|_| super::context::capacity())?;
+        for atom in &projection.atoms {
             let first = map.pieces.len();
-            map.pieces.extend(
-                paragraph
-                    .origin_intersections(processed, atom.source)
-                    .filter(|piece| !piece.aggregate.is_empty())
-                    .map(|piece| OriginalPiece {
-                        origin: paragraph.origin_map.flow_origin(
-                            paragraph
-                                .origin_map
-                                .view(piece.origin)
-                                .expect("admitted original intersection belongs to its view"),
-                        ),
-                        aggregate: piece.aggregate,
-                        local: piece.local,
-                    }),
-            );
+            for piece in paragraph.origins.iter().filter_map(|origin| {
+                let start = origin.aggregate.start.max(atom.source.start);
+                let end = origin.aggregate.end.min(atom.source.end);
+                (start < end).then(|| OriginalPiece {
+                    origin: origin.key,
+                    aggregate: Range::new(start, end),
+                    local: Range::new(
+                        origin.local.start + (start - origin.aggregate.start),
+                        origin.local.start + (end - origin.aggregate.start),
+                    ),
+                })
+            }) {
+                super::context::push(&mut map.pieces, piece)?;
+            }
             map.rows.push(InputRow {
                 source: atom.source,
-                processed: atom.processed,
                 code_point: atom.code_point,
                 separator_space: false,
-                style: crate::engine::resolve::source_style(styles, atom.source.start),
+                style: super::context::source_style(styles, atom.source.start),
                 pieces: first..map.pieces.len(),
-                outputs: row..row + 1,
+                outputs: 0..0,
             });
-            map.components.push(Component {
-                owner: ComponentOwner::Original(row),
-                source: atom.source,
-                processed: map.rows[row].processed,
-                code_point: atom.code_point,
-                separator_space: false,
-                style: map.rows[row].style,
-                outputs: row..row + 1,
-            });
-            map.emissions.push(Emission {
-                component: row,
-                subposition: 0,
-                code_point: atom.code_point,
-                selection_identity: atom.code_point,
-                atom: row,
-                event: 0,
-            });
-            map.atoms.push(row);
         }
-        for event in input_events {
-            let value = match event.kind {
-                Event::Text(atom) => {
-                    map.emissions[atom].event = map.events.len();
-                    RelationEvent::Text { atom }
-                }
-                Event::Deleted(source, processed, lexical) => RelationEvent::PhaseIDeleted {
-                    source,
-                    processed,
-                    lexical,
-                },
-                Event::Anchor(anchor) => RelationEvent::Anchor {
-                    order: paragraph
-                        .anchor_order
-                        .iter()
-                        .position(|candidate| *candidate == anchor)
-                        .expect("captured exact anchor identity"),
-                },
-            };
-            map.events.push(value);
-        }
-        map.finish_cuts();
-        map
+        Ok(map)
     }
 
-    pub(super) fn finish_cuts(&mut self) {
+    pub(super) fn finish_cuts(&mut self) -> crate::Result<()> {
         self.participant_cuts.clear();
+        let count = self
+            .events
+            .len()
+            .checked_add(1)
+            .ok_or_else(super::context::capacity)?;
+        self.participant_cuts
+            .try_reserve_exact(count)
+            .map_err(|_| super::context::capacity())?;
         self.participant_cuts.push(0);
         let mut owns_following_removals = false;
         for (index, event) in self.events.iter().enumerate() {
@@ -211,6 +177,7 @@ impl TransformMap {
                 }
             }
         }
+        Ok(())
     }
 
     pub(crate) fn component_for_atom(&self, atom: usize) -> &Component {

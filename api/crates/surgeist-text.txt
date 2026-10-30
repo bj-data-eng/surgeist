@@ -1009,6 +1009,8 @@ pub surgeist_text::SourceBoxSide::After
 pub surgeist_text::SourceBoxSide::Before
 pub enum surgeist_text::SourceContinuityOperation
 pub surgeist_text::SourceContinuityOperation::Decoding
+pub surgeist_text::SourceContinuityOperation::Segmentation
+pub surgeist_text::SourceContinuityOperation::Transformation
 pub surgeist_text::SourceContinuityOperation::Trimming
 pub surgeist_text::SourceContinuityOperation::WhiteSpace
 pub enum surgeist_text::SourceProcessingConnectionError
@@ -1393,6 +1395,8 @@ pub fn surgeist_text::TextTransform::default() -> Self
 pub enum surgeist_text::TextTransformError
 pub surgeist_text::TextTransformError::Capacity
 pub surgeist_text::TextTransformError::CasingDataUnavailable
+pub surgeist_text::TextTransformError::IndivisibleCoverage
+pub surgeist_text::TextTransformError::IndivisibleCoverage::source: surgeist_text::Range
 pub surgeist_text::TextTransformError::InvalidCasingData
 pub surgeist_text::TextTransformError::InvalidContentLocale
 pub surgeist_text::TextTransformError::InvalidPhraseData

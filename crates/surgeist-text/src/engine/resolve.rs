@@ -86,10 +86,7 @@ pub(crate) fn analyze_styles(
     let mut result: Vec<AnalyzedStyleRun> = Vec::new();
     for endpoints in boundaries.windows(2) {
         for range in paragraph.intersections(Range::new(endpoints[0], endpoints[1])) {
-            let style = spans
-                .iter()
-                .rev()
-                .find(|span| span.range().start <= range.start && span.range().end >= range.end)
+            let style = winning_span(spans, range, |span| span.range())
                 .map_or(default_style, |span| span.style());
             // A transparent child hole contributes no parent style transition.
             // Equal actual styles therefore retain one shaping row across it;
@@ -116,6 +113,19 @@ pub(crate) fn analyze_styles(
         });
     }
     result
+}
+
+/// Authored order is the one source-span winner rule. A transform-only reader
+/// borrows the winner without executing unrelated font or paint admission.
+pub(crate) fn winning_span<T>(
+    spans: &[T],
+    range: Range,
+    extent: impl Fn(&T) -> Range,
+) -> Option<&T> {
+    spans.iter().rev().find(|span| {
+        let own = extent(span);
+        own.start <= range.start && own.end >= range.end
+    })
 }
 
 pub(crate) fn resolve(
