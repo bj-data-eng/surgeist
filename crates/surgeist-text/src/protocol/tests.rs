@@ -10,6 +10,7 @@ mod auto_phrase;
 mod automatic_model;
 mod automatic_opportunities;
 mod casing;
+mod combined_cells;
 mod computed_boundaries;
 mod conditional;
 mod count_admission;
