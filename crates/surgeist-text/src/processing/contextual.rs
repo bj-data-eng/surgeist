@@ -1157,13 +1157,18 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
         })
         .collect();
     super::validate_crossings(&input.source, &input.segment_breaks, &box_order)?;
-    let (units, map, plaintext_tokens) =
-        super::lexical::execute(super::lexical::ValidatedProcessingRequest::Contextual {
-            source: &input.source,
-            breaks: &input.segment_breaks,
-            context: &context,
-            modes: &modes,
-        })?;
+    let super::lexical_inventory::LexicalOutput {
+        units,
+        map,
+        plaintext_tokens,
+        lexical,
+    } = super::lexical::execute(super::lexical::ValidatedProcessingRequest::Contextual {
+        source: &input.source,
+        breaks: &input.segment_breaks,
+        context: &context,
+        capture: &topology,
+        modes: &modes,
+    })?;
     let preserved_spaces = super::preserved_spaces(&units, &plaintext_tokens)?;
     Ok(ProcessedSource {
         source: input.source,
@@ -1175,6 +1180,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
         paragraphs: records,
         plaintext_tokens,
         preserved_spaces,
+        lexical,
     })
 }
 

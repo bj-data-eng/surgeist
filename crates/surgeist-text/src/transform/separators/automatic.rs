@@ -165,7 +165,7 @@ fn custody(
     while cut < right_event {
         let before = match events[cut].kind {
             Event::Anchor(anchor) => anchor_order(topology, paragraph, anchor.item) < seam,
-            Event::Deleted(range, _) => range.end <= at,
+            Event::Deleted(range, _, _) => range.end <= at,
             Event::Text(_) => false,
         };
         if !before {

@@ -233,6 +233,7 @@ pub(super) fn apply(
     let mut locales = vec![None; styles.len()];
     let mut operations = Vec::new();
     let mut output = Vec::new();
+    let mut identities = Vec::new();
     let mut spans = Vec::new();
     for domain in stops.windows(2) {
         for row in domain[0]..domain[1] {
@@ -312,6 +313,18 @@ pub(super) fn apply(
                     output[start] = target;
                 }
             }
+            identities
+                .try_reserve(output.len() - start)
+                .map_err(|_| failed(MappingError::Storage))?;
+            identities.extend(output[start..].iter().copied().map(|cp| {
+                if let TextTransform::Set(set) = transform
+                    && set.full_size_kana()
+                {
+                    super::full_size_kana(cp).map_or(cp, u32::from)
+                } else {
+                    cp
+                }
+            }));
             if let TextTransform::Set(set) = transform {
                 if set.full_width() {
                     for cp in &mut output[start..] {
@@ -354,6 +367,7 @@ pub(super) fn apply(
                 component: row,
                 subposition,
                 code_point,
+                selection_identity: identities[span.start + subposition],
                 atom: 0,
                 event: 0,
             });
@@ -386,7 +400,10 @@ pub(super) fn apply(
                 let postpone = casing::postpones_iota(
                     values[row],
                     operations[row],
-                    range.clone().last().map(|id| map.emissions[id].code_point),
+                    range
+                        .clone()
+                        .last()
+                        .map(|id| map.emissions[id].selection_identity),
                 );
                 for id in range.clone() {
                     if postpone && id + 1 == range.end {
@@ -396,9 +413,13 @@ pub(super) fn apply(
                     }
                 }
             }
-            Event::Deleted(source, processed) => map
-                .events
-                .push(RelationEvent::PhaseIDeleted { source, processed }),
+            Event::Deleted(source, processed, lexical) => {
+                map.events.push(RelationEvent::PhaseIDeleted {
+                    source,
+                    processed,
+                    lexical,
+                })
+            }
             Event::Anchor(anchor) => map.events.push(RelationEvent::Anchor {
                 order: paragraph
                     .anchor_order

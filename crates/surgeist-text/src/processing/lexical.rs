@@ -1,10 +1,17 @@
-//! Private executed lexical work; only the correspondence survives this scratch.
+//! Private executed lexical work and its immutable occurrence evidence.
+
+use std::sync::Arc;
 
 use icu_properties::{CodePointMapData, CodePointSetData, props};
 
 use super::{
     DeletionCause, DocumentSegmentBreaks, EffectiveInterval, InlineBoxKind, MappingKind,
-    MappingPiece, Range, Result, Source, WhiteSpace, overflow, reserve,
+    MappingPiece, Range, Result, Source, WhiteSpace,
+    lexical_inventory::{
+        LexicalBarrierOrigin, LexicalCharacterRole, LexicalContext, LexicalDisposition,
+        LexicalOutput, LexicalRecord, LexicalRecordKind, LexicalState,
+    },
+    overflow, reserve,
 };
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -30,6 +37,8 @@ struct Token {
     plaintext_reset: bool,
     atomic: Option<usize>,
     scope: Option<usize>,
+    /// Genuine capture event, distinct from the transient trim-marker index.
+    event: Option<usize>,
 }
 
 impl Token {
@@ -68,12 +77,11 @@ pub(super) enum ValidatedProcessingRequest<'a> {
         source: &'a Source,
         breaks: &'a DocumentSegmentBreaks,
         context: &'a super::contextual::ProcessingContext,
+        capture: &'a Arc<super::contextual::ScopeCapture>,
         modes: &'a [EffectiveInterval],
     },
 }
-pub(super) fn execute(
-    request: ValidatedProcessingRequest<'_>,
-) -> Result<(Vec<u16>, Vec<MappingPiece>, Vec<super::PlaintextToken>)> {
+pub(super) fn execute(request: ValidatedProcessingRequest<'_>) -> Result<LexicalOutput> {
     match request {
         ValidatedProcessingRequest::SourceLocal {
             source,
@@ -92,14 +100,15 @@ pub(super) fn execute(
                 decode_boundaries,
             )?;
             phase_one(&mut tokens);
-            emit(source, tokens)
+            emit(source, tokens, LexicalContext::SourceLocal)
         }
         ValidatedProcessingRequest::Contextual {
             source,
             breaks,
             context,
+            capture,
             modes,
-        } => execute_contextual(source, breaks, context, modes),
+        } => execute_contextual(source, breaks, context, capture, modes),
     }
 }
 
@@ -236,6 +245,7 @@ fn tokenize(
                 plaintext_reset: false,
                 atomic: None,
                 scope: None,
+                event: None,
             });
             next_barrier += 1;
         }
@@ -336,39 +346,71 @@ fn tokenize(
             plaintext_reset: false,
             atomic: None,
             scope: None,
+            event: None,
         });
         at = end;
     }
     Ok(tokens)
 }
 
-fn emit(
-    source: &Source,
-    tokens: Vec<Token>,
-) -> Result<(Vec<u16>, Vec<MappingPiece>, Vec<super::PlaintextToken>)> {
+fn emit(source: &Source, tokens: Vec<Token>, context: LexicalContext) -> Result<LexicalOutput> {
     let mut plaintext = Vec::new();
+    let mut records = Vec::new();
 
     let mut units = Vec::new();
     let mut map: Vec<MappingPiece> = Vec::new();
     for token in tokens {
         let start = units.len();
         let end = start
-            + match token.mapping {
+            .checked_add(match token.mapping {
                 MappingKind::Copy => token.source.len(),
                 MappingKind::Replace => 1,
                 MappingKind::Delete(_) => 0,
-            };
-        reserve(&mut plaintext, 1)?;
-        plaintext.push(super::PlaintextToken {
-            processed: Range::new(start, end),
+            })
+            .ok_or_else(overflow)?;
+        let kind = match token.kind {
+            Kind::Marker => LexicalRecordKind::ScopeMarker {
+                event: token
+                    .event
+                    .expect("contextual marker retains its capture event"),
+            },
+            Kind::Barrier => LexicalRecordKind::Barrier {
+                origin: token.event.map_or(
+                    LexicalBarrierOrigin::SourceLocalCut(token.source.start),
+                    LexicalBarrierOrigin::CapturedEvent,
+                ),
+            },
+            Kind::Text | Kind::BidiControl | Kind::Space | Kind::Break => {
+                LexicalRecordKind::Character {
+                    source: token.source,
+                    mode: token.mode,
+                    role: match token.kind {
+                        Kind::Text => LexicalCharacterRole::Text,
+                        Kind::BidiControl => LexicalCharacterRole::BidiControl,
+                        Kind::Space => LexicalCharacterRole::Space,
+                        Kind::Break => LexicalCharacterRole::SegmentBreak,
+                        Kind::Marker | Kind::Barrier => unreachable!("character token"),
+                    },
+                    disposition: match token.mapping {
+                        MappingKind::Delete(cause) => LexicalDisposition::Deleted {
+                            processed: start,
+                            cause,
+                        },
+                        MappingKind::Copy | MappingKind::Replace => LexicalDisposition::Emitted {
+                            processed: Range::new(start, end),
+                        },
+                    },
+                }
+            }
+        };
+        let record = LexicalRecord {
             domain: token.domain,
-            collapsible: token.collapse(Kind::Space) || token.collapse(Kind::Break),
-            reset: token.plaintext_reset
-                || !token.deleted() && token.mode.preserves_breaks() && token.kind == Kind::Break,
-            transparent: token.deleted()
-                || matches!(token.kind, Kind::BidiControl | Kind::Marker)
-                || token.kind == Kind::Barrier && token.atomic.is_none(),
-        });
+            kind,
+        };
+        reserve(&mut plaintext, 1)?;
+        plaintext.push(record.plaintext(start, token.plaintext_reset, token.atomic));
+        reserve(&mut records, 1)?;
+        records.push(record);
         if matches!(token.kind, Kind::Marker | Kind::Barrier) {
             continue;
         }
@@ -403,15 +445,21 @@ fn emit(
             MappingKind::Delete(_) => {}
         }
     }
-    Ok((units, map, plaintext))
+    Ok(LexicalOutput {
+        units,
+        map,
+        plaintext_tokens: plaintext,
+        lexical: LexicalState::Executed { context, records },
+    })
 }
 
 fn execute_contextual(
     source: &Source,
     breaks: &DocumentSegmentBreaks,
     context: &super::contextual::ProcessingContext,
+    capture: &Arc<super::contextual::ScopeCapture>,
     modes: &[EffectiveInterval],
-) -> Result<(Vec<u16>, Vec<MappingPiece>, Vec<super::PlaintextToken>)> {
+) -> Result<LexicalOutput> {
     let mut decode_barriers = Vec::new();
     for pair in context.origins.windows(2) {
         if pair[0].1 != pair[1].1 {
@@ -483,6 +531,7 @@ fn execute_contextual(
                 plaintext_reset: false,
                 atomic: None,
                 scope: None,
+                event: Some(boundary.order),
             },
         ));
     }
@@ -510,6 +559,7 @@ fn execute_contextual(
                 plaintext_reset: reset,
                 atomic,
                 scope,
+                event: Some(order),
             },
         ));
     }
@@ -569,6 +619,7 @@ fn execute_contextual(
     emit(
         source,
         executed.into_iter().map(|(_, token)| token).collect(),
+        LexicalContext::Captured(Arc::clone(capture)),
     )
 }
 

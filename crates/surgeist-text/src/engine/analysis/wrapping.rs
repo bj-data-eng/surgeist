@@ -1,6 +1,7 @@
 //! One font-independent logical occurrence stream and influencing-neighbor map.
 
 use crate::engine::{OriginalAtom, resolve::AnalyzedStyleRun};
+use crate::processing::lexical_inventory::LexicalDeletion;
 use crate::projection::SourceProjection;
 use crate::protocol::paragraph::{
     ParagraphBoundaryDefinition, ParagraphControlKind, ParagraphData, SemanticAnchor,
@@ -13,7 +14,7 @@ use super::{Analysis, anchor_atom, anchor_position, is_hard_separator};
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Event {
     Text(usize),
-    Deleted(Range, usize),
+    Deleted(Range, usize, LexicalDeletion),
     Anchor(SemanticAnchor),
 }
 
@@ -213,7 +214,7 @@ impl LogicalParagraph {
                     let origin = &paragraph.origins[connection];
                     events.iter().enumerate().filter(|(_, event)| match event.kind {
                         Event::Text(atom) => projection.atoms[atom].source.end == origin.aggregate.end,
-                        Event::Deleted(range, _) => range.end == origin.aggregate.end,
+                        Event::Deleted(range, _, _) => range.end == origin.aggregate.end,
                         Event::Anchor(SemanticAnchor { item: SemanticAnchorItem::EmptyOrigin(index), .. }) => index == connection,
                         _ => false,
                     }).map(|(index, _)| index + 1).next_back()
@@ -377,9 +378,9 @@ fn capture_events(
     collapsed_cuts.sort_unstable();
     collapsed_cuts.dedup();
     for piece in processed.operations() {
-        if !matches!(piece.kind, MappingKind::Delete(_)) {
+        let MappingKind::Delete(cause) = piece.kind else {
             continue;
-        }
+        };
         let cuts = if piece.kind
             == MappingKind::Delete(crate::processing::DeletionCause::CollapsedSpace)
         {
@@ -399,12 +400,17 @@ fn capture_events(
                 let atom = projection
                     .atoms
                     .partition_point(|value| value.source.end <= start);
+                let lexical = processed.lexical.deletion(Range::new(start, end), cause);
                 events.push((
                     atom,
                     0,
                     start,
                     usize::MAX,
-                    Event::Deleted(Range::new(start, end), piece.processed),
+                    Event::Deleted(
+                        lexical.original_range(&processed.lexical),
+                        piece.processed,
+                        lexical,
+                    ),
                 ));
                 start = end;
             }

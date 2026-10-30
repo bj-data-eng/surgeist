@@ -4,6 +4,7 @@
 use std::ops::Range as IndexRange;
 
 use crate::engine::analysis::wrapping::{Event, LogicalEvent};
+use crate::processing::lexical_inventory::LexicalDeletion;
 use crate::protocol::paragraph::{ParagraphData, SemanticAnchorItem};
 use crate::{ProcessedSource, Range, Source};
 
@@ -72,16 +73,29 @@ pub(crate) struct Emission {
     pub(crate) component: usize,
     pub(crate) subposition: usize,
     pub(crate) code_point: u32,
+    /// Actual post-case/MathAuto non-width identity of this emission. Ordinary
+    /// presentation remains independently width-then-kana transformed.
+    pub(crate) selection_identity: u32,
     pub(crate) atom: usize,
     pub(crate) event: usize,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum RelationEvent {
-    Text { atom: usize },
-    Removal { row: usize },
-    PhaseIDeleted { source: Range, processed: usize },
-    Anchor { order: usize },
+    Text {
+        atom: usize,
+    },
+    Removal {
+        row: usize,
+    },
+    PhaseIDeleted {
+        source: Range,
+        processed: usize,
+        lexical: LexicalDeletion,
+    },
+    Anchor {
+        order: usize,
+    },
 }
 
 #[derive(Clone, Debug, Default)]
@@ -144,6 +158,7 @@ impl TransformMap {
                 component: row,
                 subposition: 0,
                 code_point: atom.code_point,
+                selection_identity: atom.code_point,
                 atom: row,
                 event: 0,
             });
@@ -155,9 +170,11 @@ impl TransformMap {
                     map.emissions[atom].event = map.events.len();
                     RelationEvent::Text { atom }
                 }
-                Event::Deleted(source, processed) => {
-                    RelationEvent::PhaseIDeleted { source, processed }
-                }
+                Event::Deleted(source, processed, lexical) => RelationEvent::PhaseIDeleted {
+                    source,
+                    processed,
+                    lexical,
+                },
                 Event::Anchor(anchor) => RelationEvent::Anchor {
                     order: paragraph
                         .anchor_order
@@ -284,14 +301,16 @@ impl TransformMap {
                         Event::Text(index)
                     }
                     RelationEvent::Removal { .. } => return None,
-                    RelationEvent::PhaseIDeleted { source, processed } => {
-                        Event::Deleted(source, processed)
-                    }
+                    RelationEvent::PhaseIDeleted {
+                        source,
+                        processed,
+                        lexical,
+                    } => Event::Deleted(source, processed, lexical),
                     RelationEvent::Anchor { order } => Event::Anchor(paragraph.anchor_order[order]),
                 };
                 let source = match kind {
                     Event::Text(index) => self.component_for_atom(index).source.start,
-                    Event::Deleted(source, _) => source.start,
+                    Event::Deleted(source, _, _) => source.start,
                     Event::Anchor(anchor) => match anchor.item {
                         SemanticAnchorItem::EmptyOrigin(index) => {
                             paragraph.origins[index].aggregate.start
