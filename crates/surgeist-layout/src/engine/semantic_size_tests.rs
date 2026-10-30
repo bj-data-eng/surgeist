@@ -10,12 +10,15 @@ fn fixture<S: LayoutScalar>(
 ) -> (PublicLayoutTreeOf<S>, t::PreparedText, WrappingInput<u32>) {
     use t::SourceProcessingEvent as E;
     let inline = || t::SourceProcessingScope::Inline {
+        alignment_boundary: None,
+        font_reference: None,
         trim: Default::default(),
         style: None,
         boundaries: None,
     };
     let captured = std::sync::Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            scope_alignment_limits: None,
             source: t::Source::identified("", t::Id::from_u64(658300), 51),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
             envelope: t::SourceProcessingEnvelope::Complete,
@@ -34,6 +37,7 @@ fn fixture<S: LayoutScalar>(
             },
             scopes: vec![
                 t::SourceProcessingScope::Block {
+                    font_reference: None,
                     topology: t::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: t::Style {
@@ -135,6 +139,7 @@ fn fixture<S: LayoutScalar>(
                     edges: WrapEdges::AUTO,
                     metric_contribution: Some(InlineBoxMetricContribution::Strut(
                         t::LineBoxStrut {
+                            scope: None,
                             metrics: t::LineStrut {
                                 baseline,
                                 line_extent,
@@ -157,6 +162,10 @@ fn fixture<S: LayoutScalar>(
 fn known_size_baseline<S: LayoutScalar>() {
     for force in [false, true] {
         let (tree, prepared, inventory) = fixture::<S>(force);
+        let expected_scope = match &inventory.scopes[0] {
+            WrappingScopeInput::Captured { scope, .. } => scope.clone(),
+            _ => unreachable!("fixture declares its actual captured outer box"),
+        };
         let binding = TextParagraphBinding {
             prepared: prepared.clone(),
             container: 0,
@@ -166,7 +175,8 @@ fn known_size_baseline<S: LayoutScalar>() {
             atomics: vec![],
             line_strut: None,
         };
-        let flow = LayoutFlowInput::try_new(&tree, 0, vec![binding], inventory).unwrap();
+        let flow =
+            LayoutFlowInput::try_new(&tree, 0, vec![binding], inventory, Vec::new()).unwrap();
         let known = Size::new(Some(S::from_f64(30.0)), Some(S::from_f64(50.0)));
         let parent = Size::new(Some(S::from_f64(100.0)), Some(S::from_f64(100.0)));
         let containing = ContainingLayoutContext::new(
@@ -228,6 +238,7 @@ fn known_size_baseline<S: LayoutScalar>() {
         assert_eq!(
             first_selected.request().line_box_struts,
             [t::LineBoxStrut {
+                scope: Some(expected_scope),
                 metrics: t::LineStrut {
                     baseline: 16.0,
                     line_extent: 20.0

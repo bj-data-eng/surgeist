@@ -39,7 +39,10 @@ fn trial(
     request.context.spacing = surgeist_text::SpacingPolicy::None;
     p.select(request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn report(label: &str, line: &surgeist_text::FinalizedLine, bytes: &[u8]) {
@@ -191,7 +194,10 @@ fn qualify<S: LayoutScalar>() -> (Range, Option<PreparedBreakKind>, bool, f64, f
     let residual_line = p
         .select(residual_request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     report("positive-original-residual", &residual_line, &font);
     assert_eq!(residual_line.feedback().advance, 70.0);
@@ -277,6 +283,7 @@ fn qualify<S: LayoutScalar>() -> (Range, Option<PreparedBreakKind>, bool, f64, f
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(0.0)).unwrap();

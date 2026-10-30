@@ -6,10 +6,12 @@ pub(crate) mod fit;
 pub(crate) mod formatted;
 mod roles;
 pub(crate) mod run;
+pub(crate) mod scope_alignment;
 pub(crate) mod state;
 #[cfg(test)]
 mod tests;
 
+pub use scope_alignment::{TextScopeAlignmentInput, TextScopeAlignmentInputOf};
 use surgeist_text::{PreparedAtomic, PreparedControl, PreparedOrigin, PreparedScope, PreparedText};
 
 /// One source occurrence participating through its actual Text preparation.
@@ -144,6 +146,8 @@ pub struct LayoutFlowInput<'tree, Tree: crate::LayoutTree> {
     pub(crate) graph: crate::engine::validation::ValidationGraph<Tree::Node>,
     pub(crate) associations: std::sync::Arc<capture::ScopeAssociations<Tree::Node>>,
     pub(crate) wrapping: std::sync::Arc<crate::inline_wrapping::WrappingContext<Tree::Node>>,
+    pub(crate) scope_alignments:
+        std::sync::Arc<scope_alignment::ScopeAlignmentSnapshot<Tree::Scalar>>,
 }
 
 impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
@@ -158,8 +162,16 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
         root: Tree::Node,
         paragraphs: Vec<TextParagraphBinding<Tree::Node>>,
         wrapping_input: crate::WrappingInput<Tree::Node>,
+        scope_alignments: Vec<TextScopeAlignmentInputOf<Tree::Scalar>>,
     ) -> crate::LayoutResultOf<Tree::Node, Self, Tree::Scalar, Tree::MeasureError> {
-        Self::try_new_inner(tree, root, paragraphs, wrapping_input, None)
+        Self::try_new_inner(
+            tree,
+            root,
+            paragraphs,
+            wrapping_input,
+            scope_alignments,
+            None,
+        )
     }
 
     /// Revalidates an early source receipt against this current host projection,
@@ -169,13 +181,21 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
         root: Tree::Node,
         paragraphs: Vec<TextParagraphBinding<Tree::Node>>,
         wrapping_input: crate::WrappingInput<Tree::Node>,
+        scope_alignments: Vec<TextScopeAlignmentInputOf<Tree::Scalar>>,
         receipt: &crate::ResolvedWrapEdges<Tree::Node>,
     ) -> crate::LayoutResultOf<Tree::Node, Self, Tree::Scalar, Tree::MeasureError>
     where
         Tree: crate::WrapEdgeSource,
     {
         let graph = receipt.validate_final(tree, root, &paragraphs, &wrapping_input)?;
-        Self::try_new_inner(tree, root, paragraphs, wrapping_input, Some(graph))
+        Self::try_new_inner(
+            tree,
+            root,
+            paragraphs,
+            wrapping_input,
+            scope_alignments,
+            Some(graph),
+        )
     }
 
     fn try_new_inner(
@@ -183,6 +203,7 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
         root: Tree::Node,
         paragraphs: Vec<TextParagraphBinding<Tree::Node>>,
         wrapping_input: crate::WrappingInput<Tree::Node>,
+        scope_alignments: Vec<TextScopeAlignmentInputOf<Tree::Scalar>>,
         source_graph: Option<crate::engine::validation::ValidationGraph<Tree::Node>>,
     ) -> crate::LayoutResultOf<Tree::Node, Self, Tree::Scalar, Tree::MeasureError> {
         let mut influencing = Vec::new();
@@ -593,6 +614,16 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                 seen_scopes.insert(scope.clone()).then(|| scope.clone())
             })
             .collect();
+        let mut scope_alignments =
+            scope_alignment::ScopeAlignmentSnapshot::admit(scope_alignments, &paragraphs).map_err(
+                |error| {
+                    crate::LayoutErrorOf::new(
+                        crate::LayoutErrorSiteOf::Node(root),
+                        crate::LayoutOperation::TextCapture,
+                        crate::LayoutErrorKindOf::Text(error),
+                    )
+                },
+            )?;
         let resolved = capture::resolve(
             tree,
             &graph,
@@ -600,6 +631,7 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
             &wrapping_input.scopes,
             &inventory_scopes,
             !wrapping_input.child_order.is_empty(),
+            &mut scope_alignments,
         )?;
         let wrapping = crate::inline_wrapping::WrappingContext::new(
             tree,
@@ -620,7 +652,32 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
             ));
         }
         influencing.extend(wrapping.dependencies());
+        let mut influence_census = scope_alignment::ScopeCensus::default();
+        {
+            let (rows, mut admission) = scope_alignments.capture_parts();
+            for row in rows {
+                if let Some(work) = admission.as_deref_mut() {
+                    work.visits(resolved.associations.captured_binding_work(&row.scope))
+                        .map_err(|error| capture::activation_error::<Tree>(root, error))?;
+                }
+                if let Some(TextScopeAssociation::Inline { start, end }) =
+                    resolved.associations.captured_binding(&row.scope)
+                {
+                    if let Some(work) = admission.as_deref_mut() {
+                        for node in [start, end] {
+                            work.push(&mut influencing, node, &mut influence_census, false)
+                                .map_err(|error| capture::activation_error::<Tree>(root, error))?;
+                        }
+                    } else {
+                        influencing.extend([start, end]);
+                    }
+                }
+            }
+        }
         let invalidated = graph.invalidation(&influencing)?;
+        drop(influencing);
+        scope_alignments.work().release(influence_census);
+        let scope_alignments = scope_alignments.freeze();
         let associations = std::sync::Arc::new(resolved.associations);
         Ok(Self {
             tree,
@@ -630,6 +687,7 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
             graph,
             associations,
             wrapping: std::sync::Arc::new(wrapping),
+            scope_alignments,
         })
     }
 

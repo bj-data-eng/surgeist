@@ -46,6 +46,7 @@ fn atomic_capture(
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     let processed = Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
             envelope: t::SourceProcessingEnvelope::Complete,
@@ -77,6 +78,7 @@ fn atomic_capture(
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![t::SourceProcessingScope::Block {
+                font_reference: None,
                 topology: t::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
@@ -268,8 +270,14 @@ fn compute<S: l::LayoutScalar>(
     changed: &[u32],
     available: l::Size<l::AvailableOf<S>>,
 ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
-    let flow = l::LayoutFlowInput::try_new(host, 0, bindings.to_vec(), l::WrappingInput::default())
-        .unwrap();
+    let flow = l::LayoutFlowInput::try_new(
+        host,
+        0,
+        bindings.to_vec(),
+        l::WrappingInput::default(),
+        Vec::new(),
+    )
+    .unwrap();
     l::compute_layout_with_flow_invalidated(
         &flow,
         0,
@@ -1090,9 +1098,14 @@ impl<S: l::LayoutScalar> ShapeHost<S> {
         bindings: &[l::TextParagraphBinding<u32>],
         changed: &[u32],
     ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S, Refusal>> {
-        let flow =
-            l::LayoutFlowInput::try_new(self, 0, bindings.to_vec(), l::WrappingInput::default())
-                .unwrap();
+        let flow = l::LayoutFlowInput::try_new(
+            self,
+            0,
+            bindings.to_vec(),
+            l::WrappingInput::default(),
+            Vec::new(),
+        )
+        .unwrap();
         l::compute_layout_with_flow_invalidated(
             &flow,
             0,

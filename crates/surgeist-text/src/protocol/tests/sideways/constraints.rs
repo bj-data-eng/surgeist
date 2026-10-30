@@ -26,14 +26,20 @@ fn actual_finite_word_cut_and_intrinsic_whole_keep_distinct_selection_contributi
     let first = p
         .select(finite)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let mut finite = selected_request(&p, cut.view().boundary(), terminal(&p));
     finite.context.available_inline = Some(10.0);
     let second = p
         .select(finite)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     for line in [&first, &second] {
         assert_eq!(
@@ -114,7 +120,10 @@ fn signed_word_spacing_and_capacity_dependent_hanging_keep_real_cw_pens() {
         let line = p
             .select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         // The provider's SPACE advance remains10. Its actual signed spacing
         // contribution−2 moves the following real A to pen8. Equal halves
@@ -155,7 +164,10 @@ fn signed_word_spacing_and_capacity_dependent_hanging_keep_real_cw_pens() {
     let line = p
         .select(finite)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(
         line.selected_line().request().context.end,
@@ -214,7 +226,10 @@ fn signed_word_spacing_and_capacity_dependent_hanging_keep_real_cw_pens() {
     let horizontal = hp
         .select(hr)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(horizontal.feedback().advance, 20.0);
     assert_eq!(horizontal.measurements().alignment().advance(), 15.0);
@@ -236,6 +251,7 @@ fn actual_computed_scope_mandatory_keeps_cause_and_source_without_a_control_prox
     let original = source("AB");
     let processed = std::sync::Arc::new(
         crate::process_contextual_source(crate::ContextualSourceInput {
+            scope_alignment_limits: None,
             source: original.clone(),
             segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
             envelope: crate::SourceProcessingEnvelope::Complete,
@@ -268,12 +284,15 @@ fn actual_computed_scope_mandatory_keeps_cause_and_source_without_a_control_prox
             }],
             scopes: vec![
                 crate::SourceProcessingScope::Block {
+                    font_reference: None,
                     topology: crate::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: own_style(),
                     used_direction: ParagraphBaseDirection::LeftToRight,
                 },
                 crate::SourceProcessingScope::Inline {
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: Default::default(),
                     style: None,
                     boundaries: None,
@@ -348,12 +367,18 @@ fn actual_computed_scope_mandatory_keeps_cause_and_source_without_a_control_prox
     let first = p
         .select(selected_request(&p, start(&p), force.clone()))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let second = p
         .select(selected_request(&p, force.view().boundary(), terminal(&p)))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(
         (first.feedback().advance, second.feedback().advance),
@@ -421,7 +446,10 @@ fn real_endpoint_strips_keep_source_free_slots_and_exact_cw_position_selection()
     let line = p
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 15.0);
     let slots = line.control_slots().collect::<Vec<_>>();

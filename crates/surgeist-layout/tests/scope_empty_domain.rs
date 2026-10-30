@@ -66,6 +66,7 @@ fn prepare() -> Vec<text::PreparedText> {
         kind: text::ParagraphOriginKind::Authored,
     };
     let block = || text::SourceProcessingScope::Block {
+        font_reference: None,
         topology: text::SourceProcessingTopology::Complete,
         trim: Default::default(),
         base_style: style.clone(),
@@ -82,6 +83,7 @@ fn prepare() -> Vec<text::PreparedText> {
     };
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -103,6 +105,8 @@ fn prepare() -> Vec<text::PreparedText> {
             scopes: vec![
                 block(),
                 text::SourceProcessingScope::Inline {
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: Default::default(),
                     style: Some(style.clone()),
                     boundaries: Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
@@ -282,6 +286,7 @@ fn empty_captured_child_paragraph_preserves_ordinary_box_and_parent_text_layout(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let baseline = layout::compute_layout_with_flow(&capture, 0, request()).unwrap();
@@ -315,6 +320,7 @@ fn empty_captured_child_paragraph_preserves_ordinary_box_and_parent_text_layout(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap_or_else(|error| {
         panic!(
@@ -370,6 +376,7 @@ fn source_bearing_paragraph_with_empty_nodes_is_not_association_only() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("a source-bearing paragraph with no run nodes must refuse")
     };
@@ -399,6 +406,7 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
     use text::SourceProcessingEvent as E;
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -415,6 +423,7 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
             boundary_policies: vec![],
             replacements: vec![],
             scopes: vec![text::SourceProcessingScope::Block {
+                font_reference: None,
                 topology: text::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
@@ -481,6 +490,7 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("discarding a genuine source space cannot make its paragraph association-only")
     };

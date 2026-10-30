@@ -115,7 +115,10 @@ fn assert_auto_case(word: &str, hyphens: Hyphens, locale: Option<&str>, cuts: &[
     let whole = prepared
         .select(request(&prepared))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert!(whole.selected_line().request().alternative.is_none());
     assert_eq!(
@@ -182,7 +185,10 @@ fn assert_auto_case(word: &str, hyphens: Hyphens, locale: Option<&str>, cuts: &[
         let first = prepared
             .select(first_request)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(first.feedback().advance, at as f64 * 10.0);
         assert_eq!(
@@ -201,7 +207,10 @@ fn assert_auto_case(word: &str, hyphens: Hyphens, locale: Option<&str>, cuts: &[
         let continued = prepared
             .select(continued_request)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert!(continued.selected_line().request().alternative.is_none());
         assert_eq!(
@@ -308,7 +317,10 @@ fn native_direct_analysis_counts_differ_from_the_actual_raw_standalone_operation
     let whole = native
         .select(request(&native))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(
         (

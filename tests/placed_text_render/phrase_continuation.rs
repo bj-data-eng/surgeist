@@ -78,6 +78,7 @@ fn capture() -> (
         kind: text::ParagraphOriginKind::Authored,
     };
     let block = || text::SourceProcessingScope::Block {
+        font_reference: None,
         topology: text::SourceProcessingTopology::Complete,
         trim: text::WhiteSpaceTrim::default(),
         base_style: base.clone(),
@@ -94,6 +95,7 @@ fn capture() -> (
     };
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -115,6 +117,8 @@ fn capture() -> (
             scopes: vec![
                 block(),
                 text::SourceProcessingScope::Inline {
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: text::WhiteSpaceTrim::default(),
                     style: Some(owner),
                     boundaries: Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
@@ -298,6 +302,7 @@ fn capture() -> (
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = layout::compute_layout_with_flow(

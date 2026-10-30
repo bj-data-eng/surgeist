@@ -88,6 +88,7 @@ fn compute<S: l::LayoutScalar>(
                 // The actual pair has these same Baseline metrics. The witness
                 // identifies that contribution; it must not duplicate it.
                 metric_contribution: Some(l::InlineBoxMetricContribution::Strut(t::LineBoxStrut {
+                    scope: None,
                     metrics: t::LineStrut {
                         baseline: 8.0,
                         line_extent: 10.0,
@@ -97,6 +98,7 @@ fn compute<S: l::LayoutScalar>(
             }],
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let request = l::LayoutRootRequestOf::viewport(l::Size::new(

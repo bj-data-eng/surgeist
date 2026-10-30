@@ -72,6 +72,7 @@ fn batch<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     compute_layout_with_flow(&capture, 0, request(100.0)).unwrap()
@@ -228,6 +229,7 @@ fn css_tab_capture_rejects_a_different_actual_container_direction() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .err()
     .unwrap();
@@ -268,6 +270,14 @@ fn intrinsic_with_indent(
         &[],
         &[],
         super::super::run::Context {
+            scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
+                crate::text_layout::scope_alignment::ScopeAlignmentSnapshot::admit(
+                    Vec::new(),
+                    std::slice::from_ref(&binding),
+                )
+                .unwrap()
+                .freeze(),
+            ),
             orientation: super::super::run::text_orientation(
                 WritingMode::HorizontalTb,
                 &binding.prepared,
@@ -460,6 +470,7 @@ fn auto_root_intrinsic_sizing_refinalizes_tabs_against_the_real_used_width() {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         for (available, expected_width) in [

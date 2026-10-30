@@ -298,6 +298,7 @@ fn capture(
             line_strut: None,
         }],
         layout::WrappingInput::default(),
+        Vec::new(),
     )
     .unwrap();
     let batch = layout::compute_layout_with_flow(

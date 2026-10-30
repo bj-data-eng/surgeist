@@ -651,7 +651,10 @@ fn conditional_offsets(
                 Some(0.0),
             ))
             .unwrap()
-            .finalize(crate::SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: crate::SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         // Real full source/font finalization fails the finite zero capacity.
         // No nominal Khmer scalar width is assumed to manufacture exhaustion.
@@ -687,7 +690,10 @@ fn conditional_offsets(
                 },
             ))
             .unwrap()
-            .finalize(crate::SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: crate::SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(selected.prepared_text(), *prepared);
         assert!(selected.has_in_flow_content());

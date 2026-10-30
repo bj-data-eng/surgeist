@@ -711,7 +711,10 @@ fn two_distinct_indications_sharing_one_real_mark_egc_keep_both_local_ranges_and
             None,
         ))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let continuation = first
         .hyphenation_continuation()

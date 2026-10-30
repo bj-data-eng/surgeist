@@ -416,6 +416,7 @@ fn authentic_mandatory_edge<S: LayoutScalar>(direction: Direction) {
             }],
             child_order: vec![],
         },
+        Vec::new(),
     )
     .unwrap();
     let wrapping = flow
@@ -523,6 +524,7 @@ fn scoped_metric_witness<S: LayoutScalar>(
                 edges: crate::WrapEdges::AUTO,
                 metric_contribution: Some(crate::InlineBoxMetricContribution::Strut(
                     surgeist_text::LineBoxStrut {
+                        scope: None,
                         metrics: surgeist_text::LineStrut {
                             baseline: declared_baseline,
                             line_extent: 10.0,
@@ -533,6 +535,7 @@ fn scoped_metric_witness<S: LayoutScalar>(
             }],
             child_order: vec![],
         },
+        Vec::new(),
     )
     .unwrap();
     let wrapping = flow

@@ -154,7 +154,10 @@ fn whole(p: &PreparedText) -> FinalizedLine {
         },
     })
     .unwrap()
-    .finalize(SpacingAllocations::None)
+    .finalize(crate::LineAllocations {
+        spacing: SpacingAllocations::None,
+        scopes: crate::ScopeAllocations::None,
+    })
     .unwrap()
 }
 
@@ -628,6 +631,7 @@ fn an_empty_out_of_flow_child_wbr_cannot_split_parent_phase_one_decoding() {
             origin.source = p.source.clone();
         }
         p.scopes.push(SourceProcessingScope::OutOfFlowBlock {
+            font_reference: None,
             topology: SourceProcessingTopology::Complete,
             trim: WhiteSpaceTrim::default(),
             base_style: style(WhiteSpace::Preserve, 10.0),

@@ -56,6 +56,7 @@ fn native_batch<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(width)).unwrap();
@@ -254,6 +255,7 @@ fn intrinsic_root_batch<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     // This is the actual root PerformLayout front with both preferred axes

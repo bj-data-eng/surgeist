@@ -42,6 +42,8 @@ fn fixture_in_direction(
     source.span(whole, source_style);
     let control = |kind, at| text::ParagraphControl { kind, at };
     let inline = |style, start, end| text::SourceProcessingScope::Inline {
+        alignment_boundary: None,
+        font_reference: None,
         trim: text::WhiteSpaceTrim::default(),
         style: Some(style),
         boundaries: complete.then_some(text::SourceProcessingScopeBoundaries { start, end }),
@@ -53,6 +55,7 @@ fn fixture_in_direction(
     };
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -75,6 +78,7 @@ fn fixture_in_direction(
             replacements: vec![],
             scopes: vec![
                 text::SourceProcessingScope::Block {
+                    font_reference: None,
                     topology: text::SourceProcessingTopology::Complete,
                     trim: text::WhiteSpaceTrim::default(),
                     base_style: base.clone(),
@@ -231,6 +235,7 @@ fn rejects(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("invalid scope association must refuse")
     };
@@ -251,6 +256,7 @@ fn automatic_phrase_scope_inventory_requires_the_exact_issued_scope_and_own_pair
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let mut missing = f.binding.clone();
@@ -328,6 +334,7 @@ fn automatic_phrase_multiple_occurrences_publish_one_scope_owner_at_each_placed_
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
@@ -467,6 +474,7 @@ fn compute(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     compute_layout_with_flow(&capture, 100, request(500.0)).unwrap()
@@ -570,6 +578,7 @@ fn automatic_phrase_scope_fragments_follow_real_split_lines_and_rtl_line_anchors
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let wide = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
@@ -636,6 +645,7 @@ fn empty_domain_capture_identity_and_remote_endpoint_invalidation_rebuild_warm_o
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         compute_layout_with_flow_invalidated(&capture, 100, request(500.0), &[102]).unwrap()

@@ -73,6 +73,7 @@ fn final_pair_wrapping<S: layout::LayoutScalar>(
             edges: host.declarations[0].edges,
             metric_contribution: Some(layout::InlineBoxMetricContribution::Strut(
                 text::LineBoxStrut {
+                    scope: None,
                     metrics: text::LineStrut {
                         baseline: 0.0,
                         line_extent: 0.0,
@@ -227,12 +228,17 @@ fn unscoped_pair_complete_pipeline<S: layout::LayoutScalar>() {
             installed,
         };
         let flow=layout::LayoutFlowInput::try_new_with_edges(&tree,0,vec![binding.clone()],
-            final_pair_wrapping(&host),&receipt)
+            final_pair_wrapping(&host),Vec::new(), &receipt)
             .expect("the same real native pair must admit with its own early receipt, without an InlineScope");
         let batch = layout::compute_layout_with_flow(&flow, 0, request()).unwrap();
         qualify_final_pair(&batch, &prepared, direction);
-        let late =
-            layout::LayoutFlowInput::try_new(&tree, 0, vec![binding], final_pair_wrapping(&host));
+        let late = layout::LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![binding],
+            final_pair_wrapping(&host),
+            Vec::new(),
+        );
         let error = late
             .err()
             .expect("existing computed causes alone do not authenticate an early Layout plan");

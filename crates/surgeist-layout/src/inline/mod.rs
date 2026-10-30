@@ -533,7 +533,7 @@ impl<S: LayoutScalar> InlineMetricContributionOf<S> {
 }
 
 #[derive(Clone, Copy)]
-struct InlineLineMetricGroupsOf<S: LayoutScalar> {
+pub(crate) struct InlineLineMetricGroupsOf<S: LayoutScalar> {
     has_baseline: bool,
     baseline: S,
     after_baseline: S,
@@ -548,6 +548,18 @@ struct InlineLineMetricGroupsOf<S: LayoutScalar> {
 
 impl<S: LayoutScalar> InlineLineMetricGroupsOf<S> {
     fn from_strut(strut: Option<InlineMetricContributionOf<S>>, axes: FlowAxes) -> Self {
+        Self::with_reference(strut, axes.line_over() == axes.block_start())
+    }
+
+    /// Text's native local metric coordinates are already line-over/line-under.
+    pub(crate) fn typographic() -> Self {
+        Self::with_reference(None, true)
+    }
+
+    fn with_reference(
+        strut: Option<InlineMetricContributionOf<S>>,
+        over_at_block_start: bool,
+    ) -> Self {
         Self {
             has_baseline: strut.is_some(),
             baseline: strut.map_or(S::ZERO, |metrics| metrics.baseline),
@@ -559,13 +571,13 @@ impl<S: LayoutScalar> InlineLineMetricGroupsOf<S> {
                 .is_some_and(|metrics| metrics.after_baseline > S::ZERO),
             line_over_extent: S::ZERO,
             line_under_extent: S::ZERO,
-            over_at_block_start: axes.line_over() == axes.block_start(),
+            over_at_block_start,
             has_displacement: false,
             numeric_error: None,
         }
     }
 
-    fn include(
+    pub(crate) fn include(
         &mut self,
         alignment: InlineControlAlignment<S>,
         mut metrics: InlineMetricContributionOf<S>,
@@ -619,7 +631,7 @@ impl<S: LayoutScalar> InlineLineMetricGroupsOf<S> {
         }
     }
 
-    fn checked(
+    pub(crate) fn checked(
         self,
     ) -> Result<InlineMetricContributionOf<S>, crate::group_alignment::NumericError> {
         if let Some(error) = self.numeric_error {
@@ -1392,7 +1404,7 @@ fn for_each_unowned_box_metric<S: LayoutScalar>(
                 _ => Err(WrappingScopeError::CaptureAssociation),
             })
             .collect::<Result<_, _>>()?;
-        let (alignment, metrics) = match allocation.contribution {
+        let (alignment, metrics) = match &allocation.contribution {
             Contribution::NoContribution => {
                 if !owned.is_empty() {
                     return Err(WrappingScopeError::ConflictingBoxMetrics.into());

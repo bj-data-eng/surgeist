@@ -189,7 +189,10 @@ fn finish(
         },
     })
     .unwrap()
-    .finalize(t::SpacingAllocations::None)
+    .finalize(surgeist_text::LineAllocations {
+        spacing: t::SpacingAllocations::None,
+        scopes: surgeist_text::ScopeAllocations::None,
+    })
     .unwrap()
 }
 
@@ -880,7 +883,10 @@ fn suppressed_source_shy_retains_whole_word_portion_and_measurement_tail() {
             },
         })
         .unwrap()
-        .finalize(t::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: t::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(measured.feedback().advance, 20.0);
     assert_eq!(

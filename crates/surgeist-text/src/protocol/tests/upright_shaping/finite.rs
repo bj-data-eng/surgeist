@@ -93,10 +93,13 @@ fn finite_upright_centering_applies_indent_insets_and_actual_space_allocation_on
     assert_eq!(space.prepared_text(), prepared);
     assert_eq!(space.view().source_range(), Range::new(1, 2));
     let line = selected
-        .finalize(SpacingAllocations::Complete(vec![SpacingAllocation {
-            slot: slots[0].clone(),
-            amount: 8.0,
-        }]))
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
+                slot: slots[0].clone(),
+                amount: 8.0,
+            }]),
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.selected_line(), selected);
     assert_eq!(line.feedback().advance, 44.0);

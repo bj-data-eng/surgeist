@@ -35,6 +35,7 @@ fn base_input(rtl: bool, strut: text::ParagraphStrut) -> text::ContextualSourceI
         Source::identified("A", text::Id::from_u64(650_752), 12),
     ];
     text::ContextualSourceInput {
+        scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: Source::identified("AA", text::Id::from_u64(650_750), 12),
         segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -64,6 +65,7 @@ fn base_input(rtl: bool, strut: text::ParagraphStrut) -> text::ContextualSourceI
         }],
         replacements: vec![],
         scopes: vec![text::SourceProcessingScope::Block {
+            font_reference: None,
             topology: text::SourceProcessingTopology::Complete,
             trim: Default::default(),
             base_style: style(),
@@ -101,6 +103,8 @@ fn control_event(control: usize) -> E {
 fn scope_input(rtl: bool, side: Side, forced: bool) -> text::ContextualSourceInput {
     let mut input = base_input(rtl, text::ParagraphStrut::DefaultFont);
     input.scopes.push(text::SourceProcessingScope::Inline {
+        alignment_boundary: None,
+        font_reference: None,
         trim: Default::default(),
         style: None,
         boundaries: None,
@@ -154,6 +158,8 @@ fn paired_input(rtl: bool, side: Side) -> text::ContextualSourceInput {
         },
     ];
     input.scopes.push(text::SourceProcessingScope::Inline {
+        alignment_boundary: None,
+        font_reference: None,
         trim: Default::default(),
         style: None,
         boundaries: Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
@@ -238,6 +244,8 @@ fn empty_input(anchors: bool, strut: text::ParagraphStrut) -> text::ContextualSo
     input.connections.clear();
     input.boundary_policies.clear();
     input.scopes.push(text::SourceProcessingScope::Inline {
+        alignment_boundary: None,
+        font_reference: None,
         trim: Default::default(),
         style: None,
         boundaries: anchors.then_some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
@@ -413,6 +421,7 @@ fn compute<S: LayoutScalar>(
             scopes: vec![],
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     compute_layout_with_flow(&flow, 0, request_at(width)).unwrap()
@@ -743,6 +752,8 @@ fn computed_atomic_edges_split_original_flow_and_keep_the_actual_atomic_geometry
 fn whole_scope_input(rtl: bool, side: Side) -> text::ContextualSourceInput {
     let mut input = base_input(rtl, text::ParagraphStrut::DefaultFont);
     input.scopes.push(text::SourceProcessingScope::Inline {
+        alignment_boundary: None,
+        font_reference: None,
         trim: Default::default(),
         style: None,
         boundaries: None,
@@ -969,6 +980,7 @@ fn node_free_computed_paragraph_admits_its_real_capture_without_child_nodes() {
             scopes: vec![],
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .expect("actual computed participation admits a semantic paragraph in the unique empty-container gap");
     assert_eq!(flow.paragraphs().len(), 1);
@@ -1005,6 +1017,7 @@ fn missing_metrics<S: LayoutScalar>() {
             scopes: vec![],
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let error = compute_layout_with_flow(
@@ -1042,6 +1055,7 @@ fn foreign_preparation_and_absent_original_target_bindings_refuse_precisely() {
             scopes: vec![],
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .err()
     .expect("equal characters/IDs do not authenticate another preparation");
@@ -1065,6 +1079,7 @@ fn foreign_preparation_and_absent_original_target_bindings_refuse_precisely() {
             scopes: vec![],
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .err()
     .expect("actual host participation must match the issued preparation");
@@ -1086,6 +1101,7 @@ fn foreign_preparation_and_absent_original_target_bindings_refuse_precisely() {
             scopes: vec![],
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .err()
     .expect("the original target endpoint must retain its native binding");
@@ -1107,6 +1123,7 @@ fn foreign_preparation_and_absent_original_target_bindings_refuse_precisely() {
             scopes: vec![],
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .err()
     .expect("the original target atomic must retain its native binding");
@@ -1148,6 +1165,7 @@ fn after_float<S: LayoutScalar>() {
             scopes: vec![],
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let old = compute_layout_with_flow(
@@ -1199,6 +1217,7 @@ fn after_float<S: LayoutScalar>() {
                 scopes: vec![],
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let batch = compute_layout_with_flow(
@@ -1416,6 +1435,7 @@ fn cached_compute<S: LayoutScalar>(
             scopes: vec![],
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     compute_layout_with_flow(
@@ -1467,6 +1487,7 @@ fn unproved_float<S: LayoutScalar>() {
             scopes: vec![],
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let old = compute_layout_with_flow(
@@ -1510,6 +1531,7 @@ fn unproved_float<S: LayoutScalar>() {
             scopes: vec![],
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) {
         Ok(flow) => compute_layout_with_flow(
             &flow,

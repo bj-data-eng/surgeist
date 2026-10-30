@@ -31,6 +31,14 @@ fn run_in_band<S: LayoutScalar>(
         &[],
         &[],
         super::super::run::Context {
+            scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
+                crate::text_layout::scope_alignment::ScopeAlignmentSnapshot::admit(
+                    Vec::new(),
+                    std::slice::from_ref(&binding),
+                )
+                .unwrap()
+                .freeze(),
+            ),
             orientation: super::super::run::text_orientation(
                 WritingMode::HorizontalTb,
                 &binding.prepared,

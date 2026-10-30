@@ -547,7 +547,10 @@ fn finish(
         },
     })
     .unwrap()
-    .finalize(t::SpacingAllocations::None)
+    .finalize(surgeist_text::LineAllocations {
+        spacing: t::SpacingAllocations::None,
+        scopes: surgeist_text::ScopeAllocations::None,
+    })
     .unwrap()
 }
 

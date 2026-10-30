@@ -249,7 +249,13 @@ fn solve<Tree: LayoutTree<Node = u32>>(
     bindings: Vec<TextParagraphBinding<u32>>,
 ) -> LayoutResultOf<u32, CompletedLayoutBatchOf<u32, Tree::Scalar>, Tree::Scalar, Tree::MeasureError>
 {
-    let flow = LayoutFlowInput::try_new(tree, 0, bindings, crate::WrappingInput::default())?;
+    let flow = LayoutFlowInput::try_new(
+        tree,
+        0,
+        bindings,
+        crate::WrappingInput::default(),
+        Vec::new(),
+    )?;
     let available = if vertical(mode) {
         Size::new(AvailableOf::MAX_CONTENT, AvailableOf::definite(n(100.0)))
     } else {

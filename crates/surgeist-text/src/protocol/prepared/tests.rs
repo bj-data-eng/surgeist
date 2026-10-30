@@ -1071,10 +1071,12 @@ fn discarded_original_coverage_and_distinct_empty_occurrences_survive_selection(
     assert_eq!(covered, 6);
     drop(system);
     drop(analyzed);
-    let (shaped, mapping) = crate::engine::shape::finalize(
+    let (shaped, mapping, _) = crate::engine::shape::finalize(
         selected.inner.presentation_input(),
         &mut crate::engine::shape::ShapeContext::default(),
         selected.request().context.spacing,
+        None,
+        crate::engine::scope_alignment::PlanInput::Selection(selected.request()),
     )
     .unwrap();
     assert_eq!(shaped.glyphs.len(), 2);
@@ -1234,10 +1236,12 @@ fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent
     assert_eq!(replacement[1].presentation, Range::new(3, 4));
     system.refresh_fonts().unwrap();
     drop(system);
-    let (shaped, _) = crate::engine::shape::finalize(
+    let (shaped, _, _) = crate::engine::shape::finalize(
         selected.inner.presentation_input(),
         &mut crate::engine::shape::ShapeContext::default(),
         selected.request().context.spacing,
+        None,
+        crate::engine::scope_alignment::PlanInput::Selection(selected.request()),
     )
     .unwrap();
     assert!(
@@ -1336,10 +1340,12 @@ fn source_less_discretionary_control_and_empty_replacement_keep_real_owners() {
     assert!(matches!(fragments[0].owner, FragmentOwner::Alternative(0)));
     assert!(matches!(fragments[1].owner, FragmentOwner::Control(0)));
     assert!(fragments.iter().all(|f| f.source.is_none()));
-    let (shaped, _) = crate::engine::shape::finalize(
+    let (shaped, _, _) = crate::engine::shape::finalize(
         selected.inner.presentation_input(),
         &mut crate::engine::shape::ShapeContext::default(),
         selected.request().context.spacing,
+        None,
+        crate::engine::scope_alignment::PlanInput::Selection(selected.request()),
     )
     .unwrap();
     assert_eq!(shaped.glyphs.len(), 2);

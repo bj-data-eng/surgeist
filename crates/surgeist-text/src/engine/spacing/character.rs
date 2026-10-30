@@ -17,6 +17,7 @@ use icu_properties::{
 };
 use std::{collections::BTreeMap, ops::Range};
 
+use super::super::scope_alignment::accounting::{self as account, Ledger};
 mod planning;
 pub(crate) use planning::{PlanRequirements, plan};
 
@@ -959,17 +960,31 @@ fn apply_gap(
     authored: f64,
     allocation: f64,
 ) -> Result<()> {
+    apply_gap_accounted(shaped, owner, phase, authored, allocation, &mut None)
+}
+fn apply_gap_accounted(
+    shaped: &mut ShapedData,
+    owner: Owner,
+    phase: TextNumericPhase,
+    authored: f64,
+    allocation: f64,
+    ledger: &mut Ledger,
+) -> Result<()> {
     let gap = super::super::layout::add("character spacing total", phase, authored, allocation)?;
     let base = match owner {
         Owner::Cluster(i) => shaped.clusters[i].advance,
         Owner::Atomic(_) => 0.0,
     };
-    shaped.character_gaps.push(Gap {
-        owner,
-        base,
-        amount: gap,
-        allocation,
-    });
+    account::push(
+        ledger,
+        &mut shaped.character_gaps,
+        Gap {
+            owner,
+            base,
+            amount: gap,
+            allocation,
+        },
+    )?;
     match owner {
         Owner::Cluster(i) => {
             let cluster = &mut shaped.clusters[i];
@@ -981,7 +996,7 @@ fn apply_gap(
             }
         }
         Owner::Atomic(i) => {
-            shaped.atomic_gaps.insert(i, gap);
+            account::insert(ledger, &mut shaped.atomic_gaps, i, gap)?;
         }
     }
     Ok(())
@@ -1026,6 +1041,25 @@ pub(crate) fn apply_selected(
     dispositions: &[crate::SpacingSlotDisposition],
     allocations: Option<&[f64]>,
 ) -> Result<()> {
+    apply_selected_accounted(
+        selected,
+        graph,
+        shaped,
+        order,
+        dispositions,
+        allocations,
+        &mut None,
+    )
+}
+pub(crate) fn apply_selected_accounted(
+    selected: PresentationInput<'_>,
+    graph: &Graph,
+    shaped: &mut ShapedData,
+    order: &[usize],
+    dispositions: &[crate::SpacingSlotDisposition],
+    allocations: Option<&[f64]>,
+    ledger: &mut Ledger,
+) -> Result<()> {
     if graph.units.is_empty() {
         return Ok(());
     }
@@ -1057,15 +1091,15 @@ pub(crate) fn apply_selected(
     if !graph.demand() && allocations.is_none() {
         return Ok(());
     }
-    let members: Vec<_> = order
-        .iter()
-        .filter_map(|&i| match shaped.items[i] {
+    let members = account::collect(
+        ledger,
+        order.iter().filter_map(|&i| match shaped.items[i] {
             ShapedItem::TextCluster(c) => Some(Member::Text(shaped.clusters[c].atoms.clone())),
             ShapedItem::InlineBox { occurrence, .. } => Some(Member::Atomic(occurrence)),
             _ => None,
-        })
-        .collect();
-    let regions = graph.find_regions(&members);
+        }),
+    )?;
+    let mut regions = graph.find_regions_accounted(&members, ledger)?;
     for (edge, boundary) in graph.boundaries.iter().enumerate() {
         if discarded(graph, edge, shaped, dispositions) {
             continue;
@@ -1134,15 +1168,22 @@ pub(crate) fn apply_selected(
                     },
                 ));
             }
-            apply_gap(
+            apply_gap_accounted(
                 shaped,
                 owner,
                 TextNumericPhase::Finalization,
                 boundary.authored,
                 allocation,
+                ledger,
             )?;
         }
     }
+    for region in &mut regions {
+        account::drop_vec(ledger, std::mem::take(&mut region.units))?;
+        account::drop_vec(ledger, std::mem::take(&mut region.members))?;
+    }
+    account::drop_vec(ledger, regions)?;
+    account::drop_vec(ledger, members)?;
     Ok(())
 }
 
@@ -1183,12 +1224,19 @@ struct Region {
 
 impl Graph {
     fn find_regions(&self, members: &[Member]) -> Vec<Region> {
+        self.find_regions_accounted(members, &mut None)
+            .expect("ordinary regions have no scope ledger")
+    }
+    fn find_regions_accounted(
+        &self,
+        members: &[Member],
+        ledger: &mut Ledger,
+    ) -> Result<Vec<Region>> {
         let mut regions = Vec::new();
         for unit in self.units.iter().filter(|u| !u.atoms.is_empty()) {
-            let positions: Vec<_> = members
-                .iter()
-                .enumerate()
-                .filter_map(|(i, m)| match m {
+            let positions = account::collect(
+                ledger,
+                members.iter().enumerate().filter_map(|(i, m)| match m {
                     Member::Text(atoms)
                         if unit
                             .atoms
@@ -1198,17 +1246,17 @@ impl Graph {
                         Some(i)
                     }
                     _ => None,
-                })
-                .collect();
+                }),
+            )?;
             let (Some(&first), Some(&last)) = (positions.first(), positions.last()) else {
+                account::drop_vec(ledger, positions)?;
                 continue;
             };
+            account::drop_vec(ledger, positions)?;
             if !members[first..=last].iter().any(|m| matches!(m, Member::Atomic(i) if self.units.iter().any(|u| u.atomics.contains(i)))) { continue; }
-            let units = self
-                .units
-                .iter()
-                .enumerate()
-                .filter_map(|(i, u)| {
+            let units = account::collect(
+                ledger,
+                self.units.iter().enumerate().filter_map(|(i, u)| {
                     members[first..=last]
                         .iter()
                         .any(|m| match m {
@@ -1219,16 +1267,21 @@ impl Graph {
                             Member::Atomic(occurrence) => u.atomics.contains(occurrence),
                         })
                         .then_some(i)
-                })
-                .collect();
-            regions.push(Region {
-                first,
-                last,
-                units,
-                members: members[first..=last].to_vec(),
-            });
+                }),
+            )?;
+            let owned_members = account::clone_vec(ledger, &members[first..=last])?;
+            account::push(
+                ledger,
+                &mut regions,
+                Region {
+                    first,
+                    last,
+                    units,
+                    members: owned_members,
+                },
+            )?;
         }
-        regions
+        Ok(regions)
     }
     fn region_material(&self, region: &Region) -> bool {
         region

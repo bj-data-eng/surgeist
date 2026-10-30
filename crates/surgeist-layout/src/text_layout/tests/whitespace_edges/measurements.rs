@@ -104,6 +104,7 @@ fn block_end_claim_cannot_hide_known_later_in_flow_content() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) {
         Err(error) => error,
         Ok(_) => panic!("known later block contradicts BlockEnd"),

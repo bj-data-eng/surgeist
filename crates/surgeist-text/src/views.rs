@@ -276,7 +276,12 @@ fn run_decorations(run: &RunView<'_>) -> [Option<DecorationRun>; 2] {
         let rect = if run.orientation() == crate::LineOrientation::Horizontal {
             let alignment_origin = crate::layout::line_point(
                 run.placed,
-                Point::new(run.run.x, run.placed.finalized.data.metrics.baseline),
+                Point::new(
+                    run.run.x,
+                    run.run
+                        .reference
+                        .unwrap_or(run.placed.finalized.data.metrics.baseline),
+                ),
             );
             Rect::new(
                 alignment_origin.x,
@@ -290,7 +295,9 @@ fn run_decorations(run: &RunView<'_>) -> [Option<DecorationRun>; 2] {
                 Rect::new(
                     run.run.x,
                     crate::layout::decoration_top(
-                        run.placed.finalized.data.metrics.baseline,
+                        run.run
+                            .reference
+                            .unwrap_or(run.placed.finalized.data.metrics.baseline),
                         offset,
                     ) - half_thickness,
                     run.run.advance,

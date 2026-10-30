@@ -83,6 +83,7 @@ impl PartialEq for CheckpointReceipt {
         // authentic receipt for observation without comparing its allocation.
         self.line.selected_line().request() == other.line.selected_line().request()
             && self.amounts == other.amounts
+            && self.line.scope_allocations() == other.line.scope_allocations()
             && self.boxes == other.boxes
     }
 }
@@ -462,7 +463,22 @@ fn observe(
                 boundary,
             });
     }
-    Ok(input.prepared.observe_flow(segment, &request)?)
+    let operation = input.scope_alignments.begin(
+        text::ScopeAlignmentCensusInput::Flow {
+            prepared: input.prepared,
+            segment,
+            request: &request,
+        },
+        0,
+    )?;
+    Ok(match &operation {
+        Some(operation) => input.prepared.observe_flow_with_scope_allowance(
+            segment,
+            &request,
+            operation.allowance()?,
+        )?,
+        None => input.prepared.observe_flow(segment, &request)?,
+    })
 }
 
 fn invalid_flow() -> FitError {

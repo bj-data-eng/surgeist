@@ -98,7 +98,12 @@ fn select_counted(
 
 fn finalize_retained(selected: &SelectedLine, calls: usize) -> FinalizedLine {
     let coverage = coverage_signature(selected);
-    let line = selected.finalize(SpacingAllocations::None).unwrap();
+    let line = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_calls(calls);
     let restored = line.with_spacing(SpacingAllocations::None).unwrap();
     assert_calls(calls);

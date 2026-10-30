@@ -36,6 +36,7 @@ fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
             }],
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let binding = &fixture.binding;
@@ -80,6 +81,9 @@ fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
         &[],
         &controls,
         Context {
+            scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
+                input.scope_alignments.clone(),
+            ),
             orientation: text_orientation(WritingMode::HorizontalTb, &binding.prepared)
                 .unwrap_or_else(|_| panic!("horizontal fixture must resolve its Text orientation")),
             inline_baseline_context: crate::InlineBaselineContext::Physical,

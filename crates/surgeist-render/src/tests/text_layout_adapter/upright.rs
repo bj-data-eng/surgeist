@@ -218,7 +218,10 @@ fn upright(mut authored: text::Style) -> (text::Layout, text::System, Vec<u8>) {
             },
         })
         .unwrap()
-        .finalize(text::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: text::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 20.0);
     assert_eq!(

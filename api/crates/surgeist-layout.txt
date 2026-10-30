@@ -1340,8 +1340,8 @@ pub struct surgeist_layout::LayoutFlowInput<'tree, Tree: surgeist_layout::Layout
 impl<'tree, Tree: surgeist_layout::LayoutTree> surgeist_layout::LayoutFlowInput<'tree, Tree>
 pub fn surgeist_layout::LayoutFlowInput<'tree, Tree>::paragraphs(&self) -> &[surgeist_layout::TextParagraphBinding<<Tree as surgeist_layout::Traverse>::Node>]
 pub fn surgeist_layout::LayoutFlowInput<'tree, Tree>::tree(&self) -> &'tree Tree
-pub fn surgeist_layout::LayoutFlowInput<'tree, Tree>::try_new(tree: &'tree Tree, root: <Tree as surgeist_layout::Traverse>::Node, paragraphs: alloc::vec::Vec<surgeist_layout::TextParagraphBinding<<Tree as surgeist_layout::Traverse>::Node>>, wrapping_input: surgeist_layout::WrappingInput<<Tree as surgeist_layout::Traverse>::Node>) -> surgeist_layout::LayoutResultOf<<Tree as surgeist_layout::Traverse>::Node, Self, <Tree as surgeist_layout::Traverse>::Scalar, <Tree as surgeist_layout::LayoutTree>::MeasureError>
-pub fn surgeist_layout::LayoutFlowInput<'tree, Tree>::try_new_with_edges(tree: &'tree Tree, root: <Tree as surgeist_layout::Traverse>::Node, paragraphs: alloc::vec::Vec<surgeist_layout::TextParagraphBinding<<Tree as surgeist_layout::Traverse>::Node>>, wrapping_input: surgeist_layout::WrappingInput<<Tree as surgeist_layout::Traverse>::Node>, receipt: &surgeist_layout::ResolvedWrapEdges<<Tree as surgeist_layout::Traverse>::Node>) -> surgeist_layout::LayoutResultOf<<Tree as surgeist_layout::Traverse>::Node, Self, <Tree as surgeist_layout::Traverse>::Scalar, <Tree as surgeist_layout::LayoutTree>::MeasureError> where Tree: surgeist_layout::WrapEdgeSource
+pub fn surgeist_layout::LayoutFlowInput<'tree, Tree>::try_new(tree: &'tree Tree, root: <Tree as surgeist_layout::Traverse>::Node, paragraphs: alloc::vec::Vec<surgeist_layout::TextParagraphBinding<<Tree as surgeist_layout::Traverse>::Node>>, wrapping_input: surgeist_layout::WrappingInput<<Tree as surgeist_layout::Traverse>::Node>, scope_alignments: alloc::vec::Vec<surgeist_layout::TextScopeAlignmentInputOf<<Tree as surgeist_layout::Traverse>::Scalar>>) -> surgeist_layout::LayoutResultOf<<Tree as surgeist_layout::Traverse>::Node, Self, <Tree as surgeist_layout::Traverse>::Scalar, <Tree as surgeist_layout::LayoutTree>::MeasureError>
+pub fn surgeist_layout::LayoutFlowInput<'tree, Tree>::try_new_with_edges(tree: &'tree Tree, root: <Tree as surgeist_layout::Traverse>::Node, paragraphs: alloc::vec::Vec<surgeist_layout::TextParagraphBinding<<Tree as surgeist_layout::Traverse>::Node>>, wrapping_input: surgeist_layout::WrappingInput<<Tree as surgeist_layout::Traverse>::Node>, scope_alignments: alloc::vec::Vec<surgeist_layout::TextScopeAlignmentInputOf<<Tree as surgeist_layout::Traverse>::Scalar>>, receipt: &surgeist_layout::ResolvedWrapEdges<<Tree as surgeist_layout::Traverse>::Node>) -> surgeist_layout::LayoutResultOf<<Tree as surgeist_layout::Traverse>::Node, Self, <Tree as surgeist_layout::Traverse>::Scalar, <Tree as surgeist_layout::LayoutTree>::MeasureError> where Tree: surgeist_layout::WrapEdgeSource
 pub struct surgeist_layout::LayoutOutputEntryOf<Node, S: surgeist_layout::LayoutScalar>
 impl<Node, S> surgeist_layout::LayoutOutputEntryOf<Node, S> where Node: core::marker::Copy, S: surgeist_layout::LayoutScalar
 pub const fn surgeist_layout::LayoutOutputEntryOf<Node, S>::node(&self) -> Node
@@ -1804,6 +1804,13 @@ pub struct surgeist_layout::TextParticipation
 impl surgeist_layout::TextParticipation
 pub const fn surgeist_layout::TextParticipation::new(origin: surgeist_text::protocol::PreparedOrigin) -> Self
 pub const fn surgeist_layout::TextParticipation::origin(&self) -> &surgeist_text::protocol::PreparedOrigin
+pub struct surgeist_layout::TextScopeAlignmentInputOf<S: surgeist_layout::LayoutScalar>
+pub surgeist_layout::TextScopeAlignmentInputOf::alignment: surgeist_layout::VerticalAlignOf<S>
+pub surgeist_layout::TextScopeAlignmentInputOf::scope: surgeist_text::processing::contextual::capture::CapturedScope
+impl<S: surgeist_layout::LayoutScalar> surgeist_layout::TextScopeAlignmentInputOf<S>
+pub fn surgeist_layout::TextScopeAlignmentInputOf<S>::from_length_percentage(prepared: &surgeist_text::protocol::PreparedText, scope: surgeist_text::processing::contextual::capture::CapturedScope, amount: surgeist_layout::LengthPercentageOf<S>) -> surgeist_text::error::Result<Self>
+pub fn surgeist_layout::TextScopeAlignmentInputOf<S>::subscript(prepared: &surgeist_text::protocol::PreparedText, scope: surgeist_text::processing::contextual::capture::CapturedScope) -> surgeist_text::error::Result<Self>
+pub fn surgeist_layout::TextScopeAlignmentInputOf<S>::superscript(prepared: &surgeist_text::protocol::PreparedText, scope: surgeist_text::processing::contextual::capture::CapturedScope) -> surgeist_text::error::Result<Self>
 pub struct surgeist_layout::TextScopeBinding<Node>
 pub surgeist_layout::TextScopeBinding::association: surgeist_layout::TextScopeAssociation<Node>
 pub surgeist_layout::TextScopeBinding::scope: surgeist_text::protocol::PreparedScope
@@ -2053,6 +2060,7 @@ pub type surgeist_layout::ScrollbarGutterRects = surgeist_layout::ScrollbarGutte
 pub type surgeist_layout::ScrollbarWidth = surgeist_layout::ScrollbarWidthOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::SizingCalculation = surgeist_layout::SizingCalculationOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::TextIndent = surgeist_layout::TextIndentOf<surgeist_layout::DefaultScalar>
+pub type surgeist_layout::TextScopeAlignmentInput = surgeist_layout::TextScopeAlignmentInputOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::TrackComponent = surgeist_layout::TrackComponentOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::TrackComponentList = surgeist_layout::TrackComponentListOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::TrackFlexFactor = surgeist_layout::TrackFlexFactorOf<surgeist_layout::DefaultScalar>

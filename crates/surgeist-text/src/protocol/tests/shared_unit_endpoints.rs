@@ -67,6 +67,7 @@ fn capture(endpoints: bool, anywhere: bool) -> PreparedText {
     }
     let processed = Arc::new(
         crate::process_contextual_source(ContextualSourceInput {
+            scope_alignment_limits: None,
             source: Source::identified("A\u{301}B", Id::from_u64(1_507_000), 7),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
             envelope: SourceProcessingEnvelope::Complete,
@@ -110,12 +111,15 @@ fn capture(endpoints: bool, anywhere: bool) -> PreparedText {
             replacements: vec![],
             scopes: vec![
                 SourceProcessingScope::Block {
+                    font_reference: None,
                     topology: SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: base.clone(),
                     used_direction: ParagraphBaseDirection::LeftToRight,
                 },
                 SourceProcessingScope::Inline {
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: Default::default(),
                     style: Some(base),
                     boundaries: endpoints
@@ -185,7 +189,10 @@ fn finish(p: &PreparedText, mut input: LineSelectionRequest, edges: [f64; 2]) ->
     }
     p.select(input)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 
@@ -430,6 +437,7 @@ fn nested_capture(text: &str) -> PreparedText {
     };
     let processed = Arc::new(
         crate::process_contextual_source(ContextualSourceInput {
+            scope_alignment_limits: None,
             source: input.source.clone(),
             segment_breaks: input.segment_breaks,
             envelope: SourceProcessingEnvelope::Complete,
@@ -467,17 +475,22 @@ fn nested_capture(text: &str) -> PreparedText {
             replacements: vec![],
             scopes: vec![
                 SourceProcessingScope::Block {
+                    font_reference: None,
                     topology: SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: input.base_style,
                     used_direction: ParagraphBaseDirection::LeftToRight,
                 },
                 SourceProcessingScope::Inline {
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: Default::default(),
                     style: None,
                     boundaries: Some(SourceProcessingScopeBoundaries { start: 0, end: 3 }),
                 },
                 SourceProcessingScope::Inline {
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: Default::default(),
                     style: None,
                     boundaries: Some(SourceProcessingScopeBoundaries { start: 1, end: 2 }),

@@ -300,7 +300,10 @@ fn selected_placed(system: &mut text::System, value: &str) -> text::Layout {
             },
         })
         .unwrap()
-        .finalize(text::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: text::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     text::Layout::from_finalized_lines(text::PlacementRequest {
         prepared,

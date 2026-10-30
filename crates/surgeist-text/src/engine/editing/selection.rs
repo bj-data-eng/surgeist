@@ -131,17 +131,22 @@ pub(super) fn with_membership(
         } else {
             0.0
         };
-        let mut group: Option<(f64, f64)> = None;
+        let mut group: Option<(f64, f64, f64, f64)> = None;
         let mut selected_clusters = 0;
         let mut selected_contributions = 0;
         for item in &data.visual_order {
-            let (selected, left, right) = match *item {
+            let (selected, left, right, reference) = match *item {
                 FinalizedVisualItem::Cluster(index) => {
                     let cluster = &data.clusters[index];
                     let end = cluster.x + cluster.advance;
                     let selected = selected(line_index, index);
                     selected_clusters += usize::from(selected);
-                    (selected, cluster.x.min(end), cluster.x.max(end))
+                    (
+                        selected,
+                        cluster.x.min(end),
+                        cluster.x.max(end),
+                        cluster.reference,
+                    )
                 }
                 FinalizedVisualItem::Anchor(index) => {
                     let anchor = &data.anchors[index];
@@ -152,17 +157,42 @@ pub(super) fn with_membership(
                         selected_anchor(line_index, index),
                         anchor.slot.x,
                         anchor.inline_end,
+                        anchor.reference,
                     )
                 }
                 FinalizedVisualItem::InlineBox(_) => continue,
             };
             if selected {
                 selected_contributions += 1;
-                group = Some(group.map_or((left, right), |(start, finish)| {
-                    (start.min(left), finish.max(right))
-                }));
-            } else if let Some((start, end)) = group.take() {
-                push_local(&mut output, line_index, line, start, end, height, false)?;
+                let (top, cell_height) = data.cell_band(reference);
+                if let Some((start, end, old_top, old_height)) = group.take() {
+                    if old_top == top && old_height == cell_height {
+                        group = Some((start.min(left), end.max(right), top, cell_height));
+                    } else {
+                        push_local(
+                            &mut output,
+                            line_index,
+                            line,
+                            start..end,
+                            old_top,
+                            old_height,
+                            false,
+                        )?;
+                        group = Some((left, right, top, cell_height));
+                    }
+                } else {
+                    group = Some((left, right, top, cell_height));
+                }
+            } else if let Some((start, end, top, cell_height)) = group.take() {
+                push_local(
+                    &mut output,
+                    line_index,
+                    line,
+                    start..end,
+                    top,
+                    cell_height,
+                    false,
+                )?;
             }
         }
         let extra = if line_index != end_line || (selected_clusters != 0 && metrics.advance == 0.0)
@@ -171,14 +201,14 @@ pub(super) fn with_membership(
         } else {
             0.0
         };
-        if let Some((start, end)) = group {
+        if let Some((start, end, top, cell_height)) = group {
             push_local(
                 &mut output,
                 line_index,
                 line,
-                start,
-                end + extra,
-                height,
+                start..end + extra,
+                top,
+                cell_height,
                 false,
             )?;
         } else if extra != 0.0 {
@@ -186,8 +216,8 @@ pub(super) fn with_membership(
                 &mut output,
                 line_index,
                 line,
-                metrics.offset,
-                metrics.offset + extra,
+                metrics.offset..metrics.offset + extra,
+                metrics.block_min,
                 height,
                 false,
             )?;
@@ -200,8 +230,8 @@ pub(super) fn with_membership(
                 &mut output,
                 line_index,
                 line,
-                start.min(end),
-                start.max(end),
+                start.min(end)..start.max(end),
+                metrics.block_min,
                 height,
                 true,
             )?;
@@ -218,11 +248,12 @@ fn push_local(
     output: &mut Vec<SelectionRect>,
     line_index: usize,
     line: &crate::engine::PlacedLine,
-    start: f64,
-    end: f64,
+    inline: std::ops::Range<f64>,
+    top: f64,
     height: f64,
     include_zero: bool,
 ) -> Result<()> {
+    let (start, end) = (inline.start, inline.end);
     if !start.is_finite() || !end.is_finite() {
         return Err(crate::error::text_numeric_error(
             "selected source rectangle",
@@ -232,11 +263,7 @@ fn push_local(
         ));
     }
     if end > start || (include_zero && end == start) {
-        let metrics = line.finalized.data.metrics;
-        let rect = crate::layout::line_rect(
-            line,
-            Rect::new(start, metrics.block_min, end - start, height),
-        );
+        let rect = crate::layout::line_rect(line, Rect::new(start, top, end - start, height));
         for (field, value) in [
             ("selection x", rect.origin.x),
             ("selection y", rect.origin.y),

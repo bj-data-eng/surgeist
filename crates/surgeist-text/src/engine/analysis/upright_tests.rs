@@ -70,6 +70,7 @@ fn native(source: Source) -> ParagraphInput {
 }
 fn contextual(source: Source) -> ContextualSourceInput {
     ContextualSourceInput {
+        scope_alignment_limits: None,
         origins: vec![origin(&source, Range::new(0, source.text().len()))],
         source,
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -80,6 +81,7 @@ fn contextual(source: Source) -> ContextualSourceInput {
         boundary_policies: vec![],
         replacements: vec![],
         scopes: vec![SourceProcessingScope::Block {
+            font_reference: None,
             topology: SourceProcessingTopology::Unknown,
             used_direction: LTR,
             trim: WhiteSpaceTrim::default(),
@@ -442,6 +444,8 @@ fn actual_contextual_computed_edges_cut_used_bodies_without_inserting_source_tex
         ancestor_wrap: Wrap::Word,
     }];
     input.scopes.push(SourceProcessingScope::Inline {
+        alignment_boundary: None,
+        font_reference: None,
         trim: WhiteSpaceTrim::default(),
         style: None,
         boundaries: None,

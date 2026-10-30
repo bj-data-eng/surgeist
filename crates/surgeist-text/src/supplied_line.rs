@@ -185,17 +185,32 @@ impl<'a> SuppliedLine<'a> {
         self,
         order: &'o [usize],
     ) -> Option<SuppliedVisualOrder<'a, 'o>> {
+        self.composed_order_accounted(order, &mut None)
+            .expect("ordinary order admission has no scope ledger")
+    }
+
+    pub(crate) fn composed_order_accounted<'o>(
+        self,
+        order: &'o [usize],
+        ledger: &mut crate::engine::scope_alignment::accounting::Ledger,
+    ) -> crate::Result<Option<SuppliedVisualOrder<'a, 'o>>> {
+        use crate::engine::scope_alignment::accounting as account;
         if order.len() != self.participants.len() {
-            return None;
+            return Ok(None);
         }
-        let mut seen = vec![false; order.len()];
-        for &i in order {
-            if *seen.get(i)? {
-                return None;
+        let mut seen = account::filled(ledger, order.len(), false)?;
+        for &index in order {
+            account::work(ledger, 1)?;
+            let Some(value) = seen.get_mut(index) else {
+                return Ok(None);
+            };
+            if *value {
+                return Ok(None);
             }
-            seen[i] = true;
+            *value = true;
         }
-        Some(SuppliedVisualOrder { line: self, order })
+        account::drop_vec(ledger, seen)?;
+        Ok(Some(SuppliedVisualOrder { line: self, order }))
     }
 
     /// Fill caller-owned scratch with L2 order, preserving every logical slot.

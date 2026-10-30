@@ -784,7 +784,14 @@ impl Layout {
                     )?;
                     let inline_anchor =
                         crate::layout::inline_coordinate(placed.orientation, placed.anchor);
-                    let baseline = crate::layout::line_baseline(placed);
+                    let baseline = if let Some(reference) = cluster.reference {
+                        crate::layout::cross_coordinate(
+                            placed.orientation,
+                            crate::layout::line_point(placed, crate::Point::new(0.0, reference)),
+                        )
+                    } else {
+                        crate::layout::line_baseline(placed)
+                    };
                     // Directed metric edges use the actual inline basis before
                     // checked translation; CCW advances decrease physical y.
                     let inline_delta = |inline| {

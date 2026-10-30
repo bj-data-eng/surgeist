@@ -2,13 +2,14 @@
 
 use std::sync::Arc;
 
-use super::LineSelectionRequest;
+use super::{ControlAllocation, LineSelectionRequest};
 use crate::engine::PreparedData;
 
 /// Shared selected-request owner; issued spacing slots retain this allocation.
 /// Finalized rows retain it so context and occurrence admission are not replayed.
 pub(crate) struct SelectedData {
     pub(crate) prepared: Arc<PreparedData>,
+    pub(crate) scopes: crate::engine::scope_alignment::SelectedScopes,
     pub(crate) request: LineSelectionRequest,
     pub(crate) presentation: super::prepared::SelectedPresentation,
     pub(crate) spacing_slots: Vec<SpacingSlotData>,
@@ -97,6 +98,22 @@ impl PreparedText {
         select(self, request, LineMetricPolicy::Native)
     }
 
+    /// Select using a caller-reduced feature allowance, including retained input.
+    /// The allowance changes resource admission, never source or geometry identity.
+    pub fn select_with_scope_allowance(
+        &self,
+        request: LineSelectionRequest,
+        allowance: crate::ScopeAlignmentAllowance,
+    ) -> Result<SelectedLine> {
+        select_with_policy(
+            self,
+            request,
+            LineMetricPolicy::Native,
+            &mut crate::engine::shape::ShapeContext::default(),
+            Some(allowance),
+        )
+    }
+
     /// Return the first actual off-selection endpoint still needed by retained
     /// shaping context. No shaping or font catalogue query is performed.
     pub fn boundary_context_demand(
@@ -129,6 +146,16 @@ pub(crate) fn select_with_scratch(
     metric_policy: LineMetricPolicy,
     scratch: &mut crate::engine::shape::ShapeContext,
 ) -> Result<SelectedLine> {
+    select_with_policy(prepared, request, metric_policy, scratch, None)
+}
+
+fn select_with_policy(
+    prepared: &PreparedText,
+    request: LineSelectionRequest,
+    metric_policy: LineMetricPolicy,
+    scratch: &mut crate::engine::shape::ShapeContext,
+    allowance: Option<crate::ScopeAlignmentAllowance>,
+) -> Result<SelectedLine> {
     let mut presentation = admit(prepared, &request)?;
     let (boundaries, missing) =
         super::boundary::resolve(prepared, (&request).into(), &mut presentation)?;
@@ -137,6 +164,8 @@ pub(crate) fn select_with_scratch(
             occurrence: missing.index,
         }));
     }
+    scope_request_roots(&prepared.inner, &request)?;
+    crate::engine::scope_alignment::operation_limits(&prepared.inner, allowance)?;
     let input = super::input::PresentationInput {
         prepared: &prepared.inner,
         presentation: &presentation,
@@ -147,8 +176,13 @@ pub(crate) fn select_with_scratch(
         controls: &request.controls,
     };
     // No handles exist until this exact selected invocation has completed.
-    let (shaped, mapping) =
-        crate::engine::shape::finalize(input, scratch, request.context.spacing)?;
+    let (shaped, mapping, scope_plan) = crate::engine::shape::finalize(
+        input,
+        scratch,
+        request.context.spacing,
+        allowance,
+        crate::engine::scope_alignment::PlanInput::Selection(&request),
+    )?;
     crate::engine::layout::qualify_selected_paint(input, &shaped, &request.participants)?;
     let characters = crate::engine::spacing::character::build(
         &presentation.projection,
@@ -287,8 +321,16 @@ pub(crate) fn select_with_scratch(
             });
         }
     }
+    let scopes = crate::engine::scope_alignment::select(
+        &prepared.inner,
+        &presentation,
+        &shaped,
+        &request,
+        scope_plan,
+    )?;
     Ok(SelectedLine {
         inner: Arc::new(SelectedData {
+            scopes,
             prepared: Arc::clone(&prepared.inner),
             request,
             presentation,
@@ -700,13 +742,13 @@ pub(crate) fn admit_geometry(
     Ok(presentation)
 }
 
-pub(super) fn require_prepared(
-    expected: &PreparedText,
+fn require_data(
+    expected: &PreparedData,
     actual: &Arc<PreparedData>,
     kind: ProtocolHandleKind,
     occurrence: usize,
 ) -> Result<()> {
-    if Arc::ptr_eq(&expected.inner, actual) {
+    if std::ptr::eq(expected, actual.as_ref()) {
         Ok(())
     } else {
         Err(protocol_error(ProtocolError::ForeignPreparation {
@@ -714,6 +756,164 @@ pub(super) fn require_prepared(
             occurrence,
         }))
     }
+}
+/// Pure root association, before any scoped workspace. Full semantic admission
+/// remains with the existing request/flow owners and is not replayed by census.
+pub(crate) fn scope_allocation_roots(
+    prepared: &PreparedData,
+    atomics: &[AtomicAllocation],
+    controls: &[ControlAllocation],
+    context: &[super::InlineBoundaryContextAllocation],
+    struts: &[super::LineBoxStrut],
+) -> Result<()> {
+    for row in atomics {
+        require_data(
+            prepared,
+            &row.occurrence.prepared,
+            ProtocolHandleKind::Atomic,
+            row.occurrence.index,
+        )?;
+    }
+    for row in controls {
+        require_data(
+            prepared,
+            &row.occurrence.prepared,
+            ProtocolHandleKind::Control,
+            row.occurrence.index,
+        )?;
+    }
+    for row in context {
+        require_data(
+            prepared,
+            &row.occurrence.prepared,
+            ProtocolHandleKind::Control,
+            row.occurrence.index,
+        )?;
+    }
+    for row in struts {
+        if let Some(scope) = &row.scope {
+            let topology = prepared
+                .analyzed
+                .paragraph
+                .scope_topology
+                .as_ref()
+                .ok_or_else(|| {
+                    crate::engine::scope_alignment::refusal(
+                        crate::ScopeAlignmentError::MissingCapture,
+                    )
+                })?;
+            if !Arc::ptr_eq(&topology.capture, &scope.capture) {
+                return Err(crate::engine::scope_alignment::refusal(
+                    crate::ScopeAlignmentError::ForeignCapture,
+                ));
+            }
+            if scope.capture.scopes[scope.index].domain != topology.domain {
+                return Err(crate::engine::scope_alignment::refusal(
+                    crate::ScopeAlignmentError::WrongDomain,
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+pub(crate) fn scope_request_roots(
+    prepared: &PreparedData,
+    request: &LineSelectionRequest,
+) -> Result<()> {
+    require_data(
+        prepared,
+        &request.start.prepared,
+        ProtocolHandleKind::Boundary,
+        request.start.index,
+    )?;
+    require_data(
+        prepared,
+        &request.end.prepared,
+        ProtocolHandleKind::Boundary,
+        request.end.index,
+    )?;
+    for row in &request.participants {
+        let (owner, kind, index) = match row {
+            super::PreparedParticipant::Text(row) => {
+                (&row.prepared, ProtocolHandleKind::Unit, row.index)
+            }
+            super::PreparedParticipant::Atomic(row) => {
+                (&row.prepared, ProtocolHandleKind::Atomic, row.index)
+            }
+            super::PreparedParticipant::Control(row) => {
+                (&row.prepared, ProtocolHandleKind::Control, row.index)
+            }
+            super::PreparedParticipant::ComputedLineBoundary(row) => (
+                &row.prepared,
+                ProtocolHandleKind::ComputedLineBoundary,
+                row.index,
+            ),
+        };
+        require_data(prepared, owner, kind, index)?;
+    }
+    if let Some(row) = &request.alternative {
+        require_data(
+            prepared,
+            &row.prepared,
+            ProtocolHandleKind::Alternative,
+            row.index,
+        )?;
+    }
+    if let Some(row) = &request.incoming {
+        require_data(
+            prepared,
+            &row.alternative.prepared,
+            ProtocolHandleKind::Alternative,
+            row.alternative.index,
+        )?;
+        require_data(
+            prepared,
+            &row.boundary.prepared,
+            ProtocolHandleKind::Boundary,
+            row.boundary.index,
+        )?;
+    }
+    match &request.termination {
+        super::PreparedTermination::Ordinary(row) => require_data(
+            prepared,
+            &row.prepared,
+            ProtocolHandleKind::Opportunity,
+            row.index,
+        )?,
+        super::PreparedTermination::Conditional(row) => require_data(
+            prepared,
+            &row.prepared_text().inner,
+            ProtocolHandleKind::ConditionalOpportunity,
+            row.boundary().index,
+        )?,
+        super::PreparedTermination::Measurement(row) => require_data(
+            prepared,
+            &row.word.prepared,
+            ProtocolHandleKind::WordPortion,
+            row.word.index,
+        )?,
+        super::PreparedTermination::PhraseMeasurement(row) => {
+            if !std::ptr::eq(prepared, row.phrase.prepared.inner.as_ref()) {
+                return Err(protocol_error(ProtocolError::InvalidPhrasePortion));
+            }
+        }
+    }
+    scope_allocation_roots(
+        prepared,
+        &request.atomics,
+        &request.controls,
+        &request.boundary_context,
+        &request.line_box_struts,
+    )
+}
+
+pub(super) fn require_prepared(
+    expected: &PreparedText,
+    actual: &Arc<PreparedData>,
+    kind: ProtocolHandleKind,
+    occurrence: usize,
+) -> Result<()> {
+    require_data(&expected.inner, actual, kind, occurrence)
 }
 
 fn validate_context(

@@ -258,6 +258,7 @@ fn prepared_nested_atomic_baseline_batch<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )?;
     let available = parent_flow.physical_size(LogicalSizeOf::new(
         AvailableOf::definite(S::from_f64(100.0)),
@@ -1552,6 +1553,7 @@ fn fri06_c04_line_band_ordinary_block_keeps_outer_edge_and_inherits_parent_float
                     scopes: Vec::new(),
                     child_order: Vec::new(),
                 },
+                Vec::new(),
             )
             .unwrap();
             let batch = compute_layout_with_flow(
@@ -1690,6 +1692,7 @@ fn fri06_c04_line_band_nested_local_float_keeps_combined_ledger_order_both_scala
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let batch = compute_layout_with_flow(

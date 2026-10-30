@@ -519,6 +519,7 @@ fn physical_sibling_endpoints_inside_shared_mark_unit_admit_zero_and_positive_ed
                         scopes: Vec::new(),
                         child_order: Vec::new(),
                     },
+                    Vec::new(),
                 ) {
                     Ok(input) => {
                         let _packets = check_geometry(
@@ -582,6 +583,7 @@ fn physical_nested_pairs_keep_the_mark_attached_and_count_each_edge_once() {
                     scopes: Vec::new(),
                     child_order: Vec::new(),
                 },
+                Vec::new(),
             )
             .unwrap();
             let _packets =
@@ -684,6 +686,7 @@ fn cached_packets<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     check_geometry(&input, p, font, (2.0, end), (100, 101), [15.0, 14.0], dirty)

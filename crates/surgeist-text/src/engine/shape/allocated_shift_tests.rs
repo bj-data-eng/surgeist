@@ -198,6 +198,7 @@ fn allocated(
         }
         Row::Additional => {
             r.line_box_struts = vec![LineBoxStrut {
+                scope: None,
                 metrics: LineStrut {
                     baseline: 6.0,
                     line_extent: 10.0,
@@ -290,7 +291,10 @@ fn allocated_shift_atomic_control_and_additional_struts_keep_raw_metrics_across_
                 let ordinary = p
                     .select(allocated(&p, row, LineBoxAlignment::Baseline, true))
                     .unwrap()
-                    .finalize(SpacingAllocations::None)
+                    .finalize(crate::LineAllocations {
+                        spacing: SpacingAllocations::None,
+                        scopes: crate::ScopeAllocations::None,
+                    })
                     .unwrap();
                 let raw = raw_packets(&ordinary, AHEM);
                 assert_eq!(raw.len(), 1);
@@ -327,7 +331,12 @@ fn allocated_shift_atomic_control_and_additional_struts_keep_raw_metrics_across_
                     let selected = p.select(r.clone()).unwrap();
                     let calls = provider_calls();
                     assert!(calls > 0);
-                    let line = selected.finalize(SpacingAllocations::None).unwrap();
+                    let line = selected
+                        .finalize(crate::LineAllocations {
+                            spacing: SpacingAllocations::None,
+                            scopes: crate::ScopeAllocations::None,
+                        })
+                        .unwrap();
                     assert_eq!(provider_calls(), calls);
                     assert_eq!(selected.request().line_strut, r.line_strut);
                     near(line.feedback().baseline, baseline);
@@ -348,7 +357,12 @@ fn allocated_shift_atomic_control_and_additional_struts_keep_raw_metrics_across_
                             assert_eq!(selected.request().line_box_struts, r.line_box_struts)
                         }
                     }
-                    let again = selected.finalize(SpacingAllocations::None).unwrap();
+                    let again = selected
+                        .finalize(crate::LineAllocations {
+                            spacing: SpacingAllocations::None,
+                            scopes: crate::ScopeAllocations::None,
+                        })
+                        .unwrap();
                     let restored = line.with_spacing(SpacingAllocations::None).unwrap();
                     assert_eq!(provider_calls(), calls);
                     assert_eq!(again.selected_line(), selected);
@@ -420,7 +434,12 @@ fn allocated_shift_atomic_control_and_additional_struts_keep_raw_metrics_across_
                 system.refresh_fonts().unwrap();
                 drop(system);
                 let calls = provider_calls();
-                let replay = selected.finalize(SpacingAllocations::None).unwrap();
+                let replay = selected
+                    .finalize(crate::LineAllocations {
+                        spacing: SpacingAllocations::None,
+                        scopes: crate::ScopeAllocations::None,
+                    })
+                    .unwrap();
                 assert_eq!(provider_calls(), calls);
                 assert_eq!(raw_packets(&replay, AHEM), raw);
             }
@@ -442,7 +461,10 @@ fn allocated_shift_without_parent_strut_preserves_one_sided_bounds_and_absence()
             let line = p
                 .select(r)
                 .unwrap()
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap();
             // Only child[-6-delta,4-delta] exists; neither baseline zero nor a
             // DefaultFont strut is an occupied contribution. Extent stays10.
@@ -499,13 +521,21 @@ fn allocated_shift_arithmetic_and_physical_loss_refuse_without_changing_prior_ou
         let good = p
             .select(allocated(&p, row, shift(3.0), true))
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         let raw = raw_packets(&good, AHEM);
         let feedback = good.feedback();
         for delta in [f64::from_bits(1), 1e308, -1e308] {
             let selected = p.select(allocated(&p, row, shift(delta), true)).unwrap();
-            let error = selected.finalize(SpacingAllocations::None).unwrap_err();
+            let error = selected
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
+                .unwrap_err();
             assert!(
                 matches!(
                     error.detail(),
@@ -523,7 +553,10 @@ fn allocated_shift_arithmetic_and_physical_loss_refuse_without_changing_prior_ou
         let line = p
             .select(allocated(&p, row, shift(1.0), true))
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         let error = place(&p, line, 1.0, 1e16).unwrap_err();
         assert!(
@@ -544,7 +577,12 @@ fn allocated_shift_arithmetic_and_physical_loss_refuse_without_changing_prior_ou
                 box_geometry.baseline = 1e16;
             }
             let selected = p.select(r).unwrap();
-            let error = selected.finalize(SpacingAllocations::None).unwrap_err();
+            let error = selected
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
+                .unwrap_err();
             assert!(
                 matches!(
                     error.detail(),
@@ -575,7 +613,12 @@ fn allocated_shift_keeps_provider_and_source_basis_through_positive_spacing_repl
     let calls = provider_calls();
     assert!(calls > 0);
     assert_eq!(selected.spacing_slots().len(), 1);
-    let original = selected.finalize(SpacingAllocations::None).unwrap();
+    let original = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     let raw = raw_packets(&original, AHEM);
     assert_eq!(
         raw,
@@ -646,7 +689,12 @@ fn allocated_shift_keeps_foreign_occurrence_checks_and_detects_extent_overflow()
         line_extent: 1e308,
     };
     let selected = p.select(r).unwrap();
-    let error = selected.finalize(SpacingAllocations::None).unwrap_err();
+    let error = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap_err();
     assert!(
         matches!(
             error.detail(),
@@ -677,7 +725,10 @@ fn allocated_shift_default_font_parent_is_real_and_local_atomic_baseline_is_pres
     let line = p
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     // Raw Ahem10 gives an actual DefaultFont8/2 parent, not the unused
     // reference origin. max(8,6+3)+max(2,4-3)=11.
@@ -692,7 +743,10 @@ fn allocated_shift_default_font_parent_is_real_and_local_atomic_baseline_is_pres
     let line = empty
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     // A supplied zero parent is an actual contribution, unlike absence:
     // max(0,26)+max(0,-16)=26, rather than the sole child's extent10.
@@ -707,7 +761,10 @@ fn allocated_shift_default_font_parent_is_real_and_local_atomic_baseline_is_pres
     let line = p
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let slot = line.atomic_slots().next().unwrap();
     assert_eq!(slot.allocation, original);

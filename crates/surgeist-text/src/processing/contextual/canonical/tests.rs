@@ -5,17 +5,21 @@ fn processed(forced: bool) -> Arc<ProcessedSource> {
     let source = Source::new("A");
     Arc::new(
         process_contextual_source(ContextualSourceInput {
+            scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
             envelope: SourceProcessingEnvelope::Complete,
             scopes: vec![
                 SourceProcessingScope::Block {
+                    font_reference: None,
                     topology: SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: Style::default(),
                     used_direction: ParagraphBaseDirection::LeftToRight,
                 },
                 SourceProcessingScope::Inline {
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: Default::default(),
                     style: None,
                     boundaries: None,

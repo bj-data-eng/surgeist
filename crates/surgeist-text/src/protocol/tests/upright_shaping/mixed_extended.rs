@@ -82,7 +82,10 @@ fn finish(prepared: &PreparedText) -> FinalizedLine {
     prepared
         .select(value)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn close(actual: f64, expected: f64) {
@@ -689,7 +692,10 @@ fn place_prepared(
     value.context.line_box_direction = LineBoxDirection::LeftToRight;
     value.context.available_inline = None;
     value.context.spacing = SpacingPolicy::None;
-    let line = prepared.select(value)?.finalize(SpacingAllocations::None)?;
+    let line = prepared.select(value)?.finalize(crate::LineAllocations {
+        spacing: SpacingAllocations::None,
+        scopes: crate::ScopeAllocations::None,
+    })?;
     crate::Layout::from_finalized_lines(PlacementRequest {
         prepared,
         coverage: PlacementCoverage::WholeParagraph,

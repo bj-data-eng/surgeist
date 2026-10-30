@@ -41,6 +41,7 @@ fn continuation(
         kind: text::ParagraphOriginKind::Authored,
     };
     let block = || text::SourceProcessingScope::Block {
+        font_reference: None,
         topology: text::SourceProcessingTopology::Complete,
         trim: text::WhiteSpaceTrim::default(),
         base_style: base.clone(),
@@ -57,6 +58,7 @@ fn continuation(
     };
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -78,6 +80,8 @@ fn continuation(
             scopes: vec![
                 block(),
                 text::SourceProcessingScope::Inline {
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: text::WhiteSpaceTrim::default(),
                     style: Some(owner),
                     boundaries: captured_boundaries
@@ -227,6 +231,7 @@ fn complete_inline_scope_around_real_block_without_generated_output_is_accepted(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
@@ -253,7 +258,7 @@ fn complete_inline_scope_around_real_block_without_generated_output_is_accepted(
 #[test]
 fn complete_inline_scope_keeps_generated_output_before_and_after_real_block() {
     let (tree, bindings) = continuation(true, true);
-    let capture = LayoutFlowInput::try_new(&tree, 0, bindings.clone(), crate::WrappingInput { scopes: Vec::new(), child_order: Vec::new() }).unwrap_or_else(|error| {
+    let capture = LayoutFlowInput::try_new(&tree, 0, bindings.clone(), crate::WrappingInput { scopes: Vec::new(), child_order: Vec::new() }, Vec::new()).unwrap_or_else(|error| {
         panic!("the complete global inline pair [1,5] must support its actual paragraph projections: {error:?}")
     });
     let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
@@ -327,6 +332,7 @@ fn missing_global_inline_boundary_capture_remains_a_refusal() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("an uncaptured global pair must not be inferred from nearby controls")
     };
@@ -379,6 +385,7 @@ fn segmented_fixture(
     let end = source.text().len();
     source.span(text::Range::new(0, end), authored);
     let block = || text::SourceProcessingScope::Block {
+        font_reference: None,
         topology: text::SourceProcessingTopology::Complete,
         trim: text::WhiteSpaceTrim::default(),
         base_style: base.clone(),
@@ -394,6 +401,8 @@ fn segmented_fixture(
         });
         boundary_nodes.push(100);
         scopes.push(text::SourceProcessingScope::Inline {
+            alignment_boundary: None,
+            font_reference: None,
             trim: text::WhiteSpaceTrim::default(),
             style: None,
             boundaries: Some(text::SourceProcessingScopeBoundaries { start: 0, end: 3 }),
@@ -419,6 +428,8 @@ fn segmented_fixture(
         boundary_nodes.push(103);
     }
     scopes.push(text::SourceProcessingScope::Inline {
+        alignment_boundary: None,
+        font_reference: None,
         trim: text::WhiteSpaceTrim::default(),
         style: Some(owner),
         boundaries: Some(text::SourceProcessingScopeBoundaries {
@@ -543,6 +554,7 @@ fn segmented_fixture(
     root_children.extend(&boundary_nodes[start + 1..]);
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source,
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -671,6 +683,7 @@ fn middle_continuation_with_neither_endpoint_keeps_one_global_owner_and_local_ge
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
@@ -727,6 +740,7 @@ fn genuine_nonemitting_endpoint_paragraphs_supply_remote_controls_without_genera
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
@@ -776,6 +790,7 @@ fn foreign_same_ordinal_capture_cannot_supply_a_remote_endpoint() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("foreign capture endpoint");
     };
@@ -805,6 +820,7 @@ fn multiple_actual_paths_to_a_needed_scope_node_refuse_ambiguity() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("scope node has two real occurrences");
     };
@@ -828,6 +844,7 @@ fn absent_nonemitting_endpoint_paragraph_is_a_missing_real_association() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("the actual remote Start binding must be supplied");
     };
@@ -851,6 +868,7 @@ fn real_nested_block_order_must_agree_with_the_global_capture() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("the child domains cannot exchange actual tree order");
     };
@@ -874,6 +892,7 @@ fn positive_global_endpoints_remain_local_to_their_actual_paragraphs() {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         compute_layout_with_flow(&capture, 0, request(500.0)).unwrap()

@@ -26,6 +26,7 @@ pub(crate) struct PendingParagraph<Node> {
     pub bands: Vec<super::fit::LineBands>,
     pub flows: Vec<super::fit::LineFlow>,
     pub amounts: Vec<Vec<f64>>,
+    pub scopes: super::scope_alignment::ScopeBases,
     pub encounters: Vec<Vec<super::fit::EncounterBasis>>,
     pub zones: Vec<super::fit::ZoneBasis>,
     pub phrases: Vec<Vec<super::fit::PhraseBasis>>,
@@ -48,6 +49,7 @@ pub(crate) struct LineBasis {
     encounters: Vec<super::fit::EncounterBasis>,
     request: surgeist_text::LineSelectionRequest,
     amounts: Vec<f64>,
+    scopes: super::scope_alignment::ScopeBasis,
     anchor: surgeist_text::LineAnchor,
     orientation: surgeist_text::LineOrientation,
     atomics: Vec<surgeist_text::AtomicPlacement>,
@@ -75,6 +77,7 @@ pub(crate) struct PassBasis<Node, S: LayoutScalar> {
     )>,
     pub absolute_baselines: Vec<(Node, f64)>,
     pub associations: std::sync::Arc<super::capture::ScopeAssociations<Node>>,
+    pub scope_alignments: std::sync::Arc<super::scope_alignment::ScopeAlignmentSnapshot<S>>,
     pub hyphenation: Vec<(
         Node,
         crate::hyphenation::LineHyphenationState,
@@ -86,6 +89,42 @@ pub(crate) struct PassBasis<Node, S: LayoutScalar> {
         crate::text_indent::IndentLineState,
         crate::text_indent::IndentLineState,
     )>,
+}
+
+impl<Node, S: LayoutScalar> PassBasis<Node, S> {
+    pub(crate) fn admit_scope_comparison(
+        &self,
+        other: &Self,
+        resources: &super::scope_alignment::ScopeAlignmentResources<S>,
+    ) -> surgeist_text::Result<()> {
+        let Some(limits) = resources.key_limits()? else {
+            return Ok(());
+        };
+        super::scope_alignment::admit_key_comparison(
+            limits,
+            self.scope_alignments.rows().len(),
+            other.scope_alignments.rows().len(),
+            resources,
+        )?;
+        if self.lines.len() == other.lines.len() {
+            // Admit the descriptor preflight before walking the native line
+            // keys. Existing non-scope payload/equality remains native.
+            super::scope_alignment::ScopeAlignmentFacts::visit(
+                resources,
+                limits,
+                self.lines.len(),
+            )?;
+            for (line, other) in self.lines.iter().zip(&other.lines) {
+                super::scope_alignment::admit_key_comparison(
+                    limits,
+                    line.scopes.comparison_rows(),
+                    other.scopes.comparison_rows(),
+                    resources,
+                )?;
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone)]
@@ -106,6 +145,7 @@ pub(crate) struct TextComputation<'input, Node, S: LayoutScalar> {
     pub graph: Option<&'input crate::engine::validation::ValidationGraph<Node>>,
     pub paragraphs: &'input [TextParagraphBinding<Node>],
     pub associations: std::sync::Arc<super::capture::ScopeAssociations<Node>>,
+    pub scope_resources: super::scope_alignment::ScopeAlignmentResources<S>,
     pub frames: std::sync::Arc<[CanonicalFrame<Node, S>]>,
     pub pending: Vec<PendingParagraph<Node>>,
     pub boxes: Vec<super::boxes::BoxRunUse<Node, S>>,
@@ -369,6 +409,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
     pub fn new(
         paragraphs: &'input [TextParagraphBinding<Node>],
         associations: std::sync::Arc<super::capture::ScopeAssociations<Node>>,
+        scope_resources: super::scope_alignment::ScopeAlignmentResources<S>,
     ) -> Self {
         Self {
             wrapping: None,
@@ -376,6 +417,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
             graph: None,
             paragraphs,
             associations,
+            scope_resources,
             frames: std::sync::Arc::from([]),
             pending: Vec::new(),
             boxes: Vec::new(),
@@ -514,8 +556,25 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         }
     }
 
-    pub fn basis(&self, frames: Vec<CanonicalFrame<Node, S>>) -> PassBasis<Node, S> {
-        PassBasis {
+    pub fn basis(
+        &self,
+        frames: Vec<CanonicalFrame<Node, S>>,
+    ) -> surgeist_text::Result<PassBasis<Node, S>> {
+        if let Some(limits) = self.scope_resources.key_limits()? {
+            for paragraph in &self.pending {
+                super::scope_alignment::ScopeAlignmentFacts::visit(
+                    &self.scope_resources,
+                    limits,
+                    1,
+                )?;
+                super::scope_alignment::ScopeAlignmentFacts::visit(
+                    &self.scope_resources,
+                    limits,
+                    paragraph.entries.len(),
+                )?;
+            }
+        }
+        Ok(PassBasis {
             boxes: self.boxes.clone(),
             wrapping: self.wrapping.clone(),
             formatted: self
@@ -554,14 +613,21 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                         .zip(&paragraph.phrases)
                         .zip(&paragraph.boxes)
                         .zip(&paragraph.natural_advances)
+                        .zip(paragraph.scopes.iter(paragraph.entries.len()))
                 })
                 .map(
                     |(
                         (
-                            ((((((placement, band), flow), amounts), encounters), zone), phrases),
-                            boxes,
+                            (
+                                (
+                                    (((((placement, band), flow), amounts), encounters), zone),
+                                    phrases,
+                                ),
+                                boxes,
+                            ),
+                            natural_advance,
                         ),
-                        natural_advance,
+                        scopes,
                     )| {
                         LineBasis {
                             natural_advance: *natural_advance,
@@ -570,6 +636,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                             phrases: phrases.clone(),
                             encounters: encounters.clone(),
                             amounts: amounts.clone(),
+                            scopes,
                             request: placement.finalized_line().selected_line().request().clone(),
                             disposition: match placement {
                                 PlacementEntry::Formatted(_) => {
@@ -614,6 +681,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                 .collect(),
             absolute_baselines: self.absolute_baselines.clone(),
             associations: self.associations.clone(),
+            scope_alignments: self.scope_resources.snapshot().clone(),
             hyphenation: self
                 .pending
                 .iter()
@@ -637,7 +705,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                     )
                 })
                 .collect(),
-        }
+        })
     }
 
     pub fn finish<M>(

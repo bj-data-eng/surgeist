@@ -37,6 +37,8 @@ fn contextual_space_preservation_uses_emitted_token_facts_and_real_trim() {
     }
     let mut capture = input("  A  ", WhiteSpace::Preserve);
     capture.scopes.push(SourceProcessingScope::Inline {
+        alignment_boundary: None,
+        font_reference: None,
         style: None,
         boundaries: None,
         trim: WhiteSpaceTrim {
@@ -169,6 +171,7 @@ fn input(text: impl Into<Text>, mode: WhiteSpace) -> ContextualSourceInput {
     let source = Source::new(text);
     let len = source.text().len();
     ContextualSourceInput {
+        scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -179,6 +182,7 @@ fn input(text: impl Into<Text>, mode: WhiteSpace) -> ContextualSourceInput {
         boundary_policies: vec![],
         replacements: vec![],
         scopes: vec![SourceProcessingScope::Block {
+            font_reference: None,
             topology: SourceProcessingTopology::Unknown,
             used_direction: crate::ParagraphBaseDirection::LeftToRight,
             trim: WhiteSpaceTrim::default(),
@@ -326,7 +330,12 @@ fn line(prepared: &PreparedText) -> FinalizedLine {
             },
         })
         .unwrap();
-    selected.finalize(SpacingAllocations::None).unwrap()
+    selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap()
 }
 fn placed(prepared: PreparedText) -> Layout {
     let line = line(&prepared);
@@ -380,6 +389,7 @@ fn block_inner_trim_keeps_indentation_while_inline_inner_trim_removes_it() {
         let mut capture = input("\n  X\n\n  ", WhiteSpace::Preserve);
         if block {
             capture.scopes[0] = SourceProcessingScope::Block {
+                font_reference: None,
                 topology: SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim {
@@ -390,6 +400,8 @@ fn block_inner_trim_keeps_indentation_while_inline_inner_trim_removes_it() {
             };
         } else {
             capture.scopes.push(SourceProcessingScope::Inline {
+                alignment_boundary: None,
+                font_reference: None,
                 style: None,
                 boundaries: None,
                 trim: WhiteSpaceTrim {
@@ -451,6 +463,8 @@ fn check_exterior_inline_trim(value: &str, mode: WhiteSpace) {
         .map(|i| policy(ParagraphBoundaryDefinition::Connection(i)))
         .collect();
     capture.scopes.push(SourceProcessingScope::Inline {
+        alignment_boundary: None,
+        font_reference: None,
         style: None,
         boundaries: None,
         trim: WhiteSpaceTrim {
@@ -549,6 +563,7 @@ fn hole(kind: InlineBoxKind) -> ContextualSourceInput {
     }
     capture.scopes.push(if kind == InlineBoxKind::InFlow {
         SourceProcessingScope::AtomicBlock {
+            font_reference: None,
             topology: SourceProcessingTopology::Unknown,
             used_direction: crate::ParagraphBaseDirection::LeftToRight,
             trim: WhiteSpaceTrim::default(),
@@ -557,6 +572,7 @@ fn hole(kind: InlineBoxKind) -> ContextualSourceInput {
         }
     } else {
         SourceProcessingScope::OutOfFlowBlock {
+            font_reference: None,
             topology: SourceProcessingTopology::Unknown,
             used_direction: crate::ParagraphBaseDirection::LeftToRight,
             trim: WhiteSpaceTrim::default(),
@@ -737,6 +753,8 @@ fn trim_does_not_fuse_removed_original_surrogate_neighbors() {
         .map(|i| policy(ParagraphBoundaryDefinition::Connection(i)))
         .collect();
     capture.scopes.push(SourceProcessingScope::Inline {
+        alignment_boundary: None,
+        font_reference: None,
         style: None,
         boundaries: None,
         trim: WhiteSpaceTrim {
@@ -878,6 +896,8 @@ fn same_offset_nested_empty_scopes_and_consecutive_controls_retain_actual_order_
     capture.paragraphs[0] = facts(ParagraphBaseDirection::RightToLeft);
     capture.scopes.extend([
         SourceProcessingScope::Inline {
+            alignment_boundary: None,
+            font_reference: None,
             style: None,
             boundaries: None,
             trim: WhiteSpaceTrim {
@@ -886,6 +906,8 @@ fn same_offset_nested_empty_scopes_and_consecutive_controls_retain_actual_order_
             },
         },
         SourceProcessingScope::Inline {
+            alignment_boundary: None,
+            font_reference: None,
             style: None,
             boundaries: None,
             trim: WhiteSpaceTrim {
@@ -990,6 +1012,7 @@ fn empty_internal_domain_keeps_its_captured_font_and_direction() {
         .origins
         .push(origin(&capture.source, Range::new(0, 0)));
     capture.scopes.push(SourceProcessingScope::OutOfFlowBlock {
+        font_reference: None,
         topology: SourceProcessingTopology::Unknown,
         used_direction: crate::ParagraphBaseDirection::LeftToRight,
         trim: WhiteSpaceTrim::default(),
@@ -1158,7 +1181,12 @@ fn contextual_source_defined_replacement_remains_presentation_only() {
             },
         })
         .unwrap();
-    let finalized = selected.finalize(SpacingAllocations::None).unwrap();
+    let finalized = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(
         finalized
             .run_views()
@@ -1187,6 +1215,8 @@ fn delimiter_crossing_scope_or_domain_is_rejected_atomically() {
     }];
     capture.boundary_policies = vec![policy(ParagraphBoundaryDefinition::Connection(0))];
     capture.scopes.push(SourceProcessingScope::Inline {
+        alignment_boundary: None,
+        font_reference: None,
         style: None,
         boundaries: None,
         trim: WhiteSpaceTrim::default(),
@@ -1348,6 +1378,8 @@ fn actual_inline_trim_scope_survives_block_in_inline_paragraph_cuts_once() {
         ];
         capture.scopes.extend([
             SourceProcessingScope::Inline {
+                alignment_boundary: None,
+                font_reference: None,
                 style: None,
                 boundaries: None,
                 trim: WhiteSpaceTrim {
@@ -1356,6 +1388,7 @@ fn actual_inline_trim_scope_survives_block_in_inline_paragraph_cuts_once() {
                 },
             },
             SourceProcessingScope::Block {
+                font_reference: None,
                 topology: SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
@@ -1515,6 +1548,8 @@ fn sole_stream_orders_paragraphs_and_same_offset_atomics_independently_of_fact_t
 fn all_whitespace_inline_trim_keeps_original_endpoints_and_real_empty_line_strut() {
     let mut capture = input(" \t ", WhiteSpace::Preserve);
     capture.scopes.push(SourceProcessingScope::Inline {
+        alignment_boundary: None,
+        font_reference: None,
         style: None,
         boundaries: None,
         trim: WhiteSpaceTrim {
@@ -1592,7 +1627,12 @@ fn selected_soft_wrap_does_not_reset_plaintext_context_or_copy_line_edge_deletio
             },
         })
         .unwrap();
-    let finalized = selected.finalize(SpacingAllocations::None).unwrap();
+    let finalized = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(finalized.feedback().advance, 10.0);
     assert_eq!(text(result.plaintext_items(Affinity::Before)), [65, 32, 66]);
     assert_eq!(result.processed_text().code_units(), [65, 32, 66]);
@@ -1608,6 +1648,7 @@ fn block_exterior_trim_crosses_its_own_boundary_and_stops_at_a_genuine_forced_co
             origin(&capture.source, Range::new(4, 7)),
         ];
         capture.scopes.push(SourceProcessingScope::Block {
+            font_reference: None,
             topology: SourceProcessingTopology::Unknown,
             used_direction: crate::ParagraphBaseDirection::LeftToRight,
             trim: WhiteSpaceTrim {
@@ -1850,6 +1891,7 @@ fn empty_domain_at_nonzero_original_offset_has_source_and_placed_accessibility()
         .origins
         .push(origin(&capture.source, Range::new(1, 1)));
     capture.scopes.push(SourceProcessingScope::Block {
+        font_reference: None,
         topology: SourceProcessingTopology::Unknown,
         used_direction: crate::ParagraphBaseDirection::LeftToRight,
         trim: WhiteSpaceTrim::default(),
@@ -1985,7 +2027,12 @@ fn right_line(prepared: &PreparedText) -> FinalizedLine {
             },
         })
         .unwrap();
-    selected.finalize(SpacingAllocations::None).unwrap()
+    selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap()
 }
 
 fn short_hole(kind: InlineBoxKind) -> ContextualSourceInput {
@@ -2334,6 +2381,7 @@ fn consecutive_child_holes(empty: bool, control: bool) -> ContextualSourceInput 
         .collect();
     for atomic in [0, 1] {
         capture.scopes.push(SourceProcessingScope::OutOfFlowBlock {
+            font_reference: None,
             topology: SourceProcessingTopology::Unknown,
             used_direction: crate::ParagraphBaseDirection::LeftToRight,
             trim: WhiteSpaceTrim::default(),

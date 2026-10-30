@@ -93,6 +93,7 @@ fn prepared(
         events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
         let processed = std::sync::Arc::new(
             crate::process_contextual_source(crate::ContextualSourceInput {
+                scope_alignment_limits: None,
                 source: source.clone(),
                 segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
                 envelope: crate::SourceProcessingEnvelope::Complete,
@@ -125,6 +126,7 @@ fn prepared(
                 replacements: vec![],
                 computed_line_boundaries: vec![],
                 scopes: vec![crate::SourceProcessingScope::Block {
+                    font_reference: None,
                     topology: crate::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: own,
@@ -461,12 +463,20 @@ fn native_spaces_allocation_remains_trailing_while_authored_spacing_uses_its_own
             let selected = p.select(selection).unwrap();
             let slots = selected.spacing_slots().collect::<Vec<_>>();
             assert_eq!(slots.len(), 1);
-            let natural = selected.finalize(SpacingAllocations::None).unwrap();
+            let natural = selected
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
+                .unwrap();
             let line = selected
-                .finalize(SpacingAllocations::Complete(vec![SpacingAllocation {
-                    slot: slots[0].clone(),
-                    amount: 6.0,
-                }]))
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
+                        slot: slots[0].clone(),
+                        amount: 6.0,
+                    }]),
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap();
             assert_eq!(raw(&line), raw(&natural));
             let body = if native_zero { 12.0 } else { 10.0 };
@@ -615,7 +625,10 @@ fn a_required_half_cannot_disappear_in_the_finalized_local_provider_pen() {
     let error = demanded
         .select(selection)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap_err();
     assert_eq!(error.code, crate::ErrorCode::InvalidTextNumeric);
     assert!(
@@ -681,7 +694,10 @@ fn hypothetical_block_space_uses_the_same_intrinsic_zero_gate_without_inventing_
             let line = p
                 .select(selection)
                 .unwrap()
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap();
             // Positive block SPACE10 plus authored4 gives a56px grid and
             // body A at0/56. Intrinsic0 SPACE suppresses4: period0, no tab
@@ -743,7 +759,10 @@ fn indication_prefix(prepared: &PreparedText) -> FinalizedLine {
     prepared
         .select(selection)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 

@@ -54,7 +54,10 @@ fn clockwise_source_next_line_refuses_lossy_control_target_after_exact_traversal
     let first = p
         .select(selected_request(&p, start(&p), forces[0].clone()))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let middle = p
         .select(selected_request(
@@ -63,7 +66,10 @@ fn clockwise_source_next_line_refuses_lossy_control_target_after_exact_traversal
             forces[1].clone(),
         ))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let last = p
         .select(selected_request(
@@ -72,7 +78,10 @@ fn clockwise_source_next_line_refuses_lossy_control_target_after_exact_traversal
             terminal(&p),
         ))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(
         (

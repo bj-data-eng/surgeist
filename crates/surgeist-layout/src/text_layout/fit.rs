@@ -29,7 +29,7 @@ use surgeist_text::{
     ControlAllocation, FinalizedLine, HyphenationContinuation, LineContext, LineEnd,
     LineOrientation, LineSelectionRequest, LineStart, ParagraphBaseDirection,
     PhraseOverflowDecision, PreparedAlternative, PreparedBoundary, PreparedBreakKind,
-    PreparedParticipant, PreparedPhrasePortion, PreparedTermination, PreparedText, SelectedLine,
+    PreparedParticipant, PreparedPhrasePortion, PreparedTermination, PreparedText,
     SpacingAllocation, SpacingAllocations, SpacingPolicy, SpacingSlotDisposition, TabContext,
     TabPreparation,
 };
@@ -159,6 +159,7 @@ struct CandidateBasis {
     request: LineSelectionRequest,
     boxes: Option<BoxAssignment>,
     amounts: Vec<f64>,
+    scopes: super::scope_alignment::ScopeBasis,
     natural_advance: f64,
     logical_start: f64,
     placed_start: f64,
@@ -239,6 +240,7 @@ pub(crate) struct FittedLine {
     pub encounters: Vec<EncounterBasis>,
     pub finalized: FinalizedLine,
     pub amounts: Vec<f64>,
+    pub scopes: super::scope_alignment::ScopeBasis,
     pub natural_advance: f64,
     pub program: Option<std::sync::Arc<SelectionProgram>>,
     pub inline_start: f64,
@@ -300,6 +302,7 @@ pub(crate) struct FitInput<'a> {
     pub formatted: &'a FormattedTailSnapshot,
     pub line_box_context: crate::line_box::LineBoxContext,
     pub prepared: &'a PreparedText,
+    pub scope_alignments: &'a dyn super::scope_alignment::ScopeAlignmentFacts,
     pub available: Available,
     pub base_direction: ParagraphBaseDirection,
     pub block_direction: ParagraphBaseDirection,
@@ -358,25 +361,97 @@ fn natural_line(
     prepared: &PreparedText,
     reusable: &[ReusableLine],
     request: &LineSelectionRequest,
+    scope_alignments: &dyn super::scope_alignment::ScopeAlignmentFacts,
 ) -> Result<FinalizedLine, FitError> {
-    if let Some(line) = reusable.iter().find(|line| {
-        line.finalized.selected_line().request() == request
-            && line.amounts.iter().all(|amount| *amount == 0.0)
-    }) {
-        return Ok(line.finalized.clone());
-    }
-    if matches!(
-        request.context.spacing,
-        SpacingPolicy::InterWord | SpacingPolicy::InterCharacter
-    ) && let Some(line) = reusable
+    if let Some(line) = reusable
         .iter()
         .find(|line| line.finalized.selected_line().request() == request)
     {
-        return Ok(line.finalized.with_spacing(SpacingAllocations::None)?);
+        let selected = line.finalized.selected_line();
+        let scopes = super::scope_alignment::allocate(
+            super::scope_alignment::ScopeAllocationInput::Finalized(&line.finalized),
+            scope_alignments,
+        )?;
+        if super::scope_alignment::matches(&line.finalized, scopes.allocations(), scope_alignments)?
+        {
+            drop(scopes);
+            return if line.amounts.iter().all(|amount| *amount == 0.0) {
+                Ok(line.finalized.clone())
+            } else {
+                replay_spacing(&line.finalized, SpacingAllocations::None, scope_alignments)
+            };
+        }
+        return finalize_scopes(&selected, scopes, scope_alignments);
     }
-    Ok(prepared
-        .select(request.clone())?
-        .finalize(SpacingAllocations::None)?)
+    let selected = {
+        let operation = scope_alignments.begin(
+            surgeist_text::ScopeAlignmentCensusInput::Selection { prepared, request },
+            0,
+        )?;
+        match &operation {
+            Some(operation) => {
+                prepared.select_with_scope_allowance(request.clone(), operation.allowance()?)?
+            }
+            None => prepared.select(request.clone())?,
+        }
+    };
+    let scopes = super::scope_alignment::allocate(
+        super::scope_alignment::ScopeAllocationInput::Selected(&selected),
+        scope_alignments,
+    )?;
+    finalize_scopes(&selected, scopes, scope_alignments)
+}
+
+fn finalize_scopes(
+    selected: &surgeist_text::SelectedLine,
+    scopes: super::scope_alignment::AllocatedScopes,
+    facts: &dyn super::scope_alignment::ScopeAlignmentFacts,
+) -> Result<FinalizedLine, FitError> {
+    // The incoming allocation vector remains metered as Layout storage during
+    // census and slot growth, then is handed to Text without double charging.
+    let mut operation = facts.begin(
+        surgeist_text::ScopeAlignmentCensusInput::Product(
+            surgeist_text::ScopeAlignmentProduct::Selected(selected),
+        ),
+        1,
+    )?;
+    let allocations = surgeist_text::LineAllocations {
+        spacing: SpacingAllocations::None,
+        scopes: scopes.into_text(),
+    };
+    let line = match &operation {
+        Some(operation) => {
+            selected.finalize_with_scope_allowance(allocations, operation.allowance()?)?
+        }
+        None => selected.finalize(allocations)?,
+    };
+    if let Some(operation) = &mut operation {
+        operation.register(&line)?;
+    }
+    Ok(line)
+}
+
+fn replay_spacing(
+    line: &FinalizedLine,
+    spacing: SpacingAllocations,
+    facts: &dyn super::scope_alignment::ScopeAlignmentFacts,
+) -> Result<FinalizedLine, FitError> {
+    let mut operation = facts.begin(
+        surgeist_text::ScopeAlignmentCensusInput::Product(
+            surgeist_text::ScopeAlignmentProduct::Finalized(line),
+        ),
+        1,
+    )?;
+    let result = match &operation {
+        Some(operation) => {
+            line.with_spacing_with_scope_allowance(spacing, operation.allowance()?)?
+        }
+        None => line.with_spacing(spacing)?,
+    };
+    if let Some(operation) = &mut operation {
+        operation.register(&result)?;
+    }
+    Ok(result)
 }
 
 /// Rebuild the reached facts for this actual request. Context rows allocate no
@@ -423,6 +498,7 @@ fn finalize_candidate(
     prepared: &PreparedText,
     controls: &[ControlAllocation],
     reusable: &[ReusableLine],
+    scope_alignments: &dyn super::scope_alignment::ScopeAlignmentFacts,
     mut request: LineSelectionRequest,
     alignment: FinalizationAlignment,
     active_request: &mut LineSelectionRequest,
@@ -439,7 +515,7 @@ fn finalize_candidate(
     }
     *active_request = request.clone();
     resolve_boundary_context(prepared, controls, &mut request)?;
-    let natural = natural_line(prepared, reusable, &request)?;
+    let natural = natural_line(prepared, reusable, &request, scope_alignments)?;
     let natural_advance = natural.measurements().alignment().advance();
     let selected = natural.selected_line();
     let mut amounts = vec![0.0; selected.spacing_slots().len()];
@@ -450,7 +526,7 @@ fn finalize_candidate(
         )
     {
         *active_request = request.clone();
-        if let Some(allocation) = spacing::allocate(&natural)? {
+        if let Some(allocation) = spacing::allocate(&natural, scope_alignments)? {
             return Ok(FinalizedCandidate {
                 conditional_trial: None,
                 request,
@@ -479,7 +555,7 @@ fn finalize_candidate(
         }
         *active_request = request.clone();
         resolve_boundary_context(prepared, controls, &mut request)?;
-        let finalized = natural_line(prepared, reusable, &request)?;
+        let finalized = natural_line(prepared, reusable, &request, scope_alignments)?;
         amounts = vec![0.0; finalized.selected_line().spacing_slots().len()];
         return Ok(FinalizedCandidate {
             conditional_trial: (justification == TextJustification::InterCharacter)
@@ -540,15 +616,29 @@ fn finalize_candidate(
                     };
                     supplied = finite(supplied + amounts[*index])?;
                 }
+                super::scope_alignment::admit_frame_comparisons(
+                    &natural,
+                    reusable
+                        .iter()
+                        .map(|line| line.finalized.scope_allocations().len()),
+                    scope_alignments,
+                )?;
                 let finalized = if let Some(line) = reusable.iter().find(|line| {
-                    line.finalized.selected_line().request() == &request && line.amounts == amounts
+                    line.finalized.selected_line().request() == &request
+                        && line.amounts == amounts
+                        && line.finalized.scope_allocations() == natural.scope_allocations()
                 }) {
                     line.finalized.clone()
                 } else {
-                    finalize_spacing(&selected, &amounts)?
+                    finalize_spacing(&natural, &amounts, scope_alignments)?
                 };
-                let finalized =
-                    constrain_spacing_budget(&selected, &retained, width, &mut amounts, finalized)?;
+                let finalized = constrain_spacing_budget(
+                    &retained,
+                    width,
+                    &mut amounts,
+                    finalized,
+                    scope_alignments,
+                )?;
                 return Ok(FinalizedCandidate {
                     conditional_trial: None,
                     request,
@@ -563,7 +653,7 @@ fn finalize_candidate(
             request.context.alignment = text_alignment(normal.unexpandable(last));
             *active_request = request.clone();
             resolve_boundary_context(prepared, controls, &mut request)?;
-            let finalized = natural_line(prepared, reusable, &request)?;
+            let finalized = natural_line(prepared, reusable, &request, scope_alignments)?;
             amounts = vec![0.0; finalized.selected_line().spacing_slots().len()];
             return Ok(FinalizedCandidate {
                 conditional_trial: None,
@@ -610,20 +700,25 @@ fn finalize_with_roles(
                     character_basis(input.alignment, input.last_alignment, active.context.end);
             }
             resolve_boundary_context(input.prepared, input.controls, &mut active)?;
-            natural_line(input.prepared, input.reusable, &active).map(|finalized| {
-                FinalizedCandidate {
-                    conditional_trial: None,
-                    amounts: vec![0.0; finalized.selected_line().spacing_slots().len()],
-                    request: active.clone(),
-                    natural_advance: finalized.measurements().alignment().advance(),
-                    finalized,
-                }
+            natural_line(
+                input.prepared,
+                input.reusable,
+                &active,
+                input.scope_alignments,
+            )
+            .map(|finalized| FinalizedCandidate {
+                conditional_trial: None,
+                amounts: vec![0.0; finalized.selected_line().spacing_slots().len()],
+                request: active.clone(),
+                natural_advance: finalized.measurements().alignment().advance(),
+                finalized,
             })
         } else {
             finalize_candidate(
                 input.prepared,
                 input.controls,
                 input.reusable,
+                input.scope_alignments,
                 request.clone(),
                 if operation == CandidateOperation::OrdinaryFallback {
                     FinalizationAlignment {
@@ -682,22 +777,65 @@ fn finalize_with_roles(
 
 /// Every probe executes the complete table on this actual selection. Never
 /// reconstruct Text's slot additions or its logical advance fold in Layout.
-fn finalize_spacing(selected: &SelectedLine, amounts: &[f64]) -> Result<FinalizedLine, FitError> {
-    Ok(selected.finalize(SpacingAllocations::Complete(
-        selected
+fn finalize_spacing(
+    line: &FinalizedLine,
+    amounts: &[f64],
+    facts: &dyn super::scope_alignment::ScopeAlignmentFacts,
+) -> Result<FinalizedLine, FitError> {
+    let mut operation = facts.begin(
+        surgeist_text::ScopeAlignmentCensusInput::Product(
+            surgeist_text::ScopeAlignmentProduct::Finalized(line),
+        ),
+        1,
+    )?;
+    let (allocations, lease) = if let Some(operation) = &operation {
+        let count = line
+            .selected_line()
             .spacing_slots()
-            .zip(amounts)
-            .map(|(slot, &amount)| SpacingAllocation { slot, amount })
-            .collect(),
-    ))?)
+            .len()
+            .min(amounts.len());
+        let (mut rows, lease) = super::scope_alignment::allocation_buffer::<SpacingAllocation>(
+            facts, operation, count,
+        )?;
+        rows.extend(
+            line.selected_line()
+                .spacing_slots()
+                .zip(amounts)
+                .map(|(slot, &amount)| SpacingAllocation { slot, amount }),
+        );
+        (SpacingAllocations::Complete(rows), Some(lease))
+    } else {
+        (
+            SpacingAllocations::Complete(
+                line.selected_line()
+                    .spacing_slots()
+                    .zip(amounts)
+                    .map(|(slot, &amount)| SpacingAllocation { slot, amount })
+                    .collect(),
+            ),
+            None,
+        )
+    };
+    // Text admits this exact input before allocating new scope frame geometry.
+    drop(lease);
+    let result = match &operation {
+        Some(operation) => {
+            line.with_spacing_with_scope_allowance(allocations, operation.allowance()?)?
+        }
+        None => line.with_spacing(allocations)?,
+    };
+    if let Some(operation) = &mut operation {
+        operation.register(&result)?;
+    }
+    Ok(result)
 }
 
 fn constrain_spacing_budget(
-    selected: &SelectedLine,
     retained: &[usize],
     width: f64,
     amounts: &mut [f64],
     mut finalized: FinalizedLine,
+    facts: &dyn super::scope_alignment::ScopeAlignmentFacts,
 ) -> Result<FinalizedLine, FitError> {
     if finalized.measurements().alignment().advance() <= width {
         return Ok(finalized);
@@ -718,7 +856,7 @@ fn constrain_spacing_budget(
         } else {
             previous.next_down()
         };
-        finalized = finalize_spacing(selected, amounts)?;
+        finalized = finalize_spacing(&finalized, amounts, facts)?;
         if finalized.measurements().alignment().advance() <= width {
             return Ok(finalized);
         }
@@ -749,6 +887,7 @@ struct EvaluatedCandidate {
     finalized: FinalizedLine,
     conditional_trial: Option<FinalizedLine>,
     amounts: Vec<f64>,
+    scopes: super::scope_alignment::ScopeBasis,
     natural_advance: f64,
     encounters: Vec<EncounterBasis>,
     bands: LineBands,
@@ -765,6 +904,7 @@ impl EvaluatedCandidate {
             boxes: self.boxes.clone(),
             request: self.request.clone(),
             amounts: self.amounts.clone(),
+            scopes: self.scopes.clone(),
             natural_advance: self.natural_advance,
             logical_start: position.logical_start,
             placed_start: self.placed_start,
@@ -1030,12 +1170,14 @@ fn box_checkpoint<'a>(
 struct CandidateKey {
     request: LineSelectionRequest,
     boxes: Option<BoxAssignment>,
+    scopes: super::scope_alignment::ScopeBasis,
 }
 impl EvaluatedCandidate {
     fn key(&self) -> CandidateKey {
         CandidateKey {
             request: self.request.clone(),
             boxes: self.boxes.clone(),
+            scopes: self.scopes.clone(),
         }
     }
 }
@@ -1044,6 +1186,7 @@ impl FittedLine {
         CandidateKey {
             request: self.finalized.selected_line().request().clone(),
             boxes: self.boxes.clone(),
+            scopes: self.scopes.clone(),
         }
     }
 }
@@ -1144,6 +1287,10 @@ where
             if ordinary.is_none() {
                 ordinary = Some(trial.clone());
             }
+            trial.scopes.admit_comparisons(
+                input.scope_alignments,
+                query.rejected_choices.iter().map(|key| &key.scopes),
+            )?;
             if !query.rejected_choices.contains(&trial.key()) {
                 if unrejected.is_none() {
                     unrejected = Some(trial.clone());
@@ -1211,7 +1358,7 @@ where
         (self.reset)(EncounterReset::Candidate);
         let mut height = 0.0;
         let mut placed_start = position.logical_start;
-        let mut rejected = Vec::new();
+        let mut rejected: Vec<CandidateBasis> = Vec::new();
         loop {
             let bands = query_bands(&mut self.band, position.logical_start, placed_start, height)?;
             let band = bands.combined();
@@ -1225,8 +1372,12 @@ where
                 surgeist_text::LineAlignmentInsets::ZERO
             };
             request.context.tabs = tab_context(input, band, request.context.available_inline)?;
-            let mut allocation_bases = Vec::new();
-            let (finalized, amounts, natural_advance, conditional_trial, role_basis) = loop {
+            let mut allocation_bases: Vec<(
+                LineSelectionRequest,
+                Vec<f64>,
+                super::scope_alignment::ScopeBasis,
+            )> = Vec::new();
+            let (finalized, amounts, scopes, natural_advance, conditional_trial, role_basis) = loop {
                 // Feedback retains actual allocations, but each attempt starts
                 // from the caller's method-bound target. An ordinary fallback
                 // result cannot replace the primary conditional authority.
@@ -1273,6 +1424,8 @@ where
                     placed_start,
                     &original_box_struts,
                 )?;
+                let scope_basis =
+                    super::scope_alignment::basis(&candidate.finalized, input.scope_alignments)?;
                 if actual.atomics == request.atomics
                     && actual.controls == request.controls
                     && actual.line_strut == request.line_strut
@@ -1290,12 +1443,17 @@ where
                     break (
                         candidate.finalized,
                         candidate.amounts,
+                        scope_basis,
                         candidate.natural_advance,
                         candidate.conditional_trial,
                         role_basis,
                     );
                 }
-                let basis = (request.clone(), candidate.amounts);
+                let basis = (request.clone(), candidate.amounts, scope_basis);
+                basis.2.admit_comparisons(
+                    input.scope_alignments,
+                    allocation_bases.iter().map(|old| &old.2),
+                )?;
                 if allocation_bases.contains(&basis) {
                     return Err(FitError::FeedbackCycle);
                 }
@@ -1333,6 +1491,7 @@ where
                 boxes: boxes.clone(),
                 request: request.clone(),
                 amounts: amounts.clone(),
+                scopes: scopes.clone(),
                 natural_advance,
                 logical_start: position.logical_start,
                 placed_start,
@@ -1341,6 +1500,10 @@ where
                 minimum_block: position.minimum_block,
             };
             if actual_bands != bands || actual_start != placed_start {
+                basis.scopes.admit_comparisons(
+                    input.scope_alignments,
+                    rejected.iter().map(|old| &old.scopes),
+                )?;
                 if rejected.contains(&basis) {
                     return Err(FitError::FeedbackCycle);
                 }
@@ -1413,6 +1576,7 @@ where
                 finalized,
                 conditional_trial,
                 amounts,
+                scopes,
                 natural_advance,
                 encounters,
                 bands,
@@ -1546,6 +1710,10 @@ where
             fitting_none |= candidate.disposition.is_formatted()
                 && candidate.fits
                 && candidate.request.alternative.is_none();
+            candidate.scopes.admit_comparisons(
+                input.scope_alignments,
+                query.rejected_choices.iter().map(|key| &key.scopes),
+            )?;
             if query.rejected_choices.contains(&candidate.key()) {
                 if candidate.request.alternative.is_some() {
                     dispositions.push(ConditionalDisposition::ConsumerHyphenationPolicy(
@@ -1864,6 +2032,7 @@ where
     /// verify the chosen candidate's actual complete receipt before accepting it.
     fn restore(
         &mut self,
+        input: &FitInput<'_>,
         candidate: &EvaluatedCandidate,
         position: &CandidatePosition,
     ) -> Result<(), FitError> {
@@ -1895,6 +2064,15 @@ where
             || actual.controls != candidate.request.controls
             || actual.line_strut != candidate.request.line_strut
             || actual.line_box_struts != candidate.request.line_box_struts
+            || !super::scope_alignment::matches(
+                &candidate.finalized,
+                super::scope_alignment::allocate(
+                    super::scope_alignment::ScopeAllocationInput::Finalized(&candidate.finalized),
+                    input.scope_alignments,
+                )?
+                .allocations(),
+                input.scope_alignments,
+            )?
         {
             return Err(FitError::FeedbackCycle);
         }
@@ -1985,7 +2163,12 @@ fn conditional_query_frame(
     let mut request = candidate.request.clone();
     request.context.spacing = method;
     resolve_boundary_context(input.prepared, input.controls, &mut request)?;
-    natural_line(input.prepared, input.reusable, &request)
+    natural_line(
+        input.prepared,
+        input.reusable,
+        &request,
+        input.scope_alignments,
+    )
 }
 
 struct LineEndpoint {
@@ -2731,7 +2914,7 @@ where
                             batch = next;
                         }
                     }
-                    environment.restore(&candidate, &position)?;
+                    environment.restore(input, &candidate, &position)?;
                     let basis = (
                         candidate.request.clone(),
                         candidate.boxes.clone(),
@@ -2770,7 +2953,7 @@ where
                         && let Some(progress) = minimal_progress
                     {
                         candidate = progress;
-                        environment.restore(&candidate, &position)?;
+                        environment.restore(input, &candidate, &position)?;
                     }
                     if !candidate.fits
                         && let Some(next) = candidate
@@ -2787,7 +2970,7 @@ where
                     }
                     // Deferred replay above may have been a no-op. Restore the exact
                     // candidate once more before any clear/accept operation observes it.
-                    environment.restore(&candidate, &position)?;
+                    environment.restore(input, &candidate, &position)?;
                     let logical_end = finite(
                         position.logical_start + candidate.disposition.height(&candidate.finalized),
                     )?;
@@ -2835,6 +3018,7 @@ where
                         encounters: candidate.encounters,
                         finalized: candidate.finalized,
                         amounts: candidate.amounts,
+                        scopes: candidate.scopes,
                         natural_advance: candidate.natural_advance,
                         program: None,
                         inline_start: candidate.bands.combined().start,
@@ -3003,7 +3187,11 @@ mod tests {
         text_fragment::fragment_for,
     };
 
-    fn selected(style: surgeist_text::Style, source: &str, width: f64) -> SelectedLine {
+    fn selected(
+        style: surgeist_text::Style,
+        source: &str,
+        width: f64,
+    ) -> surgeist_text::SelectedLine {
         let paragraph = PreparedParagraph::plain(1, surgeist_text::Source::new(source), style);
         let original = fragment_for(&paragraph.prepared).finalized_line();
         let mut request = original.selected_line().request().clone();
@@ -3011,6 +3199,14 @@ mod tests {
         request.context.alignment = Alignment::Justify;
         request.context.spacing = SpacingPolicy::Spaces;
         paragraph.prepared.select(request).unwrap()
+    }
+
+    fn no_scope_resources() -> super::super::scope_alignment::ScopeAlignmentResources<f64> {
+        super::super::scope_alignment::ScopeAlignmentResources::new(
+            super::super::scope_alignment::ScopeAlignmentSnapshot::admit::<()>(Vec::new(), &[])
+                .unwrap()
+                .freeze(),
+        )
     }
 
     fn retained(line: &FinalizedLine) -> Vec<usize> {
@@ -3025,7 +3221,12 @@ mod tests {
     #[test]
     fn native_spacing_budget_refuses_unresolved_actual_advance() {
         let selected = selected(ahem_style(10.0, 10.0), "X X X", 60.0);
-        let natural = selected.finalize(SpacingAllocations::None).unwrap();
+        let natural = selected
+            .finalize(surgeist_text::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: surgeist_text::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_eq!(natural.feedback().advance, 50.0);
         let retained = retained(&natural);
         assert_eq!(retained, [0, 1]);
@@ -3033,10 +3234,16 @@ mod tests {
         // overshoot; the completed correction [100,0] still produces150.
         // Refusal preserves these actual facts instead of dropping more slots.
         let mut amounts = vec![100.0, 1.0];
-        let proposed = finalize_spacing(&selected, &amounts)
+        let proposed = finalize_spacing(&natural, &amounts, &no_scope_resources())
             .unwrap_or_else(|_| panic!("real selected spacing finalizes"));
         assert_eq!(proposed.feedback().advance, 151.0);
-        match constrain_spacing_budget(&selected, &retained, 60.0, &mut amounts, proposed) {
+        match constrain_spacing_budget(
+            &retained,
+            60.0,
+            &mut amounts,
+            proposed,
+            &no_scope_resources(),
+        ) {
             Err(FitError::SpacingBudget { available, advance }) => {
                 assert_eq!(available, 60.0);
                 assert_eq!(advance, 150.0);
@@ -3044,7 +3251,7 @@ mod tests {
             _ => panic!("unresolved actual advance must be a Layout spacing-budget refusal"),
         }
         assert_eq!(amounts, [100.0, 0.0]);
-        let actual = finalize_spacing(&selected, &amounts)
+        let actual = finalize_spacing(&natural, &amounts, &no_scope_resources())
             .unwrap_or_else(|_| panic!("actual corrected complete table finalizes"));
         assert_eq!(actual.feedback().advance, 150.0);
         assert_eq!(actual.selected_line(), selected);
@@ -3055,16 +3262,26 @@ mod tests {
         let mut style = ahem_style(10.0, 10.0);
         style.word_spacing = -15.0;
         let selected = selected(style, "X X", 25.0);
-        let natural = selected.finalize(SpacingAllocations::None).unwrap();
+        let natural = selected
+            .finalize(surgeist_text::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: surgeist_text::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_eq!(natural.feedback().advance, 15.0);
         assert_eq!(natural.spacing_slots().next().unwrap().advance, -5.0);
         let mut amounts = vec![20.0];
-        let proposed = finalize_spacing(&selected, &amounts)
+        let proposed = finalize_spacing(&natural, &amounts, &no_scope_resources())
             .unwrap_or_else(|_| panic!("real signed-base spacing finalizes"));
         assert_eq!(proposed.feedback().advance, 35.0);
-        let actual =
-            constrain_spacing_budget(&selected, &retained(&natural), 25.0, &mut amounts, proposed)
-                .unwrap_or_else(|_| panic!("one actual overshoot correction fits"));
+        let actual = constrain_spacing_budget(
+            &retained(&natural),
+            25.0,
+            &mut amounts,
+            proposed,
+            &no_scope_resources(),
+        )
+        .unwrap_or_else(|_| panic!("one actual overshoot correction fits"));
         assert_eq!(amounts, [10.0]);
         assert_eq!(actual.feedback().advance, 25.0);
         assert_eq!(actual.spacing_slots().next().unwrap().advance, 5.0);
@@ -3074,8 +3291,14 @@ mod tests {
     #[test]
     fn native_spacing_budget_keeps_actual_text_lost_contribution_refusal() {
         let selected = selected(ahem_style(10.0, 10.0), "X X", 40.0);
+        let natural = selected
+            .finalize(surgeist_text::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: surgeist_text::ScopeAllocations::None,
+            })
+            .unwrap();
         let amount = 1.0628135541960295e-153;
-        match finalize_spacing(&selected, &[amount]) {
+        match finalize_spacing(&natural, &[amount], &no_scope_resources()) {
             Err(FitError::Text(error)) => assert!(matches!(error.detail(),
                 Some(surgeist_text::ErrorDetail::InvalidTextNumeric {
                     field:"selected spacing amount",phase:surgeist_text::TextNumericPhase::Finalization,

@@ -68,6 +68,7 @@ fn compute_float<S: l::LayoutScalar>(
         0,
         vec![paragraph.binding.clone()],
         l::WrappingInput::default(),
+        Vec::new(),
     )
     .unwrap();
     l::compute_layout_with_flow_invalidated(&flow, 0, request(viewport_width), changed).unwrap()
@@ -371,6 +372,7 @@ fn shape_and_error<S: l::LayoutScalar>() {
             0,
             vec![paragraph.binding.clone()],
             l::WrappingInput::default(),
+            Vec::new(),
         )
         .unwrap();
         l::compute_layout_with_flow(&flow, 0, request(40.0))

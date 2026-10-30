@@ -7,6 +7,7 @@ mod counterclockwise;
 mod endpoint_paint;
 mod inter_character;
 mod mixed;
+mod scope_alignment;
 mod sideways;
 mod upright;
 

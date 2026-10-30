@@ -160,7 +160,7 @@ impl<S: layout::LayoutScalar> Host<S> {
                         scope: processed.captured_scope(scope).unwrap(),
                         wrap_inside: d.wrap_inside,
                         edges: d.edges,
-                        metric_contribution: contribution,
+                        metric_contribution: contribution.clone(),
                     }
                 })
                 .collect(),
@@ -300,6 +300,7 @@ fn source(before: bool, direction: layout::Direction) -> text::ContextualSourceI
     }
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     text::ContextualSourceInput {
+        scope_alignment_limits: None,
         source,
         segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
         envelope: text::SourceProcessingEnvelope::Complete,
@@ -330,12 +331,15 @@ fn source(before: bool, direction: layout::Direction) -> text::ContextualSourceI
         replacements: vec![],
         scopes: vec![
             text::SourceProcessingScope::Block {
+                font_reference: None,
                 topology: text::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
                 used_direction: base,
             },
             text::SourceProcessingScope::Inline {
+                alignment_boundary: None,
+                font_reference: None,
                 trim: Default::default(),
                 style: None,
                 boundaries: None,
@@ -393,6 +397,7 @@ fn finish<S: layout::LayoutScalar>(
         0,
         vec![binding],
         host.final_wrapping(processed, Some(metric)),
+        Vec::new(),
         receipt,
     )
     .unwrap();
@@ -540,6 +545,7 @@ fn first_pipeline<S: layout::LayoutScalar>() {
                             &processed,
                             Some(layout::InlineBoxMetricContribution::NoContribution),
                         ),
+                        Vec::new(),
                     )
                     .err()
                     .expect("ordinary late route does not authenticate an early Layout plan");
@@ -601,6 +607,7 @@ fn reusable_receipt<S: layout::LayoutScalar>() {
         let p2 = normal_prepare(&processed);
         let b2 = host.install(&p2);
         let metric = layout::InlineBoxMetricContribution::Strut(text::LineBoxStrut {
+            scope: None,
             metrics: text::LineStrut {
                 baseline: 16.0,
                 line_extent: 20.0,
@@ -643,6 +650,7 @@ fn changed_declaration<S: layout::LayoutScalar>() {
             &processed,
             Some(layout::InlineBoxMetricContribution::NoContribution),
         ),
+        Vec::new(),
         &receipt,
     )
     .err()
@@ -691,6 +699,7 @@ fn semantic_source(
     // Each source occurrence selects its real half-range from the same exact
     // aggregate source, matching the lower Text scalar/delimiter fixture.
     text::ContextualSourceInput {
+        scope_alignment_limits: None,
         source: source.clone(),
         segment_breaks: delimiters,
         envelope: text::SourceProcessingEnvelope::Complete,
@@ -720,12 +729,15 @@ fn semantic_source(
         replacements: vec![],
         scopes: vec![
             text::SourceProcessingScope::Block {
+                font_reference: None,
                 topology: text::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
                 used_direction: text::ParagraphBaseDirection::LeftToRight,
             },
             text::SourceProcessingScope::Inline {
+                alignment_boundary: None,
+                font_reference: None,
                 trim: Default::default(),
                 style: None,
                 boundaries: None,
@@ -978,6 +990,7 @@ fn coherent_foreign_capture<S: layout::LayoutScalar>() {
                 &foreign,
                 Some(layout::InlineBoxMetricContribution::NoContribution),
             ),
+            Vec::new(),
             &receipt,
         );
         let error = result

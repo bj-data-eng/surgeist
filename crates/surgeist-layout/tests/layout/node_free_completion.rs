@@ -67,12 +67,15 @@ impl<S: l::LayoutScalar> Fixture<S> {
             ..t::Style::default()
         };
         let inline = || t::SourceProcessingScope::Inline {
+            alignment_boundary: None,
+            font_reference: None,
             trim: Default::default(),
             style: None,
             boundaries: None,
         };
         let capture = Arc::new(
             t::process_contextual_source(t::ContextualSourceInput {
+                scope_alignment_limits: None,
                 source: t::Source::identified("", t::Id::from_u64(658300), 51),
                 segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
                 envelope: t::SourceProcessingEnvelope::Complete,
@@ -91,6 +94,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 },
                 scopes: vec![
                     t::SourceProcessingScope::Block {
+                        font_reference: None,
                         topology: t::SourceProcessingTopology::Complete,
                         trim: Default::default(),
                         base_style: style,
@@ -219,6 +223,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
                         edges: l::WrapEdges::AUTO,
                         metric_contribution: Some(l::InlineBoxMetricContribution::Strut(
                             t::LineBoxStrut {
+                                scope: None,
                                 metrics: t::LineStrut {
                                     baseline,
                                     line_extent,
@@ -330,12 +335,19 @@ impl<S: l::LayoutScalar> Fixture<S> {
 
 fn metric(baseline: f64, line_extent: f64) -> t::LineBoxStrut {
     t::LineBoxStrut {
+        scope: None,
         metrics: t::LineStrut {
             baseline,
             line_extent,
         },
         alignment: t::LineBoxAlignment::Baseline,
     }
+}
+
+fn expected_metric(scope: &t::CapturedScope, baseline: f64, line_extent: f64) -> t::LineBoxStrut {
+    let mut strut = metric(baseline, line_extent);
+    strut.scope = Some(scope.clone());
+    strut
 }
 
 fn assert_struts(actual: &[t::LineBoxStrut], expected: &[t::LineBoxStrut]) {
@@ -351,7 +363,13 @@ impl<S: l::LayoutScalar> Fixture<S> {
         inventory: l::WrappingInput<u32>,
         available: l::AvailableOf<S>,
     ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
-        let flow = l::LayoutFlowInput::try_new(&self.tree, 0, vec![self.binding()], inventory)?;
+        let flow = l::LayoutFlowInput::try_new(
+            &self.tree,
+            0,
+            vec![self.binding()],
+            inventory,
+            Vec::new(),
+        )?;
         assert_eq!(flow.paragraphs().len(), 1);
         assert_eq!(flow.paragraphs()[0].prepared, self.prepared);
         assert_eq!(
@@ -454,7 +472,10 @@ fn assert_semantic_output<S: l::LayoutScalar>(
     assert!(request.atomics.is_empty());
     assert_struts(
         &request.line_box_struts,
-        &[metric(16.0, 20.0), metric(12.0, 30.0)],
+        &[
+            expected_metric(&fixture.scopes[0], 16.0, 20.0),
+            expected_metric(&fixture.scopes[1], 12.0, 30.0),
+        ],
     );
     // max before=16, max after=max(20-16,30-12)=18: nominal34.
     assert_eq!(end.feedback().baseline, 16.0);
@@ -594,12 +615,15 @@ impl<S: l::LayoutScalar> SharedGap<S> {
             t::ParagraphBaseDirection::RightToLeft
         };
         let inline = || t::SourceProcessingScope::Inline {
+            alignment_boundary: None,
+            font_reference: None,
             trim: Default::default(),
             style: None,
             boundaries: None,
         };
         let capture = Arc::new(
             t::process_contextual_source(t::ContextualSourceInput {
+                scope_alignment_limits: None,
                 source: t::Source::identified("", t::Id::from_u64(658301), 52),
                 segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
                 envelope: t::SourceProcessingEnvelope::Complete,
@@ -620,6 +644,7 @@ impl<S: l::LayoutScalar> SharedGap<S> {
                 ],
                 scopes: vec![
                     t::SourceProcessingScope::Block {
+                        font_reference: None,
                         topology: t::SourceProcessingTopology::Complete,
                         trim: Default::default(),
                         base_style: t::Style {
@@ -895,6 +920,7 @@ impl<S: l::LayoutScalar> SharedGap<S> {
             0,
             order.into_iter().map(|i| self.binding(i)).collect(),
             self.inventory(),
+            Vec::new(),
         )
         .unwrap();
         let request = l::LayoutRootRequestOf::viewport(l::Size::new(
@@ -926,7 +952,10 @@ impl<S: l::LayoutScalar> SharedGap<S> {
                 20.0,
                 16.0,
                 34.0,
-                [metric(16.0, 20.0), metric(12.0, 30.0)],
+                [
+                    expected_metric(&self.scopes[0], 16.0, 20.0),
+                    expected_metric(&self.scopes[1], 12.0, 30.0),
+                ],
             ),
             (
                 1,
@@ -935,7 +964,10 @@ impl<S: l::LayoutScalar> SharedGap<S> {
                 10.0,
                 8.0,
                 26.0,
-                [metric(8.0, 10.0), metric(6.0, 24.0)],
+                [
+                    expected_metric(&self.scopes[2], 8.0, 10.0),
+                    expected_metric(&self.scopes[3], 6.0, 24.0),
+                ],
             ),
         ] {
             let entry = &batch.placed_text()[output_index];
@@ -1034,6 +1066,7 @@ fn shared_gap_order<S: l::LayoutScalar>(direction: l::Direction) {
             fixture.binding(0),
         ],
         fixture.inventory(),
+        Vec::new(),
     )
     .err()
     .expect("duplicate genuine paragraph binding must refuse");
@@ -1121,18 +1154,22 @@ impl<S: l::LayoutScalar> BlockFence<S> {
         let mut source = t::Source::identified("X", t::Id::from_u64(658302), 53);
         source.span(t::Range::new(0, 1), style.clone());
         let block = || t::SourceProcessingScope::Block {
+            font_reference: None,
             topology: t::SourceProcessingTopology::Complete,
             trim: Default::default(),
             base_style: style.clone(),
             used_direction: base,
         };
         let inline = || t::SourceProcessingScope::Inline {
+            alignment_boundary: None,
+            font_reference: None,
             trim: Default::default(),
             style: None,
             boundaries: None,
         };
         let capture = Arc::new(
             t::process_contextual_source(t::ContextualSourceInput {
+                scope_alignment_limits: None,
                 source: source.clone(),
                 segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
                 envelope: t::SourceProcessingEnvelope::Complete,
@@ -1451,6 +1488,7 @@ impl<S: l::LayoutScalar> BlockFence<S> {
             0,
             order.into_iter().map(|i| self.binding(i)).collect(),
             self.inventory(false),
+            Vec::new(),
         )
         .unwrap();
         let request = l::LayoutRootRequestOf::viewport(l::Size::new(
@@ -1568,9 +1606,15 @@ impl<S: l::LayoutScalar> BlockFence<S> {
             assert!(request.controls.is_empty());
             assert!(request.atomics.is_empty());
             let struts = if i == 0 {
-                [metric(16.0, 20.0), metric(12.0, 30.0)]
+                [
+                    expected_metric(&self.scopes[0], 16.0, 20.0),
+                    expected_metric(&self.scopes[1], 12.0, 30.0),
+                ]
             } else {
-                [metric(8.0, 10.0), metric(6.0, 24.0)]
+                [
+                    expected_metric(&self.scopes[2], 8.0, 10.0),
+                    expected_metric(&self.scopes[3], 6.0, 24.0),
+                ]
             };
             assert_struts(&request.line_box_struts, &struts);
         }
@@ -1623,6 +1667,7 @@ fn semantic_block_fence<S: l::LayoutScalar>(direction: l::Direction) {
         0,
         vec![fixture.binding(0), fixture.binding(2)],
         fixture.inventory(false),
+        Vec::new(),
     )
     .err()
     .expect("actual InlineText node2 still requires its child-domain paragraph binding");
@@ -1640,6 +1685,7 @@ fn semantic_block_fence<S: l::LayoutScalar>(direction: l::Direction) {
         0,
         vec![fixture.binding(0), fixture.binding(1), fixture.binding(2)],
         fixture.inventory(true),
+        Vec::new(),
     )
     .err()
     .expect("claimed U,Block,S order contradicts the actual complete capture S,Block,U");
@@ -1741,11 +1787,12 @@ fn ambiguous_semantic_gap<S: l::LayoutScalar>(direction: l::Direction) {
         .unwrap();
     root.prefix = l::ChildOrderCompleteness::Unknown;
     root.suffix = l::ChildOrderCompleteness::Unknown;
-    let error = l::LayoutFlowInput::try_new(&tree, 0, vec![fixture.binding()], inventory)
-        .err()
-        .expect(
-            "the actual unrepresented child leaves native gaps0 and1; neither is authenticated",
-        );
+    let error =
+        l::LayoutFlowInput::try_new(&tree, 0, vec![fixture.binding()], inventory, Vec::new())
+            .err()
+            .expect(
+                "the actual unrepresented child leaves native gaps0 and1; neither is authenticated",
+            );
     assert_scope_association_refusal(&error);
     assert_eq!(fixture.inventory_facts(true), pin);
 }
@@ -1791,7 +1838,7 @@ fn independent_capture_gap<S: l::LayoutScalar>(direction: l::Direction) {
         } else {
             vec![a.binding(), b.binding()]
         };
-        let error = l::LayoutFlowInput::try_new(&a.tree, 0, bindings, inventory)
+        let error = l::LayoutFlowInput::try_new(&a.tree, 0, bindings, inventory, Vec::new())
             .err().expect("independent captures cannot impose a canonical order in the same unique native gap");
         assert_scope_association_refusal(&error);
     }
@@ -1822,12 +1869,15 @@ impl<S: l::LayoutScalar> Fixture<S> {
             side: t::SourceBoxSide::After,
         };
         let inline = || t::SourceProcessingScope::Inline {
+            alignment_boundary: None,
+            font_reference: None,
             trim: Default::default(),
             style: None,
             boundaries: None,
         };
         let capture = Arc::new(
             t::process_contextual_source(t::ContextualSourceInput {
+                scope_alignment_limits: None,
                 source: t::Source::identified("", t::Id::from_u64(658303), 54),
                 segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
                 envelope: t::SourceProcessingEnvelope::Complete,
@@ -1843,6 +1893,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 },
                 scopes: vec![
                     t::SourceProcessingScope::Block {
+                        font_reference: None,
                         topology: t::SourceProcessingTopology::Complete,
                         trim: Default::default(),
                         base_style: t::Style {
@@ -2105,7 +2156,10 @@ impl<S: l::LayoutScalar> Fixture<S> {
         assert!(request.participants.is_empty());
         assert!(request.controls.is_empty());
         assert!(request.atomics.is_empty());
-        assert_struts(&request.line_box_struts, &[metric(16.0, 20.0)]);
+        assert_struts(
+            &request.line_box_struts,
+            &[expected_metric(&self.scopes[0], 16.0, 20.0)],
+        );
     }
 }
 fn distinct_cut_sequence<S: l::LayoutScalar>(direction: l::Direction) {

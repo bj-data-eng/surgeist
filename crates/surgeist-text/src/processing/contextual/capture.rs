@@ -7,7 +7,10 @@ use std::{
     sync::Arc,
 };
 
-use super::{CapturedDomainData, ScopeCapture, SourceProcessingEvent, SourceProcessingTopology};
+use super::{
+    CapturedDomainData, ScopeAlignmentBoundary, ScopeAlignmentLimits, ScopeAlignmentUsage,
+    ScopeCapture, ScopeFontReference, SourceProcessingEvent, SourceProcessingTopology,
+};
 use crate::{ParagraphControlKind, SourcePosition, Style};
 
 macro_rules! captured_handle {
@@ -102,6 +105,51 @@ impl PartialOrd for CapturedEventPosition {
 }
 
 impl CapturedScope {
+    /// Capture-local diagnostic ordinal. It cannot authorize an association:
+    /// genuine scope identity is this immutable capture plus the ordinal.
+    #[must_use]
+    pub const fn capture_ordinal(&self) -> usize {
+        self.index
+    }
+
+    /// Actual early inline formatting classification. Domains and absent
+    /// producer evidence return None, never an inferred Initial value.
+    #[must_use]
+    pub fn alignment_boundary(&self) -> Option<ScopeAlignmentBoundary> {
+        self.capture
+            .scope_alignment_fact(self.index)
+            .and_then(|fact| fact.alignment_boundary)
+    }
+
+    /// Supplied same-scope font/reference context; no lookup or measurement.
+    /// Context alone neither makes an alignment target nor activates a font.
+    #[must_use]
+    pub fn font_reference(&self) -> Option<ScopeFontReference> {
+        self.capture
+            .scope_alignment_fact(self.index)
+            .and_then(|fact| fact.font_reference)
+    }
+
+    /// Immutable limits on the entire capture's alignment feature, not just
+    /// this scope. Ordinary non-demanding captures may have no feature limits.
+    #[must_use]
+    pub fn scope_alignment_limits(&self) -> Option<ScopeAlignmentLimits> {
+        self.capture
+            .scope_alignment
+            .as_ref()
+            .map(|facts| facts.limits())
+    }
+
+    /// Completed early capture accounting, not later preparation/selection
+    /// usage. Reading it does not resolve fonts or mutate a shared ledger.
+    #[must_use]
+    pub fn scope_alignment_usage(&self) -> Option<ScopeAlignmentUsage> {
+        self.capture
+            .scope_alignment
+            .as_ref()
+            .map(|facts| facts.usage())
+    }
+
     /// The complete owner-issued flow on a domain root; inline scopes return None.
     ///
     /// This is a stable projection of the admitted original events, independent
@@ -380,6 +428,21 @@ impl CapturedScopeIntersection {
 }
 
 impl CapturedControl {
+    /// Actual enclosing source scope at this control's admitted mixed event.
+    ///
+    /// This retains source custody; it does not invent a captured scope for a
+    /// native-only box or identify an allocated selected frame.
+    #[must_use]
+    pub fn scope(&self) -> CapturedScope {
+        let order = self.capture.controls[self.index].order;
+        CapturedScope {
+            capture: Arc::clone(&self.capture),
+            index: self.capture.events[order]
+                .before
+                .expect("admitted control event has an enclosing scope"),
+        }
+    }
+
     /// Actual paragraph containing this control event, even if it emits no text.
     #[must_use]
     pub fn paragraph(&self) -> CapturedParagraph {

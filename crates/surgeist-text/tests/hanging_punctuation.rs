@@ -146,7 +146,10 @@ fn request(
     }
 }
 fn finish(p: &t::PreparedText, r: t::LineSelectionRequest) -> t::Result<t::FinalizedLine> {
-    p.select(r)?.finalize(t::SpacingAllocations::None)
+    p.select(r)?.finalize(surgeist_text::LineAllocations {
+        spacing: t::SpacingAllocations::None,
+        scopes: surgeist_text::ScopeAllocations::None,
+    })
 }
 fn measures(line: &t::FinalizedLine) -> Measures {
     let m = line.measurements();
@@ -1226,6 +1229,7 @@ fn captured_enclosing_inline_continues_without_its_later_end_decoration() {
     let source = t::Source::identified("A. B", t::Id::from_u64(71074), 5);
     let processed = std::sync::Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
@@ -1252,12 +1256,15 @@ fn captured_enclosing_inline_continues_without_its_later_end_decoration() {
             ],
             scopes: vec![
                 t::SourceProcessingScope::Block {
+                    font_reference: None,
                     topology: t::SourceProcessingTopology::Complete,
                     trim: t::WhiteSpaceTrim::default(),
                     base_style: base.clone(),
                     used_direction: LTR,
                 },
                 t::SourceProcessingScope::Inline {
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: t::WhiteSpaceTrim::default(),
                     style: Some(base),
                     boundaries: Some(t::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
@@ -1476,7 +1483,12 @@ fn complete_spacing_remaps_punctuation_advance_without_reclassifying_natural_ove
                 aggregate: t::Range::new(1, 2),
             }]
         );
-        let natural = selected.finalize(t::SpacingAllocations::None).unwrap();
+        let natural = selected
+            .finalize(surgeist_text::LineAllocations {
+                spacing: t::SpacingAllocations::None,
+                scopes: surgeist_text::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_eq!(natural.feedback().advance, 30.0);
         let natural_measure = match end {
             Some(ForceEnd) => (20.0, 20.0, 20.0, 20.0),
@@ -1495,12 +1507,13 @@ fn complete_spacing_remaps_punctuation_advance_without_reclassifying_natural_ove
             );
         }
         let line = selected
-            .finalize(t::SpacingAllocations::Complete(vec![
-                t::SpacingAllocation {
+            .finalize(surgeist_text::LineAllocations {
+                spacing: t::SpacingAllocations::Complete(vec![t::SpacingAllocation {
                     slot: slots[0].clone(),
                     amount,
-                },
-            ]))
+                }]),
+                scopes: surgeist_text::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(line.feedback().advance, 30.0 + amount);
         assert_eq!(measures(&line), expected);

@@ -156,6 +156,8 @@ impl error::Error for Error {
 pub enum ErrorCode {
     /// Invalid complete contextual source-processing capture.
     InvalidSourceProcessing,
+    /// Captured-scope alignment could not admit its facts, resources or allocation.
+    ScopeAlignmentRefused,
     /// Final semantic phrase analysis received invalid retained model data.
     InvalidPhraseAnalysis,
     /// Font-independent text analysis could not retain its complete result.
@@ -196,6 +198,10 @@ pub enum ErrorCode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErrorDetail {
+    /// A typed captured-scope alignment refusal from its owning phase.
+    ScopeAlignment {
+        reason: super::ScopeAlignmentError,
+    },
     /// A material spacing operation needs unavailable profile or movement capability.
     UnsupportedSpacing {
         stage: SpacingStage,

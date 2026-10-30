@@ -242,13 +242,21 @@ fn consumed(input: &text::Layout, bytes: &[u8], gap: f64) {
 fn qualifies(orientation: text::LineOrientation) {
     let (control_prepared, control_selected, _, control_bytes) = selected(orientation, 0.0);
     let control = control_selected
-        .finalize(text::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: text::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(control.feedback().advance, 30.0);
     consumed(&place(&control_prepared, control), &control_bytes, 0.0);
     let (prepared, selected, system, bytes) = selected(orientation, 4.0);
     let stats = system.stats();
-    let natural = selected.finalize(text::SpacingAllocations::None).unwrap();
+    let natural = selected
+        .finalize(surgeist_text::LineAllocations {
+            spacing: text::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(natural.feedback().advance, 38.0);
     consumed(&place(&prepared, natural.clone()), &bytes, 4.0);
     let zero = natural.with_spacing(amounts(&selected, 0.0)).unwrap();

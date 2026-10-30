@@ -191,7 +191,12 @@ fn actual_cross_egc_gpos_attachment_accepts_zero_refuses_material_and_keeps_outs
         [(0.0, 0.0), (2.0, -3.0), (12.0, 0.0)]
     );
     let selected = select_method(&prepared, SpacingPolicy::InterCharacter);
-    let natural = selected.finalize(SpacingAllocations::None).unwrap();
+    let natural = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(raw(&natural, &bytes), expected);
     let rows = natural.spacing_slots().collect::<Vec<_>>();
     assert_eq!(rows.len(), 2);
@@ -286,7 +291,12 @@ fn required_multi_egc_ligature_keeps_each_full_tracking_endpoint_for_the_outside
         endpoint(&visual_before, &prepared, THREE[before.0], before.1);
         endpoint(&visual_after, &prepared, THREE[after.0], after.1);
     }
-    let line = selected.finalize(SpacingAllocations::None).unwrap();
+    let line = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     let expected = [
         (Range::new(0, 2), 58, 0.0, 0.0, 10.0),
         (THREE[2], 35, 0.0, 0.0, 10.0),
@@ -388,7 +398,12 @@ fn adjacent_material_boundary_masks_optional_ligation_across_a_neighboring_zero_
             explicit_source.span(outside, outside_style);
             let prepared = prepare(&bytes, &explicit_source, explicit, &THREE);
             let selected = select_method(&prepared, SpacingPolicy::InterCharacter);
-            let natural = selected.finalize(SpacingAllocations::None).unwrap();
+            let natural = selected
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
+                .unwrap();
             assert_eq!(raw(&natural, &bytes), ligated);
             assert_eq!(natural.feedback().advance, 22.0);
             let (pair_slot, exterior_slot) = if text == "Afi" { (1, 0) } else { (0, 1) };
@@ -663,7 +678,12 @@ fn qualify_joining_profile(cp: u32, script: Script, tag: [u8; 4], rtl: bool) {
         ranges[if rtl { 2 } else { 1 }],
         if rtl { 12.0 } else { 8.0 },
     );
-    let natural = selected.finalize(SpacingAllocations::None).unwrap();
+    let natural = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     let rows = natural.spacing_slots().collect::<Vec<_>>();
     assert_eq!(rows.len(), 2);
     assert_eq!(

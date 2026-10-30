@@ -296,21 +296,32 @@ fn visual_pair(layout: &PlacedLayout, value: Cursor) -> [Option<ClusterPath>; 2]
 }
 
 pub(super) fn geometry(layout: &PlacedLayout, value: Cursor) -> (usize, Rect) {
-    let (line, x) = local_geometry(layout, value);
-    (line, line_rect(&layout.lines[line], x))
+    let (line, x, reference) = local_geometry(layout, value);
+    (
+        line,
+        crate::layout::line_rect(
+            &layout.lines[line],
+            layout.lines[line]
+                .finalized
+                .data
+                .cell_rect(x, 1.0, reference),
+        ),
+    )
 }
 
 // Retain the actual source/occurrence edge before turning its caret into a
 // physical hull. A counterclockwise caret's hull starts one inline unit later.
-fn local_geometry(layout: &PlacedLayout, value: Cursor) -> (usize, f64) {
+fn local_geometry(layout: &PlacedLayout, value: Cursor) -> (usize, f64, Option<f64>) {
     // Deleted anchors are genuine source-associated occurrences. This does not
     // change the historical raw-source visual-neighbor policy around atomics:
     // a physical atomic gap and an executed source deletion have different owners.
     if let Some(index) = super::position::deleted_position(layout, value) {
         let line = layout.interaction.positions[index].line;
+        let reference = super::position::reference(layout, index).expect("owned deleted row");
         return (
             line,
             super::position::inline(layout, index).expect("owned deleted row"),
+            reference,
         );
     }
     let no_text_neighbor = at_source(layout, value.index()).is_none()
@@ -320,9 +331,9 @@ fn local_geometry(layout: &PlacedLayout, value: Cursor) -> (usize, f64) {
             .and_then(|index| at_source(layout, index))
             .is_none();
     if no_text_neighbor
-        && let Some((line, x)) = anchor_geometry(layout, value.index(), value.affinity())
+        && let Some((line, x, reference)) = anchor_geometry(layout, value.index(), value.affinity())
     {
-        return (line, x);
+        return (line, x, reference);
     }
     let chosen = match visual_pair(layout, value) {
         [Some(left), Some(right)] => {
@@ -349,11 +360,12 @@ fn local_geometry(layout: &PlacedLayout, value: Cursor) -> (usize, f64) {
         (
             path.line,
             cluster.x + if at_end { cluster.advance } else { 0.0 },
+            cluster.reference,
         )
     } else {
         let index = layout.lines.len() - 1;
         let line = &layout.lines[index];
-        (index, line.finalized.data.metrics.offset)
+        (index, line.finalized.data.metrics.offset, None)
     }
 }
 
@@ -363,21 +375,21 @@ fn anchor_geometry(
     layout: &PlacedLayout,
     index: usize,
     affinity: Affinity,
-) -> Option<(usize, f64)> {
-    let mut chosen: Option<((usize, usize), f64)> = None;
-    let mut consider = |key: (usize, usize), x: f64| {
-        if chosen.is_none_or(|(old, _)| match affinity {
+) -> Option<(usize, f64, Option<f64>)> {
+    let mut chosen: Option<((usize, usize), f64, Option<f64>)> = None;
+    let mut consider = |key: (usize, usize), x: f64, reference: Option<f64>| {
+        if chosen.is_none_or(|(old, _, _)| match affinity {
             Affinity::Before => key < old,
             Affinity::After => key > old,
         }) {
-            chosen = Some((key, x));
+            chosen = Some((key, x, reference));
         }
     };
     for (line_index, line) in layout.lines.iter().enumerate() {
         for anchor in &line.finalized.data.anchors {
             let unit = &line.finalized.selected.presentation.units[anchor.unit];
             if unit.source.start <= index && index <= unit.source.end {
-                consider((line_index, anchor.unit), anchor.slot.x);
+                consider((line_index, anchor.unit), anchor.slot.x, anchor.reference);
             }
         }
         for cluster in &line.finalized.data.clusters {
@@ -417,24 +429,11 @@ fn anchor_geometry(
                             && cluster.presentation.start < unit.presentation.end
                     })
                     .expect("an actual selected cluster retains its presentation unit");
-                consider((line_index, unit), x);
+                consider((line_index, unit), x, cluster.reference);
             }
         }
     }
-    chosen.map(|((line, _), x)| (line, x))
-}
-
-fn line_rect(line: &PlacedLine, x: f64) -> Rect {
-    let metrics = line.finalized.data.metrics;
-    crate::layout::line_rect(
-        line,
-        Rect::new(
-            x,
-            metrics.block_min,
-            1.0,
-            metrics.block_max - metrics.block_min,
-        ),
-    )
+    chosen.map(|((line, _), x, reference)| (line, x, reference))
 }
 
 // Vertical inline axes use actual physical metric rectangles without assuming

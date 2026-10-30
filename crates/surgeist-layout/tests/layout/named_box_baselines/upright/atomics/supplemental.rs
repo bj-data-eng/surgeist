@@ -117,6 +117,7 @@ fn run<S: l::LayoutScalar>(
         0,
         scene.bindings.clone(),
         l::WrappingInput::default(),
+        Vec::new(),
     )
     .expect("real tree membership and all issued bindings must validate before behavior");
     l::compute_layout_with_flow_invalidated(

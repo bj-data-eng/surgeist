@@ -78,7 +78,10 @@ fn finalized(p: &PreparedText, shift: f64) -> FinalizedLine {
         .collect();
     p.select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn atomic_placement(p: &PreparedText, line: FinalizedLine, shift: f64) -> PlacementRequest {
@@ -237,7 +240,10 @@ fn controls(p: &PreparedText, shift: f64) -> FinalizedLine {
     }
     p.select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 

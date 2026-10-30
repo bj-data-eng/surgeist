@@ -142,6 +142,7 @@ fn assert_nested_container_limits<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let swapped = tree::<S>(
@@ -158,6 +159,7 @@ fn assert_nested_container_limits<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     // Both computations reuse the same genuine preparations. Changing which

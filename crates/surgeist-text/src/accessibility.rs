@@ -428,19 +428,13 @@ fn update(
     if let Projection::Placed(layout, _) = projection {
         for (line_index, line) in layout.inner.lines.iter().enumerate() {
             let data = &line.finalized.data;
-            let metrics = &data.metrics;
             for cluster in &data.clusters {
                 let run = cluster.content.font_run().map(|run| &data.font_runs[run]);
                 fragments.push(Fragment {
                     range: cluster.source,
                     bounds: crate::layout::line_rect(
                         line,
-                        Rect::new(
-                            cluster.x,
-                            metrics.block_min,
-                            cluster.advance,
-                            metrics.block_max - metrics.block_min,
-                        ),
+                        data.cell_rect(cluster.x, cluster.advance, cluster.reference),
                     ),
                     line: line_index,
                     rtl: cluster.level & 1 != 0,

@@ -112,7 +112,10 @@ fn finish(p: &PreparedText, alternative: usize) -> FinalizedLine {
         .collect();
     p.select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 
@@ -879,7 +882,10 @@ fn manual_cannot_turn_a_shy_into_an_unindicated_break_after_an_empty_origin() {
     let second = p
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(second.feedback().advance, 60.0);
     assert_eq!(

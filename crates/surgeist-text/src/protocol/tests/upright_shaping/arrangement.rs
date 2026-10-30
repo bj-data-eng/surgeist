@@ -311,7 +311,10 @@ fn select_request(
 fn finish(p: &PreparedText, r: LineSelectionRequest) -> FinalizedLine {
     p.select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn ids(line: &FinalizedLine) -> Vec<u32> {

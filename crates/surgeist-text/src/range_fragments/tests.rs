@@ -172,7 +172,10 @@ fn select(
             },
         })
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn place(prepared: PreparedText, x: f64, y: f64) -> Layout {
@@ -987,6 +990,7 @@ fn contextual_holes_remain_real_pieces_of_shared_units_and_generated_origins_are
         Size::new(5.0, 10.0),
     ));
     let capture = ContextualSourceInput {
+        scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -1015,12 +1019,14 @@ fn contextual_holes_remain_real_pieces_of_shared_units_and_generated_origins_are
         replacements: vec![],
         scopes: vec![
             SourceProcessingScope::Block {
+                font_reference: None,
                 topology: crate::SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style(10.0),
             },
             SourceProcessingScope::OutOfFlowBlock {
+                font_reference: None,
                 topology: crate::SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
@@ -1567,7 +1573,10 @@ fn ccmp_ligature_keeps_selected_space_allocation_on_its_own_range_unit() {
         .map(|slot| SpacingAllocation { slot, amount: 4.0 })
         .collect();
     let line = selected
-        .finalize(SpacingAllocations::Complete(allocations))
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::Complete(allocations),
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let l = Layout::from_finalized_lines(PlacementRequest {
         prepared: p,

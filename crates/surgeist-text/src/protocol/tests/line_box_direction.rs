@@ -102,7 +102,10 @@ fn context(
 fn finish(p: &PreparedText, request: LineSelectionRequest) -> FinalizedLine {
     p.select(request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 

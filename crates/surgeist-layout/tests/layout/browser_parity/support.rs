@@ -137,6 +137,7 @@ pub fn assert_surgeist_matches_with_endpoint_accounting(
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .map_err(|error| Error::new(format!("{}: capture failed: {error:?}", golden.name)))?;
         layout::compute_layout_with_flow(&capture, 0, request)
@@ -6516,6 +6517,7 @@ mod tests {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         layout::compute_layout_with_flow(&capture, 0, request).unwrap()

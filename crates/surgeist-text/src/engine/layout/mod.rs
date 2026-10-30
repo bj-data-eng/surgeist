@@ -31,6 +31,21 @@ pub(crate) fn metric_only_decoration_demand(
     finalize::metric_only_decoration_demand(run, shaped, projection)
 }
 
+pub(crate) fn scope_font_contribution(
+    metrics: &data::RunMetrics,
+    line_height: f64,
+) -> Result<crate::ScopeMetricContribution> {
+    let (before, after) = finalize::font_strut(data::RunMetrics {
+        line_height,
+        ..*metrics
+    })?;
+    Ok(crate::ScopeMetricContribution {
+        before,
+        after,
+        alignment: crate::LineBoxAlignment::Baseline,
+    })
+}
+
 pub(crate) fn layout(
     prepared: Arc<PreparedData>,
     options: ValidatedOptions,
@@ -43,15 +58,17 @@ pub(crate) fn layout(
 pub(crate) fn finalize_selected(
     selected: Arc<crate::protocol::selection::SelectedData>,
     amounts: Vec<f64>,
+    scopes: super::scope_alignment::FrameAllocations,
 ) -> Result<super::FinalizedLine> {
-    finalize::finalize(selected, &amounts)
+    finalize::finalize_scoped(selected, &amounts, scopes)
 }
 
 pub(crate) fn refinalize_selected(
     line: &super::FinalizedLine,
     amounts: Vec<f64>,
+    scopes: super::scope_alignment::FrameAllocations,
 ) -> Result<super::FinalizedLine> {
-    finalize::refinalize(line, &amounts)
+    finalize::finalize_scoped(Arc::clone(&line.selected), &amounts, scopes)
 }
 
 fn finalize_standalone(
@@ -94,7 +111,7 @@ fn finalize_standalone(
                     .expect("finalized raw measures"),
             )?;
             if amounts.iter().any(|amount| *amount != 0.0) {
-                finalize::refinalize(&first, &amounts)
+                finalize::refinalize(&first, &amounts, None)
             } else {
                 Ok(first)
             }

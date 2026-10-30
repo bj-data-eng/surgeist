@@ -105,6 +105,7 @@ fn composition(mode: layout::WritingMode, kind: text::InlineBoxKind) {
             },
         ],
         layout::WrappingInput::default(),
+        Vec::new(),
     )
     .unwrap();
     let batch = layout::compute_layout_with_flow(

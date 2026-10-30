@@ -85,6 +85,7 @@ fn terminal_hanging_replay_reaches_paint_and_source_geometry_without_rewrapping(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = layout::compute_layout_with_flow(

@@ -478,6 +478,7 @@ fn original_separator_at_disconnected_join(
         SourceProcessingEvent::ExitScope(0),
     ]);
     let input = ContextualSourceInput {
+        scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -504,6 +505,7 @@ fn original_separator_at_disconnected_join(
         boundary_policies: vec![],
         replacements: vec![],
         scopes: vec![SourceProcessingScope::Block {
+            font_reference: None,
             topology: SourceProcessingTopology::Unknown,
             trim: WhiteSpaceTrim::default(),
             base_style: style(operation),

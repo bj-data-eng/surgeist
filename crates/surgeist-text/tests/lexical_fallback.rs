@@ -573,7 +573,10 @@ fn assumed_line_opportunities_do_not_become_detected_word_movement_stops() {
                 },
             })
             .unwrap()
-            .finalize(t::SpacingAllocations::None)
+            .finalize(surgeist_text::LineAllocations {
+                spacing: t::SpacingAllocations::None,
+                scopes: surgeist_text::ScopeAllocations::None,
+            })
             .unwrap();
         let layout = t::Layout::from_finalized_lines(t::PlacementRequest {
             prepared: p,

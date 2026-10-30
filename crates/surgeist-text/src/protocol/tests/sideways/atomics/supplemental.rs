@@ -72,7 +72,10 @@ fn finalized(prepared: &PreparedText, alignment: LineBoxAlignment) -> FinalizedL
     prepared
         .select(selected)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 

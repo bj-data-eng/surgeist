@@ -10,6 +10,7 @@ fn base() -> t::Style {
 }
 fn block(base: t::Style) -> t::SourceProcessingScope {
     t::SourceProcessingScope::Block {
+        font_reference: None,
         topology: t::SourceProcessingTopology::Complete,
         trim: Default::default(),
         base_style: base,
@@ -79,6 +80,7 @@ fn input(value: &str, base: t::Style, ranges: &[(usize, usize)]) -> t::Contextua
     }
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     t::ContextualSourceInput {
+        scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),
         segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
@@ -472,12 +474,16 @@ fn cross_tcu_logical_scope_membership_does_not_inherit_a_layout_pairing_limit() 
         let mut value = input("A\u{301}B", base(), &[(0, 1), (1, 3)]);
         value.scopes.extend([
             t::SourceProcessingScope::Inline {
+                alignment_boundary: None,
+                font_reference: None,
                 trim: Default::default(),
                 style: Some(base()),
                 boundaries: paired
                     .then_some(t::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
             },
             t::SourceProcessingScope::Inline {
+                alignment_boundary: None,
+                font_reference: None,
                 trim: Default::default(),
                 style: Some(base()),
                 boundaries: paired
@@ -808,7 +814,10 @@ fn computed_before_indication_keeps_the_actual_original_scope_exit() {
     let line = p
         .select(r)
         .unwrap()
-        .finalize(t::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: t::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     let selected = line.selected_line();
     let boundary = &selected.request().end;
@@ -829,12 +838,16 @@ fn context_custody_errors_are_precise_and_real_domain_holes_stay_distinct() {
     value.scopes = vec![
         block(base()),
         t::SourceProcessingScope::Inline {
+            alignment_boundary: None,
+            font_reference: None,
             trim: Default::default(),
             style: Some(base()),
             boundaries: None,
         },
         block(base()),
         t::SourceProcessingScope::Inline {
+            alignment_boundary: None,
+            font_reference: None,
             trim: Default::default(),
             style: Some(base()),
             boundaries: None,

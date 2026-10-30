@@ -121,7 +121,10 @@ fn bare_shy(primary_hyphen: bool) {
     let whole = prepared
         .select(request(&prepared))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert!(whole.selected_line().request().alternative.is_none());
     assert_eq!(whole.feedback().advance, 40.0);
@@ -149,7 +152,10 @@ fn bare_shy(primary_hyphen: bool) {
     let whole = prepared
         .select(request(&prepared))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(whole.feedback().advance, 100.0);
     assert_eq!(
@@ -204,7 +210,10 @@ fn bare_shy(primary_hyphen: bool) {
     let first = prepared
         .select(value)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(first.feedback().advance, 60.0);
     assert_eq!(
@@ -231,7 +240,10 @@ fn bare_shy(primary_hyphen: bool) {
     let second = prepared
         .select(value)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(second.feedback().advance, 60.0);
     assert!(second.selected_line().request().alternative.is_none());

@@ -95,18 +95,21 @@ pub(crate) fn advance(selected: super::input::PresentationInput<'_>, unit: usize
         .map_or(0.0, |edge| edge.advance())
 }
 
-pub(crate) fn groups(
+pub(crate) fn groups_accounted(
     selected: &super::selection::SelectedData,
     shaped: &crate::engine::layout::data::ShapedData,
-) -> Vec<Range<usize>> {
+    ledger: &mut crate::engine::scope_alignment::accounting::Ledger,
+) -> Result<Vec<Range<usize>>> {
+    use crate::engine::scope_alignment::accounting as account;
     let count = selected.presentation.projection.atoms.len();
-    let mut ends: Vec<_> = (1..=count).collect();
+    let mut ends = account::collect(ledger, 1..=count)?;
     for range in selected.presentation.analysis.graphemes.iter().chain(
         shaped
             .clusters
             .iter()
             .map(|cluster| &cluster.provider_group),
     ) {
+        account::work(ledger, 1)?;
         if !range.is_empty() {
             ends[range.start] = ends[range.start].max(range.end);
         }
@@ -117,12 +120,14 @@ pub(crate) fn groups(
         let start = atom;
         let mut end = ends[atom];
         while atom < end {
+            account::work(ledger, 1)?;
             end = end.max(ends[atom]);
             atom += 1;
         }
-        result.push(start..end);
+        account::push(ledger, &mut result, start..end)?;
     }
-    result
+    account::drop_vec(ledger, ends)?;
+    Ok(result)
 }
 
 pub(crate) struct Seed {

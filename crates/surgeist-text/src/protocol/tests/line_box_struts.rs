@@ -55,6 +55,7 @@ fn prepare(text: &str, overflow: OverflowWrap) -> PreparedText {
 }
 fn row(baseline: f64, line_extent: f64, alignment: LineBoxAlignment) -> LineBoxStrut {
     LineBoxStrut {
+        scope: None,
         metrics: LineStrut {
             baseline,
             line_extent,
@@ -74,7 +75,10 @@ fn whole(
     r.context.available_inline = Some(available);
     p.select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn fingerprint(value: &impl Hash) -> u64 {

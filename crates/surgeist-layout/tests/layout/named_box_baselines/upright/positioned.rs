@@ -43,6 +43,7 @@ fn captured_parent(bytes: &[u8], size: t::Size, atomic_only: bool, id: t::Id) ->
     use t::SourceProcessingEvent as E;
     let capture = Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
             envelope: t::SourceProcessingEnvelope::Complete,
@@ -93,6 +94,7 @@ fn captured_parent(bytes: &[u8], size: t::Size, atomic_only: bool, id: t::Id) ->
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![t::SourceProcessingScope::Block {
+                font_reference: None,
                 topology: t::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
@@ -247,7 +249,10 @@ fn selected_parent(parent: &Parent) -> t::FinalizedLine {
             },
         })
         .unwrap()
-        .finalize(t::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: t::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap()
 }
 
@@ -358,8 +363,9 @@ fn compute<S: l::LayoutScalar>(
     bindings: Vec<l::TextParagraphBinding<u32>>,
     changed: &[u32],
 ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
-    let flow = l::LayoutFlowInput::try_new(host, 0, bindings, l::WrappingInput::default())
-        .expect("genuine OutOfFlow occurrence must bind to its actual absolute child");
+    let flow =
+        l::LayoutFlowInput::try_new(host, 0, bindings, l::WrappingInput::default(), Vec::new())
+            .expect("genuine OutOfFlow occurrence must bind to its actual absolute child");
     l::compute_layout_with_flow_invalidated(
         &flow,
         0,
@@ -377,8 +383,14 @@ fn qualify_child<S: l::LayoutScalar>(child: &Fixture) {
         Some(0),
         l::LayoutInputOf::inline_text(l::TextParticipation::new(binding.origins[0].origin.clone())),
     );
-    let flow =
-        l::LayoutFlowInput::try_new(&host, 0, vec![binding], l::WrappingInput::default()).unwrap();
+    let flow = l::LayoutFlowInput::try_new(
+        &host,
+        0,
+        vec![binding],
+        l::WrappingInput::default(),
+        Vec::new(),
+    )
+    .unwrap();
     let batch = l::compute_layout_with_flow(
         &flow,
         0,

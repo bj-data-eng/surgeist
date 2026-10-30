@@ -4,6 +4,9 @@
 // replace scalar-source/compressed carriers; actual provider status gates rows.
 
 mod cache;
+mod font_instance;
+pub(crate) use font_instance::{CanonicalFontInstance, scope_font};
+use font_instance::{ResourceSelection, canonical_instance, selected_resource};
 #[cfg(test)]
 mod tests;
 mod vertical;
@@ -54,8 +57,8 @@ use super::{
     resolve::ResolvedStyle,
 };
 use crate::{
-    Error, ErrorCode, ErrorDetail, FontData, FontSynthesis, LineHeight, Range, Result,
-    TextNumericError, TextNumericPhase,
+    Error, ErrorCode, ErrorDetail, FontData, FontSynthesis, Range, Result, TextNumericError,
+    TextNumericPhase,
 };
 
 pub(crate) struct ShapeContext {
@@ -194,6 +197,8 @@ pub(crate) fn assign_fonts(
     scopes: &[crate::protocol::prepared::presentation::DirectionalScope],
 ) -> Result<Vec<crate::protocol::prepared::RetainedAssignment>> {
     let input = ShapingInput {
+        formatting_breaks: &[],
+        scope_custody: None,
         characters: None,
         separator_geometry: false,
         baseline_reference: prepared.options.resolved_baseline_reference(),
@@ -242,6 +247,7 @@ pub(crate) fn assign_fonts(
                     &prepared.styles[info.1].style,
                 )
                 || barriers.contains(&end)
+                || input.formatting_breaks.binary_search(&end).is_ok()
             {
                 break;
             }
@@ -430,8 +436,9 @@ pub(crate) fn shape(
     catalogue: &mut crate::catalogue::Catalogue,
     input: ShapingInput<'_>,
     scratch: &mut ShapeContext,
+    scope_budget: &mut super::scope_alignment::accounting::Ledger,
 ) -> Result<ShapedData> {
-    shape_impl(catalogue, input, scratch, false)
+    shape_impl(catalogue, input, scratch, false, scope_budget)
 }
 
 /// Actual matching/instance capture without a redundant glyph-shaping operation.
@@ -440,7 +447,7 @@ pub(crate) fn capture_fonts(
     input: ShapingInput<'_>,
     scratch: &mut ShapeContext,
 ) -> Result<Vec<FontQueryWitness>> {
-    shape_impl(catalogue, input, scratch, true).map(|output| output.font_queries)
+    shape_impl(catalogue, input, scratch, true, &mut None).map(|output| output.font_queries)
 }
 
 fn shape_impl(
@@ -448,6 +455,7 @@ fn shape_impl(
     input: ShapingInput<'_>,
     scratch: &mut ShapeContext,
     capture_only: bool,
+    scope_budget: &mut super::scope_alignment::accounting::Ledger,
 ) -> Result<ShapedData> {
     let intrinsic = if input
         .projection
@@ -461,6 +469,9 @@ fn shape_impl(
     };
     let mut query = catalogue.query();
     let mut output = ShapedData::default();
+    if !capture_only && scope_budget.is_some() {
+        start_scope_output(scope_budget)?;
+    }
     let mut queries = Vec::new();
     let sources = AnalysisDataSources;
     let barriers = shaping_barriers(&input);
@@ -501,6 +512,12 @@ fn shape_impl(
                     || next_script != script
                     || !same_shaping_style(style, &input.styles[next_style].style)
                     || barriers.contains(&item_end)
+                    || crate::processing::contextual::alignment::operations::binary_search_by(
+                        input.formatting_breaks,
+                        scope_budget.as_mut(),
+                        |cut| cut.cmp(&item_end),
+                    )?
+                    .is_ok()
                 {
                     break;
                 }
@@ -563,6 +580,7 @@ fn shape_impl(
                         },
                         scratch,
                         &mut output,
+                        scope_budget,
                         capture_only,
                     )?;
                     segment_start = range.start;
@@ -582,6 +600,7 @@ fn shape_impl(
                 },
                 scratch,
                 &mut output,
+                scope_budget,
                 capture_only,
             )?;
             item_start = item_end;
@@ -651,6 +670,7 @@ pub(crate) fn default_metrics(
         },
         scratch,
         &mut output,
+        &mut None,
         false,
     )?;
     Ok(output
@@ -664,13 +684,19 @@ pub(crate) fn finalize(
     selected: crate::protocol::input::PresentationInput<'_>,
     scratch: &mut ShapeContext,
     spacing: crate::SpacingPolicy,
+    allowance: Option<crate::ScopeAlignmentAllowance>,
+    scope_input: super::scope_alignment::PlanInput<'_>,
 ) -> Result<(
     ShapedData,
     std::sync::Arc<crate::protocol::prepared::SelectedMapping>,
+    super::scope_alignment::SelectionPlan,
 )> {
     use crate::protocol::prepared::PresentationUnitKind;
     let prepared = &selected.prepared;
     let presentation = &selected.presentation;
+    let mut scope_plan =
+        super::scope_alignment::selection_plan(prepared, presentation, allowance, scope_input)?;
+    let mut scope_budget = scope_plan.budget.take();
     let characters = super::spacing::character::plan(
         &presentation.projection,
         &presentation.analysis,
@@ -690,6 +716,8 @@ pub(crate) fn finalize(
         .is_empty(),
     };
     let input = ShapingInput {
+        formatting_breaks: &scope_plan.breaks,
+        scope_custody: scope_plan.custody(prepared),
         characters: Some(&characters),
         separator_geometry: separator_feedback
             || super::spacing::authored_demand(&presentation.analysis, &prepared.styles),
@@ -713,20 +741,29 @@ pub(crate) fn finalize(
         // AllocatedContributions has no such row and never borrows body metrics.
         output.empty_run = prepared.shaped.empty_run.clone();
     }
-    if input.projection.atoms.is_empty() {
-        if !native {
-            let boundary = &prepared.tables.boundaries[selected.start];
-            output.empty_run = prepared.shaped.empty_run.clone().or_else(|| {
-                prepared
-                    .shaped
-                    .runs
-                    .iter()
-                    .find(|run| run.atoms.contains(&boundary.atom))
-                    .or_else(|| prepared.shaped.runs.last())
-                    .cloned()
-            });
-        }
-    } else {
+    if input.projection.atoms.is_empty() && !native {
+        let boundary = &prepared.tables.boundaries[selected.start];
+        output.empty_run = prepared.shaped.empty_run.clone().or_else(|| {
+            prepared
+                .shaped
+                .runs
+                .iter()
+                .find(|run| run.atoms.contains(&boundary.atom))
+                .or_else(|| prepared.shaped.runs.last())
+                .cloned()
+        });
+    }
+    super::scope_alignment::admit_selected_resources(
+        prepared,
+        presentation,
+        output.empty_run.as_ref(),
+        &scope_plan.proof_frames,
+        &mut scope_budget,
+    )?;
+    if scope_budget.is_some() {
+        start_scope_output(&mut scope_budget)?;
+    }
+    if !input.projection.atoms.is_empty() {
         let computed = selected.computed;
         let barriers = &selected.boundaries.presentation;
         let mut selected_domains: Vec<JoiningDomain> = Vec::new();
@@ -734,26 +771,31 @@ pub(crate) fn finalize(
         let mut upright_barriers = shaping_barriers(&input);
         upright_barriers.extend(barriers.iter().copied());
         let mut split_assignments = Vec::new();
-        let assignments = if input.is_mixed() {
+        let assignments = if input.is_mixed() || !input.formatting_breaks.is_empty() {
             for assignment in &presentation.assignments {
                 let mut first = assignment.atoms.start;
-                for end in upright_barriers
-                    .range((
-                        std::ops::Bound::Excluded(first),
-                        std::ops::Bound::Excluded(assignment.atoms.end),
-                    ))
-                    .copied()
-                    .chain(std::iter::once(assignment.atoms.end))
-                {
-                    split_assignments
-                        .try_reserve(1)
-                        .map_err(|_| super::analysis::capacity())?;
-                    let mut run = assignment.run.clone();
+                while first < assignment.atoms.end {
+                    let end = next_assignment_end(
+                        first,
+                        assignment.atoms.end,
+                        input.is_mixed(),
+                        &upright_barriers,
+                        input.formatting_breaks,
+                        &mut scope_budget,
+                    )?;
+                    let mut run = super::scope_alignment::accounting::clone_run(
+                        &mut scope_budget,
+                        &assignment.run,
+                    )?;
                     run.atoms = first..end;
-                    split_assignments.push(crate::protocol::prepared::RetainedAssignment {
-                        atoms: first..end,
-                        run,
-                    });
+                    super::scope_alignment::accounting::push(
+                        &mut scope_budget,
+                        &mut split_assignments,
+                        crate::protocol::prepared::RetainedAssignment {
+                            atoms: first..end,
+                            run,
+                        },
+                    )?;
                     first = end;
                 }
             }
@@ -767,6 +809,8 @@ pub(crate) fn finalize(
             barriers
         };
         let original_input = ShapingInput {
+            formatting_breaks: &prepared.scope_alignment.breaks,
+            scope_custody: prepared.scope_alignment.custody(&prepared.analyzed),
             profile: super::upright::original_profile(
                 prepared.options.orientation(),
                 &prepared.vertical_units,
@@ -808,10 +852,10 @@ pub(crate) fn finalize(
                         &input,
                         atoms.clone(),
                         run,
-                        run.script,
                         RunContext::new(input.projection, atoms, extent),
                         scratch,
                         &mut output,
+                        &mut scope_budget,
                     )?;
                     first = end;
                 }
@@ -937,11 +981,25 @@ pub(crate) fn finalize(
                 &input,
                 assignment.atoms.clone(),
                 run,
-                run.script,
                 context,
                 scratch,
                 &mut output,
+                &mut scope_budget,
             )?;
+        }
+        let mut split_bytes = super::scope_alignment::accounting::bytes(&split_assignments)?;
+        for row in &split_assignments {
+            split_bytes = split_bytes
+                .checked_add(super::scope_alignment::accounting::bytes(&row.run.coords)?)
+                .ok_or_else(|| {
+                    super::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
+                        kind: crate::ScopeAlignmentLimitKind::PayloadBytes,
+                    })
+                })?;
+        }
+        drop(split_assignments);
+        if let Some(budget) = &mut scope_budget {
+            budget.release_bytes(split_bytes)?;
         }
     }
     if input.css_tabs {
@@ -994,7 +1052,12 @@ pub(crate) fn finalize(
             }
         }
     }
-    Ok((output, std::sync::Arc::clone(&presentation.mapping)))
+    scope_plan.budget = scope_budget;
+    Ok((
+        output,
+        std::sync::Arc::clone(&presentation.mapping),
+        scope_plan,
+    ))
 }
 
 fn attributes(style: &ResolvedStyle) -> Attributes {
@@ -1274,25 +1337,19 @@ fn append_selected(
     segment: SelectedSegment,
     scratch: &mut ShapeContext,
     output: &mut ShapedData,
+    scope_budget: &mut super::scope_alignment::accounting::Ledger,
     capture_only: bool,
 ) -> Result<()> {
     let selected = segment.font;
-    let (font, synthesis, suggested_variations) = match selected.font {
-        SelectedResource::Matched(selected) => {
-            let synthesis = FontSynthesis::resolve(
-                input.styles[segment.style].style.font_size,
-                selected.synthesis.skew(),
-                selected.synthesis.embolden(),
-            )?;
-            let variations = selected.synthesis.variation_settings().to_vec();
-            (
-                FontData::from_blob(selected.blob, selected.index, input.font_catalogue.clone()),
-                synthesis,
-                variations,
-            )
-        }
-        SelectedResource::Control(font) => (font, FontSynthesis::default(), Vec::new()),
-    };
+    let ResourceSelection {
+        font,
+        synthesis,
+        suggested_variations,
+    } = selected_resource(
+        selected.font,
+        input.styles[segment.style].style.font_size,
+        input.font_catalogue,
+    )?;
     append_request(
         RunRequest {
             input,
@@ -1309,6 +1366,7 @@ fn append_selected(
         },
         scratch,
         output,
+        scope_budget,
         capture_only,
     )
 }
@@ -1317,17 +1375,17 @@ fn append_retained_run(
     input: &ShapingInput<'_>,
     atoms: IndexRange<usize>,
     run: &PreparedRun,
-    script: Script,
     context: RunContext<'_>,
     scratch: &mut ShapeContext,
     output: &mut ShapedData,
+    scope_budget: &mut super::scope_alignment::accounting::Ledger,
 ) -> Result<()> {
     append_request(
         RunRequest {
             input,
             atoms,
             style: run.style,
-            script,
+            script: run.script,
             level: run.level,
             font: &run.font,
             attrs: run.font_attrs,
@@ -1338,6 +1396,7 @@ fn append_retained_run(
         },
         scratch,
         output,
+        scope_budget,
         false,
     )
 }
@@ -1346,6 +1405,7 @@ fn append_request(
     mut request: RunRequest<'_, '_>,
     scratch: &mut ShapeContext,
     output: &mut ShapedData,
+    scope_budget: &mut super::scope_alignment::accounting::Ledger,
     capture_only: bool,
 ) -> Result<()> {
     let style = &request.input.styles[request.style].style;
@@ -1364,33 +1424,7 @@ fn append_request(
         coords: request.retained_coords.unwrap_or_default().to_vec(),
     };
     let instance = scratch.instances.entry(key.clone(), || {
-        if let Some(coords) = request.retained_coords {
-            surgeist_shaper::ShaperInstance::from_coords(
-                &font_ref,
-                coords
-                    .iter()
-                    .copied()
-                    .map(surgeist_shaper::NormalizedCoord::from_bits),
-            )
-        } else {
-            surgeist_shaper::ShaperInstance::from_variations(
-                &font_ref,
-                key.suggested_variations
-                    .iter()
-                    .map(|(tag, value)| surgeist_shaper::Variation {
-                        tag: *tag,
-                        value: *value,
-                    })
-                    .chain(
-                        key.variations
-                            .iter()
-                            .map(|value| surgeist_shaper::Variation {
-                                tag: surgeist_shaper::Tag::new(&value.tag.to_bytes()),
-                                value: value.value,
-                            }),
-                    ),
-            )
-        }
+        canonical_instance(&font_ref, &key, request.retained_coords)
     });
     let data = scratch
         .data
@@ -1506,11 +1540,26 @@ fn append_request(
             "shaping input exceeds provider cluster indices",
         ));
     }
-    if request
+    let observe_components = if request
         .input
         .characters
         .is_some_and(|requirements| requirements.observe)
     {
+        true
+    } else if let Some(custody) = request.input.scope_custody {
+        match custody.observes(request.atoms.clone(), scope_budget) {
+            Ok(observes) => observes,
+            Err(error) => {
+                // This gate owns the taken, already-cleared reusable buffer.
+                // A feature-work refusal must preserve the same return fence.
+                scratch.buffer = Some(buffer);
+                return Err(error);
+            }
+        }
+    } else {
+        false
+    };
+    if observe_components {
         buffer.observe_components();
     }
     buffer.reserve(count);
@@ -1546,6 +1595,8 @@ fn append_request(
     } else {
         surgeist_shaper::BufferFlags::empty()
     });
+    // Formatting cuts split emitted bodies, not genuine Unicode joining
+    // lookaround. These strings insert no glyphs into GSUB/GPOS operands.
     buffer.set_pre_context(request.context.before);
     buffer.set_post_context(request.context.after);
     buffer.set_direction(direction);
@@ -1575,7 +1626,13 @@ fn append_request(
         let shaped = vertical::shape(&request, &shaper, plan, buffer, &features);
         return match shaped {
             Ok(glyph_buffer) => {
-                let result = extract_vertical_run(&request, &glyph_buffer, shaper.coords(), output);
+                let result = extract_vertical_run(
+                    &request,
+                    &glyph_buffer,
+                    shaper.coords(),
+                    output,
+                    scope_budget,
+                );
                 scratch.buffer = Some(glyph_buffer.clear());
                 result
             }
@@ -1596,7 +1653,13 @@ fn append_request(
         scratch.buffer = Some(glyph_buffer.clear());
         return Err(super::shaping_refused(reason));
     }
-    let result = extract_run(&request, &glyph_buffer, shaper.coords(), output);
+    let result = extract_run(
+        &request,
+        &glyph_buffer,
+        shaper.coords(),
+        output,
+        scope_budget,
+    );
     scratch.buffer = Some(glyph_buffer.clear());
     result
 }
@@ -1609,6 +1672,40 @@ fn atom_bytes(
         return 0..0;
     }
     projection.atoms[atoms.start].glyph_bytes.start..projection.atoms[atoms.end - 1].glyph_bytes.end
+}
+
+fn next_assignment_end(
+    first: usize,
+    end: usize,
+    mixed: bool,
+    native: &BTreeSet<usize>,
+    formatting: &[usize],
+    budget: &mut super::scope_alignment::accounting::Ledger,
+) -> Result<usize> {
+    let native = if mixed {
+        native
+            .range((
+                std::ops::Bound::Excluded(first),
+                std::ops::Bound::Excluded(end),
+            ))
+            .next()
+            .copied()
+            .unwrap_or(end)
+    } else {
+        end
+    };
+    let next = crate::processing::contextual::alignment::operations::partition_point(
+        formatting,
+        budget.as_mut(),
+        |&cut| cut <= first,
+    )?;
+    Ok(native.min(
+        formatting
+            .get(next)
+            .copied()
+            .filter(|&cut| cut < end)
+            .unwrap_or(end),
+    ))
 }
 
 fn bounded_context(
@@ -1647,14 +1744,13 @@ fn shaping_barriers(input: &ShapingInput<'_>) -> BTreeSet<usize> {
 }
 
 /// Metric attribution does not split otherwise compatible joint shaping.
-fn resolved_line_height(style: &ResolvedStyle, normal_extent: f64) -> Result<f64> {
-    match style.line_height {
-        LineHeight::Absolute(value) => Ok(value),
-        LineHeight::FontSizeRelative(value) => {
-            logical_multiply("line height", value, f64::from(style.font_size))
-        }
-        LineHeight::MetricsRelative(value) => logical_multiply("line height", value, normal_extent),
-    }
+pub(super) fn resolved_line_height(style: &ResolvedStyle, normal_extent: f64) -> Result<f64> {
+    super::resolve::font_line_height(
+        style.font_size,
+        style.line_height,
+        normal_extent,
+        TextNumericPhase::Shaping,
+    )
 }
 
 fn component_line_height(
@@ -1825,19 +1921,259 @@ fn resolved_run(
     Ok((run, scale, normal_extent))
 }
 
+// These compact frame facts are an alignment consumer of the real provider
+// receipt. They do not widen generic spacing membership or manufacture roots.
+fn start_scope_output(budget: &mut super::scope_alignment::accounting::Ledger) -> Result<()> {
+    super::scope_alignment::accounting::header::<Vec<super::scope_alignment::GlyphCustody>>(
+        budget,
+    )?;
+    super::scope_alignment::accounting::header::<Vec<super::scope_alignment::ScopeRelation>>(budget)
+}
+
+fn scope_group<I: Iterator<Item = u32> + Clone>(
+    request: &RunRequest<'_, '_>,
+    custody: super::scope_alignment::CustodyInput<'_>,
+    members: I,
+    unqualified: bool,
+    output: &mut ShapedData,
+    budget: &mut super::scope_alignment::accounting::Ledger,
+) -> Result<()> {
+    let mut first_members = members.clone();
+    loop {
+        // Charge the actual iterator probe before inspecting its member/end.
+        super::scope_alignment::accounting::work(budget, 1)?;
+        let Some(first) = first_members.next() else {
+            break;
+        };
+        let first = first as usize;
+        if first >= request.atoms.len() {
+            return Err(invalid_output(first, request.atoms.len()));
+        }
+        let first_owners = custody.input_owners(request.atoms.start + first, budget)?;
+        for owner in first_owners {
+            super::scope_alignment::accounting::work(budget, 1)?;
+            let owner = *owner;
+            let first = custody.target(owner, budget)?;
+            let mut second_members = members.clone();
+            loop {
+                super::scope_alignment::accounting::work(budget, 1)?;
+                let Some(second) = second_members.next() else {
+                    break;
+                };
+                let second = second as usize;
+                if second >= request.atoms.len() {
+                    return Err(invalid_output(second, request.atoms.len()));
+                }
+                let second_owners = custody.input_owners(request.atoms.start + second, budget)?;
+                for owner in second_owners {
+                    super::scope_alignment::accounting::work(budget, 1)?;
+                    let owner = *owner;
+                    let second = custody.target(owner, budget)?;
+                    if first >= second {
+                        continue;
+                    }
+                    let relation = super::scope_alignment::ScopeRelation {
+                        first,
+                        second,
+                        unqualified,
+                    };
+                    super::scope_alignment::accounting::work(budget, output.scope_relations.len())?;
+                    if !output.scope_relations.contains(&relation) {
+                        super::scope_alignment::accounting::push(
+                            budget,
+                            &mut output.scope_relations,
+                            relation,
+                        )?;
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn retain_scope_relations(
+    request: &RunRequest<'_, '_>,
+    receipt: Option<&surgeist_shaper::ComponentReceipt<'_>>,
+    glyph_count: usize,
+    residual: &[u32],
+    output: &mut ShapedData,
+    budget: &mut super::scope_alignment::accounting::Ledger,
+) -> Result<()> {
+    let Some(custody) = request.input.scope_custody else {
+        return Ok(());
+    };
+    if !custody.observes(request.atoms.clone(), budget)? {
+        return Ok(());
+    };
+    if let Some(receipt) = receipt
+        && receipt.input_len() != request.atoms.len()
+    {
+        return Err(invalid_output(receipt.input_len(), request.atoms.len()));
+    }
+    let mut unqualified = receipt
+        .is_none_or(|receipt| receipt.coverage() != surgeist_shaper::ComponentCoverage::Complete);
+    let mut surviving = false;
+    for glyph in 0..glyph_count {
+        super::scope_alignment::accounting::work(budget, 1)?;
+        let ordinal = u32::try_from(glyph).map_err(|_| invalid_output(glyph, glyph_count))?;
+        if crate::processing::contextual::alignment::operations::binary_search_by(
+            residual,
+            budget.as_mut(),
+            |value| value.cmp(&ordinal),
+        )?
+        .is_ok()
+        {
+            continue;
+        }
+        surviving = true;
+        if let Some(receipt) = receipt {
+            let members = receipt
+                .components(glyph)
+                .ok_or_else(|| invalid_output(glyph, glyph_count))?;
+            scope_group(
+                request,
+                custody,
+                members.iter().copied(),
+                false,
+                output,
+                budget,
+            )?;
+            if members.is_empty() {
+                super::scope_alignment::accounting::work(budget, 1)?;
+                if let Some(context) = receipt.generated_context(glyph) {
+                    scope_group(
+                        request,
+                        custody,
+                        context.iter().copied(),
+                        false,
+                        output,
+                        budget,
+                    )?;
+                    unqualified |= context.is_empty();
+                } else {
+                    unqualified = true;
+                }
+            }
+        }
+    }
+    if !surviving {
+        return Ok(());
+    };
+    if let Some(receipt) = receipt {
+        for ligature in receipt.ligatures() {
+            super::scope_alignment::accounting::work(budget, 1)?;
+            if !ligature.glyph_indices().is_empty() {
+                scope_group(
+                    request,
+                    custody,
+                    ligature.components().iter().copied(),
+                    false,
+                    output,
+                    budget,
+                )?;
+            }
+        }
+        for attachment in receipt.attachments() {
+            super::scope_alignment::accounting::work(budget, 1)?;
+            scope_group(
+                request,
+                custody,
+                attachment
+                    .dependent_components()
+                    .iter()
+                    .chain(attachment.base_components())
+                    .copied(),
+                false,
+                output,
+                budget,
+            )?;
+        }
+    }
+    if unqualified {
+        let members = (0..request.atoms.len())
+            .map(|local| u32::try_from(local).expect("provider input ordinals admitted"));
+        scope_group(request, custody, members, true, output, budget)?;
+    }
+    Ok(())
+}
+
+fn scope_glyph_owner(
+    custody: super::scope_alignment::CustodyInput<'_>,
+    atoms: IndexRange<usize>,
+    receipt: Option<&surgeist_shaper::ComponentReceipt<'_>>,
+    glyph: usize,
+    budget: &mut super::scope_alignment::accounting::Ledger,
+) -> Result<super::scope_alignment::GlyphCustody> {
+    use super::scope_alignment::GlyphCustody as G;
+    if !custody.observes(atoms.clone(), budget)? {
+        return Ok(G::Unscoped);
+    };
+    let first_owner = |members: &[u32],
+                       budget: &mut super::scope_alignment::accounting::Ledger|
+     -> Result<Option<usize>> {
+        for member in members {
+            super::scope_alignment::accounting::work(budget, 1)?;
+            let local = *member as usize;
+            if local >= atoms.len() {
+                return Err(invalid_output(local, atoms.len()));
+            }
+            let owners = custody.input_owners(atoms.start + local, budget)?;
+            if !owners.is_empty() {
+                super::scope_alignment::accounting::work(budget, 1)?;
+                return Ok(Some(owners[0]));
+            }
+        }
+        Ok(None)
+    };
+    if let Some(receipt) = receipt {
+        // Querying the actual component/context descriptor is also inspected
+        // work; the borrowed member rows are charged separately below.
+        super::scope_alignment::accounting::work(budget, 1)?;
+        let members = receipt
+            .components(glyph)
+            .ok_or_else(|| invalid_output(glyph, glyph + 1))?;
+        if let Some(owner) = first_owner(members, budget)? {
+            return Ok(G::Input(owner));
+        }
+        super::scope_alignment::accounting::work(budget, 1)?;
+        if let Some(context) = receipt.generated_context(glyph)
+            && let Some(owner) = first_owner(context, budget)?
+        {
+            return Ok(G::Context(owner));
+        }
+    }
+    // No membership guarantee is made. Inspect only actual fallback rows until
+    // the first contextual owner; the uncertain cohort still governs placement.
+    for atom in atoms {
+        let owners = custody.input_owners(atom, budget)?;
+        if !owners.is_empty() {
+            super::scope_alignment::accounting::work(budget, 1)?;
+            return Ok(G::UnqualifiedContext(Some(owners[0])));
+        }
+    }
+    Ok(G::UnqualifiedContext(None))
+}
+
 fn extract_run(
     request: &RunRequest<'_, '_>,
     glyph_buffer: &surgeist_shaper::GlyphBuffer,
     coords: &[surgeist_shaper::NormalizedCoord],
     output: &mut ShapedData,
+    scope_budget: &mut super::scope_alignment::accounting::Ledger,
 ) -> Result<()> {
     // Receipt admission is part of the same invocation fence, including empty
     // glyph output. Each buffer.add above emits exactly one scalar per atom,
     // so these input ordinals map directly to this request's local atom range.
-    if let Some(receipt) = glyph_buffer
+    let components = glyph_buffer
         .component_receipt()
-        .map_err(super::shaping_refused)?
-    {
+        .map_err(super::shaping_refused)?;
+    if let Some(receipt) = components.as_ref().filter(|_| {
+        request
+            .input
+            .characters
+            .is_some_and(|requirements| requirements.observe)
+    }) {
         retain_components(request, receipt, glyph_buffer.glyph_infos().len(), output)?;
     } else if request.input.characters.is_some() {
         output
@@ -1870,7 +2206,11 @@ fn extract_run(
         &positions,
         receipt,
         coords,
-        output,
+        components.as_ref(),
+        GlyphWriter {
+            data: output,
+            scope_budget,
+        },
     )
 }
 
@@ -1885,11 +2225,17 @@ fn extract_vertical_run(
     glyph_buffer: &surgeist_shaper::VerticalGlyphBuffer,
     coords: &[surgeist_shaper::NormalizedCoord],
     output: &mut ShapedData,
+    scope_budget: &mut super::scope_alignment::accounting::Ledger,
 ) -> Result<()> {
-    if let Some(receipt) = glyph_buffer
+    let components = glyph_buffer
         .component_receipt()
-        .map_err(super::shaping_refused)?
-    {
+        .map_err(super::shaping_refused)?;
+    if let Some(receipt) = components.as_ref().filter(|_| {
+        request
+            .input
+            .characters
+            .is_some_and(|requirements| requirements.observe)
+    }) {
         retain_components(request, receipt, glyph_buffer.glyph_infos().len(), output)?;
     } else if request.input.characters.is_some() {
         output
@@ -1921,13 +2267,17 @@ fn extract_vertical_run(
         &positions,
         receipt,
         coords,
-        output,
+        components.as_ref(),
+        GlyphWriter {
+            data: output,
+            scope_budget,
+        },
     )
 }
 
 fn retain_components(
     request: &RunRequest<'_, '_>,
-    receipt: surgeist_shaper::ComponentReceipt<'_>,
+    receipt: &surgeist_shaper::ComponentReceipt<'_>,
     glyph_count: usize,
     output: &mut ShapedData,
 ) -> Result<()> {
@@ -2085,20 +2435,47 @@ fn retain_external_invocations(output: &mut ShapedData) {
     }
 }
 
+/// One stored output and its operation ledger. Glyph custody is committed in
+/// the same extraction order as the actual glyph, including scoped reservation.
+struct GlyphWriter<'a> {
+    data: &'a mut ShapedData,
+    scope_budget: &'a mut super::scope_alignment::accounting::Ledger,
+}
+impl GlyphWriter<'_> {
+    fn push_glyph(
+        &mut self,
+        custody: Option<super::scope_alignment::GlyphCustody>,
+        glyph: impl FnOnce() -> Result<GlyphData>,
+    ) -> Result<()> {
+        if let Some(owner) = custody {
+            super::scope_alignment::accounting::push(
+                self.scope_budget,
+                &mut self.data.scope_glyph_custody,
+                owner,
+            )?;
+        }
+        // Preserve provider validation and reservation order: numeric glyph
+        // construction follows custody admission, exactly as ordinary extraction.
+        self.data.glyphs.push(glyph()?);
+        Ok(())
+    }
+}
+
 fn extract_output(
     request: &RunRequest<'_, '_>,
     infos: &[surgeist_shaper::GlyphInfo],
     positions: &[ProviderPosition],
     receipt: surgeist_shaper::DefaultIgnorableReceipt<'_>,
     coords: &[surgeist_shaper::NormalizedCoord],
-    output: &mut ShapedData,
+    components: Option<&surgeist_shaper::ComponentReceipt<'_>>,
+    mut writer: GlyphWriter<'_>,
 ) -> Result<()> {
     let input = request.input;
     let (run, scale, normal_extent) = resolved_run(request, coords)?;
     let font_ref = skrifa::FontRef::from_index(request.font.bytes(), request.font.index())
         .map_err(|_| Error::new(ErrorCode::FontLoadFailed, "invalid selected font face"))?;
     if request.atoms.is_empty() {
-        output.empty_run = Some(run);
+        writer.data.empty_run = Some(run);
         return Ok(());
     }
     if infos.len() != positions.len() {
@@ -2111,6 +2488,14 @@ fn extract_output(
             positions: positions.len(),
         }));
     }
+    retain_scope_relations(
+        request,
+        components,
+        infos.len(),
+        receipt.residual_glyph_positions(),
+        writer.data,
+        writer.scope_budget,
+    )?;
     let max_glyph = font_ref
         .maxp()
         .map_err(|_| Error::new(ErrorCode::FontLoadFailed, "font lacks valid glyph bounds"))?
@@ -2133,8 +2518,7 @@ fn extract_output(
             if local >= count {
                 return Err(invalid_output(local, count));
             }
-            output
-                .character_exclusions
+            std::sync::Arc::make_mut(&mut writer.data.character_exclusions)
                 .insert(request.atoms.start + local, kind);
         }
     }
@@ -2170,8 +2554,8 @@ fn extract_output(
     starts.push(count);
     starts.sort_unstable();
     starts.dedup();
-    let run_index = output.runs.len();
-    let first_run_glyph = output.glyphs.len();
+    let run_index = writer.data.runs.len();
+    let first_run_glyph = writer.data.glyphs.len();
     // Each actual provider cluster is extracted in logical order; its glyphs
     // retain the provider's visual order. Component geometry remains distinct.
     for pair in starts.windows(2) {
@@ -2180,7 +2564,7 @@ fn extract_output(
         let atom_start = request.atoms.start + start;
         let atom_end = request.atoms.start + end;
         let cluster_source = original_extent(&input.projection.atoms[atom_start..atom_end]);
-        let first_glyph = output.glyphs.len();
+        let first_glyph = writer.data.glyphs.len();
         let mut advance = 0.0_f64;
         let provider_glyphs = groups.get(&start).cloned().unwrap_or(0..0);
         for glyph_index in provider_glyphs {
@@ -2211,21 +2595,36 @@ fn extract_output(
             }
             let glyph_advance = canonical("glyph advance", position.advance * scale)?;
             advance += f64::from(glyph_advance);
-            output.glyphs.push(GlyphData {
-                id: info.glyph_id,
-                x: canonical("glyph x offset", position.x * scale)?,
-                y: canonical("glyph y offset", position.y * scale)?,
-                advance: glyph_advance,
-                source: cluster_source,
-                style: input.analysis.infos[atom_start].1,
-            });
+            let custody = request
+                .input
+                .scope_custody
+                .map(|custody| {
+                    scope_glyph_owner(
+                        custody,
+                        request.atoms.clone(),
+                        components,
+                        glyph_index,
+                        writer.scope_budget,
+                    )
+                })
+                .transpose()?;
+            writer.push_glyph(custody, || {
+                Ok(GlyphData {
+                    id: info.glyph_id,
+                    x: canonical("glyph x offset", position.x * scale)?,
+                    y: canonical("glyph y offset", position.y * scale)?,
+                    advance: glyph_advance,
+                    source: cluster_source,
+                    style: input.analysis.infos[atom_start].1,
+                })
+            })?;
         }
-        let glyphs = first_glyph..output.glyphs.len();
+        let glyphs = first_glyph..writer.data.glyphs.len();
         let provider_receipt = input
             .separator_geometry
-            .then_some(output.provider_groups.len());
+            .then_some(writer.data.provider_groups.len());
         if input.separator_geometry {
-            output.provider_groups.push(ProviderGroup {
+            writer.data.provider_groups.push(ProviderGroup {
                 run: run_index,
                 atoms: atom_start..atom_end,
                 glyphs: glyphs.clone(),
@@ -2263,7 +2662,7 @@ fn extract_output(
             distributed_base += base_advance;
             let style = &input.styles[style_index].style;
 
-            output.clusters.push(PreparedCluster {
+            writer.data.clusters.push(PreparedCluster {
                 line_height: component_line_height(style, &run.metrics, normal_extent)?,
                 shaped_advance: base_advance,
                 logical_adjustments: [0.0, 0.0, 0.0],
@@ -2288,16 +2687,16 @@ fn extract_output(
             });
         }
     }
-    if input.is_mixed() && request.upright() && output.glyphs.len() != first_run_glyph {
+    if input.is_mixed() && request.upright() && writer.data.glyphs.len() != first_run_glyph {
         let mut seen = BTreeSet::new();
         for atom in request.atoms.clone() {
             let style = input.analysis.infos[atom].1;
-            if !output.character_exclusions.contains_key(&atom) && seen.insert(style) {
+            if !writer.data.character_exclusions.contains_key(&atom) && seen.insert(style) {
                 super::upright::admit_mixed_decoration(input, style)?;
             }
         }
     }
-    output.runs.push(run);
+    writer.data.runs.push(run);
     Ok(())
 }
 
@@ -2449,6 +2848,7 @@ pub(crate) fn measure_character(
         },
         scratch,
         &mut output,
+        &mut None,
         false,
     )?;
     let run = output

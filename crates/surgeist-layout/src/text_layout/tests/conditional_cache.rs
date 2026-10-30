@@ -250,6 +250,7 @@ fn signed<S: LayoutScalar>(adjustment: f64) {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(15.0)).unwrap();
@@ -325,6 +326,7 @@ fn future<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(20.0)).unwrap();

@@ -69,6 +69,7 @@ fn compute<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     compute_layout_with_flow(
@@ -232,6 +233,14 @@ fn intrinsic<S: LayoutScalar>(
         &[],
         &[],
         super::super::run::Context {
+            scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
+                crate::text_layout::scope_alignment::ScopeAlignmentSnapshot::admit(
+                    Vec::new(),
+                    std::slice::from_ref(&binding),
+                )
+                .unwrap()
+                .freeze(),
+            ),
             orientation: super::super::run::text_orientation(
                 WritingMode::HorizontalTb,
                 &binding.prepared,
@@ -783,6 +792,7 @@ fn phantom_prefix_shape_replay_allows_each_restored_candidate_its_own_height_ban
                     scopes: Vec::new(),
                     child_order: Vec::new(),
                 },
+                Vec::new(),
             )
             .unwrap();
             compute_layout_with_flow(

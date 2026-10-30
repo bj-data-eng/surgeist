@@ -7,17 +7,21 @@ use crate::{CapturedScopeIncidence as R, SourceProcessingEvent as E};
 fn enclosing_edges_localize_to_their_paragraph_and_remote_same_domain_is_outside() {
     let source = Source::new("AB");
     let processed = crate::process_contextual_source(crate::ContextualSourceInput {
+        scope_alignment_limits: None,
         source: source.clone(),
         segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
         envelope: crate::SourceProcessingEnvelope::Complete,
         scopes: vec![
             crate::SourceProcessingScope::Block {
+                font_reference: None,
                 topology: crate::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style(),
                 used_direction: ParagraphBaseDirection::LeftToRight,
             },
             crate::SourceProcessingScope::Inline {
+                alignment_boundary: None,
+                font_reference: None,
                 trim: Default::default(),
                 style: None,
                 boundaries: None,

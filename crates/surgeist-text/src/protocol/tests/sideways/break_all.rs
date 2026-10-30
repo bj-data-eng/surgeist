@@ -100,7 +100,10 @@ fn break_all_offers_real_hebrew_letter_cut_and_finalizes_two_ordinary_rtl_lines(
     let first = prepared
         .select(prefix)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let end = terminal(&prepared);
     let mut suffix = selected_request(&prepared, next, end.clone());
@@ -108,7 +111,10 @@ fn break_all_offers_real_hebrew_letter_cut_and_finalizes_two_ordinary_rtl_lines(
     let second = prepared
         .select(suffix)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     for (line, range) in [(&first, Range::new(0, 1)), (&second, Range::new(1, 2))] {
         assert_eq!(line.prepared_text(), prepared);

@@ -236,7 +236,12 @@ fn actual_before_after_and_both_indications_retain_selected_tracking_and_shy_que
         let first_selected = prepared
             .select(ending_request(&prepared, offer.clone(), chosen.clone()))
             .unwrap();
-        let first_natural = first_selected.finalize(SpacingAllocations::None).unwrap();
+        let first_natural = first_selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_eq!(
             first_natural.feedback().advance,
             if before { 40.0 } else { 24.0 }
@@ -296,7 +301,12 @@ fn actual_before_after_and_both_indications_retain_selected_tracking_and_shy_que
         receiver.context.available_inline = None;
         receiver.context.spacing = SpacingPolicy::InterCharacter;
         let second_selected = prepared.select(receiver).unwrap();
-        let second_natural = second_selected.finalize(SpacingAllocations::None).unwrap();
+        let second_natural = second_selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_eq!(
             second_natural.feedback().advance,
             if after { 54.0 } else { 38.0 }
@@ -427,7 +437,12 @@ fn expanded_wbr_is_a_generated_endpoint_with_its_control_custody_and_no_authored
             vec![source_owner(&prepared, Range::new(1, 2))]
         )
     );
-    let natural = selected.finalize(SpacingAllocations::None).unwrap();
+    let natural = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(natural.feedback().advance, 38.0);
     assert_eq!(
         paint_offsets(&natural),
@@ -485,6 +500,7 @@ fn phrase_analysis(source: &Source, tracking: f64) -> AnalyzedSource {
     use crate::SourceProcessingEvent as E;
     let processed = std::sync::Arc::new(
         crate::process_contextual_source(crate::ContextualSourceInput {
+            scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
             envelope: crate::SourceProcessingEnvelope::Complete,
@@ -495,6 +511,7 @@ fn phrase_analysis(source: &Source, tracking: f64) -> AnalyzedSource {
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![crate::SourceProcessingScope::Block {
+                font_reference: None,
                 topology: crate::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: Style {
@@ -593,7 +610,12 @@ fn actual_phrase_separator_remains_a_virtual_endpoint_and_out_of_original_source
             vec![source_owner(&prepared, Range::new(3, 4))]
         )
     );
-    let natural = selected.finalize(SpacingAllocations::None).unwrap();
+    let natural = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(natural.feedback().advance, 122.0);
     assert_eq!(
         paint_offsets(&natural)
@@ -660,7 +682,12 @@ fn exact_opposite_subnormal_and_extreme_values_cancel_without_materializing_priv
             };
             assert_eq!(visual_before.letter_spacing_after(), left);
             assert_eq!(visual_after.letter_spacing_before(), -left);
-            let line = selected.finalize(SpacingAllocations::None).unwrap();
+            let line = selected
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
+                .unwrap();
             assert_eq!(
                 line.spacing_slots().next().unwrap().authored_letter_spacing,
                 0.0
@@ -831,7 +858,12 @@ fn selected_before_indication_loses_a_mean_only_during_retained_finalization() {
         assert_eq!(visual_before.letter_spacing_after(), 0.0);
         assert_eq!(visual_after.letter_spacing_before(), tracking);
         if tracking == 0.0 {
-            let first = selected.finalize(SpacingAllocations::None).unwrap();
+            let first = selected
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
+                .unwrap();
             assert_eq!(first.feedback().advance, 30.0);
             assert_eq!(visible_paints(&first), [(35, 0.0), (36, 10.0), (35, 20.0)]);
             let mut receiver = request(&prepared);
@@ -847,7 +879,10 @@ fn selected_before_indication_loses_a_mean_only_during_retained_finalization() {
             let second = prepared
                 .select(receiver)
                 .unwrap()
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap();
             assert_eq!(second.feedback().advance, 30.0);
             let layout = place(&prepared, vec![first, second]);
@@ -877,7 +912,12 @@ fn selected_before_indication_loses_a_mean_only_during_retained_finalization() {
             // Binary64 min is2^-1074. The selected B0/Amin midpoint is2^-1075,
             // exactly halfway to min and rounds to even zero: the error belongs
             // to this retained operation, after preparation and selection.
-            let error = selected.finalize(SpacingAllocations::None).unwrap_err();
+            let error = selected
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
+                .unwrap_err();
             numeric(
                 &error,
                 "character boundary mean",
@@ -904,7 +944,12 @@ fn same_sign_extreme_means_avoid_overflow_and_refuse_the_actual_following_ten_pi
             let prepared = prepare_input(&mut system, input(&source, own(tracking))).unwrap();
             let selected = select_method(&prepared, SpacingPolicy::InterCharacter);
             assert_eq!(selected.spacing_slots().len(), 1);
-            let error = selected.finalize(SpacingAllocations::None).unwrap_err();
+            let error = selected
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
+                .unwrap_err();
             numeric(
                 &error,
                 "edge text end",
@@ -926,7 +971,12 @@ fn lost_actual_allocation_preserves_the_previous_line_and_allows_a_later_valid_r
         &[Range::new(0, 1), Range::new(1, 2)],
     );
     let selected = select_method(&prepared, SpacingPolicy::InterCharacter);
-    let prior = selected.finalize(SpacingAllocations::None).unwrap();
+    let prior = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     let least = f64::from_bits(1);
     let error = prior
         .with_spacing(allocations(&selected, &[least]))

@@ -67,7 +67,12 @@ fn signed_spacing_hulls_and_css_tabs_use_one_directed_counterclockwise_frame() {
     r.context.tabs = TabContext::CssStops { origin: Some(0.0) };
     let selected = p.select(r).unwrap();
     let before = system.stats();
-    let line = selected.finalize(SpacingAllocations::None).unwrap();
+    let line = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(system.stats(), before);
     assert_eq!(line.feedback().advance, 50.0);
     assert_eq!(
@@ -90,7 +95,12 @@ fn retained_spacing_resources_replay_without_provider_calls_after_system_drop() 
     let slots = selected.spacing_slots().collect::<Vec<_>>();
     assert_eq!(slots.len(), 1);
     let stats = system.stats();
-    let plain = selected.finalize(SpacingAllocations::None).unwrap();
+    let plain = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     let expanded = plain
         .with_spacing(SpacingAllocations::Complete(vec![SpacingAllocation {
             slot: slots[0].clone(),
@@ -168,14 +178,20 @@ fn before_after_and_both_indications_keep_the_selected_source_and_horizontal_fea
         let first = p
             .select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         let mut r = selected_request(&p, offer.view().boundary(), terminal(&p));
         r.incoming = first.hyphenation_continuation();
         let second = p
             .select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(
             first.selected_line().request().alternative,

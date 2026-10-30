@@ -58,7 +58,10 @@ fn capture(source: Source, style: Style) -> PreparedText {
 fn whole(p: &PreparedText) -> FinalizedLine {
     p.select(request(p))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn glyphs(line: &FinalizedLine) -> Vec<(u32, f32)> {
@@ -285,7 +288,10 @@ fn generated_discard_separators_keep_ordinary_trailing_advance_and_original_zwsp
         let line = p
             .select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         let letter_advance = if full_width { 20.0 } else { 10.0 };
         assert_eq!(

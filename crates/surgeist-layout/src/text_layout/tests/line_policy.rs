@@ -55,6 +55,7 @@ fn batch<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     compute_layout_with_flow(&capture, 0, request(width)).unwrap()
@@ -498,6 +499,7 @@ fn assert_float_amounts<S: LayoutScalar>() {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let batch = compute_layout_with_flow(&capture, 0, request(45.0)).unwrap();
@@ -636,6 +638,7 @@ fn native_fractional_expansion_keeps_three_words_inside_the_actual_f64_band() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(31.0)).unwrap();
@@ -676,25 +679,31 @@ fn native_fractional_expansion_keeps_three_words_inside_the_actual_f64_band() {
     proposed.participants = paragraph.prepared.participants().take(6).collect();
     let selected = paragraph.prepared.select(proposed).unwrap();
     let natural = selected
-        .finalize(surgeist_text::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: surgeist_text::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(natural.feedback().advance, 23.28125);
     let extra = 30.65125 - natural.feedback().advance;
     let expanded = selected
-        .finalize(surgeist_text::SpacingAllocations::Complete(
-            selected
-                .spacing_slots()
-                .enumerate()
-                .map(|(index, slot)| surgeist_text::SpacingAllocation {
-                    slot,
-                    amount: match index {
-                        0 => extra / 2.0,
-                        1 => extra - extra / 2.0,
-                        _ => 0.0,
-                    },
-                })
-                .collect(),
-        ))
+        .finalize(surgeist_text::LineAllocations {
+            spacing: surgeist_text::SpacingAllocations::Complete(
+                selected
+                    .spacing_slots()
+                    .enumerate()
+                    .map(|(index, slot)| surgeist_text::SpacingAllocation {
+                        slot,
+                        amount: match index {
+                            0 => extra / 2.0,
+                            1 => extra - extra / 2.0,
+                            _ => 0.0,
+                        },
+                    })
+                    .collect(),
+            ),
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(expanded.feedback().advance, 30.651250000000005);
     assert!(expanded.feedback().advance > 30.65125);

@@ -57,7 +57,12 @@ fn mixed_selected_basis_retains_axes_resources_and_raw_packets_without_replay_pr
     assert_ne!(system.font_catalogue_identity(), &old_catalogue);
     drop(system);
     assert_calls(calls);
-    let natural = selected.finalize(SpacingAllocations::None).unwrap();
+    let natural = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_calls(calls);
     assert_eq!(natural.feedback().advance, 22.0);
     assert_eq!(
@@ -72,7 +77,12 @@ fn mixed_selected_basis_retains_axes_resources_and_raw_packets_without_replay_pr
         .run_views()
         .map(|run| run.face().to_owned())
         .collect::<Vec<_>>();
-    let repeated = selected.finalize(SpacingAllocations::None).unwrap();
+    let repeated = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_calls(calls);
     let expanded = natural.with_spacing(amounts(&selected, &[2.0])).unwrap();
     assert_calls(calls);
@@ -243,7 +253,12 @@ fn mixed_native_di_receipts_preserve_normal_clockwise_output_and_removed_source_
             .unwrap();
         assert_eq!(di_run.atoms, 1..2);
         assert_eq!(di_run.glyph_basis, GlyphBasis::Clockwise);
-        let natural = selected.finalize(SpacingAllocations::None).unwrap();
+        let natural = selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_calls(calls);
         let mut expected = vec![(Range::new(0, 1), GlyphBasis::Unrotated, 35, 12.0)];
         if normal {
@@ -252,7 +267,12 @@ fn mixed_native_di_receipts_preserve_normal_clockwise_output_and_removed_source_
         expected.push((Range::new(2, 3), GlyphBasis::Clockwise, 36, 20.0));
         assert_eq!(roles(&natural), expected);
         assert_eq!(natural.feedback().advance, if normal { 47.0 } else { 32.0 });
-        let repeated = selected.finalize(SpacingAllocations::None).unwrap();
+        let repeated = selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_calls(calls);
         let restored = natural.with_spacing(SpacingAllocations::None).unwrap();
         assert_calls(calls);

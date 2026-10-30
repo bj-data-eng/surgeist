@@ -31,18 +31,16 @@ impl<Node> WrappingScopeProof<Node> {
     }
 }
 #[derive(Clone, Debug, PartialEq)]
-struct SourceExtent {
-    domain: CapturedScope,
-    start: surgeist_text::CapturedEventPosition,
-    end: surgeist_text::CapturedEventPosition,
+enum SourceExtent {
+    Captured(CapturedScope),
+    Native {
+        start: surgeist_text::CapturedControl,
+        end: surgeist_text::CapturedControl,
+    },
 }
 impl SourceExtent {
     fn canonical(scope: &CapturedScope) -> Self {
-        Self {
-            domain: scope.domain(),
-            start: scope.enter_position(),
-            end: scope.exit_position(),
-        }
+        Self::Captured(scope.clone())
     }
     fn native(
         start: &surgeist_text::CapturedControl,
@@ -65,11 +63,37 @@ impl SourceExtent {
         {
             return Err(WrappingScopeError::CaptureAssociation);
         }
-        Ok(Self {
-            domain,
-            start: first,
-            end: last,
+        Ok(Self::Native {
+            start: start.clone(),
+            end: end.clone(),
         })
+    }
+    fn domain(&self) -> CapturedScope {
+        match self {
+            Self::Captured(scope) => scope.domain(),
+            Self::Native { start, .. } => start.paragraph().domain(),
+        }
+    }
+    fn start(&self) -> surgeist_text::CapturedEventPosition {
+        match self {
+            Self::Captured(scope) => scope.enter_position(),
+            Self::Native { start, .. } => start.event_position(),
+        }
+    }
+    fn end(&self) -> surgeist_text::CapturedEventPosition {
+        match self {
+            Self::Captured(scope) => scope.exit_position(),
+            Self::Native { end, .. } => end.event_position(),
+        }
+    }
+    fn owner(&self) -> Option<CapturedScope> {
+        match self {
+            Self::Captured(scope) => Some(scope.clone()),
+            Self::Native { start, end } => {
+                let owner = start.scope();
+                (owner == end.scope()).then_some(owner)
+            }
+        }
     }
 }
 #[derive(Clone, Debug, PartialEq)]
@@ -87,6 +111,13 @@ pub(crate) struct ScopeRow<Node> {
     pub(crate) edges: WrapEdges,
     pub(crate) metric_contribution: Option<InlineBoxMetricContribution>,
     source: Option<SourceExtent>,
+}
+impl<Node> ScopeRow<Node> {
+    /// Actual source owner, independently of this native box's identity and of
+    /// whichever selected scope frame ultimately inherits the numeric leaf.
+    pub(crate) fn source_owner(&self) -> Option<CapturedScope> {
+        self.source.as_ref()?.owner()
+    }
 }
 #[derive(Clone, Debug)]
 pub(crate) struct WrappingContext<Node> {
@@ -185,8 +216,8 @@ fn proven_relation<Node: Eq>(
         .zip(b.native.as_ref())
         .map(|(a, b)| interval_relation(&a.first, &a.last, &b.first, &b.last));
     let source = a.source.as_ref().zip(b.source.as_ref()).and_then(|(a, b)| {
-        (a.domain == b.domain && a.start.same_capture(&b.start))
-            .then(|| interval_relation(&a.start, &a.end, &b.start, &b.end))
+        (a.domain() == b.domain() && a.start().same_capture(&b.start()))
+            .then(|| interval_relation(&a.start(), &a.end(), &b.start(), &b.end()))
     });
     if native == Some(Relation::Crossing) || source == Some(Relation::Crossing) {
         return Err(WrappingScopeError::CrossingScopes);
@@ -353,7 +384,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                             native: Some(native),
                             policy: *wrap_inside,
                             edges: *edges,
-                            metric_contribution: validate_metrics(*metric_contribution)?,
+                            metric_contribution: validate_metrics(metric_contribution.clone())?,
                             source: if let Some(proof) = proof {
                                 Some(SourceExtent::canonical(&proof.scope))
                             } else {
@@ -411,7 +442,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                             native: native.map(|(_, s)| s),
                             policy: *wrap_inside,
                             edges: *edges,
-                            metric_contribution: validate_metrics(*metric_contribution)?,
+                            metric_contribution: validate_metrics(metric_contribution.clone())?,
                             source: Some(SourceExtent::canonical(scope)),
                         },
                         2,
@@ -428,7 +459,8 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                 if let Some(value) = row.metric_contribution {
                     if rows[i]
                         .metric_contribution
-                        .is_some_and(|prior| prior != value)
+                        .as_ref()
+                        .is_some_and(|prior| prior != &value)
                     {
                         return Err(WrappingScopeError::ConflictingBoxMetrics);
                     }
@@ -757,7 +789,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
         }
         let mut metrics = Vec::new();
         for (_, row) in self.box_rows(flow) {
-            let Some(contribution) = row.metric_contribution else {
+            let Some(contribution) = row.metric_contribution.clone() else {
                 continue;
             };
             let span = row

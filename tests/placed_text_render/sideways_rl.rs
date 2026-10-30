@@ -22,6 +22,7 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
     let ancestor_wrap = style.wrap;
     let capture = std::sync::Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
             envelope: text::SourceProcessingEnvelope::Complete,
@@ -38,6 +39,7 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![text::SourceProcessingScope::Block {
+                font_reference: None,
                 topology: text::SourceProcessingTopology::Unknown,
                 used_direction: text::ParagraphBaseDirection::LeftToRight,
                 trim: text::WhiteSpaceTrim::default(),
@@ -117,6 +119,7 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
             line_strut: None,
         }],
         layout::WrappingInput::default(),
+        Vec::new(),
     )
     .unwrap();
     let batch = layout::compute_layout_with_flow(

@@ -296,17 +296,15 @@ impl Layout {
             .lines
             .iter()
             .flat_map(|line| {
-                let metrics = &line.finalized.data.metrics;
                 line.finalized.data.clusters.iter().map(move |cluster| {
                     Cluster::new(
                         cluster.source,
                         line_rect(
                             line,
-                            Rect::new(
+                            line.finalized.data.cell_rect(
                                 cluster.x,
-                                metrics.block_min,
                                 cluster.advance,
-                                metrics.block_max - metrics.block_min,
+                                cluster.reference,
                             ),
                         ),
                     )

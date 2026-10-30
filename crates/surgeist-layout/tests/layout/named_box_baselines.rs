@@ -1124,6 +1124,7 @@ fn actual_text_unknown<S: l::LayoutScalar>() {
     use t::SourceProcessingEvent as E;
     let capture = Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
             envelope: t::SourceProcessingEnvelope::Complete,
@@ -1140,6 +1141,7 @@ fn actual_text_unknown<S: l::LayoutScalar>() {
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![t::SourceProcessingScope::Block {
+                font_reference: None,
                 topology: t::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style.clone(),
@@ -1214,6 +1216,7 @@ fn actual_text_unknown<S: l::LayoutScalar>() {
             0,
             vec![binding.clone()],
             l::WrappingInput::default(),
+            Vec::new(),
         )
         .unwrap();
         l::compute_layout_with_flow(&flow, 0, request(l::WritingMode::HorizontalTb)).unwrap()
@@ -1251,6 +1254,7 @@ fn actual_text_unknown<S: l::LayoutScalar>() {
             0,
             vec![binding.clone()],
             l::WrappingInput::default(),
+            Vec::new(),
         )
         .unwrap();
         missing(l::compute_layout_with_flow_invalidated(
@@ -2262,6 +2266,7 @@ fn packet_text_float_binding() -> l::TextParagraphBinding<u32> {
     use t::SourceProcessingEvent as E;
     let capture = Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            scope_alignment_limits: None,
             source,
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
             envelope: t::SourceProcessingEnvelope::Complete,
@@ -2281,6 +2286,7 @@ fn packet_text_float_binding() -> l::TextParagraphBinding<u32> {
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![t::SourceProcessingScope::Block {
+                font_reference: None,
                 topology: t::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
@@ -2392,6 +2398,7 @@ fn packet_text_float<S: l::LayoutScalar>() {
             0,
             vec![binding.clone()],
             l::WrappingInput::default(),
+            Vec::new(),
         )
         .unwrap();
         l::compute_layout_with_flow_invalidated(&flow, 0, request(mode), changed)

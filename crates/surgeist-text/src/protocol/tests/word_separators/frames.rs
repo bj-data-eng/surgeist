@@ -158,7 +158,10 @@ fn rtl_line(prepared: &PreparedText) -> FinalizedLine {
     prepared
         .select(selection)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 

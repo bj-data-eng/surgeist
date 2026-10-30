@@ -21,6 +21,7 @@ pub(crate) mod editing;
 pub(crate) mod layout;
 mod lru_cache;
 pub(crate) mod resolve;
+pub(crate) mod scope_alignment;
 pub(crate) mod shape;
 pub(crate) mod spacing;
 pub(crate) mod upright;
@@ -78,6 +79,7 @@ pub(crate) struct AnalyzedCore {
 /// allocation; neither selection nor placement reconstructs authored input.
 pub(crate) struct PreparedData {
     pub(crate) options: PreparationOptions,
+    pub(crate) scope_alignment: scope_alignment::PreparedScopes,
     pub(crate) tab_metrics: Vec<Option<crate::tabs::ResolvedTab>>,
     pub(crate) analyzed: Arc<AnalyzedData>,
     pub(crate) font_catalogue: FontCatalogueIdentity,
@@ -92,6 +94,8 @@ pub(crate) struct PreparedData {
 
 /// Inputs coupled to one shaping operation, without a mutable System escape.
 pub(crate) struct ShapingInput<'a> {
+    pub(crate) formatting_breaks: &'a [usize],
+    pub(crate) scope_custody: Option<scope_alignment::CustodyInput<'a>>,
     pub(crate) separator_geometry: bool,
     pub(crate) characters: Option<&'a spacing::character::PlanRequirements>,
     pub(crate) profile: upright::ShapingProfile<'a>,
@@ -315,6 +319,7 @@ pub(crate) fn prepare(
         &upright::UprightProvenance::Original,
         options.orientation(),
     )?;
+    let (mut scope_alignment, mut scope_budget) = scope_alignment::plan(&analyzed)?;
     let mut styles = resolve::resolve(
         catalogue.collection_mut(),
         &analyzed.styles,
@@ -353,6 +358,8 @@ pub(crate) fn prepare(
     let mut shaped = shape::shape(
         catalogue,
         ShapingInput {
+            formatting_breaks: &scope_alignment.breaks,
+            scope_custody: scope_alignment.custody(&analyzed),
             characters: Some(&characters),
             separator_geometry: spacing::authored_demand(&analyzed.analysis, &styles),
             profile: upright::original_profile(
@@ -371,6 +378,7 @@ pub(crate) fn prepare(
             css_tabs: options.tabs() == crate::TabPreparation::CssStops,
         },
         scratch,
+        &mut scope_budget,
     )?;
     shaped.character_requirements = Some(characters);
     spacing::authored_original(&analyzed, &styles, &mut shaped)?;
@@ -394,6 +402,8 @@ pub(crate) fn prepare(
         shaped.empty_run = Some(shape::default_metrics(
             catalogue.query(),
             &ShapingInput {
+                formatting_breaks: &scope_alignment.breaks,
+                scope_custody: scope_alignment.custody(&analyzed),
                 characters: None,
                 separator_geometry: spacing::authored_demand(&analyzed.analysis, &styles),
                 profile: upright::original_profile(
@@ -428,8 +438,18 @@ pub(crate) fn prepare(
         options,
         scratch,
     )?;
+    scope_alignment::prepare_resources(
+        &mut scope_alignment,
+        catalogue,
+        &analyzed,
+        options,
+        &shaped,
+        &tables,
+        scope_budget,
+    )?;
     Ok(Arc::new(PreparedData {
         options,
+        scope_alignment,
         tab_metrics,
         analyzed,
         font_catalogue,

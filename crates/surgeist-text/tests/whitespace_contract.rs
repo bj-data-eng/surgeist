@@ -45,6 +45,7 @@ fn collapsed_space_cuts(first: text::Wrap, second: text::Wrap, ancestor: text::W
     use text::SourceProcessingEvent as E;
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -65,17 +66,22 @@ fn collapsed_space_cuts(first: text::Wrap, second: text::Wrap, ancestor: text::W
             }],
             scopes: vec![
                 text::SourceProcessingScope::Block {
+                    font_reference: None,
                     topology: text::SourceProcessingTopology::Unknown,
                     trim: text::WhiteSpaceTrim::default(),
                     base_style: local(ancestor),
                     used_direction: text::ParagraphBaseDirection::LeftToRight,
                 },
                 text::SourceProcessingScope::Inline {
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: text::WhiteSpaceTrim::default(),
                     style: Some(local(first)),
                     boundaries: None,
                 },
                 text::SourceProcessingScope::Inline {
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: text::WhiteSpaceTrim::default(),
                     style: Some(local(second)),
                     boundaries: None,
@@ -367,7 +373,10 @@ fn rendered(bytes: &[u8], value: &str) -> Rendered {
             },
         })
         .unwrap()
-        .finalize(text::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: text::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     let registered_faces = line.run_views().all(|run| run.face().bytes() == bytes);
     let glyphs = line

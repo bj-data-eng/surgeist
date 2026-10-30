@@ -89,6 +89,7 @@ impl Fixture {
         events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
         let processed = Arc::new(
             text::process_contextual_source(text::ContextualSourceInput {
+                scope_alignment_limits: None,
                 computed_line_boundaries: vec![],
                 source,
                 segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -113,12 +114,15 @@ impl Fixture {
                 replacements: vec![],
                 scopes: vec![
                     text::SourceProcessingScope::Block {
+                        font_reference: None,
                         topology: text::SourceProcessingTopology::Complete,
                         trim: Default::default(),
                         base_style: style.clone(),
                         used_direction: ParagraphBaseDirection::LeftToRight,
                     },
                     text::SourceProcessingScope::Inline {
+                        alignment_boundary: None,
+                        font_reference: None,
                         trim: Default::default(),
                         style: Some(style),
                         boundaries: physical
@@ -242,6 +246,7 @@ impl Fixture {
         // is not a receipt inferred from descendant glyphs or paragraph strut.
         let scope = WrappingScopeInput::Captured {
             metric_contribution: Some(InlineBoxMetricContribution::Strut(text::LineBoxStrut {
+                scope: None,
                 metrics: text::LineStrut {
                     baseline: 8.0,
                     line_extent: 10.0,
@@ -281,6 +286,7 @@ impl Fixture {
                 scopes: self.policies(edges, form),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )?;
         if !self.binding.controls.is_empty()
             && [edges.before, edges.after]
@@ -615,6 +621,7 @@ fn cross_origin_snapped_pair_admits_but_keeps_precise_edge_incidence_limits() {
                         scopes: fixture.policies(WrapEdges::AUTO, form),
                         child_order: Vec::new(),
                     },
+                    Vec::new(),
                 )
                 .expect("all genuine declaration forms retain strict neutral association");
             }

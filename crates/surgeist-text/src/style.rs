@@ -832,6 +832,16 @@ enum StyleInputPhase {
     Processed,
 }
 
+/// A glyph-free receipt consumes font selection/instance and own-height fields.
+/// Paint, spacing, shaping features and lexical requests are not font context;
+/// their unrelated values neither induce allocation nor a scaling refusal.
+pub(crate) fn scope_style_locale(style: &Style) -> Result<Option<Language>> {
+    validate_positive_f32(style.size, "font size")?;
+    validate_line_height(style.line_height)?;
+    validate_slant(style.font.slant)?;
+    style.locale.as_deref().map(parse_language).transpose()
+}
+
 fn validate_style(style: &Style, phase: StyleInputPhase) -> Result<ParsedStyle> {
     if phase == StyleInputPhase::Standalone && style.text_transform == TextTransform::MathAuto {
         return Err(Error::new(

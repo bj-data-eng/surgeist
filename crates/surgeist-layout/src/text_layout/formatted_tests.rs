@@ -212,9 +212,18 @@ fn summary_receipts_exist_only_in_the_actual_invocation_and_replay() {
 #[test]
 fn no_demand_keeps_summary_collection_and_cache_requirements_absent() {
     let p = prepared();
+    let paragraphs = [];
     let mut computation = super::super::state::TextComputation::<u32, f64>::new(
-        &[],
+        &paragraphs,
         Arc::new(super::super::capture::ScopeAssociations::default()),
+        crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
+            crate::text_layout::scope_alignment::ScopeAlignmentSnapshot::admit(
+                Vec::new(),
+                &paragraphs,
+            )
+            .unwrap()
+            .freeze(),
+        ),
     );
     let snapshot = computation.formatted_snapshot(
         0,

@@ -8,6 +8,7 @@ fn input(left: Text, right: Text) -> ContextualSourceInput {
     let source = Source::new(Text::from_code_units(units));
     let end = source.text().len();
     ContextualSourceInput {
+        scope_alignment_limits: None,
         computed_line_boundaries: Vec::new(),
         source: source.clone(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -37,12 +38,15 @@ fn input(left: Text, right: Text) -> ContextualSourceInput {
         replacements: Vec::new(),
         scopes: vec![
             SourceProcessingScope::Block {
+                font_reference: None,
                 topology: SourceProcessingTopology::Complete,
                 trim: WhiteSpaceTrim::default(),
                 base_style: Style::default(),
                 used_direction: ParagraphBaseDirection::LeftToRight,
             },
             SourceProcessingScope::Inline {
+                alignment_boundary: None,
+                font_reference: None,
                 trim: WhiteSpaceTrim::default(),
                 style: None,
                 boundaries: None,
@@ -313,7 +317,12 @@ fn real_native_finalization_consumes_computed_forces_without_host_control_or_fra
                     },
                 })
                 .unwrap();
-            let finalized = selected.finalize(SpacingAllocations::None).unwrap();
+            let finalized = selected
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
+                .unwrap();
             assert_eq!(finalized.control_slots().count(), 0);
             actual.push(finalized.measurements().fit().advance());
             start = end;

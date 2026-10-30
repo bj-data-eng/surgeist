@@ -161,7 +161,10 @@ fn forced_event_stops_context_before_same_atom_endpoints() {
         prepared
             .select(request.clone())
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .unwrap()
             .feedback()
             .advance,
@@ -229,7 +232,10 @@ fn demand_stops_at_positive_context_and_zero_reveals_the_next_endpoint() {
     let positive = prepared
         .select(request.clone())
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(positive.feedback().advance, 10.0);
     request.boundary_context[0].boundary = InlineBoundaryAllocation::ZERO;
@@ -251,7 +257,10 @@ fn demand_stops_at_positive_context_and_zero_reveals_the_next_endpoint() {
         prepared
             .select(request.clone())
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .unwrap()
             .feedback()
             .advance,
@@ -322,13 +331,19 @@ fn selected_endpoints_contribute_once_to_flow_prefix_and_exact_event_selection()
     let line = prepared
         .select(request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert!(matches!(
         prepared
             .select(overflow)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .unwrap_err()
             .detail(),
         Some(ErrorDetail::InvalidTextNumeric {
