@@ -300,3 +300,216 @@ fn unknown_source_context_does_not_demand_unrequested_case_mapping() {
     assert_exact_view(&second, &processed, 1, "Α", &[0x391]);
     assert!(processed.captured_connection(0).is_none());
 }
+
+fn dotted_request(
+    remove_dot: bool,
+    relationship: ParagraphConnectionKind,
+) -> ContextualSourceInput {
+    let mut input = request(TextTransform::none(), Some(relationship));
+    input.source = Source::identified("i\u{307}", Id::from_u64(78451), 10);
+    if remove_dot {
+        // Unicode SpecialCasing: Lithuanian uppercase removes U+0307 under
+        // After_Soft_Dotted. Only the dot's actual source span asks for this;
+        // the preceding i remains untransformed in its independent raw view.
+        input.source.span(
+            Range::new(1, 2),
+            Style {
+                white_space: WhiteSpace::Preserve,
+                locale: Some("lt".to_owned()),
+                text_transform: TextTransform::Set(
+                    TextTransformSet::none().with_case(CaseTransform::Uppercase),
+                ),
+                ..Style::default()
+            },
+        );
+    }
+    input.origins = [Range::new(0, 1), Range::new(1, 2)]
+        .into_iter()
+        .map(|range| super::origin(&input.source, range))
+        .collect();
+    input
+}
+
+fn dotted_capture(remove_dot: bool, relationship: ParagraphConnectionKind) -> Arc<ProcessedSource> {
+    let input = dotted_request(remove_dot, relationship);
+    let source = input.source.clone();
+    let processed = Arc::new(process_contextual_source(input).unwrap());
+    assert_eq!(processed.source(), &source);
+    assert_eq!(processed.processed_text(), &Text::from("i\u{307}"));
+    assert!(processed.captured_joint_flow(0).is_none());
+    let raw = processed.paragraphs().collect::<Vec<_>>();
+    assert_eq!(raw.len(), 2);
+    assert_eq!(
+        raw[0].source_pieces().collect::<Vec<_>>(),
+        [Range::new(0, 1)]
+    );
+    assert_eq!(
+        raw[1].source_pieces().collect::<Vec<_>>(),
+        [Range::new(1, 2)]
+    );
+    assert_eq!(super::text(raw[0].plaintext_items(Affinity::After)), [0x69]);
+    assert_eq!(
+        super::text(raw[1].plaintext_items(Affinity::After)),
+        [0x307]
+    );
+    processed
+}
+
+fn assert_dotted_view(
+    analyzed: &AnalyzedSource,
+    processed: &Arc<ProcessedSource>,
+    ordinal: usize,
+    expected: &str,
+) {
+    let extent = Range::new(ordinal, ordinal + 1);
+    assert_eq!(analyzed.source(), processed.source());
+    assert_eq!(
+        analyzed.processed_source().processed_text(),
+        &Text::from("i\u{307}")
+    );
+    assert_eq!(analyzed.inner.projection.text, expected);
+    assert_eq!(
+        analyzed
+            .inner
+            .projection
+            .atoms
+            .iter()
+            .map(|atom| atom.code_point)
+            .collect::<Vec<_>>(),
+        expected.chars().map(u32::from).collect::<Vec<_>>()
+    );
+    for atom in &analyzed.inner.projection.atoms {
+        assert_eq!(atom.source, extent);
+        assert_eq!(atom.processed, extent);
+    }
+    assert_eq!(analyzed.inner.paragraph.origins.len(), 1);
+    assert_eq!(analyzed.inner.paragraph.origins[0].aggregate, extent);
+    assert_eq!(analyzed.inner.paragraph.origins[0].local, extent);
+    assert_eq!(
+        analyzed.inner.paragraph.origins[0].original(analyzed.processed_source()),
+        processed.source()
+    );
+    assert_eq!(
+        analyzed.inner.paragraph.base_direction,
+        Some(if ordinal == 0 {
+            ParagraphBaseDirection::LeftToRight
+        } else {
+            ParagraphBaseDirection::RightToLeft
+        })
+    );
+    assert_eq!(
+        analyzed.inner.paragraph.paragraph_strut,
+        if ordinal == 0 {
+            ParagraphStrut::DefaultFont
+        } else {
+            ParagraphStrut::AllocatedContributions
+        }
+    );
+    let map = &analyzed.inner.transform;
+    assert_eq!(map.rows.len(), 1);
+    assert_eq!(
+        map.rows[0].code_point,
+        if ordinal == 0 { 0x69 } else { 0x307 }
+    );
+    assert_eq!(map.rows[0].source, extent);
+    assert_eq!(map.original_pieces(0).len(), 1);
+    let piece = map.original_pieces(0)[0];
+    let origins = &analyzed.inner.paragraph.origin_map;
+    assert_eq!(piece.origin, origins.flow_origin(origins.view(0).unwrap()));
+    assert_eq!(
+        piece.origin.captured_event(),
+        Some(processed.captured_origin(ordinal).unwrap().index)
+    );
+    assert_eq!(piece.aggregate, extent);
+    assert_eq!(piece.local, extent);
+    let raw = processed.paragraphs().nth(ordinal).unwrap();
+    assert_eq!(raw.source_range(), extent);
+    assert!(Arc::ptr_eq(raw.processed_source(), processed));
+}
+
+#[test]
+fn connected_neighbor_dot_removal_keeps_the_first_exact_view_available() {
+    // Completion removes the neighbor dot, so the final unit is just i.
+    // Rejecting solely because the RAW i+dot EGC crosses coverage is too early.
+    let processed = dotted_capture(true, ParagraphConnectionKind::Continuous);
+    let first = processed.paragraphs().next().unwrap();
+    let analyzed =
+        AnalyzedSource::from_processed_paragraph(first, AnalysisTypography::HorizontalComposition)
+            .unwrap();
+    assert_dotted_view(&analyzed, &processed, 0, "i");
+}
+
+#[test]
+fn lithuanian_dot_uses_connected_soft_dotted_context_but_emits_only_its_own_removal() {
+    use crate::transform::relation::RelationEvent;
+    let processed = dotted_capture(true, ParagraphConnectionKind::Continuous);
+    let dot = processed.paragraphs().nth(1).unwrap();
+    let analyzed =
+        AnalyzedSource::from_processed_paragraph(dot, AnalysisTypography::HorizontalComposition)
+            .unwrap();
+    assert_dotted_view(&analyzed, &processed, 1, "");
+    assert!(analyzed.inner.transform.rows[0].outputs.is_empty());
+    assert!(analyzed.inner.transform.emissions.is_empty());
+    assert!(matches!(
+        analyzed.inner.transform.events(),
+        [RelationEvent::Removal { row: 0 }]
+    ));
+    // The source dot and its independent raw paragraph remain published;
+    // removal is real transform correspondence, not source deletion or union.
+    assert_eq!(
+        super::text(
+            processed
+                .paragraphs()
+                .nth(1)
+                .unwrap()
+                .plaintext_items(Affinity::After)
+        ),
+        [0x307]
+    );
+    assert!(
+        processed
+            .captured_paragraph(1)
+            .unwrap()
+            .joint_flow()
+            .is_none()
+    );
+}
+
+#[test]
+fn unchanged_connected_mark_cannot_be_clipped_into_an_exact_partial_final_unit() {
+    let processed = dotted_capture(false, ParagraphConnectionKind::Continuous);
+    let first = processed.paragraphs().next().unwrap();
+    // With no neighbor mapping, final i+0307 is still one genuine EGC. Source
+    // continuity supplies context but never permission to broaden this view.
+    let error = AnalyzedSource::from_processed_paragraph(
+        first.clone(),
+        AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap_err();
+    assert_eq!(error.code, ErrorCode::UnsupportedFeature);
+    assert_eq!(
+        first.source_pieces().collect::<Vec<_>>(),
+        [Range::new(0, 1)]
+    );
+    assert_eq!(processed.processed_text(), &Text::from("i\u{307}"));
+    assert_eq!(super::text(first.plaintext_items(Affinity::After)), [0x69]);
+    assert!(processed.captured_joint_flow(0).is_none());
+}
+
+#[test]
+fn disconnected_untransformed_mark_has_its_own_exact_unit_and_source_custody() {
+    let processed = dotted_capture(false, ParagraphConnectionKind::Disconnected);
+    let raw = processed.paragraphs().collect::<Vec<_>>();
+    let first = AnalyzedSource::from_processed_paragraph(
+        raw[0].clone(),
+        AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
+    assert_dotted_view(&first, &processed, 0, "i");
+    let second = AnalyzedSource::from_processed_paragraph(
+        raw[1].clone(),
+        AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
+    assert_dotted_view(&second, &processed, 1, "\u{307}");
+}
