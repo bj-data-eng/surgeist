@@ -486,9 +486,9 @@ fn img_presence_context_checks_sizes_and_src_without_erasing_lexical_errors() {
             vec![("srcset", "a 1w")],
             vec![HtmlSrcsetContextViolation::SizesRequired],
         ),
-        (vec![("srcset", "a 1w"), ("sizes", "")], vec![]),
+        (vec![("srcset", "a 1w"), ("sizes", "100vw")], vec![]),
         (
-            vec![("srcset", "a 1x"), ("sizes", "")],
+            vec![("srcset", "a 1x"), ("sizes", "100vw")],
             vec![HtmlSrcsetContextViolation::WidthDescriptorsRequiredForSizes],
         ),
         (
@@ -603,7 +603,7 @@ fn link_preload_image_and_imagesizes_context_is_separate_from_literal_candidates
             ("imagesrcset", "a 1w"),
             ("rel", "alternate\tPrElOaD"),
             ("as", "ImAgE"),
-            ("imagesizes", ""),
+            ("imagesizes", "100vw"),
         ]),
     };
     let report = interpreter
@@ -611,7 +611,8 @@ fn link_preload_image_and_imagesizes_context_is_separate_from_literal_candidates
         .unwrap();
     assert_eq!(
         report.context_author(),
-        HtmlSrcsetContextAuthorState::Conforming
+        HtmlSrcsetContextAuthorState::Unchecked,
+        "the imagesizes grammar is not validated, so the context is not certified"
     );
     assert!(report.context_violations().is_empty());
     let context = HtmlSrcsetContext::Link {
@@ -638,7 +639,7 @@ fn link_preload_image_and_imagesizes_context_is_separate_from_literal_candidates
             ("imagesrcset", "a 1x"),
             ("rel", "preload"),
             ("as", "image"),
-            ("imagesizes", ""),
+            ("imagesizes", "100vw"),
         ]),
     };
     assert_eq!(
@@ -725,10 +726,10 @@ fn malformed_other_candidates_do_not_hide_established_nonwidth_sizes_violations(
     let interpreter = HtmlValueInterpreter::new(100);
     for raw in ["a 1x, b bad", "b bad, a 1x", "a, b bad"] {
         let img_context = HtmlSrcsetContext::Img {
-            attributes: attributes(&[("srcset", raw), ("sizes", "")]),
+            attributes: attributes(&[("srcset", raw), ("sizes", "100vw")]),
         };
         let source_context = HtmlSrcsetContext::Source {
-            attributes: attributes(&[("srcset", raw), ("sizes", "")]),
+            attributes: attributes(&[("srcset", raw), ("sizes", "100vw")]),
             parent: HtmlSrcsetParentObservation::Element(element("picture")),
             following_image: HtmlSrcsetFollowingImageObservation::Element {
                 name: element("img"),
@@ -738,7 +739,7 @@ fn malformed_other_candidates_do_not_hide_established_nonwidth_sizes_violations(
         let link_context = HtmlSrcsetContext::Link {
             attributes: attributes(&[
                 ("imagesrcset", raw),
-                ("imagesizes", ""),
+                ("imagesizes", "100vw"),
                 ("rel", "preload"),
                 ("as", "image"),
             ]),
@@ -768,4 +769,116 @@ fn malformed_other_candidates_do_not_hide_established_nonwidth_sizes_violations(
             assert_eq!(strings(&report), ["a"]);
         }
     }
+}
+
+#[test]
+fn present_sizes_are_never_certified_conforming_while_their_grammar_is_unchecked() {
+    // HTML 877d, "Sizes attributes": a present value "must be a valid source
+    // size list", and `<source-size-list>` requires a final `<source-size-value>`,
+    // so the empty string is invalid. No owner validates that grammar yet, so a
+    // present value (empty or not) leaves the context unchecked, never conforming.
+    let interpreter = HtmlValueInterpreter::new(100);
+    for sizes in ["", "100vw"] {
+        let img_context = HtmlSrcsetContext::Img {
+            attributes: attributes(&[("srcset", "a 1w"), ("sizes", sizes)]),
+        };
+        let source_context = HtmlSrcsetContext::Source {
+            attributes: attributes(&[("srcset", "a 1w"), ("sizes", sizes)]),
+            parent: HtmlSrcsetParentObservation::Element(element("picture")),
+            following_image: HtmlSrcsetFollowingImageObservation::Absent,
+        };
+        let link_context = HtmlSrcsetContext::Link {
+            attributes: attributes(&[
+                ("imagesrcset", "a 1w"),
+                ("imagesizes", sizes),
+                ("rel", "preload"),
+                ("as", "image"),
+            ]),
+        };
+        let reports = [
+            interpreter
+                .img_srcset_with_context(&element("img"), &img_context)
+                .unwrap(),
+            interpreter
+                .source_srcset_with_context(&element("source"), &source_context)
+                .unwrap(),
+            interpreter
+                .link_imagesrcset_with_context(&element("link"), &link_context)
+                .unwrap(),
+        ];
+        for report in reports {
+            assert!(report.context_violations().is_empty(), "sizes {sizes:?}");
+            assert_eq!(
+                report.context_author(),
+                HtmlSrcsetContextAuthorState::Unchecked,
+                "sizes {sizes:?}"
+            );
+            assert_eq!(strings(&report), ["a"]);
+            assert_eq!(
+                report.author(),
+                HtmlSrcsetAuthorState::HtmlConstraintsConforming
+            );
+            assert_eq!(
+                report.external_conformance(),
+                HtmlSrcsetExternalConformance::Unchecked
+            );
+        }
+    }
+    // Without sizes a context remains certifiable by its own rules: an img
+    // with no srcset must have src.
+    let context = HtmlSrcsetContext::Img {
+        attributes: attributes(&[("src", "a")]),
+    };
+    assert_eq!(
+        interpreter
+            .img_srcset_with_context(&element("img"), &context)
+            .unwrap()
+            .context_author(),
+        HtmlSrcsetContextAuthorState::Conforming
+    );
+    // A decisive violation still wins over the unchecked grammar.
+    let context = HtmlSrcsetContext::Img {
+        attributes: attributes(&[("srcset", "a 1x"), ("sizes", "")]),
+    };
+    let report = interpreter
+        .img_srcset_with_context(&element("img"), &context)
+        .unwrap();
+    assert_eq!(
+        report.context_violations(),
+        [HtmlSrcsetContextViolation::WidthDescriptorsRequiredForSizes]
+    );
+    assert_eq!(
+        report.context_author(),
+        HtmlSrcsetContextAuthorState::Nonconforming
+    );
+}
+
+#[test]
+fn present_sizes_without_srcset_stay_unchecked_for_img_and_link() {
+    // HTML 877d "Sizes attributes": any present sizes or imagesizes value must be
+    // a valid source size list, and no owner validates that grammar yet, so the
+    // attribute leaves the context unchecked even without a srcset to relate to.
+    let interpreter = HtmlValueInterpreter::new(100);
+    let img_context = HtmlSrcsetContext::Img {
+        attributes: attributes(&[("src", "a"), ("sizes", "100vw")]),
+    };
+    let report = interpreter
+        .img_srcset_with_context(&element("img"), &img_context)
+        .unwrap();
+    assert!(report.context_violations().is_empty());
+    assert_eq!(
+        report.context_author(),
+        HtmlSrcsetContextAuthorState::Unchecked
+    );
+    let link_context = HtmlSrcsetContext::Link {
+        attributes: attributes(&[("rel", "preload"), ("as", "image"), ("imagesizes", "100vw")]),
+    };
+    let report = interpreter
+        .link_imagesrcset_with_context(&element("link"), &link_context)
+        .unwrap();
+    assert!(report.context_violations().is_empty());
+    assert_eq!(
+        report.context_author(),
+        HtmlSrcsetContextAuthorState::Unchecked
+    );
 }

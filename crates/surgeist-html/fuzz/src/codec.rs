@@ -167,7 +167,7 @@ impl UnicodeTarget {
             (1, 0) => Lane::PreCancelled,
             (2, 0) => Lane::SourceDenied,
             (3, 0) => Lane::WorkDenied,
-            (4, id) if id < 8 => Lane::Literal(id),
+            (4, id) if id < 9 => Lane::Literal(id),
             (5, 0) => Lane::MissingScripting,
             _ => return Err(error("lane/reserved byte")),
         };
