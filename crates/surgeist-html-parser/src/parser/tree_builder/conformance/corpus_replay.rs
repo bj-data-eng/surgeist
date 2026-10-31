@@ -4,9 +4,11 @@
 //! native comparison owner against its independently decoded corpus tree:
 //! ordinary documents through [`check`], and every `#document-fragment` case
 //! through the real captured-context fragment owner with its corpus context,
-//! including SVG and MathML contexts. `#script-on` cases select Enabled
-//! scripting construction, an unsupported public profile, and are not run;
-//! cases without a scripting marker run with Disabled scripting.
+//! including SVG and MathML contexts, and then against the tree the public
+//! fragment request returns, rendered in the corpus dump shape. `#script-on`
+//! cases select Enabled scripting construction, an unsupported public profile,
+//! and are not run; cases without a scripting marker run with Disabled
+//! scripting.
 //!
 //! The corpus format does not carry document mode. A case binds its mode from
 //! the hand-derived HTML877d table below, otherwise from the Initial rules the
@@ -244,8 +246,9 @@ fn document_request(input: &str, utf16: bool) -> HtmlDocumentParseRequest {
 }
 
 /// Rendering of an actual public result in the corpus dump shape. Failure
-/// messages use it, and spec exclusions compare it exactly with the tree the
-/// pinned edition requires; corpus cases compare through the native observer.
+/// messages use it, spec exclusions compare it exactly with the tree the
+/// pinned edition requires, and fragment cases compare it with the corpus dump
+/// in addition to the native observer.
 trait Tree {
     fn top(&self) -> HtmlNode<'_>;
     fn lookup(&self, id: &HtmlNodeId) -> Option<HtmlNode<'_>>;
@@ -418,7 +421,12 @@ fn replay_case(file: &str, fixture: &Fixture<'_>) -> Option<Vec<String>> {
                     &expected,
                     None,
                     false,
-                )
+                )?;
+                let actual = actual_fragment(context, fixture.input, utf16);
+                if actual != format!("{}\n", fixture.expected) {
+                    return Err(format!("public fragment tree differs:\n{actual}"));
+                }
+                Ok(())
             }
         });
         let error = match run {
