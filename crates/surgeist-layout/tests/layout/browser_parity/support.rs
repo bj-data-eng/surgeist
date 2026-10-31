@@ -1902,6 +1902,7 @@ struct TestNode {
 struct TestTree {
     nodes: Vec<TestNode>,
     paragraphs: Vec<layout::TextParagraphBinding<usize>>,
+    placed_text: Vec<layout::PlacedTextOutput<usize>>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -2259,6 +2260,7 @@ impl TestTree {
 
     fn apply_completed_batch(&mut self, batch: &layout::CompletedLayoutBatch<usize>) {
         batch.apply_to(self).unwrap_or_else(|error| match error {});
+        self.placed_text = batch.placed_text().to_vec();
     }
 
     fn box_node_input(&self, node: usize) -> &layout::NodeInput {
@@ -3155,9 +3157,24 @@ fn compare_range_rectangle_expectations(
             "Range fragment belongs to another captured paragraph",
         ));
     }
-    compare_range_rectangle_expectations_with_translation(path, actual, expected, |edge| {
-        range_rectangle_ancestor_translation(tree, owner, edge)
-    })
+    let mut placements = tree.placed_text.iter().filter(|placement| {
+        placement.container() == root && placement.nodes() == binding.nodes.as_slice()
+    });
+    let placed = placements
+        .next()
+        .ok_or_else(|| Error::new("Range inline root has no matching placed Text result"))?;
+    if placements.next().is_some() {
+        return Err(Error::new(
+            "Range inline root has ambiguous placed Text results",
+        ));
+    }
+    compare_range_rectangle_expectations_with_translation(
+        path,
+        actual,
+        placed.layout(),
+        expected,
+        |edge| range_rectangle_ancestor_translation(tree, owner, edge),
+    )
 }
 
 /// One browser Range rectangle assembled from genuine source intersections.
@@ -3171,44 +3188,17 @@ struct NativeRangeRectangle {
     rect: layout::ScrollRect,
 }
 
-struct NativeRangeLender<'a> {
+struct NativeRangeOrigin<'a> {
     origin: surgeist_text::PreparedOrigin,
-    line: surgeist_text::FinalizedLine,
     entries: Vec<&'a layout::InlineFragmentOutputEntry<usize>>,
-}
-
-/// The pinned Ahem profile retains a glyph row for a preserved U+0020 even
-/// when logical spacing makes its allocation zero. An executed edge discard
-/// instead retains its source fragment but emits no glyph. Read that result;
-/// do not repeat Text's whitespace winner or selected-edge algorithm here.
-fn unpainted_source_space(
-    fragment: &surgeist_text::FinalizedFragment,
-    line: &surgeist_text::FinalizedLine,
-) -> bool {
-    let view = fragment.view();
-    let (Some(origin), Some(processed), Some(source)) = (
-        view.origin(),
-        view.processed_range(),
-        view.aggregate_range(),
-    ) else {
-        return false;
-    };
-    let analyzed = origin.prepared_text().analyzed_source();
-    let units = analyzed.processed_source().processed_text().code_units();
-    units.get(processed.start().get()..processed.end().get()) == Some(&[0x20][..])
-        && !line.run_views().any(|run| {
-            run.glyphs().any(|glyph| {
-                let glyph_source = glyph.range();
-                glyph_source.start < source.end && source.start < glyph_source.end
-            })
-        })
 }
 
 fn native_range_rectangles(
     path: &str,
     actual: &[layout::InlineFragmentOutputEntry<usize>],
+    placed: &surgeist_text::Layout,
 ) -> Result<Vec<NativeRangeRectangle>, Error> {
-    let mut groups = Vec::<NativeRangeLender<'_>>::new();
+    let mut groups = Vec::<NativeRangeOrigin<'_>>::new();
     let mut seen = Vec::new();
     for entry in actual {
         let issued = entry.fragment().finalized_fragment();
@@ -3223,98 +3213,104 @@ fn native_range_rectangles(
                 "Range rectangle requires an actual source-owned fragment",
             ));
         };
-        let line = issued.finalized_line();
-        if let Some(group) = groups
-            .iter_mut()
-            .find(|group| group.origin == origin && group.line == line)
-        {
+        if let Some(group) = groups.iter_mut().find(|group| group.origin == origin) {
             group.entries.push(entry);
         } else {
-            groups.push(NativeRangeLender {
+            groups.push(NativeRangeOrigin {
                 origin,
-                line,
                 entries: vec![entry],
             });
         }
     }
     let mut rectangles: Vec<NativeRangeRectangle> = Vec::new();
-    for NativeRangeLender {
-        origin,
-        line,
-        mut entries,
-    } in groups
-    {
-        let canonical = line.fragments().filter(|fragment|
-            matches!(fragment.view().owner(), surgeist_text::FinalizedFragmentOwner::Origin(owner)
-                if owner == origin)).collect::<Vec<_>>();
-        if canonical.iter().any(|issued| {
-            !entries
-                .iter()
-                .any(|entry| entry.fragment().finalized_fragment() == issued)
-        }) {
-            return Err(Error::new(format!(
-                "{path}: incomplete actual Range source coverage"
-            )));
+    for NativeRangeOrigin { origin, entries } in groups {
+        let mut lines = Vec::new();
+        for entry in &entries {
+            let line = entry.fragment().finalized_fragment().finalized_line();
+            if lines.contains(&line) {
+                continue;
+            }
+            // Input custody is independent of geometry. Missing actual source
+            // fragments cannot be repaired by querying the complete placement.
+            if line.fragments().any(|issued| {
+                issued.view().origin().as_ref() == Some(&origin)
+                    && !entries
+                        .iter()
+                        .any(|entry| entry.fragment().finalized_fragment() == &issued)
+            }) {
+                return Err(Error::new(format!(
+                    "{path}: incomplete actual Range source coverage"
+                )));
+            }
+            lines.push(line);
         }
-        entries.sort_by_key(|entry| {
-            let source = entry
-                .fragment()
-                .finalized_fragment()
-                .view()
-                .aggregate_range()
-                .unwrap();
-            (source.start, source.end)
-        });
-        let mut invisible = None::<surgeist_text::Range>;
-        for entry in entries {
-            let fragment = entry.fragment();
-            let mut source = fragment
-                .finalized_fragment()
-                .view()
-                .aggregate_range()
-                .ok_or_else(|| Error::new("Range source fragment has no original interval"))?;
-            let rect = fragment.rect().filter(|rect| {
-                rect.size().width != 0.0
-                    || !unpainted_source_space(fragment.finalized_fragment(), &line)
+        let local = origin.view().local_range();
+        if local.is_empty() {
+            continue;
+        }
+        // This query validates the exact preparation and original-local request.
+        // Text owns EGC closure, font bands, removed custody and semantic zeroes;
+        // the fixture consumer neither scans glyphs nor reruns whitespace policy.
+        let observed = placed
+            .source_range_fragments(&origin, local)
+            .map_err(|error| {
+                Error::new(format!(
+                    "{path}: placed source Range query failed: {error:?}"
+                ))
+            })?;
+        let source_segment_id = fragment_source_id(entries[0].fragment())?;
+        for unit in observed.units() {
+            let line = unit.finalized_line();
+            let line_index = unit.line_index();
+            if !entries.iter().any(|entry| {
+                entry.fragment().line_index() == line_index
+                    && entry.fragment().finalized_fragment().finalized_line() == line
+            }) {
+                return Err(Error::new(format!(
+                    "{path}: Range placement does not retain the actual source line"
+                )));
+            }
+            let mut intersections = unit.selected_intersections();
+            let Some(first) = intersections.next() else {
+                // Generated definitions/anchors do not own original-source text.
+                continue;
+            };
+            let source = intersections.fold(first.aggregate_range(), |range, next| {
+                let next = next.aggregate_range();
+                surgeist_text::Range::new(range.start.min(next.start), range.end.max(next.end))
             });
-            let Some(rect) = rect else {
-                // Genuine non-geometric source intervals retain custody and may
-                // bridge adjacent rectangles; absent records never do. The same
-                // holds for a source space with actual executed glyph suppression.
-                if let Some(last) = rectangles.last_mut()
-                    && last.origin == origin
-                    && last.line == line
-                    && last.source.end == source.start
-                {
-                    last.source.end = source.end;
-                } else if let Some(pending) = &mut invisible
-                    && pending.end == source.start
-                {
-                    pending.end = source.end;
-                } else {
-                    invisible = Some(source);
+            for piece in unit.pieces() {
+                let rect = piece.rect();
+                let rect = layout::ScrollRect::try_new(
+                    layout::Point::new(rect.origin.x as Scalar, rect.origin.y as Scalar),
+                    layout::Size::new(rect.size.width as Scalar, rect.size.height as Scalar),
+                )
+                .map_err(|_| Error::new("placed Range rectangle is not finite"))?;
+                let next = NativeRangeRectangle {
+                    origin: origin.clone(),
+                    line: line.clone(),
+                    source,
+                    source_segment_id,
+                    line_index,
+                    rect,
+                };
+                if let Some(previous) = rectangles.last_mut() {
+                    // The complete canonical query accounts for source gaps
+                    // between consecutive observations. Non-geometric custody
+                    // may bridge them; an actual zero-width piece stays a row
+                    // and prevents coalescing. No absent input can lend custody.
+                    if previous.origin == origin
+                        && previous.line == line
+                        && previous.source.end < source.start
+                    {
+                        previous.source.end = source.start;
+                    }
+                    if merge_native_range_rectangles(previous, &next)? {
+                        continue;
+                    }
                 }
-                continue;
-            };
-            if let Some(pending) = invisible.take()
-                && pending.end == source.start
-            {
-                source.start = pending.start;
+                rectangles.push(next);
             }
-            let next = NativeRangeRectangle {
-                origin: origin.clone(),
-                line: line.clone(),
-                source,
-                source_segment_id: fragment_source_id(fragment)?,
-                line_index: fragment.line_index(),
-                rect,
-            };
-            if let Some(last) = rectangles.last_mut()
-                && merge_native_range_rectangles(last, &next)?
-            {
-                continue;
-            }
-            rectangles.push(next);
         }
     }
     Ok(rectangles)
@@ -3366,10 +3362,11 @@ fn range_rectangle_values(rect: layout::ScrollRect, edge: PhysicalStartEdge) -> 
 fn compare_range_rectangle_expectations_with_translation(
     path: &str,
     actual: &[layout::InlineFragmentOutputEntry<usize>],
+    placed: &surgeist_text::Layout,
     expected: &[InlineRangeRectangleExpectation],
     mut translation: impl FnMut(PhysicalStartEdge) -> Result<Scalar, Error>,
 ) -> Result<(), Error> {
-    let actual = native_range_rectangles(path, actual)?;
+    let actual = native_range_rectangles(path, actual, placed)?;
     if actual.len() != expected.len() {
         return Err(Error::new(format!(
             "{path}: Range rectangle count mismatch, expected {}, got {}",
@@ -6226,7 +6223,12 @@ mod tests {
         // Existing-callable consumer under correction. Its current fragment-based
         // reconstruction instead returns the LH10.5 strut rectangle checked above.
         // Keep strict browser XML and its inline-only comparison policy unchanged.
-        let observed = native_range_rectangles("canonical-native-font-band", &actual).unwrap();
+        let observed = native_range_rectangles(
+            "canonical-native-font-band",
+            &actual,
+            batch.placed_text()[0].layout(),
+        )
+        .unwrap();
         let [observation] = observed.as_slice() else {
             panic!("one source/line Range observation")
         };
@@ -6243,6 +6245,91 @@ mod tests {
         assert_eq!(
             (observation.rect.origin().x, observation.rect.size().width),
             (0.0, 10.0)
+        );
+    }
+
+    #[test]
+    fn native_range_observation_rejects_foreign_placement_and_omitted_lines() {
+        let name = "prepared_text_fractional_fit__border_box_ltr";
+        let golden = generated_native_golden(name);
+        let (tree, batch) = generated_native_batch(&golden);
+        let origin = golden.root.children[0].prepared_origin.as_ref().unwrap();
+        let actual = batch
+            .unrounded_inline_fragments()
+            .iter()
+            .filter(|entry| {
+                entry
+                    .fragment()
+                    .finalized_fragment()
+                    .view()
+                    .origin()
+                    .as_ref()
+                    == Some(origin)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        let placed = batch.placed_text()[0].layout();
+        native_range_rectangles("same-placement", &actual, placed).unwrap();
+
+        // Equal captured preparation and input values do not authorize a fresh
+        // finalized-line owner to lend geometry to this batch's source rows.
+        let request = root_request(
+            layout::Size::new(
+                to_layout_available(golden.viewport.width),
+                to_layout_available(golden.viewport.height),
+            ),
+            golden.viewport.root_context,
+        )
+        .unwrap();
+        let fresh = native_tree_compute(&tree, request);
+        assert_eq!(
+            placed.analyzed_source().identity(),
+            fresh.placed_text()[0].layout().analyzed_source().identity()
+        );
+        assert!(
+            native_range_rectangles("fresh-placement", &actual, fresh.placed_text()[0].layout())
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("actual source line")
+        );
+
+        // Re-reading the exact same authored source makes a distinct prepared
+        // origin. A failed canonical query must propagate, never become a
+        // successful geometry fallback based on source/font value equality.
+        let other_golden = generated_native_golden(name);
+        let (_, other) = generated_native_batch(&other_golden);
+        assert!(
+            native_range_rectangles(
+                "foreign-preparation",
+                &actual,
+                other.placed_text()[0].layout()
+            )
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("ForeignPreparation")
+        );
+
+        // An intact first line is not complete source coverage for this origin.
+        // Querying the whole placement must not silently fill the missing line.
+        assert!(
+            actual
+                .iter()
+                .any(|entry| entry.fragment().line_index() == 1)
+        );
+        let first_line = actual
+            .iter()
+            .filter(|entry| entry.fragment().line_index() == 0)
+            .cloned()
+            .collect::<Vec<_>>();
+        assert!(!first_line.is_empty());
+        assert!(
+            native_range_rectangles("omitted-line", &first_line, placed)
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("actual source line")
         );
     }
 
@@ -6311,6 +6398,7 @@ mod tests {
         compare_range_rectangle_expectations_with_translation(
             "actual-range",
             &actual,
+            batch.placed_text()[0].layout(),
             expected,
             |_| Ok(0.0),
         )
@@ -6326,6 +6414,7 @@ mod tests {
                 compare_range_rectangle_expectations_with_translation(
                     "wrong-range",
                     &actual,
+                    batch.placed_text()[0].layout(),
                     &wrong,
                     |_| Ok(0.0)
                 )
@@ -6363,6 +6452,7 @@ mod tests {
             compare_range_rectangle_expectations_with_translation(
                 "missing-source",
                 &missing,
+                batch.placed_text()[0].layout(),
                 &hull,
                 |_| Ok(0.0)
             )
@@ -6407,7 +6497,9 @@ mod tests {
             })
             .cloned()
             .collect::<Vec<_>>();
-        let rectangles = native_range_rectangles("actual-lines", &actual).unwrap();
+        let rectangles =
+            native_range_rectangles("actual-lines", &actual, batch.placed_text()[0].layout())
+                .unwrap();
         assert_eq!(rectangles.len(), 2);
         assert_eq!(rectangles[0].origin, rectangles[1].origin);
         assert_ne!(rectangles[0].line, rectangles[1].line);
@@ -6421,6 +6513,7 @@ mod tests {
             compare_range_rectangle_expectations_with_translation(
                 "different-bands",
                 &actual,
+                batch.placed_text()[0].layout(),
                 &missing_band,
                 |_| Ok(0.0)
             )
@@ -6444,7 +6537,12 @@ mod tests {
             })
             .cloned()
             .collect::<Vec<_>>();
-        let rectangles = native_range_rectangles("directional-controls", &actual).unwrap();
+        let rectangles = native_range_rectangles(
+            "directional-controls",
+            &actual,
+            batch.placed_text()[0].layout(),
+        )
+        .unwrap();
         assert_eq!(
             rectangles
                 .iter()
@@ -6457,6 +6555,7 @@ mod tests {
         compare_range_rectangle_expectations_with_translation(
             "directional-controls",
             &actual,
+            batch.placed_text()[0].layout(),
             golden.expectations.children[1]
                 .range_rectangles
                 .as_ref()
@@ -6487,8 +6586,12 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(glyphs, vec![(3, 16.0, surgeist_text::Range::new(0, 1))]);
         assert_eq!(actual[0].fragment().rect().unwrap().size().width, 0.0);
-        assert!(!unpainted_source_space(issued, &line));
-        let rectangles = native_range_rectangles("preserved-zero-space", actual).unwrap();
+        let rectangles = native_range_rectangles(
+            "preserved-zero-space",
+            actual,
+            batch.placed_text()[0].layout(),
+        )
+        .unwrap();
         assert_eq!(rectangles.len(), 1);
         assert_eq!(rectangles[0].source, surgeist_text::Range::new(0, 1));
         assert_eq!(rectangles[0].rect.size().width, 0.0);
@@ -7140,6 +7243,7 @@ mod tests {
     fn line_break_tree(input: layout::LineBreakInput) -> TestTree {
         TestTree {
             paragraphs: Vec::new(),
+            placed_text: Vec::new(),
             nodes: vec![TestNode {
                 non_box_input: layout::NodeInput::non_box(),
                 layout_input: layout::LayoutInput::LineBreak(input),
@@ -7230,6 +7334,7 @@ mod tests {
 
         let tree = TestTree {
             paragraphs: Vec::new(),
+            placed_text: Vec::new(),
             nodes: vec![
                 node(
                     layout::LayoutInput::box_input(block_input()),
@@ -7482,6 +7587,7 @@ mod tests {
         compare_range_rectangle_expectations_with_translation(
             "fri06-c08-r0-range",
             &actual,
+            batch.placed_text()[0].layout(),
             &expected,
             |_| Ok(0.0),
         )
@@ -7500,6 +7606,7 @@ mod tests {
                 compare_range_rectangle_expectations_with_translation(
                     "fri06-c08-r0-range",
                     &actual,
+                    batch.placed_text()[0].layout(),
                     &changed,
                     |_| Ok(0.0),
                 )
@@ -10092,6 +10199,7 @@ mod tests {
         };
         let mut tree = TestTree {
             paragraphs: Vec::new(),
+            placed_text: Vec::new(),
             nodes: vec![TestNode {
                 non_box_input: layout::NodeInput::non_box(),
                 layout_input: layout::LayoutInput::box_input(node_input),
