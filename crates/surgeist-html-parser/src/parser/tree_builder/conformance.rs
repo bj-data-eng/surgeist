@@ -6569,7 +6569,25 @@ mod comment_diagnostic_corpus {
             for utf16 in [false, true] {
                 check_fragment(html_context_request("html", input, utf16), &expected)
                     .unwrap_or_else(|error| panic!("utf16={utf16}: {error}"));
+                assert_public_fragment_tree("html", input, utf16, fixture.expected);
             }
+        }
+
+        /// Asserts the tree the public fragment request returns, not the
+        /// internal observation driver's view, against a hand-written
+        /// corpus-dump expectation.
+        fn assert_public_fragment_tree(context: &str, input: &str, utf16: bool, expected: &str) {
+            let report = html_context_request(context, input, utf16)
+                .parse()
+                .unwrap_or_else(|error| panic!("{input:?} utf16={utf16}: {error:?}"));
+            let fragment = report
+                .fragment()
+                .unwrap_or_else(|| panic!("{input:?} utf16={utf16}: no public fragment"));
+            assert_eq!(
+                super::super::corpus_replay::render_fragment(fragment),
+                super::super::corpus_replay::expected_dump(expected),
+                "{input:?} utf16={utf16}"
+            );
         }
 
         #[test]
@@ -6601,6 +6619,7 @@ mod comment_diagnostic_corpus {
                 for utf16 in [false, true] {
                     check_fragment(html_context_request("html", input, utf16), &expected)
                         .unwrap_or_else(|error| panic!("{input:?} utf16={utf16}: {error}"));
+                    assert_public_fragment_tree("html", input, utf16, fixture.expected);
                     let report = html_context_request("html", input, utf16)
                         .parse()
                         .unwrap_or_else(|error| panic!("{input:?} utf16={utf16}: {error:?}"));
