@@ -852,3 +852,33 @@ fn present_sizes_are_never_certified_conforming_while_their_grammar_is_unchecked
         HtmlSrcsetContextAuthorState::Nonconforming
     );
 }
+
+#[test]
+fn present_sizes_without_srcset_stay_unchecked_for_img_and_link() {
+    // HTML 877d "Sizes attributes": any present sizes or imagesizes value must be
+    // a valid source size list, and no owner validates that grammar yet, so the
+    // attribute leaves the context unchecked even without a srcset to relate to.
+    let interpreter = HtmlValueInterpreter::new(100);
+    let img_context = HtmlSrcsetContext::Img {
+        attributes: attributes(&[("src", "a"), ("sizes", "100vw")]),
+    };
+    let report = interpreter
+        .img_srcset_with_context(&element("img"), &img_context)
+        .unwrap();
+    assert!(report.context_violations().is_empty());
+    assert_eq!(
+        report.context_author(),
+        HtmlSrcsetContextAuthorState::Unchecked
+    );
+    let link_context = HtmlSrcsetContext::Link {
+        attributes: attributes(&[("rel", "preload"), ("as", "image"), ("imagesizes", "100vw")]),
+    };
+    let report = interpreter
+        .link_imagesrcset_with_context(&element("link"), &link_context)
+        .unwrap();
+    assert!(report.context_violations().is_empty());
+    assert_eq!(
+        report.context_author(),
+        HtmlSrcsetContextAuthorState::Unchecked
+    );
+}
