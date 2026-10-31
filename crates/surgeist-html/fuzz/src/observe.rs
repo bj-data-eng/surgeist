@@ -843,3 +843,5 @@ pub(crate) fn evaluate(target: &UnicodeTarget, case: &UnicodeCase) -> Result<Cas
         }
     }
 }
+#[cfg(test)]
+mod tests;
