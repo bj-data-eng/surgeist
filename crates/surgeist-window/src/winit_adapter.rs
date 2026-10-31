@@ -2596,6 +2596,18 @@ impl<H: Handler> winit::application::ApplicationHandler<UserEvent> for WinitRunn
                 });
                 self.deliver_input(event_loop, input);
             }
+            event @ (winit::event::WindowEvent::PinchGesture { .. }
+            | winit::event::WindowEvent::DoubleTapGesture { .. }) => {
+                let input = magnification_from_winit(
+                    id,
+                    &event,
+                    self.last_mouse_position(id),
+                    self.modifiers,
+                    Some(Instant::now()),
+                )
+                .expect("the matched native gesture has a magnification representation");
+                self.deliver_input(event_loop, InputEvent::Magnification(input));
+            }
             winit::event::WindowEvent::Touch(touch) => {
                 let point = self.logical_point(id, touch.location.x, touch.location.y);
                 let key = PointerPositionKey::touch(id, touch.id);
@@ -3170,6 +3182,34 @@ impl From<winit::event::MouseButton> for PointerButton {
             winit::event::MouseButton::Other(button) => Self::Other(button),
         }
     }
+}
+
+/// Lowers only native magnification gestures using captured receipt context.
+/// No native gesture position or applied scale is supplied by these events.
+pub(crate) fn magnification_from_winit(
+    id: Id,
+    event: &winit::event::WindowEvent,
+    position: Option<Point>,
+    modifiers: ModifierState,
+    timestamp: Option<Instant>,
+) -> Option<MagnificationEvent> {
+    let gesture = match event {
+        winit::event::WindowEvent::PinchGesture { delta, phase, .. } => {
+            MagnificationGesture::Pinch {
+                delta: MagnificationDelta::new(*delta),
+                phase: (*phase).into(),
+            }
+        }
+        winit::event::WindowEvent::DoubleTapGesture { .. } => MagnificationGesture::Smart,
+        _ => return None,
+    };
+    Some(MagnificationEvent {
+        id,
+        gesture,
+        position,
+        modifiers,
+        timestamp,
+    })
 }
 
 impl From<winit::event::TouchPhase> for TouchPhase {

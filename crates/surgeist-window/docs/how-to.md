@@ -64,6 +64,14 @@ explicit immutable capability report. A report permits planning; it does not
 prove behavior on a native platform. Both harnesses are defined in
 [src/testing.rs](../src/testing.rs).
 
+To deliver captured magnification input, pass a `MagnificationEvent` through
+`NativeEventTransition::magnification` to `Runner::transition`. Observe it in
+`Handler::input`, where `Input::position` exposes optional pointer context and
+`Input::modifiers` retains the captured modifiers. Assert the gesture separately
+from any consumer-selected response: delivery itself applies no zoom or window
+command. See the [raw intent contract](explanation.md#native-magnification-input)
+and [conversion and routing tests](../src/magnification_tests.rs).
+
 ## Submit work through a proxy
 
 Use a `Proxy` when work originates outside the owning callback. Obtain it from
