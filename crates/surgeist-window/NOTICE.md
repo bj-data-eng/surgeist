@@ -2,7 +2,7 @@
 
 ## Dependencies
 
-This notice covers the eight direct dependencies pinned in [Cargo.toml](Cargo.toml),
+This notice covers the nine direct dependencies pinned in [Cargo.toml](Cargo.toml),
 including the optional `accessibility` feature and dependency material for all
 declared platforms. These dependencies are not vendored in this source
 repository. This inventory does not cover the transitive dependencies or other
@@ -47,7 +47,7 @@ This product depends on keyboard-types, distributed by Pyfisch:
 ### objc2 0.6.4
 
 This product depends on objc2, distributed by Mads Marquart. It is a macOS-only
-direct dependency for native UI font observation.
+direct dependency for native UI font and monitor observation.
 
 * License: [MIT declaration and upstream terms](licenses/objc2/LICENSE.md)
 * Homepage: [objc2](https://github.com/madsmtm/objc2)
@@ -56,9 +56,18 @@ direct dependency for native UI font observation.
 ### objc2-app-kit 0.3.2
 
 This product depends on objc2-app-kit. It is a macOS-only direct dependency for
-native UI font observation.
+native UI font, accessibility preference and monitor observation.
 
 * License: [Zlib OR Apache-2.0 OR MIT declaration and upstream terms](licenses/objc2/LICENSE.md)
+* Homepage: [objc2](https://github.com/madsmtm/objc2)
+* Legal source: [exact package revision](https://github.com/madsmtm/objc2/blob/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md)
+
+### objc2-foundation 0.3.2
+
+This product depends on objc2-foundation. It is a macOS-only direct dependency
+for checked native display identifiers and Foundation values.
+
+* License: [MIT declaration and upstream terms](licenses/objc2/LICENSE.md)
 * Homepage: [objc2](https://github.com/madsmtm/objc2)
 * Legal source: [exact package revision](https://github.com/madsmtm/objc2/blob/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md)
 
