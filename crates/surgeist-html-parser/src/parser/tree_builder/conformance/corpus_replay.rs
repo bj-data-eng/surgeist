@@ -4,9 +4,11 @@
 //! native comparison owner against its independently decoded corpus tree:
 //! ordinary documents through [`check`], and every `#document-fragment` case
 //! through the real captured-context fragment owner with its corpus context,
-//! including SVG and MathML contexts. `#script-on` cases select Enabled
-//! scripting construction, an unsupported public profile, and are not run;
-//! cases without a scripting marker run with Disabled scripting.
+//! including SVG and MathML contexts, and then against the tree the public
+//! fragment request returns, rendered in the corpus dump shape. `#script-on`
+//! cases select Enabled scripting construction, an unsupported public profile,
+//! and are not run; cases without a scripting marker run with Disabled
+//! scripting.
 //!
 //! The corpus format does not carry document mode. A case binds its mode from
 //! the hand-derived HTML877d table below, otherwise from the Initial rules the
@@ -244,8 +246,9 @@ fn document_request(input: &str, utf16: bool) -> HtmlDocumentParseRequest {
 }
 
 /// Rendering of an actual public result in the corpus dump shape. Failure
-/// messages use it, and spec exclusions compare it exactly with the tree the
-/// pinned edition requires; corpus cases compare through the native observer.
+/// messages use it, spec exclusions compare it exactly with the tree the
+/// pinned edition requires, and fragment cases compare it with the corpus dump
+/// in addition to the native observer.
 trait Tree {
     fn top(&self) -> HtmlNode<'_>;
     fn lookup(&self, id: &HtmlNodeId) -> Option<HtmlNode<'_>>;
@@ -360,6 +363,24 @@ fn render<T: Tree>(tree: &T) -> String {
     out
 }
 
+/// Corpus-dump rendering of a public fragment result, for the direct tests
+/// that assert the public tree against an independently written expectation.
+pub(super) fn render_fragment(fragment: &HtmlFragment) -> String {
+    render(fragment)
+}
+
+/// The `render` output for a decoded fixture's expected tree. `render` ends
+/// every record line with a line feed and emits nothing for an empty tree,
+/// while `decode` strips the separator after the last record and permits an
+/// empty fragment expectation. Both public-tree comparisons use this one rule.
+pub(super) fn expected_dump(expected: &str) -> String {
+    if expected.is_empty() {
+        String::new()
+    } else {
+        format!("{expected}\n")
+    }
+}
+
 fn actual_document(input: &str, utf16: bool) -> String {
     match document_request(input, utf16).parse() {
         Ok(report) => report.document().map_or("(no document)".to_owned(), render),
@@ -412,7 +433,12 @@ fn replay_case(file: &str, fixture: &Fixture<'_>) -> Option<Vec<String>> {
                     &expected,
                     None,
                     false,
-                )
+                )?;
+                let actual = actual_fragment(context, fixture.input, utf16);
+                if actual != expected_dump(fixture.expected) {
+                    return Err(format!("public fragment tree differs:\n{actual}"));
+                }
+                Ok(())
             }
         });
         let error = match run {
@@ -611,4 +637,21 @@ fn mode_omitted_document_still_rejects_a_changed_tree() {
     };
     *text = units("a");
     check(&document_request(fixtures[0].input, true), &expected).unwrap();
+}
+
+#[test]
+fn empty_fragment_renders_equal_to_an_empty_expectation() {
+    // HTML877d fragment parsing: empty input in a div context leaves the root
+    // without children, so the tree is empty and its dump is empty.
+    let raw = "#data\n\n#errors\n#document-fragment\ndiv\n#document\n";
+    let fixture = decode(raw).unwrap().into_iter().next().unwrap();
+    assert_eq!((fixture.input, fixture.expected), ("", ""));
+    for utf16 in [false, true] {
+        assert_eq!(
+            actual_fragment("div", fixture.input, utf16),
+            expected_dump(fixture.expected),
+            "utf16={utf16}"
+        );
+    }
+    assert_eq!(expected_dump("| <head>"), "| <head>\n");
 }
