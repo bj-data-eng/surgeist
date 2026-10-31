@@ -223,9 +223,47 @@ impl SessionStorage {
         let Some(position) = position else {
             return Ok(None);
         };
-        let container = self.element_attribute_container(c, node)?;
-        let slot = self.field_slot(c, StringLocation::AttributeValue(container, position))?;
+        // The value row is the one sharing the attribute's backing; creation's
+        // hint finds it without a scan, and test builds compare it with the
+        // row registered at the attribute value's location.
+        let slot = self.attribute_value_slot(c, node, position)?;
+        #[cfg(test)]
+        {
+            let container = self.element_attribute_container(c, node)?;
+            // An uncharged scan, so the cross-check does not enter the work.
+            assert_eq!(
+                self.payloads.values.iter().position(|row| matches!(
+                    row,
+                    RetainedPayload::String {
+                        location: StringLocation::AttributeValue(owner, at),
+                        ..
+                    } if *owner == container && *at == position
+                )),
+                Some(slot)
+            );
+        }
         self.association_string(c, slot).map(Some)
+    }
+    /// The internal nonce row's value, separate from the potentially hidden
+    /// authored attribute. One join cell and one row, whatever else is retained.
+    fn association_nonce(
+        &mut self,
+        c: &mut ParseControl,
+        node: usize,
+    ) -> Result<Option<OriginGroupRef>, SessionError> {
+        if let Some(slot) = self.payloads.joined(c, node, Join::Nonce)? {
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            if let Some(RetainedPayload::Nonce {
+                node: Some(owner),
+                raw,
+            }) = self.payloads.values.get(slot)
+                && *owner == node
+            {
+                let raw = *raw;
+                return self.association_string(c, raw).map(Some);
+            }
+        }
+        Ok(None)
     }
     fn association_style_inputs(
         &mut self,
@@ -280,17 +318,8 @@ impl SessionStorage {
                 attributes[index] = self.association_attribute(c, node, local)?;
             }
             // Internal nonce is separate from the potentially hidden authored attribute.
-            if let Some(slot) = self.payloads.joined(c, node, Join::Nonce)? {
-                c.charge(WorkCategory::RecordVisit, 1)?;
-                if let Some(RetainedPayload::Nonce {
-                    node: Some(owner),
-                    raw,
-                }) = self.payloads.values.get(slot)
-                    && *owner == node
-                {
-                    let raw = *raw;
-                    attributes[4] = Some(self.association_string(c, raw)?);
-                }
+            if let Some(nonce) = self.association_nonce(c, node)? {
+                attributes[4] = Some(nonce);
             }
             let mut next = self
                 .construction
@@ -719,6 +748,15 @@ impl SessionStorage {
                 Err(error)
             }
         }
+    }
+    /// Test harness: reads the association nonce of `node`.
+    #[cfg(test)]
+    pub(super) fn association_nonce_present(
+        &mut self,
+        c: &mut ParseControl,
+        node: usize,
+    ) -> Result<bool, SessionError> {
+        Ok(self.association_nonce(c, node)?.is_some())
     }
     pub(super) fn association_style_trigger(
         &mut self,

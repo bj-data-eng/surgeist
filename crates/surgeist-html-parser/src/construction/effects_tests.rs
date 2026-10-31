@@ -1886,10 +1886,12 @@ fn per_element_lookup_work_stays_constant_as_unrelated_payloads_grow() {
 #[test]
 fn each_payload_lookup_of_one_node_costs_the_same_however_many_payloads_are_unrelated() {
     // One call per lookup, on an element that has the payload, measured in a
-    // document with 8 and with 32 unrelated sibling subtrees.
+    // document with 8 and with 32 unrelated subtrees. They sit in one wrapper
+    // so the measured elements keep the same few siblings: tree-order parent
+    // and sibling walks scale with children, not with payloads.
     let measure = |siblings: usize| -> Vec<(&'static str, u64)> {
         let source = format!(
-            "<body>{}<script nonce=n src=a></script><style></style><dialog></dialog>\
+            "<body><div>{}</div><script nonce=n src=a></script><style nonce=m></style><dialog></dialog>\
              <img src=a><form id=f><input type=radio name=r></form>\
              <select><option>x</option></select><div id=d></div>",
             "<i>t</i>".repeat(siblings)
@@ -1932,6 +1934,12 @@ fn each_payload_lookup_of_one_node_costs_the_same_however_many_payloads_are_unre
         );
         measured!("nonce", c, storage.nonce_slot(&mut c, script));
         measured!("style", c, storage.style_slot(&mut c, style));
+        // The association step reads the style's nonce row on its own.
+        measured!(
+            "association nonce",
+            c,
+            storage.association_nonce_present(&mut c, style)
+        );
         measured!(
             "image update",
             c,
@@ -1957,7 +1965,7 @@ fn each_payload_lookup_of_one_node_costs_the_same_however_many_payloads_are_unre
     };
     let small = measure(8);
     let large = measure(32);
-    assert_eq!(small.len(), 10);
+    assert_eq!(small.len(), 11);
     for ((name, small), (_, large)) in small.iter().zip(&large) {
         assert_eq!(
             small, large,
