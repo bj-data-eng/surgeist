@@ -2154,7 +2154,7 @@ impl SessionStorage {
                 else {
                     return Err(latch_registry_row(control));
                 };
-                control.reserve_vector(values, allocation, 1)?;
+                control.reserve_vector_geometric_toward(values, allocation, 1, count)?;
                 payload_write::<Attribute>(control, 1)?;
                 payload_write::<[StringLocation; 2]>(control, 2)?;
                 control.acquire(HtmlParseResource::ManagedAttributes, 1)?;
@@ -3336,7 +3336,7 @@ impl SessionStorage {
                 else {
                     return Err(latch_registry_row(control));
                 };
-                control.reserve_vector(values, allocation, 1)?;
+                control.reserve_vector_geometric_toward(values, allocation, 1, original_len)?;
                 control.charge(WorkCategory::CopyByte, mem::size_of::<Attribute>() as u64)?;
                 control.charge(WorkCategory::RecordWrite, 3)?;
                 control.acquire(HtmlParseResource::ManagedAttributes, 1)?;
@@ -3871,7 +3871,7 @@ impl SessionStorage {
                 else {
                     return Err(latch_registry_row(control));
                 };
-                control.reserve_vector(values, allocation, 1)?;
+                control.reserve_vector_geometric_toward(values, allocation, 1, count)?;
                 control.charge(
                     WorkCategory::CopyByte,
                     (mem::size_of::<Attribute>() + 2 * mem::size_of::<StringLocation>()) as u64,
@@ -22053,6 +22053,90 @@ mod tests {
         session.release(&mut c).unwrap();
         assert_eq!(c.stop(), first);
         assert_eq!(c.usage().actual_capacity_bytes, 0);
+    }
+
+    #[test]
+    fn record_reserve_grows_the_bank_geometrically_and_keeps_the_exact_layout_gate() {
+        let mut c = control();
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        let storage = session.active_mut().unwrap();
+        let held = storage.construction.len();
+        let mut capacities = vec![storage.construction.actual_record_layout().0];
+        // Ask for ever more records, as a growing document does. An exact
+        // policy changes the bank for every larger request.
+        for additional in 1..=40 {
+            storage
+                .construction
+                .reserve_records(&mut c, additional)
+                .unwrap();
+            let capacity = storage.construction.actual_record_layout().0;
+            assert!(capacity >= held + additional);
+            if capacities.last() != Some(&capacity) {
+                capacities.push(capacity);
+            }
+        }
+        assert!(capacities.len() <= 8, "{capacities:?}");
+        assert!(capacities.windows(3).all(|run| run[2] >= 2 * run[1]));
+        session.release(&mut c).unwrap();
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
+    }
+
+    #[test]
+    fn record_reserve_clamps_spare_capacity_to_the_limit_and_keeps_the_exact_refusal() {
+        // Grows an eight-slot bank to ten records, the bank doubling to sixteen.
+        let session_at_eight = |limits: HtmlParseLimits| {
+            let mut c = ParseControl::new(limits, HtmlParseCancellation::new());
+            let mut session =
+                ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                    .unwrap();
+            let storage = session.active_mut().unwrap();
+            storage.construction.reserve_records(&mut c, 7).unwrap();
+            assert_eq!(storage.construction.actual_record_layout().0, 8);
+            (c, session)
+        };
+        let (mut baseline, mut original) = session_at_eight(limits());
+        let at_eight = baseline.usage().actual_capacity_bytes;
+        let storage = original.active().unwrap();
+        let (capacity, element_size) = storage.construction.actual_record_layout();
+        let required = storage.construction.len() + 9;
+        assert!(capacity < required && required < 2 * capacity);
+        let exact_fit =
+            at_eight - (capacity * element_size) as u64 + (required * element_size) as u64;
+        original.release(&mut baseline).unwrap();
+
+        let (mut fits, mut session) = session_at_eight(
+            limits()
+                .into_builder()
+                .managed_capacity_bytes(exact_fit)
+                .finish()
+                .unwrap(),
+        );
+        let storage = session.active_mut().unwrap();
+        storage.construction.reserve_records(&mut fits, 9).unwrap();
+        // Spare capacity stops at the limit instead of doubling past it.
+        assert_eq!(storage.construction.actual_record_layout().0, required);
+        assert_eq!(fits.usage().actual_capacity_bytes, exact_fit);
+        session.release(&mut fits).unwrap();
+
+        let (mut refuses, mut session) = session_at_eight(
+            limits()
+                .into_builder()
+                .managed_capacity_bytes(exact_fit - 1)
+                .finish()
+                .unwrap(),
+        );
+        let error = session
+            .active_mut()
+            .unwrap()
+            .construction
+            .reserve_records(&mut refuses, 9)
+            .err();
+        assert!(
+            matches!(error, Some(SessionError::Stop(ParseStop::LimitExceeded { resource: HtmlParseResource::ManagedCapacityBytes, limit, .. })) if limit == exact_fit - 1)
+        );
+        session.release(&mut refuses).unwrap();
     }
 
     pub(super) fn limits() -> HtmlParseLimits {

@@ -531,7 +531,7 @@ impl Updates {
         value: &DocumentString,
         c: &mut ParseControl,
     ) -> Result<usize, SessionError> {
-        c.reserve_vector(&mut self.values, &mut self.allocation, 1)?;
+        c.reserve_vector_geometric(&mut self.values, &mut self.allocation, 1)?;
         payload_write::<Update>(c, 1)?;
         let allocation = c.final_string_ticket(value)?;
         let index = self.values.len();
@@ -871,8 +871,10 @@ impl Finalizing {
         );
         let (parts_value, c) = parts.parts();
         let parts_value = &mut parts_value.0;
+        // The count is known, but a single reserve would precede the logical
+        // admission of the first row; each push keeps its own order.
         for _ in 0..original.len() {
-            parts_value.try_push(c, [None; 4])?;
+            parts_value.try_push_geometric_toward(c, [None; 4], original.len())?;
         }
         let mut next = self.joins[container].head;
         while let Some(slot) = next {

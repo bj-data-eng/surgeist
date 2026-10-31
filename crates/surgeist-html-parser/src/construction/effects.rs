@@ -753,7 +753,9 @@ impl SessionStorage {
                 else {
                     return Err(latch_registry_row(c));
                 };
-                list.try_push_recover(c, node)
+                // An exact reserve per node would charge the whole list again
+                // for every node it already holds.
+                list.try_push_recover_geometric(c, node)
                     .map_err(|(stop, _)| SessionError::Stop(stop))?;
             }
             let excluded = matches!(kind, WorkListKind::FragmentChildren)
