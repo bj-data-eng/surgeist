@@ -18,6 +18,12 @@
 
 #![cfg(test)]
 
+#[path = "combined_tab_width.rs"]
+mod tabs;
+pub(crate) use tabs::{
+    COMBINED_TAB_WIDTH_FAMILY, combined_tab_width_ahem, qualify_combined_tab_width,
+};
+
 use super::{AHEM, layout_table, single_substitution};
 use crate::test_fonts::{replace_tables, table, u16_at};
 

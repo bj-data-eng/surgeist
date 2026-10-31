@@ -10,7 +10,8 @@ pub(crate) use preparation::visit_prepared_allocations;
 #[cfg(test)]
 mod work_tests;
 pub(crate) use preparation::{
-    ScopeMetricsData, cell_metric_index, prepare_cell_resources, prepare_resources,
+    ScopeMetricsData, cell_metric_index, prepare_cell_resources, prepare_cell_tabs,
+    prepare_resources,
 };
 
 use std::sync::Arc;
@@ -113,6 +114,7 @@ pub(crate) struct ScopeRelation {
 #[derive(Default)]
 pub(crate) struct PreparedScopes {
     pub(crate) metrics: Vec<ScopeMetricsData>,
+    pub(crate) cell_tabs: Vec<crate::tabs::cell::CellTabReference>,
     pub(crate) targets: Vec<usize>,
     pub(crate) atom_owners: Vec<Vec<usize>>,
     pub(crate) breaks: Vec<usize>,
@@ -1124,6 +1126,7 @@ struct SelectedFonts<'a> {
     empty: Option<&'a super::layout::data::PreparedRun>,
     assignment: usize,
     atom: usize,
+    unit: usize,
 }
 impl<'a> SelectedFonts<'a> {
     fn next(&mut self, budget: &mut ScopeAlignmentBudget) -> Result<Option<&'a FontData>> {
@@ -1144,6 +1147,22 @@ impl<'a> SelectedFonts<'a> {
             if self.prepared.options.tabs() != crate::TabPreparation::CssStops
                 || self.presentation.projection.atoms[atom].code_point != 9
             {
+                continue;
+            }
+            while self.unit < self.presentation.units.len() {
+                budget.work(1)?;
+                if self.presentation.units[self.unit].atoms.end > atom {
+                    break;
+                }
+                self.unit += 1;
+            }
+            if self.presentation.units.get(self.unit).is_some_and(|unit| {
+                unit.atoms.contains(&atom)
+                    && matches!(
+                        unit.kind,
+                        crate::protocol::prepared::PresentationUnitKind::Cell { .. }
+                    )
+            }) {
                 continue;
             }
             if let Some(font) = self.prepared.tab_metrics[self.presentation.analysis.infos[atom].1]
@@ -1171,6 +1190,7 @@ pub(crate) fn admit_selected_resources(
         empty,
         assignment: 0,
         atom: 0,
+        unit: 0,
     };
     let same = |left: &FontData, right: &FontData| {
         left.bytes().as_ptr() == right.bytes().as_ptr() && left.bytes().len() == right.bytes().len()
@@ -1184,6 +1204,17 @@ pub(crate) fn admit_selected_resources(
             if same(&metric.font, font) {
                 pinned = true;
                 break;
+            }
+        }
+        if !pinned {
+            for reference in &prepared.scope_alignment.cell_tabs {
+                budget.work(1)?;
+                for metric in [&reference.space, &reference.ch].into_iter().flatten() {
+                    budget.work(1)?;
+                    if let Some(other) = &metric.font {
+                        pinned |= same(&other.font, font);
+                    }
+                }
             }
         }
         if !pinned && prepared.shaped.cell_arenas == super::layout::data::CellArenaOwnership::Owned

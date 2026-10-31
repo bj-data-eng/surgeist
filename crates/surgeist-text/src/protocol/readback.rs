@@ -312,12 +312,16 @@ impl PreparedCellView<'_> {
         resolved_level(self.shaped().level)
     }
 
-    /// Actual provider-input presence; glyph and ink emptiness do not decide it.
+    /// Actual dispatched provider-input presence; glyph/ink emptiness does not decide it.
+    /// A retained CSS-tab-only layout has no provider input.
     #[must_use]
     pub fn has_provider_input(&self) -> bool {
         matches!(
             self.shaped().payload,
-            crate::engine::layout::data::CellPayload::Shaped { .. }
+            crate::engine::layout::data::CellPayload::LaidOut {
+                provider: Some(_),
+                ..
+            }
         )
     }
 }

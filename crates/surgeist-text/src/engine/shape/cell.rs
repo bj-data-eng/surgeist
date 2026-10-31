@@ -3,7 +3,10 @@
 pub(super) mod width;
 
 use super::*;
-use crate::engine::layout::data::{CellClusterPosition, CellFrame, CellPayload, PreparedCell};
+use crate::engine::layout::data::{
+    CellClusterPosition, CellLayout, CellPayload, CellProviderPayload, CellTabSpan, CellTransform,
+    PreparedCell,
+};
 use crate::engine::spacing::{CellWordExecution, CellWordPlan, SeparatorCandidate};
 use crate::engine::{AnalyzedData, scope_alignment};
 use crate::processing::contextual::alignment::operations;
@@ -35,18 +38,11 @@ fn unsupported() -> Error {
 
 /// Bounded native capability. Empty provider input is established from actual
 /// source presentation and control roles, never from font/glyph/ink outcomes.
-pub(super) fn admit(analyzed: &AnalyzedData, tabs: crate::TabPreparation) -> Result<()> {
+pub(super) fn admit(analyzed: &AnalyzedData) -> Result<()> {
     let Some(output) = &analyzed.combination else {
         return Ok(());
     };
     for binding in &output.bindings {
-        if tabs == crate::TabPreparation::CssStops
-            && analyzed.projection.atoms[binding.atoms.clone()]
-                .iter()
-                .any(|atom| atom.code_point == 0x09)
-        {
-            return Err(unsupported());
-        }
         // Source has already resolved inner directional controls into used
         // levels and removed literal control scalars from provider input.
         for event in &analyzed.transform.events[binding.events.clone()] {
@@ -82,9 +78,13 @@ struct Input {
     atoms: IndexRange<usize>,
     events: IndexRange<usize>,
     scope_relations: Option<IndexRange<usize>>,
+    provider_dispatched: bool,
+    direction: crate::ParagraphBaseDirection,
 }
 
-pub(super) struct Inputs {
+pub(super) struct Inputs<'a> {
+    scopes: &'a scope_alignment::PreparedScopes,
+    tabs: &'a crate::tabs::cell::CellTabPlan,
     rows: Vec<Input>,
     atom_cells: Vec<Option<usize>>,
     levels: Vec<Option<u8>>,
@@ -93,10 +93,11 @@ pub(super) struct Inputs {
     boundaries: Vec<usize>,
 }
 
-impl Inputs {
+impl<'a> Inputs<'a> {
     pub(super) fn new(
         analyzed: &AnalyzedData,
-        scopes: &scope_alignment::PreparedScopes,
+        scopes: &'a scope_alignment::PreparedScopes,
+        tabs: &'a crate::tabs::cell::CellTabPlan,
         ledger: &mut Ledger,
     ) -> Result<Self> {
         let output = analyzed.combination.as_ref().expect("actual source cells");
@@ -181,10 +182,14 @@ impl Inputs {
                     atoms: binding.atoms.clone(),
                     events: binding.events.clone(),
                     scope_relations: None,
+                    provider_dispatched: false,
+                    direction: group.inner_direction,
                 },
             )?;
         }
         Ok(Self {
+            scopes,
+            tabs,
             rows,
             atom_cells,
             levels,
@@ -194,6 +199,12 @@ impl Inputs {
         })
     }
 
+    pub(super) fn before_tab(&self, output: &mut ShapedData, ledger: &mut Ledger) -> Result<()> {
+        account::adopt_prepared_cell_arenas(ledger, self.scopes, output)
+    }
+    pub(super) fn dispatched(&mut self, cell: usize) {
+        self.rows[cell].provider_dispatched = true;
+    }
     pub(super) fn owner(&self, atom: usize) -> Option<usize> {
         self.atom_cells[atom]
     }
@@ -287,6 +298,7 @@ impl Inputs {
                 analyzed,
                 horizontal,
                 words: words.for_cell(index),
+                tabs: self.tabs,
             };
             let payload = if row.atoms.is_empty() {
                 CellPayload::NoProviderInput
@@ -294,7 +306,9 @@ impl Inputs {
                 normal_payload(output, row, &composition, ledger)?
             };
             let overwide = match &payload {
-                CellPayload::Shaped { advance, .. } => advance.end - advance.start > row.extent,
+                CellPayload::LaidOut { layout, .. } => {
+                    layout.advance.end - layout.advance.start > row.extent
+                }
                 CellPayload::NoProviderInput => false,
             };
             if overwide {
@@ -494,98 +508,120 @@ impl SelectedCells {
             };
             let payload = match &original.payload {
                 CellPayload::NoProviderInput => CellPayload::NoProviderInput,
-                CellPayload::Shaped {
-                    runs,
-                    clusters,
-                    glyphs,
-                    scope_relations,
-                    advance,
-                    positions,
-                    frame,
-                } => {
+                CellPayload::LaidOut { layout, provider } => {
                     let run_base = output.runs.len();
-                    for old in &prepared.shaped.runs[runs.clone()] {
-                        let mut run = account::clone_run(ledger, old)?;
-                        run.atoms = shift(run.atoms)?;
-                        account::push(ledger, &mut output.runs, run)?;
-                    }
                     let glyph_base = output.glyphs.len();
-                    for glyph in &prepared.shaped.glyphs[glyphs.clone()] {
-                        account::push(ledger, &mut output.glyphs, *glyph)?;
-                    }
-                    if !prepared.shaped.scope_glyph_custody.is_empty() {
-                        for custody in &prepared.shaped.scope_glyph_custody[glyphs.clone()] {
-                            account::push(ledger, &mut output.scope_glyph_custody, *custody)?;
+                    let relation_base = output.scope_relations.len();
+                    let mut provider_first = 0;
+                    let provider_base = output.provider_groups.len();
+                    if let Some(provider) = provider {
+                        for old in &prepared.shaped.runs[provider.runs.clone()] {
+                            let mut run = account::clone_run(ledger, old)?;
+                            run.atoms = shift(run.atoms)?;
+                            account::push(ledger, &mut output.runs, run)?;
+                        }
+                        for glyph in &prepared.shaped.glyphs[provider.glyphs.clone()] {
+                            account::push(ledger, &mut output.glyphs, *glyph)?;
+                        }
+                        if !prepared.shaped.scope_glyph_custody.is_empty() {
+                            for custody in
+                                &prepared.shaped.scope_glyph_custody[provider.glyphs.clone()]
+                            {
+                                account::push(ledger, &mut output.scope_glyph_custody, *custody)?;
+                            }
+                        }
+                        for relation in
+                            &prepared.shaped.scope_relations[provider.scope_relations.clone()]
+                        {
+                            account::push(ledger, &mut output.scope_relations, *relation)?;
+                        }
+                        provider_first = operations::partition_point(
+                            &prepared.shaped.provider_groups,
+                            ledger.as_mut(),
+                            |row| row.run < provider.runs.start,
+                        )?;
+                        let provider_last = operations::partition_point(
+                            &prepared.shaped.provider_groups,
+                            ledger.as_mut(),
+                            |row| row.run < provider.runs.end,
+                        )?;
+                        for group in &prepared.shaped.provider_groups[provider_first..provider_last]
+                        {
+                            account::push(
+                                ledger,
+                                &mut output.provider_groups,
+                                ProviderGroup {
+                                    run: run_base + group.run - provider.runs.start,
+                                    atoms: shift(group.atoms.clone())?,
+                                    glyphs: glyph_base + group.glyphs.start - provider.glyphs.start
+                                        ..glyph_base + group.glyphs.end - provider.glyphs.start,
+                                    advance: group.advance,
+                                },
+                            )?;
                         }
                     }
-                    let relation_base = output.scope_relations.len();
-                    for relation in &prepared.shaped.scope_relations[scope_relations.clone()] {
-                        account::push(ledger, &mut output.scope_relations, *relation)?;
-                    }
-                    let provider_first = operations::partition_point(
-                        &prepared.shaped.provider_groups,
-                        ledger.as_mut(),
-                        |group| group.run < runs.start,
-                    )?;
-                    let provider_last = operations::partition_point(
-                        &prepared.shaped.provider_groups,
-                        ledger.as_mut(),
-                        |group| group.run < runs.end,
-                    )?;
-                    let provider_base = output.provider_groups.len();
-                    for group in &prepared.shaped.provider_groups[provider_first..provider_last] {
-                        account::push(
-                            ledger,
-                            &mut output.provider_groups,
-                            ProviderGroup {
-                                run: run_base + group.run - runs.start,
-                                atoms: shift(group.atoms.clone())?,
-                                glyphs: glyph_base + group.glyphs.start - glyphs.start
-                                    ..glyph_base + group.glyphs.end - glyphs.start,
-                                advance: group.advance,
-                            },
-                        )?;
-                    }
                     let cluster_base = output.clusters.len();
-                    for old in &prepared.shaped.clusters[clusters.clone()] {
+                    for old in &prepared.shaped.clusters[layout.clusters.clone()] {
                         let mut cluster = old.clone();
                         cluster.atoms = shift(cluster.atoms)?;
                         cluster.provider_group = shift(cluster.provider_group)?;
-                        cluster.glyphs = glyph_base + cluster.glyphs.start - glyphs.start
-                            ..glyph_base + cluster.glyphs.end - glyphs.start;
+                        cluster.glyphs = if let Some(provider) = provider {
+                            glyph_base + cluster.glyphs.start - provider.glyphs.start
+                                ..glyph_base + cluster.glyphs.end - provider.glyphs.start
+                        } else {
+                            glyph_base..glyph_base
+                        };
                         cluster.content = match cluster.content {
                             ClusterContent::Provider(run) => {
-                                ClusterContent::Provider(run_base + run - runs.start)
+                                let provider = provider.as_ref().ok_or_else(unsupported)?;
+                                ClusterContent::Provider(run_base + run - provider.runs.start)
                             }
-                            ClusterContent::CssTab(run) => {
-                                ClusterContent::CssTab(run.map(|run| run_base + run - runs.start))
-                            }
+                            ClusterContent::CssTab(run) => ClusterContent::CssTab(match run {
+                                Some(run) => Some(
+                                    run_base + run
+                                        - provider.as_ref().ok_or_else(unsupported)?.runs.start,
+                                ),
+                                None => None,
+                            }),
                         };
                         cluster.provider_receipt = cluster
                             .provider_receipt
                             .map(|receipt| provider_base + receipt - provider_first);
                         account::push(ledger, &mut output.clusters, cluster)?;
                     }
-                    let mut copied_positions = Vec::new();
-                    for position in positions {
+                    let mut positions = Vec::new();
+                    for position in &layout.positions {
                         account::push(
                             ledger,
-                            &mut copied_positions,
+                            &mut positions,
                             CellClusterPosition {
-                                cluster: cluster_base + position.cluster - clusters.start,
+                                cluster: cluster_base + position.cluster - layout.clusters.start,
                                 pen: position.pen,
                                 word: position.word,
                             },
                         )?;
                     }
-                    CellPayload::Shaped {
-                        runs: run_base..output.runs.len(),
-                        clusters: cluster_base..output.clusters.len(),
-                        glyphs: glyph_base..output.glyphs.len(),
-                        scope_relations: relation_base..output.scope_relations.len(),
-                        advance: advance.clone(),
-                        positions: copied_positions,
-                        frame: *frame,
+                    let mut tabs = Vec::new();
+                    for span in &layout.tabs {
+                        let mut span = *span;
+                        span.atom = shift(span.atom..span.atom + 1)?.start;
+                        span.cluster = cluster_base + span.cluster - layout.clusters.start;
+                        account::push(ledger, &mut tabs, span)?;
+                    }
+                    CellPayload::LaidOut {
+                        layout: CellLayout {
+                            clusters: cluster_base..output.clusters.len(),
+                            advance: layout.advance.clone(),
+                            positions,
+                            transform: layout.transform,
+                            tabs,
+                        },
+                        provider: provider.as_ref().map(|provider| CellProviderPayload {
+                            runs: run_base..output.runs.len(),
+                            glyphs: glyph_base..output.glyphs.len(),
+                            scope_relations: relation_base..output.scope_relations.len(),
+                            baseline: provider.baseline,
+                        }),
                     }
                 }
             };
@@ -625,12 +661,13 @@ impl SelectedCells {
             new_clusters[cluster.atoms.start] = Some(index);
         }
         for cell in &mut output.cells {
-            if let CellPayload::Shaped {
-                clusters,
-                positions,
-                ..
-            } = &mut cell.payload
-            {
+            if let CellPayload::LaidOut { layout, .. } = &mut cell.payload {
+                let clusters = &mut layout.clusters;
+                let positions = &mut layout.positions;
+                for span in &mut layout.tabs {
+                    account::work(ledger, 1)?;
+                    span.cluster = new_clusters[old_atoms[span.cluster]].ok_or_else(unsupported)?;
+                }
                 let mut first = None;
                 let mut last = None;
                 for position in positions.iter_mut() {
@@ -685,6 +722,7 @@ struct Composition<'a, 'input> {
     analyzed: &'a AnalyzedData,
     horizontal: &'a ShapingInput<'input>,
     words: &'a [SeparatorCandidate],
+    tabs: &'a crate::tabs::cell::CellTabPlan,
 }
 
 fn normal_payload(
@@ -706,7 +744,7 @@ fn normal_payload(
     let last_cluster = operations::partition_point(&output.clusters, ledger.as_mut(), |cluster| {
         cluster.atoms.start < input.atoms.end
     })?;
-    if first_run == last_run || first_cluster == last_cluster {
+    if (input.provider_dispatched && first_run == last_run) || first_cluster == last_cluster {
         return Err(unsupported());
     }
     let runs = first_run..last_run;
@@ -816,6 +854,84 @@ fn normal_payload(
         ledger,
     )?;
     account::drop_vec(ledger, std::mem::take(&mut ranks))?;
+    let mut tabs = Vec::new();
+    let mut has_tabs = false;
+    for index in clusters.clone() {
+        account::work(ledger, 1)?;
+        has_tabs |= matches!(output.clusters[index].content, ClusterContent::CssTab(_));
+    }
+    if has_tabs {
+        let grid = crate::tabs::Grid::new(TextNumericPhase::Preparation);
+        let mut progress = 0.0;
+        for n in 0..order.len() {
+            account::work(ledger, 1)?;
+            let local = if input.direction == crate::ParagraphBaseDirection::RightToLeft {
+                order[order.len() - 1 - n]
+            } else {
+                order[n]
+            };
+            for index in groups[local].clone() {
+                account::work(ledger, 1)?;
+                let cluster = &mut output.clusters[index];
+                if matches!(cluster.content, ClusterContent::CssTab(_)) {
+                    let operation = composition
+                        .tabs
+                        .operation(cluster.atoms.start, ledger)?
+                        .ok_or_else(|| {
+                            Error::new(
+                                ErrorCode::LayoutFailed,
+                                "inner CSS tab lost its prepared operation",
+                            )
+                        })?;
+                    let before = progress;
+                    let amount =
+                        grid.stop(0.0, before, 1.0, operation.period, operation.threshold)?;
+                    let after = grid.add("cell tab executed end", before, amount)?;
+                    cluster.advance = amount;
+                    account::push(
+                        ledger,
+                        &mut tabs,
+                        CellTabSpan {
+                            atom: cluster.atoms.start,
+                            cluster: index,
+                            before,
+                            after,
+                            amount,
+                        },
+                    )?;
+                    progress = after;
+                } else {
+                    progress = grid.add("cell tab preceding pen", progress, cluster.advance)?;
+                }
+            }
+        }
+        if input.direction == crate::ParagraphBaseDirection::RightToLeft {
+            for span in &mut tabs {
+                account::work(ledger, 1)?;
+                span.before = grid.add("cell RTL tab before", progress, -span.before)?;
+                span.after = grid.add("cell RTL tab after", progress, -span.after)?;
+                span.amount = if span.amount == 0.0 {
+                    0.0
+                } else {
+                    -span.amount
+                };
+            }
+        }
+    }
+    let required_tabs = composition.tabs.for_range(input.atoms.clone(), ledger)?;
+    if required_tabs.len() != tabs.len() {
+        return Err(unsupported());
+    }
+    for operation in required_tabs {
+        let mut count = 0;
+        for span in &tabs {
+            account::work(ledger, 1)?;
+            count += usize::from(span.atom == operation.atom);
+        }
+        if count != 1 {
+            return Err(unsupported());
+        }
+    }
     let mut positions = Vec::new();
     let mut pen = 0.0f64;
     let mut start = 0.0f64;
@@ -868,34 +984,38 @@ fn normal_payload(
         (input.extent - width) / 2.0,
         -start,
     )?;
-    let baseline = logical_add(
-        "cell inner baseline",
-        input.extent / 2.0,
-        logical_add(
-            "cell inner midpoint",
-            ascent.expect("actual normal font") / 2.0,
-            -descent.expect("actual normal font") / 2.0,
-        )?,
-    )?;
+    let provider = if input.provider_dispatched {
+        let ascent = ascent.ok_or_else(unsupported)?;
+        let descent = descent.ok_or_else(unsupported)?;
+        let baseline = logical_add(
+            "cell inner baseline",
+            input.extent / 2.0,
+            logical_add("cell inner midpoint", ascent / 2.0, -descent / 2.0)?,
+        )?;
+        Some(CellProviderPayload {
+            runs,
+            glyphs: glyph_start.ok_or_else(unsupported)?..glyph_end.ok_or_else(unsupported)?,
+            scope_relations: input.scope_relations.clone().ok_or_else(unsupported)?,
+            baseline,
+        })
+    } else {
+        None
+    };
     account::drop_vec(ledger, halves)?;
     account::drop_vec(ledger, groups)?;
     account::drop_vec(ledger, slots)?;
     account::drop_vec(ledger, order)?;
-    Ok(CellPayload::Shaped {
-        runs,
-        clusters,
-        glyphs: glyph_start.expect("actual provider input")
-            ..glyph_end.expect("actual provider input"),
-        scope_relations: input
-            .scope_relations
-            .clone()
-            .expect("actual normal cell invocation"),
-        advance: start..end,
-        positions,
-        frame: CellFrame {
-            x_scale: 1.0,
-            x_offset,
-            baseline,
+    Ok(CellPayload::LaidOut {
+        layout: CellLayout {
+            clusters,
+            positions,
+            advance: start..end,
+            transform: CellTransform {
+                x_scale: 1.0,
+                x_offset,
+            },
+            tabs,
         },
+        provider,
     })
 }

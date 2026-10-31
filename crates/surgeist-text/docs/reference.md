@@ -637,18 +637,25 @@ keeps its original coverage when an indivisible unit requires domain analysis.
 Combination reads the captured writing axis and inner direction; typography
 does not supply either fact. Native cell preparation supports Vertical with
 matching Mixed/upright analysis, and SidewaysClockwise/SidewaysCounterclockwise
-with HorizontalComposition analysis. The inner payload remains physically
-horizontal in each profile, or source proves that provider input is absent.
+with HorizontalComposition analysis. The retained inner layout remains physically horizontal in each profile.
+Source-proved absence of provider projection remains distinct from a tab-only
+layout, which has logical geometry without body provider input.
 It demands the genuine text-containing Inline or same-domain inherited
 RootInline font reference and captured limits, including for glyph-free cells.
 Vertical preparation uses that container's VerticalX metrics; sideways
 preparation uses its HorizontalY metrics before the enclosing scope shift.
-The cell's intrinsic square is one em; its inner runs retain their actual horizontal
-advances. A fitting normal composition retains its executed glyphs. Otherwise,
+The cell's intrinsic square is one em; actual inner runs retain their horizontal
+advances. A fitting normal composition retains its executed layout and optional
+provider payload. Otherwise,
 bounded `hwid`, `twid` and `qwid` trials reuse its actual font instances and
 respect authored feature settings. Genuine source-attached mark-only descendants
 may inherit a covered base; surviving Normal default-ignorables require their own
-width action. Complete source-unit coverage selects the widest fitting candidate,
+width action. CSS TABs are separate native layout operations, never font actions,
+NoAction receipts or removal evidence. A mixed candidate requires existing complete
+provider coverage and complete execution of every TAB at that candidate's pens.
+Tab-only cells run no width-feature trials and cannot claim vacuous coverage;
+they retain normal nonprovider layout and compress geometrically if necessary.
+Complete provider and native-layout coverage selects the widest fitting candidate,
 or the narrowest covered overwide candidate with
 horizontal compression. Complete negative evidence for every variant selects
 compressed normal output. Exact ties retain `hwid`, `twid`, `qwid` order. Glyph
@@ -688,9 +695,17 @@ payload participates in the existing scope allowance and shared-product census.
 Source-resolved inner directional controls retain their effect in the used bidi
 levels without becoming provider scalars or additional outer units. Interior
 inline-boundary controls still return `TextCombineError::UnsupportedCellPreparation`.
-An in-cell TAB with deferred CSS
-tab stops is also unsupported; source processing retains genuine forced-break
-removal and glyph-free input provenance. A cell without a raw logical participant
+A preserved in-cell TAB under CssStops executes during preparation on a horizontal
+zero-origin grid in the captured inner direction. Its actual computed tab-size
+uses the text-containing Inline or derived RootInline's specified horizontal
+SPACE/ch font settings and effective word spacing, with inner letter spacing
+suppressed. Absolute intervals stay absolute. References stay fixed across width
+trials; each candidate executes stops after its actual inner bidi/word layout and
+before measurement. The chosen endpoint pairs and complete interval are centered
+and compressed once, then retained through finalization and replay. Zero sizes
+skip unused probes. Hypothetical resources retain their actual fallback instances;
+tab-only layout needs no dummy font run, glyph baseline or GlyphFrame.
+Source processing retains genuine forced-break removal and glyph-free input provenance. A cell without a raw logical participant
 retains its actual relation-event interval for direction queries. Its whole
 occurrence can supply an eligible strong bidi contribution when a raw empty point cannot;
 the complete body context still determines isolate eligibility.

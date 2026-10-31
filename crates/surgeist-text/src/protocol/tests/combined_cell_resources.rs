@@ -414,8 +414,9 @@ fn selected_retention_contains_whole_mixed_arenas_coordinates_and_unique_resourc
     own.backing(&requirements.coverage);
     own.owned(&shaped.cells);
     for cell in &shaped.cells {
-        if let CellPayload::Shaped { positions, .. } = &cell.payload {
-            own.backing(positions);
+        if let CellPayload::LaidOut { layout, .. } = &cell.payload {
+            own.backing(&layout.positions);
+            own.backing(&layout.tabs);
         }
     }
     let identity = |font: &crate::FontData| (font.bytes().as_ptr() as usize, font.bytes().len());

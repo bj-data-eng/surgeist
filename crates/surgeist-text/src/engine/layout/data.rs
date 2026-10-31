@@ -191,18 +191,42 @@ pub(crate) struct CellClusterPosition {
     pub(crate) word: super::super::spacing::WordSpacingPlacement,
 }
 
-/// Provider input absence is source-proved; glyph/ink emptiness is not absence.
+/// Actual horizontal layout, independent of provider input and glyph baselines.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CellTransform {
+    pub(crate) x_scale: f64,
+    pub(crate) x_offset: f64,
+}
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CellTabSpan {
+    pub(crate) atom: usize,
+    pub(crate) cluster: usize,
+    pub(crate) before: f64,
+    pub(crate) after: f64,
+    pub(crate) amount: f64,
+}
+#[derive(Clone, Debug)]
+pub(crate) struct CellLayout {
+    pub(crate) clusters: IndexRange<usize>,
+    pub(crate) advance: IndexRange<f64>,
+    pub(crate) positions: Vec<CellClusterPosition>,
+    pub(crate) transform: CellTransform,
+    pub(crate) tabs: Vec<CellTabSpan>,
+}
+#[derive(Clone, Debug)]
+pub(crate) struct CellProviderPayload {
+    pub(crate) runs: IndexRange<usize>,
+    pub(crate) glyphs: IndexRange<usize>,
+    pub(crate) scope_relations: IndexRange<usize>,
+    pub(crate) baseline: f64,
+}
+/// NoProviderInput is source-proved absence of provider projection, not ink.
 #[derive(Clone, Debug)]
 pub(crate) enum CellPayload {
     NoProviderInput,
-    Shaped {
-        runs: IndexRange<usize>,
-        clusters: IndexRange<usize>,
-        glyphs: IndexRange<usize>,
-        scope_relations: IndexRange<usize>,
-        advance: IndexRange<f64>,
-        positions: Vec<CellClusterPosition>,
-        frame: CellFrame,
+    LaidOut {
+        layout: CellLayout,
+        provider: Option<CellProviderPayload>,
     },
 }
 
@@ -385,6 +409,8 @@ pub(crate) struct FinalizedCell {
     pub(crate) scope_displacement: crate::BaselineShift,
     pub(crate) level: u8,
     pub(crate) frame: Option<CellFrame>,
+    pub(crate) transform: Option<CellTransform>,
+    pub(crate) tabs: Vec<CellTabSpan>,
 }
 
 /// One actual logical glyph position, separate from its canonical provider offsets.
@@ -558,6 +584,9 @@ impl FinalizedLineData {
         )?)?;
         visit(W::buffer(&self.boxes, self.boxes.len())?)?;
         visit(W::buffer(&self.cells, self.cells.len())?)?;
+        for cell in &self.cells {
+            visit(W::buffer(&cell.tabs, cell.tabs.len())?)?;
+        }
         visit(W::buffer(&self.visual_order, self.visual_order.len())?)?;
         visit(W::buffer(&self.anchors, self.anchors.len())?)?;
         visit(W::buffer(&self.spacing_slots, self.spacing_slots.len())?)?;

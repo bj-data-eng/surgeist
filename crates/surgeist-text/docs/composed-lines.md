@@ -311,8 +311,8 @@ coverage, and `is_collapsed()` compares exact relation cuts. Removed components
 can have distinct cuts and source coverage at the same geometry, without creating
 glyphs or additional wrapping opportunities.
 
-Native composition retains the preparation's Horizontal, clockwise Sideways or
-matching whole-upright Vertical profile through selection, finalization and
+Native composition retains the preparation's Horizontal, either Sideways or
+matching Mixed/whole-upright Vertical profile through selection, finalization and
 placement. See [sideways placement](reference.md#clockwise-sideways-placement)
 and [native upright paragraphs](reference.md#native-whole-upright-paragraphs)
 for admission and capability limits. Glyph outline axes remain distinct from the
@@ -320,10 +320,11 @@ for admission and capability limits. Glyph outline axes remain distinct from the
 spacing requests remain in the local inline frame.
 `TabContext::FontAdvance` executes the
 retained-font U+0009 glyph advance, which can be the actual `.notdef` advance; it is
-not CSS tab stops. `NoTabs` requires actual selected absence. CSS preparation
-uses `TabPreparation::CssStops` and a captured `ParagraphTabReference` containing
+not CSS tab stops. `NoTabs` requires actual selected absence of outer TAB
+operations. For ordinary and replacement TABs, CSS preparation uses
+`TabPreparation::CssStops` and a captured `ParagraphTabReference` containing
 the real nearest block Style and used direction. It readies every selectable
-original and replacement tab under the exact catalogue and scale. The line
+ordinary original and replacement tab under the exact catalogue and scale. The line
 request supplies `TabContext::CssStops { origin }`: the physical block start
 relative to unaligned paragraph start, or `None` for a genuinely unknown phase.
 Nonzero tabs consume that phase; zero tabs retain custody without unused font
@@ -334,7 +335,16 @@ even/LTR level; upright uses its actual vertical metric operation. This does not
 borrow a source run script or claim arbitrary script-sensitive metric conformance. The shared
 finalizer orders the mixed line, resolves glyph-free tab
 advances with actual spacing/atomic contributions, then builds prefix, metrics,
-paint and interaction rows. Re-finalization recomputes stops; alignment follows.
+paint and interaction rows. Re-finalization recomputes outer stops; alignment follows.
+Inside an actual Cell, preserved CSS TABs instead execute during preparation on
+its fixed horizontal zero-origin grid, in its explicit inner direction. The
+actual Inline/RootInline container supplies specified horizontal SPACE/ch
+resources and effective word spacing; the TAB occurrence supplies tab-size.
+Candidate-specific stops follow inner L1/L2 and word spacing before fitting.
+The winning layout, including tab-only geometry without a body provider, is
+retained; finalization/replay neither shape nor query those references again.
+A Cell needs no outer tab origin. A style shared with an ordinary TAB does not
+waive that ordinary operation's block reference or origin requirement.
 Fontless tabs cannot invent font metrics for Range observations. A nonzero signed
 spacing-derived interval retains its actual SPACE and ZERO resources. Both
 nonzero signs use the same forward grid with the interval's magnitude and exactly

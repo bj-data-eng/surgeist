@@ -124,8 +124,11 @@ fn assert_prepared_backings(prepared: &PreparedText, owned: bool) -> usize {
         expected.push(backing("run coordinates", &run.coords, owned));
     }
     for cell in &shaped.cells {
-        if let CellPayload::Shaped { positions, .. } = &cell.payload {
-            expected.push(backing("winning cell positions", positions, true));
+        if let CellPayload::LaidOut { layout, .. } = &cell.payload {
+            expected.push(backing("winning cell positions", &layout.positions, true));
+            if layout.tabs.capacity() != 0 {
+                expected.push(backing("winning cell tabs", &layout.tabs, true));
+            }
         }
     }
     assert!(!shaped.runs.is_empty());

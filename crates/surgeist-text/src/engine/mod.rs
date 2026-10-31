@@ -375,7 +375,7 @@ pub(crate) fn prepare(
         .combination
         .as_ref()
         .is_some_and(|output| !output.cells.is_empty());
-    shape::admit_cells(&analyzed, options.tabs())?;
+    shape::admit_cells(&analyzed)?;
     if has_cells
         && !matches!(
             options.orientation(),
@@ -470,6 +470,14 @@ pub(crate) fn prepare(
         options,
         &mut scope_budget,
     )?;
+    let cell_tabs = scope_alignment::prepare_cell_tabs(
+        &mut scope_alignment,
+        catalogue,
+        &analyzed,
+        options,
+        scratch,
+        &mut scope_budget,
+    )?;
     let font_catalogue = catalogue.identity().clone();
     let characters = spacing::character::plan(
         spacing::character::Input::original(&analyzed, &styles, options.scale()),
@@ -501,6 +509,7 @@ pub(crate) fn prepare(
         scratch,
         &analyzed,
         &scope_alignment,
+        &cell_tabs,
         &mut scope_budget,
     )?;
     shaped.character_requirements = Some(characters);
@@ -564,7 +573,9 @@ pub(crate) fn prepare(
         &indication_fonts,
         options,
         scratch,
+        &mut scope_budget,
     )?;
+    cell_tabs.drop(&mut scope_budget)?;
     scope_alignment::prepare_resources(
         &mut scope_alignment,
         catalogue,

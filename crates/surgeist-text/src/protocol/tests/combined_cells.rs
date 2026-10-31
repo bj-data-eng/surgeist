@@ -744,3 +744,6 @@ mod spacing;
 
 #[path = "combined_cell_inner_controls.rs"]
 mod inner_controls;
+
+#[path = "combined_cell_inner_tabs.rs"]
+mod inner_tabs;

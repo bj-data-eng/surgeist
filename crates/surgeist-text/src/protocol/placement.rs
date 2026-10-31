@@ -621,13 +621,23 @@ pub(crate) fn place_request(
                 )?;
             }
         }
+        for cell in &placed.finalized.data.cells {
+            cell_geometry::qualify_tabs(
+                cell,
+                placed.orientation,
+                Some(&placed),
+                TextNumericPhase::Placement,
+            )?;
+        }
         for cluster in &placed.finalized.data.clusters {
             if let FinalizedRunFrame::Cell(index) = cluster.frame {
-                qualify_cell_frame(
-                    &placed,
-                    &placed.finalized.data.cells[index],
-                    Point::new(0.0, 0.0),
-                )?;
+                if placed.finalized.data.cells[index].frame.is_some() {
+                    qualify_cell_frame(
+                        &placed,
+                        &placed.finalized.data.cells[index],
+                        Point::new(0.0, 0.0),
+                    )?;
+                }
                 cell_geometry::qualify_cluster_rect(
                     &placed.finalized.data,
                     cluster,

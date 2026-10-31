@@ -143,6 +143,20 @@ pub(crate) fn adopt_prepared_cell_arenas(
             }
         }
         if !pinned {
+            for reference in &scopes.cell_tabs {
+                budget.work(1)?;
+                for metric in [&reference.space, &reference.ch].into_iter().flatten() {
+                    budget.work(1)?;
+                    if let Some(font) = &metric.font {
+                        let other = font.font.bytes();
+                        if bytes.as_ptr() == other.as_ptr() && bytes.len() == other.len() {
+                            pinned = true;
+                        }
+                    }
+                }
+            }
+        }
+        if !pinned {
             for previous in &shaped.runs[..index] {
                 budget.work(1)?;
                 let other = previous.font.bytes();
@@ -263,22 +277,15 @@ fn clone_cell(ledger: &mut Ledger, row: &PreparedCell) -> Result<PreparedCell> {
     work(ledger, 1)?;
     let payload = match &row.payload {
         CellPayload::NoProviderInput => CellPayload::NoProviderInput,
-        CellPayload::Shaped {
-            runs,
-            clusters,
-            glyphs,
-            scope_relations,
-            advance,
-            positions,
-            frame,
-        } => CellPayload::Shaped {
-            runs: runs.clone(),
-            clusters: clusters.clone(),
-            glyphs: glyphs.clone(),
-            scope_relations: scope_relations.clone(),
-            advance: advance.clone(),
-            positions: clone_vec(ledger, positions)?,
-            frame: *frame,
+        CellPayload::LaidOut { layout, provider } => CellPayload::LaidOut {
+            layout: crate::engine::layout::data::CellLayout {
+                clusters: layout.clusters.clone(),
+                advance: layout.advance.clone(),
+                positions: clone_vec(ledger, &layout.positions)?,
+                transform: layout.transform,
+                tabs: clone_vec(ledger, &layout.tabs)?,
+            },
+            provider: provider.clone(),
         },
     };
     Ok(PreparedCell {
@@ -418,8 +425,9 @@ pub(crate) fn drop_shaped(ledger: &mut Ledger, source: ShapedData) -> Result<()>
         }
         for row in &source.cells {
             work(ledger, 1)?;
-            if let CellPayload::Shaped { positions, .. } = &row.payload {
-                include(bytes(positions)?)?;
+            if let CellPayload::LaidOut { layout, .. } = &row.payload {
+                include(bytes(&layout.positions)?)?;
+                include(bytes(&layout.tabs)?)?;
             }
         }
         include(bytes(&source.scope_glyph_custody)?)?;

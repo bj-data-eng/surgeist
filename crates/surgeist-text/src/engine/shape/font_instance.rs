@@ -121,29 +121,14 @@ pub(crate) fn scope_font(
     ));
     let mut selected = None;
     query.matches_with(|font| {
-        selected = Some((|| {
-            let (resource, synthesis) = matched_resource(font, style.font_size, catalogue)?;
-            let identity = (resource.bytes().as_ptr() as usize, resource.bytes().len());
-            // Conservative duplicate-check admission, not a comparison trace.
-            budget.work(pinned.len().checked_add(1).ok_or_else(work_overflow)?)?;
-            if !pinned.contains(&identity) {
-                budget.retain_bytes(identity.1)?;
-            }
-            let font_ref = surgeist_shaper::FontRef::from_index(resource.bytes(), resource.index())
-                .map_err(|_| Error::new(ErrorCode::FontLoadFailed, "invalid selected font face"))?;
-            let coords = scope_coords(
-                &font_ref,
-                font.synthesis.variation_settings(),
-                &style.font_variations,
-                budget,
-            )?;
-            Ok(CanonicalFontInstance {
-                font: resource,
-                font_size: style.font_size,
-                synthesis,
-                coords,
-            })
-        })());
+        selected = Some(complete_match(
+            font,
+            style.font_size,
+            &style.font_variations,
+            catalogue,
+            budget,
+            pinned,
+        ));
         QueryStatus::Stop
     });
     selected.ok_or_else(no_font)?
@@ -209,4 +194,90 @@ fn scope_coords(
     drop(normalized);
     budget.release_bytes(bytes)?;
     Ok(result)
+}
+
+/// Coverage-specific hypothetical matching shares canonical instance completion.
+pub(super) fn character_font(
+    mut query: Query<'_>,
+    style: &ResolvedStyle,
+    ch: char,
+    catalogue: &crate::FontCatalogueIdentity,
+    budget: &mut crate::processing::contextual::alignment::ScopeAlignmentBudget,
+    pinned: &[(usize, usize)],
+) -> Result<Option<CanonicalFontInstance>> {
+    budget.font_query()?;
+    budget.work(
+        style
+            .font_family
+            .len()
+            .checked_add(1)
+            .ok_or_else(work_overflow)?,
+    )?;
+    configure_query(
+        &mut query,
+        style,
+        Script::Latin,
+        false,
+        &AnalysisDataSources,
+    );
+    let mut selected = None;
+    query.matches_with(|font| {
+        let result = (|| -> Result<Option<CanonicalFontInstance>> {
+            budget.work(1)?;
+            if !font
+                .charmap()
+                .and_then(|map| map.map(ch))
+                .is_some_and(|id| id != 0)
+            {
+                return Ok(None);
+            }
+            complete_match(
+                font,
+                style.font_size,
+                &style.font_variations,
+                catalogue,
+                budget,
+                pinned,
+            )
+            .map(Some)
+        })();
+        match result {
+            Ok(None) => QueryStatus::Continue,
+            other => {
+                selected = Some(other);
+                QueryStatus::Stop
+            }
+        }
+    });
+    selected.unwrap_or(Ok(None))
+}
+fn complete_match(
+    font: &QueryFont,
+    size: f32,
+    variations: &[parlance::FontVariation],
+    catalogue: &crate::FontCatalogueIdentity,
+    budget: &mut crate::processing::contextual::alignment::ScopeAlignmentBudget,
+    pinned: &[(usize, usize)],
+) -> Result<CanonicalFontInstance> {
+    let (resource, synthesis) = matched_resource(font, size, catalogue)?;
+    let identity = (resource.bytes().as_ptr() as usize, resource.bytes().len());
+    // Conservative duplicate-check admission, not a comparison trace.
+    budget.work(pinned.len().checked_add(1).ok_or_else(work_overflow)?)?;
+    if !pinned.contains(&identity) {
+        budget.retain_bytes(identity.1)?;
+    }
+    let font_ref = surgeist_shaper::FontRef::from_index(resource.bytes(), resource.index())
+        .map_err(|_| Error::new(ErrorCode::FontLoadFailed, "invalid selected font face"))?;
+    let coords = scope_coords(
+        &font_ref,
+        font.synthesis.variation_settings(),
+        variations,
+        budget,
+    )?;
+    Ok(CanonicalFontInstance {
+        font: resource,
+        font_size: size,
+        synthesis,
+        coords,
+    })
 }
