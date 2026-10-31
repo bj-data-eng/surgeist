@@ -107,11 +107,74 @@ state only, with no live target or handle. The contract is implemented by
 [handle access](../src/registry.rs), [lease ownership](../src/lease.rs), and
 [native closing](../src/winit_adapter.rs).
 
+## Platform monotonic clock
+
+Use `surgeist_window::Instant` for draw deadlines and input receipt timestamps.
+Every Window scheduler, callback scope, proxy and adapter uses this same clock;
+`std::time::Duration` remains the elapsed-time unit. Native targets retain exact
+`std::time::Instant` identity, so native callers pass their existing instants
+directly without conversion.
+
+On browser Wasm targets, the shared clock is the host context's
+`Performance.now()` clock supplied by the pinned web-time implementation. This
+also matches winit's browser deadline type. It requires a `Performance` object;
+contexts such as worklets that lack one are unsupported. The clock makes no
+promise to advance while a browser context is asleep or suspended.
+
+Create deadlines in the owning event loop's clock domain. The upstream clock
+adds `Performance.timeOrigin` for atomics-enabled workers; without that mode,
+independent contexts do not establish a shared epoch. Window neither rebases
+native and browser instants nor converts them through an elapsed duration.
+Browser timestamps and deadlines use the browser type, rather than accepting
+`std::time::Instant` as a second clock.
+
+Window receipt times are host observations, not DOM performance timestamps.
+Runtime retains ownership of its separate DOM epoch, source identity and
+coarsening policy. Selecting the Window clock changes none of those contracts,
+and does not establish browser support for unrelated consumer clocks.
+
+The [scheduler](../src/scheduler.rs), [input payloads](../src/event.rs) and
+[native deadline mapping](../src/winit_mapping.rs) consume the public clock.
+Installed-target compilation qualifies their type agreement; it does not prove
+browser event-loop wakeup or runtime behavior. See the
+[verification boundary](how-to.md#verify-the-platform-clock).
+
+## Native magnification input
+
+Handle `InputEvent::Magnification` in `Handler::input` to receive native
+magnification intent. A `MagnificationGesture::Pinch` retains its native
+`TouchPhase` and raw signed fractional delta: positive means magnifying intent,
+negative means shrinking intent, and either signed zero remains unchanged.
+`MagnificationDelta` admits only finite values. A nonfinite native delta becomes
+`None` while preserving the pinch phase; it never becomes an invented zero or
+scale factor. `MagnificationGesture::Smart` is a distinct request with no
+supplied delta or phase.
+
+The event's optional position is the last observed logical mouse position,
+which can be absent. It is pointer context, not a gesture focal point. Native
+gesture payloads supply no coordinates. The adapter captures current modifiers
+and a monotonic receipt timestamp, preserving the backend's source order,
+including preceding pointer updates.
+
+Receiving this input does not change window metrics, native display scale,
+page zoom, visual viewport scale, host observations, layout or CSS, and emits no
+window command. The consumer chooses whether and how to apply magnification or
+restore an earlier view. This keeps native input separate from the
+[CSS2 magnification guidance](../../../references/css2--ui.html--ff1f72803ea0.md#magnification),
+which defines no authored zoom property.
+
+The pinned winit backend emits pinch and smart-magnification gestures on macOS
+and iOS when the native platform provides them. iOS recognition requires an
+explicit opt-in that this adapter does not enable. Other backends have no
+current producer for this input. The [native adapter](../src/winit_adapter.rs)
+owns lowering; [focused tests](../src/magnification_tests.rs) exercise conversion
+and the shared callback pump without a display or an actual native gesture.
+
 ## Host observations and consumer inputs
 
 `WindowSnapshot::environment` retains a `HostEnvironment` with the window's
-observed geometry. A native resize, scale or move transition commits its captured
-environment before delivering the corresponding callback. `EnvironmentChanged`
+observed geometry. A native resize, scale or move transition commits its basic
+environment using the event's metrics before delivering the corresponding callback. `EnvironmentChanged`
 reports changes that do not need another event kind. The native adapter observes
 the system theme independently of an application `SetTheme` request, so an
 application override does not become the baseline user preference.
@@ -138,7 +201,7 @@ An unavailable observation is distinct from a known absent device or a known
 `no-preference` value. The winit adapter supplies monitor and client geometry,
 display scale and the system theme where its platform API supports them. It does
 not infer primary pointer capabilities from the most recent input event or guess
-navigation, reduced-data, work-area or output-blending facts. Those remain
+navigation, reduced-data or output-blending facts. Those remain
 unavailable until a host supplies them. CSS matching, document activity,
 origin preference overlays and coherent downstream publication remain with
 their consuming owners.
@@ -156,6 +219,32 @@ callbacks, including accessibility changes with an unchanged system color
 scheme. Application theme and origin overrides remain separate. The adapter
 installs no preference notification observer or wakeup, so an external setting
 change does not promise to wake an otherwise idle loop.
+
+On macOS, creation and safe idle capture also observe the current monitor's
+available work area and WindowServer color-depth estimate. A nonzero winit native
+monitor ID must match exactly one checked `NSNumber` under the SDK's
+`NSScreenNumber` key. Missing, invalid, unmatched or ambiguous identity leaves
+these facts unavailable; the adapter never selects a screen by its name, frame,
+main-screen status or enumeration order.
+
+The work area uses `visibleFrame` relative to that screen's own `frame`. It
+converts the Cocoa bottom-up offset to the captured screen's right/down axes,
+scaled by screen backing scale divided by the committed metrics scale. No
+primary-screen height or additional safe-area subtraction participates.
+The color estimate multiplies positive checked sample bits by color-component
+count, excluding alpha and storage padding. Recognized grayscale retains its
+total estimate without inventing a positive RGB media-feature bound; unknown
+color-space semantics retain the public fallback. This estimate does not certify
+renderer formats, HDR, or the complete media-device capability environment.
+
+Raw native event captures retain the existing basic geometry but defer these
+new monitor facts. At `about_to_wait`, after queued metric transitions have
+committed, the adapter samples preferences once and captures each live window's
+complete native environment. One changed callback per window carries combined
+preference/output changes; equal samples are suppressed. Input, navigation and
+presentation facts supplied independently remain intact. Refresh returns work
+to the existing callback pump and adds no notification subscription, wakeup or
+latency guarantee. See [the monitor observation owner](../src/native_monitor.rs).
 
 ## Native geometry admission
 
