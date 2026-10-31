@@ -60,6 +60,9 @@ not a normative semantic violation.
 One quarter of generated recipes select independent literal successes: when the
 first entropy byte is a multiple of four, the literal ID is that byte divided by
 four, modulo nine (bytes 0, 4, ..., 32 select IDs 0..8 and byte 36 wraps to 0).
+Generator revision 2 introduced literal 8 into this mapping; revision 1 used
+modulo eight. The codec stays at revision 1: it still decodes every revision-1
+case identically and only additionally accepts literal ID 8.
 Other entropy maps to exact little-endian UTF16 pairs (odd final high byte zero), or
 to valid UTF8 by explicitly mapping bytes to Unicode U+0000..U+00FF. This is
 Unicode generation, not decoding malformed byte transports. Overlarge generated
