@@ -65,7 +65,7 @@ fn strict_unicode_codec_roundtrips_surrogates_and_rejects_noncanonical_inputs_be
 fn literal_recovery_native_unicode_and_qualified_provenance_are_real_successes() {
     let mut ordinary_successes = 0;
     for target in targets() {
-        for id in 0..8 {
+        for id in 0..9 {
             let c = target.literal(id).unwrap();
             let result = engine::evaluate_case(&target, &c, &mut |_| Ok(())).unwrap();
             assert_eq!(
@@ -90,7 +90,7 @@ fn literal_recovery_native_unicode_and_qualified_provenance_are_real_successes()
             ordinary_successes += 1;
         }
     }
-    assert_eq!(ordinary_successes, 16);
+    assert_eq!(ordinary_successes, 18);
 }
 #[test]
 fn actual_cancel_source_and_work_refusals_have_retained_request_and_cleanup_properties() {
@@ -146,7 +146,7 @@ fn independent_literal_oracles_cannot_be_applied_to_different_input() {
 fn generation_replay_and_reduction_keep_actual_units_limits_and_operations() {
     for target in targets() {
         let mut success = 0;
-        for first in [0, 4, 8, 12, 16, 20, 24, 28, 1, 2, 3] {
+        for first in [0, 4, 8, 12, 16, 20, 24, 28, 32, 1, 2, 3] {
             let e = [first, 0, 0xd8, 0, 0, 13, 0, 10, 0];
             let result = engine::evaluate_generated(&target, &e, &mut |_| Ok(())).unwrap();
             let engine::GeneratedEvaluation::Evaluated(r) = result else {
@@ -325,22 +325,155 @@ fn framework_worker_captures_before_evaluating_and_reduces_checked_canonical_cas
         ));
     }
 }
+/// Handwritten literal inputs (UTF-8 text, or UTF-16 units for the surrogate seed),
+/// stated from the pinned HTML contract and not read from the codec or seed module.
+const SEED_TEXT: [&str; 9] = [
+    "<p ID=x id=y>A&amp;B\r\nC</p>",
+    "",
+    "<p>A\0B</p>",
+    "<svg><a xlink:href='x' viewBox='0 0 1 1'></a></svg>",
+    "<template><p>T</p></template><p>Z</p>",
+    "<?target data?><p>P</p>",
+    "<p>A<p>B",
+    "<table>X<tr><td>T</td></tr></table>",
+    "<?target data><p>P</p>",
+];
+const SEED_SURROGATE_UNITS: [u16; 13] =
+    [0xfeff, 60, 112, 62, 65, 0xd800, 13, 10, 66, 60, 47, 112, 62];
+/// The README "Cases and codec" header: 4 + 1 + 1 + 2 + 19 * 8 + 4 bytes.
+const README_HEADER_LEN: usize = 164;
+/// The documented generous product envelope every literal case carries.
+const README_ENVELOPE: [u64; 19] = [
+    100_000,
+    100_000,
+    10_000,
+    1_000_000,
+    100_000,
+    100_000,
+    100_000,
+    100_000,
+    100_000,
+    100_000,
+    100_000,
+    100_000,
+    100_000,
+    100,
+    100_000,
+    100_000_000,
+    100_000_000,
+    100_000_000,
+    100_000_000,
+];
+
 #[test]
-fn seed_files_are_exact_canonical_cases_with_independent_literal_success() {
+fn seed_files_decode_to_the_documented_layout_and_independent_literal_success() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    for (name, t) in [
-        ("document", UnicodeTarget::document()),
-        ("fragment", UnicodeTarget::fragment()),
+    for (name, target_byte, t) in [
+        ("document", 0u8, UnicodeTarget::document()),
+        ("fragment", 1u8, UnicodeTarget::fragment()),
     ] {
-        for id in 0..8 {
+        let mut files = std::fs::read_dir(root.join("seeds").join(name))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect::<Vec<_>>();
+        files.sort();
+        let expected_files = (0..9).map(|id| format!("{id}.case")).collect::<Vec<_>>();
+        assert_eq!(files, expected_files, "{name} seed inventory");
+        for id in 0..9u8 {
             let b = std::fs::read(root.join(format!("seeds/{name}/{id}.case"))).unwrap();
-            assert_eq!(b, t.encode(&t.literal(id).unwrap()).unwrap());
+            assert!(b.len() >= README_HEADER_LEN, "{name}/{id} header");
+            assert_eq!(&b[0..4], b"HUF1", "{name}/{id} magic");
+            assert_eq!(b[4], target_byte, "{name}/{id} target");
+            // Source tag, lane 4 (independent literal) and the literal ID.
+            let utf16 = id == 1;
+            assert_eq!(b[5], u8::from(utf16), "{name}/{id} source tag");
+            assert_eq!(&b[6..8], &[4, id], "{name}/{id} lane and literal id");
+            let caps: Vec<u64> = (0..19)
+                .map(|i| u64::from_le_bytes(b[8 + i * 8..16 + i * 8].try_into().unwrap()))
+                .collect();
+            assert_eq!(caps, README_ENVELOPE, "{name}/{id} parser caps");
+            let count = u32::from_le_bytes(b[160..164].try_into().unwrap()) as usize;
+            let payload = &b[README_HEADER_LEN..];
+            if utf16 {
+                let units: Vec<u16> = payload
+                    .chunks_exact(2)
+                    .map(|p| u16::from_le_bytes([p[0], p[1]]))
+                    .collect();
+                assert_eq!(payload.len() % 2, 0, "{name}/{id} whole units");
+                assert_eq!(count, units.len(), "{name}/{id} unit count");
+                assert_eq!(units, SEED_SURROGATE_UNITS, "{name}/{id} payload units");
+            } else {
+                assert_eq!(count, payload.len(), "{name}/{id} byte count");
+                assert_eq!(
+                    payload,
+                    SEED_TEXT[usize::from(id)].as_bytes(),
+                    "{name}/{id} payload"
+                );
+            }
             assert_eq!(
                 engine::replay(&t, &b, &mut |_| Ok(()))
                     .unwrap()
                     .outcome
                     .kind(),
-                OutcomeKind::Evaluated
+                OutcomeKind::Evaluated,
+                "{name}/{id}"
+            );
+        }
+    }
+}
+
+#[test]
+fn generation_maps_first_entropy_bytes_that_are_multiples_of_four_to_the_documented_literal() {
+    // README "Cases and codec": literal ID = (first byte / 4) modulo nine.
+    for target in targets() {
+        for (first, id) in (0..=9u8).map(|k| (4 * k, k % 9)) {
+            let Generation::Generated(case) = target.generate(&[first, 0xd8, 0, 13]).unwrap()
+            else {
+                panic!("literal entropy {first} was discarded")
+            };
+            assert_eq!(case.lane(), Lane::Literal(id), "first byte {first}");
+        }
+    }
+}
+
+#[test]
+fn processing_instruction_literals_use_each_documented_ending() {
+    // HTML 877d 13.1.7: a processing instruction ends with `?>` or `>`.
+    for target in targets() {
+        assert_eq!(
+            target.literal(5).unwrap().source(),
+            &UnicodeSource::Utf8("<?target data?><p>P</p>".into())
+        );
+        assert_eq!(
+            target.literal(8).unwrap().source(),
+            &UnicodeSource::Utf8("<?target data><p>P</p>".into())
+        );
+        assert!(target.literal(9).is_err());
+    }
+}
+
+#[test]
+fn descriptor_source_references_name_existing_repository_files() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../..")
+        .canonicalize()
+        .unwrap();
+    let descriptor: toml::Table = toml::from_str(
+        &std::fs::read_to_string(env!("CARGO_MANIFEST_DIR").to_owned() + "/fuzz.toml").unwrap(),
+    )
+    .unwrap();
+    let descriptor_targets = descriptor["targets"].as_array().unwrap();
+    assert_eq!(descriptor_targets.len(), 2);
+    for target in descriptor_targets {
+        let id = target["id"].as_str().unwrap();
+        let references = target["source_references"].as_array().unwrap();
+        assert!(!references.is_empty(), "{id}");
+        for reference in references {
+            let reference = reference.as_str().unwrap();
+            let path = reference.split('#').next().unwrap();
+            assert!(
+                root.join(path).is_file(),
+                "{id} source reference {reference:?} is not a file under the repository root"
             );
         }
     }
