@@ -212,6 +212,7 @@ mod planning;
 mod pump;
 mod registry;
 mod scheduler;
+mod system_fonts;
 pub mod testing;
 mod transition;
 mod winit_adapter;
@@ -251,6 +252,10 @@ pub use native_geometry::{
 };
 pub use planning::HostCommandPlan;
 pub use registry::{Access, Handle, Instance, Proxy, Ref, Registry};
+pub use system_fonts::{
+    SystemFont, SystemFontEnvironment, SystemFontError, SystemFontMetrics, SystemFontRole,
+    SystemFontTraits, SystemFontWeight,
+};
 pub use transition::{MetricsEvent, NativeEventTransition, WindowStatePatch};
 
 pub(crate) use registry::UserEvent;
