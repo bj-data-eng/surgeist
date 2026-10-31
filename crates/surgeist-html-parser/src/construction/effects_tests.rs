@@ -1772,18 +1772,70 @@ fn captured_current_frame_survives_stops_before_and_after_identity_clone_admissi
     storage_zero(&c);
 }
 
+/// Lookup work is the record visits and provider calls the controller charged.
+/// Retained-storage growth (reservation bytes, copies, writes) is deliberately
+/// excluded: it is amortized by capacity doubling and is not a lookup.
+fn lookup_work(c: &ParseControl) -> u64 {
+    c.usage().work(WorkCategory::RecordVisit) + c.usage().work(WorkCategory::ProviderCall)
+}
+
+/// Builds `unrelated` sibling subtrees, each retaining several payload rows,
+/// then returns the lookup work the parser spent on `element` alone: the
+/// difference between parsing the document with and without that element at
+/// the end. Everything outside the element cancels, so a difference between
+/// two `unrelated` counts is work the element's own lookups spent on payloads
+/// that are not its own.
+fn lookup_work_of_element(unrelated: usize, element: &str) -> u64 {
+    let prefix = format!("<body>{}", "<i>t</i>".repeat(unrelated));
+    let measure = |source: &str| {
+        let request = request(source);
+        let (mut c, mut session, _proof, _nodes) = graph(&request);
+        let work = lookup_work(&c);
+        session.release(&mut c).unwrap();
+        work
+    };
+    measure(&format!("{prefix}{element}")) - measure(&prefix)
+}
+
 #[test]
-fn adopting_one_node_does_not_grow_faster_than_the_payloads_it_scans() {
-    // Adopting a leaf looks up and rewrites its document binding by scanning
-    // the retained payloads (set_node_document in template.rs charges one
-    // record visit per scanned payload, and start_img_update in
-    // associated.rs scans every payload for the node's image), so the cost
-    // may grow with the payloads already retained, but not faster than that.
-    // The per-payload constant is a count of such scans across the whole
-    // adoption step that this test does not derive, so the bound is only that
-    // the cost added per payload does not rise as the document doubles. A
-    // lower bound is deliberately not asserted: indexing payloads by kind may
-    // legitimately remove the scans.
+fn per_element_lookup_work_stays_constant_as_unrelated_payloads_grow() {
+    // Each element exercises the payload lookups its kind performs while it is
+    // created, attributed and inserted: attribute containers, ids, the node's
+    // document binding, script/style/dialog/image/input/form/nonce metadata.
+    let elements = [
+        "<div id=a class=b>x</div>",
+        "<script src=a id=b nonce=c async></script>",
+        "<style nonce=c id=d></style>",
+        "<dialog open id=e></dialog>",
+        "<img src=a id=f alt=g>",
+        "<a href=a id=h>x</a>",
+        "<form id=i></form>",
+        "<input type=radio name=r id=j checked>",
+        "<input id=k form=i>",
+        "<textarea id=l>x</textarea>",
+        "<select id=n><option>x</option></select>",
+    ];
+    let mut failures = vec![];
+    for element in elements {
+        let small = lookup_work_of_element(8, element);
+        let large = lookup_work_of_element(32, element);
+        if small != large {
+            failures.push(format!(
+                "{element}: {small} with 8 unrelated, {large} with 32"
+            ));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "lookup work grew with unrelated payloads: {failures:#?}"
+    );
+}
+
+#[test]
+fn adopting_one_node_costs_the_same_lookup_work_however_many_payloads_are_unrelated() {
+    // Adoption looks up the node's document binding and its image state, among
+    // others. Both are keyed by the node, so the work must not depend on how
+    // many other payloads the document retains.
     let measure = |siblings: usize| {
         let source = format!("<body>{}<b>x</b>", "<i>t</i>".repeat(siblings));
         let request = request(&source);
@@ -1801,26 +1853,24 @@ fn adopting_one_node_does_not_grow_faster_than_the_payloads_it_scans() {
                 },
             )
             .unwrap();
-        let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
+        let before = lookup_work(&c);
         storage.drain_construction_effects(&mut c).unwrap();
         assert!(storage.effects.current.is_none());
-        let needed = c.usage().resource(HtmlParseResource::WorkCredits).current - before;
-        // Release charges only its alias check in the running state
-        // (construction.rs ParserArenaSession::release), far below the spare
-        // work left, so it must succeed at once.
+        let adoption = lookup_work(&c) - before;
         session.release(&mut c).unwrap();
-        (payloads, needed)
+        (payloads, adoption)
     };
     let (small_payloads, small) = measure(8);
     let (medium_payloads, medium) = measure(16);
     let (large_payloads, large) = measure(32);
     assert!(small_payloads < medium_payloads && medium_payloads < large_payloads);
-    assert!(small <= medium && medium <= large);
-    // Cost added per payload does not increase: compare the two slopes by
-    // cross-multiplication.
-    assert!(
-        (large - medium) * (medium_payloads - small_payloads)
-            <= (medium - small) * (large_payloads - medium_payloads)
+    assert_eq!(
+        small, medium,
+        "{small_payloads} vs {medium_payloads} payloads"
+    );
+    assert_eq!(
+        medium, large,
+        "{medium_payloads} vs {large_payloads} payloads"
     );
 }
 
