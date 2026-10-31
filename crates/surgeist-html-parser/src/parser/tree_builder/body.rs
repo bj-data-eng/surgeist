@@ -594,7 +594,7 @@ impl HeadState<'_> {
         if matches!(payload, Payload::Comment(_) | Payload::Pi(_)) {
             return Ok(Some(match mode {
                 InsertionMode::AfterBody => {
-                    let html = self.before.kernel.first(c)?;
+                    let html = self.before.kernel.first_as_parent(c)?;
                     self.ordinary_at(&html, c)?
                 }
                 InsertionMode::AfterAfterBody => {
@@ -695,6 +695,17 @@ impl HeadState<'_> {
                 && matches!(kind, Some((TagKind::End, _)))
                 && self.token_in(&["html"], c)?.is_some()
             {
+                if self.before.kernel.session.fragment_context(c)?.is_some() {
+                    self.emit(
+                        HeadCondition::UnexpectedEndTag,
+                        crate::construction::evidence::DiagnosticRule {
+                            anchor: mode.rule_anchor(),
+                            branch: "after-body/html-end/fragment-case",
+                        },
+                        c,
+                    )?;
+                    return Ok(Some(self.discard(c)?));
+                }
                 self.set_mode(InsertionMode::AfterAfterBody, c)?;
                 return Ok(Some(self.discard(c)?));
             }

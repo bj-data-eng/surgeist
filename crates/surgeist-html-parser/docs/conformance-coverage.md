@@ -153,7 +153,7 @@ no case is compared with its document mode omitted.
 | tests14.dat, tests15.dat | 7, 14 | — | — |
 | tests16.dat | 191 | — | 6 `#script-on` |
 | tests17.dat–tests26.dat | 13, 36, 103, 64, 23, 5, 5, 8, 26, 20 | — | — |
-| tests_innerHTML_1.dat | — | 81 | 76 spec, 79 defect |
+| tests_innerHTML_1.dat | — | 81 | 76 spec |
 | tricky01.dat | 9 | — | — |
 | webkit01.dat | 52 | — | — |
 | webkit02.dat | 41 | 4 | 1 `#script-on` |
@@ -170,12 +170,7 @@ historical bogus comment, before html, head and body in quirks mode.
 Tests_innerHTML_1/76 (`<input><option>`, select context) follows the HTML877d
 in-body `input` rule: with a select fragment context element the tag is a parse
 error and is ignored, leaving only the `option`, while this corpus revision
-inserts it. Tests_innerHTML_1/79
-(`</html><!--abc-->`, html context) is a defect tracked by
-[#1344](https://github.com/bj-data-eng/surgeist/issues/1344): in the fragment case the
-after-body `</html>` must be ignored, leaving the comment under the html root.
-The internal fragment comparison differs and the public request reports
-`Engine(Tree)`.
+inserts it.
 
 The three `scripted/` files (adoption01, ark, webkit01) need script execution
 during parsing and are not bundled; the parser supports only the Disabled
