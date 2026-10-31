@@ -622,6 +622,8 @@ not permit crossing the box. Out-of-flow atomics also fence combination, with
 independently eligible runs on each side and the actual atomic occurrence
 remaining exterior. Their generic casing and whitespace continuity is unchanged.
 A canonical EGC straddling a box cannot be split into partly combined units.
+Native out-of-flow static sites use neighboring Cells' executed outer flow
+edges, including outer tracking; inner glyph origins do not supply those sites.
 
 Full effective paragraph styles, delimiter policy, direction, strut and
 `WhiteSpaceTrim` facts are captured before trimming and the shared Phase I pass.
