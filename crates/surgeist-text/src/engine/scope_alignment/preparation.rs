@@ -361,6 +361,19 @@ pub(crate) fn prepare_resources(
         }
     }
     let mut pinned = retained_pins(data, &mut budget)?;
+    if shaped.cell_arenas == crate::engine::layout::data::CellArenaOwnership::Owned {
+        // Width preparation already admitted these actual backing resources.
+        // A later real scope-font demand can reuse the same pin without a
+        // second byte debit, just as it reuses an earlier metric resource.
+        for run in &shaped.runs {
+            budget.work(1)?;
+            remember_pin(
+                &mut pinned,
+                (run.font.bytes().as_ptr() as usize, run.font.bytes().len()),
+                &mut budget,
+            )?;
+        }
+    }
     for &(scope, names) in &demands {
         ensure_metric(
             data,
@@ -661,6 +674,13 @@ pub(crate) fn visit_prepared_allocations(
     visit_cell_allocations(shaped, visit)?;
     if !shaped.cells.is_empty() {
         accounting::visit_cell_items(shaped, visit)?;
+    }
+    if shaped.cell_arenas == crate::engine::layout::data::CellArenaOwnership::Owned {
+        accounting::visit_cell_payload_arenas(shaped, visit)?;
+        accounting::visit_cell_exclusions(shaped, visit)?;
+        for run in &shaped.runs {
+            visit(AllocationWitness::resource(run.font.bytes()))?;
+        }
     }
     crate::protocol::prepared::visit_cell_allocations(tables, visit)?;
     visit(AllocationWitness::object(&shaped.scope_glyph_custody, 0))?;

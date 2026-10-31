@@ -636,13 +636,26 @@ context, not permission to merge outputs. The exact single-view constructor
 keeps its original coverage when an indivisible unit requires domain analysis.
 Combination reads the captured writing axis and inner direction; typography
 does not supply either fact. Native cell preparation supports matching explicit
-Vertical composition when its normal horizontal payload fits one em and contains
-at most one actual provider scalar, or source processing proves no provider input.
+Vertical composition with horizontal scalar payloads, or source-proved absence
+of provider input.
 It demands the genuine text-containing Inline or same-domain inherited
 RootInline font reference and captured limits, including for glyph-free cells.
 The cell's outer advance is one em; its inner runs retain their actual horizontal
-advances. Multi-scalar and overwide payloads, nonzero inner word spacing, and
-interior endpoint or directional controls still return
+advances. A fitting normal composition retains its executed glyphs. Otherwise,
+bounded `hwid`, `twid` and `qwid` trials reuse its actual font instances and
+respect authored feature settings. Genuine source-attached mark-only descendants
+may inherit a covered base; surviving Normal default-ignorables require their own
+width action. Complete source-unit coverage selects the widest fitting candidate,
+or the narrowest covered overwide candidate with
+horizontal compression. Complete negative evidence for every variant selects
+compressed normal output. Exact ties retain `hwid`, `twid`, `qwid` order. Glyph
+ink can overflow the square; vertical scale remains one. Unqualified demanded
+observations return `TextCombineError::UnqualifiedWidthObservation`. Finalization
+and spacing replay retain the selected payload and frame. Private inner script
+context does not seed the ordinary text stream around the cell.
+
+Nonzero inner word or letter spacing and interior endpoint or directional
+controls still return
 `TextCombineError::UnsupportedCellPreparation`. An in-cell TAB with deferred CSS
 tab stops is also unsupported; source processing retains genuine forced-break
 removal and glyph-free input provenance. A cell without a raw logical participant

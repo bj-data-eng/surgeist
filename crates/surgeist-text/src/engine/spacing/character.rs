@@ -15,7 +15,7 @@ use icu_properties::{
     CodePointSetData,
     props::{DefaultIgnorableCodePoint, GeneralCategory, GeneralCategoryGroup, Script},
 };
-use std::{collections::BTreeMap, ops::Range};
+use std::ops::Range;
 
 use super::super::scope_alignment::accounting::{self as account, Ledger};
 mod planning;
@@ -186,7 +186,7 @@ fn locale_family(locale: &fontique::Language) -> Option<Vec<Script>> {
 fn operation_graphemes(
     projection: &SourceProjection,
     analysis: &Analysis,
-    exclusions: Option<&BTreeMap<usize, Exclusion>>,
+    exclusions: Option<&super::super::layout::data::OrdinalMap<Exclusion>>,
 ) -> Vec<Range<usize>> {
     let Some(exclusions) = exclusions.filter(|e| !e.is_empty()) else {
         return analysis.graphemes.clone();
@@ -249,7 +249,7 @@ pub(crate) fn build(
     boxes: &[InlineBox],
     presentation: Option<&SelectedPresentation>,
     potential: bool,
-    exclusions: Option<&BTreeMap<usize, Exclusion>>,
+    exclusions: Option<&super::super::layout::data::OrdinalMap<Exclusion>>,
 ) -> Result<Graph> {
     if !potential && !needed(analysis, styles, boxes) {
         return Ok(Graph::default());

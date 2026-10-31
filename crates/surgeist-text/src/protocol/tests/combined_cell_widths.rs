@@ -2,10 +2,34 @@
 //! Intended as a private child of combined_cells. No provider execution count
 //! is inferred from the winning output: that remains a source-review obligation.
 
+#[path = "combined_cell_width_observation.rs"]
+mod observation;
+
+#[path = "combined_cell_width_resources.rs"]
+mod resources;
+
+#[path = "combined_cell_width_mixed.rs"]
+mod mixed;
+
 use super::*;
 
 fn source_with_full_coverage(
     text: &str,
+) -> (System, Arc<ProcessedSource>, AnalyzedSource, Vec<u8>) {
+    source_with_font_features(text, &[])
+}
+
+fn source_with_font_features(
+    text: &str,
+    features: &[&str],
+) -> (System, Arc<ProcessedSource>, AnalyzedSource, Vec<u8>) {
+    source_with_font_features_and_font(text, features, composition_font())
+}
+
+fn source_with_font_features_and_font(
+    text: &str,
+    features: &[&str],
+    body: Vec<u8>,
 ) -> (System, Arc<ProcessedSource>, AnalyzedSource, Vec<u8>) {
     assert!(!text.is_empty() && text.chars().all(|character| matches!(character, 'A' | 'B')));
     let extent = Range::new(0, text.encode_utf16().count());
@@ -19,8 +43,12 @@ fn source_with_full_coverage(
         wrap: Wrap::Word,
         ..Style::default()
     };
+    let mut body_font = Font::new().family(crate::shaping_test_fonts::COMBINED_WIDTH_FAMILY);
+    for &feature in features {
+        body_font = body_font.feature(feature);
+    }
     let child_style = Style {
-        font: Font::new().family(crate::shaping_test_fonts::COMBINED_WIDTH_FAMILY),
+        font: body_font,
         line_height: LineHeight::Absolute(10.0),
         text_combine_upright: TextCombineUpright::All,
         ..parent_style.clone()
@@ -89,6 +117,16 @@ fn source_with_full_coverage(
         .unwrap(),
     );
     assert_eq!(processed.source(), &source);
+    let expected_features = features
+        .iter()
+        .map(|feature| (*feature).to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(source.spans()[0].style().font.features, expected_features);
+    let captured_inline = processed.captured_scope(1).unwrap();
+    assert_eq!(
+        captured_inline.style().unwrap().font.features,
+        expected_features
+    );
     assert_eq!(processed.processed_text(), &Text::from(text));
     let raw = processed.paragraphs().next().unwrap();
     assert_eq!(raw.source_pieces().collect::<Vec<_>>(), [extent]);
@@ -144,11 +182,10 @@ fn source_with_full_coverage(
             .collect::<Vec<_>>()
     );
     let analyzed = crate::test_wrapping::bind_missing(output, Wrap::Word);
-    let body = composition_font();
     glyph_frame_font_premises(&body);
-    // These literal horizontal operands and real per-input GSUB actions are
-    // independently qualified in test_fonts/combined_width.rs. Native vhea/
-    // vmtx/BASE were added without changing any of these actual table bytes.
+    // These literal horizontal operands are independently qualified in
+    // test_fonts/combined_width.rs. A caller supplying changed GSUB data must
+    // separately qualify its actual actions on the supplied native font.
     for (glyph, advance) in [(35, 1000), (36, 500), (58, 400), (16, 300)] {
         assert_eq!(
             sfnt::u16_at(sfnt::table(&body, *b"hmtx"), glyph * 4),
@@ -177,7 +214,27 @@ fn chosen_payload(
     horizontal_offset: f64,
     physical_end: f64,
 ) {
-    let (mut system, processed, analyzed, body) = source_with_full_coverage(text);
+    chosen_payload_with_features(
+        text,
+        &[],
+        glyph,
+        raw_advance,
+        scale,
+        horizontal_offset,
+        physical_end,
+    );
+}
+
+fn chosen_payload_with_features(
+    text: &str,
+    features: &[&str],
+    glyph: u32,
+    raw_advance: f32,
+    scale: f64,
+    horizontal_offset: f64,
+    physical_end: f64,
+) {
+    let (mut system, processed, analyzed, body) = source_with_font_features(text, features);
     let count = text.encode_utf16().count();
     let prepared = system
         .prepare(
@@ -471,3 +528,32 @@ fn an_unacted_b_root_prevents_width_acceptance_even_when_its_glyph_matches_hwid_
     );
     assert_eq!(processed.processed_text(), &Text::from("AB"));
 }
+
+#[test]
+fn authored_hwid_off_selects_the_widest_remaining_covered_twid_candidate() {
+    // Font::feature uses the real CSS feature-list grammar. The qualified
+    // registered-font fixture separately proves that literal "hwid" off is0.
+    // AA normalW20; forbidden hwidW10 must not override authored0. Complete
+    // twidW8 beats qwidW6, so R58 advances4, pens0/4 and scale1 remain.
+    // Its8-unit interval centers at96..104 inside the fixed95..105 square.
+    chosen_payload_with_features("AA", &["\"hwid\" off"], 58, 4.0, 1.0, 1.0, 104.0);
+}
+
+#[test]
+fn authored_zero_for_every_width_tag_retains_compressed_normal_payload() {
+    // Every potential trial must respect the body's explicit0 setting. None
+    // supplies an enabled width action; preserve A35 advances10/pens0/10 and
+    // compress NORMAL W20 by.5 rather than enabling a default width variant.
+    chosen_payload_with_features(
+        "AA",
+        &["\"hwid\" off", "\"twid\" off", "\"qwid\" off"],
+        35,
+        10.0,
+        0.5,
+        0.0,
+        105.0,
+    );
+}
+
+#[path = "combined_cell_width_normal_di.rs"]
+mod normal_di;

@@ -1186,6 +1186,16 @@ pub(crate) fn admit_selected_resources(
                 break;
             }
         }
+        if !pinned && prepared.shaped.cell_arenas == super::layout::data::CellArenaOwnership::Owned
+        {
+            for run in &prepared.shaped.runs {
+                budget.work(1)?;
+                if same(&run.font, font) {
+                    pinned = true;
+                    break;
+                }
+            }
+        }
         if !pinned {
             let mut previous_fonts = fonts.clone();
             for _ in 0..index {

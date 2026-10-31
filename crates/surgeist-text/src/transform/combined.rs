@@ -263,8 +263,16 @@ pub enum TextCombineError {
     MissingScopeContext {
         scope: usize,
     },
-    /// Selected cells have completed source semantics, but actual cell/font
-    /// preparation is not yet supplied by the native preparation owner.
+    /// A demanded width-feature path cannot establish complete action evidence.
+    UnqualifiedWidthObservation {
+        /// Genuine composition-container scope; this ordinal grants no authority.
+        scope: usize,
+        /// Original aggregate diagnostic envelope, not a source-identity proof.
+        source: Range,
+        feature: surgeist_shaper::WidthFeature,
+        path: surgeist_shaper::WidthObservationPath,
+    },
+    /// The requested cell behavior is outside native preparation capability.
     UnsupportedCellPreparation,
 }
 

@@ -1307,6 +1307,11 @@ pub surgeist_text::TextCombineError::MissingScopeContext
 pub surgeist_text::TextCombineError::MissingScopeContext::scope: usize
 pub surgeist_text::TextCombineError::MissingWritingAxis
 pub surgeist_text::TextCombineError::MissingWritingAxis::domain: usize
+pub surgeist_text::TextCombineError::UnqualifiedWidthObservation
+pub surgeist_text::TextCombineError::UnqualifiedWidthObservation::feature: surgeist_shaper::hb::width_observation::WidthFeature
+pub surgeist_text::TextCombineError::UnqualifiedWidthObservation::path: surgeist_shaper::hb::width_observation::WidthObservationPath
+pub surgeist_text::TextCombineError::UnqualifiedWidthObservation::scope: usize
+pub surgeist_text::TextCombineError::UnqualifiedWidthObservation::source: surgeist_text::Range
 pub surgeist_text::TextCombineError::UnsupportedCellPreparation
 pub enum surgeist_text::TextCombineUpright
 pub surgeist_text::TextCombineUpright::All

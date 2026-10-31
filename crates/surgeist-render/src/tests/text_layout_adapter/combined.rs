@@ -52,6 +52,10 @@ fn checksum(bytes: &[u8]) -> u32 {
 }
 
 fn font() -> Vec<u8> {
+    font_with_advance(500)
+}
+
+fn font_with_advance(glyph_advance: u16) -> Vec<u8> {
     let original = skrifa::FontRef::new(AHEM).unwrap();
     let count = original.maxp().unwrap().num_glyphs();
     assert_eq!(count, 281);
@@ -59,7 +63,7 @@ fn font() -> Vec<u8> {
     let glyphs = original.glyph_metrics(Size::unscaled(), LocationRef::default());
     let mut hmtx = table(AHEM, *b"hmtx").to_vec();
     for glyph in [35, 36] {
-        hmtx[glyph * 4..glyph * 4 + 2].copy_from_slice(&500_u16.to_be_bytes());
+        hmtx[glyph * 4..glyph * 4 + 2].copy_from_slice(&glyph_advance.to_be_bytes());
     }
     // Keep fontwide extrema consistent with the real retained outlines and
     // changed advances, including their intentional negative right bearings.
@@ -127,6 +131,10 @@ fn font() -> Vec<u8> {
 }
 
 fn premises(bytes: &[u8]) {
+    premises_with_advance(bytes, 500);
+}
+
+fn premises_with_advance(bytes: &[u8], glyph_advance: u16) {
     assert_eq!(checksum(bytes), 0xb1b0_afba);
     for tag in [*b"name", *b"cmap", *b"glyf", *b"loca", *b"maxp", *b"OS/2"] {
         assert_eq!(table(bytes, tag), table(AHEM, tag));
@@ -143,7 +151,10 @@ fn premises(bytes: &[u8]) {
     assert_eq!(face.vhea().unwrap().number_of_long_ver_metrics(), 281);
     let metrics = face.glyph_metrics(Size::unscaled(), LocationRef::default());
     for glyph in [35, 36] {
-        assert_eq!(metrics.advance_width(GlyphId::new(glyph)), Some(500.0));
+        assert_eq!(
+            metrics.advance_width(GlyphId::new(glyph)),
+            Some(f32::from(glyph_advance))
+        );
         let bounds = metrics.bounds(GlyphId::new(glyph)).unwrap();
         assert_eq!(
             [bounds.x_min, bounds.y_min, bounds.x_max, bounds.y_max],
@@ -424,4 +435,184 @@ fn two_glyph_combined_cell_uses_horizontal_pens_inside_vertical_line() {
         outline.bounds().ink_rect(),
         Some(Rect::try_new(0.0, -8.0, 15.0, 10.0).unwrap())
     );
+}
+
+#[test]
+fn compressed_two_glyph_cell_keeps_raw_pens_and_executes_one_horizontal_scale_in_render() {
+    use kurbo::Shape as _;
+
+    let bytes = font_with_advance(800);
+    premises_with_advance(&bytes, 800);
+    // The real GSUB contains normal ccmp only, so no width variant is available.
+    // Two actual advances800 at size10/UPEM1000 give W16. Native compression
+    // retains those normal glyphs and uses E/W=10/16=5/8, with no Y scaling.
+    let processed = capture();
+    assert_eq!(processed.source().text(), &text::Text::from("A"));
+    let domain = text::AnalyzedDomain::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        text::AnalysisTypography::Mixed,
+    )
+    .unwrap();
+    assert!(Arc::ptr_eq(domain.processed_source(), &processed));
+    assert_eq!(domain.outputs().len(), 1);
+    let analyzed = domain.outputs().next().unwrap();
+    let mut cells = analyzed.combined_cells();
+    let cell = cells.next().unwrap();
+    assert!(cells.next().is_none());
+    assert_eq!(cell.scope(), processed.captured_scope(1).unwrap());
+    assert_eq!(cell.selection_unit_count(), 1);
+    assert_eq!(cell.used_code_points().collect::<Vec<_>>(), [0x41]);
+    assert_eq!(cell.presentation_code_points().collect::<Vec<_>>(), [0x41]);
+    let mut pieces = cell.source_pieces();
+    let piece = pieces.next().unwrap();
+    assert!(pieces.next().is_none());
+    assert_eq!(piece.source(), processed.source());
+    assert_eq!(piece.local(), text::Range::new(0, 1));
+    assert_eq!(piece.aggregate(), text::Range::new(0, 1));
+    assert_eq!(
+        piece.origin_position(),
+        processed.captured_origin(0).unwrap()
+    );
+    let mut system = system(bytes.clone());
+    assert_eq!(system.registered_font_faces().count(), 1);
+    let resource = system.registered_font_faces().next().unwrap().to_owned();
+    let prepared = system
+        .prepare(
+            analyzed,
+            text::PreparationOptions::default().with_orientation(text::LineOrientation::Vertical),
+        )
+        .unwrap();
+    assert_eq!(prepared.analyzed_source().identity(), analyzed.identity());
+    let mut segments = prepared.source_segments();
+    let segment = segments.next().unwrap();
+    assert!(segments.next().is_none());
+    let selected = prepared
+        .select(text::LineSelectionRequest {
+            segment: segment.clone(),
+            start: segment.start(),
+            end: segment.end(),
+            participants: prepared.participants().collect(),
+            termination: text::PreparedTermination::Ordinary(segment.end_opportunity()),
+            alternative: None,
+            incoming: None,
+            atomics: vec![],
+            controls: vec![],
+            boundary_context: vec![],
+            line_strut: None,
+            line_box_struts: vec![],
+            context: text::LineContext {
+                alignment_insets: text::LineAlignmentInsets::ZERO,
+                formatted_line: text::FormattedLineContext::default(),
+                base_direction: text::ParagraphBaseDirection::LeftToRight,
+                line_box_direction: text::LineBoxDirection::LeftToRight,
+                orientation: text::LineOrientation::Vertical,
+                start: text::LineStart::Paragraph,
+                end: text::LineEnd::Paragraph,
+                available_inline: None,
+                indent: 0.0,
+                alignment: text::Alignment::Start,
+                tabs: text::TabContext::NoTabs,
+                spacing: text::SpacingPolicy::None,
+            },
+        })
+        .unwrap();
+    let line = selected
+        .finalize(text::LineAllocations {
+            spacing: text::SpacingAllocations::None,
+            scopes: text::ScopeAllocations::None,
+        })
+        .unwrap();
+    assert!(line.has_in_flow_content());
+    assert_eq!(line.feedback().advance, 10.0);
+    assert_eq!(line.measurements().fit().advance(), 10.0);
+    let layout = text::Layout::from_finalized_lines(text::PlacementRequest {
+        prepared: prepared.clone(),
+        coverage: text::PlacementCoverage::WholeParagraph,
+        entries: vec![text::PlacementEntry::Formatted(text::LinePlacement {
+            line,
+            anchor: text::LineAnchor {
+                inline_origin: 20.0,
+                baseline: 100.0,
+            },
+            orientation: text::LineOrientation::Vertical,
+            atomics: vec![],
+        })],
+    })
+    .unwrap();
+    assert_eq!(layout.source(), processed.source());
+    assert_eq!(layout.analyzed_source().identity(), analyzed.identity());
+    assert_eq!(layout.lines().len(), 1);
+    assert_eq!(
+        layout.lines()[0].bounds(),
+        text::Rect::new(95.0, 20.0, 10.0, 10.0)
+    );
+    let runs = layout
+        .run_views()
+        .filter(|run| run.glyphs().next().is_some())
+        .collect::<Vec<_>>();
+    assert_eq!(runs.len(), 1);
+    let run = &runs[0];
+    assert!(run.face().is_same_face(&resource.face()));
+    assert_eq!(run.range(), text::Range::new(0, 1));
+    assert_eq!(run.orientation(), text::LineOrientation::Vertical);
+    assert_eq!(run.glyph_basis(), text::GlyphBasis::Unrotated);
+    let frame = run.glyph_frame();
+    assert_eq!(frame.origin(), text::Point::new(95.0, 28.0));
+    assert_eq!(frame.pen_direction(), text::Point::new(1.0, 0.0));
+    assert_eq!(frame.outline_x(), text::Point::new(0.625, 0.0));
+    assert_eq!(frame.outline_y(), text::Point::new(0.0, 1.0));
+    assert_eq!(
+        run.glyphs()
+            .map(|glyph| (
+                glyph.id(),
+                glyph.pen(),
+                glyph.x(),
+                glyph.y(),
+                glyph.advance()
+            ))
+            .collect::<Vec<_>>(),
+        [(35, 0.0, 0.0, 0.0, 8.0), (36, 8.0, 0.0, 0.0, 8.0)]
+    );
+    drop(resource);
+    drop(system);
+    // Caller translation is applied after the real cell frame exactly once.
+    // These are headless Scene admissions; neither case creates a GPU renderer.
+    for (placement, matrix, physical_ink) in [
+        (
+            Transform::identity(),
+            [0.625, 0.0, 0.0, 1.0, 95.0, 28.0],
+            kurbo::Rect::new(95.0, 20.0, 106.25, 30.0),
+        ),
+        (
+            Transform::translation(7.0, -3.0).unwrap(),
+            [0.625, 0.0, 0.0, 1.0, 102.0, 25.0],
+            kurbo::Rect::new(102.0, 17.0, 113.25, 27.0),
+        ),
+    ] {
+        let rendered = prepare_text_layout(&layout, placement, limits()).unwrap();
+        assert!(std::ptr::eq(rendered.layout(), &layout));
+        assert_eq!(rendered.scene().commands.len(), 1);
+        let (outline, transform) = outline(&rendered.scene().commands[0]);
+        assert_eq!(transform.as_array(), matrix);
+        assert_eq!(outline.font().bytes(), bytes.as_slice());
+        assert_eq!(outline.instance().size(), 10.0);
+        assert!(outline.instance().coordinates().is_empty());
+        assert_eq!(outline.instance().synthesis(), GlyphSynthesis::none());
+        assert_eq!(
+            outline.glyphs(),
+            [
+                TextGlyph::try_new(35, 0.0, 0.0, 8.0).unwrap(),
+                TextGlyph::try_new(36, 8.0, 0.0, 8.0).unwrap(),
+            ]
+        );
+        // Actual local outlines still span0..18 by-8..2. X compression makes
+        // physical ink11.25x10; neither of those ink widths is outer advanceE10.
+        assert_eq!(
+            outline.bounds().ink_rect(),
+            Some(Rect::try_new(0.0, -8.0, 18.0, 10.0).unwrap())
+        );
+        let mut path = outline.path().clone();
+        path.apply_affine(kurbo::Affine::new(transform.as_array()));
+        assert_eq!(path.bounding_box(), physical_ink);
+    }
 }

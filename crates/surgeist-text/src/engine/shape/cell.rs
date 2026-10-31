@@ -1,4 +1,6 @@
-//! Source-owned cell admission and retained horizontal normal payloads.
+//! Source-owned Cell admission and retained executed horizontal payloads.
+
+pub(super) mod width;
 
 use super::*;
 use crate::engine::layout::data::{CellClusterPosition, CellFrame, CellPayload, PreparedCell};
@@ -8,20 +10,35 @@ use crate::protocol::paragraph::SemanticAnchorItem;
 use crate::transform::relation::RelationEvent;
 use scope_alignment::accounting::{self as account, Ledger};
 
+pub(super) fn horizontal_input<'a>(input: &ShapingInput<'a>) -> ShapingInput<'a> {
+    ShapingInput {
+        formatting_breaks: input.formatting_breaks,
+        scope_custody: input.scope_custody,
+        separator_geometry: input.separator_geometry,
+        characters: None,
+        profile: crate::engine::upright::ShapingProfile::Horizontal,
+        baseline_reference: Some(crate::FontBaseline::Alphabetic),
+        projection: input.projection,
+        analysis: input.analysis,
+        styles: input.styles,
+        boxes: input.boxes,
+        font_catalogue: input.font_catalogue,
+        paragraph: input.paragraph,
+        css_tabs: input.css_tabs,
+    }
+}
+
 fn unsupported() -> Error {
     crate::transform::combined::refused(crate::TextCombineError::UnsupportedCellPreparation)
 }
 
-/// Initial native capability. Empty provider input is established from actual
+/// Bounded native capability. Empty provider input is established from actual
 /// source presentation and control roles, never from font/glyph/ink outcomes.
 pub(super) fn admit(analyzed: &AnalyzedData, tabs: crate::TabPreparation) -> Result<()> {
     let Some(output) = &analyzed.combination else {
         return Ok(());
     };
     for binding in &output.bindings {
-        if binding.atoms.len() > 1 {
-            return Err(unsupported());
-        }
         if tabs == crate::TabPreparation::CssStops
             && analyzed.projection.atoms[binding.atoms.clone()]
                 .iter()
@@ -153,7 +170,9 @@ impl Inputs {
                 }
                 // The bounded normal capability does not publish a stale
                 // width while the outer separator graph is not cell-aware.
-                if styles[analyzed.analysis.infos[atom].1].style.word_spacing != 0.0 {
+                if styles[analyzed.analysis.infos[atom].1].style.word_spacing != 0.0
+                    || styles[analyzed.analysis.infos[atom].1].style.letter_spacing != 0.0
+                {
                     return Err(unsupported());
                 }
                 atom_cells[atom] = Some(cell);
@@ -195,8 +214,26 @@ impl Inputs {
         self.atom_cells[atom]
     }
 
+    pub(super) fn first_script(
+        &self,
+        cell: usize,
+        analysis: &crate::engine::analysis::Analysis,
+        ledger: &mut Ledger,
+    ) -> Result<Script> {
+        for atom in self.rows[cell].atoms.clone() {
+            account::work(ledger, 1)?;
+            let script = analysis.infos[atom].0.script;
+            if real_script(script) {
+                return Ok(script);
+            }
+        }
+        Ok(Script::Latin)
+    }
+
     pub(super) fn begin(&mut self, cell: usize, relations: usize) {
-        self.rows[cell].scope_relations = Some(relations..relations);
+        self.rows[cell]
+            .scope_relations
+            .get_or_insert(relations..relations);
     }
 
     pub(super) fn end(&mut self, cell: usize, relations: usize) {
@@ -241,15 +278,42 @@ impl Inputs {
             .unwrap_or(0)..self.boundaries.get(next).copied().unwrap_or(count))
     }
 
-    pub(super) fn finish(self, output: &mut ShapedData, ledger: &mut Ledger) -> Result<()> {
+    pub(super) fn finish(
+        self,
+        output: &mut ShapedData,
+        analyzed: &AnalyzedData,
+        horizontal: &ShapingInput<'_>,
+        scratch: &mut ShapeContext,
+        scopes: &scope_alignment::PreparedScopes,
+        ledger: &mut Ledger,
+    ) -> Result<()> {
+        let mut trials = Vec::new();
         account::header::<Vec<PreparedCell>>(ledger)?;
-        for row in &self.rows {
+        for (index, row) in self.rows.iter().enumerate() {
             account::work(ledger, 1)?;
             let payload = if row.atoms.is_empty() {
                 CellPayload::NoProviderInput
             } else {
                 normal_payload(output, row, ledger)?
             };
+            let overwide = match &payload {
+                CellPayload::Shaped { advance, .. } => advance.end - advance.start > row.extent,
+                CellPayload::NoProviderInput => false,
+            };
+            if overwide {
+                account::adopt_prepared_cell_arenas(ledger, scopes, output)?;
+                if trials.is_empty() {
+                    trials = account::collect(ledger, (0..self.rows.len()).map(|_| None))?;
+                }
+            }
+            let (payload, trial) = if overwide {
+                width::choose(output, row, payload, analyzed, horizontal, scratch, ledger)?
+            } else {
+                (payload, None)
+            };
+            if !trials.is_empty() {
+                trials[index] = trial;
+            }
             account::push(
                 ledger,
                 &mut output.cells,
@@ -264,6 +328,8 @@ impl Inputs {
                 },
             )?;
         }
+        width::assemble(output, &mut trials, ledger)?;
+        account::drop_vec(ledger, trials)?;
         // The cell-active branch did not allocate ordinary mixed items. Build
         // this actual outer arena under its owner before its first reserve.
         account::header::<Vec<ShapedItem>>(ledger)?;
@@ -401,6 +467,10 @@ impl SelectedCells {
         // any cell copy can reuse it or grow it. Its later census is shared
         // with this exact admission owner; no fictional per-cell suballocation.
         account::adopt_cell_arenas(ledger, output)?;
+        if prepared.shaped.cell_arenas == crate::engine::layout::data::CellArenaOwnership::Owned {
+            account::adopt_cell_exclusions(ledger, output)?;
+            output.cell_arenas = crate::engine::layout::data::CellArenaOwnership::Owned;
+        }
         account::header::<Vec<PreparedCell>>(ledger)?;
         for unit in &presentation.units {
             let PresentationUnitKind::Cell { cell } = unit.kind else {
@@ -637,11 +707,31 @@ fn normal_payload(output: &ShapedData, input: &Input, ledger: &mut Ledger) -> Re
         ascent = Some(ascent.map_or(run.metrics.ascent, |old| old.max(run.metrics.ascent)));
         descent = Some(descent.map_or(run.metrics.descent, |old| old.max(run.metrics.descent)));
     }
+    // Provider-cluster operands move as one L2 object. Native extraction may
+    // retain several source/caret rows for one ligature; those are not distinct
+    // glyph streams to reverse and offset independently.
+    let mut groups: Vec<IndexRange<usize>> = Vec::new();
+    for index in clusters.clone() {
+        account::work(ledger, 1)?;
+        let value = &output.clusters[index];
+        if let Some(group) = groups.last_mut() {
+            let previous = &output.clusters[group.start];
+            if previous.provider_group == value.provider_group
+                && previous.content == value.content
+                && previous.level == value.level
+            {
+                group.end = index + 1;
+                continue;
+            }
+        }
+        account::push(ledger, &mut groups, index..index + 1)?;
+    }
     let mut slots = Vec::new();
     let mut minimum_odd: Option<u8> = None;
     let mut maximum = 0;
-    for cluster in &output.clusters[clusters.clone()] {
+    for group in &groups {
         account::work(ledger, 1)?;
+        let cluster = &output.clusters[group.start];
         let level = crate::BidiLevel::try_new(cluster.level).map_err(|_| unsupported())?;
         maximum = maximum.max(level.get());
         if level.is_rtl() {
@@ -683,37 +773,36 @@ fn normal_payload(output: &ShapedData, input: &Input, ledger: &mut Ledger) -> Re
     let mut start = 0.0f64;
     let mut end = 0.0f64;
     for local in &order {
-        account::work(ledger, 1)?;
-        let index = first_cluster + local;
-        let cluster = &output.clusters[index];
-        glyph_start = Some(glyph_start.map_or(cluster.glyphs.start, |old: usize| {
-            old.min(cluster.glyphs.start)
-        }));
-        glyph_end =
-            Some(glyph_end.map_or(cluster.glyphs.end, |old: usize| old.max(cluster.glyphs.end)));
-        account::push(
-            ledger,
-            &mut positions,
-            CellClusterPosition {
-                cluster: index,
-                pen,
-            },
-        )?;
-        let mut glyph_pen = pen;
-        for glyph in &output.glyphs[cluster.glyphs.clone()] {
+        for index in groups[*local].clone() {
             account::work(ledger, 1)?;
-            glyph_pen = logical_add("cell glyph pen", glyph_pen, f64::from(glyph.advance))?;
-            start = start.min(glyph_pen);
-            end = end.max(glyph_pen);
+            let cluster = &output.clusters[index];
+            glyph_start = Some(glyph_start.map_or(cluster.glyphs.start, |old: usize| {
+                old.min(cluster.glyphs.start)
+            }));
+            glyph_end = Some(
+                glyph_end.map_or(cluster.glyphs.end, |old: usize| old.max(cluster.glyphs.end)),
+            );
+            account::push(
+                ledger,
+                &mut positions,
+                CellClusterPosition {
+                    cluster: index,
+                    pen,
+                },
+            )?;
+            let mut glyph_pen = pen;
+            for glyph in &output.glyphs[cluster.glyphs.clone()] {
+                account::work(ledger, 1)?;
+                glyph_pen = logical_add("cell glyph pen", glyph_pen, f64::from(glyph.advance))?;
+                start = start.min(glyph_pen);
+                end = end.max(glyph_pen);
+            }
+            pen = logical_add("cell cluster pen", pen, cluster.advance)?;
+            start = start.min(pen);
+            end = end.max(pen);
         }
-        pen = logical_add("cell cluster pen", pen, cluster.advance)?;
-        start = start.min(pen);
-        end = end.max(pen);
     }
     let width = logical_add("cell occupied advance", end, -start)?;
-    if width > input.extent {
-        return Err(unsupported());
-    }
     let x_offset = logical_add(
         "cell horizontal centering",
         (input.extent - width) / 2.0,
@@ -728,6 +817,7 @@ fn normal_payload(output: &ShapedData, input: &Input, ledger: &mut Ledger) -> Re
             -descent.expect("actual normal font") / 2.0,
         )?,
     )?;
+    account::drop_vec(ledger, groups)?;
     account::drop_vec(ledger, slots)?;
     account::drop_vec(ledger, order)?;
     Ok(CellPayload::Shaped {

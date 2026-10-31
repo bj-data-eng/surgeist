@@ -201,7 +201,7 @@ pub(crate) enum CellPayload {
     },
 }
 
-/// One genuine source cell and its already executed horizontal normal payload.
+/// One genuine source cell and its already executed winning horizontal payload.
 #[derive(Clone, Debug)]
 pub(crate) struct PreparedCell {
     /// Local ordinal in the analyzed output's actual CombinedOutput bindings.
@@ -214,8 +214,17 @@ pub(crate) struct PreparedCell {
     pub(crate) payload: CellPayload,
 }
 
+/// Whether actual shared native payload arenas have transferred to Cell ownership.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) enum CellArenaOwnership {
+    #[default]
+    Native,
+    Owned,
+}
+
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ShapedData {
+    pub(crate) cell_arenas: CellArenaOwnership,
     /// Feature-only custody appended at each actual non-residual glyph insertion;
     /// it follows the same extraction ordering and clone lifetime as glyphs.
     pub(crate) scope_glyph_custody: Vec<super::super::scope_alignment::GlyphCustody>,
@@ -234,8 +243,7 @@ pub(crate) struct ShapedData {
     pub(crate) character_requirements:
         Option<Arc<super::super::spacing::character::PlanRequirements>>,
     /// Complete invocation-mapped DI exclusions; absence means eligible input.
-    pub(crate) character_exclusions:
-        Arc<std::collections::BTreeMap<usize, super::super::spacing::character::Exclusion>>,
+    pub(crate) character_exclusions: Arc<OrdinalMap<super::super::spacing::character::Exclusion>>,
     pub(crate) atomic_gaps: OrdinalMap<f64>,
     pub(crate) word_spacing: Vec<super::super::spacing::WordSpacingUnit>,
     pub(crate) items: Vec<ShapedItem>,
@@ -256,6 +264,22 @@ impl<T> Default for OrdinalMap<T> {
     }
 }
 impl<T> OrdinalMap<T> {
+    pub(crate) fn contains_key(&self, key: &usize) -> bool {
+        self.get(key).is_some()
+    }
+    pub(crate) fn is_empty(&self) -> bool {
+        self.rows.is_empty()
+    }
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (&usize, &T)> {
+        self.rows.iter().map(|(key, value)| (key, value))
+    }
+    pub(crate) fn range(&self, range: IndexRange<usize>) -> impl Iterator<Item = (&usize, &T)> {
+        let first = self.rows.partition_point(|row| row.0 < range.start);
+        let last = self.rows.partition_point(|row| row.0 < range.end);
+        self.rows[first..last]
+            .iter()
+            .map(|(key, value)| (key, value))
+    }
     pub(crate) fn get(&self, key: &usize) -> Option<&T> {
         self.rows
             .binary_search_by_key(key, |row| row.0)
@@ -281,7 +305,7 @@ impl<T> OrdinalMap<T> {
         self.rows.clear();
     }
     pub(crate) fn values(&self) -> impl Iterator<Item = &T> {
-        self.rows.iter().map(|row| &row.1)
+        self.iter().map(|(_, value)| value)
     }
 }
 impl<T> std::ops::Index<&usize> for OrdinalMap<T> {

@@ -198,6 +198,9 @@ fn visit_selected_own_allocations(
     if !shaped.cells.is_empty() {
         accounting::visit_cell_arenas(shaped, visit)?;
     }
+    if shaped.cell_arenas == crate::engine::layout::data::CellArenaOwnership::Owned {
+        accounting::visit_cell_exclusions(shaped, visit)?;
+    }
     for run in shaped.runs.iter().chain(shaped.empty_run.iter()) {
         visit(AllocationWitness::resource(run.font.bytes()))?;
     }
