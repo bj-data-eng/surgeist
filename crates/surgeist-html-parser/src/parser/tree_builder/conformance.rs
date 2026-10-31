@@ -5858,14 +5858,22 @@ mod comment_diagnostic_corpus {
                 // Whether short or exact, the cap is never overspent.
                 assert!(after <= request.limits().work_credits());
                 if short {
-                    assert!(matches!(
-                        result,
-                        Err(ComparisonError::Stop(ParseStop::LimitExceeded {
-                            resource: HtmlParseResource::WorkCredits,
-                            ..
-                        }))
-                    ));
+                    let Err(ComparisonError::Stop(ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::WorkCredits,
+                        limit,
+                        current,
+                        requested_delta,
+                    })) = result
+                    else {
+                        panic!("one short must stop on the work cap: {result:?}");
+                    };
                     assert!(after - before < needed);
+                    // The refused charge applied nothing: the work in use is
+                    // exactly what the stop reports, and the refused request
+                    // would not have fit in the cap.
+                    assert_eq!(current, after);
+                    assert_eq!(limit, request.limits().work_credits());
+                    assert!(current + requested_delta > limit);
                 } else {
                     result.unwrap();
                     assert_eq!(after - before, needed);
