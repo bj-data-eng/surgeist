@@ -2172,3 +2172,20 @@ fn a_join_naming_no_row_fails_typed_instead_of_panicking() {
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }
+
+#[test]
+fn a_refused_attribute_replacement_hands_the_edit_back_and_cleans_up() {
+    let request = request("<body><div id=a>");
+    let (mut c, mut session, _proof, nodes) = graph(&request);
+    let div = named(&nodes, "div", 0).index;
+    let storage = session.active_mut().unwrap();
+    // The container row does not exist: the refusal comes after the edit began
+    // and its group was taken, and must give the group back and abort it.
+    let refused = storage.replace_attribute_storage(&mut c, div, usize::MAX / 2, 0, &mut None, &[]);
+    let invariant = ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+    assert_eq!(refused.err(), Some(SessionError::Stop(invariant)));
+    assert_eq!(c.stop(), Some(invariant));
+    assert!(!storage.construction.has_attribute_edit());
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}

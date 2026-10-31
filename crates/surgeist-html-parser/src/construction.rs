@@ -3345,9 +3345,12 @@ impl SessionStorage {
                 Err((error, backing)) => {
                     // Preserve the admitted shared wrapper in the owning phase
                     // even when intrinsic duplicate checking or work stops.
-                    let values = control.release_shared(backing, shared).unwrap_or_else(|_| {
-                        panic!("unpublished attribute builder is uniquely owned")
-                    });
+                    let Ok(values) = control.release_shared(backing, shared) else {
+                        // Unpublished backing is uniquely owned; a refusal is an
+                        // invariant stop, and the container row stays empty for
+                        // cleanup to report.
+                        return Err(latch_registry_row(control));
+                    };
                     *storage = Some(AttributeStorage::Building {
                         values,
                         allocation,
@@ -4151,9 +4154,21 @@ impl SessionStorage {
             // and this fixed progress write; cleanup resolves it immediately.
             payload_write::<usize>(control, 1)?;
         }
+        // Everything that can refuse is checked before ownership leaves the
+        // container; the target stays an element while its attributes change.
+        if !matches!(
+            self.construction
+                .storage()
+                .node_at(target)
+                .map(|node| node.kind()),
+            Some(HtmlNodeKind::Element(_))
+        ) || stage > self.payloads.values.len()
+        {
+            return Err(latch_registry_row(control));
+        }
         let (earlier, later) = self.payloads.values.split_at_mut(stage);
-        let RetainedPayload::Attributes(storage) = &mut earlier[container] else {
-            unreachable!()
+        let Some(RetainedPayload::Attributes(storage)) = earlier.get_mut(container) else {
+            return Err(latch_registry_row(control));
         };
         let taken = storage.take();
         let Some(AttributeStorage::Frozen {
@@ -4181,13 +4196,13 @@ impl SessionStorage {
             started?;
             let group = self.construction.attribute_edit();
             let slot = if append {
-                let RetainedPayload::Attributes(Some(AttributeStorage::Transferring {
+                let Some(RetainedPayload::Attributes(Some(AttributeStorage::Transferring {
                     values,
                     allocation: incoming_allocation,
                     ..
-                })) = &mut later[0]
+                }))) = later.first_mut()
                 else {
-                    unreachable!()
+                    return Err(latch_registry_row(control));
                 };
                 control.require_incoming_attribute_vector(values, incoming_allocation)?;
                 group.append(values)
@@ -4204,13 +4219,13 @@ impl SessionStorage {
             Ok::<_, SessionError>(())
         })();
         // Restore the sole ticket before creating the registry's known alias.
-        let backing = self
+        let Some(HtmlNodeKind::Element(record)) = self
             .construction
             .storage()
             .node_at(target)
-            .expect("retained element");
-        let HtmlNodeKind::Element(record) = backing.kind() else {
-            unreachable!()
+            .map(|node| node.kind())
+        else {
+            return Err(latch_registry_row(control));
         };
         control.restore_attribute_weak(record.attributes().shared_attributes(), &mut shared);
         let values = record.attributes().clone();

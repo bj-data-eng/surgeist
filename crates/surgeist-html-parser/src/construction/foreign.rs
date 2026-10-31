@@ -1146,9 +1146,12 @@ impl SessionStorage {
                 Err((error, backing)) => {
                     // Preserve the admitted shared wrapper in the owning phase
                     // even when intrinsic duplicate checking or work stops.
-                    let values = control.release_shared(backing, shared).unwrap_or_else(|_| {
-                        panic!("unpublished attribute builder is uniquely owned")
-                    });
+                    let Ok(values) = control.release_shared(backing, shared) else {
+                        // Unpublished backing is uniquely owned; a refusal is an
+                        // invariant stop, and the container row stays empty for
+                        // cleanup to report.
+                        return Err(latch_registry_row(control));
+                    };
                     *storage = Some(AttributeStorage::Building {
                         values,
                         allocation,

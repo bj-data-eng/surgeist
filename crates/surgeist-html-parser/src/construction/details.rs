@@ -227,6 +227,17 @@ impl SessionStorage {
         )?;
         payload_write::<usize>(c, 1)?;
         payload_write::<bool>(c, 1)?;
+        // Everything that can refuse is checked before ownership leaves the
+        // container; the node stays an element while its attributes change.
+        if !matches!(
+            self.construction
+                .storage()
+                .node_at(node)
+                .map(|record| record.kind()),
+            Some(HtmlNodeKind::Element(_))
+        ) {
+            return Err(latch_registry_row(c));
+        }
         let Some(RetainedPayload::Attributes(storage)) = self.payloads.values.get_mut(container)
         else {
             return Err(latch_registry_row(c));
@@ -274,14 +285,13 @@ impl SessionStorage {
                 popped = true;
             }
         }
-        let HtmlNodeKind::Element(element_record) = self
+        let Some(HtmlNodeKind::Element(element_record)) = self
             .construction
             .storage()
             .node_at(node)
-            .expect("retained element")
-            .kind()
+            .map(|record| record.kind())
         else {
-            unreachable!()
+            return Err(latch_registry_row(c));
         };
         c.restore_attribute_weak(element_record.attributes().shared_attributes(), &mut shared);
         let values = element_record.attributes().clone();

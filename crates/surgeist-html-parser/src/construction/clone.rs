@@ -443,9 +443,9 @@ impl SessionStorage {
         let ordered = match validate_parser_attributes(backing, c) {
             Ok(value) => value,
             Err((error, backing)) => {
-                let values = c
-                    .release_shared(backing, shared)
-                    .unwrap_or_else(|_| panic!("unique clone attribute backing"));
+                let Ok(values) = c.release_shared(backing, shared) else {
+                    return Err(latch_registry_row(c));
+                };
                 *storage = Some(AttributeStorage::Building {
                     values,
                     allocation,
