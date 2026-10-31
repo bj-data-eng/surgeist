@@ -250,9 +250,9 @@ pub use environment::{
 pub use error::{Error, ErrorCode, Result};
 pub use event::{
     EventKind, FileDragEvent, ImeConfig, ImeEvent, ImeHint, ImePurpose, ImeRequest,
-    ImeSurroundingText, InputEvent, KeyEvent, KeyState, ModifierState, PointerButton,
-    PointerDeviceData, PointerEvent, PointerKind, PointerPhase, StandardKeyBindingEvent,
-    TouchPhase, WheelDelta, WheelEvent,
+    ImeSurroundingText, InputEvent, KeyEvent, KeyState, MagnificationDelta, MagnificationEvent,
+    MagnificationGesture, ModifierState, PointerButton, PointerDeviceData, PointerEvent,
+    PointerKind, PointerPhase, StandardKeyBindingEvent, TouchPhase, WheelDelta, WheelEvent,
 };
 pub use geometry::{Id, Insets, PhysicalPoint, PhysicalSize, Point, Rect, Size};
 pub use handler::Handler;
@@ -275,5 +275,7 @@ pub(crate) use scheduler::DrawScheduler;
 
 #[cfg(test)]
 mod environment_tests;
+#[cfg(test)]
+mod magnification_tests;
 #[cfg(test)]
 mod tests;
