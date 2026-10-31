@@ -2201,3 +2201,30 @@ fn a_refused_attribute_replacement_hands_the_edit_back_and_cleans_up() {
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }
+
+#[test]
+fn a_replacement_on_a_non_element_is_refused_with_the_container_frozen() {
+    let request = request("<body><div id=a>");
+    let (mut c, mut session, _proof, nodes) = graph(&request);
+    let div = named(&nodes, "div", 0).index;
+    let storage = session.active_mut().unwrap();
+    let container = storage.element_attribute_container(&mut c, div).unwrap();
+    // Node 0 is the document, not an element: the edit cannot be about it.
+    let refused = storage.replace_attribute_storage(&mut c, 0, container, 0, &mut None, &[]);
+    // The edit's own begin refuses a document first; either way the refusal is
+    // an invariant stop and the container still holds its frozen attributes.
+    let Some(SessionError::Stop(stop @ ParseStop::InternalInvariant(_))) = refused.err() else {
+        panic!("expected an invariant stop")
+    };
+    assert_eq!(c.stop(), Some(stop));
+    assert!(matches!(
+        storage.payloads.values.get(container),
+        Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
+            element: Some(owner),
+            ..
+        }))) if *owner == div
+    ));
+    assert!(!storage.construction.has_attribute_edit());
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}

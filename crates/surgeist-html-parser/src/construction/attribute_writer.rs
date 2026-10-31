@@ -13,7 +13,15 @@ impl SessionStorage {
         self.begin_attribute_edit(control, node, HtmlConstructionAttributeEditMode::Slots)?;
         let mut group = self.construction.take_attribute_edit();
         // Everything that can refuse is checked before ownership leaves the
-        // container, and a refusal hands the edit back and aborts it.
+        // container, and a refusal hands the edit back and aborts it. The edit
+        // changes only the element's attributes, so the record checked here is
+        // still an element when the container is restored below.
+        if !matches!(
+            group.storage_view().node_at(node).map(|node| node.kind()),
+            Some(HtmlNodeKind::Element(_))
+        ) {
+            return Err(self.refuse_attribute_edit(control, group));
+        }
         let Some(RetainedPayload::Attributes(backing)) = self.payloads.values.get_mut(container)
         else {
             return Err(self.refuse_attribute_edit(control, group));
