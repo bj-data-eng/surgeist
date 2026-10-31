@@ -2,24 +2,26 @@
 //!
 //! [`CssColorOrdinaryLimits`](crate::color::CssColorOrdinaryLimits) and
 //! [`CssAuthoredColorOrdinaryLimits`](crate::color::CssAuthoredColorOrdinaryLimits) share
-//! these constants. Every ceiling is the worst requirement measured over the colour cases of
-//! the public-report characterization corpus (`tests/css/characterization`), scaled to
+//! these constants. Every ceiling is a fixed reference requirement, scaled to
 //! [`DEFAULT_INPUT_UNITS`] and multiplied by [`HEADROOM`]:
 //!
 //! ```text
 //! ceiling = ceil(HEADROOM * required * DEFAULT_INPUT_UNITS / corpus_units)
 //! ```
 //!
-//! `required` and `corpus_units` belong to the one corpus input with the highest requirement
-//! per input unit of that counter. A counter's requirement is the smallest ceiling at which
-//! the case still runs to its outcome. The counters grow linearly with input length for the
-//! padded and nested constructions that were measured; the actions of a numeric literal
-//! depend on its magnitude, not its length, and are bounded by the range of `f64`.
+//! `required` and `corpus_units` are the reference requirement of one counter and the
+//! input length it is stated for. A counter's requirement is the smallest ceiling at which
+//! a case still runs to its outcome. Each reference is at least the requirement per input
+//! unit of every colour case of the public-report characterization corpus
+//! (`tests/css/characterization`), so the ceilings keep large headroom over that corpus;
+//! the corpus tests check that every case fits within a quarter of each ceiling, pro rata to
+//! its length. The counters grow linearly with input length for the padded and nested
+//! constructions that were measured; the actions of a numeric literal that needs the exact
+//! search are bounded by its midpoint of at most 1,100 digits, whatever its exponent.
 //!
-//! A caller whose inputs are longer than [`DEFAULT_INPUT_UNITS`], or that carry more
-//! extreme numeric literals than the corpus, passes explicit limits.
+//! A caller whose inputs are longer than [`DEFAULT_INPUT_UNITS`] passes explicit limits.
 
-/// The fourfold margin kept over every measured corpus requirement.
+/// The fourfold margin kept over every reference requirement.
 pub(crate) const HEADROOM: u64 = 4;
 
 /// The input length, in original units, at which the defaults are derived and which the
@@ -31,15 +33,15 @@ pub(crate) const HEADROOM: u64 = 4;
 /// length the in-repository colour callers and tests already admit.
 pub(crate) const DEFAULT_INPUT_UNITS: usize = 1024;
 
-/// One measured worst corpus requirement: `required` of one counter for a corpus input of
-/// `units` input units.
+/// One reference requirement: `required` of one counter for an input of `units` input
+/// units.
 #[derive(Clone, Copy)]
 struct CorpusWorst {
     required: u64,
     units: u64,
 }
 
-/// The ceiling for `worst`: its requirement per unit, at [`DEFAULT_INPUT_UNITS`], with
+/// The ceiling for a reference: its requirement per unit, at [`DEFAULT_INPUT_UNITS`], with
 /// [`HEADROOM`], rounded up.
 const fn ceiling(worst: CorpusWorst) -> usize {
     let wide = (HEADROOM * worst.required * DEFAULT_INPUT_UNITS as u64).div_ceil(worst.units);
@@ -50,30 +52,26 @@ const fn ceiling(worst: CorpusWorst) -> usize {
     wide as usize
 }
 
-/// 1277 algorithm records for `oklab(0.5 0.1 -0.1)` (19 units): the highest algorithm
-/// records per unit of the corpus, 67.2 (the authored path needs 1253).
+/// 1277 algorithm records in 19 units: 67.2 per unit.
 const ALGORITHM_RECORDS_WORST: CorpusWorst = CorpusWorst {
     required: 1277,
     units: 19,
 };
 
-/// 28 arithmetic records, authored, for `rgb(calc(255 / 2) calc(10 * 3) 0)` (33 units): the
-/// highest arithmetic records per unit of the corpus, 0.85 (the used path needs 16).
+/// 28 arithmetic records in 33 units: 0.85 per unit.
 const ARITHMETIC_RECORDS_WORST: CorpusWorst = CorpusWorst {
     required: 28,
     units: 33,
 };
 
-/// 28 evaluation records, authored, for the same input: the evaluation bank grows with the
-/// arithmetic bank, 0.85 per unit.
+/// 28 evaluation records in 33 units: the evaluation bank grows with the arithmetic bank.
 const EVALUATION_RECORDS_WORST: CorpusWorst = CorpusWorst {
     required: 28,
     units: 33,
 };
 
-/// 19,390,200 actions, authored, for `color-mix(in srgb, lab(0 1e308 0), red)` (39 units): the
-/// highest actions per unit of the corpus, 497,185 (the used path needs 19,150,362). Its
-/// `1e308` literal drives the count through the digit arithmetic of an extreme magnitude.
+/// 19,390,200 actions in 39 units: 497,185 per unit, far above any corpus colour, including
+/// one with an extreme-magnitude literal such as `1e308`.
 const ACTIONS_WORST: CorpusWorst = CorpusWorst {
     required: 19_390_200,
     units: 39,
@@ -92,6 +90,5 @@ pub(crate) const DEFAULT_ARITHMETIC_RECORDS: usize = ceiling(ARITHMETIC_RECORDS_
 pub(crate) const DEFAULT_EVALUATION_RECORDS: usize = ceiling(EVALUATION_RECORDS_WORST);
 
 /// The default `actions` ceiling: 2,036,468,185 actions, [`ACTIONS_WORST`] at
-/// [`DEFAULT_INPUT_UNITS`] with [`HEADROOM`]. Callers with larger inputs, or with more
-/// extreme numeric literals, pass explicit limits.
+/// [`DEFAULT_INPUT_UNITS`] with [`HEADROOM`]. Callers with larger inputs pass explicit limits.
 pub(crate) const DEFAULT_ACTIONS: usize = ceiling(ACTIONS_WORST);

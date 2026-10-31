@@ -22,6 +22,7 @@ mod color_exact_values;
 mod color_exceptional_hue;
 mod color_grammars;
 mod color_interpolation_method;
+mod color_numeral_work;
 mod color_quirks_context;
 mod color_symbolic_authoring;
 mod color_used_channel_resolution;
