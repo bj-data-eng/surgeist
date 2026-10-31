@@ -122,7 +122,8 @@ use std::{
     },
 };
 use surgeist_html::bounded::{
-    IntegerRecoveryError, IntegerUnitStep, IntegerUnitStepError, IntegerUnitStepResult,
+    HtmlOptionDisabledAncestor, IntegerRecoveryError, IntegerUnitStep, IntegerUnitStepError,
+    IntegerUnitStepResult, option_disabled_ancestor, select_display_size_default,
     try_parse_integer,
 };
 
@@ -1784,17 +1785,14 @@ impl<'a> HtmlSemanticSession<'a> {
             };
             current = self.node(&id)?;
             if let HtmlCapturedNodeKind::Element(e) = current.kind() {
-                match self.known(e)? {
-                    Some(
-                        KnownHtmlElement::Select
-                        | KnownHtmlElement::Hr
-                        | KnownHtmlElement::Datalist
-                        | KnownHtmlElement::Option,
-                    ) => return Ok(HtmlSemanticValue::Known(false)),
-                    Some(KnownHtmlElement::Optgroup) => {
+                match option_disabled_ancestor(self.known(e)?) {
+                    HtmlOptionDisabledAncestor::Enabled => {
+                        return Ok(HtmlSemanticValue::Known(false));
+                    }
+                    HtmlOptionDisabledAncestor::ReadOptgroupDisabled => {
                         return Ok(HtmlSemanticValue::Known(self.disabled_attribute(e, false)?));
                     }
-                    _ => {}
+                    HtmlOptionDisabledAncestor::Continue => {}
                 }
             }
         }

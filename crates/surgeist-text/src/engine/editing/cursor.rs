@@ -99,12 +99,21 @@ impl ClusterPath {
 
 fn at_source(layout: &PlacedLayout, index: usize) -> Option<ClusterPath> {
     for (line, row) in layout.lines.iter().enumerate() {
-        if let Some(cluster) = row
-            .finalized
-            .data
-            .clusters
-            .iter()
-            .position(|c| c.source.contains(index))
+        if let Some(cluster) =
+            row.finalized
+                .data
+                .clusters
+                .iter()
+                .enumerate()
+                .position(|(cluster, c)| {
+                    c.source.contains(index)
+                        && (row.finalized.data.cells.is_empty()
+                            || row
+                                .finalized
+                                .data
+                                .visual_order
+                                .contains(&FinalizedVisualItem::Cluster(cluster)))
+                })
         {
             let visual = row
                 .finalized
@@ -148,6 +157,9 @@ fn normalize(layout: &PlacedLayout, index: usize, affinity: Affinity) -> Cursor 
         if index == original_end {
             return Cursor::new(original_end, Affinity::Before);
         }
+    }
+    if let Some(position) = super::position::cell_position(layout, Cursor::new(index, affinity)) {
+        return layout.interaction.positions[position].source;
     }
     if let Some(cluster) = at_source(layout, index) {
         let index = cluster.get(layout).source.start;
@@ -222,7 +234,14 @@ fn logical_pair(layout: &PlacedLayout, value: Cursor) -> [Option<ClusterPath>; 2
     if pair.iter().any(Option::is_none) {
         for (line, placed) in layout.lines.iter().enumerate() {
             for (cluster, row) in placed.finalized.data.clusters.iter().enumerate() {
-                if row.source.is_empty() {
+                if row.source.is_empty()
+                    || (!placed.finalized.data.cells.is_empty()
+                        && !placed
+                            .finalized
+                            .data
+                            .visual_order
+                            .contains(&FinalizedVisualItem::Cluster(cluster)))
+                {
                     continue;
                 }
                 let side = if row.source.end <= value.index() {
@@ -296,16 +315,47 @@ fn visual_pair(layout: &PlacedLayout, value: Cursor) -> [Option<ClusterPath>; 2]
 }
 
 pub(super) fn geometry(layout: &PlacedLayout, value: Cursor) -> (usize, Rect) {
+    if let Some(position) = super::position::cell_position(layout, value) {
+        return (
+            layout.interaction.positions[position].line,
+            super::position::geometry(layout, position)
+                .expect("owned cell position")
+                .rect(),
+        );
+    }
+    let (line, x, reference) = local_geometry(layout, value);
+    (
+        line,
+        crate::layout::line_rect(
+            &layout.lines[line],
+            layout.lines[line]
+                .finalized
+                .data
+                .cell_rect(x, 1.0, reference),
+        ),
+    )
+}
+
+// Retain the actual source/occurrence edge before turning its caret into a
+// physical hull. A counterclockwise caret's hull starts one inline unit later.
+fn local_geometry(layout: &PlacedLayout, value: Cursor) -> (usize, f64, Option<f64>) {
+    if let Some(position) = super::position::cell_position(layout, value) {
+        return (
+            layout.interaction.positions[position].line,
+            super::position::inline(layout, position).expect("owned cell position"),
+            super::position::reference(layout, position).expect("owned cell position"),
+        );
+    }
     // Deleted anchors are genuine source-associated occurrences. This does not
     // change the historical raw-source visual-neighbor policy around atomics:
     // a physical atomic gap and an executed source deletion have different owners.
     if let Some(index) = super::position::deleted_position(layout, value) {
         let line = layout.interaction.positions[index].line;
+        let reference = super::position::reference(layout, index).expect("owned deleted row");
         return (
             line,
-            super::position::geometry(layout, index)
-                .expect("owned deleted row")
-                .rect(),
+            super::position::inline(layout, index).expect("owned deleted row"),
+            reference,
         );
     }
     let no_text_neighbor = at_source(layout, value.index()).is_none()
@@ -315,9 +365,9 @@ pub(super) fn geometry(layout: &PlacedLayout, value: Cursor) -> (usize, Rect) {
             .and_then(|index| at_source(layout, index))
             .is_none();
     if no_text_neighbor
-        && let Some((line, x)) = anchor_geometry(layout, value.index(), value.affinity())
+        && let Some((line, x, reference)) = anchor_geometry(layout, value.index(), value.affinity())
     {
-        return (line, line_rect(&layout.lines[line], x));
+        return (line, x, reference);
     }
     let chosen = match visual_pair(layout, value) {
         [Some(left), Some(right)] => {
@@ -343,15 +393,13 @@ pub(super) fn geometry(layout: &PlacedLayout, value: Cursor) -> (usize, Rect) {
         let cluster = path.get(layout);
         (
             path.line,
-            line_rect(
-                &layout.lines[path.line],
-                cluster.x + if at_end { cluster.advance } else { 0.0 },
-            ),
+            cluster.x + if at_end { cluster.advance } else { 0.0 },
+            cluster.reference,
         )
     } else {
         let index = layout.lines.len() - 1;
         let line = &layout.lines[index];
-        (index, line_rect(line, line.finalized.data.metrics.offset))
+        (index, line.finalized.data.metrics.offset, None)
     }
 }
 
@@ -361,34 +409,50 @@ fn anchor_geometry(
     layout: &PlacedLayout,
     index: usize,
     affinity: Affinity,
-) -> Option<(usize, f64)> {
-    let mut chosen: Option<((usize, usize), f64)> = None;
-    let mut consider = |key: (usize, usize), x: f64| {
-        if chosen.is_none_or(|(old, _)| match affinity {
+) -> Option<(usize, f64, Option<f64>)> {
+    let mut chosen: Option<((usize, usize), f64, Option<f64>)> = None;
+    let mut consider = |key: (usize, usize), x: f64, reference: Option<f64>| {
+        if chosen.is_none_or(|(old, _, _)| match affinity {
             Affinity::Before => key < old,
             Affinity::After => key > old,
         }) {
-            chosen = Some((key, x));
+            chosen = Some((key, x, reference));
         }
     };
     for (line_index, line) in layout.lines.iter().enumerate() {
         for anchor in &line.finalized.data.anchors {
             let unit = &line.finalized.selected.presentation.units[anchor.unit];
             if unit.source.start <= index && index <= unit.source.end {
-                consider((line_index, anchor.unit), anchor.slot.x);
+                consider((line_index, anchor.unit), anchor.slot.x, anchor.reference);
             }
         }
-        for cluster in &line.finalized.data.clusters {
+        for (index, cluster) in line.finalized.data.clusters.iter().enumerate() {
+            if !line.finalized.data.cells.is_empty()
+                && !line
+                    .finalized
+                    .data
+                    .visual_order
+                    .contains(&FinalizedVisualItem::Cluster(index))
+            {
+                continue;
+            }
             let replacement_incident = cluster.source.is_empty()
-                && line.finalized.mapping.pieces.iter().any(|piece| {
-                    matches!(
-                        piece.kind,
-                        crate::protocol::prepared::SelectedMappingKind::Replacement { .. }
-                    ) && piece.source.start <= index
-                        && index <= piece.source.end
-                        && piece.presentation.start < cluster.presentation.end
-                        && cluster.presentation.start < piece.presentation.end
-                });
+                && line
+                    .finalized
+                    .selected
+                    .basis
+                    .mapping
+                    .pieces
+                    .iter()
+                    .any(|piece| {
+                        matches!(
+                            piece.kind,
+                            crate::protocol::prepared::SelectedMappingKind::Replacement { .. }
+                        ) && piece.source.start <= index
+                            && index <= piece.source.end
+                            && piece.presentation.start < cluster.presentation.end
+                            && cluster.presentation.start < piece.presentation.end
+                    });
             if (cluster.source.is_empty() && cluster.source.start == index) || replacement_incident
             {
                 let after = affinity == Affinity::After;
@@ -408,30 +472,17 @@ fn anchor_geometry(
                             && cluster.presentation.start < unit.presentation.end
                     })
                     .expect("an actual selected cluster retains its presentation unit");
-                consider((line_index, unit), x);
+                consider((line_index, unit), x, cluster.reference);
             }
         }
     }
-    chosen.map(|((line, _), x)| (line, x))
+    chosen.map(|((line, _), x, reference)| (line, x, reference))
 }
 
-fn line_rect(line: &PlacedLine, x: f64) -> Rect {
-    let metrics = line.finalized.data.metrics;
-    crate::layout::line_rect(
-        line,
-        Rect::new(
-            x,
-            metrics.block_min,
-            1.0,
-            metrics.block_max - metrics.block_min,
-        ),
-    )
-}
-
-// The new sideways profile uses actual physical metric rectangles, not an
-// assumed left/right paragraph stack. Source ordinal resolves exact ties.
+// Vertical inline axes use actual physical metric rectangles without assuming
+// a left/right paragraph stack. Source ordinal resolves exact ties.
 pub(super) fn line_at_point(layout: &PlacedLayout, point: Point) -> Option<usize> {
-    if layout.prepared.options.orientation() == crate::LineOrientation::Sideways {
+    if layout.prepared.options.orientation() != crate::LineOrientation::Horizontal {
         return layout
             .lines
             .iter()
@@ -495,6 +546,22 @@ fn cursor_at_inline(layout: &PlacedLayout, line_index: usize, x: f64) -> Option<
     let data = &line.finalized.data;
     let mut visual = 0;
     while visual < data.visual_order.len() {
+        if let FinalizedVisualItem::Cell(index) = data.visual_order[visual] {
+            let cell = &data.cells[index];
+            if x <= cell.inline.start.max(cell.flow_end) || visual + 1 == data.visual_order.len() {
+                // Halve the retained endpoints before adding: signed tracking
+                // may reverse the flow interval without changing its square.
+                let midpoint = cell.inline.start * 0.5 + cell.flow_end * 0.5;
+                let end_side = if cell.flow_end >= cell.inline.start {
+                    x > midpoint
+                } else {
+                    x < midpoint
+                };
+                return Some(super::position::cell_cursor(line, index, end_side));
+            }
+            visual += 1;
+            continue;
+        }
         let FinalizedVisualItem::Cluster(first) = data.visual_order[visual] else {
             visual += 1;
             continue;
@@ -510,7 +577,9 @@ fn cursor_at_inline(layout: &PlacedLayout, line_index: usize, x: f64) -> Option<
         }
         let last = match data.visual_order[end - 1] {
             FinalizedVisualItem::Cluster(index) => &data.clusters[index],
-            FinalizedVisualItem::InlineBox(_) | FinalizedVisualItem::Anchor(_) => {
+            FinalizedVisualItem::Cell(_)
+            | FinalizedVisualItem::InlineBox(_)
+            | FinalizedVisualItem::Anchor(_) => {
                 unreachable!()
             }
         };
@@ -560,7 +629,9 @@ pub(super) fn from_point(layout: &PlacedLayout, point: Point) -> Cursor {
             .enumerate()
             .find_map(|(visual, item)| match item {
                 FinalizedVisualItem::Cluster(cluster) => Some((visual, *cluster)),
-                FinalizedVisualItem::InlineBox(_) | FinalizedVisualItem::Anchor(_) => None,
+                FinalizedVisualItem::Cell(_)
+                | FinalizedVisualItem::InlineBox(_)
+                | FinalizedVisualItem::Anchor(_) => None,
             })
     {
         return point_edge(
@@ -610,6 +681,20 @@ pub(crate) fn move_cursor(
     movement: Movement,
 ) -> Result<Cursor> {
     let value = admit(layout, value)?;
+    // A cell's source wrapper consumes the same real occurrence rows as exact
+    // placed movement. Inner payload clusters are never surrogate outer rows.
+    if !matches!(movement, Movement::DocumentStart | Movement::DocumentEnd)
+        && layout
+            .lines
+            .iter()
+            .any(|line| !line.finalized.data.cells.is_empty())
+        && let Some(position) = super::position::source_position(layout, value)
+    {
+        let target = super::position::movement(layout, position, movement)?;
+        let result = layout.interaction.positions[target].source;
+        super::position::validate_source(layout, result)?;
+        return Ok(result);
+    }
     let result = match movement {
         Movement::DocumentStart => admit(
             layout,
@@ -659,11 +744,16 @@ pub(crate) fn move_cursor(
             });
             target.map_or(value, |index| {
                 let line = &layout.lines[index];
-                let (current, rect) = geometry(layout, value);
-                let inline = if line.orientation == crate::LineOrientation::Sideways {
-                    crate::layout::local_point(&layout.lines[current], rect.origin).x
+                let inline = if line.orientation == crate::LineOrientation::SidewaysCounterclockwise
+                {
+                    local_geometry(layout, value).1
                 } else {
-                    rect.origin.x
+                    let (current, rect) = geometry(layout, value);
+                    if line.orientation != crate::LineOrientation::Horizontal {
+                        crate::layout::local_point(&layout.lines[current], rect.origin).x
+                    } else {
+                        rect.origin.x
+                    }
                 };
                 // Exact and raw movement select the same genuine target rows.
                 // Final source validation owns any lossy projection ambiguity.
@@ -918,7 +1008,7 @@ fn adjacent_word_row(
 
 /// One traversal over actual neighboring logical rows. Source lookup locates
 /// the input only; an executed deletion gap cannot become a fabricated end.
-fn word_target<K: Copy>(
+pub(super) fn word_target<K: Copy>(
     value: Cursor,
     forward: bool,
     extent: crate::Range,

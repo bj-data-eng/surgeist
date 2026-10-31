@@ -41,7 +41,11 @@ fn prepare_direction(
     system
         .prepare(
             &crate::test_wrapping::bind_missing(
-                &AnalyzedSource::from_paragraph(input).unwrap(),
+                &AnalyzedSource::from_paragraph(
+                    input,
+                    crate::AnalysisTypography::HorizontalComposition,
+                )
+                .unwrap(),
                 crate::Wrap::Word,
             ),
             PreparationOptions::default(),
@@ -57,7 +61,10 @@ fn select(
     alignment: crate::Alignment,
 ) -> FinalizedLine {
     selected(p, start, ending, width, alignment)
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 
@@ -310,7 +317,9 @@ fn negative_preserved_space_contribution_is_not_absolute_hanging() {
             .x
     };
     assert_eq!((x(1) - x(0), x(2) - x(1)), (10.0, -2.0));
-    assert_eq!(observed, (0.0, vec![6.0, 16.0]));
+    // Natural8 centered in20 starts at6. SPACE starts logically at16,
+    // and authored−12 moves only its paint by half−6 to10.
+    assert_eq!(observed, (0.0, vec![6.0, 10.0]));
 }
 
 #[test]
@@ -365,13 +374,16 @@ fn allocated(selected: &SelectedLine, amounts: &[f64]) -> FinalizedLine {
     let slots: Vec<_> = selected.spacing_slots().collect();
     assert_eq!(slots.len(), amounts.len());
     selected
-        .finalize(SpacingAllocations::Complete(
-            slots
-                .into_iter()
-                .zip(amounts)
-                .map(|(slot, &amount)| SpacingAllocation { slot, amount })
-                .collect(),
-        ))
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::Complete(
+                slots
+                    .into_iter()
+                    .zip(amounts)
+                    .map(|(slot, &amount)| SpacingAllocation { slot, amount })
+                    .collect(),
+            ),
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 
@@ -388,7 +400,12 @@ fn allocated_conditional_space_remeasures_signed_exclusion_in_natural_frame() {
         15.0,
         crate::Alignment::Center,
     );
-    let natural = selection.finalize(SpacingAllocations::None).unwrap();
+    let natural = selection
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(natural.feedback().advance, 20.0);
     let mut observed = vec![];
     for amount in [4.0, -3.0, -5.0, -8.0, -12.0] {
@@ -430,7 +447,10 @@ fn naturally_fitting_conditional_space_does_not_become_eligible_after_expansion(
     let selection = selected(&p, first(&p), forced.clone(), 40.0, crate::Alignment::Left);
     assert_eq!(
         selection
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .unwrap()
             .feedback()
             .advance,
@@ -459,16 +479,33 @@ fn upstream_allocation_moves_eligible_conditional_space_before_exclusion() {
     let p = prepare(&mut system, "X X \nY", WhiteSpace::Preserve);
     let forced = ending(&p, PreparedBreakKind::Forced);
     let selection = selected(&p, first(&p), forced.clone(), 35.0, crate::Alignment::Left);
+    let slots = selection.spacing_slots().collect::<Vec<_>>();
+    assert_eq!(slots.len(), 2);
+    for (slot, range) in slots.iter().zip([Range::new(1, 2), Range::new(3, 4)]) {
+        let unit = p
+            .unit_views()
+            .find(|unit| unit.source_range() == range)
+            .unwrap()
+            .handle();
+        assert_eq!(
+            slot.participants().cloned().collect::<Vec<_>>(),
+            [PreparedParticipant::Text(unit)]
+        );
+        assert_eq!(
+            slot.pieces().map(|piece| piece.owner()).collect::<Vec<_>>(),
+            [crate::SpacingSlotOwner::Source {
+                origin: p.origin_views().next().unwrap().handle(),
+                local: range,
+                aggregate: range,
+            }]
+        );
+    }
     assert_eq!(
         selection
-            .spacing_slots()
-            .map(|s| s.source_range())
-            .collect::<Vec<_>>(),
-        [Range::new(1, 2), Range::new(3, 4)]
-    );
-    assert_eq!(
-        selection
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .unwrap()
             .feedback()
             .advance,
@@ -507,7 +544,10 @@ fn natural_terminal_group_stays_fixed_through_reverse_conditional_advance() {
     let selection = selected(&p, first(&p), forced.clone(), 15.0, crate::Alignment::Left);
     assert_eq!(
         selection
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .unwrap()
             .feedback()
             .advance,
@@ -553,7 +593,10 @@ fn rtl_allocated_conditional_space_reports_the_physical_start_edge() {
     );
     assert_eq!(
         selection
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .unwrap()
             .feedback()
             .advance,
@@ -676,7 +719,10 @@ fn fitting_zero_advance_conditional_space_keeps_preceding_separator_nonterminal(
     custody(&p, vec![line, next], &[88, 8195, 32, 10, 89]);
     // The actual preserved SPACE ends at20, inside40. It does not hang, so
     // the preceding EM SPACE is not terminal (CSS Text4 section9.2).
-    assert_eq!(observed, (0.0, vec![10.0, 20.0, 30.0]));
+    // Natural20 centered in40 starts at10. SPACE starts logically at30,
+    // and authored−10 moves only its paint by half−5 to25. Its contribution
+    // remains zero, so it still prevents the preceding EM SPACE from hanging.
+    assert_eq!(observed, (0.0, vec![10.0, 20.0, 25.0]));
 }
 
 #[test]
@@ -691,7 +737,10 @@ fn ordinary_start_alignment_uses_actual_geometry_without_hanging_capacity() {
     let line = p
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .expect("ordinary start-aligned text consumes no hanging edge");
     assert_eq!(line.feedback().advance, 10.0);
     assert_eq!(
@@ -715,7 +764,12 @@ fn conditional_space_allocation_to_zero_preserves_source_and_alignment() {
         15.0,
         crate::Alignment::Center,
     );
-    let natural = selection.finalize(SpacingAllocations::None).unwrap();
+    let natural = selection
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(natural.feedback().advance, 20.0);
     assert_eq!(
         glyphs(&natural, 2)
@@ -783,7 +837,9 @@ fn prepared_discard_separator(
         replacements: vec![],
         anchor_order: vec![],
     };
-    let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+    let analyzed =
+        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     assert_eq!(analyzed.source().text().code_units(), [0x41, 0x3000]);
     assert_eq!(analyzed.source().id(), Some(crate::Id::from_u64(7401)));
     assert_eq!(analyzed.source().revision(), 7);
@@ -867,7 +923,7 @@ fn discard_surviving_separator_needs_no_hanging_terminal_or_available_edge() {
     let line = p
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations { spacing: SpacingAllocations::None, scopes: crate::ScopeAllocations::None })
         .expect("ordinary Discard advance needs neither terminal-block nor available-edge hanging context");
     discard_separator_custody(&p, &line, &bytes);
     let fit = line.measurements().fit();
@@ -934,7 +990,11 @@ fn discard_edge_capture(
     system
         .prepare(
             &crate::test_wrapping::bind_missing(
-                &AnalyzedSource::from_paragraph(input).unwrap(),
+                &AnalyzedSource::from_paragraph(
+                    input,
+                    crate::AnalysisTypography::HorizontalComposition,
+                )
+                .unwrap(),
                 crate::Wrap::Word,
             ),
             PreparationOptions::default(),
@@ -1045,7 +1105,10 @@ fn discard_surviving_separator_stays_ordinary_at_soft_forced_and_block_ends_in_b
                 let line = p
                     .select(r)
                     .unwrap()
-                    .finalize(SpacingAllocations::None)
+                    .finalize(crate::LineAllocations {
+                        spacing: SpacingAllocations::None,
+                        scopes: crate::ScopeAllocations::None,
+                    })
                     .unwrap();
                 ordinary_discard_measurements(&line, 30.0);
                 let bytes = crate::shaping_test_fonts::width_ahem();
@@ -1139,7 +1202,10 @@ fn discard_surviving_separator_consumes_no_terminal_or_available_context_in_both
                     let line = p
                         .select(r)
                         .unwrap()
-                        .finalize(SpacingAllocations::None)
+                        .finalize(crate::LineAllocations {
+                            spacing: SpacingAllocations::None,
+                            scopes: crate::ScopeAllocations::None,
+                        })
                         .unwrap();
                     ordinary_discard_measurements(&line, 30.0);
                 }

@@ -92,7 +92,7 @@ fn physical_atomic<S: LayoutScalar>(
     frame_inline: f64,
 ) -> crate::Point<S> {
     axes.physical_point(
-        LogicalPointOf::new(row.inline_start, row.block_start),
+        crate::inline::expect_logical_position(row.position),
         axes.logical_size(row.item.size),
         axes.physical_size(LogicalSizeOf::new(n(frame_inline), n(10.0))),
     )
@@ -150,8 +150,8 @@ fn table_lane<S: LayoutScalar>() {
                 );
             }
             assert_eq!(report.block_extent, n(10.0));
-            assert_eq!(report.first_baseline, Some(n(8.0)));
-            assert_eq!(report.last_baseline, Some(n(8.0)));
+            assert_eq!(report.baselines.numeric().first, Some(n(8.0)));
+            assert_eq!(report.baselines.numeric().last, Some(n(8.0)));
             assert_eq!(report.line_bands.len(), 1);
         }
     }
@@ -266,9 +266,15 @@ fn decorated_lane<S: LayoutScalar>() {
             (row.source_index, row.visual_index, row.line_index),
             (source, visual, 0)
         );
-        assert_eq!(row.inline_start, n(logical));
+        assert_eq!(
+            crate::inline::expect_logical_position(row.position).inline,
+            n(logical)
+        );
         assert_eq!(row.inline_extent, n(extent));
-        assert_eq!(row.block_start, n(8.0));
+        assert_eq!(
+            crate::inline::expect_logical_position(row.position).block,
+            n(8.0)
+        );
     }
     assert_eq!(
         report.controls[0].endpoint,

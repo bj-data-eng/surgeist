@@ -1232,7 +1232,7 @@ fn numeric_fitter_alignment_uses_each_unequal_line_and_clamps_overflow_all_flows
                 {
                     let actual = axes.physical_rect(
                         crate::geometry::LogicalRectOf::new(
-                            LogicalPointOf::new(fragment.inline_start, fragment.block_start),
+                            crate::inline::expect_logical_position(fragment.position),
                             LogicalSizeOf::new(
                                 axes.logical_size(fragment.item.size).inline,
                                 axes.logical_size(fragment.item.size).block,
@@ -1272,7 +1272,7 @@ fn numeric_fitter_alignment_uses_each_unequal_line_and_clamps_overflow_all_flows
                 assert_eq!(
                     axes.physical_rect(
                         crate::geometry::LogicalRectOf::new(
-                            LogicalPointOf::new(fragment.inline_start, fragment.block_start),
+                            crate::inline::expect_logical_position(fragment.position),
                             LogicalSizeOf::new(
                                 axes.logical_size(fragment.item.size).inline,
                                 axes.logical_size(fragment.item.size).block
@@ -1346,7 +1346,7 @@ fn numeric_fitter_flow_projects_rect_baseline_and_empty_anchor_all_mappings_both
                 assert_eq!(
                     axes.physical_rect(
                         crate::geometry::LogicalRectOf::new(
-                            LogicalPointOf::new(fragment.inline_start, fragment.block_start),
+                            crate::inline::expect_logical_position(fragment.position),
                             LogicalSizeOf::new(
                                 axes.logical_size(fragment.item.size).inline,
                                 axes.logical_size(fragment.item.size).block
@@ -1363,8 +1363,9 @@ fn numeric_fitter_flow_projects_rect_baseline_and_empty_anchor_all_mappings_both
                 assert_eq!(
                     axes.physical_point(
                         LogicalPointOf::new(
-                            fragment.inline_start,
-                            fragment.block_start + S::from_f64(8.0)
+                            crate::inline::expect_logical_position(fragment.position).inline,
+                            crate::inline::expect_logical_position(fragment.position).block
+                                + S::from_f64(8.0)
                         ),
                         LogicalSizeOf::new(S::ZERO, S::ZERO),
                         containing
@@ -1443,6 +1444,7 @@ fn fri06_c02_block_text_containing_baselines_align_flex_items_both_scalars() {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let batch = compute_layout_with_flow(

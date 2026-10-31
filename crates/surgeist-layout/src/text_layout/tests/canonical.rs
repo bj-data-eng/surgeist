@@ -49,21 +49,24 @@ pub(super) fn paragraph(bytes: Vec<u8>, pieces: &[&str]) -> TextParagraphBinding
             ancestor_wrap: style.wrap,
         })
         .collect();
-    let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-        terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        source,
-        base_style: style,
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: text::ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: text::ParagraphStrut::DefaultFont,
-        origins,
-        connections,
-        controls: vec![],
-        boundary_policies,
-        replacements: vec![],
-        anchor_order: vec![],
-    })
+    let analyzed = text::AnalyzedSource::from_paragraph(
+        text::ParagraphInput {
+            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            source,
+            base_style: style,
+            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            origins,
+            connections,
+            controls: vec![],
+            boundary_policies,
+            replacements: vec![],
+            anchor_order: vec![],
+        },
+        text::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, ancestor_wrap);
     let mut system = text::System::new(text::SystemOptions {
@@ -152,6 +155,7 @@ fn nested_batch<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     compute_layout_with_flow(

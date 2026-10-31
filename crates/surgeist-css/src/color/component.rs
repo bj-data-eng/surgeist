@@ -479,9 +479,25 @@ impl<'owner> ComponentSyntax<'owner> {
         index: usize,
         slot: &CssColorSlot<'_>,
     ) -> Result<(), ColorProtocolError> {
-        let expected = self.record(bank, index)?;
+        let expected_bank = if matches!(self.state, State::Literal(_)) {
+            // A literal's scratch is only decimal and scaled digits, which are
+            // algorithm-bank records (`Data::bank`; the literal tests assert it). Minting the full-size
+            // record just to read its bank repeats the literal cursor's own
+            // check of the written slot against its pending write.
+            if !matches!(
+                self.action(),
+                ComponentAction::Append { bank: b, index: i }
+                    | ComponentAction::Replace { bank: b, index: i }
+                    if b == bank && i == index
+            ) {
+                return Err(ColorProtocolError::WrongAction);
+            }
+            CssColorBank::Algorithm
+        } else {
+            self.record(bank, index)?.bank()
+        };
         slot.qualify(self.lexical.owner, self.lexical.phase, index, bank)?;
-        if expected.bank() != bank {
+        if expected_bank != bank {
             return Err(ColorProtocolError::WrongSlot);
         }
         match &mut self.state {

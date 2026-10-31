@@ -41,7 +41,9 @@ fn input(text: &str, mode: WhiteSpace) -> ParagraphInput {
 }
 
 fn prepare(input: ParagraphInput) -> PreparedText {
-    let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+    let analyzed =
+        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word);
     let mut system = System::new(SystemOptions {
         font_catalogue: FontCatalogueMode::RegisteredOnly,
@@ -122,6 +124,15 @@ fn select(prepared: &PreparedText, alternative: Option<PreparedAlternative>) -> 
     };
     prepared
         .select(LineSelectionRequest {
+            segment: {
+                let mut segments = prepared.source_segments();
+                assert_eq!(
+                    segments.len(),
+                    1,
+                    "this fixture has one genuine source segment"
+                );
+                segments.next().unwrap()
+            },
             boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
@@ -184,27 +195,47 @@ fn collapsed_slots_keep_identity_and_each_actual_finalization_after_resources_dr
     let prepared = prepare(input("  X X  ", WhiteSpace::Collapse));
     let selected = select(&prepared, None);
     let slots: Vec<_> = selected.spacing_slots().collect();
-    assert_eq!(
-        slots
-            .iter()
-            .map(SpacingSlot::source_range)
-            .collect::<Vec<_>>(),
-        [Range::new(0, 1), Range::new(3, 4), Range::new(5, 6)]
-    );
-    for slot in &slots {
-        let SpacingSlotOwner::Unit(unit) = slot.owner() else {
-            panic!("authored SPACE has its actual original unit")
-        };
+    assert_eq!(slots.len(), 3);
+    for (slot, range) in slots
+        .iter()
+        .zip([Range::new(0, 1), Range::new(3, 4), Range::new(5, 6)])
+    {
+        let unit = prepared
+            .unit_views()
+            .find(|unit| unit.source_range() == range)
+            .unwrap()
+            .handle();
         assert_eq!(
-            slot.participant(),
-            Some(&PreparedParticipant::Text(unit.clone()))
+            slot.participants().cloned().collect::<Vec<_>>(),
+            [PreparedParticipant::Text(unit.clone())]
         );
-        assert_eq!(unit.view().source_range(), slot.source_range());
+        assert_eq!(
+            slot.pieces().map(|piece| piece.owner()).collect::<Vec<_>>(),
+            [SpacingSlotOwner::Source {
+                origin: prepared.origin_views().next().unwrap().handle(),
+                local: range,
+                aggregate: range,
+            }]
+        );
+        let pieces = slot.pieces().collect::<Vec<_>>();
+        let crate::SpacingSlotTarget::Separator(spacing_unit) = slot.target() else {
+            panic!("the existing Spaces target is a complete separator")
+        };
+        assert_eq!(spacing_unit.pieces().len(), 1);
+        assert_eq!(spacing_unit.pieces().collect::<Vec<_>>(), pieces);
         assert_eq!(unit.prepared_text(), prepared);
     }
-    let first = selected.finalize(SpacingAllocations::None).unwrap();
+    let first = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     let second = selected
-        .finalize(allocations(&selected, &[0.0, 2.0, 0.0]))
+        .finalize(crate::LineAllocations {
+            spacing: allocations(&selected, &[0.0, 2.0, 0.0]),
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(facts(&first), [(EDGE, 0.0), (INNER, 10.0), (EDGE, 0.0)]);
     assert_eq!(facts(&second), [(EDGE, 0.0), (INNER, 12.0), (EDGE, 0.0)]);
@@ -230,10 +261,13 @@ fn collapsed_slots_keep_identity_and_each_actual_finalization_after_resources_dr
     let foreign = independently_selected.spacing_slots().next().unwrap();
     assert_ne!(foreign, slots[0]);
     let error = selected
-        .finalize(SpacingAllocations::Complete(vec![SpacingAllocation {
-            slot: foreign,
-            amount: 0.0,
-        }]))
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
+                slot: foreign,
+                amount: 0.0,
+            }]),
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap_err();
     assert_eq!(
         error.detail(),
@@ -248,8 +282,24 @@ fn collapsed_slots_keep_identity_and_each_actual_finalization_after_resources_dr
     drop(first);
     assert_eq!(facts(&second), [(EDGE, 0.0), (INNER, 12.0), (EDGE, 0.0)]);
     assert_eq!(
-        second.spacing_slots().nth(1).unwrap().slot.source_range(),
-        Range::new(3, 4)
+        second
+            .spacing_slots()
+            .nth(1)
+            .unwrap()
+            .slot
+            .pieces()
+            .map(|piece| piece.owner())
+            .collect::<Vec<_>>(),
+        [SpacingSlotOwner::Source {
+            origin: second
+                .prepared_text()
+                .origin_views()
+                .next()
+                .unwrap()
+                .handle(),
+            local: Range::new(3, 4),
+            aggregate: Range::new(3, 4),
+        }]
     );
     assert!(
         second
@@ -268,14 +318,22 @@ fn collapsed_slots_keep_identity_and_each_actual_finalization_after_resources_dr
 fn whitespace_only_discard_and_lexical_deletion_have_distinct_slot_inventories() {
     let collapsed = select(&prepare(input("   ", WhiteSpace::Collapse)), None);
     assert_eq!(collapsed.spacing_slots().len(), 1);
-    let line = collapsed.finalize(SpacingAllocations::None).unwrap();
+    let line = collapsed
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(facts(&line), [(EDGE, 0.0)]);
     assert_eq!(
         (line.feedback().advance, line.feedback().trailing_whitespace),
         (0.0, 0.0)
     );
     let error = collapsed
-        .finalize(allocations(&collapsed, &[1.0]))
+        .finalize(crate::LineAllocations {
+            spacing: allocations(&collapsed, &[1.0]),
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap_err();
     assert_eq!(
         error.detail(),
@@ -287,7 +345,10 @@ fn whitespace_only_discard_and_lexical_deletion_have_distinct_slot_inventories()
     assert_eq!(discarded.spacing_slots().len(), 0);
     assert_eq!(
         discarded
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .unwrap()
             .spacing_slots()
             .len(),
@@ -299,9 +360,17 @@ fn whitespace_only_discard_and_lexical_deletion_have_distinct_slot_inventories()
 fn retained_zero_advance_preserves_trailing_classification_and_original_owner() {
     let prepared = prepare(input(" X ", WhiteSpace::Preserve));
     let selected = select(&prepared, None);
-    let first = selected.finalize(SpacingAllocations::None).unwrap();
+    let first = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     let second = selected
-        .finalize(allocations(&selected, &[0.0, -10.0]))
+        .finalize(crate::LineAllocations {
+            spacing: allocations(&selected, &[0.0, -10.0]),
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(facts(&first), [(INNER, 10.0), (TRAILING, 10.0)]);
     assert_eq!(facts(&second), [(INNER, 10.0), (TRAILING, 0.0)]);
@@ -334,7 +403,12 @@ fn nbsp_and_real_retained_font_tab_do_not_acquire_space_slots() {
     );
     let selected = select(&prepared, None);
     assert_eq!(selected.spacing_slots().len(), 0);
-    let line = selected.finalize(SpacingAllocations::None).unwrap();
+    let line = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(line.spacing_slots().len(), 0);
     assert_eq!(line.feedback().advance, 30.0);
 }
@@ -384,7 +458,10 @@ fn neutral_controls_are_transparent_while_real_inflow_allocations_bound_spaces()
             affinity: Affinity::Before,
         });
         let line = select(&prepare(captured), None)
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(
             facts(&line),
@@ -407,7 +484,10 @@ fn neutral_controls_are_transparent_while_real_inflow_allocations_bound_spaces()
         affinity: Affinity::Before,
     });
     let line = select(&prepare(captured), None)
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(facts(&line), [(TRAILING, 10.0)]);
     assert_eq!(line.feedback().trailing_whitespace, 10.0);
@@ -443,25 +523,48 @@ fn computed_replacement_spaces_keep_actual_alternative_and_empty_source_anchors(
     let slots: Vec<_> = selected.spacing_slots().collect();
     assert_eq!(slots.len(), 2);
     assert_ne!(slots[0], slots[1]);
-    for slot in &slots {
+    assert_eq!(alternative.view().insertion_anchor().get(), 2);
+    for (slot, local) in slots.iter().zip([Range::new(0, 1), Range::new(2, 3)]) {
         assert_eq!(
-            slot.owner(),
-            SpacingSlotOwner::Alternative(alternative.clone())
+            slot.pieces().map(|piece| piece.owner()).collect::<Vec<_>>(),
+            [SpacingSlotOwner::Alternative {
+                alternative: alternative.clone(),
+                local
+            }]
         );
-        assert_eq!(slot.source_range(), Range::new(2, 2));
-        assert!(slot.participant().is_none());
+        let crate::SpacingSlotTarget::Separator(unit) = slot.target() else {
+            panic!("the inserted Spaces target is a complete separator")
+        };
+        assert_eq!(unit.pieces().len(), 1);
+        assert_eq!(
+            unit.pieces().collect::<Vec<_>>(),
+            slot.pieces().collect::<Vec<_>>()
+        );
+        assert_eq!(slot.participants().count(), 0);
     }
     assert_eq!(
         slots
             .iter()
             .map(|slot| {
-                let range = slot.presentation_range();
-                (range.start(), range.end())
+                let crate::SpacingSlotTarget::Separator(unit) = slot.target() else {
+                    panic!("the inserted Spaces target is a complete separator")
+                };
+                unit.pieces()
+                    .map(|piece| {
+                        let range = piece.presentation_range();
+                        (range.start(), range.end())
+                    })
+                    .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>(),
-        [(2, 3), (4, 5)]
+        [vec![(2, 3)], vec![(4, 5)]]
     );
-    let line = selected.finalize(SpacingAllocations::None).unwrap();
+    let line = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(facts(&line), [(INNER, 10.0), (EDGE, 0.0)]);
     assert_eq!(line.feedback().advance, 40.0);
     assert_eq!(
@@ -494,7 +597,10 @@ fn preserved_trailing_space_is_unchanged_by_a_genuine_out_of_flow_occurrence() {
         let selected = select(&prepared, None);
         for (amount, advance, trailing) in [(0.0, 20.0, 10.0), (3.0, 23.0, 13.0)] {
             let line = selected
-                .finalize(allocations(&selected, &[amount]))
+                .finalize(crate::LineAllocations {
+                    spacing: allocations(&selected, &[amount]),
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap();
             assert_eq!(facts(&line), [(TRAILING, trailing)]);
             assert_eq!(

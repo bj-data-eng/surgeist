@@ -205,6 +205,8 @@ fn fixture(case: Case<'_>) -> Fixture {
         use text::SourceProcessingEvent as E;
         let processed = Arc::new(
             text::process_contextual_source(text::ContextualSourceInput {
+                joint_flows: Vec::new(),
+                scope_alignment_limits: None,
                 computed_line_boundaries: vec![],
                 source,
                 segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -216,12 +218,18 @@ fn fixture(case: Case<'_>) -> Fixture {
                 replacements: vec![],
                 scopes: vec![
                     text::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
+                        font_reference: None,
                         topology: text::SourceProcessingTopology::Unknown,
                         trim: text::WhiteSpaceTrim::default(),
                         base_style: style,
                         used_direction: direction,
                     },
                     text::SourceProcessingScope::Inline {
+                        horizontal_inner_direction: None,
+                        alignment_boundary: None,
+                        font_reference: None,
                         style: None,
                         boundaries: None,
                         trim: text::WhiteSpaceTrim {
@@ -249,47 +257,53 @@ fn fixture(case: Case<'_>) -> Fixture {
             })
             .unwrap(),
         );
-        text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-            .unwrap()
+        text::AnalyzedSource::from_processed_paragraph(
+            processed.paragraphs().next().unwrap(),
+            text::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap()
     } else {
-        text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-            source,
-            base_style: style,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: direction,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
-            tab_reference: None,
-            origins,
-            connections: case
-                .forced_at
-                .map(|at| text::ParagraphConnection {
-                    at,
-                    kind: text::ParagraphConnectionKind::Continuous,
-                })
-                .into_iter()
-                .collect(),
-            controls,
-            boundary_policies: case
-                .forced_at
-                .map(|_| text::ParagraphBoundaryPolicy {
-                    definition: text::ParagraphBoundaryDefinition::Connection(0),
-                    preceding_wrap: case.wrap,
-                    following_wrap: case.wrap,
-                    ancestor_wrap: case.wrap,
-                })
-                .into_iter()
-                .collect(),
-            replacements: vec![],
-            anchor_order: case
-                .forced_at
-                .map(|_| text::ParagraphAnchor {
-                    item: text::ParagraphAnchorItem::Control(0),
-                    affinity: text::Affinity::Before,
-                })
-                .into_iter()
-                .collect(),
-        })
+        text::AnalyzedSource::from_paragraph(
+            text::ParagraphInput {
+                terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+                source,
+                base_style: style,
+                segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+                base_direction: direction,
+                paragraph_strut: text::ParagraphStrut::DefaultFont,
+                tab_reference: None,
+                origins,
+                connections: case
+                    .forced_at
+                    .map(|at| text::ParagraphConnection {
+                        at,
+                        kind: text::ParagraphConnectionKind::Continuous,
+                    })
+                    .into_iter()
+                    .collect(),
+                controls,
+                boundary_policies: case
+                    .forced_at
+                    .map(|_| text::ParagraphBoundaryPolicy {
+                        definition: text::ParagraphBoundaryDefinition::Connection(0),
+                        preceding_wrap: case.wrap,
+                        following_wrap: case.wrap,
+                        ancestor_wrap: case.wrap,
+                    })
+                    .into_iter()
+                    .collect(),
+                replacements: vec![],
+                anchor_order: case
+                    .forced_at
+                    .map(|_| text::ParagraphAnchor {
+                        item: text::ParagraphAnchorItem::Control(0),
+                        affinity: text::Affinity::Before,
+                    })
+                    .into_iter()
+                    .collect(),
+            },
+            text::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap()
     };
     let policies = analyzed
@@ -374,6 +388,7 @@ fn compute(fixture: &Fixture, width: layout::Available) -> layout::CompletedLayo
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     layout::compute_layout_with_flow(
@@ -524,7 +539,12 @@ fn preserve_spaces_block_end_is_conditional_and_nowrap_keeps_ordinary_measures()
                 .units()
                 .flat_map(|unit| {
                     unit.pieces()
-                        .map(|piece| piece.advance_edges())
+                        .map(|piece| {
+                            let surgeist_text::SourceRangeGeometry::Line(piece) = piece else {
+                                panic!("ordinary whitespace retains Line geometry");
+                            };
+                            piece.advance_edges()
+                        })
                         .collect::<Vec<_>>()
                 })
                 .collect();
@@ -682,7 +702,12 @@ fn collapse_removes_only_trailing_ogham_and_retains_its_original_range() {
             .units()
             .flat_map(|unit| {
                 unit.pieces()
-                    .map(|piece| piece.advance_edges())
+                    .map(|piece| {
+                        let surgeist_text::SourceRangeGeometry::Line(piece) = piece else {
+                            panic!("ordinary whitespace retains Line geometry");
+                        };
+                        piece.advance_edges()
+                    })
                     .collect::<Vec<_>>()
             })
             .collect();
@@ -771,6 +796,8 @@ fn collapsed_sibling_space_permission_controls_actual_narrow_layout() {
             use text::SourceProcessingEvent as E;
             let processed = Arc::new(
                 text::process_contextual_source(text::ContextualSourceInput {
+                    joint_flows: Vec::new(),
+                    scope_alignment_limits: None,
                     computed_line_boundaries: vec![],
                     source: source.clone(),
                     segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -791,17 +818,26 @@ fn collapsed_sibling_space_permission_controls_actual_narrow_layout() {
                     replacements: vec![],
                     scopes: vec![
                         text::SourceProcessingScope::Block {
+                            writing_axis: None,
+                            horizontal_inner_direction: None,
+                            font_reference: None,
                             topology: text::SourceProcessingTopology::Unknown,
                             trim: text::WhiteSpaceTrim::default(),
                             base_style: style(ancestor),
                             used_direction: text::ParagraphBaseDirection::LeftToRight,
                         },
                         text::SourceProcessingScope::Inline {
+                            horizontal_inner_direction: None,
+                            alignment_boundary: None,
+                            font_reference: None,
                             trim: text::WhiteSpaceTrim::default(),
                             style: Some(style(first)),
                             boundaries: None,
                         },
                         text::SourceProcessingScope::Inline {
+                            horizontal_inner_direction: None,
+                            alignment_boundary: None,
+                            font_reference: None,
                             trim: text::WhiteSpaceTrim::default(),
                             style: Some(style(second)),
                             boundaries: None,
@@ -836,6 +872,7 @@ fn collapsed_sibling_space_permission_controls_actual_narrow_layout() {
             assert_eq!(processed.processed_text().code_units(), [88, 32, 89]);
             let analyzed = text::AnalyzedSource::from_processed_paragraph(
                 processed.paragraphs().next().unwrap(),
+                text::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             let bytes = font();

@@ -18,6 +18,17 @@ mod conditional;
 pub(crate) use conditional::request_context;
 mod continuation;
 mod direction;
+pub(crate) mod scope_alignment;
+mod scope_census;
+pub use scope_alignment::{
+    LineAllocations, PreparedScopeMetrics, ScopeAlignmentAllowance, ScopeAlignmentRetention,
+    ScopeAllocation, ScopeAllocations, ScopeFrameAllocation, ScopeMetricContribution,
+    SelectedScope,
+};
+pub use scope_census::{
+    ScopeAlignmentCensus, ScopeAlignmentCensusInput, ScopeAlignmentProduct, ScopeAlignmentProducts,
+    ScopeAlignmentWeakProduct, scope_alignment_census,
+};
 mod wrapping_scope;
 pub use wrapping_scope::{
     CapturedScopeIncidence, PreparedBoundaryIncidence, WrappingScopeQueryError,
@@ -42,8 +53,10 @@ pub(crate) mod placement;
 pub(crate) mod prefix;
 pub(crate) mod prepared;
 pub(crate) mod readback;
+pub(crate) mod segments;
 pub(crate) mod selection;
 pub use continuation::HyphenationContinuation;
+pub use segments::PreparedSourceSegment;
 
 pub use conditional::{
     ConditionalDisposition, ConditionalPurpose, ConditionalStage, PhraseOverflowDecision,
@@ -66,6 +79,7 @@ pub struct PreparationOptions {
     scale: f32,
     tabs: crate::TabPreparation,
     orientation: LineOrientation,
+    baseline_reference: Option<crate::FontBaseline>,
 }
 
 impl PreparationOptions {
@@ -88,14 +102,42 @@ impl PreparationOptions {
             scale,
             tabs,
             orientation: LineOrientation::Horizontal,
+            baseline_reference: None,
         })
     }
-    /// Requests a physical preparation basis. Actual preparation admits only
-    /// Horizontal and clockwise Sideways; unsupported requests refuse atomically.
+    /// Requests a physical preparation basis. Matching issued upright analysis
+    /// admits the native Vertical profile; Mixed retains ordinary bidi with
+    /// source-selected per-run axes. Horizontal and both sideways profiles
+    /// retain horizontal composition. Unsupported inputs refuse atomically.
     #[must_use]
     pub const fn with_orientation(mut self, orientation: LineOrientation) -> Self {
         self.orientation = orientation;
         self
+    }
+    /// Requests a used named font reference for the complete preparation.
+    ///
+    /// Alphabetic is supported for Horizontal and both sideways profiles; Central
+    /// is supported for native Upright and Mixed. Unsupported combinations refuse during
+    /// preparation. Without a request, H/Sideways use raw font-design zero and
+    /// native Upright uses its existing Central reference.
+    #[must_use]
+    pub const fn with_baseline_reference(mut self, reference: crate::FontBaseline) -> Self {
+        self.baseline_reference = Some(reference);
+        self
+    }
+    /// Exact named-reference demand, independently of successful admission.
+    #[must_use]
+    pub const fn requested_baseline_reference(self) -> Option<crate::FontBaseline> {
+        self.baseline_reference
+    }
+    /// Only called after the owning preparation admits the profile/request pair.
+    pub(crate) const fn resolved_baseline_reference(self) -> Option<crate::FontBaseline> {
+        match self.orientation {
+            LineOrientation::Vertical => Some(crate::FontBaseline::Central),
+            LineOrientation::Horizontal
+            | LineOrientation::SidewaysClockwise
+            | LineOrientation::SidewaysCounterclockwise => self.baseline_reference,
+        }
     }
     /// Requested basis, authenticated again by selection and placement.
     #[must_use]
@@ -117,6 +159,7 @@ impl Default for PreparationOptions {
             scale: 1.0,
             tabs: crate::TabPreparation::FontAdvance,
             orientation: LineOrientation::Horizontal,
+            baseline_reference: None,
         }
     }
 }
@@ -143,10 +186,19 @@ impl Hash for PreparedText {
     }
 }
 impl PreparedText {
-    /// Admitted horizontal or clockwise sideways composition/placement basis.
+    /// Actual admitted horizontal, native upright, or sideways basis.
     #[must_use]
     pub fn orientation(&self) -> LineOrientation {
         self.inner.options.orientation()
+    }
+    /// Actual shared named alignment reference of this successful preparation.
+    ///
+    /// None identifies raw font-design-zero H/Sideways composition. Native
+    /// Upright observes Central even when no explicit name was requested.
+    /// Per-run paint origins may differ from this shared alignment reference.
+    #[must_use]
+    pub fn baseline_reference(&self) -> Option<crate::FontBaseline> {
+        self.inner.options.resolved_baseline_reference()
     }
     /// Exact preparation demand retained with this immutable allocation.
     #[must_use]
@@ -213,6 +265,7 @@ prepared_handle!(
     PreparedScope,
     PreparedVirtualSeparator,
     PreparedUnit,
+    PreparedCell,
     PreparedAtomic,
     PreparedControl,
     PreparedComputedLineBoundary,
@@ -227,6 +280,7 @@ prepared_handle!(
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum PreparedParticipant {
     Text(PreparedUnit),
+    Cell(PreparedCell),
     Atomic(PreparedAtomic),
     Control(PreparedControl),
     ComputedLineBoundary(PreparedComputedLineBoundary),
@@ -237,11 +291,14 @@ pub enum PreparedParticipant {
 pub enum LineOrientation {
     /// Horizontal shaping and physical x-right/y-down placement.
     Horizontal,
-    /// Upright vertical typography, currently unsupported.
+    /// Vertical line framing from matching Upright or Mixed analysis.
+    /// Actual run outline axes are retained separately.
     Vertical,
     /// Horizontal composition physically rotated 90 degrees clockwise.
     /// This does not denote CSS sideways-lr or mixed/upright typography.
-    Sideways,
+    SidewaysClockwise,
+    /// Horizontal typography presented counterclockwise by ninety degrees.
+    SidewaysCounterclockwise,
 }
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum LineStart {
@@ -280,11 +337,15 @@ pub enum TabContext {
     /// intrinsic measurement, advancing in paragraph progression.
     IntrinsicCssStops,
 }
-/// The selected profile exposes only actual supported inter-space allocation.
+/// Uniform native selected spacing operation; no computed inheritance is inferred.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum SpacingPolicy {
     None,
     Spaces,
+    /// Uniform native CSS separator policy over the declared repertoire.
+    InterWord,
+    /// Uniform native spacing at qualified visual character boundaries.
+    InterCharacter,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -339,6 +400,8 @@ impl FormattedLineUsage {
 }
 
 /// Signed flow contributions, distinct from nonnegative border/content sizes.
+/// Advance and occupied bounds use the local inline axis; before/after baseline
+/// contributions extend toward line-over/line-under respectively.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AtomicFlowAllocation {
     pub advance: f64,
@@ -347,12 +410,18 @@ pub struct AtomicFlowAllocation {
     pub occupied_start: f64,
     pub occupied_end: f64,
 }
-/// Box geometry relative to the actual final flow slot, including its resolved
-/// baseline/top/bottom baseline coordinate.
+/// Line-local box geometry relative to the actual final flow slot.
+///
+/// Local x is inline; local y runs from line-over toward line-under. Native
+/// Vertical therefore represents a physical 6x14 box with local size 14x6;
+/// this cell-coordinate conversion does not rotate the child's content.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AtomicBoxAllocation {
+    /// Border rectangle in the local inline/line-under frame.
     pub border: Rect,
+    /// Content rectangle in the same local frame.
     pub content: Rect,
+    /// Signed local line-under baseline offset relative to the flow slot.
     pub baseline: f64,
 }
 /// Line-time geometry exists only for actual in-flow participation.
@@ -372,12 +441,17 @@ pub struct AtomicAllocation {
     pub allocation: AtomicLineAllocation,
 }
 
-/// Alignment of an actual Layout-allocated atomic box or control strut.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+/// Alignment of an actual Layout-allocated atomic box or strut.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LineBoxAlignment {
     Baseline,
     Top,
     Bottom,
+    /// Match the actual baseline, then displace toward line-over by this amount.
+    /// The displacement is already allocated in used line-coordinate units,
+    /// like the accompanying box/strut geometry. Preparation scale is not
+    /// applied again. This does not execute standalone Requested metadata.
+    Shift(crate::BaselineShift),
 }
 
 /// Coupled allocated control geometry; these are Layout facts, not font metrics.
@@ -446,8 +520,10 @@ pub struct LineStrut {
 }
 
 /// One actual allocated line-box contribution, independent of a control.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct LineBoxStrut {
+    /// Authentic captured owner of this own-box contribution; None is common line.
+    pub scope: Option<crate::CapturedScope>,
     pub metrics: LineStrut,
     pub alignment: LineBoxAlignment,
 }
@@ -474,6 +550,8 @@ pub enum PreparedTermination {
 /// together by `PreparedText::select` before a selected result is issued.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LineSelectionRequest {
+    /// The genuine prepared structural interval owning this selection.
+    pub segment: PreparedSourceSegment,
     pub start: PreparedBoundary,
     pub end: PreparedBoundary,
     pub participants: Vec<PreparedParticipant>,
@@ -490,6 +568,8 @@ pub struct LineSelectionRequest {
     pub line_box_struts: Vec<LineBoxStrut>,
 }
 
+/// An immutable actual selected shaping basis with complete spacing handles.
+/// Allocation finalization reuses its retained output and resources.
 #[derive(Clone)]
 pub struct SelectedLine {
     pub(crate) inner: Arc<SelectedData>,
@@ -526,14 +606,120 @@ impl PartialEq for SpacingSlot {
 }
 impl Eq for SpacingSlot {}
 
-/// The actual preparation-issued owner of one selected presentation SPACE.
+/// One exact original, alternative-local or generated contribution to a slot.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SpacingSlotOwner {
-    Unit(PreparedUnit),
-    Alternative(PreparedAlternative),
+    Source {
+        origin: PreparedOrigin,
+        local: Range,
+        aggregate: Range,
+    },
+    Alternative {
+        alternative: PreparedAlternative,
+        local: Range,
+    },
+    Control(PreparedControl),
+    VirtualSeparator(PreparedVirtualSeparator),
+    Atomic(PreparedAtomic),
 }
 
-/// The executed line-edge and trailing classification of a selected SPACE.
+/// Exact ordered piece of a selected unit, without a fabricated source hull.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SpacingSlotPiece {
+    pub(crate) owner: SpacingSlotOwner,
+    pub(crate) presentation: PresentationRange,
+}
+impl SpacingSlotPiece {
+    #[must_use]
+    pub fn owner(&self) -> SpacingSlotOwner {
+        self.owner.clone()
+    }
+    #[must_use]
+    pub const fn presentation_range(&self) -> PresentationRange {
+        self.presentation
+    }
+}
+
+/// Whole-unit provider geometry, never an apportioned scalar width.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SpacingSlotGeometry {
+    Boundary(SpacingBoundaryGeometry),
+    Independent { intrinsic_advance: f64 },
+    SharedProviderGroup,
+}
+
+/// Actual movement admission at a visual character boundary.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SpacingBoundaryGeometry {
+    Independent,
+    ProtectedRequired,
+    ProtectedCursive,
+    Constrained,
+}
+
+/// Exact target of an issued spacing allocation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SpacingSlotTarget {
+    Separator(SpacingUnit),
+    Boundary {
+        visual_before: SpacingUnit,
+        visual_after: SpacingUnit,
+    },
+}
+
+/// A complete target unit retaining its selected source/atomic custody.
+#[derive(Clone)]
+pub struct SpacingUnit {
+    pub(crate) selected: Arc<selection::SelectedData>,
+    pub(crate) slot: usize,
+    pub(crate) side: usize,
+}
+impl fmt::Debug for SpacingUnit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SpacingUnit")
+            .field("slot", &self.slot)
+            .field("side", &self.side)
+            .finish_non_exhaustive()
+    }
+}
+impl PartialEq for SpacingUnit {
+    fn eq(&self, other: &Self) -> bool {
+        self.slot == other.slot
+            && self.side == other.side
+            && Arc::ptr_eq(&self.selected, &other.selected)
+    }
+}
+impl Eq for SpacingUnit {}
+
+/// Actual terminal dependency left neutral by the natural operation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SpacingDeferredCause {
+    MissingTerminalBlockEdge,
+    NonBlockParagraphBoundary,
+}
+impl SpacingDeferredCause {
+    pub(crate) fn error(self) -> crate::Error {
+        protocol_error(match self {
+            Self::MissingTerminalBlockEdge => {
+                ProtocolError::MissingPhaseTwoContext(PhaseTwoContext::TerminalBlockEdge)
+            }
+            Self::NonBlockParagraphBoundary => ProtocolError::UnsupportedContext {
+                field: ProtocolContextField::CssParagraphBoundary,
+            },
+        })
+    }
+}
+
+/// Actual alignment response, independently of intrinsic geometry admission.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SpacingStretchability {
+    Excluded,
+    Direct,
+    TabDependent,
+    Deferred(SpacingDeferredCause),
+}
+
+/// Executed line-edge and trailing classification of a selected candidate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SpacingSlotDisposition {
     DiscardedAtLineEdge,
@@ -541,13 +727,34 @@ pub enum SpacingSlotDisposition {
 }
 
 /// Immutable finalization feedback for one exact selected slot. `advance` is
-/// the resulting logical contribution, including its admitted allocation;
+/// the resulting unit contribution or boundary gap, including its allocation;
 /// canonical provider glyph advances remain available through glyph readback.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SpacingSlotFeedback {
     pub slot: SpacingSlot,
     pub disposition: SpacingSlotDisposition,
     pub advance: f64,
+    pub geometry: SpacingSlotGeometry,
+    pub stretchability: SpacingStretchability,
+    pub traversal_order: usize,
+    pub authored_word_spacing: f64,
+    pub authored_letter_spacing: f64,
+    pub allocation: f64,
+}
+impl SpacingSlotFeedback {
+    /// Known positive expansion admission; Deferred still needs richer inspection.
+    #[must_use]
+    pub fn can_expand(&self) -> bool {
+        matches!(self.disposition, SpacingSlotDisposition::Retained { .. })
+            && matches!(
+                self.stretchability,
+                SpacingStretchability::Direct | SpacingStretchability::TabDependent
+            )
+            && (self.slot.selected.request.context.spacing == SpacingPolicy::Spaces
+                || self.geometry
+                    == SpacingSlotGeometry::Boundary(SpacingBoundaryGeometry::Independent)
+                || matches!(self.geometry, SpacingSlotGeometry::Independent { intrinsic_advance } if intrinsic_advance != 0.0))
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -599,8 +806,8 @@ impl PartialEq for FinalizedFragment {
 impl Eq for FinalizedFragment {}
 
 /// Physical location of local x=0 on the line baseline, not its top-left.
-/// Horizontal uses (inline_origin, baseline); clockwise Sideways uses
-/// (baseline, inline_origin). The baseline is a cross-axis coordinate.
+/// Horizontal uses (inline_origin, baseline); Vertical and both sideways profiles
+/// use (baseline, inline_origin). The baseline is a cross-axis coordinate.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LineAnchor {
     pub inline_origin: f64,
@@ -609,8 +816,11 @@ pub struct LineAnchor {
 #[derive(Clone, Debug, PartialEq)]
 pub struct AtomicPlacement {
     pub occurrence: PreparedAtomic,
+    /// Actual physical border rectangle; in-flow geometry must match the finalized cell.
     pub border: Rect,
+    /// Actual physical content rectangle in the same placement frame.
     pub content: Rect,
+    /// Physical cross-axis baseline: y for Horizontal, x for Vertical or Sideways.
     pub baseline: f64,
 }
 #[derive(Clone, Debug, PartialEq)]
@@ -637,11 +847,7 @@ impl PartialEq for NonFormattedLine {
     fn eq(&self, other: &Self) -> bool {
         self.line.inner.selected.metric_policy == other.line.inner.selected.metric_policy
             && self.line.inner.selected.request == other.line.inner.selected.request
-            && self
-                .line
-                .spacing_slots()
-                .map(|slot| slot.advance)
-                .eq(other.line.spacing_slots().map(|slot| slot.advance))
+            && self.line.inner.data.spacing_amounts == other.line.inner.data.spacing_amounts
     }
 }
 
@@ -702,6 +908,10 @@ pub struct LineFeedback {
     pub ascent: f64,
     pub descent: f64,
     pub line_height: f64,
+    /// Signed line-local coordinate from the line-over edge to the shared baseline.
+    /// Native Vertical uses its resolved Central reference; Horizontal and
+    /// both sideways profiles use their preparation's raw or named reference. This
+    /// is distinct from any displaced per-font paint origin.
     pub baseline: f64,
 }
 #[derive(Clone, Debug, PartialEq)]
@@ -709,15 +919,21 @@ pub struct AtomicSlotFeedback {
     pub occurrence: PreparedAtomic,
     /// Actual line-local flow baseline, before physical line-anchor mapping.
     pub origin: Point,
+    /// Actual cumulative scope contribution, positive toward line-over.
+    /// In-flow origins already contain it; OOF static-anchor policy consumes
+    /// this contribution once without reconstructing it from an absolute slot.
+    pub scope_displacement: crate::BaselineShift,
     pub allocation: AtomicLineAllocation,
 }
 
 /// Semantic capability kind used by an exact protocol admission diagnostic.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProtocolHandleKind {
+    SourceSegment,
     WordPortion,
     Origin,
     Unit,
+    Cell,
     Atomic,
     Control,
     ComputedLineBoundary,
@@ -732,6 +948,7 @@ pub enum ProtocolHandleKind {
 pub enum ProtocolContextField {
     BaseDirection,
     Orientation,
+    BaselineReference,
     LineStart,
     LineEnd,
     TabStops,
@@ -745,6 +962,13 @@ pub enum ProtocolContextField {
 /// Actual invalid association or incomplete input; no caller ordinal issues a capability.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ProtocolError {
+    InvalidSourceSegment {
+        segment: usize,
+    },
+    MismatchedSourceSegment {
+        expected: usize,
+        actual: usize,
+    },
     WrappingScopeQuery {
         reason: WrappingScopeQueryError,
     },
@@ -873,11 +1097,6 @@ pub enum ProtocolError {
     },
     MismatchedContext {
         field: ProtocolContextField,
-    },
-    /// The bounded clockwise sideways profile cannot place independent boxes.
-    UnsupportedSidewaysAtomic {
-        /// Actual original box occurrence in this paragraph, including out-of-flow.
-        occurrence: usize,
     },
     InvalidAtomicGeometry {
         occurrence: usize,

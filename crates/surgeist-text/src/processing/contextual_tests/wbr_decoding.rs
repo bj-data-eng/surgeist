@@ -94,7 +94,11 @@ fn none_wbr_keeps_two_original_units_through_public_preparation_and_placement() 
     let processed = Arc::new(process_contextual_source(p).unwrap());
     assert_eq!(processed.processed_text().code_units(), [0xd840, 0xdc00]);
     let view = processed.paragraphs().next().unwrap();
-    let analyzed = AnalyzedSource::from_processed_paragraph(view.clone()).unwrap();
+    let analyzed = AnalyzedSource::from_processed_paragraph(
+        view.clone(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(
         analyzed.graphemes().collect::<Vec<_>>(),
         [Range::new(0, 1), Range::new(1, 2)]
@@ -186,6 +190,9 @@ fn ordinary_origin_inline_and_out_of_flow_seams_keep_an_intact_scalar() {
             0 => {}
             1 => {
                 p.scopes.push(SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: WhiteSpaceTrim::default(),
                     style: None,
                     boundaries: None,
@@ -216,7 +223,11 @@ fn ordinary_origin_inline_and_out_of_flow_seams_keep_an_intact_scalar() {
         }
         let processed = Arc::new(process_contextual_source(p).unwrap());
         let view = processed.paragraphs().next().unwrap();
-        let analyzed = AnalyzedSource::from_processed_paragraph(view.clone()).unwrap();
+        let analyzed = AnalyzedSource::from_processed_paragraph(
+            view.clone(),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         assert_eq!(analyzed.graphemes().collect::<Vec<_>>(), [Range::new(0, 2)]);
         let prepared = prepare(&mut system(), view);
         assert_eq!(
@@ -239,7 +250,11 @@ fn none_wbr_preserves_exact_ax_refusal_for_isolated_original_units() {
     );
     let processed = Arc::new(process_contextual_source(p).unwrap());
     let view = processed.paragraphs().next().unwrap();
-    let analyzed = AnalyzedSource::from_processed_paragraph(view.clone()).unwrap();
+    let analyzed = AnalyzedSource::from_processed_paragraph(
+        view.clone(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let mut state = Accessibility::new(10);
     let parent = accesskit::NodeId(630012);
     let expected = ErrorDetail::AccessibilityIllFormedSource {

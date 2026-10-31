@@ -104,6 +104,8 @@ impl<S: l::LayoutScalar> Fixture<S> {
         events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
         let capture = Arc::new(
             t::process_contextual_source(t::ContextualSourceInput {
+                joint_flows: Vec::new(),
+                scope_alignment_limits: None,
                 source: source.clone(),
                 segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
                 envelope: t::SourceProcessingEnvelope::Complete,
@@ -147,6 +149,9 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 replacements: vec![],
                 computed_line_boundaries: vec![],
                 scopes: vec![t::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
+                    font_reference: None,
                     topology: t::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: style,
@@ -160,9 +165,11 @@ impl<S: l::LayoutScalar> Fixture<S> {
             })
             .unwrap(),
         );
-        let analyzed =
-            t::AnalyzedSource::from_processed_paragraph(capture.paragraphs().next().unwrap())
-                .unwrap();
+        let analyzed = t::AnalyzedSource::from_processed_paragraph(
+            capture.paragraphs().next().unwrap(),
+            t::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let policies = analyzed
             .wrapping_relations()
             .filter(|r| r.ancestor_wrap().is_none())
@@ -182,7 +189,14 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 t::PreparationOptions::default(),
             )
             .unwrap();
-        assert_eq!(prepared.captured_paragraph(), capture.captured_paragraph(0));
+        assert_eq!(
+            prepared
+                .captured_owner()
+                .unwrap()
+                .members()
+                .collect::<Vec<_>>(),
+            vec![capture.captured_paragraph(0).unwrap()]
+        );
         assert_eq!(prepared.origin_views().count(), ranges.len());
         assert_eq!(prepared.control_views().count(), usize::from(forced_groups));
         assert_eq!(prepared.atomic_views().count(), 0);
@@ -284,6 +298,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
             0,
             vec![self.binding.clone()],
             l::WrappingInput::default(),
+            Vec::new(),
         )
         .unwrap();
         let request = l::LayoutRootRequestOf::viewport(l::Size::new(
@@ -444,7 +459,12 @@ fn characterize<S: l::LayoutScalar>(
     expected: &[(t::Range, f64, t::LineEnd)],
 ) {
     let fixture = Fixture::<S>::new(direction, wrap, forced);
-    let before = fixture.prepared.captured_paragraph();
+    let before = fixture
+        .prepared
+        .captured_owner()
+        .unwrap()
+        .members()
+        .collect::<Vec<_>>();
     let batch = fixture.compute();
     fixture.assert_lines(&batch, expected, direction);
     let replay = fixture.compute();
@@ -453,7 +473,15 @@ fn characterize<S: l::LayoutScalar>(
         batch.placed_text()[0].layout().key(),
         replay.placed_text()[0].layout().key()
     );
-    assert_eq!(fixture.prepared.captured_paragraph(), before);
+    assert_eq!(
+        fixture
+            .prepared
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        before
+    );
     fixture.assert_lines(&batch, expected, direction);
 }
 #[test]
@@ -550,6 +578,7 @@ fn compute_changed_wrap_style<S: l::LayoutScalar>(
         0,
         vec![fixture.binding.clone()],
         l::WrappingInput::default(),
+        Vec::new(),
     )
     .unwrap();
     let request = l::LayoutRootRequestOf::viewport(l::Size::new(

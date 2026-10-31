@@ -89,8 +89,8 @@ fn numeric_balance_uses_real_capacity_without_a_wrapping_context() {
             assert_eq!(auto.inline_extent, S::from_f64(60.0));
             assert_eq!(balance.inline_extent, S::from_f64(40.0));
             assert_eq!(balance.block_extent, S::from_f64(20.0));
-            assert_eq!(balance.first_baseline, Some(S::from_f64(8.0)));
-            assert_eq!(balance.last_baseline, Some(S::from_f64(18.0)));
+            assert_eq!(balance.baselines.numeric().first, Some(S::from_f64(8.0)));
+            assert_eq!(balance.baselines.numeric().last, Some(S::from_f64(18.0)));
             assert!(balance.line_bands.iter().all(|band| {
                 band.inline_start == S::ZERO && band.inline_end == S::from_f64(60.0)
             }));
@@ -153,7 +153,7 @@ fn numeric_balance_keeps_forced_groups_intrinsics_and_real_zero_atomics() {
             let zero = layout_mixed_inline_run(zero).unwrap();
             assert_eq!(zero.atomics.len(), 1);
             assert_eq!(zero.line_bands.len(), 1);
-            assert_eq!(zero.first_baseline, Some(S::ZERO));
+            assert_eq!(zero.baselines.numeric().first, Some(S::ZERO));
             assert_eq!(zero.block_extent, S::ZERO);
         }
     }

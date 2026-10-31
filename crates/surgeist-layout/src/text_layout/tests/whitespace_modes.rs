@@ -48,6 +48,7 @@ fn batch<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     compute_layout_with_flow(
@@ -107,12 +108,47 @@ fn intrinsic<S: LayoutScalar>(
 ) -> super::super::run::Output<u32, S> {
     let binding = p.binding(0);
     let size = Size::new(S::from_f64(100.0), S::from_f64(10.0));
+    let tree = p.flat_text_tree::<S>(
+        0,
+        NodeInputOf {
+            display: Display::Block,
+            writing_mode: WritingMode::HorizontalTb,
+            direction: if rtl { Direction::Rtl } else { Direction::Ltr },
+            line_box_direction_policy: crate::LineBoxDirectionPolicy::Normal,
+            ..NodeInputOf::default()
+        },
+    );
+    let flow = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![binding],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+        Vec::new(),
+    )
+    .unwrap();
+    let [row] = flow.associations.runs() else {
+        panic!("flat intrinsic fixture has one actual admitted native run");
+    };
+    let admitted = flow.associations.admitted_run(&flow.paragraphs, row);
+    let binding = admitted.binding;
     super::super::run::layout(
-        &binding,
-        &Default::default(),
+        &admitted,
+        &flow.associations,
         &[],
         &[],
         super::super::run::Context {
+            scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
+                flow.scope_alignments.clone(),
+            ),
+            orientation: super::super::run::text_orientation(
+                WritingMode::HorizontalTb,
+                &binding.prepared,
+            )
+            .unwrap_or_else(|_| panic!("horizontal fixture must resolve its Text orientation")),
+            inline_baseline_context: crate::InlineBaselineContext::Physical,
             groups: crate::group_alignment::Snapshot::default(),
             wrap_style: crate::TextWrapStyle::Auto,
             wrapping: None,
@@ -126,8 +162,7 @@ fn intrinsic<S: LayoutScalar>(
                 size,
             },
             containing_size: size,
-            inset: Point::ZERO,
-            right_inset: S::ZERO,
+            content_insets: crate::Edges::ZERO,
             cursor_block: S::ZERO,
             axes: FlowAxes::new(
                 WritingMode::HorizontalTb,

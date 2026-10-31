@@ -83,6 +83,7 @@ impl PartialEq for CheckpointReceipt {
         // authentic receipt for observation without comparing its allocation.
         self.line.selected_line().request() == other.line.selected_line().request()
             && self.amounts == other.amounts
+            && self.line.scope_allocations() == other.line.scope_allocations()
             && self.boxes == other.boxes
     }
 }
@@ -140,7 +141,10 @@ pub(super) fn resolve(
             text::PhaseTwoContext::LastFormattedLine if value.following => Ok(Some(false)),
             text::PhaseTwoContext::LastFormattedLine => {
                 let completion = value.recipe.completion().view().boundary();
-                value.external = input.formatted.resolve_external(&completion, None);
+                value.external =
+                    input
+                        .formatted
+                        .resolve_external(&input.segment, &completion, None);
                 Ok(value.external.as_ref().map(FormattedTailAssignment::last))
             }
             _ => Ok(None),
@@ -152,9 +156,10 @@ pub(super) fn resolve(
     match role {
         text::PhaseTwoContext::FirstFormattedLine => Ok(Some(entry.current_first)),
         text::PhaseTwoContext::LastFormattedLine => {
-            *assignment = input
-                .formatted
-                .resolve(&request.end, request.alternative.as_ref());
+            *assignment =
+                input
+                    .formatted
+                    .resolve(&input.segment, &request.end, request.alternative.as_ref());
             Ok(assignment.as_ref().map(FormattedTailAssignment::last))
         }
         _ => Ok(None),
@@ -167,6 +172,7 @@ fn prospective(
     entry: &RoleEntry<'_>,
 ) -> Result<ProspectiveRoleBasis, FitError> {
     let recipe = input.prepared.measurement_flow(
+        &input.segment,
         entry.query_start,
         entry.query_incoming,
         &request.termination,
@@ -462,7 +468,22 @@ fn observe(
                 boundary,
             });
     }
-    Ok(input.prepared.observe_flow(segment, &request)?)
+    let operation = input.scope_alignments.begin(
+        text::ScopeAlignmentCensusInput::Flow {
+            prepared: input.prepared,
+            segment,
+            request: &request,
+        },
+        0,
+    )?;
+    Ok(match &operation {
+        Some(operation) => input.prepared.observe_flow_with_scope_allowance(
+            segment,
+            &request,
+            operation.allowance()?,
+        )?,
+        None => input.prepared.observe_flow(segment, &request)?,
+    })
 }
 
 fn invalid_flow() -> FitError {

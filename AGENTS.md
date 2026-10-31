@@ -12,13 +12,13 @@ they do not establish separate ownership or delivery workflows.
 Keep guides as concise discovery maps. Detailed contracts belong with their
 owning documentation/source; load only material relevant to the current task.
 
-Use [surgeist-admin](.agents/skills/surgeist-admin/SKILL.md) for Project state,
+Use [surgeist-admin](.agents/skills/surgeist-admin/SKILL.md) for issues and labels,
 pull requests, local working material and pause/resume handoffs. PISCT owns
 engineering methods. Apply `$pisct:invariants` to engineering and
 `$pisct:rust-modeling` to Rust models and APIs. Surgeist-owned Rust prohibits
 executable `unsafe`.
 
-The coordinator owns issue/Project updates, staging, commits, integration and
+The coordinator owns issue and label updates, staging, commits, integration and
 publication within the authorized scope. Use `$pisct:holistic-review` for final
 independent integration review.
 
@@ -40,7 +40,7 @@ and current source establishes behavior.
 | --- | --- |
 | Root identity, MSRV, features, facade dependencies, workspace/default members | [Cargo.toml](Cargo.toml) |
 | Product dependency resolution | [Cargo.lock](Cargo.lock) |
-| Maintained Harfrust dependency source | [vendor/harfrust/PROVENANCE.md](vendor/harfrust/PROVENANCE.md) |
+| Maintained shaping source and provenance | [crates/surgeist-shaper/PROVENANCE.md](crates/surgeist-shaper/PROVENANCE.md) |
 | Crate identity, dependencies, features and compatibility | Each `crates/surgeist-*/Cargo.toml` |
 | Domain contracts and focused checks | Affected crate's `AGENTS.md`, `src/lib.rs`, README, tests and tracked scripts |
 | Facade and root package tests | [src/lib.rs](src/lib.rs), [tests/](tests/) |

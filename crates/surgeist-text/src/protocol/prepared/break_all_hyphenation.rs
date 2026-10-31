@@ -24,7 +24,8 @@ fn style(mode: WordBreak, indication: &str) -> Style {
 
 fn prepare(input: ParagraphInput, ancestor: Wrap) -> PreparedText {
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(input).unwrap(),
+        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap(),
         ancestor,
     );
     let mut system = System::new(SystemOptions {
@@ -67,6 +68,15 @@ fn selection(
     };
     context.spacing = SpacingPolicy::None;
     LineSelectionRequest {
+        segment: {
+            let mut segments = p.source_segments();
+            assert_eq!(
+                segments.len(),
+                1,
+                "this fixture has one genuine source segment"
+            );
+            segments.next().unwrap()
+        },
         start: p.boundary_views().next().unwrap().handle(),
         participants: p
             .participants()
@@ -126,7 +136,10 @@ fn shy_local_wrap_cannot_lend_an_ordinary_cut_its_missing_ancestor_permission() 
                 let line = p
                     .select(request)
                     .unwrap()
-                    .finalize(SpacingAllocations::None)
+                    .finalize(crate::LineAllocations {
+                        spacing: SpacingAllocations::None,
+                        scopes: crate::ScopeAllocations::None,
+                    })
                     .unwrap();
                 assert_eq!(line.feedback().advance, 20.0);
             }
@@ -215,7 +228,10 @@ fn normal_empty_manual_indication_is_an_admitted_choice_and_partition() {
     let line = p
         .select(request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 10.0);
     assert_eq!(
@@ -317,7 +333,10 @@ fn atomic_ordinary_permission_unions_with_manual_without_vetoing_it_when_false()
                 let ordinary = p
                     .select(request.clone())
                     .unwrap()
-                    .finalize(SpacingAllocations::None)
+                    .finalize(crate::LineAllocations {
+                        spacing: SpacingAllocations::None,
+                        scopes: crate::ScopeAllocations::None,
+                    })
                     .unwrap();
                 assert_eq!(ordinary.feedback().advance, 10.0);
                 assert!(ordinary.selected_line().request().alternative.is_none());
@@ -334,7 +353,10 @@ fn atomic_ordinary_permission_unions_with_manual_without_vetoing_it_when_false()
             let line = p
                 .select(manual)
                 .unwrap()
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap();
             assert_eq!(line.feedback().advance, 20.0);
             assert!(line.selected_line().request().alternative.is_some());
@@ -385,8 +407,12 @@ fn standalone_atomic_fallback_does_not_lend_the_source_shy_an_oof_permission() {
             2,
             Size::new(3.0, 4.0),
         ));
-        let analyzed =
-            AnalyzedSource::new(source.clone(), style(WordBreak::BreakAll, "X")).unwrap();
+        let analyzed = AnalyzedSource::new(
+            source.clone(),
+            style(WordBreak::BreakAll, "X"),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let p = system()
             .prepare(&analyzed, PreparationOptions::default())
             .unwrap();

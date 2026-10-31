@@ -78,12 +78,18 @@ fn captured_with_profile(
     let mut source = Source::new(raw);
     source.span(text::Range::new(0, units.len()), style.clone());
     let mut scopes = vec![text::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
+        font_reference: None,
         topology,
         trim: Default::default(),
         base_style: style.clone(),
         used_direction: direction,
     }];
     scopes.extend(ranges.iter().map(|_| text::SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
+        alignment_boundary: None,
+        font_reference: None,
         trim: Default::default(),
         style: Some(style.clone()),
         boundaries: None,
@@ -198,6 +204,8 @@ fn captured_with_profile(
         .collect();
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source,
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -216,9 +224,11 @@ fn captured_with_profile(
         })
         .unwrap(),
     );
-    let analyzed =
-        text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-            .unwrap();
+    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, style.wrap);
     let mut system = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,
@@ -228,9 +238,13 @@ fn captured_with_profile(
     let prepared = system
         .prepare(&analyzed, text::PreparationOptions::default())
         .unwrap();
-    let scopes = prepared
-        .captured_paragraph()
+    let members = prepared
+        .captured_owner()
         .unwrap()
+        .members()
+        .collect::<Vec<_>>();
+    assert_eq!(members.len(), 1);
+    let scopes = members[0]
         .scope_intersections()
         .map(|i| i.scope())
         .filter(|s| s.role() == text::ScopeRole::Inline)
@@ -340,6 +354,7 @@ fn policies(fixture: &Captured, values: &[WrapInside]) -> Vec<WrappingScopeInput
         .zip(values)
         .map(|(scope, &wrap_inside)| WrappingScopeInput::Captured {
             metric_contribution: Some(InlineBoxMetricContribution::Strut(text::LineBoxStrut {
+                scope: None,
                 metrics: text::LineStrut {
                     baseline: 8.0,
                     line_extent: 10.0,
@@ -368,6 +383,7 @@ fn compute<S: LayoutScalar>(
             scopes: policies(fixture, values),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     compute_layout_with_flow(&input, 0, request_at(width)).unwrap()
@@ -471,6 +487,7 @@ fn outside_and_nested<S: LayoutScalar>() {
                 scopes: vec![pair(10000, 10001, WrapInside::Avoid)],
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let matched = compute_layout_with_flow(
@@ -846,6 +863,7 @@ fn numeric<S: LayoutScalar>() {
                     scopes,
                     child_order: Vec::new(),
                 },
+                Vec::new(),
             )
             .unwrap();
             let batch = compute_layout_with_flow(
@@ -951,6 +969,7 @@ fn malformed_native_scope_definitions_refuse_without_guessing_flat_pairs() {
                 scopes: definitions,
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .err()
         .expect("invalid normalized scope refuses");
@@ -969,6 +988,7 @@ fn malformed_native_scope_definitions_refuse_without_guessing_flat_pairs() {
             scopes: vec![pair(6, 7, WrapInside::Avoid), pair(2, 5, WrapInside::Avoid)],
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .err()
     .expect("crossing actual endpoint pairs refuse");
@@ -1009,6 +1029,7 @@ fn foreign_canonical_scope_is_not_reinterpreted_by_matching_source_or_ordinal() 
             scopes: policies(&other, &[WrapInside::Avoid]),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .err()
     .expect("different capture cannot certify this source");
@@ -1032,6 +1053,7 @@ fn foreign_canonical_scope_is_not_reinterpreted_by_matching_source_or_ordinal() 
             }],
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .err()
     .expect("block scope is not an inline declaration");
@@ -1050,6 +1072,7 @@ fn foreign_canonical_scope_is_not_reinterpreted_by_matching_source_or_ordinal() 
             scopes: policies(&one, &[WrapInside::Avoid]),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .err()
     .expect("numeric flow does not manufacture capture");
@@ -1084,6 +1107,7 @@ fn native_pair_roles_do_not_override_a_different_complete_canonical_box() {
             scopes: vec![pair(10000, 10003, WrapInside::Avoid)],
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .err()
     .expect("known canonical pairing is authoritative");
@@ -1101,6 +1125,7 @@ fn native_pair_roles_do_not_override_a_different_complete_canonical_box() {
             scopes: vec![pair(10000, 10001, WrapInside::Avoid)],
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .expect("the actual canonical pair remains admitted");
 
@@ -1130,6 +1155,7 @@ fn native_pair_roles_do_not_override_a_different_complete_canonical_box() {
             scopes: vec![],
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .expect("standalone source controls remain a valid neutral input");
     let error = LayoutFlowInput::try_new(
@@ -1140,6 +1166,7 @@ fn native_pair_roles_do_not_override_a_different_complete_canonical_box() {
             scopes: vec![pair(10000, 10001, WrapInside::Avoid)],
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .err()
     .expect("the requested native pair crosses the actual source box");
@@ -1198,7 +1225,10 @@ fn captured_physical_interior_tcu_pairs_admit_and_wrap_only_at_whole_units() {
             .find(|offer| offer.kind() == text::PreparedBreakKind::Allowed)
             .unwrap()
             .handle();
-        let search = prepared
+        let mut source_segments = prepared.source_segments();
+        let source_segment = source_segments.next().expect("fixture source segment");
+        assert_eq!(source_segments.count(), 0, "one structural fixture segment");
+        let search = source_segment
             .conditional_search(
                 &start,
                 None,
@@ -1218,6 +1248,7 @@ fn captured_physical_interior_tcu_pairs_admit_and_wrap_only_at_whole_units() {
                 scopes: policies(&f, &[WrapInside::Avoid; 2]),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .expect("actual canonical pairs inside the shared unit associate strictly");
         // Ahem contains canonical precomposed A-acute (glyph165, one em).
@@ -1367,24 +1398,25 @@ fn spacing<S: LayoutScalar>() {
         false,
         AHEM,
     );
-    // Each retained Ahem10 advance plus the authored5 letter spacing is15.
-    // The scope comparison must use finalized measures, not glyph10 alone.
+    // n retained Ahem10 cells have n-1 internal5px gaps: three use40,
+    // two use25. A glyph-only estimate would incorrectly admit four at40.
+    // Scope preference follows actual fit, with both line-edge gaps suppressed.
     let auto = compute::<S>(
         &f,
         &[WrapInside::Auto],
-        AvailableOf::definite(S::from_f64(45.0)),
+        AvailableOf::definite(S::from_f64(40.0)),
         false,
     );
     let avoid = compute::<S>(
         &f,
         &[WrapInside::Avoid],
-        AvailableOf::definite(S::from_f64(45.0)),
+        AvailableOf::definite(S::from_f64(40.0)),
         false,
     );
     assert_eq!(cuts(&auto), [3, 6]);
     assert_eq!(cuts(&avoid), [2, 5, 6]);
-    assert_eq!(finalized(&auto)[0].measurements().fit().advance(), 45.0);
-    assert_eq!(finalized(&avoid)[0].measurements().fit().advance(), 30.0);
+    assert_eq!(finalized(&auto)[0].measurements().fit().advance(), 40.0);
+    assert_eq!(finalized(&avoid)[0].measurements().fit().advance(), 25.0);
     assert_ascii_custody(&avoid, &f, "ABCDEF");
 }
 
@@ -1470,6 +1502,7 @@ fn receiving<S: LayoutScalar>() {
                     edges: Default::default(),
                     metric_contribution: Some(InlineBoxMetricContribution::Strut(
                         text::LineBoxStrut {
+                            scope: None,
                             metrics: text::LineStrut {
                                 baseline: 8.0,
                                 line_extent: 10.0,
@@ -1480,6 +1513,7 @@ fn receiving<S: LayoutScalar>() {
                 }],
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let batch = compute_layout_with_flow(
@@ -1578,6 +1612,7 @@ fn receiving<S: LayoutScalar>() {
                     edges: Default::default(),
                     metric_contribution: Some(InlineBoxMetricContribution::Strut(
                         text::LineBoxStrut {
+                            scope: None,
                             metrics: text::LineStrut {
                                 baseline: 8.0,
                                 line_extent: 10.0,
@@ -1588,6 +1623,7 @@ fn receiving<S: LayoutScalar>() {
                 }],
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         for (width, cut, automatic) in [(75.0, 5, true), (85.0, 3, false)] {
@@ -1676,6 +1712,7 @@ fn replacement_and_terminal<S: LayoutScalar>() {
             scopes: vec![pair(2, 5, WrapInside::Avoid)],
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(
@@ -1805,6 +1842,7 @@ fn atomic_and_float<S: LayoutScalar>() {
             scopes: vec![pair(2, 5, WrapInside::Avoid)],
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(
@@ -1865,6 +1903,7 @@ fn atomic_and_float<S: LayoutScalar>() {
             scopes: vec![pair(2, 5, WrapInside::Avoid)],
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(
@@ -2086,6 +2125,7 @@ fn warm_policy<S: LayoutScalar>() {
                 scopes: policies(&f, &[policy]),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         compute_layout_with_flow(
@@ -2189,6 +2229,9 @@ fn assert_mixed_facts(f: &Captured, reverse: bool) {
         before(&exit, &end);
     }
     let p = &f.binding.prepared;
+    let mut segments = p.source_segments();
+    let segment = segments.next().expect("fixture source segment");
+    assert!(segments.next().is_none(), "one structural fixture segment");
     let cut = p
         .opportunity_views()
         .find(|offer| {
@@ -2207,7 +2250,7 @@ fn assert_mixed_facts(f: &Captured, reverse: bool) {
             .unwrap()
     );
     assert!(
-        p.boundary_inside_captured_scope(&cut, &f.scopes[0])
+        p.boundary_inside_captured_scope(&segment, &cut, &f.scopes[0])
             .unwrap()
     );
     for at in [1, 7] {
@@ -2221,7 +2264,7 @@ fn assert_mixed_facts(f: &Captured, reverse: bool) {
             .unwrap()
             .boundary();
         assert_eq!(
-            p.boundary_inside_captured_scope(&cut, &f.scopes[0])
+            p.boundary_inside_captured_scope(&segment, &cut, &f.scopes[0])
                 .unwrap(),
             reverse
         );
@@ -2281,6 +2324,7 @@ fn mixed_nested<S: LayoutScalar>(reverse: bool) -> Vec<String> {
         // Endpoint-free trials still need that same-box metric witness.
         let native = WrappingScopeInput::NativePair {
             metric_contribution: Some(InlineBoxMetricContribution::Strut(text::LineBoxStrut {
+                scope: None,
                 metrics: text::LineStrut {
                     baseline: 8.0,
                     line_extent: 10.0,
@@ -2296,6 +2340,7 @@ fn mixed_nested<S: LayoutScalar>(reverse: bool) -> Vec<String> {
         // and absolute line-height; supply its own native Baseline allocation.
         let canonical = WrappingScopeInput::Captured {
             metric_contribution: Some(InlineBoxMetricContribution::Strut(text::LineBoxStrut {
+                scope: None,
                 metrics: text::LineStrut {
                     baseline: 8.0,
                     line_extent: 10.0,
@@ -2325,6 +2370,7 @@ fn mixed_nested<S: LayoutScalar>(reverse: bool) -> Vec<String> {
                     scopes: definitions,
                     child_order: Vec::new(),
                 },
+                Vec::new(),
             )
             .unwrap();
             let batch = compute_layout_with_flow(
@@ -2356,6 +2402,7 @@ fn mixed_nested<S: LayoutScalar>(reverse: bool) -> Vec<String> {
                     scopes: definitions,
                     child_order: Vec::new(),
                 },
+                Vec::new(),
             ) {
                 Ok(flow) => flow,
                 Err(error) => {
@@ -2426,6 +2473,7 @@ fn mixed_crossing<S: LayoutScalar>() -> Vec<String> {
                     scopes: definitions,
                     child_order: Vec::new(),
                 },
+                Vec::new(),
             ) {
                 Ok(_) => failures.push(format!(
                     "{label}: constructor admitted crossing definitions"

@@ -2,6 +2,8 @@ use crate::{AnalyzedSource, Source, Style, Text, TextTransform};
 
 mod casing;
 mod math;
+mod origin_correspondence;
+mod selection_identity;
 mod separators;
 mod wbr;
 mod width;
@@ -34,7 +36,12 @@ fn all_pinned_kana_mappings_and_unmapped_controls_execute_before_analysis() {
         ),
     ] {
         let source = Source::new(original);
-        let result = AnalyzedSource::new(source.clone(), style()).unwrap();
+        let result = AnalyzedSource::new(
+            source.clone(),
+            style(),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         assert_eq!(result.source(), &source);
         assert_eq!(result.processed_source().processed_text(), source.text());
         assert_eq!(result.inner.projection.text, expected);
@@ -57,7 +64,12 @@ fn all_pinned_kana_mappings_and_unmapped_controls_execute_before_analysis() {
 #[test]
 fn contraction_preserves_phase_i_and_original_while_presentation_is_shorter() {
     let source = Source::new("A\u{1b132}C");
-    let result = AnalyzedSource::new(source.clone(), style()).unwrap();
+    let result = AnalyzedSource::new(
+        source.clone(),
+        style(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let projection = &result.inner.projection;
     assert_eq!(source.text().code_units(), [0x41, 0xd82c, 0xdd32, 0x43]);
     assert_eq!(result.processed_source().processed_text().len(), 4);
@@ -74,7 +86,12 @@ fn contraction_preserves_phase_i_and_original_while_presentation_is_shorter() {
 fn actual_input_styles_and_isolated_surrogates_keep_their_own_associations() {
     let mut source = Source::new(Text::from_code_units(vec![0x3041, 0xd800, 0xfffd, 0x3043]));
     source.span(crate::Range::new(3, 4), Style::default());
-    let analyzed = AnalyzedSource::new(source.clone(), style()).unwrap();
+    let analyzed = AnalyzedSource::new(
+        source.clone(),
+        style(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(analyzed.source(), &source);
     assert_eq!(analyzed.inner.projection.text, "あ\u{fffd}\u{fffd}ぃ");
     assert_eq!(analyzed.inner.projection.segmentation, "あ\u{a6}\u{fffd}ぃ");
@@ -97,30 +114,33 @@ fn native_whitespace_plaintext_and_style_winners_precede_semantic_transform() {
         (crate::WhiteSpace::Preserve, "あ  い", "ぁ  ぃ"),
     ] {
         let source = Source::new("ぁ  ぃ");
-        let analyzed = AnalyzedSource::from_paragraph(crate::ParagraphInput {
-            source: source.clone(),
-            base_style: Style {
-                white_space: whitespace,
-                ..style()
-            },
-            paragraph_strut: crate::ParagraphStrut::DefaultFont,
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-            tab_reference: None,
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: crate::ParagraphBaseDirection::LeftToRight,
-            origins: vec![crate::ParagraphOrigin {
-                text_node: None,
+        let analyzed = AnalyzedSource::from_paragraph(
+            crate::ParagraphInput {
                 source: source.clone(),
-                local: crate::Range::new(0, 4),
-                aggregate: crate::Range::new(0, 4),
-                kind: crate::ParagraphOriginKind::Authored,
-            }],
-            connections: vec![],
-            controls: vec![],
-            replacements: vec![],
-            boundary_policies: vec![],
-            anchor_order: vec![],
-        })
+                base_style: Style {
+                    white_space: whitespace,
+                    ..style()
+                },
+                paragraph_strut: crate::ParagraphStrut::DefaultFont,
+                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                tab_reference: None,
+                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                base_direction: crate::ParagraphBaseDirection::LeftToRight,
+                origins: vec![crate::ParagraphOrigin {
+                    text_node: None,
+                    source: source.clone(),
+                    local: crate::Range::new(0, 4),
+                    aggregate: crate::Range::new(0, 4),
+                    kind: crate::ParagraphOriginKind::Authored,
+                }],
+                connections: vec![],
+                controls: vec![],
+                replacements: vec![],
+                boundary_policies: vec![],
+                anchor_order: vec![],
+            },
+            crate::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap();
         assert_eq!(analyzed.inner.projection.text, expected);
         let actual: Vec<_> = analyzed

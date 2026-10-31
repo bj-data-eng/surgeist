@@ -80,11 +80,15 @@ impl RunView<'_> {
     pub const fn line(&self) -> usize {
         self.line
     }
-    /// Admitted physical basis. Raw glyph offsets and pens stay in the
-    /// horizontal provider frame and are transformed exactly once by consumers.
+    /// Admitted line basis. The inline pen axis is separate from glyph axes.
     #[must_use]
     pub const fn orientation(&self) -> crate::LineOrientation {
         self.placed.orientation
+    }
+    /// Actual outline axes retained by this run's shaping operation.
+    #[must_use]
+    pub const fn glyph_basis(&self) -> crate::GlyphBasis {
+        self.shaped.glyph_basis
     }
     /// Actual shaped-run ordinal within this finalized line.
     #[must_use]
@@ -113,14 +117,16 @@ impl RunView<'_> {
     pub fn face(&self) -> FontFace<'_> {
         self.shaped.font.face()
     }
-    /// Physical origin of this run's baseline. Combine canonical glyph pen/x/y
-    /// in the local horizontal frame, then apply orientation about this origin.
+    /// Executed glyph frame, including actual cell compression and pen axes.
+    #[must_use]
+    pub fn glyph_frame(&self) -> crate::GlyphFrame {
+        crate::layout::run_glyph_frame(self.placed, self.run, self.shaped)
+    }
+    /// Actual physical font-design origin. Use [`Self::glyph_frame`] for raw
+    /// offsets and pens; a combined cell's pen is horizontal within its square.
     #[must_use]
     pub fn origin(&self) -> Point {
-        crate::layout::line_point(
-            self.placed,
-            Point::new(self.run.x, self.placed.finalized.data.metrics.baseline),
-        )
+        self.glyph_frame().origin()
     }
     /// Raw canonical glyph offsets and advances with separate logical run-local pens.
     pub fn glyphs(&self) -> impl Iterator<Item = GlyphPlacement> + '_ {
@@ -135,7 +141,10 @@ impl RunView<'_> {
             })
     }
     /// Measures an unhinted named design baseline for this actual run's script
-    /// and retained instance. This does not enable vertical run placement.
+    /// and retained instance.
+    /// The query uses the retained shaping run represented by this paint run;
+    /// coalesced glyphs may also originate in other shaping runs with the same
+    /// font and paint origin.
     pub fn baseline(
         &self,
         expected: &crate::FontCatalogueIdentity,
@@ -184,20 +193,20 @@ impl GlyphPlacement {
     pub const fn id(self) -> u32 {
         self.id
     }
-    /// Raw canonical horizontal provider offset. Add the logical pen locally,
-    /// then apply the actual RunView orientation at its physical origin.
+    /// Raw font-x offset, scaled once to layout units. Apply the actual
+    /// [`RunView::glyph_frame`] for cell compression and physical placement.
     #[must_use]
     pub const fn x(self) -> f32 {
         self.x
     }
-    /// Raw canonical provider offset, positive downward in the local horizontal
-    /// frame. Physical coordinates also consume the RunView orientation.
+    /// Raw converted font-y offset, positive downward before applying the
+    /// run's glyph basis. See [`RunView::origin`] for physical positioning.
     #[must_use]
     pub const fn y(self) -> f32 {
         self.y
     }
-    /// Actual logical run-local pen, including line spacing allocation.
-    /// Add this and the canonical x-offset to the run origin without narrowing.
+    /// Actual logical run-local pen. Its physical direction is given by
+    /// [`RunView::glyph_frame`], including horizontal pens inside vertical cells.
     #[must_use]
     pub const fn pen(self) -> f64 {
         self.pen
@@ -210,55 +219,85 @@ impl GlyphPlacement {
 }
 
 fn run_decorations(run: &RunView<'_>) -> [Option<DecorationRun>; 2] {
+    if run.run.glyphs.is_empty()
+        && run.layout.inner.prepared.analyzed.typography == crate::AnalysisTypography::Mixed
+        && !crate::engine::layout::metric_only_decoration_demand(
+            run.shaped,
+            &run.placed.finalized.selected.basis.shaped,
+            &run.placed.finalized.selected.presentation.projection,
+        )
+    {
+        return [None, None];
+    }
     let style = &run.layout.inner.prepared.styles[run.run.style].style;
     let metrics = run.shaped.metrics;
-    let origin = run.origin();
     [
-        (
-            style.underline,
-            DecorationKind::Underline,
-            metrics.underline_top,
-            metrics.underline_thickness,
-        ),
-        (
-            style.strikethrough,
-            DecorationKind::Strikethrough,
-            metrics.strike_center,
-            metrics.strike_thickness,
-        ),
+        (style.underline, DecorationKind::Underline),
+        (style.strikethrough, DecorationKind::Strikethrough),
     ]
-    .map(|(decoration, kind, default_offset, default_thickness)| {
+    .map(|(decoration, kind)| {
         if !decoration.enabled() {
             return None;
         }
         let offset = match decoration.offset() {
-            DecorationOffset::Auto => default_offset,
+            DecorationOffset::Auto => {
+                let horizontal = metrics
+                    .horizontal()
+                    .expect("automatic upright decoration offsets were refused during preparation");
+                match kind {
+                    DecorationKind::Underline => horizontal.underline_top,
+                    DecorationKind::Strikethrough => horizontal.strike_center,
+                }
+            }
             DecorationOffset::Absolute(value) => value.get(),
         };
         let thickness = match decoration.thickness() {
-            DecorationThickness::Auto => default_thickness,
+            DecorationThickness::Auto => {
+                let horizontal = metrics.horizontal().expect(
+                    "automatic upright decoration thickness was refused during preparation",
+                );
+                match kind {
+                    DecorationKind::Underline => horizontal.underline_thickness,
+                    DecorationKind::Strikethrough => horizontal.strike_thickness,
+                }
+            }
             DecorationThickness::Absolute(value) => value.get(),
         };
-        let top = crate::layout::decoration_top(origin.y, offset)
-            - if kind == DecorationKind::Strikethrough {
-                thickness * 0.5
-            } else {
-                0.0
-            };
+        // Decoration offsets belong to the prepared alignment reference, not
+        // the displaced paint origin. Auto metrics were rebased during shaping;
+        // an authored Absolute remains literal in this same frame.
+        let half_thickness = if kind == DecorationKind::Strikethrough {
+            thickness * 0.5
+        } else {
+            0.0
+        };
         let rect = if run.orientation() == crate::LineOrientation::Horizontal {
-            Rect::new(origin.x, top, run.run.advance, thickness)
+            let alignment_origin = crate::layout::line_point(
+                run.placed,
+                Point::new(
+                    run.run.x,
+                    run.run
+                        .reference
+                        .unwrap_or(run.placed.finalized.data.metrics.baseline),
+                ),
+            );
+            Rect::new(
+                alignment_origin.x,
+                crate::layout::decoration_top(alignment_origin.y, offset) - half_thickness,
+                run.run.advance,
+                thickness,
+            )
         } else {
             crate::layout::line_rect(
                 run.placed,
                 Rect::new(
                     run.run.x,
-                    run.placed.finalized.data.metrics.baseline
-                        - offset
-                        - if kind == DecorationKind::Strikethrough {
-                            thickness * 0.5
-                        } else {
-                            0.0
-                        },
+                    crate::layout::decoration_top(
+                        run.run
+                            .reference
+                            .unwrap_or(run.placed.finalized.data.metrics.baseline),
+                        offset,
+                    ) - half_thickness,
                     run.run.advance,
                     thickness,
                 ),
@@ -277,3 +316,7 @@ fn run_decorations(run: &RunView<'_>) -> [Option<DecorationRun>; 2] {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "views/upright_tests.rs"]
+mod upright_tests;

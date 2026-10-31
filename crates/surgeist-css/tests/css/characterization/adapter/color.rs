@@ -1,11 +1,13 @@
 //! Colour outcomes: ordinary used colours, authored resolution and the
 //! controlled protocol with an HTML-style transformation sequence.
 
+use std::sync::OnceLock;
 use surgeist_color::{
     Color, ColorSpace, DigitSlot, OperationOwner, PredefinedColorSpace, Serialization,
     SerializationAction, SerializationFamily, SerializationReceipt, SerializationRequest,
     SerializationStep, Transformation,
 };
+
 use surgeist_css::CssParser;
 use surgeist_css::color::controlled::{
     CssColorBank, CssColorOperationOwner, CssColorParse, CssColorParseAction, CssColorParseOutcome,
@@ -73,21 +75,96 @@ fn facts(set: &str) -> CssColorFacts<'static> {
     }
 }
 
-const ORDINARY_LIMITS: CssColorOrdinaryLimits = CssColorOrdinaryLimits {
+/// The action allowance of the large-actions fronts, at which every corpus colour
+/// reaches its numerical outcome.
+const LARGE_ACTIONS: usize = 100_000_000;
+
+const ORDINARY_RECORDS: CssColorOrdinaryLimits = CssColorOrdinaryLimits {
     input_units: 4096,
     algorithm_records: 65_536,
     arithmetic_records: 16_384,
     evaluation_records: 16_384,
-    actions: 16_000_000,
+    actions: LARGE_ACTIONS,
 };
 
-const AUTHORED_LIMITS: CssAuthoredColorOrdinaryLimits = CssAuthoredColorOrdinaryLimits {
+const AUTHORED_RECORDS: CssAuthoredColorOrdinaryLimits = CssAuthoredColorOrdinaryLimits {
     path_steps: 4096,
     algorithm_records: 65_536,
     arithmetic_records: 16_384,
     evaluation_records: 16_384,
-    actions: 16_000_000,
+    actions: LARGE_ACTIONS,
 };
+
+/// The explicit limits the corpus rows are recorded under. Their action ceiling is
+/// one less than the smallest allowance at which the numerical overflow colour
+/// still resolves, on every ordinary front, so that colour is refused with an
+/// action limit and every other corpus colour, which needs fewer actions, is not.
+fn ordinary_limits() -> CssColorOrdinaryLimits {
+    static LIMITS: OnceLock<CssColorOrdinaryLimits> = OnceLock::new();
+    *LIMITS.get_or_init(|| {
+        let input = super::super::cases::NUMERICAL_OVERFLOW_INPUT;
+        let facts = facts("absent");
+        let units = input.encode_utf16().collect::<Vec<_>>();
+        let required = [
+            (
+                CssColorInput::Utf8(input.as_bytes()),
+                CssColorGrammarRequest::WholeColor,
+            ),
+            (
+                CssColorInput::Utf16(&units),
+                CssColorGrammarRequest::WholeColor,
+            ),
+            (
+                CssColorInput::Utf8(input.as_bytes()),
+                CssColorGrammarRequest::PrefixColor,
+            ),
+            (
+                CssColorInput::Utf16(&units),
+                CssColorGrammarRequest::PrefixColor,
+            ),
+        ]
+        .into_iter()
+        .map(|(input, request)| {
+            super::smallest(LARGE_ACTIONS, |actions| {
+                let limits = CssColorOrdinaryLimits {
+                    actions,
+                    ..ORDINARY_RECORDS
+                };
+                parse_used_color(input, request, &facts, facts.identity(), limits).is_ok()
+            })
+            .expect("the overflow colour resolves under the large allowance")
+        })
+        .min()
+        .expect("four ordinary fronts");
+        assert!(required > 1, "the overflow colour needs actions");
+        CssColorOrdinaryLimits {
+            actions: required - 1,
+            ..ORDINARY_RECORDS
+        }
+    })
+}
+
+/// The authored counterpart of [`ordinary_limits`].
+fn authored_limits() -> CssAuthoredColorOrdinaryLimits {
+    static LIMITS: OnceLock<CssAuthoredColorOrdinaryLimits> = OnceLock::new();
+    *LIMITS.get_or_init(|| {
+        let input = super::super::cases::NUMERICAL_OVERFLOW_INPUT;
+        let facts = facts("absent");
+        let required = super::smallest(LARGE_ACTIONS, |actions| {
+            let limits = CssAuthoredColorOrdinaryLimits {
+                actions,
+                ..AUTHORED_RECORDS
+            };
+            authored(input, &facts, limits).shape == "used"
+        })
+        .expect("the overflow colour resolves under the large allowance");
+        assert!(required > 1, "the overflow colour needs actions");
+        CssAuthoredColorOrdinaryLimits {
+            actions: required - 1,
+            ..AUTHORED_RECORDS
+        }
+    })
+}
 
 /// A used-colour or authored front under the given limits instead of the fixed ones,
 /// for tests of the default limits. Only the five resolution fronts take limits.
@@ -154,24 +231,24 @@ pub fn observe(front: &str, set: &str, input: &str) -> Observation {
             CssColorGrammarRequest::PrefixColor,
             &facts,
         ),
-        "color.authored" => authored(input, &facts, AUTHORED_LIMITS),
-        // The overflow test's 100M-action allowance, so the ordinary path
-        // reaches its numerical outcome instead of the action limit.
+        "color.authored" => authored(input, &facts, authored_limits()),
+        // The large allowance, so the ordinary path reaches its numerical outcome
+        // instead of the action limit.
         "color.used.large-actions" => used_with(
             CssColorInput::Utf8(input.as_bytes()),
             CssColorGrammarRequest::WholeColor,
             &facts,
             CssColorOrdinaryLimits {
-                actions: 100_000_000,
-                ..ORDINARY_LIMITS
+                actions: LARGE_ACTIONS,
+                ..ordinary_limits()
             },
         ),
         "color.authored.large-actions" => authored(
             input,
             &facts,
             CssAuthoredColorOrdinaryLimits {
-                actions: 100_000_000,
-                ..AUTHORED_LIMITS
+                actions: LARGE_ACTIONS,
+                ..authored_limits()
             },
         ),
         "color.protocol.html-srgb" => protocol(
@@ -214,7 +291,7 @@ fn used(
     request: CssColorGrammarRequest,
     facts: &CssColorFacts<'_>,
 ) -> Observation {
-    used_with(input, request, facts, ORDINARY_LIMITS)
+    used_with(input, request, facts, ordinary_limits())
 }
 
 fn used_with(
@@ -280,7 +357,8 @@ fn used_limits(input: &[u8], facts: &CssColorFacts<'_>) -> Observation {
         }
         observation
     };
-    let mut observation = observe(ORDINARY_LIMITS);
+    let fixed = ordinary_limits();
+    let mut observation = observe(fixed);
     let fields: [(&str, OrdinaryLimit); 5] = [
         ("units", |limits| &mut limits.input_units),
         ("algorithm", |limits| &mut limits.algorithm_records),
@@ -290,9 +368,9 @@ fn used_limits(input: &[u8], facts: &CssColorFacts<'_>) -> Observation {
     ];
     let mut parts = Vec::new();
     for (name, field) in fields {
-        let mut maximum = ORDINARY_LIMITS;
+        let mut maximum = fixed;
         let value = super::smallest(*field(&mut maximum), |value| {
-            let mut limits = ORDINARY_LIMITS;
+            let mut limits = fixed;
             *field(&mut limits) = value;
             observe(limits) == observation
         });

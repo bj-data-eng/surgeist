@@ -27,6 +27,7 @@ struct Segment {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct PreparedMeasurementFlow {
     prepared: PreparedText,
+    source_segment: PreparedSourceSegment,
     query_start: usize,
     query_incoming: Option<HyphenationContinuation>,
     target: Arc<PreparedTermination>,
@@ -99,6 +100,9 @@ fn invalid() -> crate::Error {
 }
 
 impl PreparedMeasurementFlow {
+    pub fn source_segment(&self) -> PreparedSourceSegment {
+        self.source_segment.clone()
+    }
     pub fn entry(&self) -> PreparedBoundary {
         self.boundary(self.entry)
     }
@@ -143,6 +147,9 @@ impl PreparedMeasurementFlow {
     }
 }
 impl PreparedFlowSegment {
+    pub fn source_segment(&self) -> PreparedSourceSegment {
+        self.flow.source_segment()
+    }
     fn row(&self) -> &Segment {
         &self.flow.segments[self.index]
     }
@@ -176,6 +183,28 @@ impl PreparedFlowSegment {
         let to = tables.boundaries[self.row().end].participant;
         self.flow.prepared.participants().skip(from).take(to - from)
     }
+    pub(crate) fn scope_input_roots(
+        &self,
+        prepared: &crate::engine::PreparedData,
+        request: &FlowObservationRequest,
+    ) -> Result<()> {
+        if !std::ptr::eq(prepared, self.flow.prepared.inner.as_ref()) {
+            return Err(invalid());
+        }
+        selection::scope_allocation_roots(
+            prepared,
+            &request.atomics,
+            &request.controls,
+            &request.boundary_context,
+            &request.line_box_struts,
+        )
+    }
+    pub(crate) fn visit_scope_frames<'a>(
+        &'a self,
+        emit: &mut dyn FnMut(super::scope_alignment::ScopeProofVisit<'a>) -> Result<()>,
+    ) -> Result<()> {
+        super::conditional::visit_termination_scope_frames(&self.flow.target, emit)
+    }
     pub(crate) fn admit<'a>(
         &'a self,
         prepared: &PreparedText,
@@ -190,8 +219,10 @@ impl PreparedFlowSegment {
             ProtocolHandleKind::Boundary,
             self.row().start,
         )?;
-        let expected_start = if prepared.inner.tables.boundaries[self.row().start].participant == 0
-        {
+        let section_start =
+            &prepared.inner.tables.boundaries[self.flow.source_segment.start().index];
+        let row_start = &prepared.inner.tables.boundaries[self.row().start];
+        let expected_start = if row_start.participant == section_start.participant {
             LineStart::Paragraph
         } else {
             LineStart::Continuation
@@ -210,6 +241,7 @@ impl PreparedFlowSegment {
             return Err(invalid());
         }
         let input = RequestInput {
+            segment: &self.flow.source_segment,
             start,
             end,
             participants,
@@ -230,10 +262,18 @@ impl PreparedFlowSegment {
 impl PreparedText {
     pub fn measurement_flow(
         &self,
+        source_segment: &PreparedSourceSegment,
         query_start: &PreparedBoundary,
         query_incoming: Option<&HyphenationContinuation>,
         target: &PreparedTermination,
     ) -> Result<PreparedMeasurementFlow> {
+        let section = super::segments::admit(self, source_segment)?;
+        super::segments::admit_boundaries(
+            self,
+            source_segment,
+            query_start,
+            &source_segment.end(),
+        )?;
         selection::require_prepared(
             self,
             &query_start.prepared,
@@ -243,13 +283,9 @@ impl PreparedText {
         if query_start.index >= self.inner.tables.boundaries.len() {
             return Err(invalid());
         }
-        continuation::validate(self, query_start, query_incoming)?;
+        continuation::validate(self, source_segment, query_start, query_incoming)?;
         let tables = &self.inner.tables;
-        let completion = tables
-            .opportunities
-            .iter()
-            .rposition(|offer| offer.kind == PreparedBreakKind::ParagraphEnd)
-            .ok_or_else(invalid)?;
+        let completion = section.end_opportunity;
         let mut segments = Vec::new();
         let (entry, start, end, incoming, alternative) = match target {
             PreparedTermination::Measurement(portion) => {
@@ -299,7 +335,7 @@ impl PreparedText {
                 }
                 if query_start.index < entry {
                     append_range(
-                        self,
+                        source_segment,
                         &mut segments,
                         FlowSegmentRole::EntryPrefix,
                         query_start.index,
@@ -324,16 +360,18 @@ impl PreparedText {
                     ProtocolHandleKind::Boundary,
                     portion.start,
                 )?;
-                if !portion
-                    .query
-                    .matches_flow_query(self, query_start.index, query_incoming)
-                    || !portion.query.phrase_portions().contains(portion)
+                if !portion.query.matches_flow_query(
+                    self,
+                    source_segment,
+                    query_start.index,
+                    query_incoming,
+                ) || !portion.query.phrase_portions().contains(portion)
                 {
                     return Err(invalid());
                 }
                 if query_start.index < portion.start {
                     append_range(
-                        self,
+                        source_segment,
                         &mut segments,
                         FlowSegmentRole::EntryPrefix,
                         query_start.index,
@@ -354,13 +392,26 @@ impl PreparedText {
         };
         continuation::validate(
             self,
+            source_segment,
             &PreparedBoundary {
                 prepared: Arc::clone(&self.inner),
                 index: start,
             },
             incoming.as_ref(),
         )?;
-        let mandatory = mandatory_at(self, end);
+        super::segments::admit_boundaries(
+            self,
+            source_segment,
+            &PreparedBoundary {
+                prepared: Arc::clone(&self.inner),
+                index: entry,
+            },
+            &PreparedBoundary {
+                prepared: Arc::clone(&self.inner),
+                index: end,
+            },
+        )?;
+        let mandatory = mandatory_at(source_segment, end);
         let outgoing = alternative
             .clone()
             .and_then(HyphenationContinuation::from_alternative);
@@ -377,7 +428,7 @@ impl PreparedText {
             mandatory.is_some_and(|i| tables.opportunities[i].kind == PreparedBreakKind::Forced);
         if end < completion_end || outgoing.is_some() || forced {
             append_range(
-                self,
+                source_segment,
                 &mut segments,
                 FlowSegmentRole::Remaining,
                 end,
@@ -388,6 +439,7 @@ impl PreparedText {
         }
         Ok(PreparedMeasurementFlow {
             prepared: self.clone(),
+            source_segment: source_segment.clone(),
             query_start: query_start.index,
             query_incoming: query_incoming.cloned(),
             target: Arc::new(target.clone()),
@@ -420,18 +472,36 @@ impl PreparedText {
             request,
             LineMetricPolicy::Native,
             &mut crate::engine::shape::ShapeContext::default(),
+            None,
+        )
+    }
+    /// Nonplaceable flow observation under the caller's reduced feature policy.
+    pub fn observe_flow_with_scope_allowance(
+        &self,
+        segment: &PreparedFlowSegment,
+        request: &FlowObservationRequest,
+        allowance: crate::ScopeAlignmentAllowance,
+    ) -> Result<FlowObservation> {
+        crate::engine::layout::flow::observe(
+            self,
+            segment,
+            request,
+            LineMetricPolicy::Native,
+            &mut crate::engine::shape::ShapeContext::default(),
+            Some(allowance),
         )
     }
 }
 
-fn mandatory_at(prepared: &PreparedText, boundary: usize) -> Option<usize> {
-    prepared
-        .inner
+fn mandatory_at(segment: &PreparedSourceSegment, boundary: usize) -> Option<usize> {
+    segment
+        .prepared
         .tables
         .opportunities
         .iter()
         .position(|offer| {
             offer.boundary == boundary
+                && offer.source_segment == Some(segment.index)
                 && matches!(
                     offer.kind,
                     PreparedBreakKind::Forced | PreparedBreakKind::ParagraphEnd
@@ -439,7 +509,7 @@ fn mandatory_at(prepared: &PreparedText, boundary: usize) -> Option<usize> {
         })
 }
 fn append_range(
-    prepared: &PreparedText,
+    segment: &PreparedSourceSegment,
     output: &mut Vec<Segment>,
     role: FlowSegmentRole,
     mut start: usize,
@@ -450,7 +520,7 @@ fn append_range(
     if start > end {
         return Err(invalid());
     }
-    let tables = &prepared.inner.tables;
+    let tables = &segment.prepared.tables;
     let from = start;
     for (index, offer) in tables
         .opportunities
@@ -458,6 +528,7 @@ fn append_range(
         .enumerate()
         .filter(|(_, offer)| {
             offer.boundary > from
+                && offer.source_segment == Some(segment.index)
                 && offer.boundary <= end
                 && offer.kind == PreparedBreakKind::Forced
         })
@@ -473,14 +544,16 @@ fn append_range(
         start = offer.boundary;
     }
     if start < end || terminal {
-        let mandatory = terminal.then(|| mandatory_at(prepared, end)).flatten();
+        let mandatory = terminal.then(|| mandatory_at(segment, end)).flatten();
         // After a final Forced at the same mixed cut, retain genuine ParagraphEnd.
         let mandatory = if terminal {
             tables
                 .opportunities
                 .iter()
                 .position(|offer| {
-                    offer.boundary == end && offer.kind == PreparedBreakKind::ParagraphEnd
+                    offer.boundary == end
+                        && offer.source_segment == Some(segment.index)
+                        && offer.kind == PreparedBreakKind::ParagraphEnd
                 })
                 .or(mandatory)
         } else {
@@ -518,6 +591,7 @@ mod tests {
                 hanging_punctuation: crate::HangingPunctuation::new(true, None, true),
                 ..crate::Style::default()
             },
+            crate::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         system
@@ -565,7 +639,12 @@ mod tests {
     fn flow(prepared: &PreparedText, portion: PreparedWordPortion) -> PreparedMeasurementFlow {
         let start = prepared.boundary_views().next().unwrap().handle();
         prepared
-            .measurement_flow(&start, None, &PreparedTermination::Measurement(portion))
+            .measurement_flow(
+                &prepared.source_segments().next().unwrap(),
+                &start,
+                None,
+                &PreparedTermination::Measurement(portion),
+            )
             .unwrap()
     }
 
@@ -692,6 +771,7 @@ mod tests {
                 word_break: crate::WordBreak::AutoPhrase,
                 ..crate::Style::default()
             },
+            crate::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let prepared = system
@@ -702,6 +782,7 @@ mod tests {
         // Public preparation is Native; build its complete authentic request,
         // rather than using the separate raw chooser's request factory.
         let trial = LineSelectionRequest {
+            segment: prepared.source_segments().next().unwrap(),
             start: start.clone(),
             end: ceiling.view().boundary(),
             participants: prepared.participants().collect(),
@@ -731,10 +812,16 @@ mod tests {
         let frame = prepared
             .select(trial)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert!(frame.measurements().fit().advance() > 1.0);
         let query = prepared
+            .source_segments()
+            .next()
+            .unwrap()
             .conditional_search(
                 &start,
                 None,
@@ -747,8 +834,22 @@ mod tests {
         let portions = query.phrase_portions();
         assert_eq!(portions.len(), 1);
         let target = PreparedTermination::PhraseMeasurement(portions[0].clone());
-        let recipe = prepared.measurement_flow(&start, None, &target).unwrap();
-        let again = prepared.measurement_flow(&start, None, &target).unwrap();
+        let recipe = prepared
+            .measurement_flow(
+                &prepared.source_segments().next().unwrap(),
+                &start,
+                None,
+                &target,
+            )
+            .unwrap();
+        let again = prepared
+            .measurement_flow(
+                &prepared.source_segments().next().unwrap(),
+                &start,
+                None,
+                &target,
+            )
+            .unwrap();
         assert_eq!(recipe, again);
         let segments: Vec<_> = recipe.segments().collect();
         assert_eq!(segments.len(), 1);
@@ -764,7 +865,12 @@ mod tests {
         recipe.validate_observations(&[observation]).unwrap();
         assert!(
             prepared
-                .measurement_flow(&portions[0].end(), None, &target)
+                .measurement_flow(
+                    &prepared.source_segments().next().unwrap(),
+                    &portions[0].end(),
+                    None,
+                    &target
+                )
                 .is_err()
         );
     }

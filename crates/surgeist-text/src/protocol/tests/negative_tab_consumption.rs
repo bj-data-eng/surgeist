@@ -51,7 +51,12 @@ fn check_negative_spacing_source_rows(tabs: TabContext) {
     let selected = p.select(r).unwrap();
     let slots: Vec<_> = selected.spacing_slots().collect();
     assert_eq!(slots.len(), 1);
-    let natural = selected.finalize(SpacingAllocations::None).unwrap();
+    let natural = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(natural.feedback().advance, 96.0);
     // Real Ahem20: A+SPACE reaches40. Each D4 tab shifts8. +1 SPACE
     // is absorbed by the first tab; -1 moves both following grid phases by4.
@@ -61,10 +66,13 @@ fn check_negative_spacing_source_rows(tabs: TabContext) {
         (-1.0, 92.0, 44.0, 72.0, 5.0),
     ] {
         let line = selected
-            .finalize(SpacingAllocations::Complete(vec![SpacingAllocation {
-                slot: slots[0].clone(),
-                amount,
-            }]))
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
+                    slot: slots[0].clone(),
+                    amount,
+                }]),
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(line.feedback().advance, total);
         assert_eq!(
@@ -192,7 +200,10 @@ fn check_negative_replacement_tabs(tabs: TabContext) {
         let first = p
             .select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         let mut r = request(&p);
         r.start = boundary;
@@ -204,7 +215,10 @@ fn check_negative_replacement_tabs(tabs: TabContext) {
         let second = p
             .select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         let before = placement != crate::HyphenationPlacement::LogicalAfter;
         let after = placement != crate::HyphenationPlacement::LogicalBefore;

@@ -150,6 +150,8 @@ impl Fixture {
         }
         let processed = Arc::new(
             text::process_contextual_source(text::ContextualSourceInput {
+                joint_flows: Vec::new(),
+                scope_alignment_limits: None,
                 computed_line_boundaries: vec![],
                 source: source.clone(),
                 segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -183,12 +185,18 @@ impl Fixture {
                 replacements: vec![],
                 scopes: vec![
                     text::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
+                        font_reference: None,
                         topology: text::SourceProcessingTopology::Complete,
                         trim: Default::default(),
                         base_style: style.clone(),
                         used_direction: direction,
                     },
                     text::SourceProcessingScope::Inline {
+                        horizontal_inner_direction: None,
+                        alignment_boundary: None,
+                        font_reference: None,
                         trim: Default::default(),
                         style: Some(owner),
                         boundaries: Some(text::SourceProcessingScopeBoundaries {
@@ -205,9 +213,11 @@ impl Fixture {
             })
             .unwrap(),
         );
-        let analyzed =
-            text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-                .unwrap();
+        let analyzed = text::AnalyzedSource::from_processed_paragraph(
+            processed.paragraphs().next().unwrap(),
+            text::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, Wrap::Word);
         let mut system = text::System::new(text::SystemOptions {
             font_catalogue: text::FontCatalogueMode::RegisteredOnly,
@@ -360,6 +370,7 @@ impl Fixture {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         compute_layout_with_flow(

@@ -48,6 +48,14 @@ pub(in super::super) fn fit_with_allocation(
         &[surgeist_text::LineBoxStrut],
     ) -> Result<LineAllocations, FitError>,
 ) -> Result<Vec<FittedLine>, FitError> {
+    let scope_alignments = crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
+        crate::text_layout::scope_alignment::ScopeAlignmentSnapshot::<f64>::admit::<()>(
+            Vec::new(),
+            &[],
+        )
+        .unwrap()
+        .freeze(),
+    );
     super::super::fit(
         FitInput {
             groups: crate::group_alignment::Snapshot::default(),
@@ -58,6 +66,8 @@ pub(in super::super) fn fit_with_allocation(
                 crate::Direction::Ltr,
             ),
             prepared: &paragraph.prepared,
+            segment: paragraph.prepared.source_segments().next().unwrap(),
+            scope_alignments: &scope_alignments,
             available: Available::Definite(available),
             base_direction: ParagraphBaseDirection::LeftToRight,
             block_direction: ParagraphBaseDirection::LeftToRight,
@@ -498,6 +508,7 @@ fn paragraph_tail_retains_zero_atomic_existence_without_formatting_an_out_of_flo
                 0,
                 vec![binding],
                 crate::WrappingInput::default(),
+                Vec::new(),
             )
             .unwrap();
             let mut session = crate::engine::ComputeSession::with_flow(&flow, Vec::new());

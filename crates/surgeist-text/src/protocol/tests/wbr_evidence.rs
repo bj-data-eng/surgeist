@@ -67,7 +67,8 @@ fn catalogue() -> System {
 }
 fn analyzed(value: ParagraphInput) -> AnalyzedSource {
     crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(value).unwrap(),
+        &AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap(),
         crate::Wrap::Word,
     )
 }
@@ -386,6 +387,7 @@ fn unexpanded_wbr_keeps_split_origin_capture_order_and_original_typography_separ
                 1
             }
             PreparedParticipant::Atomic(_) => panic!("capture has no atomic"),
+            PreparedParticipant::Cell(_) => panic!("capture has no combined cell"),
             PreparedParticipant::ComputedLineBoundary(_) => {
                 panic!("capture has no computed boundaries")
             }

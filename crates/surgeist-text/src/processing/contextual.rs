@@ -11,11 +11,20 @@ use crate::{
 };
 use std::sync::Arc;
 
+pub(crate) mod alignment;
 pub(crate) mod canonical;
 mod capture;
 mod computed;
+pub(super) mod connection;
+mod joint_flow;
+pub use alignment::{
+    ScopeAlignmentBoundary, ScopeAlignmentError, ScopeAlignmentLimitKind, ScopeAlignmentLimits,
+    ScopeAlignmentUsage, ScopeFontReference,
+};
 pub use capture::*;
 pub use computed::{ComputedLineBoundaryError, ComputedLineBoundaryInput, SourceBoxSide};
+pub use connection::SourceProcessingConnectionError;
+pub use joint_flow::{SourceProcessingJointFlow, SourceProcessingJointFlowError};
 
 /// Computed non-inherited trim facts for one actual inline or block box.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -39,6 +48,17 @@ pub struct SourceProcessingScopeBoundaries {
     pub end: usize,
 }
 
+/// Actual writing axis of a captured source formatting domain.
+///
+/// Vertical includes both vertical and both sideways writing modes. This is
+/// supplied source context, independent of typography, glyph basis or font axes.
+/// Absence is expressed by the containing Option, never a default horizontal axis.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SourceWritingAxis {
+    Horizontal,
+    Vertical,
+}
+
 /// Actual box role. Block domains capture their entire effective base style.
 #[derive(Clone, Debug)]
 pub enum SourceProcessingScope {
@@ -46,29 +66,90 @@ pub enum SourceProcessingScope {
         trim: WhiteSpaceTrim,
         style: Option<Style>,
         boundaries: Option<SourceProcessingScopeBoundaries>,
+        alignment_boundary: Option<ScopeAlignmentBoundary>,
+        font_reference: Option<ScopeFontReference>,
+        /// Actual used direction for this box's horizontal inner composition.
+        /// None does not borrow the parent, paragraph or outer used direction.
+        horizontal_inner_direction: Option<ParagraphBaseDirection>,
     },
     Block {
         topology: SourceProcessingTopology,
         trim: WhiteSpaceTrim,
         base_style: Style,
         used_direction: ParagraphBaseDirection,
+        writing_axis: Option<SourceWritingAxis>,
+        /// Horizontal inner direction for anonymous content governed here.
+        horizontal_inner_direction: Option<ParagraphBaseDirection>,
+        font_reference: Option<ScopeFontReference>,
     },
     AtomicBlock {
         topology: SourceProcessingTopology,
         trim: WhiteSpaceTrim,
         base_style: Style,
         used_direction: ParagraphBaseDirection,
+        writing_axis: Option<SourceWritingAxis>,
+        horizontal_inner_direction: Option<ParagraphBaseDirection>,
         atomic: usize,
+        font_reference: Option<ScopeFontReference>,
     },
     OutOfFlowBlock {
         topology: SourceProcessingTopology,
         trim: WhiteSpaceTrim,
         base_style: Style,
         used_direction: ParagraphBaseDirection,
+        writing_axis: Option<SourceWritingAxis>,
+        horizontal_inner_direction: Option<ParagraphBaseDirection>,
         atomic: usize,
+        font_reference: Option<ScopeFontReference>,
     },
 }
 impl SourceProcessingScope {
+    fn writing_axis(&self) -> Option<SourceWritingAxis> {
+        match self {
+            Self::Inline { .. } => None,
+            Self::Block { writing_axis, .. }
+            | Self::AtomicBlock { writing_axis, .. }
+            | Self::OutOfFlowBlock { writing_axis, .. } => *writing_axis,
+        }
+    }
+
+    fn horizontal_inner_direction(&self) -> Option<ParagraphBaseDirection> {
+        match self {
+            Self::Inline {
+                horizontal_inner_direction,
+                ..
+            }
+            | Self::Block {
+                horizontal_inner_direction,
+                ..
+            }
+            | Self::AtomicBlock {
+                horizontal_inner_direction,
+                ..
+            }
+            | Self::OutOfFlowBlock {
+                horizontal_inner_direction,
+                ..
+            } => *horizontal_inner_direction,
+        }
+    }
+
+    fn alignment_boundary(&self) -> Option<ScopeAlignmentBoundary> {
+        match self {
+            Self::Inline {
+                alignment_boundary, ..
+            } => *alignment_boundary,
+            Self::Block { .. } | Self::AtomicBlock { .. } | Self::OutOfFlowBlock { .. } => None,
+        }
+    }
+    fn font_reference(&self) -> Option<ScopeFontReference> {
+        match self {
+            Self::Inline { font_reference, .. }
+            | Self::Block { font_reference, .. }
+            | Self::AtomicBlock { font_reference, .. }
+            | Self::OutOfFlowBlock { font_reference, .. } => *font_reference,
+        }
+    }
     fn trim(&self) -> WhiteSpaceTrim {
         match self {
             Self::Inline { trim, .. }
@@ -128,6 +209,10 @@ pub enum SourceProcessingEnvelope {
 /// once in `events`; ranges and nesting are not repeated in scope/paragraph facts.
 #[derive(Clone, Debug)]
 pub struct ContextualSourceInput {
+    /// Explicit limits for supplied scope-alignment facts and their later use.
+    /// None preserves non-demanding captures; any supplied alignment fact needs
+    /// limits before capture can retain its feature payload.
+    pub scope_alignment_limits: Option<ScopeAlignmentLimits>,
     /// Computed mandatory causes at actual input-local box edges.
     pub computed_line_boundaries: Vec<ComputedLineBoundaryInput>,
     pub source: Source,
@@ -140,12 +225,43 @@ pub struct ContextualSourceInput {
     pub replacements: Vec<ParagraphReplacement>,
     pub scopes: Vec<SourceProcessingScope>,
     pub paragraphs: Vec<SourceProcessingParagraph>,
+    /// Explicit authority over existing raw paragraph coverage, not inferred
+    /// from equal facts, adjacent source ranges or Continuous connections.
+    pub joint_flows: Vec<SourceProcessingJointFlow>,
     pub events: Vec<SourceProcessingEvent>,
 }
 
-/// Typed atomic capture/view rejection.
+/// The canonical source operation requiring an unavailable relationship.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SourceContinuityOperation {
+    /// Source-unit selection and same-NCA combination lookaround.
+    Combination,
+    Decoding,
+    WhiteSpace,
+    Trimming,
+    Transformation,
+    Segmentation,
+}
+
+/// Typed atomic capture/view rejection or unavailable source context.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SourceProcessingError {
+    /// Source context needed by the bounded qualifier to establish a complete
+    /// result. This does not assert that every hypothetical completion differs.
+    /// Endpoints index [`ContextualSourceInput::origins`]. The requested operation
+    /// publishes no partial result. A previously issued
+    /// processed source remains unchanged when a later transformation refuses.
+    MissingSourceContinuity {
+        before_origin: usize,
+        after_origin: usize,
+        operation: SourceContinuityOperation,
+    },
+    SourceConnection {
+        reason: SourceProcessingConnectionError,
+    },
+    JointFlow {
+        reason: SourceProcessingJointFlowError,
+    },
     ComputedLineBoundary {
         request: usize,
         reason: ComputedLineBoundaryError,
@@ -163,6 +279,13 @@ pub enum SourceProcessingError {
     Replacement,
     OutsideParagraph,
     ForeignParagraph,
+    ForeignJointFlow,
+    /// Actual required raw members in canonical flow order, not output IDs.
+    MissingJointAnalysisAuthority {
+        first_paragraph: usize,
+        last_paragraph: usize,
+        source: Range,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -174,6 +297,9 @@ pub(crate) struct CapturedScopeData {
     pub(crate) style: Option<Style>,
     pub(crate) boundaries: Option<SourceProcessingScopeBoundaries>,
     pub(crate) definition: Option<CapturedDomainData>,
+    /// Present only on actual domain roots; inline lookup uses domain_scopes.
+    pub(crate) writing_axis: Option<SourceWritingAxis>,
+    pub(crate) horizontal_inner_direction: Option<ParagraphBaseDirection>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -183,11 +309,13 @@ pub(crate) enum CapturedDomainData {
     OutOfFlowBlock(usize),
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct CapturedParagraphData {
     pub(crate) domain: usize,
     pub(crate) enter: usize,
     pub(crate) exit: usize,
+    pub(crate) facts: SourceProcessingParagraph,
+    pub(crate) joint_flow: Option<usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -208,6 +336,7 @@ pub(crate) struct ScopedEvent {
 #[derive(Clone, Debug)]
 pub(crate) struct ScopeCapture {
     canonical: canonical::CanonicalCache,
+    scope_alignment: Option<alignment::ScopeAlignmentCapture>,
     pub(crate) computed_input_rows: Vec<usize>,
     pub(crate) computed: Vec<computed::CapturedComputedBoundaryData>,
     pub(crate) origin_orders: Vec<usize>,
@@ -216,6 +345,8 @@ pub(crate) struct ScopeCapture {
     pub(crate) complete: Vec<bool>,
     pub(crate) domain_scopes: Vec<usize>,
     pub(crate) paragraphs: Vec<CapturedParagraphData>,
+    pub(crate) joint_flows: Vec<joint_flow::CapturedJointFlowData>,
+    pub(crate) connections: Vec<connection::CapturedConnectionData>,
     pub(crate) controls: Vec<CapturedControlData>,
     pub(crate) atomic_orders: Vec<usize>,
     /// Stable projection indices into the sole original event stream.
@@ -225,9 +356,8 @@ pub(crate) struct ScopeCapture {
 #[derive(Clone, Debug)]
 pub(crate) struct ParagraphTopology {
     pub(crate) capture: Arc<ScopeCapture>,
-    pub(crate) paragraph: usize,
+    pub(crate) owner: crate::analyzed::captured::CapturedOwner,
     pub(crate) domain: usize,
-    pub(crate) origin_orders: Vec<usize>,
     pub(crate) control_orders: Vec<usize>,
 }
 pub(crate) fn invalid(reason: SourceProcessingError) -> crate::Error {
@@ -250,6 +380,21 @@ pub struct ProcessedParagraph {
     index: usize,
 }
 impl ProcessedParagraph {
+    /// The original capture-issued paragraph represented by this member.
+    #[must_use]
+    pub fn captured_paragraph(&self) -> CapturedParagraph {
+        let topology = self
+            .data()
+            .scope_topology
+            .as_ref()
+            .expect("issued contextual member");
+        match &topology.owner {
+            crate::analyzed::captured::CapturedOwner::Raw(raw) => raw.clone(),
+            crate::analyzed::captured::CapturedOwner::Joint(_) => {
+                unreachable!("processed member is an admitted raw declaration")
+            }
+        }
+    }
     #[must_use]
     pub fn processed_source(&self) -> &Arc<ProcessedSource> {
         &self.owner
@@ -331,11 +476,17 @@ impl ProcessedSource {
 }
 impl AnalyzedSource {
     /// Analyzes exactly the retained issued coverage and captured domain style.
-    pub fn from_processed_paragraph(paragraph: ProcessedParagraph) -> Result<Self> {
+    /// Upright requires the paragraph's captured used base to be LTR. Its
+    /// nearest-block tab reference remains a separate authority.
+    pub fn from_processed_paragraph(
+        paragraph: ProcessedParagraph,
+        typography: crate::AnalysisTypography,
+    ) -> Result<Self> {
         let data = paragraph.data().clone();
         Ok(Self::from_inner(crate::engine::analyze_paragraph(
             paragraph.owner,
             data,
+            typography,
         )?))
     }
 }
@@ -409,10 +560,15 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
     }
     crate::source_model::validate_structure(&input.source)?;
     super::validate_delimiters(&input.source, &input.segment_breaks)?;
+    let scope_alignment =
+        alignment::ScopeAlignmentCapture::capture(&input.scopes, input.scope_alignment_limits)?;
     let mut scopes = vec![false; input.scopes.len()];
     let mut paragraphs = vec![false; input.paragraphs.len()];
     let mut origins = vec![false; input.origins.len()];
     let mut connections = vec![false; input.connections.len()];
+    let mut connection_orders = Vec::new();
+    super::reserve(&mut connection_orders, input.connections.len())?;
+    connection_orders.resize(input.connections.len(), usize::MAX);
     let mut atomics = vec![false; input.source.boxes().len()];
     let mut controls = vec![false; input.controls.len()];
     let mut associations = vec![false; input.source.boxes().len()];
@@ -431,6 +587,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
     let mut cursor = 0;
     let mut topology = ScopeCapture {
         canonical: canonical::CanonicalCache::default(),
+        scope_alignment,
         computed_input_rows: Vec::new(),
         computed: Vec::new(),
         origin_orders: vec![0; input.origins.len()],
@@ -460,12 +617,26 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                         Some(CapturedDomainData::OutOfFlowBlock(*atomic))
                     }
                 },
+                writing_axis: scope.writing_axis(),
+                horizontal_inner_direction: scope.horizontal_inner_direction(),
             })
             .collect(),
         events: Vec::new(),
         complete: Vec::new(),
         domain_scopes: Vec::new(),
-        paragraphs: vec![CapturedParagraphData::default(); input.paragraphs.len()],
+        paragraphs: input
+            .paragraphs
+            .iter()
+            .map(|facts| CapturedParagraphData {
+                domain: 0,
+                enter: 0,
+                exit: 0,
+                facts: *facts,
+                joint_flow: None,
+            })
+            .collect(),
+        joint_flows: Vec::new(),
+        connections: Vec::new(),
         controls: input
             .controls
             .iter()
@@ -641,11 +812,8 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                 }
                 captures[index].start = cursor;
                 captures[index].domain = own;
-                topology.paragraphs[index] = CapturedParagraphData {
-                    domain: own,
-                    enter: order,
-                    exit: 0,
-                };
+                topology.paragraphs[index].domain = own;
+                topology.paragraphs[index].enter = order;
                 active_paragraphs[own] = Some(index);
             }
             SourceProcessingEvent::ExitParagraph(index) => {
@@ -701,20 +869,19 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
             }
             SourceProcessingEvent::Connection(index) => {
                 take(&mut connections, index)?;
-                let p = paragraph.ok_or_else(|| invalid(SourceProcessingError::Domain))?;
                 let row = input.connections[index];
-                if captures[p].origins.last() != Some(&row.before_origin)
-                    || input
-                        .origins
-                        .get(row.after_origin)
-                        .is_none_or(|origin| origin.aggregate.start != cursor)
+                connection_orders[index] = order;
+                // This is provisional raw-local indexing only. The complete
+                // event stream validates source endpoints independently of
+                // joint authority, then retains cross-view rows globally.
+                if let Some(p) =
+                    paragraph.filter(|&p| captures[p].origins.last() == Some(&row.before_origin))
                 {
-                    return Err(invalid(SourceProcessingError::Connection));
+                    captures[p].connections.push(index);
+                    captures[p].connection_orders.push(order);
+                    let cut = captures[p].anchors.len();
+                    captures[p].connection_anchor_cuts.push(cut);
                 }
-                captures[p].connections.push(index);
-                captures[p].connection_orders.push(order);
-                let cut = captures[p].anchors.len();
-                captures[p].connection_anchor_cuts.push(cut);
             }
             SourceProcessingEvent::Atomic { atomic, affinity } => {
                 take(&mut atomics, atomic)?;
@@ -846,6 +1013,15 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
             boundary_controls[boundaries.end] = true;
         }
     }
+    joint_flow::admit(&input, &mut topology, &paragraph_order)?;
+    let provided = connection::admit(
+        &input,
+        &mut topology,
+        &mut captures,
+        &connection_orders,
+        &mut context,
+    )?;
+    joint_flow::validate_connections(&topology, &captures, &provided)?;
     computed::admit(&input, &mut topology, &mut captures, &mut context)?;
     let topology = Arc::new(topology);
     for barrier in &context.barriers {
@@ -879,7 +1055,17 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
     let modes = super::contextual_modes(&input.source, &context)?;
     super::validate_modes(&modes, &input.segment_breaks)?;
     let mut records = Vec::new();
-    let mut used_policies = vec![false; input.boundary_policies.len()];
+    let mut used_policies: Vec<_> = input
+        .boundary_policies
+        .iter()
+        .map(|policy| match policy.definition {
+            ParagraphBoundaryDefinition::Connection(connection) => topology
+                .connections
+                .get(connection)
+                .is_some_and(|connection| connection.boundary_policy.is_some()),
+            _ => false,
+        })
+        .collect();
     let mut used_replacements = vec![false; input.replacements.len()];
     for (index, capture) in captures.into_iter().enumerate() {
         for &origin in &capture.origins {
@@ -1043,57 +1229,67 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                 _ => false,
             });
         let data = ParagraphData {
-            computed_boundaries: capture.computed_boundaries,
-            scope_topology: Some(ParagraphTopology {
-                capture: Arc::clone(&topology),
-                paragraph: index,
-                domain: capture.domain,
-                origin_orders: capture.origin_orders.clone(),
-                control_orders: capture
-                    .controls
-                    .iter()
-                    .map(|&i| control_orders[i])
-                    .collect(),
-            }),
-            terminal_edge: if terminal {
-                crate::ParagraphTerminalEdge::BlockEnd
-            } else {
-                crate::ParagraphTerminalEdge::NonBlockBoundary
+            context: crate::protocol::paragraph::ParagraphContext {
+                content: crate::protocol::paragraph::ParagraphContent {
+                    computed_boundaries: capture.computed_boundaries,
+                    origin_map: crate::protocol::paragraph::OriginMap::captured(
+                        capture.origin_orders,
+                        capture.origins.len(),
+                    )?,
+                    origins: capture
+                        .origins
+                        .iter()
+                        .map(|i| {
+                            let row = &input.origins[*i];
+                            OriginData {
+                                source: OriginSource::Captured(row.source.clone()),
+                                local: row.local,
+                                aggregate: row.aggregate,
+                                kind: row.kind,
+                                text_node: row.text_node.clone(),
+                            }
+                        })
+                        .collect(),
+                    connections: native_connections,
+                    connection_ends: Some(ends),
+                    connection_anchor_cuts: Some(capture.connection_anchor_cuts),
+                    controls: capture
+                        .controls
+                        .iter()
+                        .map(|i| input.controls[*i].clone())
+                        .collect(),
+                    boundary_policies: policies,
+                    replacements,
+                    anchor_order: capture.anchors,
+                    coverage: Some(coverage),
+                    envelope: Some(extent),
+                },
+                scope_topology: Some(ParagraphTopology {
+                    capture: Arc::clone(&topology),
+                    owner: crate::analyzed::captured::CapturedOwner::Raw(CapturedParagraph {
+                        capture: Arc::clone(&topology),
+                        index,
+                    }),
+                    domain: capture.domain,
+                    control_orders: capture
+                        .controls
+                        .iter()
+                        .map(|&i| control_orders[i])
+                        .collect(),
+                }),
+                terminal_edge: if terminal {
+                    crate::ParagraphTerminalEdge::BlockEnd
+                } else {
+                    crate::ParagraphTerminalEdge::NonBlockBoundary
+                },
+                base_direction: Some(input.paragraphs[index].base_direction),
+                paragraph_strut: input.paragraphs[index].paragraph_strut,
+                domain_style: Some(context.domains[capture.domain].style.clone()),
+                tab_reference: Some(crate::ParagraphTabReference::new(
+                    context.domains[capture.domain].style.clone(),
+                    context.domains[capture.domain].direction,
+                )?),
             },
-            origins: capture
-                .origins
-                .iter()
-                .map(|i| {
-                    let row = &input.origins[*i];
-                    OriginData {
-                        source: OriginSource::Captured(row.source.clone()),
-                        local: row.local,
-                        aggregate: row.aggregate,
-                        kind: row.kind,
-                        text_node: row.text_node.clone(),
-                    }
-                })
-                .collect(),
-            connections: native_connections,
-            connection_ends: Some(ends),
-            connection_anchor_cuts: Some(capture.connection_anchor_cuts),
-            controls: capture
-                .controls
-                .iter()
-                .map(|i| input.controls[*i].clone())
-                .collect(),
-            boundary_policies: policies,
-            replacements,
-            anchor_order: capture.anchors,
-            base_direction: Some(input.paragraphs[index].base_direction),
-            paragraph_strut: input.paragraphs[index].paragraph_strut,
-            coverage: Some(coverage),
-            envelope: Some(extent),
-            domain_style: Some(context.domains[capture.domain].style.clone()),
-            tab_reference: Some(crate::ParagraphTabReference::new(
-                context.domains[capture.domain].style.clone(),
-                context.domains[capture.domain].direction,
-            )?),
         };
         for replacement in &data.replacements {
             data.admit(&input.source, replacement.replaced_source())?;
@@ -1117,13 +1313,21 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
         })
         .collect();
     super::validate_crossings(&input.source, &input.segment_breaks, &box_order)?;
-    let (units, map, plaintext_tokens) =
-        super::lexical::execute(super::lexical::ValidatedProcessingRequest::Contextual {
-            source: &input.source,
-            breaks: &input.segment_breaks,
-            context: &context,
-            modes: &modes,
-        })?;
+    let super::lexical_inventory::LexicalOutput {
+        units,
+        map,
+        plaintext_tokens,
+        lexical,
+    } = super::lexical::execute(super::lexical::ValidatedProcessingRequest::Contextual {
+        source: &input.source,
+        breaks: &input.segment_breaks,
+        context: &context,
+        capture: &topology,
+        modes: &modes,
+        origins: &input.origins,
+        provided: &provided,
+    })?;
+    drop(provided);
     let preserved_spaces = super::preserved_spaces(&units, &plaintext_tokens)?;
     Ok(ProcessedSource {
         source: input.source,
@@ -1135,6 +1339,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
         paragraphs: records,
         plaintext_tokens,
         preserved_spaces,
+        lexical,
     })
 }
 

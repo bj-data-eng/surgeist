@@ -42,6 +42,7 @@ pub(super) struct LineProof {
     outgoing: Option<HyphenationContinuation>,
     encounters: Vec<EncounterBasis>,
     amounts: Vec<f64>,
+    scopes: super::super::scope_alignment::ScopeBasis,
     natural: f64,
     inline: f64,
     placed: f64,
@@ -70,6 +71,7 @@ impl LineProof {
             outgoing: line.finalized.hyphenation_continuation(),
             encounters: line.encounters.clone(),
             amounts: line.amounts.clone(),
+            scopes: line.scopes.clone(),
             natural: line.natural_advance,
             inline: line.inline_start,
             placed: line.placed_start,
@@ -479,6 +481,14 @@ mod tests {
         let paragraph =
             PreparedParagraph::plain(1, surgeist_text::Source::new(groups.join("\n")), style);
         GROUP_WORK.with_borrow_mut(|work| work.clear());
+        let scope_alignments = crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
+            crate::text_layout::scope_alignment::ScopeAlignmentSnapshot::<f64>::admit::<()>(
+                Vec::new(),
+                &[],
+            )
+            .unwrap()
+            .freeze(),
+        );
         let lines = super::super::fit(
             FitInput {
                 groups: crate::group_alignment::Snapshot::default(),
@@ -489,6 +499,8 @@ mod tests {
                     crate::Direction::Ltr,
                 ),
                 prepared: &paragraph.prepared,
+                segment: paragraph.prepared.source_segments().next().unwrap(),
+                scope_alignments: &scope_alignments,
                 available: Available::Definite(60.0),
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 block_direction: ParagraphBaseDirection::LeftToRight,

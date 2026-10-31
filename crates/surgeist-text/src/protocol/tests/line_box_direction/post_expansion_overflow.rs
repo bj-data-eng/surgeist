@@ -34,18 +34,36 @@ fn real_space_expansion_past_the_outer_width_overflows_only_the_resolved_end() {
                 assert_eq!(selected.request().end, paragraph_end.view().boundary());
                 assert_eq!(selected.request().context.start, LineStart::Paragraph);
                 assert_eq!(selected.request().context.end, LineEnd::Paragraph);
-                let natural = selected.finalize(SpacingAllocations::None).unwrap();
+                let natural = selected
+                    .finalize(crate::LineAllocations {
+                        spacing: SpacingAllocations::None,
+                        scopes: crate::ScopeAllocations::None,
+                    })
+                    .unwrap();
                 // Real Ahem10 has A10 + SPACE10 + A10, which fits width35.
                 assert_eq!(natural.feedback().advance, 30.0, "{description}");
                 assert_eq!(natural.measurements().alignment().advance(), 30.0);
                 let slots = selected.spacing_slots().collect::<Vec<_>>();
                 assert_eq!(slots.len(), 1, "{description}");
-                assert_eq!(slots[0].source_range(), Range::new(1, 2));
+                assert_eq!(
+                    slots[0]
+                        .pieces()
+                        .map(|piece| piece.owner())
+                        .collect::<Vec<_>>(),
+                    [crate::SpacingSlotOwner::Source {
+                        origin: p.origin_views().next().unwrap().handle(),
+                        local: Range::new(1, 2),
+                        aggregate: Range::new(1, 2),
+                    }]
+                );
                 let expanded = selected
-                    .finalize(SpacingAllocations::Complete(vec![SpacingAllocation {
-                        slot: slots[0].clone(),
-                        amount: 20.0,
-                    }]))
+                    .finalize(crate::LineAllocations {
+                        spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
+                            slot: slots[0].clone(),
+                            amount: 20.0,
+                        }]),
+                        scopes: crate::ScopeAllocations::None,
+                    })
                     .unwrap();
 
                 // These physical positions distinguish overflow introduced by

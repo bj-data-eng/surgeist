@@ -5,6 +5,9 @@ use t::CapturedScopeIncidence as R;
 
 fn block(base: t::Style) -> t::SourceProcessingScope {
     t::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
+        font_reference: None,
         topology: t::SourceProcessingTopology::Complete,
         trim: Default::default(),
         base_style: base,
@@ -13,6 +16,9 @@ fn block(base: t::Style) -> t::SourceProcessingScope {
 }
 fn inline() -> t::SourceProcessingScope {
     t::SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
+        alignment_boundary: None,
+        font_reference: None,
         trim: Default::default(),
         style: None,
         boundaries: None,
@@ -29,6 +35,8 @@ fn input(text: &str, ranges: &[(usize, usize)]) -> t::ContextualSourceInput {
     }
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     t::ContextualSourceInput {
+        joint_flows: Vec::new(),
+        scope_alignment_limits: None,
         source: source.clone(),
         segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
         envelope: t::SourceProcessingEnvelope::Complete,
@@ -77,7 +85,11 @@ fn prepare_processed(processed: &Arc<t::ProcessedSource>, bytes: &[u8]) -> Vec<t
     processed
         .paragraphs()
         .map(|paragraph| {
-            let analyzed = t::AnalyzedSource::from_processed_paragraph(paragraph).unwrap();
+            let analyzed = t::AnalyzedSource::from_processed_paragraph(
+                paragraph,
+                t::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap();
             let policies = analyzed
                 .wrapping_relations()
                 .filter(|r| r.ancestor_wrap().is_none())
@@ -132,8 +144,12 @@ fn hash(value: &impl Hash) -> u64 {
 }
 fn rows(p: &t::PreparedText, b: &t::PreparedBoundary, scopes: &[t::CapturedScope]) -> Vec<Vec<R>> {
     let before = basic_inventory(p);
-    let choices = p.boundary_incidences(b).unwrap();
-    let again = p.boundary_incidences(b).unwrap();
+    let choices = p
+        .boundary_incidences(&p.source_segments().next().unwrap(), b)
+        .unwrap();
+    let again = p
+        .boundary_incidences(&p.source_segments().next().unwrap(), b)
+        .unwrap();
     assert_eq!(choices, again);
     assert_eq!(hash(&choices), hash(&again));
     let result = choices
@@ -655,14 +671,23 @@ fn incidence_capabilities_keep_preparation_capture_role_and_domain_errors_distin
     let (capture, p) = prepare_capture_input(empty_input(), AHEM);
     let b = space_offer(&p);
     let scope = capture.captured_scope(1).unwrap();
-    let local = p.boundary_incidences(&b).unwrap().remove(0);
+    let local = p
+        .boundary_incidences(&p.source_segments().next().unwrap(), &b)
+        .unwrap()
+        .remove(0);
     let same_capture = prepare_processed(&capture, AHEM).remove(0);
     let (foreign_capture, foreign) = prepare_capture_input(empty_input(), AHEM);
     for other in [&same_capture, &foreign] {
         let ob = space_offer(other);
-        let incidence = other.boundary_incidences(&ob).unwrap().remove(0);
+        let incidence = other
+            .boundary_incidences(&other.source_segments().next().unwrap(), &ob)
+            .unwrap()
+            .remove(0);
         assert!(matches!(
-            reason(&p.boundary_incidences(&ob).unwrap_err()),
+            reason(
+                &p.boundary_incidences(&p.source_segments().next().unwrap(), &ob)
+                    .unwrap_err()
+            ),
             t::ProtocolError::ForeignPreparation {
                 kind: t::ProtocolHandleKind::Boundary,
                 ..
@@ -696,6 +721,9 @@ fn incidence_capabilities_keep_preparation_capture_role_and_domain_errors_distin
     domain.scopes.extend([
         inline(),
         t::SourceProcessingScope::OutOfFlowBlock {
+            writing_axis: None,
+            horizontal_inner_direction: None,
+            font_reference: None,
             topology: t::SourceProcessingTopology::Complete,
             trim: Default::default(),
             base_style: style(t::WhiteSpace::Preserve),
@@ -737,15 +765,22 @@ fn incidence_capabilities_keep_preparation_capture_role_and_domain_errors_distin
     let prepared = prepare_processed(&domain, AHEM);
     let parent = &prepared[0];
     let end = paragraph_end(parent).view().boundary();
-    let incidence = parent.boundary_incidences(&end).unwrap().remove(0);
+    let incidence = parent
+        .boundary_incidences(&parent.source_segments().next().unwrap(), &end)
+        .unwrap()
+        .remove(0);
     scope_error(
         &parent
             .incidence_scope_relation(&incidence, &domain.captured_scope(3).unwrap())
             .unwrap_err(),
         t::WrappingScopeQueryError::WrongDomain,
     );
-    let flat =
-        t::AnalyzedSource::new(t::Source::new("AB"), style(t::WhiteSpace::Preserve)).unwrap();
+    let flat = t::AnalyzedSource::new(
+        t::Source::new("AB"),
+        style(t::WhiteSpace::Preserve),
+        t::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let mut system = t::System::new(t::SystemOptions {
         font_catalogue: t::FontCatalogueMode::RegisteredOnly,
     })
@@ -756,7 +791,10 @@ fn incidence_capabilities_keep_preparation_capture_role_and_domain_errors_distin
         .unwrap();
     scope_error(
         &flat
-            .boundary_incidences(&paragraph_end(&flat).view().boundary())
+            .boundary_incidences(
+                &flat.source_segments().next().unwrap(),
+                &paragraph_end(&flat).view().boundary(),
+            )
             .unwrap_err(),
         t::WrappingScopeQueryError::MissingCapture,
     );

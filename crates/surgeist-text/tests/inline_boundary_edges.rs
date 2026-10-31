@@ -68,6 +68,9 @@ fn prepare_capture(
         pairs
             .iter()
             .map(|&(start, end)| t::SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
+                alignment_boundary: None,
+                font_reference: None,
                 trim: t::WhiteSpaceTrim::default(),
                 style: Some(base.clone()),
                 boundaries: Some(t::SourceProcessingScopeBoundaries { start, end }),
@@ -78,6 +81,8 @@ fn prepare_capture(
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     let processed = Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
@@ -126,7 +131,11 @@ fn prepare_capture(
     );
     assert_eq!(processed.source().text(), source.text());
     let paragraph = processed.paragraphs().next().unwrap();
-    let analyzed = t::AnalyzedSource::from_processed_paragraph(paragraph).unwrap();
+    let analyzed = t::AnalyzedSource::from_processed_paragraph(
+        paragraph,
+        t::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     // Every relation here has the same genuinely captured enclosing block's
     // computed Word wrapping policy; no permission is inferred from width.
     let policies = analyzed
@@ -170,6 +179,9 @@ fn capture(
     let prepared = prepare_capture(
         t::Source::identified(t::Text::from(value), t::Id::from_u64(64072), 1),
         t::SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
+            font_reference: None,
             topology: t::SourceProcessingTopology::Complete,
             trim: t::WhiteSpaceTrim::default(),
             base_style: style(mode),
@@ -269,6 +281,7 @@ fn finish(
         })
         .collect();
     let mut request = t::LineSelectionRequest {
+        segment: prepared.source_segments().next().unwrap(),
         start,
         end: boundary,
         termination: t::PreparedTermination::Ordinary(end.clone()),
@@ -314,7 +327,10 @@ fn finish(
     prepared
         .select(request)
         .unwrap()
-        .finalize(t::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: t::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap()
 }
 

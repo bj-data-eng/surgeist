@@ -48,7 +48,12 @@ fn actual_transform_phase_executes_full_contextual_and_initial_unit_literals() {
         ("nÓg NÓG", Lowercase, Some("ga"), "n-óg nóg"),
     ] {
         let source = Source::new(input);
-        let analyzed = AnalyzedSource::new(source.clone(), style(case, locale)).unwrap();
+        let analyzed = AnalyzedSource::new(
+            source.clone(),
+            style(case, locale),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         assert_eq!(
             analyzed.inner.projection.text, expected,
             "{input:?}/{case:?}/{locale:?}"
@@ -86,11 +91,15 @@ fn actual_component_operations_and_languages_never_borrow_the_neighbors_policy()
         let mut source = Source::new("ij");
         source.span(Range::new(1, 2), right);
         assert_eq!(
-            AnalyzedSource::new(source, left)
-                .unwrap()
-                .inner
-                .projection
-                .text,
+            AnalyzedSource::new(
+                source,
+                left,
+                crate::AnalysisTypography::HorizontalComposition
+            )
+            .unwrap()
+            .inner
+            .projection
+            .text,
             expected
         );
     }
@@ -102,11 +111,15 @@ fn actual_component_operations_and_languages_never_borrow_the_neighbors_policy()
         let mut source = Source::new("i\u{307}");
         source.span(Range::new(1, 2), dot);
         assert_eq!(
-            AnalyzedSource::new(source, style(CaseTransform::Capitalize, Some("lt")))
-                .unwrap()
-                .inner
-                .projection
-                .text,
+            AnalyzedSource::new(
+                source,
+                style(CaseTransform::Capitalize, Some("lt")),
+                crate::AnalysisTypography::HorizontalComposition
+            )
+            .unwrap()
+            .inner
+            .projection
+            .text,
             expected
         );
     }
@@ -130,32 +143,44 @@ fn actual_component_operations_and_languages_never_borrow_the_neighbors_policy()
         let mut source = Source::new("nÓ");
         source.span(Range::new(1, 2), right);
         assert_eq!(
-            AnalyzedSource::new(source, left)
-                .unwrap()
-                .inner
-                .projection
-                .text,
+            AnalyzedSource::new(
+                source,
+                left,
+                crate::AnalysisTypography::HorizontalComposition
+            )
+            .unwrap()
+            .inner
+            .projection
+            .text,
             expected
         );
     }
     let mut source = Source::new("ΟΣΑ");
     source.span(Range::new(1, 2), style(CaseTransform::Lowercase, None));
     assert_eq!(
-        AnalyzedSource::new(source, Style::default())
-            .unwrap()
-            .inner
-            .projection
-            .text,
+        AnalyzedSource::new(
+            source,
+            Style::default(),
+            crate::AnalysisTypography::HorizontalComposition
+        )
+        .unwrap()
+        .inner
+        .projection
+        .text,
         "ΟσΑ"
     );
     let mut source = Source::new("foobar");
     source.span(Range::new(3, 6), style(CaseTransform::Capitalize, None));
     assert_eq!(
-        AnalyzedSource::new(source, Style::default())
-            .unwrap()
-            .inner
-            .projection
-            .text,
+        AnalyzedSource::new(
+            source,
+            Style::default(),
+            crate::AnalysisTypography::HorizontalComposition
+        )
+        .unwrap()
+        .inner
+        .projection
+        .text,
         "foobar"
     );
 }
@@ -167,8 +192,12 @@ fn actual_relation_keeps_reordered_noncontiguous_emissions_and_a_real_removal() 
         Range::new(2, 3),
         style(CaseTransform::Uppercase, Some("el")),
     );
-    let analyzed =
-        AnalyzedSource::new(source.clone(), style(CaseTransform::Uppercase, None)).unwrap();
+    let analyzed = AnalyzedSource::new(
+        source.clone(),
+        style(CaseTransform::Uppercase, None),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(analyzed.inner.projection.text, "\u{1f08}\u{301}Ι");
     let map = &analyzed.inner.transform;
     assert_eq!(
@@ -191,7 +220,7 @@ fn actual_relation_keeps_reordered_noncontiguous_emissions_and_a_real_removal() 
         [
             RelationEvent::Text { atom: 0 },
             RelationEvent::Text { atom: 1 },
-            RelationEvent::Removal { row: 2 },
+            RelationEvent::Removal { row: 2, .. },
             RelationEvent::Text { atom: 2 }
         ]
     ));
@@ -204,8 +233,12 @@ fn actual_relation_keeps_reordered_noncontiguous_emissions_and_a_real_removal() 
 #[test]
 fn opaque_original_units_and_kana_composition_keep_independent_phase_custody() {
     let source = Source::new(Text::from_code_units(vec![0xd800, 0xfffd, 0xdc00, 0xdf]));
-    let analyzed =
-        AnalyzedSource::new(source.clone(), style(CaseTransform::Uppercase, None)).unwrap();
+    let analyzed = AnalyzedSource::new(
+        source.clone(),
+        style(CaseTransform::Uppercase, None),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(
         analyzed
             .inner
@@ -228,6 +261,7 @@ fn opaque_original_units_and_kana_composition_keep_independent_phase_custody() {
             ),
             ..Style::default()
         },
+        crate::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     assert_eq!(analyzed.inner.projection.text, "SSこ");
@@ -270,67 +304,74 @@ fn immutable_context_crosses_connected_origins_and_neutral_oof_but_not_real_doma
                 crate::Size::new(0.0, 0.0),
             ));
         }
-        let analyzed = AnalyzedSource::from_paragraph(crate::ParagraphInput {
-            source: source.clone(),
-            base_style: style(CaseTransform::Lowercase, None),
-            paragraph_strut: crate::ParagraphStrut::DefaultFont,
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-            tab_reference: None,
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: crate::ParagraphBaseDirection::LeftToRight,
-            origins: [(0, 2), (2, 3)]
+        let analyzed = AnalyzedSource::from_paragraph(
+            crate::ParagraphInput {
+                source: source.clone(),
+                base_style: style(CaseTransform::Lowercase, None),
+                paragraph_strut: crate::ParagraphStrut::DefaultFont,
+                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                tab_reference: None,
+                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                base_direction: crate::ParagraphBaseDirection::LeftToRight,
+                origins: [(0, 2), (2, 3)]
+                    .into_iter()
+                    .map(|(start, end)| crate::ParagraphOrigin {
+                        text_node: None,
+                        source: source.clone(),
+                        local: Range::new(start, end),
+                        aggregate: Range::new(start, end),
+                        kind: crate::ParagraphOriginKind::Authored,
+                    })
+                    .collect(),
+                connections: vec![crate::ParagraphConnection {
+                    at: 2,
+                    kind: connection,
+                }],
+                controls: vec![],
+                replacements: vec![],
+                boundary_policies: (if connection == crate::ParagraphConnectionKind::Continuous {
+                    vec![crate::ParagraphBoundaryDefinition::Connection(0)]
+                } else {
+                    vec![]
+                })
                 .into_iter()
-                .map(|(start, end)| crate::ParagraphOrigin {
-                    text_node: None,
-                    source: source.clone(),
-                    local: Range::new(start, end),
-                    aggregate: Range::new(start, end),
-                    kind: crate::ParagraphOriginKind::Authored,
+                .chain(if box_kind == Some(crate::InlineBoxKind::InFlow) {
+                    vec![
+                        crate::ParagraphBoundaryDefinition::AtomicBefore(0),
+                        crate::ParagraphBoundaryDefinition::AtomicAfter(0),
+                    ]
+                } else {
+                    vec![]
+                })
+                .map(|definition| crate::ParagraphBoundaryPolicy {
+                    definition,
+                    preceding_wrap: crate::Wrap::Word,
+                    following_wrap: crate::Wrap::Word,
+                    ancestor_wrap: crate::Wrap::Word,
                 })
                 .collect(),
-            connections: vec![crate::ParagraphConnection {
-                at: 2,
-                kind: connection,
-            }],
-            controls: vec![],
-            replacements: vec![],
-            boundary_policies: (if connection == crate::ParagraphConnectionKind::Continuous {
-                vec![crate::ParagraphBoundaryDefinition::Connection(0)]
-            } else {
-                vec![]
-            })
-            .into_iter()
-            .chain(if box_kind == Some(crate::InlineBoxKind::InFlow) {
-                vec![
-                    crate::ParagraphBoundaryDefinition::AtomicBefore(0),
-                    crate::ParagraphBoundaryDefinition::AtomicAfter(0),
-                ]
-            } else {
-                vec![]
-            })
-            .map(|definition| crate::ParagraphBoundaryPolicy {
-                definition,
-                preceding_wrap: crate::Wrap::Word,
-                following_wrap: crate::Wrap::Word,
-                ancestor_wrap: crate::Wrap::Word,
-            })
-            .collect(),
-            anchor_order: if box_kind.is_some() {
-                vec![crate::ParagraphAnchor {
-                    item: crate::ParagraphAnchorItem::Atomic(0),
-                    affinity: crate::Affinity::After,
-                }]
-            } else {
-                vec![]
+                anchor_order: if box_kind.is_some() {
+                    vec![crate::ParagraphAnchor {
+                        item: crate::ParagraphAnchorItem::Atomic(0),
+                        affinity: crate::Affinity::After,
+                    }]
+                } else {
+                    vec![]
+                },
             },
-        })
+            crate::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap();
         assert_eq!(analyzed.inner.projection.text, expected);
         assert_eq!(analyzed.source(), &source);
         assert_eq!(analyzed.processed_source().processed_text(), source.text());
     }
-    let analyzed =
-        AnalyzedSource::new(Source::new("ΟΣ\nΑ"), style(CaseTransform::Lowercase, None)).unwrap();
+    let analyzed = AnalyzedSource::new(
+        Source::new("ΟΣ\nΑ"),
+        style(CaseTransform::Lowercase, None),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(analyzed.inner.projection.text, "ος\nα");
 }
 
@@ -350,46 +391,49 @@ fn split_origin_dot_and_acute_use_actual_context_through_neutral_oof() {
                     crate::Size::new(0.0, 0.0),
                 ));
             }
-            let analyzed = AnalyzedSource::from_paragraph(crate::ParagraphInput {
-                source: source.clone(),
-                base_style: style(CaseTransform::Lowercase, Some(locale)),
-                paragraph_strut: crate::ParagraphStrut::DefaultFont,
-                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-                tab_reference: None,
-                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-                base_direction: crate::ParagraphBaseDirection::LeftToRight,
-                origins: [Source::new("I"), Source::new(mark)]
-                    .into_iter()
-                    .enumerate()
-                    .map(|(index, original)| crate::ParagraphOrigin {
-                        text_node: None,
-                        source: original,
-                        local: Range::new(0, 1),
-                        aggregate: Range::new(index, index + 1),
-                        kind: crate::ParagraphOriginKind::Authored,
-                    })
-                    .collect(),
-                connections: vec![crate::ParagraphConnection {
-                    at: 1,
-                    kind: crate::ParagraphConnectionKind::Continuous,
-                }],
-                controls: vec![],
-                replacements: vec![],
-                boundary_policies: vec![crate::ParagraphBoundaryPolicy {
-                    definition: crate::ParagraphBoundaryDefinition::Connection(0),
-                    preceding_wrap: crate::Wrap::Word,
-                    following_wrap: crate::Wrap::Word,
-                    ancestor_wrap: crate::Wrap::Word,
-                }],
-                anchor_order: if oof {
-                    vec![crate::ParagraphAnchor {
-                        item: crate::ParagraphAnchorItem::Atomic(0),
-                        affinity: crate::Affinity::After,
-                    }]
-                } else {
-                    vec![]
+            let analyzed = AnalyzedSource::from_paragraph(
+                crate::ParagraphInput {
+                    source: source.clone(),
+                    base_style: style(CaseTransform::Lowercase, Some(locale)),
+                    paragraph_strut: crate::ParagraphStrut::DefaultFont,
+                    terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                    tab_reference: None,
+                    segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                    base_direction: crate::ParagraphBaseDirection::LeftToRight,
+                    origins: [Source::new("I"), Source::new(mark)]
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, original)| crate::ParagraphOrigin {
+                            text_node: None,
+                            source: original,
+                            local: Range::new(0, 1),
+                            aggregate: Range::new(index, index + 1),
+                            kind: crate::ParagraphOriginKind::Authored,
+                        })
+                        .collect(),
+                    connections: vec![crate::ParagraphConnection {
+                        at: 1,
+                        kind: crate::ParagraphConnectionKind::Continuous,
+                    }],
+                    controls: vec![],
+                    replacements: vec![],
+                    boundary_policies: vec![crate::ParagraphBoundaryPolicy {
+                        definition: crate::ParagraphBoundaryDefinition::Connection(0),
+                        preceding_wrap: crate::Wrap::Word,
+                        following_wrap: crate::Wrap::Word,
+                        ancestor_wrap: crate::Wrap::Word,
+                    }],
+                    anchor_order: if oof {
+                        vec![crate::ParagraphAnchor {
+                            item: crate::ParagraphAnchorItem::Atomic(0),
+                            affinity: crate::Affinity::After,
+                        }]
+                    } else {
+                        vec![]
+                    },
                 },
-            })
+                crate::AnalysisTypography::HorizontalComposition,
+            )
             .unwrap();
             assert_eq!(analyzed.inner.projection.text, expected);
             let map = &analyzed.inner.transform;
@@ -405,7 +449,17 @@ fn split_origin_dot_and_acute_use_actual_context_through_neutral_oof() {
             for row in 0..2 {
                 let piece = &map.original_pieces(row)[0];
                 assert_eq!(
-                    (piece.origin, piece.local, piece.aggregate),
+                    (
+                        analyzed
+                            .inner
+                            .paragraph
+                            .origin_map
+                            .view_origin(piece.origin)
+                            .expect("original contribution belongs to this view")
+                            .get(),
+                        piece.local,
+                        piece.aggregate,
+                    ),
                     (row, Range::new(0, 1), Range::new(row, row + 1))
                 );
             }
@@ -415,7 +469,7 @@ fn split_origin_dot_and_acute_use_actual_context_through_neutral_oof() {
                 assert!(
                     map.events()
                         .iter()
-                        .any(|event| matches!(event, RelationEvent::Removal { row: 1 }))
+                        .any(|event| matches!(event, RelationEvent::Removal { row: 1, .. }))
                 );
             }
         }

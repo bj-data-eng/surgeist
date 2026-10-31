@@ -66,6 +66,9 @@ fn prepare() -> Vec<text::PreparedText> {
         kind: text::ParagraphOriginKind::Authored,
     };
     let block = || text::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
+        font_reference: None,
         topology: text::SourceProcessingTopology::Complete,
         trim: Default::default(),
         base_style: style.clone(),
@@ -82,6 +85,8 @@ fn prepare() -> Vec<text::PreparedText> {
     };
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -103,6 +108,9 @@ fn prepare() -> Vec<text::PreparedText> {
             scopes: vec![
                 block(),
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: Default::default(),
                     style: Some(style.clone()),
                     boundaries: Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
@@ -151,7 +159,11 @@ fn prepare() -> Vec<text::PreparedText> {
     processed
         .paragraphs()
         .map(|paragraph| {
-            let analyzed = text::AnalyzedSource::from_processed_paragraph(paragraph).unwrap();
+            let analyzed = text::AnalyzedSource::from_processed_paragraph(
+                paragraph,
+                text::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap();
             let policies = analyzed
                 .wrapping_relations()
                 .filter(|row| row.ancestor_wrap().is_none())
@@ -278,6 +290,7 @@ fn empty_captured_child_paragraph_preserves_ordinary_box_and_parent_text_layout(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let baseline = layout::compute_layout_with_flow(&capture, 0, request()).unwrap();
@@ -311,6 +324,7 @@ fn empty_captured_child_paragraph_preserves_ordinary_box_and_parent_text_layout(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap_or_else(|error| {
         panic!(
@@ -366,6 +380,7 @@ fn source_bearing_paragraph_with_empty_nodes_is_not_association_only() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("a source-bearing paragraph with no run nodes must refuse")
     };
@@ -395,6 +410,8 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
     use text::SourceProcessingEvent as E;
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -411,6 +428,9 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
             boundary_policies: vec![],
             replacements: vec![],
             scopes: vec![text::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: text::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
@@ -434,9 +454,11 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
         .unwrap(),
     );
     assert_eq!(processed.processed_text().len(), 0);
-    let analyzed =
-        text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-            .unwrap();
+    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let mut system = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,
     })
@@ -475,6 +497,7 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("discarding a genuine source space cannot make its paragraph association-only")
     };

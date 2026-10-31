@@ -74,7 +74,9 @@ fn prepare(request: t::ParagraphInput) -> t::PreparedText {
     let ancestor = request.base_style.wrap;
     let source = request.source.clone();
     let base = request.base_style.clone();
-    let analyzed = t::AnalyzedSource::from_paragraph(request).unwrap();
+    let analyzed =
+        t::AnalyzedSource::from_paragraph(request, t::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())
@@ -212,18 +214,21 @@ fn missing_thai_lexical_capability_normal_publishes_ordinary_letter_pair_cut() {
         let start = p.boundary_views().next().unwrap().handle();
         let ceiling = p.opportunity_views().next().unwrap().handle();
         assert!(
-            p.conditional_search(
-                &start,
-                None,
-                &ceiling,
-                t::ConditionalPurpose::Overflow,
-                &[],
-                None
-            )
-            .and_then(|search| search.begin(&[]))
-            .map(|batch| batch.opportunities().to_vec())
-            .unwrap()
-            .is_empty()
+            p.source_segments()
+                .next()
+                .unwrap()
+                .conditional_search(
+                    &start,
+                    None,
+                    &ceiling,
+                    t::ConditionalPurpose::Overflow,
+                    &[],
+                    None
+                )
+                .and_then(|search| search.begin(&[]))
+                .map(|batch| batch.opportunities().to_vec())
+                .unwrap()
+                .is_empty()
         );
         observations.push((direction, cuts(&p)));
     }
@@ -537,6 +542,7 @@ fn assumed_line_opportunities_do_not_become_detected_word_movement_stops() {
             .handle();
         let line = p
             .select(t::LineSelectionRequest {
+                segment: p.source_segments().next().unwrap(),
                 start,
                 end: end.view().boundary(),
                 participants: p.participants().collect(),
@@ -571,7 +577,10 @@ fn assumed_line_opportunities_do_not_become_detected_word_movement_stops() {
                 },
             })
             .unwrap()
-            .finalize(t::SpacingAllocations::None)
+            .finalize(surgeist_text::LineAllocations {
+                spacing: t::SpacingAllocations::None,
+                scopes: surgeist_text::ScopeAllocations::None,
+            })
             .unwrap();
         let layout = t::Layout::from_finalized_lines(t::PlacementRequest {
             prepared: p,
@@ -719,7 +728,12 @@ fn standalone_consumes_missing_lexical_fallback_as_ordinary_with_real_notdef_met
         [1],
         "the complete Thai+ZWJ TCU leaves only the lexical fallback as ordinary permission"
     );
-    let raw_analysis = t::AnalyzedSource::new(source.clone(), style(Some("th"))).unwrap();
+    let raw_analysis = t::AnalyzedSource::new(
+        source.clone(),
+        style(Some("th")),
+        t::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let raw = system
         .prepare(&raw_analysis, t::PreparationOptions::default())
         .unwrap();

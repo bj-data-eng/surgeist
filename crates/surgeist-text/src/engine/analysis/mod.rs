@@ -12,6 +12,7 @@ pub(crate) mod line_units;
 pub(crate) mod phrase;
 pub(crate) mod scope;
 pub(crate) mod unit_properties;
+pub(crate) mod upright;
 pub(crate) mod wrapping;
 
 use std::ops::Range;
@@ -31,11 +32,15 @@ use icu_segmenter::options::WordBreakInvariantOptions;
 use parley_data::Properties;
 
 use super::{bidi::BidiResolver, resolve::AnalyzedStyleRun};
-use crate::protocol::paragraph::{ParagraphData, SemanticAnchorItem};
+use crate::protocol::paragraph::{ParagraphContext, SemanticAnchorItem};
 use crate::{InlineBox, InlineBoxKind, Result, projection::SourceProjection};
 
 #[derive(Default)]
 pub(crate) struct AnalysisDataSources;
+
+pub(crate) mod edge;
+pub(super) mod storage;
+pub(crate) mod structural;
 
 impl AnalysisDataSources {
     pub(crate) fn properties(&self, ch: char) -> Properties {
@@ -46,7 +51,7 @@ impl AnalysisDataSources {
         }
     }
 
-    fn original_properties(&self, cp: u32) -> Properties {
+    pub(crate) fn original_properties(&self, cp: u32) -> Properties {
         if let Some(ch) = char::from_u32(cp) {
             return self.properties(ch);
         }
@@ -114,9 +119,7 @@ pub(super) fn capacity() -> crate::Error {
 }
 
 fn issue_candidate(rows: &mut Vec<LineCandidate>, row: LineCandidate) -> Result<()> {
-    rows.try_reserve(1).map_err(|_| capacity())?;
-    rows.push(row);
-    Ok(())
+    storage::push(rows, row)
 }
 
 /// The hard-break role of the actual semantic code point at this phase.
@@ -178,6 +181,9 @@ pub(crate) struct Analysis {
     pub(crate) box_levels: Vec<u8>,
     pub(crate) control_levels: Vec<u8>,
     pub(crate) computed_levels: Vec<u8>,
+    /// One outer bidi result per actual completed cell; inner levels stay in
+    /// the frozen used payload, including when no payload scalar is emitted.
+    pub(crate) cell_levels: Vec<u8>,
     pub(crate) base_level: u8,
     /// Actual segmentation boundaries expressed as half-open atom intervals.
     pub(crate) graphemes: Vec<Range<usize>>,
@@ -187,13 +193,35 @@ pub(crate) struct Analysis {
     pub(crate) phrases: phrase::PhraseCatalog,
 }
 
+/// The completed source owner supplies real structural/bidi scope. Indication
+/// admission instead computes temporary Unicode properties before its existing
+/// original-level/local-indication reconciliation; it issues no body query.
+pub(crate) enum BidiScope<'a> {
+    Completed {
+        sections: &'a [structural::Section],
+        combination: Option<&'a crate::transform::combined::CombinedOutput>,
+        events: &'a [wrapping::LogicalEvent],
+    },
+    Indication,
+}
+
 pub(crate) fn analyze(
     projection: &SourceProjection,
     styles: &[AnalyzedStyleRun],
     boxes: &[InlineBox],
-    paragraph: &ParagraphData,
+    paragraph: &ParagraphContext,
+    typography: crate::AnalysisTypography,
+    bidi_scope: BidiScope<'_>,
 ) -> Result<(Analysis, Vec<Range<usize>>, direction::DirectionBody)> {
     let sources = AnalysisDataSources;
+    let (sections, combination, events) = match bidi_scope {
+        BidiScope::Completed {
+            sections,
+            combination,
+            events,
+        } => (Some(sections), combination, Some(events)),
+        BidiScope::Indication => (None, None, None),
+    };
     for (policy, row) in paragraph.boundary_policies.iter().enumerate() {
         let at = row.at(paragraph, boxes);
         let original_end = styles
@@ -266,7 +294,7 @@ pub(crate) fn analyze(
         .windows(2)
         .map(|pair| pair[0]..pair[1])
         .collect();
-    let line_units = line_units::LineBreakUnits::new(projection)?;
+    let line_units = line_units::LineBreakUnits::new(projection, combination)?;
     let mut boundaries = vec![Boundary::None; projection.atoms.len() + 1];
     let mut word_ranges = Vec::new();
     let mut line_candidates = Vec::new();
@@ -301,6 +329,7 @@ pub(crate) fn analyze(
             line_break::LineRules {
                 policies: &line_policies,
                 units: &line_units,
+                graphemes: &graphemes,
             },
             &offsets,
             component_start..component_end,
@@ -367,8 +396,8 @@ pub(crate) fn analyze(
         mandatory = is_hard_separator(atom.code_point);
         infos.push((info, style));
     }
-    let mut original = Vec::with_capacity(infos.len() + paragraph.anchor_order.len());
-    let mut owners = Vec::with_capacity(original.capacity());
+    let mut stream = Vec::new();
+    let mut owners = Vec::new();
     let positions: Vec<_> = (0..paragraph.anchor_order.len())
         .map(|anchor| anchor_atom(anchor, paragraph, boxes, projection))
         .collect();
@@ -385,68 +414,170 @@ pub(crate) fn analyze(
             ));
         }
     }
-    let mut next_anchor = paragraph.anchor_order.iter().zip(&positions).peekable();
-    for (index, atom) in projection.atoms.iter().enumerate() {
-        while next_anchor.peek().is_some_and(|(_, at)| **at <= index) {
-            let (anchor, _) = next_anchor.next().expect("peek established an anchor");
+    if combination.is_some_and(|output| !output.bindings.is_empty()) {
+        let events = events.expect("completed source cells have canonical logical events");
+        let output = combination.expect("actual cell bindings");
+        let mut next_cell = output.bindings.iter().enumerate().peekable();
+        let mut participant = 0usize;
+        while participant <= events.len() {
+            if let Some(&(index, binding)) = next_cell.peek()
+                && binding.participants.start == participant
+            {
+                if binding.participants.end < participant || binding.participants.end > events.len()
+                {
+                    return Err(crate::protocol::protocol_error(
+                        crate::ProtocolError::InvalidLineDirectionQuery,
+                    ));
+                }
+                storage::push(&mut stream, (BidiClass::LeftToRight, None))?;
+                storage::push(&mut owners, BidiOwner::CombinedCell(index))?;
+                participant = binding.participants.end;
+                next_cell.next();
+                continue;
+            }
+            let Some(event) = events.get(participant) else {
+                break;
+            };
+            match event.kind {
+                wrapping::Event::Text(atom) => {
+                    storage::push(
+                        &mut stream,
+                        (
+                            infos[atom].0.bidi_class,
+                            char::from_u32(projection.atoms[atom].code_point)
+                                .map(|ch| (ch, infos[atom].0.bracket)),
+                        ),
+                    )?;
+                    storage::push(&mut owners, BidiOwner::Atom(atom))?;
+                }
+                wrapping::Event::Anchor(anchor) => push_bidi_anchor(
+                    anchor.item,
+                    paragraph,
+                    boxes,
+                    &sources,
+                    &mut stream,
+                    &mut owners,
+                )?,
+                wrapping::Event::Deleted(..) => (),
+            }
+            participant += 1;
+        }
+        if next_cell.next().is_some() {
+            return Err(crate::protocol::protocol_error(
+                crate::ProtocolError::InvalidLineDirectionQuery,
+            ));
+        }
+    } else {
+        // Preserve the ordinary projected-anchor order. Source cells instead
+        // consume the exact completed logical incidence above, never atom cuts.
+        let mut next_anchor = paragraph.anchor_order.iter().zip(&positions).peekable();
+        for (index, atom) in projection.atoms.iter().enumerate() {
+            while next_anchor.peek().is_some_and(|(_, at)| **at <= index) {
+                let (anchor, _) = next_anchor.next().expect("peek established an anchor");
+                push_bidi_anchor(
+                    anchor.item,
+                    paragraph,
+                    boxes,
+                    &sources,
+                    &mut stream,
+                    &mut owners,
+                )?;
+            }
+            storage::push(
+                &mut stream,
+                (
+                    infos[index].0.bidi_class,
+                    char::from_u32(atom.code_point).map(|ch| (ch, infos[index].0.bracket)),
+                ),
+            )?;
+            storage::push(&mut owners, BidiOwner::Atom(index))?;
+        }
+        for (anchor, _) in next_anchor {
             push_bidi_anchor(
                 anchor.item,
                 paragraph,
                 boxes,
                 &sources,
-                &mut original,
+                &mut stream,
                 &mut owners,
-            );
+            )?;
         }
-        original.push((
-            atom.glyph,
-            (infos[index].0.bidi_class, infos[index].0.bracket),
+    }
+    // Structural B delimiters are already present at their actual owner cuts.
+    // Reinterpret only the effective stream; original Unicode/control facts
+    // continue to own source, segmentation, invisibility and extraction roles.
+    if typography.is_upright() {
+        for (class, _) in &mut stream {
+            *class = used_bidi_class(typography, *class);
+        }
+    }
+    let mut body_ranges = storage::filled(sections.map_or(1, <[_]>::len), 0..0)?;
+    let mut cursor = 0usize;
+    for (section, range) in body_ranges.iter_mut().enumerate() {
+        range.start = cursor;
+        while cursor < owners.len()
+            && sections.is_none_or(|sections| {
+                structural::owner_section(owners[cursor], paragraph, sections, combination)
+                    == section
+            })
+        {
+            cursor += 1;
+        }
+        range.end = cursor;
+    }
+    if cursor != owners.len() {
+        return Err(crate::protocol::protocol_error(
+            crate::ProtocolError::InvalidLineDirectionQuery,
         ));
-        owners.push(BidiOwner::Atom(index));
     }
-    for (anchor, _) in next_anchor {
-        push_bidi_anchor(
-            anchor.item,
-            paragraph,
-            boxes,
-            &sources,
-            &mut original,
-            &mut owners,
-        );
-    }
-    let direction =
-        direction::DirectionBody::new(original.iter().map(|(_, (class, _))| *class), owners)?;
+    let direction = direction::DirectionBody::new(
+        stream.iter().map(|(class, _)| *class),
+        owners,
+        &body_ranges,
+    )?;
     // Raw Standalone retains one source-wide automatic base. Captured native
     // input supplies its fixed base; neither policy changes across a body B.
-    let base_level = paragraph.base_direction.map_or_else(
-        || BidiResolver::default_level(original.iter().map(|(_, (class, _))| *class)),
-        |direction| direction.level(),
-    );
+    let base_level = if typography.is_upright() {
+        0
+    } else {
+        paragraph.base_direction.map_or_else(
+            || BidiResolver::default_level(stream.iter().map(|(class, _)| *class)),
+            |direction| direction.level(),
+        )
+    };
     let mut levels = vec![base_level; infos.len()];
     let mut box_levels = vec![base_level; boxes.len()];
     let mut control_levels = vec![base_level; paragraph.controls.len()];
     let mut computed_levels = vec![base_level; paragraph.computed_boundaries.len()];
+    let mut cell_levels = storage::filled(
+        combination.map_or(0, |output| output.bindings.len()),
+        base_level,
+    )?;
     let mut bidi = BidiResolver::new();
     let mut owner_start = 0;
-    for body in original.split_inclusive(|(_, (class, _))| *class == BidiClass::ParagraphSeparator)
-    {
-        // P1 makes B part of the preceding paragraph. All contextual UBA work,
-        // including neutral runs and isolate sequences, stays in this body.
-        bidi.resolve(body.iter().copied(), Some(base_level));
-        let owner_end = owner_start + body.len();
-        for (owner, &level) in direction.owners()[owner_start..owner_end]
-            .iter()
-            .copied()
-            .zip(bidi.levels())
+    for section in &body_ranges {
+        for body in stream[section.clone()]
+            .split_inclusive(|(class, _)| *class == BidiClass::ParagraphSeparator)
         {
-            match owner {
-                BidiOwner::Atom(index) => levels[index] = level,
-                BidiOwner::Atomic(index) => box_levels[index] = level,
-                BidiOwner::Control(index) => control_levels[index] = level,
-                BidiOwner::ComputedLineBoundary(index) => computed_levels[index] = level,
+            // Actual structural slices and source B delimiters independently bound
+            // contextual UBA. Raw members and facts-owner positions do not.
+            bidi.resolve(body.iter().copied(), Some(base_level));
+            let owner_end = owner_start + body.len();
+            for (owner, &level) in direction.owners()[owner_start..owner_end]
+                .iter()
+                .copied()
+                .zip(bidi.levels())
+            {
+                match owner {
+                    BidiOwner::Atom(index) => levels[index] = level,
+                    BidiOwner::Atomic(index) => box_levels[index] = level,
+                    BidiOwner::Control(index) => control_levels[index] = level,
+                    BidiOwner::ComputedLineBoundary(index) => computed_levels[index] = level,
+                    BidiOwner::CombinedCell(index) => cell_levels[index] = level,
+                }
             }
+            owner_start = owner_end;
         }
-        owner_start = owner_end;
     }
     for (anchor, &at) in paragraph.anchor_order.iter().zip(&positions) {
         let inherited = match anchor.affinity {
@@ -469,6 +600,27 @@ pub(crate) fn analyze(
             _ => {}
         }
     }
+    if let Some(output) = combination {
+        let events = events.expect("completed source cells retain actual logical custody");
+        for (binding, &level) in output.bindings.iter().zip(&cell_levels) {
+            levels[binding.atoms.clone()].fill(level);
+            // Canonical source participants stay present. They share the actual
+            // outer cell frame; the horizontal inner payload keeps its own UBA.
+            for event in &events[binding.participants.clone()] {
+                match event.kind {
+                    wrapping::Event::Anchor(anchor) => match anchor.item {
+                        SemanticAnchorItem::Atomic(index) => box_levels[index] = level,
+                        SemanticAnchorItem::Control(index) => control_levels[index] = level,
+                        SemanticAnchorItem::ComputedLineBoundary(index) => {
+                            computed_levels[index] = level
+                        }
+                        SemanticAnchorItem::EmptyOrigin(_) => (),
+                    },
+                    wrapping::Event::Text(_) | wrapping::Event::Deleted(..) => (),
+                }
+            }
+        }
+    }
     Ok((
         Analysis {
             infos,
@@ -476,6 +628,7 @@ pub(crate) fn analyze(
             box_levels,
             control_levels,
             computed_levels,
+            cell_levels,
             base_level,
             graphemes,
             line_units,
@@ -485,6 +638,19 @@ pub(crate) fn analyze(
         word_ranges,
         direction,
     ))
+}
+// Native whole-upright interpretation is shared by actual source characters
+// and participating semantic controls. B is retained as a structural delimiter;
+// L-class projection never changes the original character's rendering role.
+pub(crate) fn used_bidi_class(
+    typography: crate::AnalysisTypography,
+    original: BidiClass,
+) -> BidiClass {
+    if typography.is_upright() && original != BidiClass::ParagraphSeparator {
+        BidiClass::LeftToRight
+    } else {
+        original
+    }
 }
 
 fn style_at(projection: &SourceProjection, styles: &[AnalyzedStyleRun], atom: usize) -> usize {
@@ -503,11 +669,13 @@ pub(crate) enum BidiOwner {
     Atomic(usize),
     Control(usize),
     ComputedLineBoundary(usize),
+    /// Exact completed-output cell occurrence, not a scalar or source atomic.
+    CombinedCell(usize),
 }
 
 pub(crate) fn anchor_position(
     item: SemanticAnchorItem,
-    paragraph: &ParagraphData,
+    paragraph: &ParagraphContext,
     boxes: &[InlineBox],
 ) -> usize {
     match item {
@@ -520,7 +688,7 @@ pub(crate) fn anchor_position(
 
 pub(crate) fn anchor_atom(
     occurrence: usize,
-    paragraph: &ParagraphData,
+    paragraph: &ParagraphContext,
     boxes: &[InlineBox],
     projection: &SourceProjection,
 ) -> usize {
@@ -538,7 +706,7 @@ pub(crate) fn anchor_atom(
 /// typographic units. It does not reorder capture events or semantic barriers.
 pub(crate) fn project_anchor_atom(
     occurrence: usize,
-    paragraph: &ParagraphData,
+    paragraph: &ParagraphContext,
     boxes: &[InlineBox],
     projection: &SourceProjection,
     mut index: usize,
@@ -610,12 +778,12 @@ fn anchor_kind(item: SemanticAnchorItem) -> (crate::protocol::ProtocolHandleKind
 
 fn push_bidi_anchor(
     item: SemanticAnchorItem,
-    paragraph: &ParagraphData,
+    paragraph: &ParagraphContext,
     boxes: &[InlineBox],
     sources: &AnalysisDataSources,
-    original: &mut Vec<(char, (BidiClass, BidiMirroringGlyph))>,
+    original: &mut Vec<(BidiClass, Option<(char, BidiMirroringGlyph)>)>,
     owners: &mut Vec<BidiOwner>,
-) {
+) -> Result<()> {
     let (cp, owner) = match item {
         SemanticAnchorItem::Atomic(index) if boxes[index].kind() == InlineBoxKind::InFlow => {
             (0xfffc, BidiOwner::Atomic(index))
@@ -631,20 +799,20 @@ fn push_bidi_anchor(
                 } else {
                     control.kind.code_point()
                 };
-            let Some(cp) = cp else { return };
+            let Some(cp) = cp else { return Ok(()) };
             (cp, BidiOwner::Control(index))
         }
-        _ => return,
+        _ => return Ok(()),
     };
     let ch = char::from_u32(cp).expect("closed semantic controls are Unicode scalars");
-    original.push((
-        ch,
+    storage::push(
+        original,
         (
             CodePointMapData::<BidiClass>::new().get32(cp),
-            sources.brackets().get32(cp),
+            Some((ch, sources.brackets().get32(cp))),
         ),
-    ));
-    owners.push(owner);
+    )?;
+    storage::push(owners, owner)
 }
 
 pub(crate) fn contributes_to_shaping(category: GeneralCategory, script: Script) -> bool {
@@ -670,11 +838,18 @@ mod tests {
             )),
             style: crate::ValidatedStyle::try_from(crate::Style::default()).expect("default style"),
         }];
-        let mut paragraph = ParagraphData::standalone(&source);
+        let mut paragraph = crate::protocol::paragraph::ParagraphData::standalone(&source);
         paragraph.base_direction = base;
-        analyze(&projection, &styles, &[], &paragraph)
-            .expect("actual bidi analysis")
-            .0
+        analyze(
+            &projection,
+            &styles,
+            &[],
+            &paragraph,
+            crate::AnalysisTypography::HorizontalComposition,
+            BidiScope::Indication,
+        )
+        .expect("actual bidi analysis")
+        .0
     }
 
     #[test]
@@ -707,9 +882,12 @@ mod tests {
             assert_eq!(analysis.base_level, expected_base, "{text:?}");
             assert_eq!(analysis.levels.len(), text.chars().count(), "{text:?}");
         }
-        let analyzed =
-            crate::AnalyzedSource::new(crate::Source::new("א\n.A"), crate::Style::default())
-                .expect("raw public analysis");
+        let analyzed = crate::AnalyzedSource::new(
+            crate::Source::new("א\n.A"),
+            crate::Style::default(),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .expect("raw public analysis");
         assert_eq!(analyzed.direction(), crate::Direction::RightToLeft);
         assert_eq!(analyzed.inner.analysis.levels, [1, 1, 1, 2]);
     }
@@ -733,8 +911,12 @@ mod tests {
     fn original_surrogate_and_literal_replacement_choose_distinct_bidi_bases() {
         for (cp, expected) in [(0xd800, 0), (0xfffd, 1)] {
             let source = crate::Source::new(crate::Text::from_code_units(vec![cp, 0x05d0]));
-            let analyzed = crate::AnalyzedSource::new(source, crate::Style::default())
-                .expect("original-property analysis");
+            let analyzed = crate::AnalyzedSource::new(
+                source,
+                crate::Style::default(),
+                crate::AnalysisTypography::HorizontalComposition,
+            )
+            .expect("original-property analysis");
             assert_eq!(analyzed.inner.analysis.base_level, expected);
             assert_eq!(analyzed.inner.analysis.levels.len(), 2);
         }
@@ -754,7 +936,9 @@ mod tests {
             &projection,
             &styles,
             &[],
-            &ParagraphData::standalone(&source),
+            &crate::protocol::paragraph::ParagraphData::standalone(&source),
+            crate::AnalysisTypography::HorizontalComposition,
+            BidiScope::Indication,
         )
         .expect("original analysis");
         assert_eq!(analysis.base_level, 0);
@@ -771,8 +955,13 @@ mod tests {
                 kind: wrapping::Event::Text(atom),
             })
             .collect::<Vec<_>>();
-        let direction = direction.bind(&events).unwrap();
-        assert_eq!(direction.query(0, 2), Some((Some(0), true)));
-        assert_eq!(direction.query(3, 4), Some((Some(0), true)));
+        let direction = direction
+            .bind(&events, std::slice::from_ref(&(0..events.len())), None)
+            .unwrap();
+        assert_eq!(direction.query_in(0, 0, 2), Some((Some(0), true)));
+        assert_eq!(direction.query_in(0, 3, 4), Some((Some(0), true)));
     }
 }
+
+#[cfg(test)]
+mod upright_tests;

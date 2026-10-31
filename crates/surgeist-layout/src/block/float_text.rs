@@ -26,11 +26,12 @@ impl<Node: Copy + Eq, S: LayoutScalar> FloatEvent<Node, S> {
     pub fn new(
         pending: PendingFloat<Node, S>,
         packet: Arc<crate::engine::FloatChildPacket<Node, S>>,
-        binding: &crate::TextParagraphBinding<Node>,
+        run: &crate::text_layout::AdmittedRun<'_, Node>,
         associations: &crate::text_layout::capture::ScopeAssociations<Node>,
         offset: usize,
         request: crate::ComputeInputOf<S>,
     ) -> Result<Self, FitError> {
+        let binding = run.binding;
         if packet.node != pending.node || packet.input != request {
             return Err(FitError::InvalidGeometry);
         }
@@ -104,15 +105,19 @@ impl<Node: Copy + Eq, S: LayoutScalar> FloatEvent<Node, S> {
                 false,
             ))
         };
-        let previous = binding.nodes[..offset]
+        let previous = run.nodes()[..offset]
             .iter()
             .rev()
             .find_map(|&node| at_node(node, true));
-        let following = binding.nodes[offset + 1..]
+        let following = run.nodes()[offset + 1..]
             .iter()
             .find_map(|&node| at_node(node, false));
-        let lower = previous.as_ref().map_or(0, |row| row.1);
-        let upper = following.as_ref().map_or(participants.len(), |row| row.1);
+        let lower = previous
+            .as_ref()
+            .map_or(run.segment.start().view().participant_offset(), |row| row.1);
+        let upper = following
+            .as_ref()
+            .map_or(run.segment.end().view().participant_offset(), |row| row.1);
         let mut actual = previous
             .or_else(|| following.clone())
             .ok_or(FitError::InvalidGeometry)?;
@@ -125,6 +130,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> FloatEvent<Node, S> {
             };
             let cut = associations
                 .computed_cut(boundary)
+                .and_then(|cut| cut.relative_to(run.inventory.clone()))
                 .ok_or(FitError::MissingComputedBoundaryIncidence)?;
             match cut.side_of_node(offset) {
                 Some(std::cmp::Ordering::Less) => {

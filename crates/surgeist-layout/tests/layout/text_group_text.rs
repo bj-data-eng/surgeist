@@ -210,8 +210,27 @@ impl Paragraph {
         body: t::ParagraphBaseDirection,
         css_tabs: bool,
     ) -> Self {
+        let options = if css_tabs {
+            t::PreparationOptions::try_new(1.0, t::TabPreparation::CssStops).unwrap()
+        } else {
+            t::PreparationOptions::default()
+        };
+        Self::with_preparation(host, container, parts, style, body, options)
+    }
+    fn with_preparation<S: l::LayoutScalar>(
+        host: &mut Host<S>,
+        container: u32,
+        parts: &[Part<'_>],
+        style: t::Style,
+        body: t::ParagraphBaseDirection,
+        options: t::PreparationOptions,
+    ) -> Self {
         use t::SourceProcessingEvent as E;
         let direction = host.inputs[container as usize].as_box().unwrap().direction;
+        let writing_mode = host.inputs[container as usize]
+            .as_box()
+            .unwrap()
+            .writing_mode;
         let raw = parts
             .iter()
             .filter_map(|part| {
@@ -305,6 +324,7 @@ impl Paragraph {
                     let input = match *part {
                         Part::Forced => l::LayoutInputOf::line_break(
                             l::LineBreakInputOf::new()
+                                .with_writing_mode(writing_mode)
                                 .with_direction(direction)
                                 .with_metrics(metrics),
                         ),
@@ -321,6 +341,7 @@ impl Paragraph {
                                     l::InlineBoundaryEdgeOf::try_new(S::from_f64(edge), S::ZERO)
                                         .unwrap(),
                                 )
+                                .with_writing_mode(writing_mode)
                                 .with_direction(direction),
                             )
                         }
@@ -382,6 +403,9 @@ impl Paragraph {
         }
         events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
         let mut scopes = vec![t::SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
+            font_reference: None,
             topology: t::SourceProcessingTopology::Complete,
             trim: Default::default(),
             base_style: style.clone(),
@@ -389,6 +413,9 @@ impl Paragraph {
         }];
         if let Some(boundaries) = boundary_pair {
             scopes.push(t::SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
+                alignment_boundary: None,
+                font_reference: None,
                 trim: Default::default(),
                 style: None,
                 boundaries: Some(boundaries),
@@ -396,6 +423,8 @@ impl Paragraph {
         }
         let capture = Arc::new(
             t::process_contextual_source(t::ContextualSourceInput {
+                joint_flows: Vec::new(),
+                scope_alignment_limits: None,
                 source,
                 segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
                 envelope: t::SourceProcessingEnvelope::Complete,
@@ -414,9 +443,11 @@ impl Paragraph {
             })
             .unwrap(),
         );
-        let analyzed =
-            t::AnalyzedSource::from_processed_paragraph(capture.paragraphs().next().unwrap())
-                .unwrap();
+        let analyzed = t::AnalyzedSource::from_processed_paragraph(
+            capture.paragraphs().next().unwrap(),
+            t::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let wrapping = analyzed
             .wrapping_relations()
             .filter(|row| row.ancestor_wrap().is_none())
@@ -430,15 +461,17 @@ impl Paragraph {
         })
         .unwrap();
         system.register_fonts(AHEM.to_vec()).unwrap();
-        let options = if css_tabs {
-            t::PreparationOptions::try_new(1.0, t::TabPreparation::CssStops).unwrap()
-        } else {
-            t::PreparationOptions::default()
-        };
         let prepared = system
             .prepare(&analyzed.with_wrapping_policies(wrapping).unwrap(), options)
             .unwrap();
-        assert_eq!(prepared.captured_paragraph(), capture.captured_paragraph(0));
+        assert_eq!(
+            prepared
+                .captured_owner()
+                .unwrap()
+                .members()
+                .collect::<Vec<_>>(),
+            vec![capture.captured_paragraph(0).unwrap()]
+        );
         assert_eq!(prepared.origin_views().count(), origin_nodes.len());
         assert_eq!(prepared.control_views().count(), control_nodes.len());
         assert_eq!(prepared.atomic_views().count(), atomic_nodes.len());
@@ -506,6 +539,7 @@ fn compute<S: l::LayoutScalar>(
             .map(|paragraph| paragraph.binding.clone())
             .collect(),
         l::WrappingInput::default(),
+        Vec::new(),
     )
     .unwrap();
     let request = l::LayoutRootRequestOf::viewport(l::Size::new(
@@ -586,3 +620,4 @@ fn node_output<S: l::LayoutScalar>(
 mod geometry;
 mod hierarchy;
 mod shared_floats;
+mod sideways;

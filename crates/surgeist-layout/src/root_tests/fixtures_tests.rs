@@ -170,6 +170,7 @@ pub(super) fn prepared_source_batch<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )?;
     let available = FlowAxes::new(writing_mode, direction)
         .physical_size(LogicalSizeOf::new(available, AvailableOf::MAX_CONTENT));
@@ -353,6 +354,7 @@ pub(super) fn prepared_mixed_batch<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     compute_layout_with_flow(
@@ -379,6 +381,7 @@ pub(super) fn prepared_tree_batch<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     compute_layout_with_flow(&capture, 0, request).unwrap()
@@ -613,7 +616,7 @@ pub(super) fn assert_fri06_c08_r1_mixed_unit_traversal<S: LayoutScalar>(
             .unwrap();
         let rect = axes.physical_rect(
             crate::geometry::LogicalRectOf::new(
-                LogicalPointOf::new(actual.inline_start, actual.block_start),
+                crate::inline::expect_logical_position(actual.position),
                 axes.logical_size(actual.item.size),
             ),
             containing,
@@ -636,7 +639,7 @@ pub(super) fn assert_fri06_c08_r1_mixed_unit_traversal<S: LayoutScalar>(
             .unwrap();
         assert_eq!(
             axes.physical_point(
-                LogicalPointOf::new(actual.inline_start, actual.block_start),
+                crate::inline::expect_logical_position(actual.position),
                 LogicalSizeOf::new(S::ZERO, S::ZERO),
                 containing
             ),
@@ -807,7 +810,10 @@ pub(super) fn assert_fri06_c08_float_line_final_height<S: LayoutScalar>(
         ..NodeInputOf::default()
     };
     let mut text_style = ahem_style(16.0, 20.0);
-    text_style.letter_spacing = 24.0;
+    // The actual text/atomic boundary averages full values48/0 to24.
+    // X16 therefore owns a40px cell before the initial atomic, preserving
+    // the three real float-band lines and the66.4px unrounded flow extent.
+    text_style.letter_spacing = 48.0;
     let paragraph = PreparedParagraph::new(
         vec![
             ParagraphPart::text(3, Source::new("X"), text_style.clone()),
@@ -1372,6 +1378,7 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )?;
         compute_layout_with_flow(&capture, 0, request)
     }
@@ -1389,6 +1396,7 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )?;
         compute_layout_with_flow_invalidated(&capture, 0, request, dirty)
     }

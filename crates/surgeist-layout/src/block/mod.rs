@@ -1,20 +1,20 @@
 use std::collections::BTreeMap;
 
 use super::inline::{
-    AtomicInlineBoxParticipant, ForcedLineBreakControlOf, InlineBoundaryControlOf,
-    InlineControlAlignment, InlineFlowOf, InlineParticipantKindOf, InlineParticipantProjection,
-    LogicalLineBandQueryResultOf, MixedInlineParticipantOf, MixedInlineRunInputOf,
+    AtomicInlineBoxParticipant, ForcedLineBreakControlOf, InlineBoundaryControlOf, InlineFlowOf,
+    InlineParticipantKindOf, InlineParticipantProjection, LogicalLineBandQueryResultOf,
+    MixedInlineParticipantOf, MixedInlineRunInputOf,
     layout_mixed_inline_run_with_formatted_observation,
 };
 use super::value::{ResolvedLengthAutoOf, UnresolvedLengthReason};
 use super::{
-    AvailableOf, BaselinesOf, BoxSizing, Clear, CollapsibleMarginOf, Compute, ComputeInputOf,
-    ComputeOutputOf, ComputedOverflow, ContainingLayoutContext, Direction, Edges,
-    InlineBoundaryInputOf, InlineFragmentOutputOf, LayoutErrorKindOf, LayoutErrorOf,
-    LayoutErrorSiteOf, LayoutInvalidInputOf, LayoutOperation, LayoutResultOf, LayoutScalar,
-    LengthAutoOf, LineBreakInputOf, NodeOutputOf, Overflow, ParentFormattingContext,
+    AvailableOf, BoxSizing, Clear, CollapsibleMarginOf, Compute, ComputeInputOf, ComputeOutputOf,
+    ComputedOverflow, ContainingLayoutContext, Direction, Edges, InlineBoundaryInputOf,
+    InlineFragmentOutputOf, LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf,
+    LayoutInvalidInputOf, LayoutOperation, LayoutResultOf, LayoutScalar, LengthAutoOf,
+    LineBreakInputOf, NodeOutputOf, Overflow, ParentFormattingContext,
     PhysicalBlockMarginCollapseOf, Point, Position, RequestedAxis, RunMode, Size, SizingAlgorithm,
-    SizingMode, TextAlign, TextAlignLast, TextJustification, Traverse, VerticalAlign,
+    SizingMode, TextAlign, TextAlignLast, TextJustification, Traverse, VerticalAlignOf,
 };
 use crate::error::{
     AtomicInlineParticipationRoleError, layout_child_geometry_error, layout_own_geometry_error,
@@ -34,6 +34,7 @@ use crate::sizing::resolve::{EdgesResultExt, SizeResultExt};
 use super::{LengthOf, NodeInputOf, WritingMode};
 
 mod absolute;
+pub(crate) mod baseline_frame;
 pub(crate) mod float_context;
 mod float_text;
 mod floats;
@@ -361,19 +362,28 @@ where
         margins_can_collapse_through,
     );
 
+    let (baselines, named_baselines) =
+        final_pass.baselines.resolve(output_size).map_err(|error| {
+            LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(node),
+                LayoutOperation::ChildLayout,
+                LayoutErrorKindOf::TextNumeric {
+                    value: error.value(),
+                    reason: error.reason(),
+                },
+            )
+        })?;
+
     if input.run_mode() == RunMode::ComputeSize {
-        let mut output = ComputeOutputOf::<S>::from_sizes_and_baselines(
-            output_size,
-            Size::ZERO,
-            final_pass.baselines,
-        )
-        .with_named_baselines(named_block_baselines(
-            node,
-            &style,
-            &final_constants,
-            output_size,
-            final_pass.named_baselines,
-        )?);
+        let mut output =
+            ComputeOutputOf::<S>::from_sizes_and_baselines(output_size, Size::ZERO, baselines)
+                .with_named_baselines(named_block_baselines(
+                    node,
+                    &style,
+                    &final_constants,
+                    output_size,
+                    named_baselines,
+                )?);
         output.block_margin_collapse = block_margin_collapse;
         Ok(BlockResult {
             output,
@@ -428,14 +438,14 @@ where
         let mut output = ComputeOutputOf::<S>::from_sizes_and_baselines(
             output_size,
             published_scroll.content_size,
-            final_pass.baselines,
+            baselines,
         )
         .with_named_baselines(named_block_baselines(
             node,
             &style,
             &final_constants,
             output_size,
-            final_pass.named_baselines,
+            named_baselines,
         )?);
         output.scroll_geometry = Some(published_scroll.geometry);
         output.block_margin_collapse = block_margin_collapse;

@@ -19,6 +19,7 @@ struct Case {
 }
 fn baseline(baseline: f64, extent: f64) -> text::LineBoxStrut {
     text::LineBoxStrut {
+        scope: None,
         metrics: text::LineStrut {
             baseline,
             line_extent: extent,
@@ -26,8 +27,14 @@ fn baseline(baseline: f64, extent: f64) -> text::LineBoxStrut {
         alignment: text::LineBoxAlignment::Baseline,
     }
 }
-fn metric(row: text::LineBoxStrut) -> Option<InlineBoxMetricContribution> {
-    Some(InlineBoxMetricContribution::Strut(row))
+fn expected_owner(scope: &text::CapturedScope, raw: &text::LineBoxStrut) -> text::LineBoxStrut {
+    text::LineBoxStrut {
+        scope: Some(scope.clone()),
+        ..raw.clone()
+    }
+}
+fn metric(row: &text::LineBoxStrut) -> Option<InlineBoxMetricContribution> {
+    Some(InlineBoxMetricContribution::Strut(row.clone()))
 }
 fn before_avoid() -> WrapEdges {
     WrapEdges {
@@ -64,6 +71,9 @@ impl Case {
             2
         };
         let mut scopes = vec![text::SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
+            font_reference: None,
             topology: text::SourceProcessingTopology::Complete,
             trim: Default::default(),
             base_style: style,
@@ -71,6 +81,9 @@ impl Case {
         }];
         for _ in 0..count {
             scopes.push(text::SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
+                alignment_boundary: None,
+                font_reference: None,
                 trim: Default::default(),
                 style: None,
                 boundaries: paired
@@ -123,6 +136,8 @@ impl Case {
         ]);
         let processed = Arc::new(
             text::process_contextual_source(text::ContextualSourceInput {
+                joint_flows: Vec::new(),
+                scope_alignment_limits: None,
                 source,
                 segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
                 envelope: text::SourceProcessingEnvelope::Complete,
@@ -180,9 +195,11 @@ impl Case {
         let scopes = (1..=count)
             .map(|i| processed.captured_scope(i).unwrap())
             .collect::<Vec<_>>();
-        let analyzed =
-            text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-                .unwrap();
+        let analyzed = text::AnalyzedSource::from_processed_paragraph(
+            processed.paragraphs().next().unwrap(),
+            text::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let analyzed =
             crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::Word);
         let mut system = text::System::new(text::SystemOptions {
@@ -255,7 +272,7 @@ impl Case {
                     scope: scope.clone(),
                     wrap_inside: WrapInside::Auto,
                     edges: *edges,
-                    metric_contribution: *contribution,
+                    metric_contribution: contribution.clone(),
                 },
             )
             .collect::<Vec<_>>();
@@ -383,7 +400,8 @@ impl Case {
                 metric_contribution: contribution,
             });
         }
-        let flow = LayoutFlowInput::try_new(&tree, 0, vec![self.binding.clone()], inventory)?;
+        let flow =
+            LayoutFlowInput::try_new(&tree, 0, vec![self.binding.clone()], inventory, Vec::new())?;
         compute_layout_with_flow(
             &flow,
             0,
@@ -508,13 +526,27 @@ fn sibling_case<S: LayoutScalar>() {
     let t = baseline(12.0, 30.0);
     for direction in [Direction::Ltr, Direction::Rtl] {
         let f = Case::new(Shape::Siblings, direction);
-        let rows = [(before_avoid(), metric(s)), (after_avoid(), metric(t))];
+        let expected_s = expected_owner(&f.scopes[0], &s);
+        let expected_t = expected_owner(&f.scopes[1], &t);
+        let rows = [(before_avoid(), metric(&s)), (after_avoid(), metric(&t))];
         // S then T admits before-both / between / after-both. Only between
         // avoids both declarations. T-outgoing/S-receiving is not an incidence.
         let a = f.run::<S>(&rows, false, false, None).unwrap();
         let b = f.run::<S>(&rows, true, false, None).unwrap();
-        assert_geometry(&a, &f, [20.0, 30.0], [16.0, 32.0], [vec![s], vec![t]]);
-        assert_geometry(&b, &f, [20.0, 30.0], [16.0, 32.0], [vec![s], vec![t]]);
+        assert_geometry(
+            &a,
+            &f,
+            [20.0, 30.0],
+            [16.0, 32.0],
+            [vec![expected_s.clone()], vec![expected_t.clone()]],
+        );
+        assert_geometry(
+            &b,
+            &f,
+            [20.0, 30.0],
+            [16.0, 32.0],
+            [vec![expected_s.clone()], vec![expected_t.clone()]],
+        );
         assert_eq!(a.final_entries(), b.final_entries());
     }
 }
@@ -528,9 +560,11 @@ fn nested_case<S: LayoutScalar>() {
     let t = baseline(12.0, 30.0);
     for direction in [Direction::Ltr, Direction::Rtl] {
         let f = Case::new(Shape::Nested, direction);
+        let expected_s = expected_owner(&f.scopes[0], &s);
+        let expected_t = expected_owner(&f.scopes[1], &t);
         let outgoing = f
             .run::<S>(
-                &[(before_avoid(), metric(s)), (WrapEdges::AUTO, metric(t))],
+                &[(before_avoid(), metric(&s)), (WrapEdges::AUTO, metric(&t))],
                 false,
                 false,
                 None,
@@ -541,11 +575,11 @@ fn nested_case<S: LayoutScalar>() {
             &f,
             [34.0, 10.0],
             [16.0, 42.0],
-            [vec![s, t], vec![]],
+            [vec![expected_s.clone(), expected_t.clone()], vec![]],
         );
         let receiving = f
             .run::<S>(
-                &[(after_avoid(), metric(s)), (WrapEdges::AUTO, metric(t))],
+                &[(after_avoid(), metric(&s)), (WrapEdges::AUTO, metric(&t))],
                 true,
                 false,
                 None,
@@ -556,7 +590,7 @@ fn nested_case<S: LayoutScalar>() {
             &f,
             [10.0, 34.0],
             [8.0, 26.0],
-            [vec![], vec![s, t]],
+            [vec![], vec![expected_s.clone(), expected_t.clone()]],
         );
     }
 }
@@ -572,7 +606,7 @@ fn custody_case<S: LayoutScalar>() {
         let f = Case::new(Shape::Siblings, direction);
         scope_error(
             f.run::<S>(
-                &[(before_avoid(), None), (after_avoid(), metric(t))],
+                &[(before_avoid(), None), (after_avoid(), metric(&t))],
                 false,
                 false,
                 None,
@@ -588,8 +622,8 @@ fn custody_case<S: LayoutScalar>() {
             scope_error(
                 f.run::<S>(
                     &[
-                        (before_avoid(), metric(invalid)),
-                        (after_avoid(), metric(t)),
+                        (before_avoid(), metric(&invalid)),
+                        (after_avoid(), metric(&t)),
                     ],
                     false,
                     false,
@@ -632,7 +666,14 @@ fn custody_case<S: LayoutScalar>() {
             text::CapturedScopeIncidence::AtAfter,
         ]) {
             let boundary = offer.view().boundary();
-            let incidences = f.binding.prepared.boundary_incidences(&boundary).unwrap();
+            let mut source_segments = f.binding.prepared.source_segments();
+            let source_segment = source_segments.next().expect("fixture source segment");
+            assert_eq!(source_segments.count(), 0, "one structural fixture segment");
+            let incidences = f
+                .binding
+                .prepared
+                .boundary_incidences(&source_segment, &boundary)
+                .unwrap();
             assert_eq!(incidences.len(), 1);
             assert_eq!(incidences[0].boundary(), boundary);
             assert_eq!(
@@ -645,12 +686,17 @@ fn custody_case<S: LayoutScalar>() {
         }
         let before = offers[0].view().boundary();
         let a = f
-            .run::<S>(&[(after_avoid(), metric(s))], false, false, Some(metric(s)))
+            .run::<S>(
+                &[(after_avoid(), metric(&s))],
+                false,
+                false,
+                Some(metric(&s)),
+            )
             .unwrap();
         assert_geometry(&a, &f, [10.0, 20.0], [8.0, 26.0], [vec![], vec![]]);
         // One authentic witness can supply the same normalized box through
         // either alias; missing alias evidence is not contradictory geometry.
-        for (captured, native) in [(None, metric(s)), (metric(s), None)] {
+        for (captured, native) in [(None, metric(&s)), (metric(&s), None)] {
             let one = f
                 .run::<S>(&[(after_avoid(), captured)], false, false, Some(native))
                 .unwrap();
@@ -696,16 +742,16 @@ fn custody_case<S: LayoutScalar>() {
         // permitted even though adding an equal one would hide geometrically.
         scope_error(
             f.run::<S>(
-                &[(WrapEdges::AUTO, metric(s))],
+                &[(WrapEdges::AUTO, metric(&s))],
                 false,
                 false,
-                Some(metric(baseline(14.0, 22.0))),
+                Some(metric(&baseline(14.0, 22.0))),
             ),
             WrappingScopeError::ConflictingBoxMetrics,
         );
         scope_error(
             f.run::<S>(
-                &[(WrapEdges::AUTO, metric(baseline(14.0, 22.0)))],
+                &[(WrapEdges::AUTO, metric(&baseline(14.0, 22.0)))],
                 false,
                 false,
                 None,
@@ -724,23 +770,24 @@ fn float_case<S: LayoutScalar>() {
     // LTR physical left float is qualified directly. RTL physical exclusion is
     // deliberately not guessed from mirrored text axes in this first witness.
     let f = Case::new(Shape::Single, Direction::Ltr);
+    let expected_s = expected_owner(&f.scopes[0], &s);
     for (edge, heights, baselines, allocations, origins) in [
         (
             before_avoid(),
             [20.0, 10.0],
             [16.0, 28.0],
-            [vec![s], vec![]],
+            [vec![expected_s.clone()], vec![]],
             [(10.0, 0.0), (0.0, 20.0)],
         ),
         (
             after_avoid(),
             [10.0, 20.0],
             [8.0, 26.0],
-            [vec![], vec![s]],
+            [vec![], vec![expected_s.clone()]],
             [(10.0, 0.0), (10.0, 10.0)],
         ),
     ] {
-        let rows = [(edge, metric(s))];
+        let rows = [(edge, metric(&s))];
         let a = f.run::<S>(&rows, false, true, None).unwrap();
         assert_geometry(&a, &f, heights, baselines, allocations.clone());
         let b = f.run::<S>(&rows, true, true, None).unwrap();
@@ -825,6 +872,7 @@ impl<S: LayoutScalar> LayoutTree for ShapedFloat<S> {
 fn rejected_tall_trial<S: LayoutScalar>() {
     let f = Case::new(Shape::Single, Direction::Ltr);
     let s = baseline(16.0, 20.0);
+    let expected_s = expected_owner(&f.scopes[0], &s);
     let tree = f.tree::<S>(15.0, true).style(
         90,
         NodeInputOf {
@@ -846,7 +894,8 @@ fn rejected_tall_trial<S: LayoutScalar>() {
         &host,
         0,
         vec![f.binding.clone()],
-        f.inventory(&[(before_avoid(), metric(s))], false, true),
+        f.inventory(&[(before_avoid(), metric(&s))], false, true),
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(
@@ -892,7 +941,10 @@ fn rejected_tall_trial<S: LayoutScalar>() {
             .line_box_struts
             .is_empty()
     );
-    assert_eq!(finalized[1].selected_line().request().line_box_struts, [s]);
+    assert_eq!(
+        finalized[1].selected_line().request().line_box_struts,
+        [expected_s]
+    );
     for (i, line) in finalized.iter().enumerate() {
         assert_eq!(line.measurements().fit().advance(), 10.0);
         assert!(line.selected_line().request().controls.is_empty());
@@ -945,7 +997,7 @@ fn run_inventory<S: LayoutScalar>(
     inventory: WrappingInput<u32>,
 ) -> Result<CompletedLayoutBatchOf<u32, S>, LayoutErrorOf<u32, S>> {
     let tree = f.tree::<S>(15.0, false);
-    let flow = LayoutFlowInput::try_new(&tree, 0, vec![f.binding.clone()], inventory)?;
+    let flow = LayoutFlowInput::try_new(&tree, 0, vec![f.binding.clone()], inventory, Vec::new())?;
     compute_layout_with_flow(
         &flow,
         0,
@@ -967,6 +1019,7 @@ fn omitted_actual_box<S: LayoutScalar>() {
     let s = baseline(16.0, 20.0);
     for direction in [Direction::Ltr, Direction::Rtl] {
         let f = Case::new(Shape::Siblings, direction);
+        let expected_s = expected_owner(&f.scopes[0], &s);
         let mut omitted = f.inventory(
             &[
                 (WrapEdges::AUTO, None),
@@ -1006,7 +1059,7 @@ fn omitted_actual_box<S: LayoutScalar>() {
         let supplied = f
             .run::<S>(
                 &[
-                    (WrapEdges::AUTO, metric(s)),
+                    (WrapEdges::AUTO, metric(&s)),
                     (
                         after_avoid(),
                         Some(InlineBoxMetricContribution::NoContribution),
@@ -1021,7 +1074,7 @@ fn omitted_actual_box<S: LayoutScalar>() {
         let owners = finalized
             .iter()
             .enumerate()
-            .filter(|(_, l)| l.selected_line().request().line_box_struts == [s])
+            .filter(|(_, l)| l.selected_line().request().line_box_struts == [expected_s.clone()])
             .map(|(i, _)| i)
             .collect::<Vec<_>>();
         assert_eq!(owners.len(), 1);
@@ -1040,9 +1093,9 @@ fn omitted_actual_box<S: LayoutScalar>() {
                 [8.0, 26.0]
             },
             if owner == 0 {
-                [vec![s], vec![]]
+                [vec![expected_s.clone()], vec![]]
             } else {
-                [vec![], vec![s]]
+                [vec![], vec![expected_s.clone()]]
             },
         );
     }
@@ -1070,6 +1123,8 @@ fn pinned_after_s(direction: Direction) -> Case {
     source.span(text::Range::new(0, 2), style.clone());
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             source,
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
             envelope: text::SourceProcessingEnvelope::Complete,
@@ -1103,17 +1158,26 @@ fn pinned_after_s(direction: Direction) -> Case {
             }],
             scopes: vec![
                 text::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
+                    font_reference: None,
                     topology: text::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: style,
                     used_direction: base,
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: Default::default(),
                     style: None,
                     boundaries: None,
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: Default::default(),
                     style: None,
                     boundaries: None,
@@ -1149,9 +1213,11 @@ fn pinned_after_s(direction: Direction) -> Case {
         processed.captured_scope(1).unwrap(),
         processed.captured_scope(2).unwrap(),
     ];
-    let analyzed =
-        text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-            .unwrap();
+    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::Word);
     let mut system = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,
@@ -1184,7 +1250,12 @@ fn pinned_after_s(direction: Direction) -> Case {
         .unwrap();
     assert!(force.computed_line_boundary().is_some());
     let boundary = force.boundary();
-    let incidences = prepared.boundary_incidences(&boundary).unwrap();
+    let mut source_segments = prepared.source_segments();
+    let source_segment = source_segments.next().expect("fixture source segment");
+    assert_eq!(source_segments.count(), 0, "one structural fixture segment");
+    let incidences = prepared
+        .boundary_incidences(&source_segment, &boundary)
+        .unwrap();
     assert_eq!(incidences.len(), 1);
     assert_eq!(
         prepared
@@ -1229,6 +1300,7 @@ fn fixed_original_custody<S: LayoutScalar>() {
     let s = baseline(16.0, 20.0);
     for direction in [Direction::Ltr, Direction::Rtl] {
         let f = pinned_after_s(direction);
+        let expected_s = expected_owner(&f.scopes[0], &s);
         let rows = [
             (WrapEdges::AUTO, None),
             (
@@ -1249,7 +1321,7 @@ fn fixed_original_custody<S: LayoutScalar>() {
             WrappingScopeError::MissingBoxMetrics,
         );
         let rows = [
-            (WrapEdges::AUTO, metric(s)),
+            (WrapEdges::AUTO, metric(&s)),
             (
                 after_avoid(),
                 Some(InlineBoxMetricContribution::NoContribution),
@@ -1289,7 +1361,14 @@ fn fixed_original_custody<S: LayoutScalar>() {
             finalized[1].selected_line().request().context.end,
             text::LineEnd::Paragraph
         );
-        assert_eq!(finalized[0].selected_line().request().line_box_struts, [s]);
+        assert_eq!(
+            finalized[0]
+                .selected_line()
+                .request()
+                .line_box_struts
+                .as_slice(),
+            std::slice::from_ref(&expected_s)
+        );
         assert!(
             finalized[1]
                 .selected_line()
@@ -1351,7 +1430,14 @@ fn actual_control_alignment<S: LayoutScalar>() {
             text::CapturedScopeIncidence::AtAfter,
         ]) {
             let boundary = offer.view().boundary();
-            let incidences = f.binding.prepared.boundary_incidences(&boundary).unwrap();
+            let mut source_segments = f.binding.prepared.source_segments();
+            let source_segment = source_segments.next().expect("fixture source segment");
+            assert_eq!(source_segments.count(), 0, "one structural fixture segment");
+            let incidences = f
+                .binding
+                .prepared
+                .boundary_incidences(&source_segment, &boundary)
+                .unwrap();
             assert_eq!(incidences.len(), 1);
             assert_eq!(incidences[0].boundary(), boundary);
             assert_eq!(
@@ -1365,10 +1451,10 @@ fn actual_control_alignment<S: LayoutScalar>() {
         let before = offers[0].view().boundary();
         let control = f
             .run::<S>(
-                &[(after_avoid(), metric(same))],
+                &[(after_avoid(), metric(&same))],
                 false,
                 false,
-                Some(metric(same)),
+                Some(metric(&same)),
             )
             .unwrap();
         assert_geometry(&control, &f, [10.0, 20.0], [8.0, 26.0], [vec![], vec![]]);
@@ -1396,6 +1482,7 @@ fn actual_control_alignment<S: LayoutScalar>() {
         }
         for alignment in [text::LineBoxAlignment::Top, text::LineBoxAlignment::Bottom] {
             let contradictory = text::LineBoxStrut {
+                scope: None,
                 metrics: same.metrics,
                 alignment,
             };
@@ -1404,7 +1491,7 @@ fn actual_control_alignment<S: LayoutScalar>() {
             // captured endpoint pair, not an arbitrary descendant control.
             scope_error(
                 f.run::<S>(
-                    &[(WrapEdges::AUTO, metric(contradictory))],
+                    &[(WrapEdges::AUTO, metric(&contradictory))],
                     false,
                     false,
                     None,
@@ -1413,10 +1500,10 @@ fn actual_control_alignment<S: LayoutScalar>() {
             );
             scope_error(
                 f.run::<S>(
-                    &[(WrapEdges::AUTO, metric(same))],
+                    &[(WrapEdges::AUTO, metric(&same))],
                     false,
                     false,
-                    Some(metric(contradictory)),
+                    Some(metric(&contradictory)),
                 ),
                 WrappingScopeError::ConflictingBoxMetrics,
             );
@@ -1434,22 +1521,24 @@ fn unique_outer_preference<S: LayoutScalar>() {
     let t = baseline(12.0, 30.0);
     for direction in [Direction::Ltr, Direction::Rtl] {
         let f = Case::new(Shape::Nested, direction);
+        let expected_s = expected_owner(&f.scopes[0], &s);
+        let expected_t = expected_owner(&f.scopes[1], &t);
         for (edge, heights, baselines, allocations) in [
             (
                 before_avoid(),
                 [34.0, 10.0],
                 [16.0, 42.0],
-                [vec![s, t], vec![]],
+                [vec![expected_s.clone(), expected_t.clone()], vec![]],
             ),
             (
                 after_avoid(),
                 [10.0, 34.0],
                 [8.0, 26.0],
-                [vec![], vec![s, t]],
+                [vec![], vec![expected_s.clone(), expected_t.clone()]],
             ),
         ] {
             let mut inventory = f.inventory(
-                &[(edge, metric(s)), (WrapEdges::AUTO, metric(t))],
+                &[(edge, metric(&s)), (WrapEdges::AUTO, metric(&t))],
                 false,
                 false,
             );
@@ -1534,6 +1623,8 @@ fn realization_case(direction: Direction, force: bool) -> Case {
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             source,
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
             envelope: text::SourceProcessingEnvelope::Complete,
@@ -1575,17 +1666,26 @@ fn realization_case(direction: Direction, force: bool) -> Case {
             }],
             scopes: vec![
                 text::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
+                    font_reference: None,
                     topology: text::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: style,
                     used_direction: base,
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: Default::default(),
                     style: None,
                     boundaries: None,
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: Default::default(),
                     style: None,
                     boundaries: None,
@@ -1603,9 +1703,11 @@ fn realization_case(direction: Direction, force: bool) -> Case {
         processed.captured_scope(1).unwrap(),
         processed.captured_scope(2).unwrap(),
     ];
-    let analyzed =
-        text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-            .unwrap();
+    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::Word);
     let mut system = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,
@@ -1636,7 +1738,12 @@ fn realization_case(direction: Direction, force: bool) -> Case {
     let offer = prepared.opportunity_views().next().unwrap();
     assert_eq!(offer.computed_line_boundary().is_some(), force);
     let boundary = offer.boundary();
-    let incidences = prepared.boundary_incidences(&boundary).unwrap();
+    let mut source_segments = prepared.source_segments();
+    let source_segment = source_segments.next().expect("fixture source segment");
+    assert_eq!(source_segments.count(), 0, "one structural fixture segment");
+    let incidences = prepared
+        .boundary_incidences(&source_segment, &boundary)
+        .unwrap();
     let relations = incidences
         .iter()
         .map(|i| {
@@ -1687,7 +1794,7 @@ fn realization_inventory(f: &Case, force: bool, t_edge: WrapEdges) -> WrappingIn
     let s = baseline(16.0, 20.0);
     let t = baseline(12.0, 30.0);
     let mut inventory = f.inventory(
-        &[(WrapEdges::AUTO, metric(s)), (t_edge, metric(t))],
+        &[(WrapEdges::AUTO, metric(&s)), (t_edge, metric(&t))],
         false,
         false,
     );
@@ -1725,6 +1832,7 @@ fn realization_compute<S: LayoutScalar>(
         0,
         vec![f.binding.clone()],
         realization_inventory(f, force, t_edge),
+        Vec::new(),
     )
     .unwrap();
     compute_layout_with_flow(
@@ -1831,6 +1939,8 @@ fn retained_parent_content<S: LayoutScalar>() {
     let t = baseline(12.0, 30.0);
     for direction in [Direction::Ltr, Direction::Rtl] {
         let f = realization_case(direction, false);
+        let expected_s = expected_owner(&f.scopes[0], &s);
+        let expected_t = expected_owner(&f.scopes[1], &t);
         let after = realization_compute::<S>(&f, false, before_avoid());
         realization_geometry(
             &after,
@@ -1838,7 +1948,10 @@ fn retained_parent_content<S: LayoutScalar>() {
             false,
             [34.0, 20.0],
             [16.0, 50.0],
-            [vec![s, t], vec![s]],
+            [
+                vec![expected_s.clone(), expected_t.clone()],
+                vec![expected_s.clone()],
+            ],
         );
         let before = realization_compute::<S>(&f, false, after_avoid());
         realization_geometry(
@@ -1847,7 +1960,10 @@ fn retained_parent_content<S: LayoutScalar>() {
             false,
             [20.0, 34.0],
             [16.0, 36.0],
-            [vec![s], vec![s, t]],
+            [
+                vec![expected_s.clone()],
+                vec![expected_s.clone(), expected_t.clone()],
+            ],
         );
     }
 }
@@ -1861,6 +1977,8 @@ fn genuine_inner_force<S: LayoutScalar>() {
     let t = baseline(12.0, 30.0);
     for direction in [Direction::Ltr, Direction::Rtl] {
         let f = realization_case(direction, true);
+        let expected_s = expected_owner(&f.scopes[0], &s);
+        let expected_t = expected_owner(&f.scopes[1], &t);
         for edge in [WrapEdges::AUTO, before_avoid(), after_avoid()] {
             let actual = realization_compute::<S>(&f, true, edge);
             // The real Before-T hard pin is Inside-S. Neither whole-empty
@@ -1871,7 +1989,10 @@ fn genuine_inner_force<S: LayoutScalar>() {
                 true,
                 [20.0, 34.0],
                 [16.0, 36.0],
-                [vec![s], vec![s, t]],
+                [
+                    vec![expected_s.clone()],
+                    vec![expected_s.clone(), expected_t.clone()],
+                ],
             );
         }
     }
@@ -1918,6 +2039,8 @@ fn exterior_case(direction: Direction, trailing: bool) -> Case {
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             source,
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
             envelope: text::SourceProcessingEnvelope::Complete,
@@ -1952,12 +2075,18 @@ fn exterior_case(direction: Direction, trailing: bool) -> Case {
             }],
             scopes: vec![
                 text::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
+                    font_reference: None,
                     topology: text::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: style,
                     used_direction: base,
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: Default::default(),
                     style: None,
                     boundaries: None,
@@ -1972,9 +2101,11 @@ fn exterior_case(direction: Direction, trailing: bool) -> Case {
         .unwrap(),
     );
     let scope = processed.captured_scope(1).unwrap();
-    let analyzed =
-        text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-            .unwrap();
+    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::Word);
     let mut system = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,
@@ -2020,7 +2151,12 @@ fn exterior_case(direction: Direction, trailing: bool) -> Case {
         exterior.view().participant_offset(),
         if trailing { 2 } else { 0 }
     );
-    let incidences = prepared.boundary_incidences(&exterior).unwrap();
+    let mut source_segments = prepared.source_segments();
+    let source_segment = source_segments.next().expect("fixture source segment");
+    assert_eq!(source_segments.count(), 0, "one structural fixture segment");
+    let incidences = prepared
+        .boundary_incidences(&source_segment, &exterior)
+        .unwrap();
     assert_eq!(
         incidences
             .iter()
@@ -2035,7 +2171,9 @@ fn exterior_case(direction: Direction, trailing: bool) -> Case {
         ]
     );
     let soft = prepared.opportunity_views().next().unwrap().boundary();
-    let soft_incidences = prepared.boundary_incidences(&soft).unwrap();
+    let soft_incidences = prepared
+        .boundary_incidences(&source_segment, &soft)
+        .unwrap();
     assert_eq!(soft_incidences.len(), 1);
     assert_eq!(
         prepared
@@ -2076,7 +2214,7 @@ fn exterior_case(direction: Direction, trailing: bool) -> Case {
 }
 fn exterior_inventory(f: &Case, trailing: bool, edge: WrapEdges) -> WrappingInput<u32> {
     let s = baseline(16.0, 20.0);
-    let mut inventory = f.inventory(&[(edge, metric(s))], false, false);
+    let mut inventory = f.inventory(&[(edge, metric(&s))], false, false);
     let child = |box_| GeneratedChildBoxInput {
         box_,
         participation: GeneratedBoxParticipation::InFlow,
@@ -2106,6 +2244,7 @@ fn exterior_custody<S: LayoutScalar>() {
     for direction in [Direction::Ltr, Direction::Rtl] {
         for trailing in [false, true] {
             let f = exterior_case(direction, trailing);
+            let expected_s = expected_owner(&f.scopes[0], &s);
             let exterior_avoid = if trailing {
                 after_avoid()
             } else {
@@ -2118,6 +2257,7 @@ fn exterior_custody<S: LayoutScalar>() {
                     0,
                     vec![f.binding.clone()],
                     exterior_inventory(&f, trailing, edge),
+                    Vec::new(),
                 )
                 .unwrap();
                 let actual = compute_layout_with_flow(
@@ -2139,9 +2279,9 @@ fn exterior_custody<S: LayoutScalar>() {
                     if trailing { [10.0, 20.0] } else { [20.0, 10.0] },
                     if trailing { [8.0, 26.0] } else { [16.0, 28.0] },
                     if trailing {
-                        [vec![], vec![s]]
+                        [vec![], vec![expected_s.clone()]]
                     } else {
-                        [vec![s], vec![]]
+                        [vec![expected_s.clone()], vec![]]
                     },
                 );
                 let root = actual
@@ -2186,6 +2326,8 @@ fn nested_auto_coupling<S: LayoutScalar>() {
     let t = baseline(12.0, 30.0);
     for direction in [Direction::Ltr, Direction::Rtl] {
         let f = Case::new(Shape::Nested, direction);
+        let expected_s = expected_owner(&f.scopes[0], &s);
+        let expected_t = expected_owner(&f.scopes[1], &t);
         let soft = f
             .binding
             .prepared
@@ -2193,7 +2335,14 @@ fn nested_auto_coupling<S: LayoutScalar>() {
             .find(|o| o.kind() == text::PreparedBreakKind::Allowed)
             .unwrap()
             .boundary();
-        let incidences = f.binding.prepared.boundary_incidences(&soft).unwrap();
+        let mut source_segments = f.binding.prepared.source_segments();
+        let source_segment = source_segments.next().expect("fixture source segment");
+        assert_eq!(source_segments.count(), 0, "one structural fixture segment");
+        let incidences = f
+            .binding
+            .prepared
+            .boundary_incidences(&source_segment, &soft)
+            .unwrap();
         use text::CapturedScopeIncidence as R;
         assert_eq!(
             incidences
@@ -2223,7 +2372,7 @@ fn nested_auto_coupling<S: LayoutScalar>() {
         for reverse in [false, true] {
             let actual = f
                 .run::<S>(
-                    &[(WrapEdges::AUTO, metric(s)), (WrapEdges::AUTO, metric(t))],
+                    &[(WrapEdges::AUTO, metric(&s)), (WrapEdges::AUTO, metric(&t))],
                     reverse,
                     false,
                     None,
@@ -2241,14 +2390,16 @@ fn nested_auto_coupling<S: LayoutScalar>() {
             } else {
                 chosen = Some(assigned.clone());
             }
-            let owner = if same_box_struts(&assigned[0], &[s, t]) && assigned[1].is_empty() {
+            let owner = if same_box_struts(&assigned[0], &[expected_s.clone(), expected_t.clone()])
+                && assigned[1].is_empty()
+            {
                 0
             } else {
                 assert!(
                     assigned[0].is_empty(),
                     "Auto must retain one whole coupled outcome, not a Cartesian or spanning pair"
                 );
-                assert_box_struts(&assigned[1], &[s, t]);
+                assert_box_struts(&assigned[1], &[expected_s.clone(), expected_t.clone()]);
                 1
             };
             assert_geometry(
@@ -2265,9 +2416,9 @@ fn nested_auto_coupling<S: LayoutScalar>() {
                     [8.0, 26.0]
                 },
                 if owner == 0 {
-                    [vec![s, t], vec![]]
+                    [vec![expected_s.clone(), expected_t.clone()], vec![]]
                 } else {
-                    [vec![], vec![s, t]]
+                    [vec![], vec![expected_s.clone(), expected_t.clone()]]
                 },
             );
             let root = actual

@@ -95,7 +95,11 @@ fn phrase_font_native_preparation_retains_each_source_unit_and_real_instance() {
             replacements: vec![],
             anchor_order: vec![],
         };
-        let analyzed = AnalyzedSource::from_paragraph(request).unwrap();
+        let analyzed = AnalyzedSource::from_paragraph(
+            request,
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::None);
         assert_eq!(analyzed.source(), &source);
         assert_eq!(analyzed.source().text().code_units(), UNITS);

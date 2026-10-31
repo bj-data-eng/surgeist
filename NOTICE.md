@@ -21,8 +21,8 @@ their upstream legal text and modification notices. The 14 originally imported
 `LICENSE` files contained identical text, preserved in one shared copy here; the root
 project's own license remains separate.
 
-The checkout also includes the maintained, pinned Harfrust dependency source in
-[`vendor/harfrust`](vendor/harfrust/PROVENANCE.md), with its upstream legal material.
+The owned [`surgeist-shaper`](crates/surgeist-shaper/README.md) crate carries the
+maintained Harfrust implementation and its upstream legal material.
 
 The former surgeist-retained package is retired. Its
 [last preserved source and notice](https://github.com/bj-data-eng/surgeist/tree/6b6c60b8eda9aac70dce8aca8021d77d238c377e/crates/surgeist-retained)
@@ -128,10 +128,10 @@ are recorded separately from the Parley excerpts.
 This product includes maintained Harfrust source, distributed by the HarfBuzz
 developers and Yevhenii Reizner:
 
-* License: [MIT](vendor/harfrust/LICENSE)
+* License: [MIT](crates/surgeist-shaper/LICENSE)
 * Homepage: [Harfrust](https://github.com/harfbuzz/harfrust)
-* Exact source and adaptations: [provider provenance](vendor/harfrust/PROVENANCE.md)
-* Embedded Unicode data: [Unicode License v3](vendor/harfrust/licenses/unicode/LICENSE), together with the original data notices
+* Exact source and adaptations: [provider provenance](crates/surgeist-shaper/PROVENANCE.md)
+* Embedded Unicode data: [Unicode License v3](crates/surgeist-shaper/licenses/unicode/LICENSE), together with the original data notices
 
 The selected package is MIT-licensed. Unicode data notices remain separate from
 that source license and are retained with the copied tables and companion data.
@@ -524,6 +524,7 @@ transitive binary-release inventory.
 | surgeist-render | [NOTICE.md](crates/surgeist-render/NOTICE.md) |
 | surgeist-runtime | [NOTICE.md](crates/surgeist-runtime/NOTICE.md) |
 | surgeist-shape | [NOTICE.md](crates/surgeist-shape/NOTICE.md) |
+| surgeist-shaper | [NOTICE.md](crates/surgeist-shaper/NOTICE.md) |
 | surgeist-task | [NOTICE.md](crates/surgeist-task/NOTICE.md) |
 | surgeist-template | [NOTICE.md](crates/surgeist-template/NOTICE.md) |
 | surgeist-test | [NOTICE.md](crates/surgeist-test/NOTICE.md) |

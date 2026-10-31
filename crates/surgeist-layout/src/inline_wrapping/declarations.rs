@@ -14,11 +14,17 @@ pub enum WrapEdge {
     Flex,
 }
 /// Actual geometry of one associated inline box, independent of break preference.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum InlineBoxMetricContribution {
     /// The host affirmatively supplies no line-box metric contribution.
     NoContribution,
     /// Actual allocated metrics; no font or endpoint geometry is inferred.
+    ///
+    /// At this declaration phase `LineBoxStrut::scope` is an optional source
+    /// owner assertion. `None` leaves that assertion to the actual wrapping
+    /// box proof. When constructing a Text request, Layout issues the captured
+    /// source owner from that proof and validates any explicit assertion;
+    /// it does not infer an allocated frame or a font from this field.
     Strut(surgeist_text::LineBoxStrut),
 }
 

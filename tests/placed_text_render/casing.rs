@@ -28,27 +28,30 @@ fn capture(
         ..text::Style::default()
     };
     let ancestor_wrap = style.wrap;
-    let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-        source: source.clone(),
-        base_style: style,
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: text::ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: text::ParagraphStrut::DefaultFont,
-        terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        origins: vec![text::ParagraphOrigin {
-            text_node: None,
+    let analyzed = text::AnalyzedSource::from_paragraph(
+        text::ParagraphInput {
             source: source.clone(),
-            local: text::Range::new(0, 1),
-            aggregate: text::Range::new(0, 1),
-            kind: text::ParagraphOriginKind::Authored,
-        }],
-        connections: vec![],
-        controls: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-        anchor_order: vec![],
-    })
+            base_style: style,
+            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            origins: vec![text::ParagraphOrigin {
+                text_node: None,
+                source: source.clone(),
+                local: text::Range::new(0, 1),
+                aggregate: text::Range::new(0, 1),
+                kind: text::ParagraphOriginKind::Authored,
+            }],
+            connections: vec![],
+            controls: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: vec![],
+        },
+        text::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     assert_eq!(
         analyzed.processed_source().processed_text().code_units(),
@@ -105,6 +108,7 @@ fn capture(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = layout::compute_layout_with_flow(

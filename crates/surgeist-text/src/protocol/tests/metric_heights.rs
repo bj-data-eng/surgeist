@@ -63,7 +63,8 @@ fn prepare_source(bytes: &[u8], source: Source, base_style: Style, cuts: &[usize
         anchor_order: vec![],
     };
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(input).unwrap(),
+        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap(),
         crate::Wrap::Word,
     );
     system
@@ -73,7 +74,10 @@ fn prepare_source(bytes: &[u8], source: Source, base_style: Style, cuts: &[usize
 fn finalize(p: &PreparedText) -> FinalizedLine {
     p.select(request(p))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn glyphs(line: &FinalizedLine) -> Vec<(u32, f32, f32, f32, Range)> {
@@ -282,7 +286,10 @@ fn short_continuation_does_not_inherit_an_unselected_tall_component() {
     let suffix = p
         .select(value)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(
         (

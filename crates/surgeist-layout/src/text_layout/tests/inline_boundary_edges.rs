@@ -381,6 +381,7 @@ fn justification_feedback_preserves_one_selected_endpoint_total() {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let batch = compute_layout_with_flow(&capture, 0, request(48.0)).unwrap();

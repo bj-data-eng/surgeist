@@ -58,8 +58,11 @@ fn whitespace_preparation(value: &str, mode: WhiteSpace, wrap: crate::Wrap) -> P
     let mut input = paragraph(Source::new(value));
     input.base_style.white_space = mode;
     input.base_style.wrap = wrap;
-    let analyzed =
-        crate::test_wrapping::bind_missing(&AnalyzedSource::from_paragraph(input).unwrap(), wrap);
+    let analyzed = crate::test_wrapping::bind_missing(
+        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap(),
+        wrap,
+    );
     system()
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap()
@@ -184,7 +187,9 @@ fn native_atomic_preparation(
             ancestor_wrap,
         })
         .collect();
-    let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+    let analyzed =
+        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     system()
         .prepare(
             &analyzed,
@@ -275,7 +280,9 @@ fn native_atomic_out_of_flow_control_creates_no_break_opportunity() {
         item: ParagraphAnchorItem::Atomic(0),
         affinity: Affinity::Before,
     }];
-    let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+    let analyzed =
+        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     let prepared = system()
         .prepare(
             &analyzed,
@@ -398,7 +405,11 @@ fn native_atomic_transparent_occurrences_do_not_reintroduce_a_forbidden_break() 
                 ancestor_wrap: crate::Wrap::Word,
             })
             .collect();
-            let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+            let analyzed = AnalyzedSource::from_paragraph(
+                input,
+                crate::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap();
             let prepared = system()
                 .prepare(
                     &analyzed,
@@ -532,7 +543,9 @@ fn atomic_transparent_input(
 }
 
 fn prepare_opportunity_inventory(input: ParagraphInput) -> Vec<(usize, PreparedBreakKind)> {
-    let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+    let analyzed =
+        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     let prepared = system()
         .prepare(
             &analyzed,
@@ -770,7 +783,9 @@ fn native_atomic_transparent_relation_rejects_disagreeing_captured_ancestors() {
             ancestor_wrap: crate::Wrap::Word,
         },
     ]);
-    let error = AnalyzedSource::from_paragraph(input).unwrap_err();
+    let error =
+        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap_err();
     assert_eq!(
         error.detail(),
         Some(&crate::ErrorDetail::InvalidTextProtocol {
@@ -816,7 +831,11 @@ fn native_atomic_collapse_space_permission_is_local_only_before_the_atomic() {
                     ancestor_wrap,
                 })
                 .collect();
-                let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+                let analyzed = AnalyzedSource::from_paragraph(
+                    input,
+                    crate::AnalysisTypography::HorizontalComposition,
+                )
+                .unwrap();
                 let prepared = system()
                     .prepare(
                         &analyzed,
@@ -879,7 +898,11 @@ fn native_connection_space_owner_depends_on_actual_disappearance() {
                     following_wrap: local_wrap,
                     ancestor_wrap,
                 }];
-                let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+                let analyzed = AnalyzedSource::from_paragraph(
+                    input,
+                    crate::AnalysisTypography::HorizontalComposition,
+                )
+                .unwrap();
                 let prepared = system()
                     .prepare(
                         &analyzed,
@@ -923,6 +946,15 @@ fn select_whole(prepared: &PreparedText) -> SelectedLine {
         .handle();
     prepared
         .select(LineSelectionRequest {
+            segment: {
+                let mut segments = prepared.source_segments();
+                assert_eq!(
+                    segments.len(),
+                    1,
+                    "this fixture has one genuine source segment"
+                );
+                segments.next().unwrap()
+            },
             boundary_context: Vec::new(),
             incoming: None,
             start,
@@ -1013,7 +1045,9 @@ fn discarded_original_coverage_and_distinct_empty_occurrences_survive_selection(
             affinity: Affinity::Before,
         },
     ];
-    let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+    let analyzed =
+        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     assert_eq!(
         analyzed.processed_source().processed_text().code_units(),
         [0x41, 0x42]
@@ -1046,9 +1080,12 @@ fn discarded_original_coverage_and_distinct_empty_occurrences_survive_selection(
     assert_eq!(covered, 6);
     drop(system);
     drop(analyzed);
-    let (shaped, mapping) = crate::engine::shape::finalize(
+    let (shaped, mapping, _) = crate::engine::shape::finalize(
         selected.inner.presentation_input(),
         &mut crate::engine::shape::ShapeContext::default(),
+        selected.request().context.spacing,
+        None,
+        crate::engine::scope_alignment::PlanInput::Selection(selected.request()),
     )
     .unwrap();
     assert_eq!(shaped.glyphs.len(), 2);
@@ -1100,7 +1137,9 @@ fn explicit_transparent_half_pair_affinity_does_not_split_but_inflow_really_does
             })
             .collect();
         }
-        let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+        let analyzed =
+            AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+                .unwrap();
         assert_eq!(analyzed.inner.projection.atoms.len(), expected_atoms);
         assert_eq!(
             anchor_atom(
@@ -1142,7 +1181,9 @@ fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent
         )
         .unwrap(),
     ];
-    let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+    let analyzed =
+        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     let mut system = system();
     let prepared = system
         .prepare(
@@ -1156,6 +1197,15 @@ fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent
     let count = end.view().participant_offset();
     let selected = prepared
         .select(LineSelectionRequest {
+            segment: {
+                let mut segments = prepared.source_segments();
+                assert_eq!(
+                    segments.len(),
+                    1,
+                    "this fixture has one genuine source segment"
+                );
+                segments.next().unwrap()
+            },
             boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
@@ -1204,9 +1254,12 @@ fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent
     assert_eq!(replacement[1].presentation, Range::new(3, 4));
     system.refresh_fonts().unwrap();
     drop(system);
-    let (shaped, _) = crate::engine::shape::finalize(
+    let (shaped, _, _) = crate::engine::shape::finalize(
         selected.inner.presentation_input(),
         &mut crate::engine::shape::ShapeContext::default(),
+        selected.request().context.spacing,
+        None,
+        crate::engine::scope_alignment::PlanInput::Selection(selected.request()),
     )
     .unwrap();
     assert!(
@@ -1250,7 +1303,9 @@ fn source_less_discretionary_control_and_empty_replacement_keep_real_owners() {
         )
         .unwrap(),
     ];
-    let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+    let analyzed =
+        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     let mut system = system();
     let prepared = system
         .prepare(
@@ -1262,6 +1317,15 @@ fn source_less_discretionary_control_and_empty_replacement_keep_real_owners() {
     let termination = alternative.view().opportunity().unwrap();
     let selected = prepared
         .select(LineSelectionRequest {
+            segment: {
+                let mut segments = prepared.source_segments();
+                assert_eq!(
+                    segments.len(),
+                    1,
+                    "this fixture has one genuine source segment"
+                );
+                segments.next().unwrap()
+            },
             boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
@@ -1303,9 +1367,12 @@ fn source_less_discretionary_control_and_empty_replacement_keep_real_owners() {
     assert!(matches!(fragments[0].owner, FragmentOwner::Alternative(0)));
     assert!(matches!(fragments[1].owner, FragmentOwner::Control(0)));
     assert!(fragments.iter().all(|f| f.source.is_none()));
-    let (shaped, _) = crate::engine::shape::finalize(
+    let (shaped, _, _) = crate::engine::shape::finalize(
         selected.inner.presentation_input(),
         &mut crate::engine::shape::ShapeContext::default(),
+        selected.request().context.spacing,
+        None,
+        crate::engine::scope_alignment::PlanInput::Selection(selected.request()),
     )
     .unwrap();
     assert_eq!(shaped.glyphs.len(), 2);
@@ -1331,7 +1398,9 @@ fn empty_native_forced_control_keeps_empty_host_and_semantic_atoms() {
         item: ParagraphAnchorItem::Control(0),
         affinity: Affinity::Before,
     }];
-    let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+    let analyzed =
+        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     assert!(analyzed.inner.host_projection.atoms.is_empty());
     assert!(analyzed.inner.projection.atoms.is_empty());
     assert!(analyzed.processed_source().processed_text().is_empty());
@@ -1342,7 +1411,12 @@ fn empty_native_forced_control_keeps_empty_host_and_semantic_atoms() {
 fn raw_standalone_crlf_forced_items_do_not_split_native_normalized_delimiter() {
     let mut system = system();
     let source = Source::new("\r\n");
-    let raw = AnalyzedSource::new(source.clone(), paragraph(source.clone()).base_style).unwrap();
+    let raw = AnalyzedSource::new(
+        source.clone(),
+        paragraph(source.clone()).base_style,
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let prepared = system
         .prepare(
             &raw,
@@ -1372,7 +1446,9 @@ fn raw_standalone_crlf_forced_items_do_not_split_native_normalized_delimiter() {
 
     let mut input = paragraph(source);
     input.segment_breaks = DocumentSegmentBreaks::Defined(vec![Range::new(0, 2)]);
-    let native = AnalyzedSource::from_paragraph(input).unwrap();
+    let native =
+        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     assert_eq!(
         native.processed_source().processed_text().code_units(),
         [0xa]

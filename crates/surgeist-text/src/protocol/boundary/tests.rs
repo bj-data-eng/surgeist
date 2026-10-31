@@ -23,37 +23,40 @@ fn fixture_controls(controls: Vec<ParagraphControl>) -> PreparedText {
         .register_fonts(include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
         .unwrap();
     let source = Source::new("AB");
-    let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
-        source: source.clone(),
-        base_style: Style {
-            font: Font::new().family("Ahem"),
-            size: 10.0,
-            word_break: WordBreak::BreakAll,
-            ..Style::default()
+    let analyzed = AnalyzedSource::from_paragraph(
+        ParagraphInput {
+            source: source.clone(),
+            base_style: Style {
+                font: Font::new().family("Ahem"),
+                size: 10.0,
+                word_break: WordBreak::BreakAll,
+                ..Style::default()
+            },
+            segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: ParagraphStrut::DefaultFont,
+            terminal_edge: ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            origins: vec![ParagraphOrigin {
+                source,
+                local: crate::Range::new(0, 2),
+                aggregate: crate::Range::new(0, 2),
+                kind: ParagraphOriginKind::Authored,
+                text_node: None,
+            }],
+            connections: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: (0..controls.len())
+                .map(|control| ParagraphAnchor {
+                    item: ParagraphAnchorItem::Control(control),
+                    affinity: Affinity::Before,
+                })
+                .collect(),
+            controls,
         },
-        segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        origins: vec![ParagraphOrigin {
-            source,
-            local: crate::Range::new(0, 2),
-            aggregate: crate::Range::new(0, 2),
-            kind: ParagraphOriginKind::Authored,
-            text_node: None,
-        }],
-        connections: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-        anchor_order: (0..controls.len())
-            .map(|control| ParagraphAnchor {
-                item: ParagraphAnchorItem::Control(control),
-                affinity: Affinity::Before,
-            })
-            .collect(),
-        controls,
-    })
+        crate::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     system
         .prepare(
@@ -72,6 +75,15 @@ fn first_request(prepared: &PreparedText) -> LineSelectionRequest {
         .unwrap()
         .handle();
     LineSelectionRequest {
+        segment: {
+            let mut segments = prepared.source_segments();
+            assert_eq!(
+                segments.len(),
+                1,
+                "this fixture has one genuine source segment"
+            );
+            segments.next().unwrap()
+        },
         start: prepared.boundary_views().next().unwrap().handle(),
         end: end.view().boundary(),
         termination: PreparedTermination::Ordinary(end),
@@ -128,6 +140,15 @@ fn forced_event_stops_context_before_same_atom_endpoints() {
         .unwrap()
         .handle();
     let mut request = first_request(&fixture());
+    request.segment = {
+        let mut segments = prepared.source_segments();
+        assert_eq!(
+            segments.len(),
+            1,
+            "this fixture has one genuine source segment"
+        );
+        segments.next().unwrap()
+    };
     request.start = prepared.boundary_views().next().unwrap().handle();
     request.end = end.view().boundary();
     request.participants = prepared
@@ -158,7 +179,10 @@ fn forced_event_stops_context_before_same_atom_endpoints() {
         prepared
             .select(request.clone())
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .unwrap()
             .feedback()
             .advance,
@@ -226,7 +250,10 @@ fn demand_stops_at_positive_context_and_zero_reveals_the_next_endpoint() {
     let positive = prepared
         .select(request.clone())
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(positive.feedback().advance, 10.0);
     request.boundary_context[0].boundary = InlineBoundaryAllocation::ZERO;
@@ -248,7 +275,10 @@ fn demand_stops_at_positive_context_and_zero_reveals_the_next_endpoint() {
         prepared
             .select(request.clone())
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .unwrap()
             .feedback()
             .advance,
@@ -319,13 +349,19 @@ fn selected_endpoints_contribute_once_to_flow_prefix_and_exact_event_selection()
     let line = prepared
         .select(request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert!(matches!(
         prepared
             .select(overflow)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .unwrap_err()
             .detail(),
         Some(ErrorDetail::InvalidTextNumeric {

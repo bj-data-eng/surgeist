@@ -39,7 +39,8 @@ fn input(text: &str, base_style: Style) -> ParagraphInput {
     }
 }
 fn capture(system: &mut System, value: ParagraphInput) -> crate::Result<PreparedText> {
-    let analyzed = AnalyzedSource::from_paragraph(value)?;
+    let analyzed =
+        AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)?;
     system.prepare(
         &crate::test_wrapping::bind_missing(&analyzed, Wrap::Word),
         PreparationOptions::default(),
@@ -111,7 +112,10 @@ fn finish(p: &PreparedText, alternative: usize) -> FinalizedLine {
         .collect();
     p.select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 
@@ -436,7 +440,10 @@ fn repeated_genuine_owner_groups_and_empty_native_list_are_rejected() {
         ),
     ];
     assert!(matches!(
-        super::reason(&AnalyzedSource::from_paragraph(v).unwrap_err()),
+        super::reason(
+            &AnalyzedSource::from_paragraph(v, crate::AnalysisTypography::HorizontalComposition)
+                .unwrap_err()
+        ),
         ProtocolError::DuplicateReplacement {
             alternative: 1,
             prior: 0
@@ -452,7 +459,10 @@ fn repeated_genuine_owner_groups_and_empty_native_list_are_rejected() {
     );
     v.replacements = vec![group.clone(), group];
     assert!(matches!(
-        super::reason(&AnalyzedSource::from_paragraph(v).unwrap_err()),
+        super::reason(
+            &AnalyzedSource::from_paragraph(v, crate::AnalysisTypography::HorizontalComposition)
+                .unwrap_err()
+        ),
         ProtocolError::DuplicateReplacement {
             alternative: 1,
             prior: 0
@@ -872,7 +882,10 @@ fn manual_cannot_turn_a_shy_into_an_unindicated_break_after_an_empty_origin() {
     let second = p
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(second.feedback().advance, 60.0);
     assert_eq!(

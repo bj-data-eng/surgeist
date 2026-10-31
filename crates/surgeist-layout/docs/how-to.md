@@ -39,9 +39,10 @@ before Text preparation:
    `System::prepare` path, then install their actual origin, control and atomic
    bindings in the host's final Layout view.
 4. Call `LayoutFlowInput::try_new_with_edges` with that current tree, its real
-   paragraph bindings, the current final `WrappingInput`, and `&receipt`. This
-   view implements both `LayoutTree` and `WrapEdgeSource`, so admission can
-   compare fresh semantic evidence with the actual prepared participation.
+   paragraph bindings, the current final `WrappingInput`, normalized scope
+   alignments (an empty vector when there are no requests), and `&receipt`.
+   This view implements both `LayoutTree` and `WrapEdgeSource`, so admission
+   can compare fresh semantic evidence with the actual prepared participation.
 
 Supply actual `metric_contribution` values in the final wrapping input, when
 known. A receipt can validate another coherent preparation of the same processed
@@ -98,7 +99,7 @@ With the default test dependencies available, run:
 CARGO_NET_OFFLINE=true just parity-all
 ```
 
-This explicitly selects the otherwise ignored full XML parity test and clears
+This explicitly selects the ordinary full XML parity test and clears
 `SURGEIST_PARITY_FILTER`. The expected successful result is the selected test
 passing after comparing the full checked-in corpus. Inspect any reported
 geometry mismatches in the test output. The command uses existing XML and does

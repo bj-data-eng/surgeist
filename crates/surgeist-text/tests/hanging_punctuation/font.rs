@@ -146,6 +146,16 @@ fn layout(script: [u8; 4], mut features: Vec<([u8; 4], u16, Vec<u8>)>) -> Vec<u8
     output
 }
 
+/// Real zero-advance opening/closing punctuation with unchanged Ahem ink.
+/// Only advanceWidth changes; cmap, outlines and left side bearings are retained.
+pub fn zero_advance_parentheses() -> Vec<u8> {
+    let mut hmtx = table(AHEM, *b"hmtx").to_vec();
+    for glyph in [10, 11] {
+        hmtx[glyph * 4..glyph * 4 + 2].copy_from_slice(&0_u16.to_be_bytes());
+    }
+    rebuild(vec![(*b"hmtx", hmtx)])
+}
+
 /// One real full-em X58 draw. Distinct A/period TCUs receive the existing
 /// provider owner's equal 5/5 contributions at size10; opening+acute is one
 /// complete TCU with total10. Each exact source is qualified before use.

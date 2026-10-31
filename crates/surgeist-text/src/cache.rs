@@ -243,8 +243,12 @@ fn explicit_finalization_key(line: &crate::FinalizedLine) -> ExplicitFinalizatio
         alignment: request.context.alignment,
         context: crate::protocol::request_context(request.into()),
         spacing: line
-            .spacing_slots()
-            .map(|slot| OrderedF64(slot.advance))
+            .inner
+            .data
+            .spacing_amounts
+            .iter()
+            .copied()
+            .map(OrderedF64)
             .collect(),
         profile: line.inner.selected.metric_policy as u8,
     }
@@ -430,6 +434,7 @@ fn hash_inline_box<H: Hasher>(box_: InlineBox, hasher: &mut H) {
     box_.index.hash(hasher);
     hash_size(box_.size, hasher);
     hash_vertical_align(box_.vertical_align, hasher);
+    hash_f64(box_.letter_spacing, hasher);
 }
 
 fn hash_style<H: Hasher>(style: &Style, hasher: &mut H) {
@@ -452,6 +457,7 @@ fn hash_style<H: Hasher>(style: &Style, hasher: &mut H) {
     style.wrap.hash(hasher);
     style.overflow_wrap.hash(hasher);
     style.text_transform.hash(hasher);
+    style.text_combine_upright.hash(hasher);
     style.word_space_transform.hash(hasher);
     style.hyphens.hash(hasher);
     style.hyphenate_limit_chars.hash(hasher);

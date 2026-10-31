@@ -8,6 +8,12 @@ use std::convert::Infallible;
 
 use surgeist::{layout, render, text};
 
+#[path = "placed_text_render/inter_word.rs"]
+mod inter_word;
+
+#[path = "placed_text_render/used_alphabetic.rs"]
+mod used_alphabetic;
+
 #[path = "placed_text_render/casing.rs"]
 mod casing_transform;
 
@@ -34,6 +40,12 @@ mod hanging_punctuation;
 
 #[path = "placed_text_render/computed_boundaries.rs"]
 mod computed_boundaries;
+
+#[path = "placed_text_render/sideways_rl.rs"]
+mod sideways_rl;
+
+#[path = "placed_text_render/sideways_atomics.rs"]
+mod sideways_atomics;
 
 struct Tree {
     inputs: [layout::LayoutInput; 2],
@@ -127,36 +139,39 @@ fn assert_css_tab_composition(tab_size: text::TabSize, block_spacing: f64, b_x: 
         ..text::Style::default()
     };
     let ancestor_wrap = style.wrap;
-    let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-        terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: Some(
-            text::ParagraphTabReference::new(
-                text::Style {
-                    word_spacing: block_spacing,
-                    ..style.clone()
-                },
-                text::ParagraphBaseDirection::LeftToRight,
-            )
-            .unwrap(),
-        ),
-        source: source.clone(),
-        base_style: style,
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: text::ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: text::ParagraphStrut::DefaultFont,
-        origins: vec![text::ParagraphOrigin {
-            text_node: None,
+    let analyzed = text::AnalyzedSource::from_paragraph(
+        text::ParagraphInput {
+            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: Some(
+                text::ParagraphTabReference::new(
+                    text::Style {
+                        word_spacing: block_spacing,
+                        ..style.clone()
+                    },
+                    text::ParagraphBaseDirection::LeftToRight,
+                )
+                .unwrap(),
+            ),
             source: source.clone(),
-            local: text::Range::new(0, 3),
-            aggregate: text::Range::new(0, 3),
-            kind: text::ParagraphOriginKind::Authored,
-        }],
-        connections: vec![],
-        controls: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-        anchor_order: vec![],
-    })
+            base_style: style,
+            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            origins: vec![text::ParagraphOrigin {
+                text_node: None,
+                source: source.clone(),
+                local: text::Range::new(0, 3),
+                aggregate: text::Range::new(0, 3),
+                kind: text::ParagraphOriginKind::Authored,
+            }],
+            connections: vec![],
+            controls: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: vec![],
+        },
+        text::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let policies = analyzed
         .wrapping_relations()
@@ -207,6 +222,7 @@ fn assert_css_tab_composition(tab_size: text::TabSize, block_spacing: f64, b_x: 
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = layout::compute_layout_with_flow(
@@ -302,6 +318,8 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
     let analyzed = if contextual {
         let processed = std::sync::Arc::new(
             text::process_contextual_source(text::ContextualSourceInput {
+                joint_flows: Vec::new(),
+                scope_alignment_limits: None,
                 computed_line_boundaries: vec![],
                 source: source.clone(),
                 segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -313,12 +331,18 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
                 replacements: vec![],
                 scopes: vec![
                     text::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
+                        font_reference: None,
                         topology: text::SourceProcessingTopology::Unknown,
                         used_direction: text::ParagraphBaseDirection::LeftToRight,
                         trim: text::WhiteSpaceTrim::default(),
                         base_style: style,
                     },
                     text::SourceProcessingScope::Inline {
+                        horizontal_inner_direction: None,
+                        alignment_boundary: None,
+                        font_reference: None,
                         style: None,
                         boundaries: None,
                         trim: text::WhiteSpaceTrim {
@@ -356,23 +380,29 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
             })
             .collect();
         assert_eq!(plaintext, "A X".encode_utf16().collect::<Vec<_>>());
-        text::AnalyzedSource::from_processed_paragraph(paragraph)
+        text::AnalyzedSource::from_processed_paragraph(
+            paragraph,
+            text::AnalysisTypography::HorizontalComposition,
+        )
     } else {
-        text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-            tab_reference: None,
-            source: source.clone(),
-            base_style: style,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
-            origins,
-            connections: vec![],
-            controls: vec![],
-            boundary_policies: vec![],
-            replacements: vec![],
-            anchor_order: vec![],
-        })
+        text::AnalyzedSource::from_paragraph(
+            text::ParagraphInput {
+                terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+                tab_reference: None,
+                source: source.clone(),
+                base_style: style,
+                segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+                base_direction: text::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: text::ParagraphStrut::DefaultFont,
+                origins,
+                connections: vec![],
+                controls: vec![],
+                boundary_policies: vec![],
+                replacements: vec![],
+                anchor_order: vec![],
+            },
+            text::AnalysisTypography::HorizontalComposition,
+        )
     }
     .unwrap();
     // This fixture's text belongs to the single inline box in Tree. Its
@@ -430,6 +460,7 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let request = layout::LayoutRootRequest::viewport(layout::Size::new(
@@ -671,27 +702,30 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
         ..text::Style::default()
     };
     let ancestor_wrap = style.wrap;
-    let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-        source: source.clone(),
-        base_style: style,
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: text::ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: text::ParagraphStrut::DefaultFont,
-        terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        origins: vec![text::ParagraphOrigin {
-            text_node: None,
+    let analyzed = text::AnalyzedSource::from_paragraph(
+        text::ParagraphInput {
             source: source.clone(),
-            local: text::Range::new(0, 6),
-            aggregate: text::Range::new(0, 6),
-            kind: text::ParagraphOriginKind::Authored,
-        }],
-        connections: vec![],
-        controls: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-        anchor_order: vec![],
-    })
+            base_style: style,
+            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            origins: vec![text::ParagraphOrigin {
+                text_node: None,
+                source: source.clone(),
+                local: text::Range::new(0, 6),
+                aggregate: text::Range::new(0, 6),
+                kind: text::ParagraphOriginKind::Authored,
+            }],
+            connections: vec![],
+            controls: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: vec![],
+        },
+        text::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let policies = analyzed
         .wrapping_relations()
@@ -748,6 +782,7 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = layout::compute_layout_with_flow(
@@ -1073,27 +1108,30 @@ mod kana_transform {
             ..style
         };
         let ancestor_wrap = style.wrap;
-        let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-            source: source.clone(),
-            base_style: style,
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: text::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: text::ParagraphStrut::DefaultFont,
-            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-            tab_reference: None,
-            origins: vec![text::ParagraphOrigin {
-                text_node: None,
+        let analyzed = text::AnalyzedSource::from_paragraph(
+            text::ParagraphInput {
                 source: source.clone(),
-                local: text::Range::new(0, 4),
-                aggregate: text::Range::new(0, 4),
-                kind: text::ParagraphOriginKind::Authored,
-            }],
-            connections: vec![],
-            controls: vec![],
-            boundary_policies: vec![],
-            replacements: vec![],
-            anchor_order: vec![],
-        })
+                base_style: style,
+                segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+                base_direction: text::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: text::ParagraphStrut::DefaultFont,
+                terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+                tab_reference: None,
+                origins: vec![text::ParagraphOrigin {
+                    text_node: None,
+                    source: source.clone(),
+                    local: text::Range::new(0, 4),
+                    aggregate: text::Range::new(0, 4),
+                    kind: text::ParagraphOriginKind::Authored,
+                }],
+                connections: vec![],
+                controls: vec![],
+                boundary_policies: vec![],
+                replacements: vec![],
+                anchor_order: vec![],
+            },
+            text::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap();
         assert_eq!(
             analyzed.processed_source().processed_text().code_units(),
@@ -1160,6 +1198,7 @@ mod kana_transform {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let batch = layout::compute_layout_with_flow(

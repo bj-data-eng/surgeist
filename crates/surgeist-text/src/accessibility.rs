@@ -4,6 +4,9 @@
 // Surgeist owns source-unit grouping, checked identities, geometry and atomic publication.
 // Exact origin and modifications: ../docs/accessibility-provenance.md.
 
+#[cfg(test)]
+mod inter_character;
+
 use std::{collections::BTreeMap, sync::Arc};
 
 use accesskit::{Node, NodeId, Role, TextDirection, TextPosition, TextSelection, TreeUpdate};
@@ -414,6 +417,18 @@ fn update(
     parent: NodeId,
     focus: NodeId,
 ) -> Result<TreeUpdate> {
+    // This request observes the complete placement. Refuse before constructing
+    // nodes or touching prior IDs/bindings; analyzed-source projection is separate.
+    if let Projection::Placed(layout, _) = projection {
+        for (line, placed) in layout.inner.lines.iter().enumerate() {
+            if let Some((cell, _)) = placed.finalized.data.cells.iter().enumerate().next() {
+                return Err(ax_error(ErrorDetail::UnsupportedAccessibilityCell {
+                    line,
+                    cell,
+                }));
+            }
+        }
+    }
     let analyzed = projection.analyzed();
     let host_text = original_host_text(analyzed)?;
     let locales = LocaleIndex::new(&analyzed.styles);
@@ -425,19 +440,13 @@ fn update(
     if let Projection::Placed(layout, _) = projection {
         for (line_index, line) in layout.inner.lines.iter().enumerate() {
             let data = &line.finalized.data;
-            let metrics = &data.metrics;
             for cluster in &data.clusters {
                 let run = cluster.content.font_run().map(|run| &data.font_runs[run]);
                 fragments.push(Fragment {
                     range: cluster.source,
                     bounds: crate::layout::line_rect(
                         line,
-                        Rect::new(
-                            cluster.x,
-                            metrics.block_min,
-                            cluster.advance,
-                            metrics.block_max - metrics.block_min,
-                        ),
+                        data.cell_rect(cluster.x, cluster.advance, cluster.reference),
                     ),
                     line: line_index,
                     rtl: cluster.level & 1 != 0,
@@ -619,8 +628,22 @@ fn update(
             let one_line = pieces.iter().all(|fragment| fragment.line == first.line);
             if direction {
                 node.set_text_direction(match (first.orientation, first.rtl) {
-                    (crate::LineOrientation::Sideways, false) => TextDirection::TopToBottom,
-                    (crate::LineOrientation::Sideways, true) => TextDirection::BottomToTop,
+                    (crate::LineOrientation::SidewaysCounterclockwise, false) => {
+                        TextDirection::BottomToTop
+                    }
+                    (crate::LineOrientation::SidewaysCounterclockwise, true) => {
+                        TextDirection::TopToBottom
+                    }
+                    (
+                        crate::LineOrientation::SidewaysClockwise
+                        | crate::LineOrientation::Vertical,
+                        false,
+                    ) => TextDirection::TopToBottom,
+                    (
+                        crate::LineOrientation::SidewaysClockwise
+                        | crate::LineOrientation::Vertical,
+                        true,
+                    ) => TextDirection::BottomToTop,
                     (_, true) => TextDirection::RightToLeft,
                     (_, false) => TextDirection::LeftToRight,
                 });
@@ -636,7 +659,7 @@ fn update(
             // pieces remain exact internally; omit optional fields rather than invent precision.
             if pieces.len() == 1 {
                 node.set_character_positions(vec![0.0]);
-                let inline_span = if first.orientation == crate::LineOrientation::Sideways {
+                let inline_span = if first.orientation != crate::LineOrientation::Horizontal {
                     bounds.size.height
                 } else {
                     bounds.size.width
@@ -754,6 +777,8 @@ fn update(
 
 impl Layout {
     /// Builds a complete host update and atomically replaces its source bindings.
+    /// Placed Cells return [`ErrorDetail::UnsupportedAccessibilityCell`] without
+    /// changing the previous binding. Analyzed-source projection is independent.
     pub fn accessibility_update(
         &self,
         state: &mut Accessibility,
@@ -922,48 +947,51 @@ mod tests {
     fn captured_surrogate_halves(
         connection: crate::ParagraphConnectionKind,
     ) -> crate::AnalyzedSource {
-        crate::AnalyzedSource::from_paragraph(crate::ParagraphInput {
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-            tab_reference: None,
-            source: Source::new(Text::from_code_units(vec![0xd800, 0xdc00])),
-            base_style: Style::default(),
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: crate::ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: crate::ParagraphStrut::AllocatedContributions,
-            origins: vec![
-                crate::ParagraphOrigin {
-                    text_node: None,
-                    source: Source::new(Text::from_code_units(vec![0xd800])),
-                    local: Range::new(0, 1),
-                    aggregate: Range::new(0, 1),
-                    kind: crate::ParagraphOriginKind::Authored,
+        crate::AnalyzedSource::from_paragraph(
+            crate::ParagraphInput {
+                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                tab_reference: None,
+                source: Source::new(Text::from_code_units(vec![0xd800, 0xdc00])),
+                base_style: Style::default(),
+                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                base_direction: crate::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: crate::ParagraphStrut::AllocatedContributions,
+                origins: vec![
+                    crate::ParagraphOrigin {
+                        text_node: None,
+                        source: Source::new(Text::from_code_units(vec![0xd800])),
+                        local: Range::new(0, 1),
+                        aggregate: Range::new(0, 1),
+                        kind: crate::ParagraphOriginKind::Authored,
+                    },
+                    crate::ParagraphOrigin {
+                        text_node: None,
+                        source: Source::new(Text::from_code_units(vec![0xdc00])),
+                        local: Range::new(0, 1),
+                        aggregate: Range::new(1, 2),
+                        kind: crate::ParagraphOriginKind::Authored,
+                    },
+                ],
+                connections: vec![crate::ParagraphConnection {
+                    at: 1,
+                    kind: connection,
+                }],
+                controls: vec![],
+                boundary_policies: if connection == crate::ParagraphConnectionKind::Continuous {
+                    vec![crate::ParagraphBoundaryPolicy {
+                        definition: crate::ParagraphBoundaryDefinition::Connection(0),
+                        preceding_wrap: crate::Wrap::Word,
+                        following_wrap: crate::Wrap::Word,
+                        ancestor_wrap: crate::Wrap::Word,
+                    }]
+                } else {
+                    vec![]
                 },
-                crate::ParagraphOrigin {
-                    text_node: None,
-                    source: Source::new(Text::from_code_units(vec![0xdc00])),
-                    local: Range::new(0, 1),
-                    aggregate: Range::new(1, 2),
-                    kind: crate::ParagraphOriginKind::Authored,
-                },
-            ],
-            connections: vec![crate::ParagraphConnection {
-                at: 1,
-                kind: connection,
-            }],
-            controls: vec![],
-            boundary_policies: if connection == crate::ParagraphConnectionKind::Continuous {
-                vec![crate::ParagraphBoundaryPolicy {
-                    definition: crate::ParagraphBoundaryDefinition::Connection(0),
-                    preceding_wrap: crate::Wrap::Word,
-                    following_wrap: crate::Wrap::Word,
-                    ancestor_wrap: crate::Wrap::Word,
-                }]
-            } else {
-                vec![]
+                replacements: vec![],
+                anchor_order: vec![],
             },
-            replacements: vec![],
-            anchor_order: vec![],
-        })
+            crate::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap()
     }
 
@@ -1035,6 +1063,7 @@ mod tests {
         let raw = crate::AnalyzedSource::new(
             Source::new(Text::from_code_units(vec![0xd800, 0xdc00])),
             Style::default(),
+            crate::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
         let raw_update = raw
@@ -1053,7 +1082,12 @@ mod tests {
     #[test]
     fn host_text_uses_exact_original_scalars_and_refuses_isolated_units() {
         let text = Text::from_code_units(vec![0xd83d, 0xde00, 0xfffd, 0x00a6]);
-        let analyzed = crate::AnalyzedSource::new(Source::new(text), Style::default()).unwrap();
+        let analyzed = crate::AnalyzedSource::new(
+            Source::new(text),
+            Style::default(),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         assert_eq!(
             original_host_text(&analyzed.inner).unwrap(),
             "😀\u{fffd}\u{a6}"
@@ -1066,7 +1100,8 @@ mod tests {
                 original_host_text(
                     &crate::AnalyzedSource::new(
                         Source::new(Text::from_code_units(units)),
-                        Style::default()
+                        Style::default(),
+                        crate::AnalysisTypography::HorizontalComposition
                     )
                     .unwrap()
                     .inner

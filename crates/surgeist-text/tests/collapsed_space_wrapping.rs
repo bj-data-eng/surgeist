@@ -75,21 +75,24 @@ fn prepare(
             });
         }
     }
-    let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-        source,
-        base_style: style(ancestor),
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: text::ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: text::ParagraphStrut::DefaultFont,
-        terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        origins,
-        connections,
-        controls: vec![],
-        boundary_policies,
-        replacements: vec![],
-        anchor_order,
-    })
+    let analyzed = text::AnalyzedSource::from_paragraph(
+        text::ParagraphInput {
+            source,
+            base_style: style(ancestor),
+            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            origins,
+            connections,
+            controls: vec![],
+            boundary_policies,
+            replacements: vec![],
+            anchor_order,
+        },
+        text::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let mut system = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,
@@ -161,21 +164,24 @@ fn one_origin_collapsed_followers_keep_distinct_style_span_gates() {
                 aggregate: text::Range::new(0, 5),
                 kind: text::ParagraphOriginKind::Authored,
             };
-            let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-                source,
-                base_style: style(ancestor),
-                segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: text::ParagraphStrut::DefaultFont,
-                terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-                tab_reference: None,
-                origins: vec![origin],
-                connections: vec![],
-                controls: vec![],
-                boundary_policies: vec![],
-                replacements: vec![],
-                anchor_order: vec![],
-            })
+            let analyzed = text::AnalyzedSource::from_paragraph(
+                text::ParagraphInput {
+                    source,
+                    base_style: style(ancestor),
+                    segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+                    base_direction: text::ParagraphBaseDirection::LeftToRight,
+                    paragraph_strut: text::ParagraphStrut::DefaultFont,
+                    terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+                    tab_reference: None,
+                    origins: vec![origin],
+                    connections: vec![],
+                    controls: vec![],
+                    boundary_policies: vec![],
+                    replacements: vec![],
+                    anchor_order: vec![],
+                },
+                text::AnalysisTypography::HorizontalComposition,
+            )
             .unwrap();
             assert_eq!(analyzed.source().text(), &text::Text::from("A   B"));
             assert_eq!(
@@ -241,6 +247,8 @@ fn contextual_style_span_gate_survives_casing_and_genuine_wbr_expansion() {
     use text::SourceProcessingEvent as E;
     let processed = std::sync::Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source,
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -260,6 +268,9 @@ fn contextual_style_span_gate_survives_casing_and_genuine_wbr_expansion() {
             boundary_policies: vec![],
             replacements: vec![],
             scopes: vec![text::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: text::SourceProcessingTopology::Unknown,
                 trim: text::WhiteSpaceTrim::default(),
                 base_style: style(text::Wrap::None),
@@ -286,9 +297,11 @@ fn contextual_style_span_gate_survives_casing_and_genuine_wbr_expansion() {
         })
         .unwrap(),
     );
-    let analyzed =
-        text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-            .unwrap();
+    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(analyzed.source().text(), &text::Text::from("a   b"));
     assert_eq!(
         analyzed.processed_source().processed_text(),
@@ -366,6 +379,7 @@ fn finish(
     };
     prepared
         .select(text::LineSelectionRequest {
+            segment: prepared.source_segments().next().unwrap(),
             boundary_context: Vec::new(),
             start,
             end,
@@ -397,7 +411,10 @@ fn finish(
             },
         })
         .unwrap()
-        .finalize(text::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: text::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap()
 }
 

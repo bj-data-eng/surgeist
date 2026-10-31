@@ -32,7 +32,8 @@ fn input(source: Source, direction: ParagraphBaseDirection) -> ParagraphInput {
 }
 fn prepare(input: ParagraphInput, fixture: &[u8]) -> PreparedText {
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(input).unwrap(),
+        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap(),
         crate::Wrap::Word,
     );
     let mut system = System::new(SystemOptions {
@@ -106,7 +107,10 @@ fn line(
     prepared
         .select(value)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn whole(prepared: &PreparedText, direction: ParagraphBaseDirection) -> FinalizedLine {

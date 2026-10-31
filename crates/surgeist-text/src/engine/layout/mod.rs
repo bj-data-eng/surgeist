@@ -13,6 +13,39 @@ use crate::{Result, TextNumericError, TextNumericPhase, ValidatedOptions};
 use super::{PreparedData, shape::ShapeContext, text_numeric_error};
 use data::PlacedLayout;
 
+/// Paint capability admission over the actual selected basis, before handles.
+pub(crate) fn qualify_selected_paint(
+    input: crate::protocol::input::PresentationInput<'_>,
+    shaped: &data::ShapedData,
+    participants: &[crate::PreparedParticipant],
+) -> Result<()> {
+    finalize::qualify_selected_paint(input, shaped, participants)
+}
+
+/// A removed source fallback retains font metadata without producing decoration.
+pub(crate) fn metric_only_decoration_demand(
+    run: &data::PreparedRun,
+    shaped: &data::ShapedData,
+    projection: &crate::projection::SourceProjection,
+) -> bool {
+    finalize::metric_only_decoration_demand(run, shaped, projection)
+}
+
+pub(crate) fn scope_font_contribution(
+    metrics: &data::RunMetrics,
+    line_height: f64,
+) -> Result<crate::ScopeMetricContribution> {
+    let (before, after) = finalize::font_strut(data::RunMetrics {
+        line_height,
+        ..*metrics
+    })?;
+    Ok(crate::ScopeMetricContribution {
+        before,
+        after,
+        alignment: crate::LineBoxAlignment::Baseline,
+    })
+}
+
 pub(crate) fn layout(
     prepared: Arc<PreparedData>,
     options: ValidatedOptions,
@@ -21,12 +54,21 @@ pub(crate) fn layout(
     standalone::layout(prepared, options, scratch)
 }
 
-/// One selected operation; scratch is private and cannot select another font basis.
+/// Pure allocation geometry over the already retained selected basis.
 pub(crate) fn finalize_selected(
     selected: Arc<crate::protocol::selection::SelectedData>,
     amounts: Vec<f64>,
+    scopes: super::scope_alignment::FrameAllocations,
 ) -> Result<super::FinalizedLine> {
-    finalize::finalize(selected, &amounts, &mut ShapeContext::default())
+    finalize::finalize_scoped(selected, &amounts, scopes)
+}
+
+pub(crate) fn refinalize_selected(
+    line: &super::FinalizedLine,
+    amounts: Vec<f64>,
+    scopes: super::scope_alignment::FrameAllocations,
+) -> Result<super::FinalizedLine> {
+    finalize::finalize_scoped(Arc::clone(&line.selected), &amounts, scopes)
 }
 
 fn finalize_standalone(
@@ -36,7 +78,7 @@ fn finalize_standalone(
     scratch: &mut ShapeContext,
     roles: &mut standalone::RawRoleBasis<'_>,
 ) -> Result<super::FinalizedLine> {
-    use crate::protocol::selection::{LineMetricPolicy, select};
+    use crate::protocol::selection::{LineMetricPolicy, select_with_scratch};
     let profile = if quantize {
         LineMetricPolicy::StandaloneQuantized
     } else {
@@ -45,19 +87,19 @@ fn finalize_standalone(
     let mut request = request;
     request.context.formatted_line = roles.initial(request.context.end);
     loop {
-        let selected = select(
+        let selected = select_with_scratch(
             &crate::PreparedText {
                 inner: Arc::clone(&prepared),
             },
             request.clone(),
             profile,
+            scratch,
         )?
         .inner;
         let result = (|| {
             let first = finalize::finalize(
                 Arc::clone(&selected),
                 &vec![0.0; selected.spacing_slots.len()],
-                scratch,
             )?;
             let amounts = finalize::standalone_amounts(
                 &selected,
@@ -69,7 +111,7 @@ fn finalize_standalone(
                     .expect("finalized raw measures"),
             )?;
             if amounts.iter().any(|amount| *amount != 0.0) {
-                finalize::finalize(selected, &amounts, scratch)
+                finalize::refinalize(&first, &amounts, None)
             } else {
                 Ok(first)
             }

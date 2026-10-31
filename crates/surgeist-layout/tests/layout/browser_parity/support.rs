@@ -137,6 +137,7 @@ pub fn assert_surgeist_matches_with_endpoint_accounting(
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .map_err(|error| Error::new(format!("{}: capture failed: {error:?}", golden.name)))?;
         layout::compute_layout_with_flow(&capture, 0, request)
@@ -5930,8 +5931,16 @@ fn collect_files_with_extension(
 mod tests {
     /// Authored source/style facts for reader tests, never measured widths.
     fn native_test_golden(parts: &[(&str, f32, f64)], boundaries: bool) -> Golden {
+        native_test_golden_with_word_spacing(parts, boundaries, 0.0)
+    }
+
+    fn native_test_golden_with_word_spacing(
+        parts: &[(&str, f32, f64)],
+        boundaries: bool,
+        word_spacing: f64,
+    ) -> Golden {
         use serde_json::json;
-        let style = |size: f32, spacing: f64| json!({"fontSize":size,"lineHeight":10.5,"whitespace":"preserve","wrap":"word","letterSpacing":spacing,"wordSpacing":0.0,"color":[0.0,0.0,0.0,1.0],"locale":null});
+        let style = |size: f32, spacing: f64| json!({"fontSize":size,"lineHeight":10.5,"whitespace":"preserve","wrap":"word","letterSpacing":spacing,"wordSpacing":word_spacing,"color":[0.0,0.0,0.0,1.0],"locale":null});
         let mut origins = Vec::new();
         let mut controls = Vec::new();
         let mut order = Vec::new();
@@ -6324,9 +6333,10 @@ mod tests {
 
     #[test]
     fn native_browser_range_normalization_keeps_preserved_zero_advance_space() {
-        // Ahem's real space advances one em. Authored logical spacing cancels
-        // that allocation, while Preserve still emits the actual space glyph.
-        let golden = native_test_golden(&[(" ", 16.0, -16.0)], false);
+        // Ahem's real space advances one em. Authored word spacing cancels
+        // that cell, while Preserve still emits the actual space glyph. A lone
+        // unit has no character boundary on which tracking could cancel it.
+        let golden = native_test_golden_with_word_spacing(&[(" ", 16.0, 0.0)], false, -16.0);
         let (_, batch) = generated_native_batch(&golden);
         let actual = batch.unrounded_inline_fragments();
         assert_eq!(actual.len(), 1);
@@ -6507,6 +6517,7 @@ mod tests {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         layout::compute_layout_with_flow(&capture, 0, request).unwrap()
@@ -7241,9 +7252,10 @@ mod tests {
 
     #[test]
     fn fri06_c08_range_rectangle_rounded_fixture_compares_unrounded_model_advance() {
-        // One actual Ahem glyph at canonical size 10 plus authored logical
-        // letter spacing; the independent expected advance is 10 - 23/64.
-        let mut golden = native_test_golden(&[("X", 10.0, -0.359375)], false);
+        // Ahem's one-em advance at the exact canonical size 10 - 23/64 is
+        // 9.640625. A lone unit has no tracking gap; the fractional font metric
+        // independently distinguishes this unrounded Range from its 10px box.
+        let mut golden = native_test_golden(&[("X", 9.640625, 0.0)], false);
         golden.expectations.children = vec![Expectation {
             x: None,
             y: None,
@@ -8184,7 +8196,9 @@ mod tests {
     fn native_comparator_retains_actual_owners_and_finalized_physical_paint_order() {
         let (tree, batch, expected) = fri06_c06_fragment_observation();
         let mut line = None;
-        for (node, source_id, x, width) in [(1, 0, 0.0, 10.25), (3, 1, 10.25, 5.0)] {
+        // Actual neighboring full tracking values .25/0 contribute their
+        // mean .125 to the preceding10px cell; the outer halves are suppressed.
+        for (node, source_id, x, width) in [(1, 0, 0.0, 10.125), (3, 1, 10.125, 5.0)] {
             let fragment = batch
                 .final_inline_fragments()
                 .iter()
@@ -8237,12 +8251,12 @@ mod tests {
                 (
                     surgeist_text::Range::new(0, 1),
                     0.0,
-                    10.25,
+                    10.125,
                     vec![(58, 0.0, 0.0, 0.0, 10.0)]
                 ),
                 (
                     surgeist_text::Range::new(1, 2),
-                    10.25,
+                    10.125,
                     5.0,
                     vec![(58, 0.0, 0.0, 0.0, 5.0)]
                 ),
@@ -10942,35 +10956,91 @@ mod tests {
 
     #[test]
     fn fri06_c06_inline_input_fragment_cache_commits_and_restores_nonempty_slices() {
-        let golden = native_test_golden(&[("X", 10.0, 0.25)], false);
+        // Two raw10px glyphs and one real internal gap(-9.75) produce10.25px.
+        // The same font/LH preserves the fractional vertical cache rectangle.
+        let golden = native_test_golden(&[("XX", 10.0, -9.75)], false);
         let mut tree = TestTree::from_golden(&golden.root).unwrap();
         let request = fri06_c06_inline_request();
         let cold = native_tree_compute(&tree, request);
-        assert_eq!(cold.unrounded_inline_fragments().len(), 1);
-        assert_eq!(cold.final_inline_fragments().len(), 1);
-        assert_eq!(
-            cold.unrounded_inline_fragments()[0].fragment().rect(),
-            cold.final_inline_fragments()[0].fragment().rect()
-        );
-
-        let rect = cold.final_inline_fragments()[0].fragment().rect().unwrap();
-        assert_eq!(
-            (
-                rect.origin().x,
-                rect.origin().y,
-                rect.size().width,
-                rect.size().height
-            ),
-            (0.0, -0.25, 10.25, 10.5)
-        );
+        let origin = tree.paragraphs[0].origins[0].origin.clone();
+        let assert_slices = |batch: &layout::CompletedLayoutBatch<usize>| {
+            for entries in [
+                batch.unrounded_inline_fragments(),
+                batch.final_inline_fragments(),
+            ] {
+                // Selected presentation units retain their own intersections;
+                // the two real source slices together cover this whole origin.
+                assert_eq!(entries.len(), 2);
+                let line = entries[0].fragment().finalized_fragment().finalized_line();
+                let mut coverage = Vec::new();
+                for (index, entry) in entries.iter().enumerate() {
+                    assert_eq!(entry.owner(), &layout::InlineFragmentOwner::Node(1));
+                    let fragment = entry.fragment();
+                    assert_eq!(fragment.line_index(), 0);
+                    let issued = fragment.finalized_fragment();
+                    assert_eq!(issued.view().origin(), Some(origin.clone()));
+                    assert_eq!(issued.finalized_line(), line);
+                    assert_eq!(line.prepared_text(), origin.prepared_text());
+                    let range = surgeist_text::Range::new(index, index + 1);
+                    assert_eq!(issued.view().local_range(), Some(range));
+                    assert_eq!(issued.view().aggregate_range(), Some(range));
+                    coverage.push(range);
+                    let rect = fragment.rect().unwrap();
+                    let (x, width) = if index == 0 {
+                        (0.0, 0.25)
+                    } else {
+                        (0.25, 10.0)
+                    };
+                    assert_eq!(
+                        (
+                            rect.origin().x,
+                            rect.origin().y,
+                            rect.size().width,
+                            rect.size().height,
+                        ),
+                        (x, -0.25, width, 10.5)
+                    );
+                }
+                assert_eq!(
+                    coverage,
+                    [
+                        surgeist_text::Range::new(0, 1),
+                        surgeist_text::Range::new(1, 2),
+                    ]
+                );
+                assert_eq!(origin.view().local_range(), surgeist_text::Range::new(0, 2));
+                assert_eq!(line.feedback().advance, 10.25);
+                assert_eq!(
+                    line.run_views()
+                        .flat_map(|run| {
+                            assert_eq!(run.face().bytes(), pinned_font::BYTES);
+                            assert_eq!(run.font_size(), 10.0);
+                            run.glyphs()
+                                .map(|glyph| {
+                                    (glyph.range(), glyph.id(), glyph.advance(), glyph.pen())
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .collect::<Vec<_>>(),
+                    [
+                        (surgeist_text::Range::new(0, 1), 58, 10.0, 0.0),
+                        (surgeist_text::Range::new(1, 2), 58, 10.0, 0.25),
+                    ]
+                );
+            }
+        };
+        assert_slices(&cold);
         tree.apply_completed_batch(&cold);
-        assert_eq!(
-            tree.unrounded_inline_fragments(1),
-            Some([cold.unrounded_inline_fragments()[0].fragment().clone()].as_slice())
-        );
+        let stored = cold
+            .unrounded_inline_fragments()
+            .iter()
+            .map(|entry| entry.fragment().clone())
+            .collect::<Vec<_>>();
+        assert_eq!(tree.unrounded_inline_fragments(1), Some(stored.as_slice()));
 
         let warm = native_tree_compute(&tree, request);
-        assert_native_cached_source_geometry(&cold, &warm, &tree.paragraphs[0].origins[0].origin);
+        assert_slices(&warm);
+        assert_native_cached_source_geometry(&cold, &warm, &origin);
     }
 
     #[test]

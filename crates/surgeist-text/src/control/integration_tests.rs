@@ -89,7 +89,12 @@ fn every_eligible_control_has_actual_ink_and_retains_original_units() {
 
 #[test]
 fn original_host_boundaries_and_control_mark_presentation_grapheme_are_distinct() {
-    let analyzed = AnalyzedSource::new(Source::new("\u{1}\u{301}"), style()).unwrap();
+    let analyzed = AnalyzedSource::new(
+        Source::new("\u{1}\u{301}"),
+        style(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(
         analyzed.graphemes().collect::<Vec<_>>(),
         [Range::new(0, 1), Range::new(1, 2)]
@@ -242,7 +247,12 @@ fn intrinsic_font_survives_refresh_and_remains_publication_qualified() {
 
 #[test]
 fn intrinsic_font_cannot_supply_a_requested_default_font_strut() {
-    let analyzed = AnalyzedSource::new(Source::new("\u{1}"), style()).unwrap();
+    let analyzed = AnalyzedSource::new(
+        Source::new("\u{1}"),
+        style(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let mut system = system(None);
     let identity = system.font_catalogue_identity().clone();
     assert_eq!(

@@ -76,6 +76,7 @@ fn assert_shared<S: LayoutScalar>(mark: bool, count: usize) {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(20.0)).unwrap();
@@ -179,6 +180,7 @@ fn assert_ordinary<S: LayoutScalar>(rtl: bool, side: Float) {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(30.0)).unwrap();
@@ -242,6 +244,7 @@ impl<S: LayoutScalar> CachedHost<S> {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )?;
         compute_layout_with_flow_invalidated(&capture, 2, request(30.0), dirty)
     }
@@ -488,6 +491,7 @@ fn leading_empty_origin_float_keeps_its_encounter_while_text_avoids_its_band() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(10.0)).unwrap();
@@ -523,6 +527,7 @@ fn assert_soft_replay<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(25.0)).unwrap();
@@ -583,6 +588,7 @@ fn assert_clear<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(20.0)).unwrap();
@@ -602,18 +608,59 @@ fn float_encounter_retains_clearance_across_two_same_unit_events() {
     assert_clear::<f64>();
 }
 
-fn assert_signed<S: LayoutScalar>(spacing: f64) {
+fn assert_signed<S: LayoutScalar>(adjustment: f64) {
     let mut first = ahem_style(10.0, 10.0);
-    first.letter_spacing = spacing;
+    let (delta, advance): (i16, f32) = if adjustment == -10.0 {
+        (-1000, 0.0)
+    } else {
+        assert_eq!(adjustment, -12.5);
+        (-1250, -2.5)
+    };
+    let font = super::canonical::fonts::positioned_ahem(&[(35, delta), (58, -1000)]);
+    first.font = first.font.feature("\"kern\" 1");
     let mut second = ahem_style(10.0, 10.0);
-    second.letter_spacing = -10.0;
-    let paragraph = PreparedParagraph::new(
+    second.font = second.font.feature("\"kern\" 1");
+    let paragraph = PreparedParagraph::with_registered_font(
         vec![
             ParagraphPart::text(10, Source::new("A"), first.clone()),
             ParagraphPart::text(11, Source::new("X"), second),
         ],
         first,
         text::ParagraphBaseDirection::LeftToRight,
+        &font,
+    );
+    let whole =
+        crate::test_support::text_fragment::fragment_for(&paragraph.prepared).finalized_line();
+    let actual = whole
+        .run_views()
+        .flat_map(|run| {
+            assert_eq!(run.face().bytes(), font);
+            run.glyphs()
+                .map(|g| (g.range(), g.id(), g.advance()))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        actual,
+        [
+            (text::Range::new(0, 1), 35, advance),
+            (text::Range::new(1, 2), 58, 0.0)
+        ]
+    );
+    let mut off = ahem_style(10.0, 10.0);
+    off.font = off.font.feature("\"kern\" 0");
+    let control = PreparedParagraph::with_registered_font(
+        vec![ParagraphPart::text(10, Source::new("AX"), off.clone())],
+        off,
+        text::ParagraphBaseDirection::LeftToRight,
+        &font,
+    );
+    assert_eq!(
+        crate::test_support::text_fragment::fragment_for(&control.prepared)
+            .finalized_line()
+            .feedback()
+            .advance,
+        20.0
     );
     let mut binding = paragraph.binding(2);
     binding.nodes = vec![10, 30, 31, 11];
@@ -640,6 +687,7 @@ fn assert_signed<S: LayoutScalar>(spacing: f64) {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(12.0)).unwrap();
@@ -662,14 +710,14 @@ fn assert_signed<S: LayoutScalar>(spacing: f64) {
         local: text::SourcePosition::try_new(origin.view().source().text(), 1).unwrap(),
         origin,
     };
-    assert_eq!(line.prefix_at(&at).unwrap().advance(), 10.0 + spacing);
+    assert_eq!(line.prefix_at(&at).unwrap().advance(), 10.0 + adjustment);
     assert_eq!(output(&batch, 2).size.height, S::from_f64(10.0));
 }
 #[test]
 fn float_encounter_source_progress_is_independent_of_zero_or_negative_prefix() {
-    for spacing in [-10.0, -12.5] {
-        assert_signed::<f32>(spacing);
-        assert_signed::<f64>(spacing);
+    for adjustment in [-10.0, -12.5] {
+        assert_signed::<f32>(adjustment);
+        assert_signed::<f64>(adjustment);
     }
 }
 
@@ -704,6 +752,7 @@ fn preceding_unbreakable_content_keeps_its_line_and_defers_the_encountered_float
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(20.0)).unwrap();
@@ -740,6 +789,7 @@ fn assert_discarded_prefix<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(10.0)).unwrap();
@@ -767,14 +817,23 @@ fn leading_float_uses_the_actual_legal_break_reshaped_association() {
         word_break: text::WordBreak::BreakAll,
         ..text::Style::default()
     };
-    let analyzed = text::AnalyzedSource::new(Source::new("AA"), style).unwrap();
+    let analyzed = text::AnalyzedSource::new(
+        Source::new("AA"),
+        style,
+        text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let mut fonts = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,
     })
     .unwrap();
-    fonts
-        .register_fonts(super::canonical::fonts::ligature_ahem())
-        .unwrap();
+    // The required shared X cell is20px; the actual float band is18px.
+    // Each legal singleton reshapes to A12.5 with its line-edge gap suppressed.
+    let bytes = super::canonical::fonts::with_advances(
+        &super::canonical::fonts::ligature_ahem(),
+        &[(58, 1600)],
+    );
+    fonts.register_fonts(bytes.clone()).unwrap();
     let prepared = fonts
         .prepare(&analyzed, text::PreparationOptions::default())
         .unwrap();
@@ -798,7 +857,8 @@ fn leading_float_uses_the_actual_legal_break_reshaped_association() {
         local: text::SourcePosition::try_new(origin.view().source().text(), 1).unwrap(),
     };
     assert!(whole.prefix_at(&seam).unwrap().interior_unit().is_some());
-    assert_eq!(whole.feedback().advance, 22.5);
+    assert_eq!(whole.feedback().advance, 20.0);
+    assert!(whole.run_views().all(|run| run.face().bytes() == bytes));
     let tree = float_tree::<f64>(&binding, 26.0, Float::Left, 1).children(2, binding.nodes.clone());
     let capture = LayoutFlowInput::try_new(
         &tree,
@@ -808,6 +868,7 @@ fn leading_float_uses_the_actual_legal_break_reshaped_association() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(26.0)).unwrap();
@@ -825,7 +886,7 @@ fn leading_float_uses_the_actual_legal_break_reshaped_association() {
         .finalized_fragment()
         .finalized_line();
     assert!(first.prefix_at(&seam).unwrap().interior_unit().is_none());
-    assert_eq!(first.feedback().advance, 17.5);
+    assert_eq!(first.feedback().advance, 12.5);
     assert_eq!(
         first
             .run_views()
@@ -894,6 +955,7 @@ fn discretionary_control_float_seam_lends_the_actual_selected_replacement_bundle
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(35.0)).unwrap();
@@ -934,9 +996,12 @@ fn discretionary_control_float_seam_lends_the_actual_selected_replacement_bundle
 
 fn assert_retained_zero_prefix<S: LayoutScalar>() {
     let style = ahem_style(10.0, 10.0);
-    let mut zero = style.clone();
-    zero.letter_spacing = -10.0;
-    let paragraph = PreparedParagraph::new(
+    let font = super::canonical::fonts::with_advances(
+        include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"),
+        &[(35, 0)],
+    );
+    let zero = style.clone();
+    let paragraph = PreparedParagraph::with_registered_font(
         vec![
             ParagraphPart::text(10, Source::new("A"), zero),
             ParagraphPart::text(11, Source::new(""), style.clone()),
@@ -944,6 +1009,21 @@ fn assert_retained_zero_prefix<S: LayoutScalar>() {
         ],
         style,
         text::ParagraphBaseDirection::LeftToRight,
+        &font,
+    );
+    let whole =
+        crate::test_support::text_fragment::fragment_for(&paragraph.prepared).finalized_line();
+    assert_eq!(
+        whole
+            .run_views()
+            .flat_map(|r| {
+                assert_eq!(r.face().bytes(), font);
+                r.glyphs()
+                    .map(|g| (g.id(), g.advance()))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>(),
+        [(35, 0.0), (58, 10.0)]
     );
     let mut binding = paragraph.binding(2);
     binding.nodes = vec![10, 11, 30, 12];
@@ -956,6 +1036,7 @@ fn assert_retained_zero_prefix<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(10.0)).unwrap();
@@ -1027,6 +1108,7 @@ fn assert_nested_float_text_packet<S: LayoutScalar>() {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )?;
         compute_layout_with_flow_invalidated(&capture, 2, request(10.0), &[2])
     };
@@ -1191,6 +1273,7 @@ fn captured_float_intrinsic<S: LayoutScalar>(side: Float, minimum: bool) -> (f64
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let ordinary = compute_layout_with_flow(&ordinary, 2, request).unwrap();
@@ -1204,6 +1287,7 @@ fn captured_float_intrinsic<S: LayoutScalar>(side: Float, minimum: bool) -> (f64
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let actual = compute_layout_with_flow(&capture, 2, request).unwrap();
@@ -1272,6 +1356,7 @@ fn trailing_float_after_terminal_forced_break_retains_the_real_empty_paragraph_l
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(40.0)).unwrap();
@@ -1369,6 +1454,7 @@ fn assert_max_float_cohort<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let request = LayoutRootRequestOf::viewport(Size::new(
@@ -1506,6 +1592,7 @@ fn expired_captured_max_cohorts<S: LayoutScalar>() -> f64 {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let request = LayoutRootRequestOf::viewport(Size::new(
@@ -1574,6 +1661,7 @@ fn source_ordered_clear_tops<S: LayoutScalar>(mirror: bool, capture_all: bool) -
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(100.0)).unwrap();
@@ -1656,6 +1744,7 @@ fn transparent_leading_capture<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .map_err(|e| format!("admission {e:?}"))?;
     let batch = compute_layout_with_flow(&capture, 2, request(40.0))
@@ -1810,6 +1899,7 @@ fn zero_height_captured_max_geometry<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let request = LayoutRootRequestOf::viewport(Size::new(
@@ -1991,6 +2081,7 @@ fn automatic_portion_retains_preceding_float_at_word_start_and_actual_fractional
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let batch = compute_layout_with_flow(&capture, 2, request(80.0)).unwrap();
@@ -2069,6 +2160,7 @@ fn automatic_initial_manual_portion_retains_float_before_word_without_replaying_
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let batch = compute_layout_with_flow(&capture, 2, request(80.0)).unwrap();

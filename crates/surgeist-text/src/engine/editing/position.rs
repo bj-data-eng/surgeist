@@ -13,9 +13,10 @@ use crate::{
 use std::sync::Arc;
 
 /// References real finalized rows. No second geometry or source owner is stored.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub(super) enum Target {
     Cluster { cluster: usize, right: bool },
+    Cell { cell: usize, right: bool },
     Anchor { anchor: usize, right: bool },
     Strut,
 }
@@ -100,6 +101,22 @@ pub(super) fn prepare(lines: &[PlacedLine], cuts: &[usize]) -> Vec<Position> {
                         }
                     }
                 }
+                FinalizedVisualItem::Cell(cell) => {
+                    let row = &line.finalized.data.cells[cell];
+                    let unit = &presentation.units[row.unit];
+                    let events = cell_event_range(line, cell);
+                    for right in [false, true] {
+                        let start = right == (row.level & 1 != 0);
+                        local.push(Position {
+                            line: line_index,
+                            source: cell_cursor(line, cell, right),
+                            target: Target::Cell { cell, right },
+                            slot: false,
+                            cut: offset + if start { events.start } else { events.end },
+                        });
+                    }
+                    debug_assert!(!unit.source.is_empty());
+                }
                 FinalizedVisualItem::Anchor(anchor) => {
                     let row = &line.finalized.data.anchors[anchor];
                     let unit = &presentation.units[row.unit];
@@ -157,11 +174,57 @@ pub(super) fn prepare(lines: &[PlacedLine], cuts: &[usize]) -> Vec<Position> {
         logical.sort_unstable();
         let mut ordered: Vec<_> = local.iter().copied().enumerate().collect();
         let transform = &line.finalized.selected.prepared.analyzed.transform;
+        // Selected units and their issued event extents are in logical order,
+        // independently of finalized L2 order. Borrow the real prepared-cell
+        // binding: the Cell variant's ordinal is not a selected-shape ordinal.
+        // Take no units on the ordinary path, preserving its existing traversal.
+        let mut cell_events = presentation
+            .units
+            .iter()
+            .enumerate()
+            .take(if line.finalized.data.cells.is_empty() {
+                0
+            } else {
+                presentation.units.len()
+            })
+            .filter_map(|(unit, row)| {
+                let crate::protocol::prepared::PresentationUnitKind::Cell { cell } = row.kind
+                else {
+                    return None;
+                };
+                let prepared = &line.finalized.selected.prepared;
+                let output = prepared
+                    .analyzed
+                    .combination
+                    .as_deref()
+                    .expect("a finalized cell retains its authentic source plan");
+                let binding = prepared.shaped.cells[cell].binding;
+                Some((
+                    &relation.unit_events[unit],
+                    &output.bindings[binding].events,
+                ))
+            })
+            .peekable();
         for (event, entry) in relation.events.iter().enumerate() {
             let SelectedRelationEvent::Base { event: base } = *entry else {
                 continue;
             };
-            let RelationEvent::Removal { row } = transform.events()[base] else {
+            while cell_events
+                .peek()
+                .is_some_and(|(events, _)| events.end <= event)
+            {
+                let _ = cell_events.next();
+            }
+            // Only the immutable binding's actual base events belong to this
+            // cell. A selected unit's padded extent can also lend exterior
+            // removals, whose genuine aliases must remain separate.
+            if cell_events
+                .peek()
+                .is_some_and(|(events, binding)| events.contains(&event) && binding.contains(&base))
+            {
+                continue;
+            }
+            let RelationEvent::Removal { row, .. } = transform.events()[base] else {
                 continue;
             };
             let original = &transform.rows[row];
@@ -203,6 +266,7 @@ pub(super) fn prepare(lines: &[PlacedLine], cuts: &[usize]) -> Vec<Position> {
                 let level = match left.target {
                     Target::Cluster { cluster, .. } => line.finalized.data.clusters[cluster].level,
                     Target::Anchor { anchor, .. } => line.finalized.data.anchors[anchor].level,
+                    Target::Cell { cell, .. } => line.finalized.data.cells[cell].level,
                     Target::Strut => presentation.analysis.base_level,
                 };
                 if level & 1 == 0 {
@@ -224,11 +288,119 @@ fn row(layout: &PlacedLayout, index: usize) -> Result<&Position> {
         .get(index)
         .ok_or_else(|| protocol_error(ProtocolError::InvalidPlacedPosition { position: index }))
 }
+/// Map the immutable cell binding into its actual selected relation. The unit
+/// ordinal is issuance authority, but its extent can include exterior removals.
+fn cell_event_range(line: &PlacedLine, cell: usize) -> std::ops::Range<usize> {
+    let cell = &line.finalized.data.cells[cell];
+    let presentation = &line.finalized.selected.presentation;
+    let relation = &presentation.selected_relation;
+    let output = line
+        .finalized
+        .selected
+        .prepared
+        .analyzed
+        .combination
+        .as_deref()
+        .expect("a finalized cell retains its authentic source plan");
+    let binding = &output.bindings[cell.binding];
+    let mut owned = relation.unit_events[cell.unit].clone().filter(|&index| {
+        matches!(relation.events[index], SelectedRelationEvent::Base { event }
+            if binding.events.contains(&event))
+    });
+    let first = owned
+        .next()
+        .expect("an admitted cell retains its original event interval");
+    first..owned.next_back().unwrap_or(first) + 1
+}
+
+/// The cell's issued selected unit owns its original source extrema.
+pub(super) fn cell_cursor(line: &PlacedLine, cell: usize, right: bool) -> Cursor {
+    let cell = &line.finalized.data.cells[cell];
+    let source = line.finalized.selected.presentation.units[cell.unit].source;
+    if right == (cell.level & 1 != 0) {
+        Cursor::new(source.start, Affinity::After)
+    } else {
+        Cursor::new(source.end, Affinity::Before)
+    }
+}
+
+/// Resolve a cell source side or an already-issued exterior removal alias.
+/// The enclosing source interval is not ownership of its numeric holes.
+pub(super) fn cell_position(layout: &PlacedLayout, value: Cursor) -> Option<usize> {
+    if layout
+        .lines
+        .iter()
+        .all(|line| line.finalized.data.cells.is_empty())
+    {
+        return None;
+    }
+    layout
+        .interaction
+        .positions
+        .iter()
+        .enumerate()
+        .find_map(|(index, position)| {
+            let Target::Cell { cell, right } = position.target else {
+                return None;
+            };
+            // An exterior removal lends this actual occurrence edge with its
+            // own source/affinity/cut; it does not become cell-owned source.
+            if position.source == value {
+                return Some(index);
+            }
+            let line = &layout.lines[position.line];
+            let row = &line.finalized.data.cells[cell];
+            let source = line.finalized.selected.presentation.units[row.unit].source;
+            let output = line
+                .finalized
+                .selected
+                .prepared
+                .analyzed
+                .combination
+                .as_deref()
+                .expect("a finalized cell retains its authentic source plan");
+            let group = &output.plan.groups[output.bindings[row.binding].group];
+            let owns = output.plan.parts[group.parts.clone()]
+                .iter()
+                .flat_map(|part| &part.pieces)
+                .any(|piece| super::owns_source_side(piece.aggregate, value));
+            if !owns {
+                return None;
+            }
+            let start = if value.index() == source.start {
+                true
+            } else if value.index() == source.end {
+                false
+            } else {
+                value.affinity() == Affinity::Before
+            };
+            (start == (right == (row.level & 1 != 0))).then_some(index)
+        })
+}
+
+pub(super) fn source_position(layout: &PlacedLayout, value: Cursor) -> Option<usize> {
+    cell_position(layout, value).or_else(|| {
+        layout
+            .interaction
+            .positions
+            .iter()
+            .position(|position| position.source == value)
+    })
+}
+
 fn local_x(line: &PlacedLine, target: Target) -> f64 {
     match target {
         Target::Cluster { cluster, right } => {
             let cluster = &line.finalized.data.clusters[cluster];
             cluster.x + if right { cluster.advance } else { 0.0 }
+        }
+        Target::Cell { cell, right } => {
+            let cell = &line.finalized.data.cells[cell];
+            if right {
+                cell.flow_end
+            } else {
+                cell.inline.start
+            }
         }
         Target::Anchor { anchor, right } => {
             let anchor = &line.finalized.data.anchors[anchor];
@@ -241,18 +413,40 @@ fn local_x(line: &PlacedLine, target: Target) -> f64 {
         Target::Strut => line.finalized.data.metrics.offset,
     }
 }
+pub(super) fn inline(layout: &PlacedLayout, index: usize) -> Result<f64> {
+    let position = row(layout, index)?;
+    Ok(local_x(&layout.lines[position.line], position.target))
+}
+pub(super) fn reference(layout: &PlacedLayout, index: usize) -> Result<Option<f64>> {
+    let position = row(layout, index)?;
+    let data = &layout.lines[position.line].finalized.data;
+    Ok(match position.target {
+        Target::Cluster { cluster, .. } => data.clusters[cluster].reference,
+        Target::Anchor { anchor, .. } => data.anchors[anchor].reference,
+        Target::Cell { cell, .. } => Some(data.cells[cell].reference),
+        Target::Strut => None,
+    })
+}
 pub(crate) fn geometry(layout: &PlacedLayout, index: usize) -> Result<CursorGeometry> {
     let position = row(layout, index)?;
     let line = &layout.lines[position.line];
-    let metrics = line.finalized.data.metrics;
+    let data = &line.finalized.data;
+    if let Target::Cell { cell, .. } = position.target {
+        let cell = &data.cells[cell];
+        return Ok(CursorGeometry::new(crate::layout::line_rect(
+            line,
+            Rect::new(
+                local_x(line, position.target),
+                cell.under.start,
+                1.0,
+                cell.under.end - cell.under.start,
+            ),
+        )));
+    }
+    let reference = reference(layout, index)?;
     Ok(CursorGeometry::new(crate::layout::line_rect(
         line,
-        Rect::new(
-            local_x(line, position.target),
-            metrics.block_min,
-            1.0,
-            metrics.block_max - metrics.block_min,
-        ),
+        data.cell_rect(local_x(line, position.target), 1.0, reference),
     )))
 }
 
@@ -281,42 +475,74 @@ pub(super) fn deleted_position(layout: &PlacedLayout, value: Cursor) -> Option<u
         })
 }
 pub(crate) fn hit(layout: &PlacedLayout, point: Point) -> Option<usize> {
+    if layout.lines.iter().any(|line| {
+        line.finalized.data.scope_cell_band.is_some() || !line.finalized.data.cells.is_empty()
+    }) {
+        // Different scope frames may share an inline coordinate. Compare their
+        // actual two-dimensional geometry, retaining the native unit/half owner
+        // when two source sides share the same nearest physical edge.
+        let source = super::cursor::from_point(layout, point);
+        return layout
+            .interaction
+            .positions
+            .iter()
+            .enumerate()
+            .min_by(|(a, left), (b, right)| {
+                position_distance(layout, *a, point)
+                    .total_cmp(&position_distance(layout, *b, point))
+                    .then_with(|| (left.source != source).cmp(&(right.source != source)))
+            })
+            .map(|(index, _)| index);
+    }
     let source = super::cursor::from_point(layout, point);
-    let sideways_line = if layout.prepared.options.orientation() == crate::LineOrientation::Sideways
-    {
-        super::cursor::line_at_point(layout, point)
-    } else {
-        None
-    };
-    let matching = layout
-        .interaction
-        .positions
-        .iter()
-        .any(|row| row.source == source && sideways_line.is_none_or(|line| row.line == line));
+    let vertical_axis_line =
+        if layout.prepared.options.orientation() != crate::LineOrientation::Horizontal {
+            super::cursor::line_at_point(layout, point)
+        } else {
+            None
+        };
+    let matching =
+        layout.interaction.positions.iter().any(|row| {
+            row.source == source && vertical_axis_line.is_none_or(|line| row.line == line)
+        });
     layout
         .interaction
         .positions
         .iter()
         .enumerate()
         .filter(|(_, row)| {
-            sideways_line.is_none_or(|line| row.line == line) && (!matching || row.source == source)
+            vertical_axis_line.is_none_or(|line| row.line == line)
+                && (!matching || row.source == source)
         })
         .min_by(|(a, _), (b, _)| {
-            distance(
-                geometry(layout, *a).expect("owned interaction row").rect(),
-                point,
-                layout.prepared.options.orientation(),
-            )
-            .total_cmp(&distance(
-                geometry(layout, *b).expect("owned interaction row").rect(),
-                point,
-                layout.prepared.options.orientation(),
-            ))
+            position_distance(layout, *a, point).total_cmp(&position_distance(layout, *b, point))
         })
         .map(|(index, _)| index)
 }
+fn position_distance(layout: &PlacedLayout, index: usize, point: Point) -> f64 {
+    let rect = geometry(layout, index)
+        .expect("owned interaction row")
+        .rect();
+    let orientation = layout.prepared.options.orientation();
+    if orientation == crate::LineOrientation::SidewaysCounterclockwise {
+        let position = &layout.interaction.positions[index];
+        let line = &layout.lines[position.line];
+        // The top edge of a CCW caret hull is not its actual source edge.
+        let caret_y = line.anchor.y - local_x(line, position.target);
+        let dx = if point.x < rect.origin.x {
+            rect.origin.x - point.x
+        } else if point.x > rect.origin.x + rect.size.width {
+            point.x - (rect.origin.x + rect.size.width)
+        } else {
+            0.0
+        };
+        (point.y - caret_y).hypot(dx)
+    } else {
+        distance(rect, point, orientation)
+    }
+}
 fn distance(rect: Rect, point: Point, orientation: crate::LineOrientation) -> f64 {
-    if orientation == crate::LineOrientation::Sideways {
+    if orientation != crate::LineOrientation::Horizontal {
         let dx = if point.x < rect.origin.x {
             rect.origin.x - point.x
         } else if point.x > rect.origin.x + rect.size.width {
@@ -340,10 +566,10 @@ fn distance(rect: Rect, point: Point, orientation: crate::LineOrientation) -> f6
 /// Selects an actual eligible interaction row on the requested formatted line.
 /// Anchors and genuine struts participate alongside cluster edges; this does
 /// not reconstruct a caret from a source offset or a guessed rectangle.
-/// Horizontal proximity uses physical x; Sideways uses local inline distance.
+/// Horizontal proximity uses physical x; vertical axes use local inline distance.
 pub(super) fn nearest_on_line(layout: &PlacedLayout, line: usize, inline: f64) -> Option<usize> {
     let coordinate = |index: usize| {
-        if layout.lines[line].orientation == crate::LineOrientation::Sideways {
+        if layout.lines[line].orientation != crate::LineOrientation::Horizontal {
             local_x(
                 &layout.lines[line],
                 layout.interaction.positions[index].target,
@@ -364,6 +590,125 @@ pub(super) fn nearest_on_line(layout: &PlacedLayout, line: usize, inline: f64) -
                 .total_cmp(&(coordinate(*b) - inline).abs())
         })
         .map(|(index, _)| index)
+}
+
+/// Word traversal uses real outer occurrences. A cell is the single object
+/// unit required for non-line-breaking effects, never its hidden inner clusters.
+fn word_movement(layout: &PlacedLayout, index: usize, forward: bool) -> Result<usize> {
+    let current = row(layout, index)?;
+    let mut words = Vec::new();
+    for (index, position) in layout.interaction.positions.iter().enumerate() {
+        let line = &layout.lines[position.line];
+        let relation = &line.finalized.selected.presentation.selected_relation;
+        let cut = match position.target {
+            Target::Cluster { cluster, right } => {
+                let row = &line.finalized.data.clusters[cluster];
+                if right != (row.level & 1 != 0)
+                    || position.source != Cursor::new(row.source.start, Affinity::After)
+                {
+                    continue;
+                }
+                let atoms = cluster_atoms(line, cluster);
+                if atoms.is_empty() {
+                    continue;
+                }
+                relation.atom_events[atoms.start]
+            }
+            Target::Cell { cell, right } => {
+                let row = &line.finalized.data.cells[cell];
+                if right != (row.level & 1 != 0)
+                    || position.source != cell_cursor(line, cell, right)
+                {
+                    continue;
+                }
+                cell_event_range(line, cell).start
+            }
+            Target::Anchor { .. } | Target::Strut => continue,
+        };
+        if position.cut == layout.line_cuts[position.line] + cut {
+            words.push(index);
+        }
+    }
+    words.sort_unstable_by_key(|&index| layout.interaction.positions[index].cut);
+    let facts = |word: usize| {
+        let position = &layout.interaction.positions[words[word]];
+        let line = &layout.lines[position.line];
+        let relation = &line.finalized.selected.presentation.selected_relation;
+        let offset = layout.line_cuts[position.line];
+        match position.target {
+            Target::Cluster { cluster, .. } => {
+                let row = &line.finalized.data.clusters[cluster];
+                let atoms = cluster_atoms(line, cluster);
+                (
+                    row.source,
+                    row.boundary,
+                    row.level,
+                    offset + relation.atom_events[atoms.end - 1] + 1,
+                )
+            }
+            Target::Cell { cell, .. } => {
+                let row = &line.finalized.data.cells[cell];
+                (
+                    line.finalized.selected.presentation.units[row.unit].source,
+                    super::super::analysis::Boundary::Word,
+                    row.level,
+                    offset + cell_event_range(line, cell).end,
+                )
+            }
+            Target::Anchor { .. } | Target::Strut => unreachable!("outer word row"),
+        }
+    };
+    let target = super::cursor::word_target(
+        current.source,
+        forward,
+        layout.coverage.source,
+        |_| {
+            let upstream = words
+                .partition_point(|&index| layout.interaction.positions[index].cut < current.cut)
+                .checked_sub(1);
+            let downstream = (0..words.len()).find(|&word| current.cut < facts(word).3);
+            [upstream, downstream]
+        },
+        |word| {
+            let (source, boundary, level, _) = facts(word);
+            (source, boundary, level)
+        },
+        |word, forward| {
+            if forward {
+                word.checked_add(1).filter(|&next| next < words.len())
+            } else {
+                word.checked_sub(1)
+            }
+        },
+    );
+    let Some((word, trailing)) = target.row else {
+        return Ok(index);
+    };
+    let leading = &layout.interaction.positions[words[word]];
+    let right = trailing != (facts(word).2 & 1 != 0);
+    let target = match leading.target {
+        Target::Cluster { cluster, .. } => Target::Cluster { cluster, right },
+        Target::Cell { cell, .. } => Target::Cell { cell, right },
+        Target::Anchor { .. } | Target::Strut => unreachable!("outer word row"),
+    };
+    let (source, _, _, end) = facts(word);
+    let cursor = if trailing {
+        Cursor::new(source.end, Affinity::Before)
+    } else {
+        Cursor::new(source.start, Affinity::After)
+    };
+    let cut = if trailing { end } else { leading.cut };
+    layout
+        .interaction
+        .positions
+        .iter()
+        .position(|row| {
+            row.line == leading.line
+                && row.target == target
+                && row.cut == cut
+                && row.source == cursor
+        })
+        .ok_or_else(|| protocol_error(ProtocolError::InvalidPlacedPosition { position: index }))
 }
 
 pub(crate) fn movement(layout: &PlacedLayout, index: usize, movement: Movement) -> Result<usize> {
@@ -395,9 +740,9 @@ pub(crate) fn movement(layout: &PlacedLayout, index: usize, movement: Movement) 
             match target {
                 None => index,
                 Some(target) => {
-                    let sideways =
-                        layout.prepared.options.orientation() == crate::LineOrientation::Sideways;
-                    let inline = if sideways {
+                    let vertical_axis =
+                        layout.prepared.options.orientation() != crate::LineOrientation::Horizontal;
+                    let inline = if vertical_axis {
                         local_x(&layout.lines[current.line], current.target)
                     } else {
                         geometry(layout, index)?.rect().origin.x
@@ -408,6 +753,13 @@ pub(crate) fn movement(layout: &PlacedLayout, index: usize, movement: Movement) 
         }
         Movement::PreviousWord | Movement::NextWord => {
             let forward = movement == Movement::NextWord;
+            if layout
+                .lines
+                .iter()
+                .any(|line| !line.finalized.data.cells.is_empty())
+            {
+                return word_movement(layout, index, forward);
+            }
             let target = match current.target {
                 Target::Cluster { cluster, right } => {
                     let level = layout.lines[current.line].finalized.data.clusters[cluster].level;
@@ -426,6 +778,7 @@ pub(crate) fn movement(layout: &PlacedLayout, index: usize, movement: Movement) 
                     current.line,
                     anchor,
                 ),
+                Target::Cell { .. } => unreachable!("cell word movement uses actual outer rows"),
                 Target::Strut => return Ok(index),
             };
             match target.row {
@@ -474,9 +827,10 @@ pub(crate) fn selection(
                             pieces.extend_from_slice(transform.original_pieces(row));
                         }
                     }
-                    RelationEvent::Removal { row } => {
+                    RelationEvent::Removal { row, .. } => {
                         pieces.extend_from_slice(transform.original_pieces(row));
                     }
+                    RelationEvent::GeneratedSuppression { .. } => selected_slot = true,
                     RelationEvent::PhaseIDeleted { source, .. } => {
                         append_source_pieces(layout, source, &mut pieces);
                     }
@@ -492,6 +846,7 @@ pub(crate) fn selection(
                     }
                     let crate::protocol::prepared::PresentationUnitKind::Replacement {
                         alternative,
+                        ..
                     } = selected.presentation.units[unit].kind
                     else {
                         return Err(protocol_error(ProtocolError::InvalidPlacedPosition {
@@ -539,12 +894,18 @@ pub(crate) fn selection(
             layout,
             first.line,
             last.line,
-            |line, cluster| {
-                let selected = &layout.lines[line].finalized.selected.presentation;
-                cluster_atoms(&layout.lines[line], cluster).any(|atom| {
-                    (start..end)
-                        .contains(&(offsets[line] + selected.selected_relation.atom_events[atom]))
-                })
+            |line, item| match item {
+                FinalizedVisualItem::Cluster(cluster) => {
+                    let selected = &layout.lines[line].finalized.selected.presentation;
+                    cluster_atoms(&layout.lines[line], cluster).any(|atom| {
+                        (start..end).contains(
+                            &(offsets[line] + selected.selected_relation.atom_events[atom]),
+                        )
+                    })
+                }
+                FinalizedVisualItem::Cell(cell) => cell_event_range(&layout.lines[line], cell)
+                    .any(|event| (start..end).contains(&(offsets[line] + event))),
+                FinalizedVisualItem::InlineBox(_) | FinalizedVisualItem::Anchor(_) => false,
             },
             |line| {
                 let selected = &layout.lines[line].finalized.selected.presentation;
@@ -624,6 +985,7 @@ pub(crate) fn selection(
 }
 
 fn append_source_pieces(layout: &PlacedLayout, source: Range, pieces: &mut Vec<OriginalPiece>) {
+    let paragraph = &layout.prepared.analyzed.paragraph;
     pieces.extend(
         layout
             .prepared
@@ -632,7 +994,12 @@ fn append_source_pieces(layout: &PlacedLayout, source: Range, pieces: &mut Vec<O
             .origin_intersections(&layout.prepared.analyzed.processed, source)
             .filter(|piece| !piece.aggregate.is_empty())
             .map(|piece| OriginalPiece {
-                origin: piece.origin,
+                origin: paragraph.origin_map.flow_origin(
+                    paragraph
+                        .origin_map
+                        .view(piece.origin)
+                        .expect("source intersection belongs to its placed view"),
+                ),
                 aggregate: piece.aggregate,
                 local: piece.local,
             }),
@@ -645,25 +1012,35 @@ fn normalize_pieces(
 ) -> Result<Vec<crate::PlacedSelectionPiece>> {
     // Normalize original occurrences only after event coverage has been chosen.
     // Equal text in another occurrence remains distinct; holes stay holes.
+    let paragraph = &layout.prepared.analyzed.paragraph;
     pieces.sort_unstable_by_key(|piece| {
         (
             piece.aggregate.start,
-            piece.origin,
+            paragraph
+                .origin_map
+                .view_origin(piece.origin)
+                .expect("placed correspondence retains its actual view origin")
+                .get(),
             piece.local.start,
             piece.local.end,
         )
     });
     let mut normalized: Vec<crate::PlacedSelectionPiece> = Vec::new();
     for piece in pieces {
+        let view_origin = paragraph
+            .origin_map
+            .view_origin(piece.origin)
+            .expect("placed correspondence retains its actual view origin")
+            .get();
         let origin = layout
             .prepared
             .analyzed
             .paragraph
             .origins
-            .get(piece.origin)
+            .get(view_origin)
             .ok_or_else(|| {
                 protocol_error(ProtocolError::InvalidOriginRange {
-                    origin: piece.origin,
+                    origin: view_origin,
                     local: piece.local,
                     aggregate: piece.aggregate,
                 })
@@ -679,7 +1056,7 @@ fn normalize_pieces(
             || piece.local.len() != piece.aggregate.len()
         {
             return Err(protocol_error(ProtocolError::InvalidOriginRange {
-                origin: piece.origin,
+                origin: view_origin,
                 local: piece.local,
                 aggregate: piece.aggregate,
             }));
@@ -688,7 +1065,7 @@ fn normalize_pieces(
             continue;
         }
         if let Some(previous) = normalized.last_mut()
-            && previous.origin.index == piece.origin
+            && previous.origin.index == view_origin
             && piece.local.start <= previous.local.end
             && piece.aggregate.start <= previous.aggregate.end
         {
@@ -698,7 +1075,7 @@ fn normalize_pieces(
             normalized.push(crate::PlacedSelectionPiece {
                 origin: crate::PreparedOrigin {
                     prepared: Arc::clone(&layout.prepared),
-                    index: piece.origin,
+                    index: view_origin,
                 },
                 local: piece.local,
                 aggregate: piece.aggregate,
@@ -755,13 +1132,14 @@ pub(crate) fn validate_source(layout: &PlacedLayout, value: Cursor) -> Result<()
                 }
                 use crate::protocol::prepared::PresentationUnitKind;
                 match unit.kind {
-                    PresentationUnitKind::Replacement { alternative } => {
+                    PresentationUnitKind::Replacement { alternative, .. } => {
                         (position.line, 1, alternative)
                     }
                     PresentationUnitKind::EmptyOrigin { origin } => (position.line, 2, origin),
                     _ => (position.line, 0, anchor),
                 }
             }
+            Target::Cell { .. } => continue,
             Target::Strut => (position.line, 3, 0),
             Target::Cluster { cluster, .. } => {
                 let line = &layout.lines[position.line];
@@ -777,6 +1155,7 @@ pub(crate) fn validate_source(layout: &PlacedLayout, value: Cursor) -> Result<()
                             && cluster.presentation.start < unit.presentation.end
                             && let crate::protocol::prepared::PresentationUnitKind::Replacement {
                                 alternative,
+                                ..
                             } = unit.kind
                         {
                             return Some(alternative);
@@ -1017,21 +1396,24 @@ mod tests {
                 affinity: Affinity::After,
             })
             .collect();
-        let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-            tab_reference: None,
-            source,
-            base_style: style,
-            segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
-            base_direction,
-            paragraph_strut: crate::ParagraphStrut::DefaultFont,
-            origins,
-            connections,
-            controls,
-            boundary_policies,
-            replacements: vec![],
-            anchor_order,
-        })
+        let analyzed = AnalyzedSource::from_paragraph(
+            ParagraphInput {
+                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                tab_reference: None,
+                source,
+                base_style: style,
+                segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+                base_direction,
+                paragraph_strut: crate::ParagraphStrut::DefaultFont,
+                origins,
+                connections,
+                controls,
+                boundary_policies,
+                replacements: vec![],
+                anchor_order,
+            },
+            crate::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap();
         let mut system = System::new(SystemOptions {
             font_catalogue: FontCatalogueMode::RegisteredOnly,
@@ -1050,6 +1432,7 @@ mod tests {
         let end = termination.view().boundary();
         let line = prepared
             .select(LineSelectionRequest {
+                segment: crate::test_wrapping::only_source_segment(&prepared),
                 boundary_context: Vec::new(),
                 incoming: None,
                 start,
@@ -1101,7 +1484,10 @@ mod tests {
                 line_strut: None,
             })
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         Layout::from_finalized_lines(PlacementRequest {
             prepared,
@@ -1532,77 +1918,80 @@ mod tests {
             .unwrap();
         let source = Source::new(text);
         let source_end = source.text().len();
-        let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-            tab_reference: None,
-            source: source.clone(),
-            base_style: Style {
-                font: Font::new().family("Ahem"),
-                size: 20.0,
-                line_height: LineHeight::FontSizeRelative(1.0),
-                ..Style::default()
-            },
-            segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: crate::protocol::paragraph::ParagraphStrut::DefaultFont,
-            origins: if disconnected {
-                assert_eq!(text, "AB");
-                vec![
-                    crate::ParagraphOrigin {
+        let analyzed = AnalyzedSource::from_paragraph(
+            ParagraphInput {
+                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                tab_reference: None,
+                source: source.clone(),
+                base_style: Style {
+                    font: Font::new().family("Ahem"),
+                    size: 20.0,
+                    line_height: LineHeight::FontSizeRelative(1.0),
+                    ..Style::default()
+                },
+                segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+                base_direction: ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: crate::protocol::paragraph::ParagraphStrut::DefaultFont,
+                origins: if disconnected {
+                    assert_eq!(text, "AB");
+                    vec![
+                        crate::ParagraphOrigin {
+                            text_node: None,
+                            source: Source::new("A"),
+                            local: Range::new(0, 1),
+                            aggregate: Range::new(0, 1),
+                            kind: crate::ParagraphOriginKind::Authored,
+                        },
+                        crate::ParagraphOrigin {
+                            text_node: None,
+                            source: Source::new("B"),
+                            local: Range::new(0, 1),
+                            aggregate: Range::new(1, 2),
+                            kind: crate::ParagraphOriginKind::Authored,
+                        },
+                    ]
+                } else if source_end != 0 {
+                    vec![crate::ParagraphOrigin {
                         text_node: None,
-                        source: Source::new("A"),
-                        local: Range::new(0, 1),
-                        aggregate: Range::new(0, 1),
+                        source,
+                        local: Range::new(0, source_end),
+                        aggregate: Range::new(0, source_end),
                         kind: crate::ParagraphOriginKind::Authored,
-                    },
-                    crate::ParagraphOrigin {
-                        text_node: None,
-                        source: Source::new("B"),
-                        local: Range::new(0, 1),
-                        aggregate: Range::new(1, 2),
-                        kind: crate::ParagraphOriginKind::Authored,
-                    },
-                ]
-            } else if source_end != 0 {
-                vec![crate::ParagraphOrigin {
-                    text_node: None,
-                    source,
-                    local: Range::new(0, source_end),
-                    aggregate: Range::new(0, source_end),
-                    kind: crate::ParagraphOriginKind::Authored,
-                }]
-            } else {
-                Vec::new()
+                    }]
+                } else {
+                    Vec::new()
+                },
+                connections: if disconnected {
+                    vec![crate::ParagraphConnection {
+                        at: 1,
+                        kind: crate::ParagraphConnectionKind::Disconnected,
+                    }]
+                } else {
+                    Vec::new()
+                },
+                controls: vec![
+                    ParagraphControl {
+                        at,
+                        kind: ParagraphControlKind::ForcedBreak
+                    };
+                    breaks
+                ],
+                boundary_policies: Vec::new(),
+                replacements: Vec::new(),
+                anchor_order: (if breaks == 3 {
+                    vec![2, 0, 1]
+                } else {
+                    (0..breaks).collect()
+                })
+                .into_iter()
+                .map(|index| ParagraphAnchor {
+                    item: ParagraphAnchorItem::Control(index),
+                    affinity: Affinity::After,
+                })
+                .collect(),
             },
-            connections: if disconnected {
-                vec![crate::ParagraphConnection {
-                    at: 1,
-                    kind: crate::ParagraphConnectionKind::Disconnected,
-                }]
-            } else {
-                Vec::new()
-            },
-            controls: vec![
-                ParagraphControl {
-                    at,
-                    kind: ParagraphControlKind::ForcedBreak
-                };
-                breaks
-            ],
-            boundary_policies: Vec::new(),
-            replacements: Vec::new(),
-            anchor_order: (if breaks == 3 {
-                vec![2, 0, 1]
-            } else {
-                (0..breaks).collect()
-            })
-            .into_iter()
-            .map(|index| ParagraphAnchor {
-                item: ParagraphAnchorItem::Control(index),
-                affinity: Affinity::After,
-            })
-            .collect(),
-        })
+            crate::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap();
         let prepared = system
             .prepare(&analyzed, PreparationOptions::default())
@@ -1632,6 +2021,7 @@ mod tests {
             let to = end.view().participant_offset();
             let selected = prepared
                 .select(LineSelectionRequest {
+                    segment: crate::test_wrapping::only_source_segment(&prepared),
                     boundary_context: Vec::new(),
                     incoming: None,
                     start: start.clone(),
@@ -1700,7 +2090,12 @@ mod tests {
                         None
                     }
                 });
-            let line = selected.finalize(SpacingAllocations::None).unwrap();
+            let line = selected
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
+                .unwrap();
             if let Some(expected) = expected_control {
                 assert_eq!(line.control_slots().next().unwrap().control(), expected);
                 assert!(line.fragment_views().any(|fragment| matches!(fragment.owner(),
@@ -1799,40 +2194,43 @@ mod tests {
             .register_fonts(include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
             .unwrap();
         let source = Source::new("abcdef");
-        let analysis = AnalyzedSource::from_paragraph(ParagraphInput {
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-            tab_reference: None,
-            source: source.clone(),
-            base_style: Style {
-                font: Font::new().family("Ahem"),
-                size: 20.0,
-                line_height: LineHeight::FontSizeRelative(1.0),
-                ..Style::default()
-            },
-            segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: crate::ParagraphStrut::DefaultFont,
-            origins: vec![crate::ParagraphOrigin {
-                text_node: None,
-                source,
-                local: Range::new(0, 6),
-                aggregate: Range::new(0, 6),
-                kind: crate::ParagraphOriginKind::Authored,
-            }],
-            connections: vec![],
-            controls: vec![ParagraphControl {
-                at: 4,
-                kind: ParagraphControlKind::OptionalBreak {
-                    wrap: crate::Wrap::Word,
+        let analysis = AnalyzedSource::from_paragraph(
+            ParagraphInput {
+                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                tab_reference: None,
+                source: source.clone(),
+                base_style: Style {
+                    font: Font::new().family("Ahem"),
+                    size: 20.0,
+                    line_height: LineHeight::FontSizeRelative(1.0),
+                    ..Style::default()
                 },
-            }],
-            boundary_policies: vec![],
-            replacements: vec![],
-            anchor_order: vec![ParagraphAnchor {
-                item: ParagraphAnchorItem::Control(0),
-                affinity: Affinity::After,
-            }],
-        })
+                segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+                base_direction: ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: crate::ParagraphStrut::DefaultFont,
+                origins: vec![crate::ParagraphOrigin {
+                    text_node: None,
+                    source,
+                    local: Range::new(0, 6),
+                    aggregate: Range::new(0, 6),
+                    kind: crate::ParagraphOriginKind::Authored,
+                }],
+                connections: vec![],
+                controls: vec![ParagraphControl {
+                    at: 4,
+                    kind: ParagraphControlKind::OptionalBreak {
+                        wrap: crate::Wrap::Word,
+                    },
+                }],
+                boundary_policies: vec![],
+                replacements: vec![],
+                anchor_order: vec![ParagraphAnchor {
+                    item: ParagraphAnchorItem::Control(0),
+                    affinity: Affinity::After,
+                }],
+            },
+            crate::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap();
         let prepared = system
             .prepare(&analysis, PreparationOptions::default())
@@ -1880,6 +2278,7 @@ mod tests {
             .collect();
         let selected = prepared
             .select(LineSelectionRequest {
+                segment: crate::test_wrapping::only_source_segment(&prepared),
                 boundary_context: Vec::new(),
                 incoming: None,
                 start: start.clone(),
@@ -1908,7 +2307,12 @@ mod tests {
                 line_strut: None,
             })
             .unwrap();
-        let line = selected.finalize(SpacingAllocations::None).unwrap();
+        let line = selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         Layout::from_finalized_lines(PlacementRequest {
             prepared,
             coverage: PlacementCoverage::Range { start, end },
@@ -2074,33 +2478,36 @@ mod tests {
             .unwrap();
         let source = Source::new(text);
         let end = text.encode_utf16().count();
-        let analysis = AnalyzedSource::from_paragraph(ParagraphInput {
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-            tab_reference: None,
-            source: source.clone(),
-            base_style: Style {
-                font: Font::new().family("Ahem"),
-                size: 20.0,
-                white_space,
-                line_height: LineHeight::FontSizeRelative(1.0),
-                ..Style::default()
+        let analysis = AnalyzedSource::from_paragraph(
+            ParagraphInput {
+                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                tab_reference: None,
+                source: source.clone(),
+                base_style: Style {
+                    font: Font::new().family("Ahem"),
+                    size: 20.0,
+                    white_space,
+                    line_height: LineHeight::FontSizeRelative(1.0),
+                    ..Style::default()
+                },
+                segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+                base_direction,
+                paragraph_strut: crate::ParagraphStrut::DefaultFont,
+                origins: vec![crate::ParagraphOrigin {
+                    text_node: None,
+                    source,
+                    local: Range::new(0, end),
+                    aggregate: Range::new(0, end),
+                    kind: crate::ParagraphOriginKind::Authored,
+                }],
+                connections: vec![],
+                controls: vec![],
+                boundary_policies: vec![],
+                replacements: vec![],
+                anchor_order: vec![],
             },
-            segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
-            base_direction,
-            paragraph_strut: crate::ParagraphStrut::DefaultFont,
-            origins: vec![crate::ParagraphOrigin {
-                text_node: None,
-                source,
-                local: Range::new(0, end),
-                aggregate: Range::new(0, end),
-                kind: crate::ParagraphOriginKind::Authored,
-            }],
-            connections: vec![],
-            controls: vec![],
-            boundary_policies: vec![],
-            replacements: vec![],
-            anchor_order: vec![],
-        })
+            crate::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap();
         let analysis = crate::test_wrapping::bind_missing(&analysis, crate::Wrap::Word);
         system
@@ -2121,6 +2528,7 @@ mod tests {
             .handle();
         let selected = prepared
             .select(LineSelectionRequest {
+                segment: crate::test_wrapping::only_source_segment(&prepared),
                 boundary_context: Vec::new(),
                 incoming: None,
                 start: prepared.boundary_views().next().unwrap().handle(),
@@ -2156,7 +2564,12 @@ mod tests {
                 line_strut: None,
             })
             .unwrap();
-        let line = selected.finalize(SpacingAllocations::None).unwrap();
+        let line = selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         Layout::from_finalized_lines(PlacementRequest {
             prepared,
             coverage: PlacementCoverage::WholeParagraph,
@@ -2504,6 +2917,7 @@ mod tests {
                 .collect();
             let selected = prepared
                 .select(LineSelectionRequest {
+                    segment: crate::test_wrapping::only_source_segment(&prepared),
                     boundary_context: Vec::new(),
                     incoming: None,
                     start: start.clone(),
@@ -2541,7 +2955,12 @@ mod tests {
                 })
                 .unwrap();
             lines.push(LinePlacement {
-                line: selected.finalize(SpacingAllocations::None).unwrap(),
+                line: selected
+                    .finalize(crate::LineAllocations {
+                        spacing: SpacingAllocations::None,
+                        scopes: crate::ScopeAllocations::None,
+                    })
+                    .unwrap(),
                 anchor: LineAnchor {
                     inline_origin: 0.0,
                     baseline: 16.0 + index as f64 * 40.0,

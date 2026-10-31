@@ -40,6 +40,9 @@ fn native_only_input(direction: layout::Direction, empty: bool) -> text::Context
     assert!(raw.computed_line_boundaries.is_empty());
     if empty {
         raw.scopes.push(text::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
+            alignment_boundary: None,
+            font_reference: None,
             trim: Default::default(),
             style: None,
             boundaries: None,
@@ -178,7 +181,8 @@ fn admit_native_order<S: layout::LayoutScalar>(
             layout::WrappingScopeInput::NativePair { .. }
         ));
         wrapping.child_order = native_order(prefix);
-        let result = layout::LayoutFlowInput::try_new(&tree, 0, vec![fixture.binding], wrapping);
+        let result =
+            layout::LayoutFlowInput::try_new(&tree, 0, vec![fixture.binding], wrapping, Vec::new());
         if should_admit {
             match result {
                 Ok(_flow) => {}

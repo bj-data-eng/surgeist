@@ -23,15 +23,17 @@ fn clockwise(mut authored: text::Style) -> (text::Layout, text::System) {
     let a = text::AnalyzedSource::new(
         text::Source::identified("\u{3a7}", text::Id::from_u64(1515005), 5),
         authored,
+        text::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
     let p = s
         .prepare(
             &a,
-            text::PreparationOptions::default().with_orientation(text::LineOrientation::Sideways),
+            text::PreparationOptions::default()
+                .with_orientation(text::LineOrientation::SidewaysClockwise),
         )
         .unwrap();
-    assert_eq!(p.orientation(), text::LineOrientation::Sideways);
+    assert_eq!(p.orientation(), text::LineOrientation::SidewaysClockwise);
     let end = p
         .opportunity_views()
         .find(|o| o.kind() == text::PreparedBreakKind::ParagraphEnd)
@@ -39,6 +41,7 @@ fn clockwise(mut authored: text::Style) -> (text::Layout, text::System) {
         .handle();
     let line = p
         .select(text::LineSelectionRequest {
+            segment: p.source_segments().next().unwrap(),
             start: p.boundary_views().next().unwrap().handle(),
             end: end.view().boundary(),
             termination: text::PreparedTermination::Ordinary(end),
@@ -55,7 +58,7 @@ fn clockwise(mut authored: text::Style) -> (text::Layout, text::System) {
                 formatted_line: text::FormattedLineContext::default(),
                 base_direction: text::ParagraphBaseDirection::LeftToRight,
                 line_box_direction: text::LineBoxDirection::LeftToRight,
-                orientation: text::LineOrientation::Sideways,
+                orientation: text::LineOrientation::SidewaysClockwise,
                 start: text::LineStart::Paragraph,
                 end: text::LineEnd::Paragraph,
                 available_inline: None,
@@ -66,7 +69,10 @@ fn clockwise(mut authored: text::Style) -> (text::Layout, text::System) {
             },
         })
         .unwrap()
-        .finalize(text::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: text::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 10.0);
     assert_eq!(
@@ -87,7 +93,7 @@ fn clockwise(mut authored: text::Style) -> (text::Layout, text::System) {
                 inline_origin: 20.0,
                 baseline: 100.0,
             },
-            orientation: text::LineOrientation::Sideways,
+            orientation: text::LineOrientation::SidewaysClockwise,
             atomics: vec![],
         })],
     })
@@ -98,7 +104,7 @@ fn clockwise(mut authored: text::Style) -> (text::Layout, text::System) {
     );
     assert_eq!(
         layout.run_views().next().unwrap().orientation(),
-        text::LineOrientation::Sideways
+        text::LineOrientation::SidewaysClockwise
     );
     (layout, s)
 }

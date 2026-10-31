@@ -80,6 +80,7 @@ fn compute<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     compute_layout_with_flow(
@@ -92,6 +93,7 @@ fn compute<S: LayoutScalar>(
 fn lines<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     p: &PreparedParagraph,
+    expected_font: &[u8],
 ) -> Vec<surgeist_text::FinalizedLine> {
     assert_eq!(
         batch.placed_text()[0].layout().source().text().code_units(),
@@ -106,8 +108,11 @@ fn lines<S: LayoutScalar>(
         .into_iter()
         .map(|line| {
             let line = line.unwrap();
-            assert!(line.run_views().all(|run| run.face().bytes() == AHEM
-                && run.effective_instance().unwrap().font_size() == 10.0));
+            assert!(
+                line.run_views()
+                    .all(|run| run.face().bytes() == expected_font
+                        && run.effective_instance().unwrap().font_size() == 10.0)
+            );
             line
         })
         .collect()
@@ -115,8 +120,9 @@ fn lines<S: LayoutScalar>(
 fn values<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     p: &PreparedParagraph,
+    expected_font: &[u8],
 ) -> Vec<(usize, f64, bool)> {
-    lines(batch, p)
+    lines(batch, p, expected_font)
         .into_iter()
         .map(|line| {
             let s = line.selected_line();
@@ -207,7 +213,7 @@ fn zone_strict_gap_uses_discarded_or_hanging_space_and_gates_automatic_empty_onl
                     20.0
                 };
                 assert_eq!(
-                    values(&b, &p),
+                    values(&b, &p, AHEM),
                     if allow {
                         vec![(4, 50.0, true), (6, 30.0, true), (11, 50.0, false)]
                     } else {
@@ -216,7 +222,10 @@ fn zone_strict_gap_uses_discarded_or_hanging_space_and_gates_automatic_empty_onl
                     "{white:?} {zone}"
                 );
                 if !allow {
-                    assert_eq!(lines(&b, &p)[0].measurements().alignment().advance(), 10.0);
+                    assert_eq!(
+                        lines(&b, &p, AHEM)[0].measurements().alignment().advance(),
+                        10.0
+                    );
                 }
             }
         }
@@ -234,9 +243,9 @@ fn zone_strict_gap_uses_discarded_or_hanging_space_and_gates_automatic_empty_onl
                 input(zone, 0.0, 0.0, false),
                 false,
             );
-            assert_eq!(values(&b, &p), expected);
+            assert_eq!(values(&b, &p, AHEM), expected);
             assert!(matches!(
-                lines(&b, &p)
+                lines(&b, &p, AHEM)
                     .iter()
                     .find(|line| line.selected_line().request().alternative.is_some())
                     .unwrap()
@@ -259,9 +268,12 @@ fn zone_strict_gap_uses_discarded_or_hanging_space_and_gates_automatic_empty_onl
             input(1000.0, 0.0, 0.0, false),
             false,
         );
-        assert_eq!(values(&b, &source), [(5, 40.0, true), (12, 70.0, false)]);
+        assert_eq!(
+            values(&b, &source, AHEM),
+            [(5, 40.0, true), (12, 70.0, false)]
+        );
         assert!(
-            matches!(lines(&b,&source)[0].selected_line().request().alternative.as_ref().unwrap().view().definition(),PreparedAlternativeDefinition::Source{source,..} if source==Range::new(4,5))
+            matches!(lines(&b,&source, AHEM)[0].selected_line().request().alternative.as_ref().unwrap().view().definition(),PreparedAlternativeDefinition::Source{source,..} if source==Range::new(4,5))
         );
         let control = PreparedParagraph::new(
             vec![
@@ -283,9 +295,12 @@ fn zone_strict_gap_uses_discarded_or_hanging_space_and_gates_automatic_empty_onl
             input(1000.0, 0.0, 0.0, false),
             false,
         );
-        assert_eq!(values(&b, &control), [(4, 40.0, true), (11, 70.0, false)]);
+        assert_eq!(
+            values(&b, &control, AHEM),
+            [(4, 40.0, true), (11, 70.0, false)]
+        );
         assert!(matches!(
-            lines(&b, &control)[0]
+            lines(&b, &control, AHEM)[0]
                 .selected_line()
                 .request()
                 .alternative
@@ -314,7 +329,7 @@ fn zone_signed_indent_and_percentage_use_full_actual_float_band_in_both_directio
                 input(zone, 0.0, indent, false),
                 false,
             );
-            assert_eq!(values(&b, &p)[0], (cut, advance, cut != 2));
+            assert_eq!(values(&b, &p, AHEM)[0], (cut, advance, cut != 2));
         }
         for rtl in [false, true] {
             let style = style(WhiteSpace::Collapse, "A");
@@ -339,7 +354,7 @@ fn zone_signed_indent_and_percentage_use_full_actual_float_band_in_both_directio
                     true,
                 );
                 assert_eq!(
-                    values(&b, &p)[0],
+                    values(&b, &p, AHEM)[0],
                     (cut, advance, cut != 2),
                     "rtl={rtl} fraction={fraction}"
                 );
@@ -375,7 +390,7 @@ fn zone_is_inapplicable_without_ordinary_prefix_and_intrinsics_ignore_it() {
             false,
         );
         assert_eq!(
-            values(&b, &p),
+            values(&b, &p, AHEM),
             [(2, 30.0, true), (4, 30.0, true), (9, 50.0, false)]
         );
         let p = paragraph(WhiteSpace::Collapse, "A");
@@ -391,6 +406,7 @@ fn zone_is_inapplicable_without_ordinary_prefix_and_intrinsics_ignore_it() {
                         false,
                     ),
                     &p,
+                    AHEM,
                 );
                 for minimum in [true, false, false, true] {
                     let b = compute::<S>(
@@ -426,7 +442,8 @@ fn zone_is_inapplicable_without_ordinary_prefix_and_intrinsics_ignore_it() {
                 assert_eq!(
                     values(
                         &compute::<S>(&p, AvailableOf::definite(S::from_f64(60.0)), policy, false),
-                        &p
+                        &p,
+                        AHEM,
                     ),
                     prior
                 );
@@ -439,17 +456,41 @@ fn zone_is_inapplicable_without_ordinary_prefix_and_intrinsics_ignore_it() {
 #[test]
 fn negative_zone_is_not_clamped_at_a_genuine_zero_gap() {
     fn check<S: LayoutScalar>() {
-        let normal = style(WhiteSpace::Collapse, "");
+        let font = super::canonical::fonts::positioned_ahem(&[
+            (58, -1000),
+            (3, -1000),
+            (67, -1000),
+            (85, -1000),
+        ]);
+        let mut normal = style(WhiteSpace::Collapse, "");
+        normal.font = normal.font.feature("\"kern\" 0");
         let mut zero = normal.clone();
-        zero.letter_spacing = -10.0;
-        let p = PreparedParagraph::new(
+        zero.font = surgeist_text::Font::new()
+            .family("Ahem")
+            .feature("\"kern\" 1");
+        let p = PreparedParagraph::with_registered_font(
             vec![
                 ParagraphPart::text(1, Source::new("X as"), zero),
                 ParagraphPart::text(2, Source::new("sociate"), normal.clone()),
             ],
             normal,
             ParagraphBaseDirection::LeftToRight,
+            &font,
         );
+        let whole = crate::test_support::text_fragment::fragment_for(&p.prepared).finalized_line();
+        let actual = whole
+            .run_views()
+            .flat_map(|run| {
+                assert_eq!(run.face().bytes(), font);
+                run.glyphs()
+                    .map(|g| (g.range(), g.advance()))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(actual.len(), 11);
+        for (range, advance) in actual {
+            assert_eq!(advance, if range.end <= 4 { 0.0 } else { 10.0 });
+        }
         for (zone, end, automatic) in [(0.0, 2, false), (-1.0, 4, true)] {
             let b = compute::<S>(
                 &p,
@@ -457,7 +498,7 @@ fn negative_zone_is_not_clamped_at_a_genuine_zero_gap() {
                 input(zone, 0.0, 0.0, false),
                 false,
             );
-            assert_eq!(values(&b, &p)[0], (end, 0.0, automatic));
+            assert_eq!(values(&b, &p, &font)[0], (end, 0.0, automatic));
         }
     }
     check::<f32>();
@@ -479,7 +520,7 @@ fn zone_reference_is_natural_even_when_the_committed_fallback_is_justified() {
             policy.text_align = TextAlign::Justify;
             policy.text_justification = TextJustification::Spaces;
             let b = compute::<S>(&p, AvailableOf::definite(S::from_f64(100.0)), policy, false);
-            let rows = lines(&b, &p);
+            let rows = lines(&b, &p, AHEM);
             let first = &rows[0];
             assert_eq!(
                 first
@@ -525,6 +566,7 @@ fn zone_resolution_is_consumed_only_by_a_real_fallback_and_preserves_numeric_fai
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         compute_layout_with_flow(&capture, 0, request(60.0)).map_err(Box::new)
@@ -536,7 +578,7 @@ fn zone_resolution_is_consumed_only_by_a_real_fallback_and_preserves_numeric_fai
         style(WhiteSpace::Collapse, "A"),
     );
     assert_eq!(
-        values(&run(&p).unwrap(), &p),
+        values(&run(&p).unwrap(), &p, AHEM),
         [(4, 50.0, true), (9, 50.0, false)]
     );
     let p = paragraph(WhiteSpace::Collapse, "A");

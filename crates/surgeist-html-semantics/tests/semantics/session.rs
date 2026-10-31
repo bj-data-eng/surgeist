@@ -280,7 +280,7 @@ fn non_legend_branch_proves_disabled_without_unrelated_child_order() {
 
 #[test]
 fn option_search_crosses_wrappers_but_stops_at_source_specified_barriers() {
-    for barrier in ["div", "hr", "datalist", "option"] {
+    for barrier in ["div", "hr", "datalist", "option", "select"] {
         let (mut b, d) = builder();
         let group = element(&mut b, &d, "optgroup", &[("disabled", "")]);
         let middle = element(&mut b, &d, barrier, &[]);

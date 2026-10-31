@@ -7,8 +7,15 @@ use std::{
     sync::Arc,
 };
 
-use super::{CapturedDomainData, ScopeCapture, SourceProcessingEvent, SourceProcessingTopology};
-use crate::{ParagraphControlKind, SourcePosition, Style};
+use super::{
+    CapturedDomainData, ScopeAlignmentBoundary, ScopeAlignmentLimits, ScopeAlignmentUsage,
+    ScopeCapture, ScopeFontReference, SourceProcessingEvent, SourceProcessingTopology,
+    SourceWritingAxis,
+};
+use crate::{
+    ParagraphBaseDirection, ParagraphBoundaryPolicy, ParagraphConnectionKind, ParagraphControlKind,
+    ParagraphStrut, SourcePosition, Style, TextCombineUpright,
+};
 
 macro_rules! captured_handle {
     ($($name:ident),+ $(,)?) => {$ (
@@ -42,7 +49,9 @@ captured_handle!(
     CapturedScope,
     CapturedControl,
     CapturedParagraph,
-    CapturedEventPosition
+    CapturedEventPosition,
+    CapturedJointFlow,
+    CapturedConnection
 );
 
 /// Actual scope role, independent of whether any preparation emits output.
@@ -102,6 +111,51 @@ impl PartialOrd for CapturedEventPosition {
 }
 
 impl CapturedScope {
+    /// Capture-local diagnostic ordinal. It cannot authorize an association:
+    /// genuine scope identity is this immutable capture plus the ordinal.
+    #[must_use]
+    pub const fn capture_ordinal(&self) -> usize {
+        self.index
+    }
+
+    /// Actual early inline formatting classification. Domains and absent
+    /// producer evidence return None, never an inferred Initial value.
+    #[must_use]
+    pub fn alignment_boundary(&self) -> Option<ScopeAlignmentBoundary> {
+        self.capture
+            .scope_alignment_fact(self.index)
+            .and_then(|fact| fact.alignment_boundary)
+    }
+
+    /// Supplied same-scope font/reference context; no lookup or measurement.
+    /// Context alone neither makes an alignment target nor activates a font.
+    #[must_use]
+    pub fn font_reference(&self) -> Option<ScopeFontReference> {
+        self.capture
+            .scope_alignment_fact(self.index)
+            .and_then(|fact| fact.font_reference)
+    }
+
+    /// Immutable limits on the entire capture's alignment feature, not just
+    /// this scope. Ordinary non-demanding captures may have no feature limits.
+    #[must_use]
+    pub fn scope_alignment_limits(&self) -> Option<ScopeAlignmentLimits> {
+        self.capture
+            .scope_alignment
+            .as_ref()
+            .map(|facts| facts.limits())
+    }
+
+    /// Completed early capture accounting, not later preparation/selection
+    /// usage. Reading it does not resolve fonts or mutate a shared ledger.
+    #[must_use]
+    pub fn scope_alignment_usage(&self) -> Option<ScopeAlignmentUsage> {
+        self.capture
+            .scope_alignment
+            .as_ref()
+            .map(|facts| facts.usage())
+    }
+
     /// The complete owner-issued flow on a domain root; inline scopes return None.
     ///
     /// This is a stable projection of the admitted original events, independent
@@ -226,6 +280,29 @@ impl CapturedScope {
         self.capture.scopes[self.index].style.as_ref()
     }
 
+    /// Effective mode on this actual scope, without inferred inheritance.
+    /// Missing Style returns None; an explicitly computed initial value returns
+    /// Some(TextCombineUpright::None).
+    #[must_use]
+    pub fn text_combine_upright(&self) -> Option<TextCombineUpright> {
+        self.style().map(|style| style.text_combine_upright)
+    }
+
+    /// Actual axis supplied on this scope's own formatting-domain root.
+    /// A nested domain with absent evidence does not borrow its parent axis.
+    #[must_use]
+    pub fn writing_axis(&self) -> Option<SourceWritingAxis> {
+        let root = self.capture.domain_scopes[self.capture.scopes[self.index].domain];
+        self.capture.scopes[root].writing_axis
+    }
+
+    /// Explicit same-scope used direction for horizontal inner composition.
+    /// This does not fall back to a paragraph, domain or ancestor direction.
+    #[must_use]
+    pub fn horizontal_inner_direction(&self) -> Option<ParagraphBaseDirection> {
+        self.capture.scopes[self.index].horizontal_inner_direction
+    }
+
     /// Genuine scope entry in the sole global mixed-event stream.
     #[must_use]
     pub fn enter_position(&self) -> CapturedEventPosition {
@@ -270,6 +347,27 @@ impl CapturedScope {
 }
 
 impl CapturedParagraph {
+    /// Original raw facts, without a joint-flow direction override.
+    #[must_use]
+    pub fn base_direction(&self) -> ParagraphBaseDirection {
+        self.capture.paragraphs[self.index].facts.base_direction
+    }
+
+    #[must_use]
+    pub fn paragraph_strut(&self) -> ParagraphStrut {
+        self.capture.paragraphs[self.index].facts.paragraph_strut
+    }
+
+    #[must_use]
+    pub fn joint_flow(&self) -> Option<CapturedJointFlow> {
+        self.capture.paragraphs[self.index]
+            .joint_flow
+            .map(|index| CapturedJointFlow {
+                capture: Arc::clone(&self.capture),
+                index,
+            })
+    }
+
     /// Actual canonical content domain of this paragraph occurrence.
     #[must_use]
     pub fn domain(&self) -> CapturedScope {
@@ -330,6 +428,111 @@ impl CapturedParagraph {
     }
 }
 
+impl CapturedJointFlow {
+    /// The genuine domain-root scope that owns this declared interval.
+    #[must_use]
+    pub fn scope(&self) -> CapturedScope {
+        CapturedScope {
+            capture: Arc::clone(&self.capture),
+            index: self.capture.joint_flows[self.index].scope,
+        }
+    }
+
+    #[must_use]
+    pub fn domain(&self) -> CapturedScope {
+        let domain = self.capture.joint_flows[self.index].domain;
+        CapturedScope {
+            capture: Arc::clone(&self.capture),
+            index: self.capture.domain_scopes[domain],
+        }
+    }
+
+    /// Complete original members in declared event order, including empty ones.
+    pub fn members(&self) -> impl ExactSizeIterator<Item = CapturedParagraph> + '_ {
+        self.capture.joint_flows[self.index]
+            .members
+            .iter()
+            .map(|member| CapturedParagraph {
+                capture: Arc::clone(&self.capture),
+                index: member.paragraph,
+            })
+    }
+
+    #[must_use]
+    pub fn facts_owner(&self) -> CapturedParagraph {
+        CapturedParagraph {
+            capture: Arc::clone(&self.capture),
+            index: self.capture.joint_flows[self.index].facts_owner,
+        }
+    }
+
+    #[must_use]
+    pub fn base_direction(&self) -> ParagraphBaseDirection {
+        self.facts_owner().base_direction()
+    }
+
+    #[must_use]
+    pub fn paragraph_strut(&self) -> ParagraphStrut {
+        self.facts_owner().paragraph_strut()
+    }
+
+    /// Actual local and cross-view connections, in genuine event order.
+    pub fn connections(&self) -> impl Iterator<Item = CapturedConnection> + '_ {
+        self.capture.events.iter().filter_map(|event| {
+            let SourceProcessingEvent::Connection(index) = event.event else {
+                return None;
+            };
+            let (before, after) = self.capture.connections[index].paragraphs(&self.capture);
+            (self.capture.paragraphs[before].joint_flow == Some(self.index)
+                && self.capture.paragraphs[after].joint_flow == Some(self.index))
+            .then(|| CapturedConnection {
+                capture: Arc::clone(&self.capture),
+                index,
+            })
+        })
+    }
+}
+
+impl CapturedConnection {
+    #[must_use]
+    pub fn before_origin(&self) -> CapturedEventPosition {
+        let origin = self.capture.connections[self.index].fact.before_origin;
+        CapturedEventPosition {
+            capture: Arc::clone(&self.capture),
+            index: self.capture.origin_orders[origin],
+        }
+    }
+
+    #[must_use]
+    pub fn after_origin(&self) -> CapturedEventPosition {
+        let origin = self.capture.connections[self.index].fact.after_origin;
+        CapturedEventPosition {
+            capture: Arc::clone(&self.capture),
+            index: self.capture.origin_orders[origin],
+        }
+    }
+
+    #[must_use]
+    pub fn kind(&self) -> ParagraphConnectionKind {
+        self.capture.connections[self.index].fact.kind
+    }
+
+    #[must_use]
+    pub fn event_position(&self) -> CapturedEventPosition {
+        CapturedEventPosition {
+            capture: Arc::clone(&self.capture),
+            index: self.capture.connections[self.index].order,
+        }
+    }
+
+    /// Supplied cross-view policy without an invented raw-local association.
+    /// Local policies retain their existing paragraph-owned projection.
+    #[must_use]
+    pub fn boundary_policy(&self) -> Option<ParagraphBoundaryPolicy> {
+        self.capture.connections[self.index].boundary_policy
+    }
+}
+
 /// An authenticated paragraph/scope event intersection, not an invented edge.
 #[derive(Clone, Debug)]
 pub struct CapturedScopeIntersection {
@@ -380,6 +583,21 @@ impl CapturedScopeIntersection {
 }
 
 impl CapturedControl {
+    /// Actual enclosing source scope at this control's admitted mixed event.
+    ///
+    /// This retains source custody; it does not invent a captured scope for a
+    /// native-only box or identify an allocated selected frame.
+    #[must_use]
+    pub fn scope(&self) -> CapturedScope {
+        let order = self.capture.controls[self.index].order;
+        CapturedScope {
+            capture: Arc::clone(&self.capture),
+            index: self.capture.events[order]
+                .before
+                .expect("admitted control event has an enclosing scope"),
+        }
+    }
+
     /// Actual paragraph containing this control event, even if it emits no text.
     #[must_use]
     pub fn paragraph(&self) -> CapturedParagraph {
@@ -502,6 +720,59 @@ impl CapturedComputedLineBoundary {
 }
 
 impl crate::ProcessedSource {
+    /// Actual source relationship, independently of joint analysis authority.
+    #[must_use]
+    pub fn captured_connection(&self, input_ordinal: usize) -> Option<CapturedConnection> {
+        let capture = self.contextual_capture()?;
+        capture.connections.get(input_ordinal)?;
+        Some(CapturedConnection {
+            capture: Arc::clone(capture),
+            index: input_ordinal,
+        })
+    }
+
+    #[must_use]
+    pub fn captured_joint_flow(&self, input_ordinal: usize) -> Option<CapturedJointFlow> {
+        let capture = self.contextual_capture()?;
+        capture.joint_flows.get(input_ordinal)?;
+        Some(CapturedJointFlow {
+            capture: Arc::clone(capture),
+            index: input_ordinal,
+        })
+    }
+
+    /// Admits the actual immutable owner, never equal declaration ordinals.
+    pub fn admit_joint_flow(&self, flow: &CapturedJointFlow) -> crate::Result<()> {
+        if self
+            .contextual_capture()
+            .is_some_and(|capture| Arc::ptr_eq(capture, &flow.capture))
+        {
+            Ok(())
+        } else {
+            Err(super::invalid(
+                super::SourceProcessingError::ForeignJointFlow,
+            ))
+        }
+    }
+
+    /// Existing raw views in declared member order, without repartitioning.
+    pub fn joint_flow_paragraphs(
+        self: &Arc<Self>,
+        flow: &CapturedJointFlow,
+    ) -> crate::Result<impl ExactSizeIterator<Item = super::ProcessedParagraph> + '_> {
+        self.admit_joint_flow(flow)?;
+        let capture = self
+            .contextual_capture()
+            .expect("admitted actual contextual capture");
+        Ok(capture.joint_flows[flow.index]
+            .members
+            .iter()
+            .map(|member| super::ProcessedParagraph {
+                owner: Arc::clone(self),
+                index: member.record,
+            }))
+    }
+
     fn contextual_capture(&self) -> Option<&Arc<ScopeCapture>> {
         self.paragraphs
             .first()?

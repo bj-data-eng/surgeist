@@ -11,36 +11,39 @@ const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf"
 fn prepare(text: &str, overflow: OverflowWrap) -> PreparedText {
     let source = Source::identified(text, crate::Id::from_u64(75083), 7);
     let end = source.text().len();
-    let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
-        source: source.clone(),
-        base_style: Style {
-            font: Font::new().family("Ahem"),
-            size: 10.0,
-            line_height: LineHeight::Absolute(10.0),
-            white_space: WhiteSpace::Preserve,
-            word_break: crate::WordBreak::Normal,
-            wrap: Wrap::Word,
-            overflow_wrap: overflow,
-            ..Style::default()
+    let analyzed = AnalyzedSource::from_paragraph(
+        ParagraphInput {
+            source: source.clone(),
+            base_style: Style {
+                font: Font::new().family("Ahem"),
+                size: 10.0,
+                line_height: LineHeight::Absolute(10.0),
+                white_space: WhiteSpace::Preserve,
+                word_break: crate::WordBreak::Normal,
+                wrap: Wrap::Word,
+                overflow_wrap: overflow,
+                ..Style::default()
+            },
+            paragraph_strut: ParagraphStrut::DefaultFont,
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: ParagraphBaseDirection::LeftToRight,
+            origins: vec![crate::ParagraphOrigin {
+                text_node: None,
+                source,
+                local: Range::new(0, end),
+                aggregate: Range::new(0, end),
+                kind: crate::ParagraphOriginKind::Authored,
+            }],
+            connections: vec![],
+            controls: vec![],
+            replacements: vec![],
+            boundary_policies: vec![],
+            anchor_order: vec![],
         },
-        paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: ParagraphBaseDirection::LeftToRight,
-        origins: vec![crate::ParagraphOrigin {
-            text_node: None,
-            source,
-            local: Range::new(0, end),
-            aggregate: Range::new(0, end),
-            kind: crate::ParagraphOriginKind::Authored,
-        }],
-        connections: vec![],
-        controls: vec![],
-        replacements: vec![],
-        boundary_policies: vec![],
-        anchor_order: vec![],
-    })
+        crate::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let mut system = system();
     system
@@ -52,6 +55,7 @@ fn prepare(text: &str, overflow: OverflowWrap) -> PreparedText {
 }
 fn row(baseline: f64, line_extent: f64, alignment: LineBoxAlignment) -> LineBoxStrut {
     LineBoxStrut {
+        scope: None,
         metrics: LineStrut {
             baseline,
             line_extent,
@@ -71,7 +75,10 @@ fn whole(
     r.context.available_inline = Some(available);
     p.select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn fingerprint(value: &impl Hash) -> u64 {
@@ -222,15 +229,18 @@ fn conditional_identity_retains_box_alignment_without_freezing_candidate_geometr
     let start = p.boundary_views().next().unwrap().handle();
     let ceiling = p.opportunity_views().next().unwrap().handle();
     let query = |frame: &FinalizedLine| {
-        p.conditional_search(
-            &start,
-            None,
-            &ceiling,
-            ConditionalPurpose::Overflow,
-            &[],
-            Some(frame),
-        )
-        .unwrap()
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &start,
+                None,
+                &ceiling,
+                ConditionalPurpose::Overflow,
+                &[],
+                Some(frame),
+            )
+            .unwrap()
     };
     let a = query(&top);
     let equivalent = query(&top_again);

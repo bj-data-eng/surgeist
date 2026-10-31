@@ -1,13 +1,13 @@
 //! The default ordinary colour limits against the colour cases of the table.
 //!
-//! The defaults are derived in `src/color/ordinary_defaults.rs`: the worst
-//! requirement per input unit over this corpus, scaled to the default input
-//! length, times four. The golden file records every corpus outcome under the
-//! explicit limits used before the defaults existed, so it is the oracle that
-//! the defaults change no outcome. A requirement is the smallest ceiling at
-//! which a case still reaches its outcome; a case needs at most a quarter of
-//! its default ceiling, pro rata to its own length, when it still reaches that
-//! outcome under exactly that allowance.
+//! The defaults in `src/color/ordinary_defaults.rs` are fixed ceilings: a
+//! reference requirement per input unit, scaled to the default input length,
+//! times four. The golden file records every corpus outcome under the explicit
+//! limits of the adapter, so it is the oracle that the defaults change no
+//! outcome. A requirement is the smallest ceiling at which a case still reaches
+//! its outcome; a case needs at most a quarter of its default ceiling, pro rata
+//! to its own length, when it still reaches that outcome under exactly that
+//! allowance.
 
 use surgeist_css::color::{
     CssAuthoredColorOrdinaryLimits, CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest,
@@ -38,8 +38,8 @@ const RESOLUTION_FRONTS: [&str; 5] = [
     "color.authored",
 ];
 
-/// The refusal the explicit limits of the golden give the overflow case.
-const EXPLICIT_ACTION_REFUSAL: &str = "limit:actions:required=16000001:allowed=16000000";
+/// The refusal the explicit action ceiling of the golden gives the overflow case.
+const EXPLICIT_ACTION_REFUSAL: &str = "limit:actions:required=";
 
 fn resolution_cases() -> Vec<Case> {
     cases::all()
@@ -57,8 +57,8 @@ fn golden_row(id: &str) -> Vec<&'static str> {
 }
 
 /// The recorded shape and facts of a case. The golden refuses the overflow case
-/// at its 16,000,000 action allowance; its outcome is the recorded one of the
-/// same input under the 100,000,000 action allowance row.
+/// at its explicit action ceiling; its outcome is the recorded one of the same
+/// input under the large action allowance row.
 fn expected(case: &Case) -> (String, String) {
     let row = golden_row(&case.id);
     if !row[COLUMN_FACTS].contains(EXPLICIT_ACTION_REFUSAL) {
@@ -140,11 +140,12 @@ fn quarter_limits(case: &Case) -> (CssColorOrdinaryLimits, CssAuthoredColorOrdin
 
 #[test]
 fn default_ceilings_are_the_documented_derivation() {
-    // ceil(4 * required * 1024 / units) for the worst corpus requirement of each
-    // counter: algorithm 1277 records in 19 units (oklab), arithmetic and
-    // evaluation 28 records in 33 units (authored rgb-calc), actions 19,390,200
-    // in 39 units (authored color-mix with lab(0 1e308 0)). The path allows one
-    // step per source unit.
+    // The ceilings are fixed values, ceil(4 * reference * 1024 / units), from a
+    // reference requirement per counter: algorithm 1277 records in 19 units,
+    // arithmetic and evaluation 28 records in 33 units, actions 19,390,200 in 39
+    // units. Each reference is at least the requirement per unit of every corpus
+    // colour, so the ceilings keep large headroom over the corpus (the tests
+    // below check a quarter of them). The path allows one step per source unit.
     let ordinary = CssColorOrdinaryLimits::default();
     assert_eq!(
         ordinary,
@@ -268,9 +269,11 @@ fn input_needing_more_algorithm_records_than_the_default_is_refused_with_that_re
 
 #[test]
 fn a_requirement_above_a_quarter_of_a_ceiling_fails_the_headroom_test() {
-    // The two cases that define the arithmetic and algorithm ceilings need
-    // exactly their pro rata quarter (28 of 33 units, 1277 of 19 units). One
-    // record less is refused, so the headroom test can fail.
+    // A counter's requirement is the smallest ceiling at which a case still
+    // reaches its outcome. Find it by bisection for two cases with a high
+    // number of records per input unit, then show that a ceiling whose pro rata
+    // quarter is one record short of it refuses the case, so the headroom test
+    // can fail, and that a ceiling whose quarter equals it does not.
     for (front, set, input, field) in [
         (
             "color.authored",
@@ -292,21 +295,41 @@ fn a_requirement_above_a_quarter_of_a_ceiling_fails_the_headroom_test() {
             argument: set.to_owned(),
             input: input.to_owned(),
         };
-        let (mut ordinary, mut authored) = quarter_limits(&case);
-        let outcome = |ordinary, authored| {
+        let (ordinary, authored) = quarter_limits(&case);
+        let refused_with = |records: usize| {
+            let (mut ordinary, mut authored) = (ordinary, authored);
+            match field {
+                "arithmetic" => authored.arithmetic_records = records,
+                _ => ordinary.algorithm_records = records,
+            }
             let observed = observe_color_under(front, set, input, ordinary, authored);
-            observed.facts
+            observed.facts.contains(&format!("limit:{field}-records"))
         };
-        let at_quarter = outcome(ordinary, authored);
-        assert!(!at_quarter.contains("limit:"), "{input}: {at_quarter}");
-        match field {
-            "arithmetic" => authored.arithmetic_records -= 1,
-            _ => ordinary.algorithm_records -= 1,
+        let quarter = match field {
+            "arithmetic" => authored.arithmetic_records,
+            _ => ordinary.algorithm_records,
+        };
+        assert!(!refused_with(quarter), "{input} fits its quarter");
+        assert!(refused_with(0), "{input} needs records");
+        let (mut below, mut at_least) = (0, quarter);
+        while at_least - below > 1 {
+            let middle = below + (at_least - below) / 2;
+            if refused_with(middle) {
+                below = middle;
+            } else {
+                at_least = middle;
+            }
         }
-        let below = outcome(ordinary, authored);
-        assert!(
-            below.contains(&format!("limit:{field}-records")),
-            "{input}: {below}"
-        );
+        let required = at_least;
+        let units = units(&case);
+        let input_units = CssColorOrdinaryLimits::default().input_units;
+        // The smallest ceilings whose pro rata quarters are `required` and
+        // `required - 1` records.
+        let ceiling_for = |wanted: usize| (wanted * HEADROOM * input_units).div_ceil(units);
+        assert!(pro_rata_quarter(ceiling_for(required), units, input_units) >= required);
+        let short = pro_rata_quarter(ceiling_for(required - 1), units, input_units);
+        assert_eq!(short, required - 1, "{input}");
+        assert!(refused_with(short), "{input}: one record short is refused");
+        assert!(!refused_with(required), "{input}: the requirement fits");
     }
 }

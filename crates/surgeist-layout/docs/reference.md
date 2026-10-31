@@ -168,6 +168,13 @@ for each name: `Unknown`, genuinely `Absent`, or `Available`. Generic
 `BaselinesOf` projections do not establish named authority. A missing generic
 scalar likewise cannot prove named absence.
 
+Measurement returns both generic and named coordinates relative to the returned
+border box. An indefinite sizing pass retains its accepted physical anchor and
+used frame until the final extent is known. Completing an end-side frame rebases
+that anchor by the extent change without snapping it again; an already canonical
+local anchor stays local. A child resolves its own frame before parent placement.
+These measurement facts do not establish canonical Text placement authority.
+
 The child's non-inherited `NodeInputOf::baseline_source` selects its matching
 set. `BaselineSource::Auto` selects last for an inline-block and first otherwise;
 `First` and `Last` select their respective sets explicitly. Only that set is
@@ -188,6 +195,32 @@ places its margin box against the line's physical line-over/under edge. Block
 progression does not rename those edges. Signed margins locate the border from
 that edge and can place it outside the line box.
 
+`VerticalAlignOf<S>::Shift(BaselineOffsetOf<S>)` matches the actual child
+baseline through the same path as `Baseline`, then applies a finite signed
+displacement toward `FlowAxes::line_over`. Positive values move up in
+horizontal-tb, right in vertical-rl/lr and sideways-rl, and left in numeric
+sideways-lr. Local child baseline and extent facts remain unchanged. The shifted
+bounds participate in line fitting, float feedback and committed placement.
+An explicit `Shift(0)` retains its request identity and baseline geometry.
+Generic callers use the `Of<S>` types; `VerticalAlign` and `BaselineOffset`
+select the default scalar lane.
+
+The offset helpers consume supplied used values. `from_length_percentage`
+accepts `LengthPercentageOf` and the child's own `PercentageBasisOf` line-height;
+a missing basis is valid only for a zero percentage coefficient. `subscript`
+and `superscript` accept a `NonNegativeFiniteOf` parent font size and use the
+native [Inline 3 fallback policy](../../../references/css-inline-3--WD-css-inline-3-20241218--a73a73a45bf5.md):
+minus one fifth and plus one third, without resizing the child or querying
+optional font offsets. Numeric zero contexts are valid. Resolution reports
+missing context, nonfinite arithmetic or a lost nonzero contribution through
+`BaselineOffsetResolutionError`; exact cancellation is valid.
+
+These operations describe actual box/control allocations. They do not discover
+CSS ancestry or execute captured text-scope glyph alignment. Native Text
+allocations use already used line-coordinate units, with no second preparation
+scale; see Text's [allocated shift contract](../../surgeist-text/docs/reference.md).
+Its existing sideways-lr refusal remains in effect.
+
 For a block scroll container with `baseline_source: Auto`, the last set places
 both names at its own signed block-end margin edge. Layout then clamps exported
 available coordinates to that container's border interval. Explicit `First` or
@@ -201,7 +234,7 @@ offsets are not Layout inputs. See the pinned
 and [source selection](../../../references/css-inline-3--WD-css-inline-3-20241218--a73a73a45bf5.md#baseline-source).
 
 `InlineMetricsOf` constructors require an explicit reference for their control
-strut. Baseline-aligned controls must match the line's reference; top/bottom
+strut. Baseline and shifted controls must match the line's reference; top/bottom
 alignment uses their real extents. Context, source and metric-reference changes use
 the ordinary changed-node invalidation contract, and cached computation
 outputs retain their named facts.
@@ -218,12 +251,22 @@ unused name and establishes no named anchor. Explicit control struts still use
 their declared reference, because they have no atomic box from which to resolve
 another one.
 
-This named capability covers numeric atomic-box flow. Text placement origins
-and generic Flex/Grid baseline projections do not supply named facts. Text's
-font-design measurements require a real placed-origin adapter before they can
-satisfy a named box request. A horizontal design-zero coordinate cannot stand
-in for a possibly nonzero font-defined alphabetic baseline. Physical Text
-composition remains available through its existing contract.
+Numeric atomic-box flow supports both names. Native upright or Mixed Text in
+`VerticalRl` or `VerticalLr` additionally admits `Named(Central)` when the actual
+prepared paragraph has matching Upright or Mixed analysis and Vertical orientation.
+Its first/last formatted lines establish Central facts on the physical x axis;
+absent or nonformatted lines do not acquire authority from the requested name.
+HorizontalComposition Text admits `Named(Alphabetic)` when its actual preparation
+observes `Some(FontBaseline::Alphabetic)` and its Horizontal or clockwise Sideways
+orientation matches the consuming frame. This includes clockwise preparation in
+`VerticalRl` and `VerticalLr`. Text owns each actual font/script's conversion to
+the shared reference; Layout uses the common line anchor for matching and
+first/last export, independently of displaced per-font paint origins. Raw
+preparations cannot establish Alphabetic authority from their orientation alone.
+`Physical` remains a separate operation and leaves named Text facts Unknown.
+Other named Text contexts retain `MissingContext(NamedInlineBaseline)`.
+Generic Flex/Grid projections and font-design zero coordinates do not establish
+named facts or substitute for a possibly nonzero alphabetic baseline.
 A Flex/Grid container can remain named-Unknown while its child's independently
 qualified facts remain available in that child's packet. Positioning and floating
 likewise preserve child-owned facts. Published cache outputs retain the same
@@ -239,7 +282,15 @@ unsupported producer named authority.
 Prepared Text participation carries actual issued origin, atomic, control and scope
 handles. Capture validates complete inventories against the same borrowed tree;
 equal characters from another preparation cannot replace that basis. Layout
-selects actual issued break opportunities and alternatives, then consumes Text's
+retains one `TextParagraphBinding` per complete analyzed output. Its `nodes`
+inventory contains all participating nodes in order, including native windows
+separated by actual child blocks. Text-issued source segments identify those
+windows and metadata-only gaps; raw member seams create no native run. Layout
+completes the segments into one placed output while traversing child blocks
+independently. Independent preparations cannot split one uninterrupted native
+run; admission returns `RunMembership` for that unsupported association.
+
+Layout selects actual issued break opportunities and alternatives, then consumes Text's
 finalized metrics, fragments, control slots, and atomic slots. At a discretionary
 endpoint it tries alternatives in declaration order and uses the first that fits;
 it keeps the first alternative when an indivisible candidate must overflow.
@@ -247,7 +298,7 @@ it keeps the first alternative when an indivisible candidate must overflow.
 allocated strut. Its direction, wrapping, and source-less alternative facts stay
 Text-owned. Existing line breaks and inline boundaries instead supply their real
 Layout strut metrics and must match the corresponding issued semantic role.
-`LayoutFlowInput::try_new(tree, root, paragraphs, wrapping)` also admits
+`LayoutFlowInput::try_new(tree, root, paragraphs, wrapping, scope_alignments)` also admits
 box/control-only flow with no Text paragraphs. `WrappingInput` supplies actual
 scope declarations and generated child-order proofs. `WrappingScopeInput::NativePair`
 declares genuine normalized endpoints; `Captured` declares an authentic inline
@@ -255,6 +306,16 @@ capture identity. `WrapInside::Avoid` ranks permitted fitting breaks through the
 same validated scope forest. A captured scope without endpoints supplies semantic
 ownership and no physical border or padding authority. Ordinary `compute_layout`
 keeps automatic wrapping without a declared scope context.
+
+The `scope_alignments` vector supplies `TextScopeAlignmentInputOf<Tree::Scalar>`
+for authentic captured inline scopes. An empty vector supplies no alignment
+requests. Admission checks the actual capture association and its early formatting
+classification. Length/percentage normalization uses the scope's retained own
+line height; native subscript/superscript normalization uses the actual parent's
+used font size. Layout fits the selected scope contributions and passes complete
+allocations to Text, including explicit zero, then consumes the executed frame
+once. See [captured-scope alignment](../../surgeist-text/docs/scope-alignment.md)
+for early producer facts, edge-subtree behavior and transaction resource limits.
 
 Avoidance prefers a fitting cut outside an avoided box over one inside it, then
 prefers an outer cut over a cut inside a nested avoided box. Incomparable sibling
@@ -303,8 +364,9 @@ An explicitly declared native pair retains its real endpoint-control identity
 when the input has no matching inline scope.
 
 After normal Text preparation and host binding, `LayoutFlowInput::try_new_with_edges`
-accepts the current tree, actual paragraph bindings, final `WrappingInput`, and a
-borrowed receipt. The tree also supplies a fresh `WrapEdgeSource` projection.
+accepts the current tree, actual paragraph bindings, final `WrappingInput`,
+normalized scope alignments, and a borrowed receipt. The tree also supplies a
+fresh `WrapEdgeSource` projection.
 Admission checks current roles, declarations, relevant generated order and
 source/cause associations against both the receipt and actual prepared inputs.
 Changed semantic evidence returns `PlanMismatch`; invalid source associations
@@ -332,6 +394,10 @@ leaves the evidence unsupplied. Influential boxes need a real witness unless an
 actually selected same-box control allocation already owns that contribution.
 Glyph or descendant-font containment cannot establish the box's own strut.
 Aliases share one supplied witness; contributions are not duplicated.
+A native pair's source enclosure alone does not prove that it owns the enclosing
+captured box. A continuation without a selected same-box endpoint needs that
+box's explicit witness. A zero strut remains a contribution and differs from
+`NoContribution`.
 Missing, invalid and contradictory evidence return `MissingBoxMetrics`,
 `InvalidBoxMetrics` and `ConflictingBoxMetrics`, respectively. See the
 [metric ownership contract](../../../references/text-wrap-edges--native-determination.md#actual-box-metrics).
@@ -431,8 +497,18 @@ empty. Unknown inline topology does not erase genuine canonical paragraph/domain
 facts; missing facts needed by an active proof still refuse. See the [Text/Layout contract](../../../docs/text-layout-contract.md) for
 the shared ownership and placement boundary.
 
-The native profile supports horizontal LTR and RTL text, signed indentation,
-and the preparation's selected font-advance or CSS-stop tab operation.
+The native profile supports horizontal LTR and RTL text and clockwise
+`WritingMode::SidewaysRl`. `VerticalRl` and `VerticalLr` also consume authentic
+`HorizontalComposition` analysis prepared with `LineOrientation::SidewaysClockwise`.
+Block progression follows the containing writing mode while glyph outlines
+remain clockwise and use horizontal text metrics and bidi. Selection and
+placement retain that actual
+preparation and its receipts. Paragraph bidi direction and container line-box
+direction remain independent. RTL line-box alignment does not reverse the
+already ordered local glyph geometry again.
+
+Both profiles support signed indentation and the preparation's selected
+font-advance or CSS-stop tab operation.
 For `TabPreparation::CssStops`, Text retains the actual nearest-block metric
 reference; capture checks its used direction against the normalized container.
 Finite used-layout candidates supply `CssStops` with that block edge relative
@@ -566,6 +642,68 @@ the same selected line with the complete allocations. It reconciles an over-budg
 result against Text's actual allocated alignment measure; if that correction
 still exceeds the span, `TextSpacingBudget` reports the available span and actual
 alignment advance. Text numeric refusals remain Text errors.
+
+`TextJustification::InterWord` is a distinct uniform native paragraph method. Text
+supplies the complete separator inventory, intrinsic geometry and actual alignment
+response; Layout supplies complete nonnegative allocations. Direct opportunities
+receive equal initial shares and correction against Text's actual measurement.
+When only tab-dependent opportunities can stretch, Layout probes the last admitted
+one in Text's tab traversal using the same immutable natural shape, brackets the
+actual response and refines until exact fill or adjacent representable amounts
+prove the target is skipped. Refused probes propagate as Text errors; they never
+prove unexpandability. Shared provider geometry or deferred terminal authority
+needed for expansion is demanded through the real Text operation, not inferred
+from a zero width or unavailable feedback.
+
+An InterWord result must exactly fill the actual alignment capacity after indent
+and group insets, or return its numeric/spacing-budget refusal. Known unexpandable
+content uses the actual last-line alignment, with Justify falling back to Center,
+through a fresh selection. Hanging-only allocation is not a successful fill.
+Natural and intrinsic trials add no allocation; authored word spacing remains
+Text-owned. Replays retain the actual method, complete amounts and Text shape
+basis; changed line, box, role, tab or float context rebuilds the real selection.
+
+`TextJustification::InterCharacter` requests Text's qualified visual character
+boundaries through the same positive response solver. The actual effective
+Justify context selects the spacing-capable Text basis before any natural or
+residual measurement. Effective non-Justify contexts, including terminal Auto,
+use an ordinary selection. Intrinsic and chosen-cut trials retain their actual
+receiving context and add no allocation when they are natural measurements;
+they do not borrow an ordinary ligature width for a spacing-capable request.
+Text owns the [native character-spacing profile](../../../references/text-character-spacing--native-determination.md),
+provider constraints, authored tracking, boundary cells and raw glyph geometry.
+
+Qualified Direct boundaries receive equal initial full extras. Independent
+character boundaries do not inherit InterWord's zero-intrinsic exclusion.
+Protected required/cursive pairs are not allocated. Constrained or deferred
+candidates stay in the complete table: an exact fill through qualified responses
+may leave them at zero, but otherwise their material demand executes through
+Text before fallback. Tab-dependent boundaries use the same actual response
+bracket and representable termination as InterWord.
+
+An ordinary InterCharacter fallback is a fresh selection and may change the
+optional-feature plan. Layout remeasures that result for fitting, float bands,
+groups, chosen cuts and tails. Conditional search retains matching-method query
+authority: it uses an actually executed pre-fallback trial, or executes a real
+ordinary trial with the prospective Soft method while preserving its issued
+range, termination and actual end role. That trial authorizes queries only;
+the actual fallback result remains the fit and placement output. No conditional
+capability is transferred across methods or recreated from source offsets.
+A conditional cut that itself needs ordinary fallback obtains a separately issued
+ordinary-method endpoint: Layout executes that query's real ordinary trials,
+phrase measurements and tier receipts through the same fitter. The endpoint
+must match both the strong boundary and alternative. If an earlier ordinary
+barrier or tier prevents issuance, that fallback attempt is inadmissible; the
+primary tier retains its actually executed primary receipt and the chooser
+continues without publishing an underfilled result.
+
+An atomic's full exterior tracking value belongs to its actual Text `InlineBox`
+before preparation, with resolved zero as the default. Layout consumes that bound
+source occurrence. Neither child interior Text nor neighboring style supplies its
+exterior tracking, and no later box allocation patches an issued preparation.
+Atomic border/content rectangles and supplied flow allocations retain their
+meaning; Text reports their actually shifted origins and boundary cell geometry.
+
 `None` adds no spacing. Native fitting and intrinsic queries consume the matching
 Text-issued measurements; an absent finite width is not an intrinsic-purpose
 tag. Intrinsic allocation/report width is separate from the actual Text metric
@@ -573,17 +711,39 @@ frame and source-fragment geometry retained for scrollable overflow. A supplied
 block-end claim is checked against known later in-flow content in the captured
 container; unknown authority is never upgraded from numeric coverage.
 This explicit profile does not implement CSS-wide justification methods,
-BreakSpaces or styled inline hanging barriers. Vertical and sideways Text
-orientations remain explicit unsupported operations. A complete canonical
-frame, line allocation, ordered spacing allocations, and float-band basis governs
-same-invocation retries.
+BreakSpaces or styled inline hanging barriers. Native whole-upright paragraphs
+compose in `VerticalRl` and `VerticalLr` through Text's
+[qualified native profile](../../surgeist-text/docs/reference.md#native-whole-upright-paragraphs).
+Native Mixed paragraphs compose in both vertical flows through Text's
+[Mixed profile](../../surgeist-text/docs/reference.md#native-mixed-vertical-paragraphs),
+retaining ordinary bidi, per-run outline axes and the common Central reference.
+Actual Text-backed `SidewaysLr` reports
+`UnsupportedCapability(TextWritingMode(SidewaysLr))` at `TextCapture` on the
+container; box-only flow retains its own support. Clockwise Sideways Physical
+composition admits in-flow and positioned atomic boxes with their actual
+physical geometry and independently owned content orientation. Text glyphs
+retain Clockwise. Explicit used Alphabetic preparation also supports
+[`Named(Alphabetic)` matching](#numeric-inline-baseline-references); raw
+preparation retains its named-reference refusal. Genuine
+incoming native floats outside the paragraph binding remain Layout constraints.
+Physical Text baseline
+coordinates alone do not satisfy a named font-baseline request.
+
+Canonical frames, line allocations, ordered spacing allocations and float bands
+govern same-invocation retries.
 An unchanged selection reuses its exact finalized line, including rigid
 translation; a repeated conflicting basis refuses rather than looping.
 The common physical line anchor uses nearest-CSS-pixel rounding while retaining
 fractional Text geometry. A real float transition or explicit clearance imposes
-a minimum position; Layout selects the earliest permitted anchor on that same
-pixel grid and retains the constraint during feedback retries. Completed batches
-own the exact placed Text layout
+a minimum logical block position; Layout selects the earliest permitted anchor on
+that same pixel grid and retains the constraint during feedback retries. For
+clockwise SidewaysRl and native VerticalRl this is a maximum physical x,
+snapped downward when the nearest anchor would violate it; VerticalLr instead
+requires a minimum physical x. Actual canonical container origin, used size
+and all four content insets govern placement, including automatic block size.
+Intrinsic sizing and final canonical placement are distinct: a final used frame
+can supply a finite selection span after an intrinsic root sizing request.
+Completed batches own the exact placed Text layout
 and authentic fragment handles; consumers can pass that layout directly to
 Render. Bound Text and dependent ancestor geometry caches are rejected across
 invocations, while unrelated box caches retain their ordinary behavior.
@@ -593,6 +753,39 @@ Source fragments and atomic boxes contribute their own actual geometry; glyph
 ink and glyph advance do not replace line allocations. The
 [shared placement contract](../../../docs/text-layout-contract.md#canonical-boxes-and-coherent-line-placement)
 distinguishes logical progression, physical anchors and their float constraints.
+
+Native upright and Mixed placement keep three coordinate mappings separate. Flow columns
+progress leftward in VerticalRl and rightward in VerticalLr, while Text's
+line-over to line-under cell direction decreases physical x in both. For actual
+allocated line height `H` and finalized local Central baseline `B`, the anchor
+is `B` from the right block-start in VerticalRl or `H-B` from the left in
+VerticalLr. A finalized local point `(u,v)` maps to
+`(CentralX+B-v, inlineOrigin+u)`. Normal-flow allocations follow the actual
+block progression; source and metric rectangles retain their own extents.
+Containing direction maps the available interval once, independently of the
+upright paragraph's used LTR direction and retained computed direction.
+Mixed retains Text's ordinary bidi order. Per-run outline axes remain separate
+from these line and cell mappings.
+
+Native upright in-flow atomics retain their physical child size, border, content
+and overflow geometry. The adapter converts those boxes to Text's local
+inline/line-under cells before finalization, then maps the accepted geometry
+back once. A physical 6×14 child therefore uses a local 14×6 cell without
+rotating its content. Signed margins and flow advance remain separate from
+occupied bounds. Relative offsets place the physical box without being added
+to its signed flow advance; changed canonical box edges still reenter fitting.
+
+Named Central alignment uses the existing child first/last resolver and its
+Absent synthesis, Unknown refusal and axis checks. Numeric participants retain
+their distance from flow block-start; Text needs distance from line-over, so
+VerticalLr converts that reference through the child's physical width.
+Baseline, Top and Bottom keep their existing alignment roles. Out-of-flow
+upright occurrences retain zero line-flow contribution. Their static anchors
+use the actual flow block-start edge, which differs from line-over in
+VerticalLr. The ordinary absolute-box operation supplies final physical
+border/content rectangles and a physical x baseline; it does not align that
+child to the parent's Central baseline. Nonformatted completion retains its
+zero-height anchor. Offset-valued alignment remains separate.
 
 The box/control-only numeric fitter uses Text's canonical `BidiLevel` and
 borrowed [`SuppliedLine`](../../surgeist-text/src/supplied_line.rs) for ordering.

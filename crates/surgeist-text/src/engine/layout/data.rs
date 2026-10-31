@@ -12,6 +12,9 @@ use crate::{FontData, FontSynthesis, Range, Rect};
 
 use super::super::{PlacedLine, PreparedData, analysis::Boundary};
 
+#[path = "cell_geometry.rs"]
+pub(crate) mod cell_geometry;
+
 /// Canonical provider glyph offsets and advance, with its authentic source unit extent.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct GlyphData {
@@ -38,21 +41,62 @@ impl Whitespace {
     }
 }
 
-/// Same-instance logical font metrics. Descent is a nonnegative distance below baseline.
+/// Same-instance logical cross-axis metrics. The signed distances are from the
+/// line reference toward line-over and line-under respectively.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct RunMetrics {
     pub(crate) ascent: f64,
     pub(crate) descent: f64,
     /// Initial run-style/default strut height; actual components retain their own.
     pub(crate) line_height: f64,
-    /// Distance from baseline to the underline's top, positive upward.
+    pub(crate) basis: RunMetricBasis,
+}
+
+impl RunMetrics {
+    /// Font-design-zero origin relative to the shared line reference, toward
+    /// line-under. Upright glyphs already use their separate Central basis.
+    pub(crate) const fn font_origin_offset(&self) -> f64 {
+        match self.basis {
+            RunMetricBasis::Horizontal(metrics) => metrics.font_origin_offset,
+            RunMetricBasis::Upright { .. } => 0.0,
+        }
+    }
+    pub(crate) const fn horizontal(&self) -> Option<&HorizontalRunMetrics> {
+        match &self.basis {
+            RunMetricBasis::Horizontal(metrics) => Some(metrics),
+            RunMetricBasis::Upright { .. } => None,
+        }
+    }
+}
+
+/// Horizontal-only font facts cannot masquerade as upright cross geometry.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum RunMetricBasis {
+    Horizontal(HorizontalRunMetrics),
+    Upright {
+        /// Present only when an actual component demands MetricsRelative.
+        normal_extent_design: Option<f64>,
+        design_scale: f64,
+    },
+}
+
+impl Default for RunMetricBasis {
+    fn default() -> Self {
+        Self::Horizontal(HorizontalRunMetrics::default())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct HorizontalRunMetrics {
+    /// Signed local line-under displacement from the shared reference to the
+    /// actual font-design-zero paint origin.
+    pub(crate) font_origin_offset: f64,
+    /// Distance from the prepared reference to the underline's top, positive upward.
     pub(crate) underline_top: f64,
     pub(crate) underline_thickness: f64,
-    /// Distance from baseline to the strike center, positive upward.
+    /// Distance from the prepared reference to the strike center, positive upward.
     pub(crate) strike_center: f64,
     pub(crate) strike_thickness: f64,
-    pub(crate) x_height: f64,
-    pub(crate) cap_height: f64,
 }
 
 /// One resolved and actually shaped face/instance. Resources remain strong, not copied bytes.
@@ -67,6 +111,8 @@ pub(crate) struct PreparedRun {
     pub(crate) script: icu_properties::props::Script,
     pub(crate) level: u8,
     pub(crate) atoms: IndexRange<usize>,
+    /// Actual outline axes, independent of the placed line's inline frame.
+    pub(crate) glyph_basis: crate::GlyphBasis,
     pub(crate) metrics: RunMetrics,
 }
 
@@ -99,6 +145,8 @@ pub(crate) struct PreparedCluster {
     pub(crate) atoms: IndexRange<usize>,
     /// Actual provider group before scalar component extraction.
     pub(crate) provider_group: IndexRange<usize>,
+    /// Actual invocation-qualified extraction receipt when separator geometry is demanded.
+    pub(crate) provider_receipt: Option<usize>,
     pub(crate) glyphs: IndexRange<usize>,
     pub(crate) content: ClusterContent,
     pub(crate) style: usize,
@@ -115,6 +163,7 @@ pub(crate) struct PreparedCluster {
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum ShapedItem {
     TextCluster(usize),
+    Cell(usize),
     InlineBox {
         occurrence: usize,
         level: u8,
@@ -125,15 +174,176 @@ pub(crate) enum ShapedItem {
     },
 }
 
+/// Actual horizontal coordinates inside the cell square: x points right and
+/// y points down. They are independent of the outer native line axes.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CellFrame {
+    pub(crate) x_scale: f64,
+    pub(crate) x_offset: f64,
+    pub(crate) baseline: f64,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CellClusterPosition {
+    pub(crate) cluster: usize,
+    /// Executed logical cluster start before its independent word half.
+    pub(crate) pen: f64,
+    pub(crate) word: super::super::spacing::WordSpacingPlacement,
+}
+
+/// Actual horizontal layout, independent of provider input and glyph baselines.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CellTransform {
+    pub(crate) x_scale: f64,
+    pub(crate) x_offset: f64,
+}
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CellTabSpan {
+    pub(crate) atom: usize,
+    pub(crate) cluster: usize,
+    pub(crate) before: f64,
+    pub(crate) after: f64,
+    pub(crate) amount: f64,
+}
+#[derive(Clone, Debug)]
+pub(crate) struct CellLayout {
+    pub(crate) clusters: IndexRange<usize>,
+    pub(crate) advance: IndexRange<f64>,
+    pub(crate) positions: Vec<CellClusterPosition>,
+    pub(crate) transform: CellTransform,
+    pub(crate) tabs: Vec<CellTabSpan>,
+}
+#[derive(Clone, Debug)]
+pub(crate) struct CellProviderPayload {
+    pub(crate) runs: IndexRange<usize>,
+    pub(crate) glyphs: IndexRange<usize>,
+    pub(crate) scope_relations: IndexRange<usize>,
+    pub(crate) baseline: f64,
+}
+/// NoProviderInput is source-proved absence of provider projection, not ink.
+#[derive(Clone, Debug)]
+pub(crate) enum CellPayload {
+    NoProviderInput,
+    LaidOut {
+        layout: CellLayout,
+        provider: Option<CellProviderPayload>,
+    },
+}
+
+/// One genuine source cell and its already executed winning horizontal payload.
+#[derive(Clone, Debug)]
+pub(crate) struct PreparedCell {
+    /// Local ordinal in the analyzed output's actual CombinedOutput bindings.
+    pub(crate) binding: usize,
+    pub(crate) metrics: usize,
+    pub(crate) level: u8,
+    /// Intrinsic one-em square; outer tracking never changes its geometry.
+    pub(crate) extent: f64,
+    /// Current outer flow contribution, including only this operation's gaps.
+    pub(crate) advance: f64,
+    pub(crate) before: f64,
+    pub(crate) after: f64,
+    pub(crate) payload: CellPayload,
+}
+
+/// Whether actual shared native payload arenas have transferred to Cell ownership.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) enum CellArenaOwnership {
+    #[default]
+    Native,
+    Owned,
+}
+
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ShapedData {
+    pub(crate) cell_arenas: CellArenaOwnership,
+    /// Feature-only custody appended at each actual non-residual glyph insertion;
+    /// it follows the same extraction ordering and clone lifetime as glyphs.
+    pub(crate) scope_glyph_custody: Vec<super::super::scope_alignment::GlyphCustody>,
+    /// Actual extraction-time operand relations in captured frame domains.
+    /// This arena follows the same native output lifetime as glyph custody.
+    pub(crate) scope_relations: Vec<super::super::scope_alignment::ScopeRelation>,
     pub(crate) font_queries: Vec<super::super::shape::FontQueryWitness>,
     pub(crate) runs: Vec<PreparedRun>,
     pub(crate) clusters: Vec<PreparedCluster>,
     pub(crate) glyphs: Vec<GlyphData>,
+    /// Invocation-qualified provider observations, before component apportioning.
+    pub(crate) provider_groups: Vec<ProviderGroup>,
+    pub(crate) character_gaps: Vec<super::super::spacing::character::Gap>,
+    pub(crate) character_gap_ownership: super::super::spacing::character::GapArenaOwnership,
+    pub(crate) character_invocations: Vec<super::super::spacing::character::Invocation>,
+    /// The same immutable upfront requirement used by this actual operation.
+    pub(crate) character_requirements:
+        Option<Arc<super::super::spacing::character::PlanRequirements>>,
+    /// Complete invocation-mapped DI exclusions; absence means eligible input.
+    pub(crate) character_exclusions: Arc<OrdinalMap<super::super::spacing::character::Exclusion>>,
+    pub(crate) atomic_gaps: OrdinalMap<f64>,
+    pub(crate) word_spacing: Vec<super::super::spacing::WordSpacingUnit>,
     pub(crate) items: Vec<ShapedItem>,
+    pub(crate) cells: Vec<PreparedCell>,
     /// An actual admitted default face with zero source/glyph extent, for empty metrics.
     pub(crate) empty_run: Option<PreparedRun>,
+}
+
+/// Sparse native occurrence index with visible owned buffer capacity. Its
+/// sorted keys carry actual ordinals; equal metric values never supply identity.
+#[derive(Clone, Debug)]
+pub(crate) struct OrdinalMap<T> {
+    pub(crate) rows: Vec<(usize, T)>,
+}
+impl<T> Default for OrdinalMap<T> {
+    fn default() -> Self {
+        Self { rows: Vec::new() }
+    }
+}
+impl<T> OrdinalMap<T> {
+    pub(crate) fn contains_key(&self, key: &usize) -> bool {
+        self.get(key).is_some()
+    }
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (&usize, &T)> {
+        self.rows.iter().map(|(key, value)| (key, value))
+    }
+    pub(crate) fn get(&self, key: &usize) -> Option<&T> {
+        self.rows
+            .binary_search_by_key(key, |row| row.0)
+            .ok()
+            .map(|index| &self.rows[index].1)
+    }
+    pub(crate) fn get_mut(&mut self, key: &usize) -> Option<&mut T> {
+        self.rows
+            .binary_search_by_key(key, |row| row.0)
+            .ok()
+            .map(|index| &mut self.rows[index].1)
+    }
+    pub(crate) fn insert(&mut self, key: usize, value: T) -> Option<T> {
+        match self.rows.binary_search_by_key(&key, |row| row.0) {
+            Ok(index) => Some(std::mem::replace(&mut self.rows[index].1, value)),
+            Err(index) => {
+                self.rows.insert(index, (key, value));
+                None
+            }
+        }
+    }
+    pub(crate) fn clear(&mut self) {
+        self.rows.clear();
+    }
+    pub(crate) fn values(&self) -> impl Iterator<Item = &T> {
+        self.iter().map(|(_, value)| value)
+    }
+}
+impl<T> std::ops::Index<&usize> for OrdinalMap<T> {
+    type Output = T;
+    fn index(&self, key: &usize) -> &T {
+        self.get(key).expect("admitted native ordinal")
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ProviderGroup {
+    pub(crate) run: usize,
+    pub(crate) atoms: IndexRange<usize>,
+    pub(crate) glyphs: IndexRange<usize>,
+    pub(crate) advance: f64,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -160,13 +370,47 @@ pub(crate) struct LineMetrics {
 /// canonical f32; logical run-local pens and the run origin remain f64.
 #[derive(Clone, Debug)]
 pub(crate) struct FinalizedRun {
+    pub(crate) frame: FinalizedRunFrame,
+    /// Executed common reference, distinct from the font-design paint origin.
+    pub(crate) reference: Option<f64>,
     pub(crate) run: usize,
     pub(crate) style: usize,
     pub(crate) level: u8,
     pub(crate) source: Range,
     pub(crate) glyphs: IndexRange<usize>,
     pub(crate) x: f64,
+    /// Checked font origin in local line-under coordinates; the common
+    /// alignment reference remains in LineMetrics::baseline.
+    pub(crate) y: f64,
     pub(crate) advance: f64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum FinalizedRunFrame {
+    Line,
+    Cell(usize),
+}
+
+/// The actual outer square has already received its enclosing scope shift.
+/// The retained shift records custody and must not be applied a second time.
+#[derive(Clone, Debug)]
+pub(crate) struct FinalizedCell {
+    pub(crate) unit: usize,
+    pub(crate) cell: usize,
+    pub(crate) binding: usize,
+    pub(crate) reference: f64,
+    /// Fixed intrinsic square interval in the native line frame.
+    pub(crate) inline: IndexRange<f64>,
+    /// Executed outer flow endpoint, distinct from the square's trailing edge.
+    pub(crate) flow_end: f64,
+    /// Exact working Cell contribution after finalization restores/reapplies spacing.
+    pub(crate) advance: f64,
+    pub(crate) under: IndexRange<f64>,
+    pub(crate) scope_displacement: crate::BaselineShift,
+    pub(crate) level: u8,
+    pub(crate) frame: Option<CellFrame>,
+    pub(crate) transform: Option<CellTransform>,
+    pub(crate) tabs: Vec<CellTabSpan>,
 }
 
 /// One actual logical glyph position, separate from its canonical provider offsets.
@@ -175,10 +419,25 @@ pub(crate) struct FinalizedGlyph {
     pub(crate) glyph: GlyphData,
     /// Run-local logical pen. This includes actual finalized cluster spacing.
     pub(crate) pen: f64,
+    /// Independent pre-half operand, never reconstructed from a rounded pen.
+    pub(crate) pen_base: f64,
+    pub(crate) word_half: f64,
+}
+
+/// Executed local endpoint pair, retained even without a glyph inventory.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct SpacingDisplacement {
+    /// Coordinate frame of the executed pair; outer Cell tracking is Line.
+    pub(crate) frame: FinalizedRunFrame,
+    pub(crate) before: crate::Point,
+    pub(crate) after: crate::Point,
+    pub(crate) amount: f64,
 }
 
 #[derive(Clone, Debug)]
 pub(crate) struct FinalizedCluster {
+    pub(crate) frame: FinalizedRunFrame,
+    pub(crate) reference: Option<f64>,
     /// The actually selected component's resolved font-backed line height.
     pub(crate) line_height: f64,
     /// Actual provider contribution before caller-owned spacing.
@@ -205,7 +464,9 @@ pub(crate) struct FinalizedBox {
     pub(crate) occurrence: usize,
     pub(crate) atomic: crate::protocol::PreparedAtomic,
     pub(crate) slot: crate::Point,
+    pub(crate) scope_displacement: crate::BaselineShift,
     pub(crate) geometry: FinalizedBoxGeometry,
+    pub(crate) following_gap: f64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -220,6 +481,9 @@ pub(crate) enum FinalizedBoxGeometry {
 }
 
 impl FinalizedBox {
+    pub(crate) fn cell_advance(&self) -> f64 {
+        self.flow_advance() + self.following_gap
+    }
     pub(crate) fn flow_advance(&self) -> f64 {
         match self.geometry {
             FinalizedBoxGeometry::InFlow { flow, .. } => flow.advance,
@@ -232,28 +496,45 @@ impl FinalizedBox {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum FinalizedVisualItem {
     Cluster(usize),
+    Cell(usize),
     InlineBox(usize),
     Anchor(usize),
 }
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct FinalizedAnchor {
+    pub(crate) reference: Option<f64>,
     pub(crate) unit: usize,
     pub(crate) slot: crate::Point,
+    pub(crate) scope_displacement: crate::BaselineShift,
     pub(crate) level: u8,
     pub(crate) inline_end: f64,
 }
 
-/// The actual allocation target joined by finalization, in selected-slot order.
-/// Logical advance remains on the real finalized cluster, without a copy here.
-#[derive(Clone, Copy, Debug)]
+/// Actual complete-unit feedback in selected-slot order, derived from its
+/// retained component membership after finalization.
+#[derive(Clone, Debug)]
 pub(crate) struct FinalizedSpacingSlot {
     pub(crate) cluster: usize,
+    pub(crate) edge: Option<usize>,
+    pub(crate) members: Vec<usize>,
+    pub(crate) geometry: crate::SpacingSlotGeometry,
+    pub(crate) stretchability: crate::SpacingStretchability,
+    pub(crate) traversal_order: usize,
+    pub(crate) authored: f64,
+    pub(crate) letter: f64,
+    pub(crate) allocation: f64,
+    pub(crate) advance: f64,
     pub(crate) disposition: crate::protocol::SpacingSlotDisposition,
 }
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FinalizedLineData {
+    /// Preserved unallocated source-cell sizing policy, relative to a reference.
+    pub(crate) scope_cell_band: Option<(f64, f64)>,
+    pub(crate) scope_allocations: Vec<crate::ScopeFrameAllocation>,
+    pub(crate) scope_retention: Option<crate::ScopeAlignmentRetention>,
+    pub(crate) scope_usage: Option<crate::ScopeAlignmentUsage>,
     pub(crate) measurements: Option<crate::LineMeasurements>,
     pub(crate) font_runs: Vec<PreparedRun>,
     pub(crate) runs: Vec<FinalizedRun>,
@@ -261,13 +542,94 @@ pub(crate) struct FinalizedLineData {
     pub(crate) clusters: Vec<FinalizedCluster>,
     /// Paint-order canonical local glyphs, with original associations.
     pub(crate) glyphs: Vec<FinalizedGlyph>,
+    pub(crate) word_anchors: Vec<SpacingDisplacement>,
+    pub(crate) character_anchors: Vec<SpacingDisplacement>,
     pub(crate) boxes: Vec<FinalizedBox>,
+    pub(crate) cells: Vec<FinalizedCell>,
     pub(crate) visual_order: Vec<FinalizedVisualItem>,
     pub(crate) anchors: Vec<FinalizedAnchor>,
     pub(crate) spacing_slots: Vec<FinalizedSpacingSlot>,
+    /// Complete executed allocation amounts, before rounded cluster addition.
+    /// Signed zero is canonicalized only for semantic identity.
+    pub(crate) spacing_amounts: Vec<f64>,
     pub(crate) metrics: LineMetrics,
     pub(crate) prefix: crate::protocol::prefix::PrefixData,
     pub(crate) fragments: Vec<FinalizedFragmentData>,
+}
+
+impl FinalizedLineData {
+    /// Visit actual owned output arenas; the enclosing FinalizedLine header
+    /// already includes every embedded fixed header in this row.
+    pub(crate) fn visit_scope_allocations(
+        &self,
+        visit: &mut crate::engine::scope_alignment::census::AllocationVisitor<'_>,
+    ) -> crate::Result<()> {
+        use crate::engine::scope_alignment::census::AllocationWitness as W;
+        visit(W::buffer(
+            &self.scope_allocations,
+            self.scope_allocations.len(),
+        )?)?;
+        visit(W::buffer(&self.font_runs, self.font_runs.len())?)?;
+        for run in &self.font_runs {
+            visit(W::buffer(&run.coords, run.coords.len())?)?;
+            visit(W::resource(run.font.bytes()))?;
+        }
+        visit(W::buffer(&self.runs, self.runs.len())?)?;
+        visit(W::buffer(&self.clusters, self.clusters.len())?)?;
+        visit(W::buffer(&self.glyphs, self.glyphs.len())?)?;
+        visit(W::buffer(&self.word_anchors, self.word_anchors.len())?)?;
+        visit(W::buffer(
+            &self.character_anchors,
+            self.character_anchors.len(),
+        )?)?;
+        visit(W::buffer(&self.boxes, self.boxes.len())?)?;
+        visit(W::buffer(&self.cells, self.cells.len())?)?;
+        for cell in &self.cells {
+            visit(W::buffer(&cell.tabs, cell.tabs.len())?)?;
+        }
+        visit(W::buffer(&self.visual_order, self.visual_order.len())?)?;
+        visit(W::buffer(&self.anchors, self.anchors.len())?)?;
+        visit(W::buffer(&self.spacing_slots, self.spacing_slots.len())?)?;
+        for row in &self.spacing_slots {
+            visit(W::buffer(&row.members, row.members.len())?)?;
+        }
+        visit(W::buffer(
+            &self.spacing_amounts,
+            self.spacing_amounts.len(),
+        )?)?;
+        visit(W::buffer(&self.fragments, self.fragments.len())?)?;
+        if let Some(measurements) = &self.measurements {
+            measurements.edges.visit_scope_allocations(visit)?;
+        }
+        self.prefix.visit_scope_allocations(visit)
+    }
+
+    /// Source-cell sizing is retained before scope allocation. Only its actual
+    /// occurrence reference moves; final line extrema are not another cell size.
+    pub(crate) fn cell_band(&self, reference: Option<f64>) -> (f64, f64) {
+        match (self.scope_cell_band, reference) {
+            (Some((before, after)), Some(reference)) => (reference - before, before + after),
+            _ => (
+                self.metrics.block_min,
+                self.metrics.block_max - self.metrics.block_min,
+            ),
+        }
+    }
+
+    pub(crate) fn cell_rect(&self, inline: f64, advance: f64, reference: Option<f64>) -> Rect {
+        let (top, height) = self.cell_band(reference);
+        Rect::new(inline, top, advance, height)
+    }
+}
+
+impl crate::engine::FinalizedLine {
+    pub(crate) fn visit_scope_allocations(
+        &self,
+        visit: &mut crate::engine::scope_alignment::census::AllocationVisitor<'_>,
+    ) -> crate::Result<()> {
+        visit(crate::engine::scope_alignment::census::AllocationWitness::object(self, 0))?;
+        self.data.visit_scope_allocations(visit)
+    }
 }
 
 /// One authentic selected origin intersection and its actual local association geometry.

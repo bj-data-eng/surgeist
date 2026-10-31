@@ -92,25 +92,28 @@ fn prepare(
         });
         offset += len;
     }
-    let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-        source: Source::identified(
-            original(definition, consecutive),
-            text::Id::from_u64(66199),
-            7,
-        ),
-        base_style: style,
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: text::ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: text::ParagraphStrut::DefaultFont,
-        terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        origins,
-        connections,
-        controls,
-        boundary_policies,
-        replacements: Vec::new(),
-        anchor_order: anchors,
-    })?;
+    let analyzed = text::AnalyzedSource::from_paragraph(
+        text::ParagraphInput {
+            source: Source::identified(
+                original(definition, consecutive),
+                text::Id::from_u64(66199),
+                7,
+            ),
+            base_style: style,
+            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            origins,
+            connections,
+            controls,
+            boundary_policies,
+            replacements: Vec::new(),
+            anchor_order: anchors,
+        },
+        text::AnalysisTypography::HorizontalComposition,
+    )?;
     let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::Word);
     let mut system = text::System::new(text::SystemOptions {
         font_catalogue: text::FontCatalogueMode::RegisteredOnly,
@@ -285,6 +288,7 @@ fn compute_with_style<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let input =
@@ -512,6 +516,14 @@ fn assert_outgoing_counter_once_with_style(
             boundary: None,
         })
         .collect::<Vec<_>>();
+    let scope_alignments = crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
+        crate::text_layout::scope_alignment::ScopeAlignmentSnapshot::<f64>::admit::<()>(
+            Vec::new(),
+            &[],
+        )
+        .unwrap()
+        .freeze(),
+    );
     let fitted = fit::fit(
         fit::FitInput {
             groups: crate::group_alignment::Snapshot::default(),
@@ -523,6 +535,8 @@ fn assert_outgoing_counter_once_with_style(
                 Direction::Ltr,
             ),
             prepared: p,
+            segment: p.source_segments().next().unwrap(),
+            scope_alignments: &scope_alignments,
             available: fit::Available::Definite(40.0),
             base_direction: text::ParagraphBaseDirection::LeftToRight,
             block_direction: text::ParagraphBaseDirection::LeftToRight,

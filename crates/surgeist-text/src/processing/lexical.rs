@@ -1,11 +1,63 @@
-//! Private executed lexical work; only the correspondence survives this scratch.
+//! Private executed lexical work and its immutable occurrence evidence.
+
+use std::sync::Arc;
+
+mod continuity;
+use crate::SourceContinuityOperation;
+use continuity::{Adjacency, Edge, ExteriorContinuity, Frontier, Neighbor};
 
 use icu_properties::{CodePointMapData, CodePointSetData, props};
 
 use super::{
     DeletionCause, DocumentSegmentBreaks, EffectiveInterval, InlineBoxKind, MappingKind,
-    MappingPiece, Range, Result, Source, WhiteSpace, overflow, reserve,
+    MappingPiece, Range, Result, Source, WhiteSpace,
+    lexical_inventory::{
+        LexicalBarrierOrigin, LexicalCharacterRole, LexicalContext, LexicalDisposition,
+        LexicalOutput, LexicalRecord, LexicalRecordKind, LexicalState,
+    },
+    overflow, reserve,
 };
+
+/// The final SPACE fold is shared by original execution and fixed-partition
+/// combination replay. It does not rerun delimiter, discard or trim rules.
+pub(crate) enum SpaceClass {
+    Transparent,
+    Collapsible,
+    Other,
+}
+
+pub(crate) struct SpaceCollapse {
+    previous: Adjacency,
+}
+impl SpaceCollapse {
+    pub(crate) fn new() -> Self {
+        Self {
+            previous: Adjacency::No,
+        }
+    }
+    pub(crate) fn missing(&mut self, before_origin: usize, after_origin: usize) {
+        self.previous.cross(Edge {
+            before_origin,
+            after_origin,
+        });
+    }
+    pub(crate) fn step(&mut self, class: SpaceClass) -> Result<Option<bool>> {
+        match class {
+            SpaceClass::Transparent => Ok(None),
+            SpaceClass::Other => {
+                self.previous = Adjacency::No;
+                Ok(None)
+            }
+            SpaceClass::Collapsible => {
+                let zero = self
+                    .previous
+                    .resolve(SourceContinuityOperation::WhiteSpace)?;
+                self.previous = Adjacency::Yes;
+                Ok(Some(!zero))
+            }
+        }
+    }
+}
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Kind {
@@ -15,6 +67,7 @@ enum Kind {
     Break,
     Barrier,
     Marker,
+    Frontier(Edge),
 }
 
 struct Token {
@@ -24,12 +77,16 @@ struct Token {
     mapping: MappingKind,
     replacement: Option<u16>,
     context: Option<char>,
-    before: Option<char>,
+    before: Neighbor,
+    /// Current trim/around-break target; drained before the next stage starts.
+    pending_deletion: Option<Edge>,
     domain: usize,
     marker: Option<usize>,
     plaintext_reset: bool,
     atomic: Option<usize>,
     scope: Option<usize>,
+    /// Genuine capture event, distinct from the transient trim-marker index.
+    event: Option<usize>,
 }
 
 impl Token {
@@ -50,6 +107,23 @@ impl Token {
     fn delete(&mut self, cause: DeletionCause) {
         self.mapping = MappingKind::Delete(cause);
     }
+
+    fn defer_trim(&mut self, edge: Edge) -> Result<()> {
+        // Only original U+0020 in a collapsible mode is deferred. Its presence
+        // is eligible, nonstopping whitespace in every exterior/inner trim;
+        // with no Break role it cannot change selection of any other target.
+        // TAB/CR replacements and preserved whitespace remain outside this
+        // bounded proof, as do all segment breaks and control state.
+        let neutral = self.kind == Kind::Space
+            && self.mode.collapses_spaces()
+            && self.mapping == MappingKind::Copy
+            && self.context == Some(' ');
+        if !neutral {
+            return Err(edge.unavailable(SourceContinuityOperation::Trimming));
+        }
+        self.pending_deletion = self.pending_deletion.or(Some(edge));
+        Ok(())
+    }
 }
 
 /// Admitted semantic requests share tokenization, trim ordering, Phase I and
@@ -68,12 +142,13 @@ pub(super) enum ValidatedProcessingRequest<'a> {
         source: &'a Source,
         breaks: &'a DocumentSegmentBreaks,
         context: &'a super::contextual::ProcessingContext,
+        capture: &'a Arc<super::contextual::ScopeCapture>,
         modes: &'a [EffectiveInterval],
+        origins: &'a [crate::ParagraphOrigin],
+        provided: &'a [Option<usize>],
     },
 }
-pub(super) fn execute(
-    request: ValidatedProcessingRequest<'_>,
-) -> Result<(Vec<u16>, Vec<MappingPiece>, Vec<super::PlaintextToken>)> {
+pub(super) fn execute(request: ValidatedProcessingRequest<'_>) -> Result<LexicalOutput> {
     match request {
         ValidatedProcessingRequest::SourceLocal {
             source,
@@ -90,49 +165,60 @@ pub(super) fn execute(
                 box_order,
                 barriers,
                 decode_boundaries,
+                None,
             )?;
-            phase_one(&mut tokens);
-            emit(source, tokens)
+            phase_one(&mut tokens)?;
+            emit(source, tokens, LexicalContext::SourceLocal)
         }
         ValidatedProcessingRequest::Contextual {
             source,
             breaks,
             context,
+            capture,
             modes,
-        } => execute_contextual(source, breaks, context, modes),
+            origins,
+            provided,
+        } => execute_contextual(source, breaks, context, capture, modes, origins, provided),
     }
 }
 
-fn phase_one(tokens: &mut [Token]) {
+fn phase_one(tokens: &mut [Token]) -> Result<()> {
     // Remove eligible runs after and before every surviving original delimiter,
     // including preserved delimiters before their eventual LF/SPACE emission.
-    around_breaks(tokens.iter_mut());
-    around_breaks(tokens.iter_mut().rev());
+    around_breaks(tokens)?;
 
-    let mut preceding_break = false;
+    let mut preceding_break = Adjacency::No;
     for token in tokens.iter_mut() {
+        if let Kind::Frontier(edge) = token.kind {
+            preceding_break.cross(edge);
+            continue;
+        }
         if token.transparent() {
             continue;
         }
         if token.collapse(Kind::Break) {
-            if preceding_break {
+            if preceding_break.resolve(SourceContinuityOperation::WhiteSpace)? {
                 token.delete(DeletionCause::DuplicateSegmentBreak);
             }
-            preceding_break = true;
+            preceding_break = Adjacency::Yes;
         } else {
-            preceding_break = false;
+            preceding_break = Adjacency::No;
         }
     }
 
     // Linear neighbor sweeps over actual original scalar atoms. Pair decoding
     // happened before deletion, so transparent/deleted units cannot fuse them.
-    let mut context = None;
+    let mut context = Neighbor::Absent;
     for token in tokens.iter_mut() {
+        if let Kind::Frontier(edge) = token.kind {
+            context.cross(edge);
+            continue;
+        }
         if token.transparent() {
             continue;
         }
         token.before = context;
-        context = token.context;
+        context = Neighbor::context(token.context);
     }
     let width = CodePointMapData::<props::EastAsianWidth>::new();
     let script = CodePointMapData::<props::Script>::new();
@@ -144,51 +230,120 @@ fn phase_one(tokens: &mut [Token]) {
                 | props::EastAsianWidth::Halfwidth
         ) && script.get(ch) != props::Script::Hangul
     };
-    context = None;
+    context = Neighbor::Absent;
     for token in tokens.iter_mut().rev() {
+        if let Kind::Frontier(edge) = token.kind {
+            context.cross(edge);
+            continue;
+        }
         if token.transparent() {
             continue;
         }
         if token.collapse(Kind::Break)
-            && (token.before == Some('\u{200b}')
-                || context == Some('\u{200b}')
-                || token.before.is_some_and(&wide) && context.is_some_and(&wide))
+            && token.before.segment_break(context, |before, after| {
+                before == Some('\u{200b}')
+                    || after == Some('\u{200b}')
+                    || before.is_some_and(&wide) && after.is_some_and(&wide)
+            })?
         {
             token.delete(DeletionCause::ContextualSegmentBreak);
             continue;
         }
-        context = token.context;
+        context = Neighbor::context(token.context);
     }
 
-    let mut preceding_space = false;
+    let mut preceding_space = SpaceCollapse::new();
     for token in tokens.iter_mut() {
-        if token.transparent() {
+        if let Kind::Frontier(edge) = token.kind {
+            preceding_space.missing(edge.before_origin, edge.after_origin);
             continue;
         }
-        if token.collapse(Kind::Space) || token.collapse(Kind::Break) {
-            if preceding_space {
-                token.delete(DeletionCause::CollapsedSpace);
-            }
-            preceding_space = true;
+        let class = if token.transparent() {
+            SpaceClass::Transparent
+        } else if token.collapse(Kind::Space) || token.collapse(Kind::Break) {
+            SpaceClass::Collapsible
         } else {
-            preceding_space = false;
+            SpaceClass::Other
+        };
+        if preceding_space.step(class)? == Some(false) {
+            token.delete(DeletionCause::CollapsedSpace);
         }
     }
+    Ok(())
 }
 
-fn around_breaks<'a>(tokens: impl Iterator<Item = &'a mut Token>) {
-    let mut adjacent = false;
+fn around_breaks(tokens: &mut [Token]) -> Result<()> {
+    around_break_sweep(tokens.iter_mut());
+    around_break_sweep(tokens.iter_mut().rev());
     for token in tokens {
+        if let Some(edge) = token.pending_deletion.take()
+            && token.mapping != MappingKind::Delete(DeletionCause::SpaceAroundSegmentBreak)
+        {
+            return Err(edge.unavailable(SourceContinuityOperation::WhiteSpace));
+        }
+    }
+    Ok(())
+}
+
+fn around_break_sweep<'a>(tokens: impl Iterator<Item = &'a mut Token>) {
+    let mut adjacent = Adjacency::No;
+    for token in tokens {
+        if let Kind::Frontier(edge) = token.kind {
+            adjacent.cross(edge);
+            continue;
+        }
         if token.transparent() {
             continue;
         }
         if token.kind == Kind::Break {
-            adjacent = true;
-        } else if adjacent && token.collapse(Kind::Space) {
-            token.delete(DeletionCause::SpaceAroundSegmentBreak);
+            adjacent = Adjacency::Yes;
+        } else if token.collapse(Kind::Space) {
+            match adjacent {
+                Adjacency::No => {}
+                Adjacency::Yes => token.delete(DeletionCause::SpaceAroundSegmentBreak),
+                Adjacency::Unknown(edge) => {
+                    // The other native sweep can still guarantee this same
+                    // deletion. Keep its first missing witness until both
+                    // directions have completed, without writing a guess.
+                    token.pending_deletion = token.pending_deletion.or(Some(edge));
+                }
+            }
         } else {
-            adjacent = false;
+            adjacent = Adjacency::No;
         }
+    }
+}
+
+struct DecodeContinuity<'a> {
+    frontiers: &'a [Frontier],
+    origins: &'a [(Range, usize)],
+    next_frontier: usize,
+    next_origin: usize,
+}
+impl DecodeContinuity<'_> {
+    fn pair(&mut self, at: usize, cut: usize) -> Result<()> {
+        // Ranges locate an admitted original's domain; they never establish a
+        // relationship. Only the actual absent edge supplies the refusal.
+        while self.origins[self.next_origin].0.end <= at {
+            self.next_origin += 1;
+        }
+        let domain = self.origins[self.next_origin].1;
+        // Tokenization visits increasing cuts. Consume each actual frontier
+        // once rather than searching all absent edges for every scalar pair.
+        while self
+            .frontiers
+            .get(self.next_frontier)
+            .is_some_and(|frontier| frontier.at <= cut)
+        {
+            let frontier = &self.frontiers[self.next_frontier];
+            self.next_frontier += 1;
+            if frontier.at == cut && frontier.domain == domain {
+                return Err(frontier
+                    .edge
+                    .unavailable(SourceContinuityOperation::Decoding));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -200,6 +355,7 @@ fn tokenize(
     extra_barriers: &[usize],
     // Sorted original-unit cuts. Unlike barriers these emit no context token.
     decode_boundaries: &[usize],
+    mut continuity: Option<DecodeContinuity<'_>>,
 ) -> Result<Vec<Token>> {
     let mut barriers = Vec::new();
     for &ordinal in box_order {
@@ -230,12 +386,14 @@ fn tokenize(
                 mapping: MappingKind::Copy,
                 replacement: None,
                 context: None,
-                before: None,
+                before: Neighbor::Absent,
+                pending_deletion: None,
                 domain: 0,
                 marker: None,
                 plaintext_reset: false,
                 atomic: None,
                 scope: None,
+                event: None,
             });
             next_barrier += 1;
         }
@@ -306,6 +464,9 @@ fn tokenize(
                 && decode_boundaries.binary_search(&one_end).is_err()
                 && !next_delimiter
             {
+                if let Some(continuity) = &mut continuity {
+                    continuity.pair(at, one_end)?;
+                }
                 end = one_end.checked_add(1).ok_or_else(overflow)?;
                 char::from_u32(
                     0x10000
@@ -330,45 +491,84 @@ fn tokenize(
             mapping,
             replacement,
             context,
-            before: None,
+            before: Neighbor::Absent,
+            pending_deletion: None,
             domain: 0,
             marker: None,
             plaintext_reset: false,
             atomic: None,
             scope: None,
+            event: None,
         });
         at = end;
     }
     Ok(tokens)
 }
 
-fn emit(
-    source: &Source,
-    tokens: Vec<Token>,
-) -> Result<(Vec<u16>, Vec<MappingPiece>, Vec<super::PlaintextToken>)> {
+fn emit(source: &Source, tokens: Vec<Token>, context: LexicalContext) -> Result<LexicalOutput> {
     let mut plaintext = Vec::new();
+    let mut records = Vec::new();
 
     let mut units = Vec::new();
     let mut map: Vec<MappingPiece> = Vec::new();
     for token in tokens {
+        if matches!(token.kind, Kind::Frontier(_)) {
+            continue;
+        }
         let start = units.len();
         let end = start
-            + match token.mapping {
+            .checked_add(match token.mapping {
                 MappingKind::Copy => token.source.len(),
                 MappingKind::Replace => 1,
                 MappingKind::Delete(_) => 0,
-            };
-        reserve(&mut plaintext, 1)?;
-        plaintext.push(super::PlaintextToken {
-            processed: Range::new(start, end),
+            })
+            .ok_or_else(overflow)?;
+        let kind = match token.kind {
+            Kind::Marker => LexicalRecordKind::ScopeMarker {
+                event: token
+                    .event
+                    .expect("contextual marker retains its capture event"),
+            },
+            Kind::Barrier => LexicalRecordKind::Barrier {
+                origin: token.event.map_or(
+                    LexicalBarrierOrigin::SourceLocalCut(token.source.start),
+                    LexicalBarrierOrigin::CapturedEvent,
+                ),
+            },
+            Kind::Text | Kind::BidiControl | Kind::Space | Kind::Break => {
+                LexicalRecordKind::Character {
+                    source: token.source,
+                    mode: token.mode,
+                    role: match token.kind {
+                        Kind::Text => LexicalCharacterRole::Text,
+                        Kind::BidiControl => LexicalCharacterRole::BidiControl,
+                        Kind::Space => LexicalCharacterRole::Space,
+                        Kind::Break => LexicalCharacterRole::SegmentBreak,
+                        Kind::Marker | Kind::Barrier | Kind::Frontier(_) => {
+                            unreachable!("character token")
+                        }
+                    },
+                    disposition: match token.mapping {
+                        MappingKind::Delete(cause) => LexicalDisposition::Deleted {
+                            processed: start,
+                            cause,
+                        },
+                        MappingKind::Copy | MappingKind::Replace => LexicalDisposition::Emitted {
+                            processed: Range::new(start, end),
+                        },
+                    },
+                }
+            }
+            Kind::Frontier(_) => unreachable!("unavailable edges are not emitted source records"),
+        };
+        let record = LexicalRecord {
             domain: token.domain,
-            collapsible: token.collapse(Kind::Space) || token.collapse(Kind::Break),
-            reset: token.plaintext_reset
-                || !token.deleted() && token.mode.preserves_breaks() && token.kind == Kind::Break,
-            transparent: token.deleted()
-                || matches!(token.kind, Kind::BidiControl | Kind::Marker)
-                || token.kind == Kind::Barrier && token.atomic.is_none(),
-        });
+            kind,
+        };
+        reserve(&mut plaintext, 1)?;
+        plaintext.push(record.plaintext(start, token.plaintext_reset, token.atomic));
+        reserve(&mut records, 1)?;
+        records.push(record);
         if matches!(token.kind, Kind::Marker | Kind::Barrier) {
             continue;
         }
@@ -403,15 +603,40 @@ fn emit(
             MappingKind::Delete(_) => {}
         }
     }
-    Ok((units, map, plaintext))
+    Ok(LexicalOutput {
+        units,
+        map,
+        plaintext_tokens: plaintext,
+        lexical: LexicalState::Executed { context, records },
+    })
 }
 
 fn execute_contextual(
     source: &Source,
     breaks: &DocumentSegmentBreaks,
     context: &super::contextual::ProcessingContext,
+    capture: &Arc<super::contextual::ScopeCapture>,
     modes: &[EffectiveInterval],
-) -> Result<(Vec<u16>, Vec<MappingPiece>, Vec<super::PlaintextToken>)> {
+    origins: &[crate::ParagraphOrigin],
+    provided: &[Option<usize>],
+) -> Result<LexicalOutput> {
+    let mut frontiers = Vec::new();
+    super::contextual::connection::visit_source_neighbors(capture, |domain, before, after| {
+        if provided[before].is_none() {
+            reserve(&mut frontiers, 1)?;
+            frontiers.push(Frontier {
+                edge: Edge {
+                    before_origin: before,
+                    after_origin: after,
+                },
+                domain,
+                at: origins[after].aggregate.start,
+                before_order: capture.origin_orders[before],
+                after_order: capture.origin_orders[after],
+            });
+        }
+        Ok(())
+    })?;
     let mut decode_barriers = Vec::new();
     for pair in context.origins.windows(2) {
         if pair[0].1 != pair[1].1 {
@@ -449,6 +674,12 @@ fn execute_contextual(
         &[],
         &decode_barriers,
         &decode_boundaries,
+        Some(DecodeContinuity {
+            frontiers: &frontiers,
+            origins: &context.origins,
+            next_frontier: 0,
+            next_origin: 0,
+        }),
     )?;
     tokens.retain(|token| token.kind != Kind::Barrier);
     for token in &mut tokens {
@@ -478,11 +709,13 @@ fn execute_contextual(
                 mapping: MappingKind::Copy,
                 replacement: None,
                 context: None,
-                before: None,
+                before: Neighbor::Absent,
+                pending_deletion: None,
                 marker: Some(i),
                 plaintext_reset: false,
                 atomic: None,
                 scope: None,
+                event: Some(boundary.order),
             },
         ));
     }
@@ -505,16 +738,54 @@ fn execute_contextual(
                 mapping: MappingKind::Copy,
                 replacement: None,
                 context: None,
-                before: None,
+                before: Neighbor::Absent,
+                pending_deletion: None,
                 marker: None,
                 plaintext_reset: reset,
                 atomic,
                 scope,
+                event: Some(order),
             },
         ));
     }
     ordered.sort_by_key(|(key, _)| *key);
-    let mut tokens: Vec<_> = ordered.into_iter().map(|(_, token)| token).collect();
+    // The frontier sequence follows actual Origin events and the admitted
+    // source cursor. Merge it without sorting or publishing synthetic events.
+    let count = ordered
+        .len()
+        .checked_add(frontiers.len())
+        .ok_or_else(overflow)?;
+    let mut tokens = Vec::new();
+    reserve(&mut tokens, count)?;
+    let mut missing = frontiers.iter().peekable();
+    let frontier_token = |frontier: &Frontier| Token {
+        source: Range::new(frontier.at, frontier.at),
+        domain: frontier.domain,
+        kind: Kind::Frontier(frontier.edge),
+        mode: WhiteSpace::Preserve,
+        mapping: MappingKind::Copy,
+        replacement: None,
+        context: None,
+        before: Neighbor::Absent,
+        pending_deletion: None,
+        marker: None,
+        plaintext_reset: false,
+        atomic: None,
+        scope: None,
+        event: None,
+    };
+    for (key, token) in ordered {
+        while missing
+            .peek()
+            .is_some_and(|frontier| (frontier.at, frontier.after_order) < key)
+        {
+            tokens.push(frontier_token(missing.next().expect("actual frontier")));
+        }
+        tokens.push(token);
+    }
+    for frontier in missing {
+        tokens.push(frontier_token(frontier));
+    }
     let mut scope_starts = std::collections::BTreeMap::new();
     for i in 0..tokens.len() {
         let Some(marker) = tokens[i].marker else {
@@ -534,7 +805,8 @@ fn execute_contextual(
                     true,
                     opening.atomic,
                     Some(opening.scope),
-                );
+                    ExteriorContinuity::at_boundary(&frontiers, opening),
+                )?;
             }
             if boundary.trim.discard_after {
                 let len = tokens.len();
@@ -545,13 +817,31 @@ fn execute_contextual(
                     false,
                     None,
                     Some(boundary.scope),
-                );
+                    ExteriorContinuity::at_boundary(&frontiers, boundary),
+                )?;
             }
             if boundary.trim.discard_inner {
-                trim_inner(&mut tokens, start + 1..i, boundary.domain, boundary.block);
+                trim_inner(
+                    &mut tokens,
+                    start + 1..i,
+                    boundary.domain,
+                    boundary.block,
+                    continuity::at_boundary(&frontiers, boundary.domain, opening.order),
+                    continuity::at_boundary(&frontiers, boundary.domain, boundary.order),
+                )?;
             }
         }
     }
+    // Neutral SPACE effects may wait for a later, independently guaranteed
+    // same-Trim write. No unresolved presence enters any Phase-I operation.
+    for token in &mut tokens {
+        if let Some(edge) = token.pending_deletion.take()
+            && token.mapping != MappingKind::Delete(DeletionCause::Trim)
+        {
+            return Err(edge.unavailable(SourceContinuityOperation::Trimming));
+        }
+    }
+    drop(frontiers);
     // The one Phase I implementation receives each true formatting domain.
     // Emit subsequently restores original envelope order; no copied Source is made.
     let mut domains: Vec<Vec<(usize, Token)>> =
@@ -562,13 +852,14 @@ fn execute_contextual(
     let mut executed = Vec::new();
     for domain in domains {
         let (indices, mut tokens): (Vec<_>, Vec<_>) = domain.into_iter().unzip();
-        phase_one(&mut tokens);
+        phase_one(&mut tokens)?;
         executed.extend(indices.into_iter().zip(tokens));
     }
     executed.sort_by_key(|(index, _)| *index);
     emit(
         source,
         executed.into_iter().map(|(_, token)| token).collect(),
+        LexicalContext::Captured(Arc::clone(capture)),
     )
 }
 
@@ -579,7 +870,8 @@ fn trim_exterior(
     reverse: bool,
     ignore_atomic: Option<usize>,
     ignore_scope: Option<usize>,
-) {
+    mut continuity: ExteriorContinuity,
+) -> Result<()> {
     let indices: Vec<_> = if reverse {
         range.rev().collect()
     } else {
@@ -587,8 +879,14 @@ fn trim_exterior(
     };
     for i in indices {
         let token = &mut tokens[i];
-        if token.domain != domain
-            || token.transparent()
+        if token.domain != domain {
+            continue;
+        }
+        if let Kind::Frontier(edge) = token.kind {
+            continuity.cross(edge);
+            continue;
+        }
+        if token.transparent()
             || ignore_atomic.is_some_and(|atomic| token.atomic == Some(atomic))
             || ignore_scope.is_some_and(|scope| token.scope == Some(scope))
         {
@@ -597,28 +895,62 @@ fn trim_exterior(
         // Genuine trim runs before Phase I. PreserveBreaks' original
         // delimiters remain collapsible for this explicit exterior trimming.
         if token.mode.collapses_spaces() && matches!(token.kind, Kind::Space | Kind::Break) {
-            token.delete(DeletionCause::Trim);
+            if let Some(edge) = continuity.missing() {
+                token.defer_trim(edge)?;
+            } else {
+                token.delete(DeletionCause::Trim);
+            }
         } else {
             break;
         }
     }
+    Ok(())
 }
-fn trim_inner(tokens: &mut [Token], range: std::ops::Range<usize>, domain: usize, block: bool) {
+fn trim_inner(
+    tokens: &mut [Token],
+    range: std::ops::Range<usize>,
+    domain: usize,
+    block: bool,
+    before: Option<Edge>,
+    after: Option<Edge>,
+) -> Result<()> {
+    struct Targets {
+        rows: Vec<usize>,
+        definite: usize,
+        edge: Option<Edge>,
+    }
     let indices: Vec<_> = range
         .filter(|i| tokens[*i].domain == domain && !tokens[*i].transparent())
         .collect();
-    for reverse in [false, true] {
-        let ordered: Vec<_> = if reverse {
-            indices.iter().copied().rev().collect()
-        } else {
-            indices.clone()
-        };
+    // Retain both native directional prefixes before applying their union.
+    // The opposite direction can independently guarantee an idempotent Trim.
+    let gather = |reverse| -> Result<Targets> {
         let mut whitespace = Vec::new();
         let mut through_break = 0;
-        for i in ordered {
+        let mut possible_stop = if reverse { after } else { before }.map(|edge| (0, edge));
+        for position in 0..indices.len() {
+            let i = indices[if reverse {
+                indices.len() - 1 - position
+            } else {
+                position
+            }];
+            if let Kind::Frontier(edge) = tokens[i].kind {
+                if possible_stop.is_none() {
+                    possible_stop = Some((
+                        if block {
+                            through_break
+                        } else {
+                            whitespace.len()
+                        },
+                        edge,
+                    ));
+                }
+                continue;
+            }
             if !matches!(tokens[i].kind, Kind::Space | Kind::Break) {
                 break;
             }
+            reserve(&mut whitespace, 1)?;
             whitespace.push(i);
             if tokens[i].kind == Kind::Break {
                 through_break = whitespace.len();
@@ -629,8 +961,51 @@ fn trim_inner(tokens: &mut [Token], range: std::ops::Range<usize>, domain: usize
         } else {
             whitespace.len()
         };
-        for i in whitespace.into_iter().take(count) {
-            tokens[i].delete(DeletionCause::Trim);
+        whitespace.truncate(count);
+        Ok(Targets {
+            rows: whitespace,
+            definite: possible_stop.map_or(count, |(stopped, _)| stopped),
+            edge: possible_stop.map(|(_, edge)| edge),
+        })
+    };
+    let left = gather(false)?;
+    let right = gather(true)?;
+    // Merge actual target rows, not source offsets. Each directional list is
+    // monotonic in the same filtered token inventory, so no extra search or
+    // source execution is needed to qualify their final union.
+    let mut forward = left.rows.iter().enumerate().peekable();
+    let mut backward = right.rows.iter().enumerate().rev().peekable();
+    loop {
+        let i = match (forward.peek(), backward.peek()) {
+            (Some((_, a)), Some((_, b))) => (**a).min(**b),
+            (Some((_, i)), None) | (None, Some((_, i))) => **i,
+            (None, None) => break,
+        };
+        let mut definite = false;
+        let mut edge = None;
+        if forward.peek().is_some_and(|(_, at)| **at == i) {
+            let (position, _) = forward.next().expect("actual forward target");
+            definite |= position < left.definite;
+            edge = left.edge;
+        }
+        if backward.peek().is_some_and(|(_, at)| **at == i) {
+            let (position, _) = backward.next().expect("actual backward target");
+            definite |= position < right.definite;
+            edge = edge.or(right.edge);
+        }
+        if definite || tokens[i].mapping == MappingKind::Delete(DeletionCause::Trim) {
+            // This operation independently guarantees the same final write.
+            tokens[i].pending_deletion = None;
+        } else {
+            tokens[i].defer_trim(edge.expect("uncertain trim target"))?;
         }
     }
+    for targets in [left, right] {
+        for i in targets.rows {
+            if tokens[i].pending_deletion.is_none() {
+                tokens[i].delete(DeletionCause::Trim);
+            }
+        }
+    }
+    Ok(())
 }

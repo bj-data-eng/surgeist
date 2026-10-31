@@ -126,6 +126,7 @@ fn intrinsic<S: LayoutScalar>(p: &PreparedParagraph, available: AvailableOf<S>, 
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let request =

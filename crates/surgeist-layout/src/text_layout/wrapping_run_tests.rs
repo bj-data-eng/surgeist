@@ -36,9 +36,14 @@ fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
             }],
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
-    let binding = &fixture.binding;
+    let [row] = input.associations.runs() else {
+        panic!("endpoint fixture has one actual admitted native run");
+    };
+    let admitted = input.associations.admitted_run(&input.paragraphs, row);
+    let binding = admitted.binding;
     let controls = binding
         .controls
         .iter()
@@ -75,17 +80,23 @@ fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
     let capacity = Cell::new(40.0);
     let changed = Cell::new(false);
     let result = layout(
-        binding,
+        &admitted,
         &input.associations,
         &[],
         &controls,
         Context {
+            scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
+                input.scope_alignments.clone(),
+            ),
+            orientation: text_orientation(WritingMode::HorizontalTb, &binding.prepared)
+                .unwrap_or_else(|_| panic!("horizontal fixture must resolve its Text orientation")),
+            inline_baseline_context: crate::InlineBaselineContext::Physical,
             groups: crate::group_alignment::Snapshot::default(),
             wrap_style: crate::TextWrapStyle::Auto,
             wrapping: WrappingProjection::new(
                 &input.wrapping,
                 &input.graph,
-                binding,
+                &admitted,
                 &input.associations,
             ),
             formatted: Default::default(),
@@ -95,8 +106,7 @@ fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
             ),
             frame: Frame::Measurement,
             containing_size: Size::new(40.0, 100.0),
-            inset: Point::ZERO,
-            right_inset: 0.0,
+            content_insets: crate::Edges::ZERO,
             cursor_block: 0.0,
             axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             available: AvailableOf::definite(40.0),

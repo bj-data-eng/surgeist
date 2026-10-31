@@ -72,7 +72,9 @@ fn prepare(input: t::ParagraphInput) -> t::PreparedText {
     // Every fixture has an actual enclosing block with this authored Wrap.
     let wrap = input.base_style.wrap;
     let source = input.source.clone();
-    let analyzed = t::AnalyzedSource::from_paragraph(input).unwrap();
+    let analyzed =
+        t::AnalyzedSource::from_paragraph(input, t::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())
@@ -493,6 +495,7 @@ fn finish(
         })
         .collect();
     p.select(t::LineSelectionRequest {
+        segment: p.source_segments().next().unwrap(),
         start,
         end: boundary,
         participants,
@@ -545,7 +548,10 @@ fn finish(
         },
     })
     .unwrap()
-    .finalize(t::SpacingAllocations::None)
+    .finalize(surgeist_text::LineAllocations {
+        spacing: t::SpacingAllocations::None,
+        scopes: surgeist_text::ScopeAllocations::None,
+    })
     .unwrap()
 }
 

@@ -13,6 +13,8 @@ use crate::{TextAlign, TextAlignLast, TextJustification};
 mod balance;
 #[path = "fit_pretty.rs"]
 mod pretty;
+#[path = "fit/spacing.rs"]
+mod spacing;
 #[path = "fit_tail.rs"]
 mod tail;
 
@@ -27,7 +29,7 @@ use surgeist_text::{
     ControlAllocation, FinalizedLine, HyphenationContinuation, LineContext, LineEnd,
     LineOrientation, LineSelectionRequest, LineStart, ParagraphBaseDirection,
     PhraseOverflowDecision, PreparedAlternative, PreparedBoundary, PreparedBreakKind,
-    PreparedParticipant, PreparedPhrasePortion, PreparedTermination, PreparedText, SelectedLine,
+    PreparedParticipant, PreparedPhrasePortion, PreparedTermination, PreparedText,
     SpacingAllocation, SpacingAllocations, SpacingPolicy, SpacingSlotDisposition, TabContext,
     TabPreparation,
 };
@@ -157,6 +159,7 @@ struct CandidateBasis {
     request: LineSelectionRequest,
     boxes: Option<BoxAssignment>,
     amounts: Vec<f64>,
+    scopes: super::scope_alignment::ScopeBasis,
     natural_advance: f64,
     logical_start: f64,
     placed_start: f64,
@@ -169,6 +172,8 @@ struct CandidateBasis {
 pub(crate) struct BlockPosition {
     pub proposed: f64,
     pub minimum: Option<f64>,
+    /// Actual used allocation height paired with the callback's finalized baseline.
+    pub height: f64,
 }
 
 /// Accepted logical allocation and any genuine following clearance movement.
@@ -235,6 +240,7 @@ pub(crate) struct FittedLine {
     pub encounters: Vec<EncounterBasis>,
     pub finalized: FinalizedLine,
     pub amounts: Vec<f64>,
+    pub scopes: super::scope_alignment::ScopeBasis,
     pub natural_advance: f64,
     pub program: Option<std::sync::Arc<SelectionProgram>>,
     pub inline_start: f64,
@@ -251,7 +257,9 @@ pub(crate) struct ReusableLine {
 }
 
 pub(crate) enum FitError {
+    Allocation,
     Text(surgeist_text::Error),
+    TextWritingMode(crate::WritingMode),
     Wrapping(crate::inline_wrapping::WrappingScopeError),
     FeedbackCycle,
     InvalidTailBasis,
@@ -295,6 +303,8 @@ pub(crate) struct FitInput<'a> {
     pub formatted: &'a FormattedTailSnapshot,
     pub line_box_context: crate::line_box::LineBoxContext,
     pub prepared: &'a PreparedText,
+    pub segment: surgeist_text::PreparedSourceSegment,
+    pub scope_alignments: &'a dyn super::scope_alignment::ScopeAlignmentFacts,
     pub available: Available,
     pub base_direction: ParagraphBaseDirection,
     pub block_direction: ParagraphBaseDirection,
@@ -324,6 +334,8 @@ pub(crate) struct LineAllocations {
 struct FinalizedCandidate {
     request: LineSelectionRequest,
     finalized: FinalizedLine,
+    /// Actually executed spacing-capable ordinary trial before ordinary fallback.
+    conditional_trial: Option<FinalizedLine>,
     amounts: Vec<f64>,
     natural_advance: f64,
 }
@@ -339,20 +351,109 @@ fn text_alignment(alignment: TextAlign) -> Alignment {
     }
 }
 
+fn character_basis(normal: TextAlign, last: TextAlignLast, end: LineEnd) -> SpacingPolicy {
+    if normal.for_line(last, end != LineEnd::Soft) == TextAlign::Justify {
+        SpacingPolicy::InterCharacter
+    } else {
+        SpacingPolicy::None
+    }
+}
+
 fn natural_line(
     prepared: &PreparedText,
     reusable: &[ReusableLine],
     request: &LineSelectionRequest,
+    scope_alignments: &dyn super::scope_alignment::ScopeAlignmentFacts,
 ) -> Result<FinalizedLine, FitError> {
-    if let Some(line) = reusable.iter().find(|line| {
-        line.finalized.selected_line().request() == request
-            && line.amounts.iter().all(|amount| *amount == 0.0)
-    }) {
-        return Ok(line.finalized.clone());
+    if let Some(line) = reusable
+        .iter()
+        .find(|line| line.finalized.selected_line().request() == request)
+    {
+        let selected = line.finalized.selected_line();
+        let scopes = super::scope_alignment::allocate(
+            super::scope_alignment::ScopeAllocationInput::Finalized(&line.finalized),
+            scope_alignments,
+        )?;
+        if super::scope_alignment::matches(&line.finalized, scopes.allocations(), scope_alignments)?
+        {
+            drop(scopes);
+            return if line.amounts.iter().all(|amount| *amount == 0.0) {
+                Ok(line.finalized.clone())
+            } else {
+                replay_spacing(&line.finalized, SpacingAllocations::None, scope_alignments)
+            };
+        }
+        return finalize_scopes(&selected, scopes, scope_alignments);
     }
-    Ok(prepared
-        .select(request.clone())?
-        .finalize(SpacingAllocations::None)?)
+    let selected = {
+        let operation = scope_alignments.begin(
+            surgeist_text::ScopeAlignmentCensusInput::Selection { prepared, request },
+            0,
+        )?;
+        match &operation {
+            Some(operation) => {
+                prepared.select_with_scope_allowance(request.clone(), operation.allowance()?)?
+            }
+            None => prepared.select(request.clone())?,
+        }
+    };
+    let scopes = super::scope_alignment::allocate(
+        super::scope_alignment::ScopeAllocationInput::Selected(&selected),
+        scope_alignments,
+    )?;
+    finalize_scopes(&selected, scopes, scope_alignments)
+}
+
+fn finalize_scopes(
+    selected: &surgeist_text::SelectedLine,
+    scopes: super::scope_alignment::AllocatedScopes,
+    facts: &dyn super::scope_alignment::ScopeAlignmentFacts,
+) -> Result<FinalizedLine, FitError> {
+    // The incoming allocation vector remains metered as Layout storage during
+    // census and slot growth, then is handed to Text without double charging.
+    let mut operation = facts.begin(
+        surgeist_text::ScopeAlignmentCensusInput::Product(
+            surgeist_text::ScopeAlignmentProduct::Selected(selected),
+        ),
+        1,
+    )?;
+    let allocations = surgeist_text::LineAllocations {
+        spacing: SpacingAllocations::None,
+        scopes: scopes.into_text(),
+    };
+    let line = match &operation {
+        Some(operation) => {
+            selected.finalize_with_scope_allowance(allocations, operation.allowance()?)?
+        }
+        None => selected.finalize(allocations)?,
+    };
+    if let Some(operation) = &mut operation {
+        operation.register(&line)?;
+    }
+    Ok(line)
+}
+
+fn replay_spacing(
+    line: &FinalizedLine,
+    spacing: SpacingAllocations,
+    facts: &dyn super::scope_alignment::ScopeAlignmentFacts,
+) -> Result<FinalizedLine, FitError> {
+    let mut operation = facts.begin(
+        surgeist_text::ScopeAlignmentCensusInput::Product(
+            surgeist_text::ScopeAlignmentProduct::Finalized(line),
+        ),
+        1,
+    )?;
+    let result = match &operation {
+        Some(operation) => {
+            line.with_spacing_with_scope_allowance(spacing, operation.allowance()?)?
+        }
+        None => line.with_spacing(spacing)?,
+    };
+    if let Some(operation) = &mut operation {
+        operation.register(&result)?;
+    }
+    Ok(result)
 }
 
 /// Rebuild the reached facts for this actual request. Context rows allocate no
@@ -399,6 +500,7 @@ fn finalize_candidate(
     prepared: &PreparedText,
     controls: &[ControlAllocation],
     reusable: &[ReusableLine],
+    scope_alignments: &dyn super::scope_alignment::ScopeAlignmentFacts,
     mut request: LineSelectionRequest,
     alignment: FinalizationAlignment,
     active_request: &mut LineSelectionRequest,
@@ -410,12 +512,62 @@ fn finalize_candidate(
     } = alignment;
     let effective = normal.for_line(last, request.context.end != LineEnd::Soft);
     request.context.alignment = text_alignment(effective);
+    if justification == TextJustification::InterCharacter {
+        request.context.spacing = character_basis(normal, last, request.context.end);
+    }
     *active_request = request.clone();
     resolve_boundary_context(prepared, controls, &mut request)?;
-    let natural = natural_line(prepared, reusable, &request)?;
+    let natural = natural_line(prepared, reusable, &request, scope_alignments)?;
     let natural_advance = natural.measurements().alignment().advance();
     let selected = natural.selected_line();
     let mut amounts = vec![0.0; selected.spacing_slots().len()];
+    if effective == TextAlign::Justify
+        && matches!(
+            justification,
+            TextJustification::InterWord | TextJustification::InterCharacter
+        )
+    {
+        *active_request = request.clone();
+        if let Some(allocation) = spacing::allocate(&natural, scope_alignments)? {
+            return Ok(FinalizedCandidate {
+                conditional_trial: None,
+                request,
+                finalized: allocation.finalized,
+                amounts: allocation.amounts,
+                natural_advance,
+            });
+        }
+        if justification == TextJustification::InterCharacter
+            && matches!(&request.termination, PreparedTermination::Conditional(cut) if cut.purpose() == ConditionalPurpose::Overflow)
+        {
+            return Ok(FinalizedCandidate {
+                request,
+                finalized: natural.clone(),
+                conditional_trial: Some(natural),
+                amounts,
+                natural_advance,
+            });
+        }
+        // A proved unexpandable spacing result follows the real last-line
+        // fallback through a new selection, never through prior slot handles.
+        request.context.alignment = text_alignment(normal.unexpandable(last));
+        if justification == TextJustification::InterCharacter {
+            // Ordinary fallback may use another real optional-feature plan.
+            request.context.spacing = SpacingPolicy::None;
+        }
+        *active_request = request.clone();
+        resolve_boundary_context(prepared, controls, &mut request)?;
+        let finalized = natural_line(prepared, reusable, &request, scope_alignments)?;
+        amounts = vec![0.0; finalized.selected_line().spacing_slots().len()];
+        return Ok(FinalizedCandidate {
+            conditional_trial: (justification == TextJustification::InterCharacter)
+                .then_some(natural),
+            request,
+            natural_advance: finalized.measurements().alignment().advance(),
+            finalized,
+            amounts,
+        });
+    }
     if effective == TextAlign::Justify {
         let retained: Vec<_> = natural
             .spacing_slots()
@@ -466,16 +618,31 @@ fn finalize_candidate(
                     };
                     supplied = finite(supplied + amounts[*index])?;
                 }
+                super::scope_alignment::admit_frame_comparisons(
+                    &natural,
+                    reusable
+                        .iter()
+                        .map(|line| line.finalized.scope_allocations().len()),
+                    scope_alignments,
+                )?;
                 let finalized = if let Some(line) = reusable.iter().find(|line| {
-                    line.finalized.selected_line().request() == &request && line.amounts == amounts
+                    line.finalized.selected_line().request() == &request
+                        && line.amounts == amounts
+                        && line.finalized.scope_allocations() == natural.scope_allocations()
                 }) {
                     line.finalized.clone()
                 } else {
-                    finalize_spacing(&selected, &amounts)?
+                    finalize_spacing(&natural, &amounts, scope_alignments)?
                 };
-                let finalized =
-                    constrain_spacing_budget(&selected, &retained, width, &mut amounts, finalized)?;
+                let finalized = constrain_spacing_budget(
+                    &retained,
+                    width,
+                    &mut amounts,
+                    finalized,
+                    scope_alignments,
+                )?;
                 return Ok(FinalizedCandidate {
+                    conditional_trial: None,
                     request,
                     finalized,
                     amounts,
@@ -488,9 +655,10 @@ fn finalize_candidate(
             request.context.alignment = text_alignment(normal.unexpandable(last));
             *active_request = request.clone();
             resolve_boundary_context(prepared, controls, &mut request)?;
-            let finalized = natural_line(prepared, reusable, &request)?;
+            let finalized = natural_line(prepared, reusable, &request, scope_alignments)?;
             amounts = vec![0.0; finalized.selected_line().spacing_slots().len()];
             return Ok(FinalizedCandidate {
+                conditional_trial: None,
                 request,
                 natural_advance: finalized.measurements().alignment().advance(),
                 finalized,
@@ -499,6 +667,7 @@ fn finalize_candidate(
         }
     }
     Ok(FinalizedCandidate {
+        conditional_trial: None,
         request,
         finalized: natural,
         amounts,
@@ -513,31 +682,58 @@ fn finalize_with_roles(
     mut request: LineSelectionRequest,
     natural_only: bool,
     entry: &super::roles::RoleEntry<'_>,
+    operation: CandidateOperation,
 ) -> Result<(FinalizedCandidate, Option<RoleBasis>), FitError> {
     request.context.formatted_line = surgeist_text::FormattedLineContext::default();
     let mut basis = super::roles::initial_basis(&request, entry.current_first);
     for _ in 0..=2 {
         let mut active = request.clone();
         let result = if natural_only {
+            if operation == CandidateOperation::OrdinaryFallback {
+                active.context.spacing = SpacingPolicy::None;
+                active.context.alignment =
+                    text_alignment(input.alignment.unexpandable(input.last_alignment));
+            } else if input.justification == TextJustification::InterCharacter {
+                let effective = input
+                    .alignment
+                    .for_line(input.last_alignment, active.context.end != LineEnd::Soft);
+                active.context.alignment = text_alignment(effective);
+                active.context.spacing =
+                    character_basis(input.alignment, input.last_alignment, active.context.end);
+            }
             resolve_boundary_context(input.prepared, input.controls, &mut active)?;
-            natural_line(input.prepared, input.reusable, &active).map(|finalized| {
-                FinalizedCandidate {
-                    amounts: vec![0.0; finalized.selected_line().spacing_slots().len()],
-                    request: active.clone(),
-                    natural_advance: finalized.measurements().alignment().advance(),
-                    finalized,
-                }
+            natural_line(
+                input.prepared,
+                input.reusable,
+                &active,
+                input.scope_alignments,
+            )
+            .map(|finalized| FinalizedCandidate {
+                conditional_trial: None,
+                amounts: vec![0.0; finalized.selected_line().spacing_slots().len()],
+                request: active.clone(),
+                natural_advance: finalized.measurements().alignment().advance(),
+                finalized,
             })
         } else {
             finalize_candidate(
                 input.prepared,
                 input.controls,
                 input.reusable,
+                input.scope_alignments,
                 request.clone(),
-                FinalizationAlignment {
-                    normal: input.alignment,
-                    last: input.last_alignment,
-                    justification: input.justification,
+                if operation == CandidateOperation::OrdinaryFallback {
+                    FinalizationAlignment {
+                        normal: input.alignment.unexpandable(input.last_alignment),
+                        last: TextAlignLast::Auto,
+                        justification: TextJustification::None,
+                    }
+                } else {
+                    FinalizationAlignment {
+                        normal: input.alignment,
+                        last: input.last_alignment,
+                        justification: input.justification,
+                    }
                 },
                 &mut active,
             )
@@ -583,22 +779,65 @@ fn finalize_with_roles(
 
 /// Every probe executes the complete table on this actual selection. Never
 /// reconstruct Text's slot additions or its logical advance fold in Layout.
-fn finalize_spacing(selected: &SelectedLine, amounts: &[f64]) -> Result<FinalizedLine, FitError> {
-    Ok(selected.finalize(SpacingAllocations::Complete(
-        selected
+fn finalize_spacing(
+    line: &FinalizedLine,
+    amounts: &[f64],
+    facts: &dyn super::scope_alignment::ScopeAlignmentFacts,
+) -> Result<FinalizedLine, FitError> {
+    let mut operation = facts.begin(
+        surgeist_text::ScopeAlignmentCensusInput::Product(
+            surgeist_text::ScopeAlignmentProduct::Finalized(line),
+        ),
+        1,
+    )?;
+    let (allocations, lease) = if let Some(operation) = &operation {
+        let count = line
+            .selected_line()
             .spacing_slots()
-            .zip(amounts)
-            .map(|(slot, &amount)| SpacingAllocation { slot, amount })
-            .collect(),
-    ))?)
+            .len()
+            .min(amounts.len());
+        let (mut rows, lease) = super::scope_alignment::allocation_buffer::<SpacingAllocation>(
+            facts, operation, count,
+        )?;
+        rows.extend(
+            line.selected_line()
+                .spacing_slots()
+                .zip(amounts)
+                .map(|(slot, &amount)| SpacingAllocation { slot, amount }),
+        );
+        (SpacingAllocations::Complete(rows), Some(lease))
+    } else {
+        (
+            SpacingAllocations::Complete(
+                line.selected_line()
+                    .spacing_slots()
+                    .zip(amounts)
+                    .map(|(slot, &amount)| SpacingAllocation { slot, amount })
+                    .collect(),
+            ),
+            None,
+        )
+    };
+    // Text admits this exact input before allocating new scope frame geometry.
+    drop(lease);
+    let result = match &operation {
+        Some(operation) => {
+            line.with_spacing_with_scope_allowance(allocations, operation.allowance()?)?
+        }
+        None => line.with_spacing(allocations)?,
+    };
+    if let Some(operation) = &mut operation {
+        operation.register(&result)?;
+    }
+    Ok(result)
 }
 
 fn constrain_spacing_budget(
-    selected: &SelectedLine,
     retained: &[usize],
     width: f64,
     amounts: &mut [f64],
     mut finalized: FinalizedLine,
+    facts: &dyn super::scope_alignment::ScopeAlignmentFacts,
 ) -> Result<FinalizedLine, FitError> {
     if finalized.measurements().alignment().advance() <= width {
         return Ok(finalized);
@@ -619,7 +858,7 @@ fn constrain_spacing_budget(
         } else {
             previous.next_down()
         };
-        finalized = finalize_spacing(selected, amounts)?;
+        finalized = finalize_spacing(&finalized, amounts, facts)?;
         if finalized.measurements().alignment().advance() <= width {
             return Ok(finalized);
         }
@@ -648,7 +887,9 @@ struct EvaluatedCandidate {
     boxes: Option<BoxAssignment>,
     request: LineSelectionRequest,
     finalized: FinalizedLine,
+    conditional_trial: Option<FinalizedLine>,
     amounts: Vec<f64>,
+    scopes: super::scope_alignment::ScopeBasis,
     natural_advance: f64,
     encounters: Vec<EncounterBasis>,
     bands: LineBands,
@@ -665,6 +906,7 @@ impl EvaluatedCandidate {
             boxes: self.boxes.clone(),
             request: self.request.clone(),
             amounts: self.amounts.clone(),
+            scopes: self.scopes.clone(),
             natural_advance: self.natural_advance,
             logical_start: position.logical_start,
             placed_start: self.placed_start,
@@ -824,9 +1066,21 @@ fn prefer_candidate(
     Ok(goal.compare(candidate, current) != std::cmp::Ordering::Greater)
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CandidateOperation {
+    Primary,
+    OrdinaryFallback,
+}
+
+struct ConditionalQueryRecipe {
+    frame: FinalizedLine,
+    ceiling: surgeist_text::PreparedOpportunity,
+}
+
 #[derive(Clone, Copy)]
 struct EndpointContext<'a> {
     accepted_prefix: &'a [FittedLine],
+    preceding: Option<&'a EvaluatedCandidate>,
     line_box_context: crate::line_box::LineBoxContext,
     start: &'a PreparedBoundary,
     incoming: Option<&'a HyphenationContinuation>,
@@ -835,6 +1089,8 @@ struct EndpointContext<'a> {
     hyphenation_state: crate::hyphenation::LineHyphenationState,
     rejected_choices: &'a [CandidateKey],
     conditional: bool,
+    operation: CandidateOperation,
+    conditional_recipe: Option<&'a ConditionalQueryRecipe>,
 }
 
 #[derive(Clone, Copy)]
@@ -916,12 +1172,14 @@ fn box_checkpoint<'a>(
 struct CandidateKey {
     request: LineSelectionRequest,
     boxes: Option<BoxAssignment>,
+    scopes: super::scope_alignment::ScopeBasis,
 }
 impl EvaluatedCandidate {
     fn key(&self) -> CandidateKey {
         CandidateKey {
             request: self.request.clone(),
             boxes: self.boxes.clone(),
+            scopes: self.scopes.clone(),
         }
     }
 }
@@ -930,6 +1188,7 @@ impl FittedLine {
         CandidateKey {
             request: self.finalized.selected_line().request().clone(),
             boxes: self.boxes.clone(),
+            scopes: self.scopes.clone(),
         }
     }
 }
@@ -972,9 +1231,9 @@ where
         input: &FitInput<'_>,
         request: LineSelectionRequest,
         query: &EndpointContext<'_>,
-        preceding: Option<&EvaluatedCandidate>,
-    ) -> Result<EvaluatedCandidate, FitError> {
-        self.evaluate_mode(input, request, query, preceding, false)
+        on_unavailable: impl FnOnce(FinalizedLine),
+    ) -> Result<Option<EvaluatedCandidate>, FitError> {
+        self.evaluate_mode(input, request, query, false, on_unavailable)
     }
 
     fn evaluate_mode(
@@ -982,13 +1241,20 @@ where
         input: &FitInput<'_>,
         request: LineSelectionRequest,
         query: &EndpointContext<'_>,
-        preceding: Option<&EvaluatedCandidate>,
         natural_only: bool,
-    ) -> Result<EvaluatedCandidate, FitError> {
+        on_unavailable: impl FnOnce(FinalizedLine),
+    ) -> Result<Option<EvaluatedCandidate>, FitError> {
         let Some(resolver) = input.wrapping else {
-            return self.evaluate_assignment(input, request, query, preceding, natural_only, None);
+            return self.evaluate_assignment(
+                input,
+                request,
+                query,
+                natural_only,
+                None,
+                on_unavailable,
+            );
         };
-        let incoming = box_checkpoint(&request.start, query, preceding)?;
+        let incoming = box_checkpoint(&request.start, query, query.preceding)?;
         let assignments = resolver.choices(BoxChoice {
             start: &request.start,
             end: &request.end,
@@ -1003,20 +1269,30 @@ where
         let mut ordinary = None;
         let mut unrejected = None;
         let mut fitting = Vec::new();
+        let mut unavailable = None;
         for assignment in assignments {
             let mut request = request.clone();
             request.line_box_struts = assignment.struts();
-            let trial = self.evaluate_assignment(
+            let Some(trial) = self.evaluate_assignment(
                 input,
                 request,
                 query,
-                preceding,
                 natural_only,
                 Some(assignment),
-            )?;
+                |receipt| {
+                    unavailable.get_or_insert(receipt);
+                },
+            )?
+            else {
+                continue;
+            };
             if ordinary.is_none() {
                 ordinary = Some(trial.clone());
             }
+            trial.scopes.admit_comparisons(
+                input.scope_alignments,
+                query.rejected_choices.iter().map(|key| &key.scopes),
+            )?;
             if !query.rejected_choices.contains(&trial.key()) {
                 if unrejected.is_none() {
                     unrejected = Some(trial.clone());
@@ -1040,14 +1316,18 @@ where
             }
             return frontier
                 .and_then(|frontier| frontier.into_preferred())
+                .map(Some)
                 .ok_or(FitError::InvalidGeometry);
         }
-        fitting
-            .into_iter()
-            .next()
-            .or(unrejected)
-            .or(ordinary)
-            .ok_or(FitError::InvalidGeometry)
+        if let Some(candidate) = fitting.into_iter().next().or(unrejected).or(ordinary) {
+            Ok(Some(candidate))
+        } else if let Some(receipt) = unavailable {
+            // An admitted assignment takes precedence over exhausted trials.
+            on_unavailable(receipt);
+            Ok(None)
+        } else {
+            Err(FitError::InvalidGeometry)
+        }
     }
 
     fn evaluate_assignment(
@@ -1055,10 +1335,12 @@ where
         input: &FitInput<'_>,
         mut request: LineSelectionRequest,
         query: &EndpointContext<'_>,
-        preceding: Option<&EvaluatedCandidate>,
         natural_only: bool,
         boxes: Option<BoxAssignment>,
-    ) -> Result<EvaluatedCandidate, FitError> {
+        on_unavailable: impl FnOnce(FinalizedLine),
+    ) -> Result<Option<EvaluatedCandidate>, FitError> {
+        let preceding = query.preceding;
+        let query_termination = request.termination.clone();
         let original_box_struts = boxes.as_ref().map_or_else(Vec::new, BoxAssignment::struts);
         let position = query.position;
         let entry = super::roles::RoleEntry {
@@ -1078,7 +1360,7 @@ where
         (self.reset)(EncounterReset::Candidate);
         let mut height = 0.0;
         let mut placed_start = position.logical_start;
-        let mut rejected = Vec::new();
+        let mut rejected: Vec<CandidateBasis> = Vec::new();
         loop {
             let bands = query_bands(&mut self.band, position.logical_start, placed_start, height)?;
             let band = bands.combined();
@@ -1092,10 +1374,45 @@ where
                 surgeist_text::LineAlignmentInsets::ZERO
             };
             request.context.tabs = tab_context(input, band, request.context.available_inline)?;
-            let mut allocation_bases = Vec::new();
-            let (finalized, amounts, natural_advance, role_basis) = loop {
-                let (candidate, role_basis) =
-                    finalize_with_roles(input, request, natural_only, &entry)?;
+            let mut allocation_bases: Vec<(
+                LineSelectionRequest,
+                Vec<f64>,
+                super::scope_alignment::ScopeBasis,
+            )> = Vec::new();
+            let (finalized, amounts, scopes, natural_advance, conditional_trial, role_basis) = loop {
+                // Feedback retains actual allocations, but each attempt starts
+                // from the caller's method-bound target. An ordinary fallback
+                // result cannot replace the primary conditional authority.
+                request.termination = query_termination.clone();
+                if query.operation == CandidateOperation::OrdinaryFallback {
+                    request.context.spacing = SpacingPolicy::None;
+                }
+                let (mut candidate, mut role_basis) =
+                    finalize_with_roles(input, request, natural_only, &entry, query.operation)?;
+                if query.operation == CandidateOperation::Primary
+                    && candidate.request.context.spacing == SpacingPolicy::InterCharacter
+                    && candidate.conditional_trial.is_some()
+                    && let PreparedTermination::Conditional(target) = &candidate.request.termination
+                    && target.purpose() == ConditionalPurpose::Overflow
+                {
+                    let Some(fallback) = self.fallback_opportunity(input, query, target)? else {
+                        on_unavailable(candidate.finalized);
+                        return Ok(None);
+                    };
+                    let primary = candidate.finalized;
+                    let mut fallback_request = candidate.request;
+                    fallback_request.context.spacing = SpacingPolicy::None;
+                    fallback_request.termination = PreparedTermination::Conditional(fallback);
+                    (candidate, role_basis) = finalize_with_roles(
+                        input,
+                        fallback_request,
+                        natural_only,
+                        &entry,
+                        CandidateOperation::OrdinaryFallback,
+                    )?;
+                    candidate.conditional_trial = Some(primary);
+                    (self.reset)(EncounterReset::Candidate);
+                }
                 request = candidate.request;
                 (self.replay)(
                     &candidate.finalized,
@@ -1109,6 +1426,8 @@ where
                     placed_start,
                     &original_box_struts,
                 )?;
+                let scope_basis =
+                    super::scope_alignment::basis(&candidate.finalized, input.scope_alignments)?;
                 if actual.atomics == request.atomics
                     && actual.controls == request.controls
                     && actual.line_strut == request.line_strut
@@ -1126,11 +1445,17 @@ where
                     break (
                         candidate.finalized,
                         candidate.amounts,
+                        scope_basis,
                         candidate.natural_advance,
+                        candidate.conditional_trial,
                         role_basis,
                     );
                 }
-                let basis = (request.clone(), candidate.amounts);
+                let basis = (request.clone(), candidate.amounts, scope_basis);
+                basis.2.admit_comparisons(
+                    input.scope_alignments,
+                    allocation_bases.iter().map(|old| &old.2),
+                )?;
                 if allocation_bases.contains(&basis) {
                     return Err(FitError::FeedbackCycle);
                 }
@@ -1152,6 +1477,7 @@ where
                 BlockPosition {
                     proposed: position.logical_start,
                     minimum: position.minimum_block,
+                    height: actual_height,
                 },
                 disposition.baseline(&finalized),
             )?;
@@ -1167,6 +1493,7 @@ where
                 boxes: boxes.clone(),
                 request: request.clone(),
                 amounts: amounts.clone(),
+                scopes: scopes.clone(),
                 natural_advance,
                 logical_start: position.logical_start,
                 placed_start,
@@ -1175,6 +1502,10 @@ where
                 minimum_block: position.minimum_block,
             };
             if actual_bands != bands || actual_start != placed_start {
+                basis.scopes.admit_comparisons(
+                    input.scope_alignments,
+                    rejected.iter().map(|old| &old.scopes),
+                )?;
                 if rejected.contains(&basis) {
                     return Err(FitError::FeedbackCycle);
                 }
@@ -1241,18 +1572,20 @@ where
                     self.box_uses.push(used);
                 }
             }
-            return Ok(EvaluatedCandidate {
+            return Ok(Some(EvaluatedCandidate {
                 boxes,
                 request,
                 finalized,
+                conditional_trial,
                 amounts,
+                scopes,
                 natural_advance,
                 encounters,
                 bands,
                 placed_start,
                 fits,
                 disposition,
-            });
+            }));
         }
     }
 
@@ -1309,7 +1642,9 @@ where
                         query.indent_state,
                         query.line_box_context,
                     )?;
-                    let trial = self.evaluate_mode(input, request, query, None, true)?;
+                    let Some(trial) = self.evaluate_mode(input, request, query, true, drop)? else {
+                        continue;
+                    };
                     if !trial.disposition.is_formatted() {
                         continue;
                     }
@@ -1357,20 +1692,37 @@ where
                 query.indent_state,
                 query.line_box_context,
             )?;
-            let candidate = self.evaluate(input, request, query, None)?;
+            let Some(candidate) = self.evaluate(input, request, query, |receipt| {
+                // The primary trial executed without an authorized fallback.
+                // Its actual receipt belongs to this query's exhaustion proof.
+                dispositions.push(ConditionalDisposition::Exhausted(receipt));
+            })?
+            else {
+                continue;
+            };
             if zone_suppressed {
                 dispositions.push(ConditionalDisposition::ConsumerHyphenationPolicy(
-                    candidate.finalized,
+                    candidate
+                        .conditional_trial
+                        .clone()
+                        .unwrap_or_else(|| candidate.finalized.clone()),
                 ));
                 continue;
             }
             fitting_none |= candidate.disposition.is_formatted()
                 && candidate.fits
                 && candidate.request.alternative.is_none();
+            candidate.scopes.admit_comparisons(
+                input.scope_alignments,
+                query.rejected_choices.iter().map(|key| &key.scopes),
+            )?;
             if query.rejected_choices.contains(&candidate.key()) {
                 if candidate.request.alternative.is_some() {
                     dispositions.push(ConditionalDisposition::ConsumerHyphenationPolicy(
-                        candidate.finalized,
+                        candidate
+                            .conditional_trial
+                            .clone()
+                            .unwrap_or_else(|| candidate.finalized.clone()),
                     ));
                 } else {
                     // An unselected meaningful None is still an ordinary
@@ -1411,7 +1763,13 @@ where
                         query.indent_state,
                         query.line_box_context,
                     )?;
-                    let trial = self.evaluate(input, request, query, Some(&candidate))?;
+                    let priority_query = EndpointContext {
+                        preceding: Some(&candidate),
+                        ..*query
+                    };
+                    let Some(trial) = self.evaluate(input, request, &priority_query, drop)? else {
+                        continue;
+                    };
                     if trial.fits {
                         priority = Some(trial.finalized);
                         break;
@@ -1428,7 +1786,12 @@ where
             if !candidate.disposition.is_formatted()
                 && candidate.request.context.end == LineEnd::Soft
             {
-                dispositions.push(ConditionalDisposition::Phantom(candidate.finalized));
+                dispositions.push(ConditionalDisposition::Phantom(
+                    candidate
+                        .conditional_trial
+                        .clone()
+                        .unwrap_or_else(|| candidate.finalized.clone()),
+                ));
                 continue;
             }
             if let Some(alternative) = alternative.filter(|_| automatic.is_some()) {
@@ -1436,12 +1799,18 @@ where
                     dispositions.push(ConditionalDisposition::AutoIntrinsicRefinement(alternative));
                 } else {
                     dispositions.push(ConditionalDisposition::AutoFitExhausted(
-                        candidate.finalized.clone(),
+                        candidate
+                            .conditional_trial
+                            .clone()
+                            .unwrap_or_else(|| candidate.finalized.clone()),
                     ));
                 }
             } else if query.conditional {
                 dispositions.push(ConditionalDisposition::Exhausted(
-                    candidate.finalized.clone(),
+                    candidate
+                        .conditional_trial
+                        .clone()
+                        .unwrap_or_else(|| candidate.finalized.clone()),
                 ));
             } else if candidate.disposition.is_formatted() {
                 ordinary_formatted = true;
@@ -1460,6 +1829,153 @@ where
             formatted: ordinary_formatted,
             fitting_none,
         })
+    }
+
+    /// Rebuild the fallback query at its owner. Ordinary, phrase and staged
+    /// receipts below all execute the ordinary operation; a primary receipt is
+    /// never relabeled or used to discharge this query's tiers.
+    fn fallback_opportunity(
+        &mut self,
+        input: &FitInput<'_>,
+        query: &EndpointContext<'_>,
+        target: &surgeist_text::PreparedConditionalOpportunity,
+    ) -> Result<Option<surgeist_text::PreparedConditionalOpportunity>, FitError> {
+        let recipe = query.conditional_recipe.ok_or(FitError::InvalidGeometry)?;
+        if target.start() != *query.start || target.ceiling() != recipe.ceiling {
+            return Err(FitError::InvalidGeometry);
+        }
+        let ordinary_query = EndpointContext {
+            preceding: None,
+            conditional: false,
+            operation: CandidateOperation::OrdinaryFallback,
+            conditional_recipe: None,
+            ..*query
+        };
+        let Some(ordinary) = self.evaluate(
+            input,
+            recipe.frame.selected_line().request().clone(),
+            &ordinary_query,
+            drop,
+        )?
+        else {
+            // The recipe is an actual ordinary frame, not a conditional cut.
+            return Err(FitError::InvalidGeometry);
+        };
+        let start = query.start.view().participant_offset();
+        let ceiling = recipe.ceiling.view().boundary().view().participant_offset();
+        let mut skipped = Vec::new();
+        let mut zone = ZoneBasis {
+            policy: input.hyphenate_limit_zone,
+            references: Vec::new(),
+        };
+        for offer in input.segment.opportunity_views() {
+            let boundary = offer.boundary().view().participant_offset();
+            if boundary <= start {
+                continue;
+            }
+            if offer.handle() == recipe.ceiling {
+                break;
+            }
+            if boundary >= ceiling
+                || matches!(
+                    offer.kind(),
+                    PreparedBreakKind::Forced | PreparedBreakKind::ParagraphEnd
+                )
+            {
+                return Ok(None);
+            }
+            let alternatives = offer
+                .alternatives()
+                .map(|alternative| Some(alternative.handle()))
+                .collect::<Vec<_>>();
+            let variants = (!matches!(offer.kind(), PreparedBreakKind::Discretionary))
+                .then_some(None)
+                .into_iter()
+                .chain(alternatives);
+            let choice = self.choose_endpoint(
+                input,
+                &ordinary_query,
+                variants.map(|alternative| LineEndpoint {
+                    boundary: offer.boundary(),
+                    termination: PreparedTermination::Ordinary(offer.handle()),
+                    alternative,
+                    ending: LineEnd::Soft,
+                }),
+                &mut zone,
+            )?;
+            if choice.formatted {
+                // The ordinary method has a real earlier barrier. It cannot
+                // supply this primary cut's fallback authority.
+                return Ok(None);
+            }
+            skipped.extend(choice.dispositions);
+        }
+        let search = input.segment.conditional_search(
+            query.start,
+            query.incoming,
+            &recipe.ceiling,
+            target.purpose(),
+            &skipped,
+            Some(&ordinary.finalized),
+        )?;
+        let staged_query = EndpointContext {
+            conditional: true,
+            ..ordinary_query
+        };
+        let mut decisions = Vec::new();
+        for portion in search.phrase_portions() {
+            let (decision, _) = self.measure_phrase(input, &staged_query, &ordinary, portion)?;
+            decisions.push(decision);
+        }
+        let mut batch = search.begin(&decisions)?;
+        loop {
+            if let Some(issued) = batch.opportunities().iter().find(|issued| {
+                issued.boundary() == target.boundary()
+                    && issued.alternative() == target.alternative()
+            }) {
+                return Ok(Some(issued.clone()));
+            }
+            let mut dispositions = Vec::new();
+            let mut from = 0;
+            while from < batch.opportunities().len() {
+                let boundary = batch.opportunities()[from].boundary();
+                let mut to = from + 1;
+                while to < batch.opportunities().len()
+                    && batch.opportunities()[to].boundary() == boundary
+                {
+                    to += 1;
+                }
+                let choice = self.choose_endpoint(
+                    input,
+                    &staged_query,
+                    batch.opportunities()[from..to]
+                        .iter()
+                        .cloned()
+                        .map(|issued| LineEndpoint {
+                            boundary: issued.boundary(),
+                            alternative: issued.alternative(),
+                            termination: PreparedTermination::Conditional(issued),
+                            ending: LineEnd::Soft,
+                        }),
+                    &mut zone,
+                )?;
+                if choice
+                    .candidate
+                    .as_ref()
+                    .is_some_and(|candidate| candidate.fits)
+                {
+                    // A genuine earlier ordinary-method tier already fits;
+                    // exhausting it merely to obtain this later cut is false.
+                    return Ok(None);
+                }
+                dispositions.extend(choice.dispositions);
+                from = to;
+            }
+            let Some(next) = batch.advance(&dispositions)? else {
+                return Ok(None);
+            };
+            batch = next;
+        }
     }
 
     fn measure_phrase(
@@ -1490,11 +2006,15 @@ where
             query.line_box_context,
         )?;
         let phrase_query = EndpointContext {
+            preceding,
             position: &empty_position,
             indent_state: empty_indent,
             ..*query
         };
-        let trial = self.evaluate(input, request, &phrase_query, preceding)?;
+        let Some(trial) = self.evaluate(input, request, &phrase_query, drop)? else {
+            // A phrase measurement cannot request conditional fallback.
+            return Err(FitError::InvalidGeometry);
+        };
         let basis = PhraseBasis {
             ordinary: ordinary.basis(query.position),
             position: empty_position.clone(),
@@ -1514,6 +2034,7 @@ where
     /// verify the chosen candidate's actual complete receipt before accepting it.
     fn restore(
         &mut self,
+        input: &FitInput<'_>,
         candidate: &EvaluatedCandidate,
         position: &CandidatePosition,
     ) -> Result<(), FitError> {
@@ -1545,6 +2066,15 @@ where
             || actual.controls != candidate.request.controls
             || actual.line_strut != candidate.request.line_strut
             || actual.line_box_struts != candidate.request.line_box_struts
+            || !super::scope_alignment::matches(
+                &candidate.finalized,
+                super::scope_alignment::allocate(
+                    super::scope_alignment::ScopeAllocationInput::Finalized(&candidate.finalized),
+                    input.scope_alignments,
+                )?
+                .allocations(),
+                input.scope_alignments,
+            )?
         {
             return Err(FitError::FeedbackCycle);
         }
@@ -1613,6 +2143,36 @@ pub(crate) struct EncounterCallbacks<Replay, Accept, Reset, Checkpoint> {
     pub checkpoint_group: Checkpoint,
 }
 
+/// Query authority follows the real prospective Soft method. A terminal Auto
+/// candidate may never have executed that basis; request a genuine ordinary
+/// trial without relabeling its issued termination, end role or alignment.
+fn conditional_query_frame(
+    input: &FitInput<'_>,
+    candidate: &EvaluatedCandidate,
+) -> Result<FinalizedLine, FitError> {
+    if input.justification != TextJustification::InterCharacter {
+        return Ok(candidate.finalized.clone());
+    }
+    let method = character_basis(input.alignment, input.last_alignment, LineEnd::Soft);
+    if candidate.request.context.spacing == method {
+        return Ok(candidate.finalized.clone());
+    }
+    if let Some(trial) = &candidate.conditional_trial
+        && trial.selected_line().request().context.spacing == method
+    {
+        return Ok(trial.clone());
+    }
+    let mut request = candidate.request.clone();
+    request.context.spacing = method;
+    resolve_boundary_context(input.prepared, input.controls, &mut request)?;
+    natural_line(
+        input.prepared,
+        input.reusable,
+        &request,
+        input.scope_alignments,
+    )
+}
+
 struct LineEndpoint {
     boundary: PreparedBoundary,
     termination: PreparedTermination,
@@ -1630,7 +2190,7 @@ fn selection_request(
 ) -> Result<LineSelectionRequest, FitError> {
     let facts = input
         .prepared
-        .line_direction_facts(start, &endpoint.boundary)?;
+        .line_direction_facts(&input.segment, start, &endpoint.boundary)?;
     let strong = if facts.has_eligible_strong() {
         facts.paragraph_strong_direction()
     } else {
@@ -1668,6 +2228,7 @@ fn selection_request(
         .cloned()
         .collect();
     Ok(LineSelectionRequest {
+        segment: input.segment.clone(),
         start: start.clone(),
         end: endpoint.boundary,
         participants,
@@ -1680,7 +2241,7 @@ fn selection_request(
             line_box_direction,
             base_direction: input.base_direction,
             orientation: input.orientation,
-            start: if from == 0 {
+            start: if *start == input.segment.start() {
                 LineStart::Paragraph
             } else {
                 LineStart::Continuation
@@ -1691,10 +2252,13 @@ fn selection_request(
             alignment: text_alignment(input.alignment),
             tabs: TabContext::FontAdvance,
 
-            spacing: if input.justification == TextJustification::Spaces {
-                SpacingPolicy::Spaces
-            } else {
-                SpacingPolicy::None
+            spacing: match input.justification {
+                TextJustification::None => SpacingPolicy::None,
+                TextJustification::Spaces => SpacingPolicy::Spaces,
+                TextJustification::InterWord => SpacingPolicy::InterWord,
+                TextJustification::InterCharacter => {
+                    character_basis(input.alignment, input.last_alignment, endpoint.ending)
+                }
             },
         },
         atomics,
@@ -1731,13 +2295,8 @@ pub(crate) fn fit(
         reset: reset_candidate,
         checkpoint_group,
     } = encounters;
-    let boundaries: Vec<_> = input
-        .prepared
-        .boundary_views()
-        .map(|view| (view.participant_offset(), view.handle()))
-        .collect();
     let opportunities: Vec<_> = input
-        .prepared
+        .segment
         .opportunity_views()
         .map(|view| {
             let boundary = view.boundary();
@@ -1763,11 +2322,7 @@ pub(crate) fn fit(
         reset: reset_candidate,
     };
     let entry = SequenceEntry {
-        boundary: boundaries
-            .first()
-            .ok_or(FitError::InvalidGeometry)?
-            .1
-            .clone(),
+        boundary: input.segment.start(),
         logical_start: 0.0,
         minimum_block: None,
         indent_state: input.indent_state,
@@ -1994,6 +2549,7 @@ where
                                 .chain(alternatives.iter().cloned().map(Some));
                             let query = EndpointContext {
                                 accepted_prefix: result,
+                                preceding: None,
                                 line_box_context,
                                 start: &start_boundary,
                                 incoming: incoming.as_ref(),
@@ -2002,6 +2558,8 @@ where
                                 hyphenation_state,
                                 rejected_choices,
                                 conditional: false,
+                                operation: CandidateOperation::Primary,
+                                conditional_recipe: None,
                             };
                             let endpoint = environment.choose_endpoint(
                                 input,
@@ -2154,17 +2712,24 @@ where
                         && let Some(ceiling) = first_ceiling
                         && ceiling.view().boundary().view().participant_offset() > start
                     {
-                        let search = input.prepared.conditional_search(
+                        let frame = (purpose == ConditionalPurpose::Overflow)
+                            .then(|| conditional_query_frame(input, &candidate))
+                            .transpose()?;
+                        let recipe = frame.as_ref().map(|frame| ConditionalQueryRecipe {
+                            frame: frame.clone(),
+                            ceiling: ceiling.clone(),
+                        });
+                        let search = input.segment.conditional_search(
                             &start_boundary,
                             incoming.as_ref(),
                             &ceiling,
                             purpose,
                             &skipped_ordinary,
-                            (purpose == ConditionalPurpose::Overflow)
-                                .then_some(&candidate.finalized),
+                            frame.as_ref(),
                         )?;
                         let query = EndpointContext {
                             accepted_prefix: result,
+                            preceding: None,
                             start: &start_boundary,
                             line_box_context,
                             incoming: incoming.as_ref(),
@@ -2173,6 +2738,8 @@ where
                             hyphenation_state,
                             rejected_choices,
                             conditional: true,
+                            operation: CandidateOperation::Primary,
+                            conditional_recipe: recipe.as_ref(),
                         };
                         let mut decisions = Vec::new();
                         for portion in search.phrase_portions() {
@@ -2341,7 +2908,7 @@ where
                             batch = next;
                         }
                     }
-                    environment.restore(&candidate, &position)?;
+                    environment.restore(input, &candidate, &position)?;
                     let basis = (
                         candidate.request.clone(),
                         candidate.boxes.clone(),
@@ -2380,7 +2947,7 @@ where
                         && let Some(progress) = minimal_progress
                     {
                         candidate = progress;
-                        environment.restore(&candidate, &position)?;
+                        environment.restore(input, &candidate, &position)?;
                     }
                     if !candidate.fits
                         && let Some(next) = candidate
@@ -2397,7 +2964,7 @@ where
                     }
                     // Deferred replay above may have been a no-op. Restore the exact
                     // candidate once more before any clear/accept operation observes it.
-                    environment.restore(&candidate, &position)?;
+                    environment.restore(input, &candidate, &position)?;
                     let logical_end = finite(
                         position.logical_start + candidate.disposition.height(&candidate.finalized),
                     )?;
@@ -2445,6 +3012,7 @@ where
                         encounters: candidate.encounters,
                         finalized: candidate.finalized,
                         amounts: candidate.amounts,
+                        scopes: candidate.scopes,
                         natural_advance: candidate.natural_advance,
                         program: None,
                         inline_start: candidate.bands.combined().start,
@@ -2613,7 +3181,11 @@ mod tests {
         text_fragment::fragment_for,
     };
 
-    fn selected(style: surgeist_text::Style, source: &str, width: f64) -> SelectedLine {
+    fn selected(
+        style: surgeist_text::Style,
+        source: &str,
+        width: f64,
+    ) -> surgeist_text::SelectedLine {
         let paragraph = PreparedParagraph::plain(1, surgeist_text::Source::new(source), style);
         let original = fragment_for(&paragraph.prepared).finalized_line();
         let mut request = original.selected_line().request().clone();
@@ -2621,6 +3193,14 @@ mod tests {
         request.context.alignment = Alignment::Justify;
         request.context.spacing = SpacingPolicy::Spaces;
         paragraph.prepared.select(request).unwrap()
+    }
+
+    fn no_scope_resources() -> super::super::scope_alignment::ScopeAlignmentResources<f64> {
+        super::super::scope_alignment::ScopeAlignmentResources::new(
+            super::super::scope_alignment::ScopeAlignmentSnapshot::admit::<()>(Vec::new(), &[])
+                .unwrap()
+                .freeze(),
+        )
     }
 
     fn retained(line: &FinalizedLine) -> Vec<usize> {
@@ -2635,7 +3215,12 @@ mod tests {
     #[test]
     fn native_spacing_budget_refuses_unresolved_actual_advance() {
         let selected = selected(ahem_style(10.0, 10.0), "X X X", 60.0);
-        let natural = selected.finalize(SpacingAllocations::None).unwrap();
+        let natural = selected
+            .finalize(surgeist_text::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: surgeist_text::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_eq!(natural.feedback().advance, 50.0);
         let retained = retained(&natural);
         assert_eq!(retained, [0, 1]);
@@ -2643,10 +3228,16 @@ mod tests {
         // overshoot; the completed correction [100,0] still produces150.
         // Refusal preserves these actual facts instead of dropping more slots.
         let mut amounts = vec![100.0, 1.0];
-        let proposed = finalize_spacing(&selected, &amounts)
+        let proposed = finalize_spacing(&natural, &amounts, &no_scope_resources())
             .unwrap_or_else(|_| panic!("real selected spacing finalizes"));
         assert_eq!(proposed.feedback().advance, 151.0);
-        match constrain_spacing_budget(&selected, &retained, 60.0, &mut amounts, proposed) {
+        match constrain_spacing_budget(
+            &retained,
+            60.0,
+            &mut amounts,
+            proposed,
+            &no_scope_resources(),
+        ) {
             Err(FitError::SpacingBudget { available, advance }) => {
                 assert_eq!(available, 60.0);
                 assert_eq!(advance, 150.0);
@@ -2654,7 +3245,7 @@ mod tests {
             _ => panic!("unresolved actual advance must be a Layout spacing-budget refusal"),
         }
         assert_eq!(amounts, [100.0, 0.0]);
-        let actual = finalize_spacing(&selected, &amounts)
+        let actual = finalize_spacing(&natural, &amounts, &no_scope_resources())
             .unwrap_or_else(|_| panic!("actual corrected complete table finalizes"));
         assert_eq!(actual.feedback().advance, 150.0);
         assert_eq!(actual.selected_line(), selected);
@@ -2665,16 +3256,26 @@ mod tests {
         let mut style = ahem_style(10.0, 10.0);
         style.word_spacing = -15.0;
         let selected = selected(style, "X X", 25.0);
-        let natural = selected.finalize(SpacingAllocations::None).unwrap();
+        let natural = selected
+            .finalize(surgeist_text::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: surgeist_text::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_eq!(natural.feedback().advance, 15.0);
         assert_eq!(natural.spacing_slots().next().unwrap().advance, -5.0);
         let mut amounts = vec![20.0];
-        let proposed = finalize_spacing(&selected, &amounts)
+        let proposed = finalize_spacing(&natural, &amounts, &no_scope_resources())
             .unwrap_or_else(|_| panic!("real signed-base spacing finalizes"));
         assert_eq!(proposed.feedback().advance, 35.0);
-        let actual =
-            constrain_spacing_budget(&selected, &retained(&natural), 25.0, &mut amounts, proposed)
-                .unwrap_or_else(|_| panic!("one actual overshoot correction fits"));
+        let actual = constrain_spacing_budget(
+            &retained(&natural),
+            25.0,
+            &mut amounts,
+            proposed,
+            &no_scope_resources(),
+        )
+        .unwrap_or_else(|_| panic!("one actual overshoot correction fits"));
         assert_eq!(amounts, [10.0]);
         assert_eq!(actual.feedback().advance, 25.0);
         assert_eq!(actual.spacing_slots().next().unwrap().advance, 5.0);
@@ -2684,8 +3285,14 @@ mod tests {
     #[test]
     fn native_spacing_budget_keeps_actual_text_lost_contribution_refusal() {
         let selected = selected(ahem_style(10.0, 10.0), "X X", 40.0);
+        let natural = selected
+            .finalize(surgeist_text::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: surgeist_text::ScopeAllocations::None,
+            })
+            .unwrap();
         let amount = 1.0628135541960295e-153;
-        match finalize_spacing(&selected, &[amount]) {
+        match finalize_spacing(&natural, &[amount], &no_scope_resources()) {
             Err(FitError::Text(error)) => assert!(matches!(error.detail(),
                 Some(surgeist_text::ErrorDetail::InvalidTextNumeric {
                     field:"selected spacing amount",phase:surgeist_text::TextNumericPhase::Finalization,

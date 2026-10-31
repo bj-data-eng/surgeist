@@ -30,7 +30,10 @@ fn nonzero_alignment_insets_require_a_real_outer_width_but_not_a_width_bound_on_
     assert!(
         p.select(overconstrained)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .is_ok()
     );
 }
@@ -43,7 +46,12 @@ fn a_finite_pair_with_unrepresentable_consumed_content_width_fails_numerically()
     r.context.available_inline = Some(1.0);
     r.context.alignment_insets = LineAlignmentInsets::try_new(f64::MAX, f64::MAX).unwrap();
     let selected = p.select(r).unwrap();
-    let error = selected.finalize(SpacingAllocations::None).unwrap_err();
+    let error = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap_err();
     assert!(matches!(
         error.detail(),
         Some(ErrorDetail::InvalidTextNumeric {
@@ -59,30 +67,33 @@ fn a_finite_pair_with_unrepresentable_consumed_content_width_fails_numerically()
 fn geometry_search_identity_keeps_insets_while_conditional_selection_accepts_a_new_trial_frame() {
     let mut system = system();
     let source = Source::new("AAA");
-    let analyzed = crate::AnalyzedSource::from_paragraph(ParagraphInput {
-        source: source.clone(),
-        base_style: Style {
-            overflow_wrap: OverflowWrap::Anywhere,
-            ..style()
+    let analyzed = crate::AnalyzedSource::from_paragraph(
+        ParagraphInput {
+            source: source.clone(),
+            base_style: Style {
+                overflow_wrap: OverflowWrap::Anywhere,
+                ..style()
+            },
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            paragraph_strut: ParagraphStrut::DefaultFont,
+            tab_reference: None,
+            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: ParagraphBaseDirection::LeftToRight,
+            origins: vec![paragraph::ParagraphOrigin {
+                text_node: None,
+                source,
+                local: crate::Range::new(0, 3),
+                aggregate: crate::Range::new(0, 3),
+                kind: paragraph::ParagraphOriginKind::Authored,
+            }],
+            connections: Vec::new(),
+            controls: Vec::new(),
+            boundary_policies: Vec::new(),
+            replacements: Vec::new(),
+            anchor_order: Vec::new(),
         },
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-        paragraph_strut: ParagraphStrut::DefaultFont,
-        tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: ParagraphBaseDirection::LeftToRight,
-        origins: vec![paragraph::ParagraphOrigin {
-            text_node: None,
-            source,
-            local: crate::Range::new(0, 3),
-            aggregate: crate::Range::new(0, 3),
-            kind: paragraph::ParagraphOriginKind::Authored,
-        }],
-        connections: Vec::new(),
-        controls: Vec::new(),
-        boundary_policies: Vec::new(),
-        replacements: Vec::new(),
-        anchor_order: Vec::new(),
-    })
+        crate::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let p = system
         .prepare(
@@ -100,12 +111,18 @@ fn geometry_search_identity_keeps_insets_while_conditional_selection_accepts_a_n
     let first = p
         .select(zero.clone())
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let second = p
         .select(right.clone())
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     for frame in [&first, &second] {
         assert_eq!(frame.measurements().alignment().advance(), 60.0);
@@ -123,15 +140,18 @@ fn geometry_search_identity_keeps_insets_while_conditional_selection_accepts_a_n
         unreachable!()
     };
     let search = |frame: &FinalizedLine| {
-        p.conditional_search(
-            &zero.start,
-            None,
-            ceiling,
-            ConditionalPurpose::Overflow,
-            &[],
-            Some(frame),
-        )
-        .unwrap()
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &zero.start,
+                None,
+                ceiling,
+                ConditionalPurpose::Overflow,
+                &[],
+                Some(frame),
+            )
+            .unwrap()
     };
     let first_search = search(&first);
     let second_search = search(&second);
@@ -156,5 +176,12 @@ fn geometry_search_identity_keeps_insets_while_conditional_selection_accepts_a_n
         selected.request().context.alignment_insets,
         LineAlignmentInsets::try_new(2.0, 0.0).unwrap()
     );
-    assert!(selected.finalize(SpacingAllocations::None).is_ok());
+    assert!(
+        selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
+            .is_ok()
+    );
 }

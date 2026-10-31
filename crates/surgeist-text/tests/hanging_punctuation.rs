@@ -62,7 +62,9 @@ fn input(value: &str, base: t::Style) -> t::ParagraphInput {
 fn prepare(value: t::ParagraphInput, bytes: &[u8]) -> t::PreparedText {
     let wrap = value.base_style.wrap;
     let source = value.source.clone();
-    let analyzed = t::AnalyzedSource::from_paragraph(value).unwrap();
+    let analyzed =
+        t::AnalyzedSource::from_paragraph(value, t::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|r| r.ancestor_wrap().is_none())
@@ -112,6 +114,7 @@ fn request(
         })
         .collect();
     t::LineSelectionRequest {
+        segment: p.source_segments().next().unwrap(),
         start: p.boundary_views().next().unwrap().handle(),
         end: end.view().boundary(),
         termination: t::PreparedTermination::Ordinary(end),
@@ -144,7 +147,10 @@ fn request(
     }
 }
 fn finish(p: &t::PreparedText, r: t::LineSelectionRequest) -> t::Result<t::FinalizedLine> {
-    p.select(r)?.finalize(t::SpacingAllocations::None)
+    p.select(r)?.finalize(surgeist_text::LineAllocations {
+        spacing: t::SpacingAllocations::None,
+        scopes: surgeist_text::ScopeAllocations::None,
+    })
 }
 fn measures(line: &t::FinalizedLine) -> Measures {
     let m = line.measurements();
@@ -340,26 +346,42 @@ fn force_and_allow_measurements_retain_actual_glyphs_source_and_carets() {
 
 #[test]
 fn first_last_lazy_unknown_false_true_and_zero_advance_are_semantic() {
+    use skrifa::MetadataProvider;
+    let zero_font = hanging_punctuation::font::zero_advance_parentheses();
+    let face = skrifa::FontRef::new(&zero_font).unwrap();
+    for (character, glyph) in [('(', 10), (')', 11), ('A', 35)] {
+        assert_eq!(face.charmap().map(character).unwrap().to_u32(), glyph);
+    }
+    for tag in [*b"cmap", *b"glyf", *b"loca"] {
+        assert_eq!(
+            hanging_punctuation::font::table(&zero_font, tag),
+            hanging_punctuation::font::table(AHEM, tag)
+        );
+    }
+    let head = hanging_punctuation::font::table(&zero_font, *b"head");
+    assert_eq!(u16::from_be_bytes(head[18..20].try_into().unwrap()), 1000);
+    let hmtx = hanging_punctuation::font::table(&zero_font, *b"hmtx");
+    let original_hmtx = hanging_punctuation::font::table(AHEM, *b"hmtx");
+    for (glyph, advance) in [(10, 0), (11, 0), (35, 1000)] {
+        assert_eq!(
+            u16::from_be_bytes(hmtx[glyph * 4..glyph * 4 + 2].try_into().unwrap()),
+            advance
+        );
+        assert_eq!(
+            hmtx[glyph * 4 + 2..glyph * 4 + 4],
+            original_hmtx[glyph * 4 + 2..glyph * 4 + 4]
+        );
+    }
     for (text, first, role) in [
         ("(A", true, t::PhaseTwoContext::FirstFormattedLine),
         ("A)", false, t::PhaseTwoContext::LastFormattedLine),
     ] {
         for zero in [false, true] {
-            let mut value = input(text, style(punctuation(first, None, !first)));
-            if zero {
-                value.source.span(
-                    if first {
-                        t::Range::new(0, 1)
-                    } else {
-                        t::Range::new(1, 2)
-                    },
-                    t::Style {
-                        letter_spacing: -10.0,
-                        ..value.base_style.clone()
-                    },
-                );
-            }
-            let p = prepare(value, AHEM);
+            // Zero advance comes from the actual punctuation font metric,
+            // independently of tracking at its adjacent character boundary.
+            let bytes = if zero { zero_font.as_slice() } else { AHEM };
+            let value = input(text, style(punctuation(first, None, !first)));
+            let p = prepare(value, bytes);
             demand(
                 &finish(&p, request(&p, 40.0, None, None)).unwrap_err(),
                 role,
@@ -375,13 +397,77 @@ fn first_last_lazy_unknown_false_true_and_zero_advance_are_semantic() {
                 assert_eq!(line.feedback().advance, raw);
                 assert_eq!(measures(&line), (measured, measured, measured, measured));
                 assert_eq!(usage(&line), (first, !first));
-                assert_eq!(glyphs(&line, AHEM).len(), 2);
+                let punctuation_advance: f32 = if zero { 0.0 } else { 10.0 };
+                let start = if first && yes {
+                    -f64::from(punctuation_advance)
+                } else {
+                    0.0
+                };
+                assert_eq!(
+                    glyphs(&line, bytes),
+                    if first {
+                        [
+                            (
+                                t::Range::new(0, 1),
+                                10,
+                                punctuation_advance,
+                                0.0,
+                                0.0,
+                                start,
+                            ),
+                            (
+                                t::Range::new(1, 2),
+                                35,
+                                10.0,
+                                0.0,
+                                f64::from(punctuation_advance),
+                                start + f64::from(punctuation_advance),
+                            ),
+                        ]
+                    } else {
+                        [
+                            (t::Range::new(0, 1), 35, 10.0, 0.0, 0.0, 0.0),
+                            (
+                                t::Range::new(1, 2),
+                                11,
+                                punctuation_advance,
+                                0.0,
+                                10.0,
+                                10.0,
+                            ),
+                        ]
+                    }
+                );
+                if zero {
+                    for run in line.run_views() {
+                        let instance = run.effective_instance().unwrap();
+                        for glyph in run.glyphs().filter(|g| matches!(g.id(), 10 | 11)) {
+                            let bounds = instance
+                                .glyph_outline(glyph.id(), run.face().catalogue_identity())
+                                .unwrap()
+                                .bounds()
+                                .expect("zero-advance punctuation retains real ink");
+                            assert!(bounds.size.width > 0.0 && bounds.size.height > 0.0);
+                        }
+                    }
+                }
                 if first && yes && !zero {
                     assert_eq!(
-                        glyphs(&line, AHEM).iter().map(|g| g.5).collect::<Vec<_>>(),
+                        glyphs(&line, bytes).iter().map(|g| g.5).collect::<Vec<_>>(),
                         [-10.0, 0.0]
                     );
                     carets(&placed(&p, line), &[-10.0, 0.0, 10.0]);
+                } else if zero {
+                    let layout = placed(&p, line);
+                    assert_eq!(layout.source().text(), &t::Text::from(text));
+                    carets(
+                        &layout,
+                        if first {
+                            &[0.0, 0.0, 10.0]
+                        } else {
+                            &[0.0, 10.0, 10.0]
+                        },
+                    );
                 }
             }
         }
@@ -1144,6 +1230,8 @@ fn captured_enclosing_inline_continues_without_its_later_end_decoration() {
     let source = t::Source::identified("A. B", t::Id::from_u64(71074), 5);
     let processed = std::sync::Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
@@ -1170,12 +1258,18 @@ fn captured_enclosing_inline_continues_without_its_later_end_decoration() {
             ],
             scopes: vec![
                 t::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
+                    font_reference: None,
                     topology: t::SourceProcessingTopology::Complete,
                     trim: t::WhiteSpaceTrim::default(),
                     base_style: base.clone(),
                     used_direction: LTR,
                 },
                 t::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: t::WhiteSpaceTrim::default(),
                     style: Some(base),
                     boundaries: Some(t::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
@@ -1208,9 +1302,11 @@ fn captured_enclosing_inline_continues_without_its_later_end_decoration() {
         })
         .unwrap(),
     );
-    let analyzed =
-        t::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-            .unwrap();
+    let analyzed = t::AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        t::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|r| r.ancestor_wrap().is_none())
@@ -1229,10 +1325,15 @@ fn captured_enclosing_inline_continues_without_its_later_end_decoration() {
         .prepare(&analyzed, t::PreparationOptions::default())
         .unwrap();
     let scope = p
-        .captured_paragraph()
+        .captured_owner()
         .unwrap()
-        .scope_intersections()
-        .map(|i| i.scope())
+        .members()
+        .flat_map(|member| {
+            member
+                .scope_intersections()
+                .map(|i| i.scope())
+                .collect::<Vec<_>>()
+        })
         .find(|s| s.role() == t::ScopeRole::Inline)
         .unwrap();
     let entry = p
@@ -1377,9 +1478,27 @@ fn complete_spacing_remaps_punctuation_advance_without_reclassifying_natural_ove
             .find(|u| u.source_range() == t::Range::new(1, 2))
             .unwrap()
             .handle();
-        assert_eq!(slots[0].source_range(), t::Range::new(1, 2));
-        assert_eq!(slots[0].owner(), t::SpacingSlotOwner::Unit(space));
-        let natural = selected.finalize(t::SpacingAllocations::None).unwrap();
+        assert_eq!(
+            slots[0].participants().cloned().collect::<Vec<_>>(),
+            [t::PreparedParticipant::Text(space)]
+        );
+        assert_eq!(
+            slots[0]
+                .pieces()
+                .map(|piece| piece.owner())
+                .collect::<Vec<_>>(),
+            [t::SpacingSlotOwner::Source {
+                origin: p.origin_views().next().unwrap().handle(),
+                local: t::Range::new(1, 2),
+                aggregate: t::Range::new(1, 2),
+            }]
+        );
+        let natural = selected
+            .finalize(surgeist_text::LineAllocations {
+                spacing: t::SpacingAllocations::None,
+                scopes: surgeist_text::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_eq!(natural.feedback().advance, 30.0);
         let natural_measure = match end {
             Some(ForceEnd) => (20.0, 20.0, 20.0, 20.0),
@@ -1398,12 +1517,13 @@ fn complete_spacing_remaps_punctuation_advance_without_reclassifying_natural_ove
             );
         }
         let line = selected
-            .finalize(t::SpacingAllocations::Complete(vec![
-                t::SpacingAllocation {
+            .finalize(surgeist_text::LineAllocations {
+                spacing: t::SpacingAllocations::Complete(vec![t::SpacingAllocation {
                     slot: slots[0].clone(),
                     amount,
-                },
-            ]))
+                }]),
+                scopes: surgeist_text::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(line.feedback().advance, 30.0 + amount);
         assert_eq!(measures(&line), expected);

@@ -33,29 +33,32 @@ fn capture(
         tab_size: TabSize::length(40.0).unwrap(),
         ..Style::default()
     };
-    let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
-        source: source.clone(),
-        base_style: base.clone(),
-        segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: body,
-        paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: ParagraphTerminalEdge::BlockEnd,
-        tab_reference: tabs.then(|| {
-            ParagraphTabReference::new(base, ParagraphBaseDirection::LeftToRight).unwrap()
-        }),
-        origins: vec![ParagraphOrigin {
-            text_node: None,
-            source,
-            local: Range::new(0, len),
-            aggregate: Range::new(0, len),
-            kind: ParagraphOriginKind::Authored,
-        }],
-        connections: vec![],
-        controls: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-        anchor_order: vec![],
-    })
+    let analyzed = AnalyzedSource::from_paragraph(
+        ParagraphInput {
+            source: source.clone(),
+            base_style: base.clone(),
+            segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: body,
+            paragraph_strut: ParagraphStrut::DefaultFont,
+            terminal_edge: ParagraphTerminalEdge::BlockEnd,
+            tab_reference: tabs.then(|| {
+                ParagraphTabReference::new(base, ParagraphBaseDirection::LeftToRight).unwrap()
+            }),
+            origins: vec![ParagraphOrigin {
+                text_node: None,
+                source,
+                local: Range::new(0, len),
+                aggregate: Range::new(0, len),
+                kind: ParagraphOriginKind::Authored,
+            }],
+            connections: vec![],
+            controls: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: vec![],
+        },
+        crate::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::Word);
     let mut system = System::new(SystemOptions {
@@ -99,7 +102,10 @@ fn context(
 fn finish(p: &PreparedText, request: LineSelectionRequest) -> FinalizedLine {
     p.select(request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 
@@ -401,6 +407,9 @@ fn conditional_prefix_can_resolve_opposite_to_its_failed_ordinary_frame_and_keep
     let other_frame = finish(&p, context(&p, BOXES[1], Some(25.0), 0.0, Alignment::Start));
     assert_eq!(ordinary.feedback().advance, 40.0);
     let search = p
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &start,
             None,
@@ -411,6 +420,9 @@ fn conditional_prefix_can_resolve_opposite_to_its_failed_ordinary_frame_and_keep
         )
         .unwrap();
     let other = p
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &start,
             None,

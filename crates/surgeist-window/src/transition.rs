@@ -11,6 +11,13 @@ use super::{
 /// state nor callback delivery.
 #[derive(Clone, Debug, PartialEq)]
 pub enum WindowStatePatch {
+    /// Replaces complete baseline host observations.
+    Environment {
+        /// Target window identity.
+        id: Id,
+        /// Coherent replacement observations.
+        environment: Box<crate::HostEnvironment>,
+    },
     /// Replaces the title for one target window.
     Title {
         /// Target window identity.
@@ -88,6 +95,7 @@ pub enum MetricsEvent {
 #[derive(Clone, Debug, PartialEq)]
 pub struct NativeEventTransition {
     kind: NativeEventTransitionKind,
+    environment: Option<crate::HostEnvironment>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -100,7 +108,33 @@ impl NativeEventTransition {
     const fn patch(patch: WindowStatePatch) -> Self {
         Self {
             kind: NativeEventTransitionKind::Patch(patch),
+            environment: None,
         }
+    }
+
+    /// Attaches observations committed atomically with this transition's event.
+    /// A rejected transition changes neither metrics nor host observations.
+    #[must_use]
+    pub fn with_environment(mut self, environment: crate::HostEnvironment) -> Self {
+        match &mut self.kind {
+            NativeEventTransitionKind::Patch(WindowStatePatch::Environment {
+                environment: observed,
+                ..
+            }) => {
+                **observed = environment;
+            }
+            _ => self.environment = Some(environment),
+        }
+        self
+    }
+
+    /// Creates an independent baseline-host observation change.
+    #[must_use]
+    pub fn environment_changed(id: Id, environment: crate::HostEnvironment) -> Self {
+        Self::patch(WindowStatePatch::Environment {
+            id,
+            environment: Box::new(environment),
+        })
     }
 
     #[must_use]
@@ -158,6 +192,7 @@ impl NativeEventTransition {
         modifiers: ModifierState,
     ) -> Self {
         Self {
+            environment: None,
             kind: NativeEventTransitionKind::Input(InputEvent::Pointer(PointerEvent {
                 id,
                 phase: PointerPhase::Moved,
@@ -189,7 +224,22 @@ impl NativeEventTransition {
             .with_id(id));
         }
 
-        match self.kind {
+        let Some(environment) = self.environment else {
+            return Self::apply_kind(self.kind, snapshot);
+        };
+        let mut next = snapshot.clone();
+        let event = Self::apply_kind(self.kind, &mut next)?;
+        next.set_environment(environment);
+        *snapshot = next;
+        Ok(event)
+    }
+
+    fn apply_kind(
+        kind: NativeEventTransitionKind,
+        snapshot: &mut WindowSnapshot,
+    ) -> Result<EventKind, Error> {
+        let id = snapshot.id();
+        match kind {
             NativeEventTransitionKind::Patch(patch) => patch.apply(snapshot)?.ok_or_else(|| {
                 Error::new(
                     ErrorCode::InvalidRequest,
@@ -246,7 +296,8 @@ impl WindowStatePatch {
     /// Returns the identity this patch must match before it can commit.
     pub const fn id(&self) -> Id {
         match self {
-            Self::Title { id, .. }
+            Self::Environment { id, .. }
+            | Self::Title { id, .. }
             | Self::Position { id, .. }
             | Self::Visible { id, .. }
             | Self::Focused { id, .. }
@@ -273,6 +324,7 @@ impl WindowStatePatch {
 
         let mut next = snapshot.clone();
         match &self {
+            Self::Environment { environment, .. } => next.set_environment((**environment).clone()),
             Self::Title { title, .. } => next.set_title(title.clone()),
             Self::Position { position, .. } => next.set_position(Some(*position))?,
             Self::Visible { visible, .. } => next.set_visible(Some(*visible)),
@@ -289,6 +341,10 @@ impl WindowStatePatch {
 
     fn derived_event(&self, snapshot: &WindowSnapshot) -> Option<EventKind> {
         match self {
+            Self::Environment { .. } => Some(EventKind::EnvironmentChanged {
+                id: snapshot.id(),
+                environment: snapshot.environment().clone(),
+            }),
             Self::Title { .. } | Self::Visible { .. } | Self::Fullscreen { .. } => None,
             Self::Position { .. } => snapshot.position().map(|position| EventKind::Moved {
                 id: snapshot.id(),

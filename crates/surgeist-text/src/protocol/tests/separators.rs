@@ -23,27 +23,30 @@ fn catalogue() -> System {
 }
 fn capture(source: Source, style: Style) -> PreparedText {
     let len = source.text().len();
-    let a = AnalyzedSource::from_paragraph(ParagraphInput {
-        source: source.clone(),
-        base_style: style,
-        paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: ParagraphBaseDirection::LeftToRight,
-        origins: vec![paragraph::ParagraphOrigin {
-            text_node: None,
-            source,
-            local: Range::new(0, len),
-            aggregate: Range::new(0, len),
-            kind: paragraph::ParagraphOriginKind::Authored,
-        }],
-        connections: vec![],
-        controls: vec![],
-        replacements: vec![],
-        boundary_policies: vec![],
-        anchor_order: vec![],
-    })
+    let a = AnalyzedSource::from_paragraph(
+        ParagraphInput {
+            source: source.clone(),
+            base_style: style,
+            paragraph_strut: ParagraphStrut::DefaultFont,
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: ParagraphBaseDirection::LeftToRight,
+            origins: vec![paragraph::ParagraphOrigin {
+                text_node: None,
+                source,
+                local: Range::new(0, len),
+                aggregate: Range::new(0, len),
+                kind: paragraph::ParagraphOriginKind::Authored,
+            }],
+            connections: vec![],
+            controls: vec![],
+            replacements: vec![],
+            boundary_policies: vec![],
+            anchor_order: vec![],
+        },
+        crate::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     catalogue()
         .prepare(
@@ -55,7 +58,10 @@ fn capture(source: Source, style: Style) -> PreparedText {
 fn whole(p: &PreparedText) -> FinalizedLine {
     p.select(request(p))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn glyphs(line: &FinalizedLine) -> Vec<(u32, f32)> {
@@ -282,7 +288,10 @@ fn generated_discard_separators_keep_ordinary_trailing_advance_and_original_zwsp
         let line = p
             .select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         let letter_advance = if full_width { 20.0 } else { 10.0 };
         assert_eq!(

@@ -24,6 +24,9 @@ fn contextual_math_demands_actual_domain_winners_before_discard_and_trim() {
         let mut i = input(" c ", mode);
         math(&mut i, 0);
         i.scopes.push(SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
+            alignment_boundary: None,
+            font_reference: None,
             style: None,
             boundaries: None,
             trim: WhiteSpaceTrim {
@@ -40,8 +43,11 @@ fn contextual_math_demands_actual_domain_winners_before_discard_and_trim() {
         );
         fact(&mut i, 0);
         let processed = Arc::new(process_contextual_source(i).unwrap());
-        let a = AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-            .unwrap();
+        let a = AnalyzedSource::from_processed_paragraph(
+            processed.paragraphs().next().unwrap(),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         assert_eq!(a.inner.projection.text, "c");
         assert_eq!(a.source().text(), &Text::from(" c "));
     }
@@ -49,8 +55,11 @@ fn contextual_math_demands_actual_domain_winners_before_discard_and_trim() {
     math(&mut i, 0);
     fact(&mut i, 0);
     let processed = Arc::new(process_contextual_source(i).unwrap());
-    let a =
-        AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap()).unwrap();
+    let a = AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(a.inner.projection.text, "𝑐");
     assert_eq!(
         a.inner.transform.original_pieces(0)[0].local,
@@ -74,8 +83,16 @@ fn contextual_holes_retain_front_origin_indices_and_do_not_borrow_parent_domain_
     fact(&mut i, 2);
     let processed = Arc::new(process_contextual_source(i.clone()).unwrap());
     let views: Vec<_> = processed.paragraphs().collect();
-    let parent = AnalyzedSource::from_processed_paragraph(views[0].clone()).unwrap();
-    let child = AnalyzedSource::from_processed_paragraph(views[1].clone()).unwrap();
+    let parent = AnalyzedSource::from_processed_paragraph(
+        views[0].clone(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
+    let child = AnalyzedSource::from_processed_paragraph(
+        views[1].clone(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(parent.inner.projection.text, "A B"); // complete original node is multiscalar
     assert_eq!(child.inner.projection.text, " I "); // no parent math demand on child
     assert_eq!(
@@ -147,7 +164,10 @@ fn contextual_aggregate_winner_overrides_both_domain_base_and_resource_styles() 
         },
     );
     let processed = Arc::new(process_contextual_source(i).unwrap());
-    let a =
-        AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap()).unwrap();
+    let a = AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert_eq!(a.inner.projection.text, "c");
 }

@@ -145,6 +145,7 @@ mod tests {
             let analyzed = crate::AnalyzedSource::new(
                 crate::Source::new(text.clone()),
                 crate::Style::default(),
+                crate::AnalysisTypography::HorizontalComposition,
             )
             .unwrap();
             assert_eq!(

@@ -126,7 +126,7 @@ impl<S: l::LayoutScalar> TriangleHost<S> {
         assert_eq!(inner.push(Some(0), l::LayoutInputOf::box_input(float)), 1);
 
         let mut first = atomic(mode, direction, 10.0, (0.0, 0.0));
-        first.vertical_align = l::VerticalAlign::Top;
+        first.vertical_align = l::VerticalAlignOf::Top;
         first.atomic_inline_participation = Some(l::AtomicInlineParticipation::new(
             BidiLevel::try_new(0).unwrap(),
             l::InlineBreakOpportunity::Mandatory,

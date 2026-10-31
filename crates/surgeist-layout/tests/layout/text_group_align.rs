@@ -76,7 +76,7 @@ fn atomic<S: l::LayoutScalar>(
         display: l::Display::InlineBlock,
         writing_mode: mode,
         direction,
-        vertical_align: l::VerticalAlign::Baseline,
+        vertical_align: l::VerticalAlignOf::Baseline,
         atomic_inline_participation: Some(l::AtomicInlineParticipation::new(
             BidiLevel::try_new(u8::from(direction == l::Direction::Rtl)).unwrap(),
             l::InlineBreakOpportunity::Allowed,

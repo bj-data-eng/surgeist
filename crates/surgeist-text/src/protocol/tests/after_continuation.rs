@@ -73,7 +73,8 @@ fn capture(source: Source, base_style: Style, bytes: &[u8]) -> PreparedText {
 }
 fn capture_input(input: ParagraphInput, bytes: &[u8]) -> PreparedText {
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(input).unwrap(),
+        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap(),
         crate::Wrap::Word,
     );
     let mut system = System::new(SystemOptions {
@@ -165,7 +166,10 @@ fn selected_request(
     r
 }
 fn finish(p: &PreparedText, r: LineSelectionRequest) -> crate::Result<FinalizedLine> {
-    p.select(r)?.finalize(SpacingAllocations::None)
+    p.select(r)?.finalize(crate::LineAllocations {
+        spacing: SpacingAllocations::None,
+        scopes: crate::ScopeAllocations::None,
+    })
 }
 fn place_lines(
     p: &PreparedText,
@@ -1214,7 +1218,11 @@ fn indication_hard_separators_refuse_while_actual_tabs_keep_the_chosen_operation
                 anchor_order: vec![],
             };
             let analyzed = crate::test_wrapping::bind_missing(
-                &AnalyzedSource::from_paragraph(input).unwrap(),
+                &AnalyzedSource::from_paragraph(
+                    input,
+                    crate::AnalysisTypography::HorizontalComposition,
+                )
+                .unwrap(),
                 crate::Wrap::Word,
             );
             let mut system = System::new(SystemOptions {
@@ -1301,7 +1309,8 @@ fn incoming_css_tab_is_glyph_free_and_retains_its_real_source_anchor() {
         anchor_order: vec![],
     };
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(input).unwrap(),
+        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap(),
         crate::Wrap::Word,
     );
     let mut system = System::new(SystemOptions {
@@ -1535,7 +1544,11 @@ fn transparent_oof_does_not_split_the_actual_mixed_in_flow_rtl_run() {
         };
         let mut system = system();
         let analyzed = crate::test_wrapping::bind_missing(
-            &AnalyzedSource::from_paragraph(input).unwrap(),
+            &AnalyzedSource::from_paragraph(
+                input,
+                crate::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap(),
             crate::Wrap::Word,
         );
         let p = system
@@ -1610,7 +1623,10 @@ fn transparent_oof_does_not_split_the_actual_mixed_in_flow_rtl_run() {
         let line = p
             .select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(line.feedback().advance, 50.0);
         assert_eq!(line.inner.data.boxes.len(), if with_oof { 3 } else { 2 });

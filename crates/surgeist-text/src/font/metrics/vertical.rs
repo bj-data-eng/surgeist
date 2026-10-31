@@ -50,6 +50,49 @@ pub struct VerticalGlyphMetrics<'a> {
     advance_provenance: VerticalGlyphMetricProvenance,
     origin_y_provenance: VerticalGlyphMetricProvenance,
 }
+
+/// Same-instance nominal facts in design units, before any size conversion.
+///
+/// The admitted static TrueType tables supply integral advance and origin Y;
+/// origin X is half an integral horizontal advance. Keep these exact facts for
+/// the consuming provider's checked coordinate conversion, without rounding.
+#[derive(Debug)]
+pub(crate) struct UnscaledVerticalGlyphMetrics<'a> {
+    instance: EffectiveFontInstance<'a>,
+    units_per_em: u16,
+    glyph_id: u32,
+    advance: f64,
+    origin_x: f64,
+    origin_y: f64,
+    advance_provenance: VerticalGlyphMetricProvenance,
+    origin_y_provenance: VerticalGlyphMetricProvenance,
+}
+impl<'a> UnscaledVerticalGlyphMetrics<'a> {
+    pub(crate) const fn instance(&self) -> &EffectiveFontInstance<'a> {
+        &self.instance
+    }
+    pub(crate) const fn units_per_em(&self) -> u16 {
+        self.units_per_em
+    }
+    pub(crate) const fn glyph_id(&self) -> u32 {
+        self.glyph_id
+    }
+    pub(crate) const fn advance(&self) -> f64 {
+        self.advance
+    }
+    pub(crate) const fn origin_x(&self) -> f64 {
+        self.origin_x
+    }
+    pub(crate) const fn origin_y(&self) -> f64 {
+        self.origin_y
+    }
+    pub(crate) const fn advance_provenance(&self) -> VerticalGlyphMetricProvenance {
+        self.advance_provenance
+    }
+    pub(crate) const fn origin_y_provenance(&self) -> VerticalGlyphMetricProvenance {
+        self.origin_y_provenance
+    }
+}
 impl<'a> VerticalGlyphMetrics<'a> {
     /// Actual retained resource, size and complete coordinate loan.
     #[must_use]
@@ -107,6 +150,30 @@ impl<'a> EffectiveFontInstance<'a> {
         glyph_id: u32,
         expected: &FontCatalogueIdentity,
     ) -> Result<VerticalGlyphMetrics<'a>> {
+        let raw = self.unscaled_vertical_glyph_metrics(glyph_id, expected)?;
+        let scale = f64::from(self.size) / f64::from(raw.units_per_em());
+        let (advance, origin_x, origin_y) = (
+            raw.advance() * scale,
+            raw.origin_x() * scale,
+            raw.origin_y() * scale,
+        );
+        check(advance, origin_x, origin_y, Phase::Scaled)?;
+        Ok(VerticalGlyphMetrics {
+            instance: *raw.instance(),
+            glyph_id: raw.glyph_id(),
+            advance,
+            origin_x,
+            origin_y,
+            advance_provenance: raw.advance_provenance(),
+            origin_y_provenance: raw.origin_y_provenance(),
+        })
+    }
+
+    pub(crate) fn unscaled_vertical_glyph_metrics(
+        &self,
+        glyph_id: u32,
+        expected: &FontCatalogueIdentity,
+    ) -> Result<UnscaledVerticalGlyphMetrics<'a>> {
         if self.face.catalogue_identity() != expected {
             return Err(Error::new(
                 ErrorCode::FontCatalogueMismatch,
@@ -264,11 +331,9 @@ impl<'a> EffectiveFontInstance<'a> {
         let origin_x = width / 2.0;
         finite(Field::HorizontalAdvance, Phase::Unscaled, width)?;
         check(advance, origin_x, origin_y, Phase::Unscaled)?;
-        let scale = f64::from(self.size) / f64::from(upem);
-        let (advance, origin_x, origin_y) = (advance * scale, origin_x * scale, origin_y * scale);
-        check(advance, origin_x, origin_y, Phase::Scaled)?;
-        Ok(VerticalGlyphMetrics {
+        Ok(UnscaledVerticalGlyphMetrics {
             instance: *self,
+            units_per_em: upem,
             glyph_id,
             advance,
             origin_x,

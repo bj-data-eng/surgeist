@@ -122,7 +122,9 @@ fn prepare(
             ancestor_wrap: t::Wrap::Word,
         });
     }
-    let analyzed = t::AnalyzedSource::from_paragraph(input).unwrap();
+    let analyzed =
+        t::AnalyzedSource::from_paragraph(input, t::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())

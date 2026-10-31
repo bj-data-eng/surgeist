@@ -65,7 +65,11 @@ fn prepare(input: ParagraphInput, bytes: Vec<u8>) -> PreparedText {
     system(bytes)
         .prepare(
             &crate::test_wrapping::bind_missing(
-                &AnalyzedSource::from_paragraph(input).unwrap(),
+                &AnalyzedSource::from_paragraph(
+                    input,
+                    crate::AnalysisTypography::HorizontalComposition,
+                )
+                .unwrap(),
                 crate::Wrap::Word,
             ),
             PreparationOptions::default(),
@@ -107,6 +111,7 @@ fn select(
         .collect();
     prepared
         .select(LineSelectionRequest {
+            segment: crate::test_wrapping::only_source_segment(prepared),
             boundary_context: Vec::new(),
             incoming: None,
             start,
@@ -168,7 +173,10 @@ fn select(
             },
         })
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn place(prepared: PreparedText, x: f64, y: f64) -> Layout {
@@ -214,6 +222,14 @@ fn place(prepared: PreparedText, x: f64, y: f64) -> Layout {
     })
     .unwrap()
 }
+fn line_piece<'a>(piece: SourceRangeGeometry<'a>) -> SourceRangePiece<'a> {
+    match piece {
+        SourceRangeGeometry::Line(piece) => piece,
+        SourceRangeGeometry::CellFont(_) | SourceRangeGeometry::CellTab(_) => {
+            panic!("ordinary Range fixture must retain Line geometry")
+        }
+    }
+}
 fn rectangles(result: &SourceRangeFragments<'_>) -> Vec<Rect> {
     result
         .units()
@@ -254,6 +270,7 @@ fn actual_zero_formatting_units_use_own_font_metrics_and_distinct_placement_iden
     assert_eq!(
         first
             .pieces()
+            .map(line_piece)
             .next()
             .unwrap()
             .effective_instance()
@@ -380,6 +397,7 @@ fn surrogate_halves_and_cross_font_grapheme_parts_expand_without_borrowing_neigh
     assert_eq!(partial.units().count(), 1);
     assert_eq!(
         unit.pieces()
+            .map(line_piece)
             .map(|p| p.effective_instance().font_size())
             .collect::<Vec<_>>(),
         [10.0, 20.0]
@@ -661,12 +679,15 @@ fn rtl_pdi_keeps_post_l1_l2_x_and_original_local_origin_offsets() {
 fn own_formatting_font_survives_catalogue_replacement_and_system_drop() {
     let mut source = Source::new("A\u{2069}B");
     source.span(Range::new(1, 2), style(20.0));
-    let a = AnalyzedSource::from_paragraph(input(
-        source,
-        style(10.0),
-        &[0, 3],
-        ParagraphBaseDirection::LeftToRight,
-    ))
+    let a = AnalyzedSource::from_paragraph(
+        input(
+            source,
+            style(10.0),
+            &[0, 3],
+            ParagraphBaseDirection::LeftToRight,
+        ),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let mut fonts = system(AHEM.to_vec());
     let p = fonts.prepare(&a, PreparationOptions::default()).unwrap();
@@ -679,7 +700,7 @@ fn own_formatting_font_survives_catalogue_replacement_and_system_drop() {
     drop(fonts);
     let l = place(p, 0.0, 30.0);
     let q = l.source_range_fragments(&o, Range::new(1, 2)).unwrap();
-    let piece = q.units().next().unwrap().pieces().next().unwrap();
+    let piece = line_piece(q.units().next().unwrap().pieces().next().unwrap());
     assert_eq!(piece.effective_instance().font_size(), 20.0);
     assert_eq!(piece.effective_instance().face().catalogue_identity(), &old);
     near(piece.rect().origin.y, 14.0);
@@ -704,7 +725,11 @@ fn wholly_removed_original_needs_no_fabricated_font_and_newline_modes_stay_disti
     .unwrap();
     let p = no_fonts
         .prepare(
-            &AnalyzedSource::from_paragraph(capture).unwrap(),
+            &AnalyzedSource::from_paragraph(
+                capture,
+                crate::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap(),
             PreparationOptions::default(),
         )
         .unwrap();
@@ -976,6 +1001,8 @@ fn contextual_holes_remain_real_pieces_of_shared_units_and_generated_origins_are
         Size::new(5.0, 10.0),
     ));
     let capture = ContextualSourceInput {
+        joint_flows: Vec::new(),
+        scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -1004,12 +1031,18 @@ fn contextual_holes_remain_real_pieces_of_shared_units_and_generated_origins_are
         replacements: vec![],
         scopes: vec![
             SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: crate::SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style(10.0),
             },
             SourceProcessingScope::OutOfFlowBlock {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: crate::SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
@@ -1056,8 +1089,11 @@ fn contextual_holes_remain_real_pieces_of_shared_units_and_generated_origins_are
     let mut fonts = system(crate::shaping_test_fonts::ligature_ahem());
     let p = fonts
         .prepare(
-            &AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-                .unwrap(),
+            &AnalyzedSource::from_processed_paragraph(
+                processed.paragraphs().next().unwrap(),
+                crate::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap(),
             PreparationOptions::default(),
         )
         .unwrap();
@@ -1084,8 +1120,11 @@ fn contextual_holes_remain_real_pieces_of_shared_units_and_generated_origins_are
     );
     let child = fonts
         .prepare(
-            &AnalyzedSource::from_processed_paragraph(processed.paragraphs().nth(1).unwrap())
-                .unwrap(),
+            &AnalyzedSource::from_processed_paragraph(
+                processed.paragraphs().nth(1).unwrap(),
+                crate::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap(),
             PreparationOptions::default(),
         )
         .unwrap();
@@ -1348,8 +1387,41 @@ fn source_less_breaks_and_control_alternatives_with_incidental_origins_do_not_ac
     near(rectangles(&q).iter().map(|r| r.size.width).sum(), 20.0);
 }
 
+fn shared_ccmp_refuses_material_authored_spacing(value: ParagraphInput, bytes: Vec<u8>) {
+    let analyzed = crate::test_wrapping::bind_missing(
+        &AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap(),
+        crate::Wrap::Word,
+    );
+    let error = system(bytes)
+        .prepare(&analyzed, PreparationOptions::default())
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::LayoutFailed);
+    let Some(ErrorDetail::UnsupportedSpacing {
+        stage,
+        operation,
+        pieces,
+        provider_atoms,
+        ..
+    }) = error.detail()
+    else {
+        panic!("expected actual shared ccmp geometry refusal: {error:?}")
+    };
+    assert_eq!(*stage, SpacingStage::Preparation);
+    assert_eq!(*operation, SpacingOperation::AuthoredWord);
+    assert_eq!(
+        pieces.as_ref(),
+        [SpacingPiece::Source {
+            origin: 0,
+            local: Range::new(1, 2),
+            aggregate: Range::new(1, 2),
+        }]
+    );
+    assert_eq!(provider_atoms.as_ref(), std::slice::from_ref(&(0..2)));
+}
+
 #[test]
-fn range_egc_shares_keep_owned_spacing_and_rtl_physical_sides() {
+fn range_egc_shares_keep_owned_letter_spacing_and_rtl_physical_sides() {
     let fixtures = [
         (
             "A A",
@@ -1377,17 +1449,35 @@ fn range_egc_shares_keep_owned_spacing_and_rtl_physical_sides() {
             own_style.letter_spacing = 1.0;
             own_style.word_spacing = 3.0;
         }
-        let p = prepare(
-            input(
-                Source::new(text),
-                own_style,
-                &[0, text.encode_utf16().count()],
-                direction,
-            ),
-            crate::shaping_test_fonts::range_ligature_ahem(&components, &mappings),
-        );
+        let bytes = crate::shaping_test_fonts::range_ligature_ahem(&components, &mappings);
+        let source = Source::new(text);
+        let cuts = [0, text.encode_utf16().count()];
+        if spaced {
+            shared_ccmp_refuses_material_authored_spacing(
+                input(source.clone(), own_style.clone(), &cuts, direction),
+                bytes.clone(),
+            );
+            // Preserve the actual ccmp and positive per-EGC Range partition.
+            // Its equal raw shares cannot qualify independent word spacing.
+            own_style.word_spacing = 0.0;
+        }
+        let p = prepare(input(source.clone(), own_style, &cuts, direction), bytes);
         let o = p.origin_views().next().unwrap().handle();
         let l = place(p, 0.0, 30.0);
+        assert_eq!(l.source(), &source);
+        assert_eq!(
+            l.run_views()
+                .flat_map(|run| run
+                    .glyphs()
+                    .map(|g| (g.id(), g.advance()))
+                    .collect::<Vec<_>>())
+                .collect::<Vec<_>>(),
+            if spaced {
+                vec![(58, 12.5), (35, 12.5)]
+            } else {
+                vec![(58, 12.5)]
+            }
+        );
         let first_end = if text == "A\u{301}A" { 2 } else { 1 };
         let a = l.source_range_fragments(&o, Range::new(0, 1)).unwrap();
         let b = l
@@ -1398,8 +1488,8 @@ fn range_egc_shares_keep_owned_spacing_and_rtl_physical_sides() {
         assert!(!ua.same_unit(&ub));
         let ra = ua.pieces().next().unwrap().rect();
         let rb = ub.pieces().next().unwrap().rect();
-        near(ra.size.width, if spaced { 7.25 } else { 6.25 });
-        near(rb.size.width, if spaced { 10.25 } else { 6.25 });
+        near(ra.size.width, 6.25);
+        near(rb.size.width, if spaced { 7.25 } else { 6.25 });
         if direction == ParagraphBaseDirection::RightToLeft {
             assert!(ra.origin.x > rb.origin.x);
         } else {
@@ -1453,18 +1543,30 @@ fn nonmonotone_provider_partition_is_a_local_capability_refusal() {
 }
 
 #[test]
-fn optional_ligature_keeps_selected_space_allocation_on_its_own_range_unit() {
+fn ccmp_ligature_keeps_selected_space_allocation_on_its_own_range_unit() {
     let mut own_style = style(12.5);
     own_style.letter_spacing = 1.0;
     own_style.word_spacing = 3.0;
+    let bytes = crate::shaping_test_fonts::range_ligature_ahem(&[35, 3], &[(0x41, 35), (0x20, 3)]);
+    let source = Source::new("A A");
+    shared_ccmp_refuses_material_authored_spacing(
+        input(
+            source.clone(),
+            own_style.clone(),
+            &[0, 3],
+            ParagraphBaseDirection::LeftToRight,
+        ),
+        bytes.clone(),
+    );
+    own_style.word_spacing = 0.0;
     let p = prepare(
         input(
-            Source::new("A A"),
+            source.clone(),
             own_style,
             &[0, 3],
             ParagraphBaseDirection::LeftToRight,
         ),
-        crate::shaping_test_fonts::range_ligature_ahem(&[35, 3], &[(0x41, 35), (0x20, 3)]),
+        bytes,
     );
     let o = p.origin_views().next().unwrap().handle();
     let end = p
@@ -1487,7 +1589,10 @@ fn optional_ligature_keeps_selected_space_allocation_on_its_own_range_unit() {
         .map(|slot| SpacingAllocation { slot, amount: 4.0 })
         .collect();
     let line = selected
-        .finalize(SpacingAllocations::Complete(allocations))
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::Complete(allocations),
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let l = Layout::from_finalized_lines(PlacementRequest {
         prepared: p,
@@ -1503,9 +1608,22 @@ fn optional_ligature_keeps_selected_space_allocation_on_its_own_range_unit() {
         })],
     })
     .unwrap();
+    assert_eq!(l.source(), &source);
+    assert_eq!(
+        l.run_views()
+            .flat_map(|run| run
+                .glyphs()
+                .map(|g| (g.id(), g.advance()))
+                .collect::<Vec<_>>())
+            .collect::<Vec<_>>(),
+        [(58, 12.5), (35, 12.5)]
+    );
     let a = l.source_range_fragments(&o, Range::new(0, 1)).unwrap();
     let space = l.source_range_fragments(&o, Range::new(1, 2)).unwrap();
-    near(rectangles(&a)[0].size.width, 7.25);
-    near(rectangles(&space)[0].size.width, 14.25);
-    near(rectangles(&space)[0].origin.x, 7.25);
+    near(rectangles(&a)[0].size.width, 6.25);
+    // Raw shared12.5 gives6.25 per EGC. Required ccmp protects A/SPACE;
+    // the outside SPACE/A tracking1 belongs to SPACE. Native Spaces4
+    // stays wholly on that same SPACE range unit.
+    near(rectangles(&space)[0].size.width, 11.25);
+    near(rectangles(&space)[0].origin.x, 6.25);
 }

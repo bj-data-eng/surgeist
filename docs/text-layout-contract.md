@@ -336,9 +336,11 @@ regional-indicator pairing and opening punctuation across spaces. A computed-sty
 change does not end that context. Existing semantic barriers, typography and
 captured ancestor wrapping still govern analysis and admission.
 
-`AnalyzedSource::new(Source, Style)` performs the font-independent analysis once and returns an immutable value with an opaque allocation identity. Clones retain that identity; independently analyzed equal text does not. It preserves exact source units, grapheme and host-projection mappings, source affinity and applicable language facts. Isolated UTF-16 units remain valid analysis inputs; a host requiring scalar UTF-8 may reject their accessibility projection at that boundary. Font preparation retains the same analyzed allocation. `System::layout_analyzed` consumes this analysis through the same preparation, selection, finalization and placement machinery as the `System::layout` convenience path.
+`AnalyzedSource::new(source, style, typography)` performs the font-independent analysis once and returns an immutable value with an opaque allocation identity. Clones retain that identity; independently analyzed equal text does not. It preserves exact source units, grapheme and host-projection mappings, source affinity and applicable language facts. Isolated UTF-16 units remain valid analysis inputs; a host requiring scalar UTF-8 may reject their accessibility projection at that boundary. Font preparation retains the same analyzed allocation. `System::layout_analyzed` consumes this analysis through the same preparation, selection, finalization and placement machinery as the `System::layout` convenience path.
 
-This deliberately replaces the former successful fontless `Layout` phase while preserving its useful source-only accessibility capability. The existing `absent_selected_font_does_not_erase_original_selectable_graphemes` regression establishes that original graphemes remain selectable without glyphs. Preserve that behavior through the real analyzed-source front door in the same implementation change. Do not retain a fontless-layout branch or manufacture a font, glyph, prepared value or empty geometry to satisfy it.
+All three analysis constructors take an explicit `AnalysisTypography`. Horizontal composition retains ordinary horizontal interpretation for horizontal and both native sideways profiles. Whole-upright analysis retains its separately supplied computed direction while resolving used LTR under the [native bidi policy](../references/text-upright-bidi--native-determination.md). Captured paragraph used-base authority is validated independently of the nearest block's tab reference. Analysis and logical accessibility remain font-independent; matching explicit Vertical preparation uses the [native whole-upright profile](../crates/surgeist-text/docs/reference.md#native-whole-upright-paragraphs), followed by issued selection, finalization and placement.
+
+Original graphemes remain selectable without glyphs through the analyzed-source front door, as qualified by `absent_selected_font_does_not_erase_original_selectable_graphemes`. Source-only accessibility needs no fabricated font, glyph, prepared value or geometry.
 
 A renderable shaping request without a usable admitted face returns a typed no-usable-face/font-resolution error. An empty `RegisteredOnly` catalogue is valid and is distinct from font-service unavailability. Empty, collapsed, control-only or box-only content does not automatically require a glyph face; any requested font-dependent line metrics still require their actual font. A failed layout publishes neither partial layout nor a source-only accessibility update. Callers may explicitly retain analysis and request source-only projection independently.
 
@@ -515,7 +517,7 @@ Render appends each original outline and a copy translated by positive local x d
 
 Advances, glyph positions, carets and font line metrics do not gain a bold-spacing adjustment. Apply the outline operation to actual positioned glyphs, including zero-advance marks; an outline-empty glyph remains empty. Text outline geometry and Render ink include the emitted copies, with bounds derived from their canonical geometry. Additional path elements and live storage count against the existing limits, and failure publishes no prefix. Existing representation restrictions remain explicit capability errors.
 
-This is the extracted-path policy. Appending contours is not a geometric boolean union and does not promise native CoreText two-pass alpha, antialiasing or CTM-adjusted displacement. The selected profile covers the horizontal outline and x-shear convention. [Clockwise sideways placement](../crates/surgeist-text/docs/reference.md#clockwise-sideways-placement) applies its qualified run basis after that same canonical horizontal operation; it does not select upright font metrics or introduce a vertical synthesis operation. Other vertical/oriented synthesis requires its own qualified operation before admission.
+This is the extracted-path policy. Appending contours is not a geometric boolean union and does not promise native CoreText two-pass alpha, antialiasing or CTM-adjusted displacement. The selected operation uses the font-x outline and x-shear convention. [Clockwise sideways placement](../crates/surgeist-text/docs/reference.md#clockwise-sideways-placement) applies its qualified run basis after that canonical operation. Native upright placement retains the unrotated glyph frame while its logical pen advances on physical y; the same outline operation still acts on glyph-x. Neither mapping introduces a new synthesis algorithm or qualifies intrinsic vertical rotations. Other synthesis operations require their own qualification before admission.
 
 ## Selected-line protocol
 
@@ -564,8 +566,8 @@ Hard-break precedence belongs to Text’s opportunity inventory under the [pinne
 
 1. `System::prepare` obtains or retains the immutable analyzed source, resolves fonts and returns `PreparedText`. It does not choose the composed paragraph's line breaks. Its preliminary measurements/opportunities are explicitly preliminary wherever selected boundaries can change shaping or line-edge processing.
 2. Layout’s consuming adapter lowers text units, opportunities and metrics to layout's validated inline inputs. Layout chooses a candidate logical range, break alternative and float-dependent span. It supplies the complete logical participant sequence, including atomic inline identities and directional controls, plus the relevant line context.
-3. `PreparedText` validates a selection and creates `SelectedLine`. Private handles bind the selection to that preparation; validate range order, unit boundaries, break legality, selected replacement, atomic participant uniqueness and context. Selection context includes writing mode/orientation, start/end and forced/soft break facts, tab origin, available text span, indentation/hanging facts and exact spacing allocations. Do not pass unrelated paint policy into shaping.
-4. Text finalizes that selection. `FinalizedLine` owns its selected preparation, the applied replacement and processed mapping, final effective font runs/glyphs, actual advances, line-edge/hanging facts, text metrics and outline ink, visual order including atomic placeholders, and caret/selection anchors. It returns line-local geometry. It never chooses a different break or places a box. Finalization applies the selected line's shaping boundaries, bidi line rules and text spacing to one result shared by all consumers.
+3. `PreparedText::select` validates the exact range, break/replacement, participants and captured context, chooses the method/feature policy up front, and establishes the actual selected shaping basis. It retains complete output, correspondence, DI eligibility, constraints, visual order and font resources; only after receipt-based topology reconciliation does it create `SelectedLine` and complete spacing handles. Selection can report real provider/resource failures. Context includes writing mode/orientation, start/end and forced/soft break facts, tab origin, available span and indentation/hanging facts. Allocation amounts do not choose the plan or slot count. Do not pass unrelated paint policy into shaping.
+4. Text finalizes allocations over that immutable selected basis, including the first finalization. It performs no provider shaping or font matching. `FinalizedLine` retains the selected owner and actual allocation-dependent advances, line-edge/hanging facts, metrics, outline ink, cells and caret/selection anchors. It returns line-local geometry without choosing another break or placing a box. `None`/zero replaces only allocated amounts; it preserves the selected plan, actual output and authored spacing. A changed method, feature/context or resource basis needs a fresh selection and handles.
 5. Layout evaluates the returned metrics against its candidate span, including changes to float intersection caused by actual line height. It can choose another candidate/context and finalize again. After choosing a fitting line it supplies its space allocation and obtains the final geometry; it rechecks any resulting width/height feedback before committing. Preliminary metrics are never silently treated as final.
 6. Layout supplies validated placement of those exact finalized lines, including line/fragment IDs, physical origin, writing-mode basis, baseline and atomic box rectangles, to text's placed-layout constructor. The constructor validates identities, completeness and geometry before returning a placed `Layout`. Painting, hit testing, movement, selection and accessibility consume this placed result. They cannot call a separate paragraph wrapper to recreate it.
 
@@ -799,7 +801,7 @@ an unchanged complete receipt. Missing facts, numeric/shaping failures and late
 feedback refusal publish nothing and leave earlier completed results immutable.
 
 This operation consumes native used geometry. It does not resolve live Style or
-authored percentages, add vertical Text, or construct full inline-element
+authored percentages or construct full inline-element
 decoration envelopes/background/border painting. It does not change raw
 standalone whitespace, the six modes, #74 or control/default-ignorable rules.
 
@@ -912,6 +914,53 @@ admission. Preserve authentic provider groups, semantic graphemes, source-only
 pieces, affinities, exact original UTF-16, copy and plaintext. A computed visible
 hyphen is classified by its actual emitted atom, not its authored SHY source.
 
+Retain these actual exclusions beyond extraction for character topology and
+carrier choice. Wholly Residual/Deleted operation units have no spacing role;
+bridge their actual eligible neighbors only within genuine semantic components.
+A partial unit keeps complete source custody, but its base and displacement
+carrier cannot be a residual/deleted component. Native Normal descendants remain
+subject to source-owned EGC/Appendix-E rules and actual movement constraints;
+Normal is neither a writing-system proof nor a complete AAT movement receipt.
+An all-residual selected presentation truthfully publishes an empty complete
+basis, including lone U+2065 with nonzero authored tracking. A single eligible
+complete unit has no outside tracking; a native raw18 filler remains18.
+
+The actual selected invocation is authoritative. Preparation DI receipts are
+reusable only with complete invocation identity equivalence, including emitted
+body/correspondence, consumed context, effective plan and resource instance.
+Neither source/face equality nor matching glyph counts proves this equivalence.
+Choose the spacing-capable method policy before shaping and honor explicit
+feature overrides; do not iterate shaping until eligibility or slot counts
+stabilize. Both first/repeated `finalize` and `with_spacing` reuse one immutable
+basis without provider/font queries or DI reclassification. Retained invocation
+work/storage stays charged once to the existing actual provider limits.
+
+The [native conditional-envelope policy](../references/text-character-spacing--native-determination.md#selected-feature-basis)
+permits bounded conservative endpoint controls before final DI outcomes are
+known. One immutable requirement supplies structural observation and canonical
+source/input coverage with exact or conditional provenance. Include partial
+outcomes, coalescence and possible governing bases; do not infer the plan from
+provisional cancellation or sampled exclusion subsets. Source-stable neutral
+cases retain ordinary defaults. A permitted full-component fallback respects
+actual semantic barriers and isolated domains, includes real visual text–atomic
+interaction, and does not automatically mask another component or font run.
+Actual receipt-qualified units alone determine final slots and amounts.
+
+The canonical Common P/S resolver owns content-context dependencies as well as
+actual script resolution. Source-component contribution-invariance proofs can
+preserve that context; local base/property invariance alone is insufficient when
+other counted units in the same domain may disappear or coalesce. Propagate
+conditional requirements to dependent P/S endpoints and their real boundary
+counterparts through the existing owner. Preserve unrelated domains and stable
+contributions without duplicating script counts, winner selection or segmentation.
+
+A complete output with no requested component receipt retains an explicit
+Text-owned unobserved marker at the extraction fence. It has no invented provider
+path or feature provenance and adds no provider observation budget. If a later
+real material boundary requires movement proof, missing evidence constrains that
+operation rather than establishing Independent geometry. Pure neutral shaping
+remains usable; allocation replacement never reclassifies or reruns the provider.
+
 ### Native whitespace processing modes
 
 Text's `WhiteSpace` values are Collapse, Discard, Preserve, PreserveSpaces,
@@ -1007,6 +1056,17 @@ container. MinContent and MaxContent have independent invocation-local chronolog
 query order and finite cache history cannot change their result. Actual policy,
 containing basis, incoming accepted state and resolved candidate context remain
 part of captured pass/request/replay identity.
+
+### Captured-scope alignment
+
+The [captured-scope contract](../crates/surgeist-text/docs/scope-alignment.md)
+owns early formatting facts, authentic glyph-free parent metrics, selected
+allocation and feature-local resource accounting. Layout admits scalar-typed
+alignment facts through actual scope associations and resolves line-relative
+aligned subtrees. Text retains lexical custody while executing each participating
+frame once; Top/Bottom children remain independent containing-line groups.
+Font references are context, not invented struts. Raw/named reference bridges,
+signed fitting, replay and OOF static edges use the actual retained frame.
 
 ### Native text-group alignment
 
@@ -1145,6 +1205,14 @@ receipts; no compatibility alias or second whitespace formatter is selected.
 
 ### Preserved CSS tab stops
 
+The block-grid rules below govern ordinary and replacement TABs exposed to the
+outer line. A preserved TAB inside an admitted native combined Cell follows
+the [Cell contract](../crates/surgeist-text/docs/reference.md#contextual-source-processing):
+preparation executes its horizontal zero-origin grid before width selection,
+and finalization retains that inner geometry. An ordinary TAB elsewhere still
+requires its actual block reference and late origin, even when both occurrences
+share one style.
+
 Text owns preserved-tab advances and source custody; Layout owns the actual block
 edge, line span and placement supplied to finalization. This contract selects the
 CSS operation under #64/#72, independently of native font-advance tabs. It follows
@@ -1161,8 +1229,9 @@ chooses either font-advance or CSS-stop demand independently of the capture.
 Resolve every selectable original and replacement TAB under the chosen demand
 before publishing the preparation. Missing required facts or resources fail
 atomically. A later request must match that prepared capability; `NoTabs` instead
-checks actual selected absence. Retain every consumed font instance and include
-the capture, style and demand in their owning cache identities.
+checks actual selected absence of outer TAB operations. Retain every consumed
+font instance and include the capture, style and demand in their owning cache
+identities.
 
 A checked tab size is either a finite nonnegative number or absolute length,
 initially eight spaces. A number multiplies the nearest block's hypothetical
@@ -1979,11 +2048,11 @@ and rollback into a changed assignment.
 
 ### Canonical boxes and coherent line placement
 
-For composed horizontal lines, Layout settles its canonical boxes, available spans, float bands and atomic allocations before accepting Text's finalized geometry. This includes the selected Layout pixel-rounding policy wherever it affects those facts. Pixel snapping is distinct from scalar conversion and canonical provider precision. If final ancestor placement changes the rounding phase and thereby changes a dimension, relative baseline or float intersection, Layout reevaluates the affected candidate and its feedback before placement. A final rounding pass cannot silently change an accepted line's inputs. This replaces independent rounding of text-fragment origins, ends and baselines for the composed protocol.
+For admitted Horizontal, clockwise SidewaysRl and native upright VerticalRl/VerticalLr lines, Layout settles its canonical boxes, available spans, float bands and admitted atomic allocations before accepting Text's finalized geometry. This includes the selected Layout pixel-rounding policy wherever it affects those facts. Pixel snapping is distinct from scalar conversion and canonical provider precision. If final ancestor placement changes the rounding phase and thereby changes a dimension, relative baseline or float intersection, Layout reevaluates the affected candidate and its feedback before placement. A final rounding pass cannot silently change an accepted line's inputs. This replaces independent rounding of text-fragment origins, ends and baselines for the composed protocol.
 
-Layout selects one physical anchor per finalized line: its inline origin and baseline, rounded once under the requested Layout policy using the actual containing placement and global reference. Every run, source fragment, cluster, caret and selection receives the same rigid translation of immutable line-local geometry. Line top is the placed baseline minus actual ascent; fractional local positions, advances and sizes remain fractional. A line spanning multiple source nodes has one common formatting-context anchor. Node-local views are coordinate conversions from that placed geometry using actual committed ancestor origins, with no independent snapping. Layout's line allocation rectangles and Text's metric or ink bounds retain their distinct roles.
+Layout selects one physical anchor per finalized line: its inline origin and cross-axis baseline, rounded once under the requested Layout policy using the actual containing placement and global reference. Every run, source fragment, cluster, caret and selection uses the same placed Text basis. Horizontal geometry receives a rigid translation; clockwise Sideways geometry rotates once about that actual baseline. Native upright retains the unrotated glyph basis while its inline pen advances on physical y. The font's over edge is the baseline minus ascent in Horizontal y, or baseline plus ascent in clockwise Sideways and native upright x. Native upright Central is placed B from the right block-start in VerticalRl and H-B from the left in VerticalLr, using the actual finalized baseline B and line allocation H. Both modes map Text cell coordinates (u,v) to (CentralX+B-v, inlineOrigin+u); normal-flow allocations separately follow the actual block progression. Fractional local positions, advances and sizes remain fractional. A line spanning multiple source nodes has one common formatting-context anchor. Node-local views are coordinate conversions from that placed geometry using actual committed ancestor origins, with no independent snapping. Layout's line allocation rectangles and Text's metric or ink bounds retain their distinct roles.
 
-Logical line allocations follow the pinned [line-box stacking rules](../references/css-inline-3--WD-css-inline-3-20241218--a73a73a45bf5.md#line-boxes). Retain their unsnapped progression independently of each physical Text anchor: advance by the accepted allocation height and any genuine float or clearance displacement. A rigid placement translation does not become additional flow advance or change the next logical start. Natural container height follows those allocations; actual placed metric and ink bounds contribute to their respective overflow calculations. Both allocation and placed metric footprints must satisfy their applicable float constraints; a gap between those footprints is not newly occupied space. Revalidate changed canonical allocations and float intersections under the feedback rules below.
+Logical line allocations follow the pinned [line-box stacking rules](../references/css-inline-3--WD-css-inline-3-20241218--a73a73a45bf5.md#line-boxes). Retain their unsnapped progression independently of each physical Text anchor: advance by the accepted block-axis allocation and any genuine float or clearance displacement. Placement does not become additional flow advance or change the next logical start. Natural container block size follows those allocations; actual placed metric and ink bounds contribute to their respective overflow calculations. Both allocation and placed metric footprints must satisfy their applicable float constraints; a gap between those footprints is not newly occupied space. Revalidate changed canonical allocations and float intersections under the feedback rules below.
 
 An in-flow atomic participant carries both its actual canonical box rectangle and baseline, and its logical flow allocation including signed used margins, spacing and baseline-relative ascent/descent. Layout derives that allocation from canonical box facts under its box rules; it is neither the painted border width nor a nonnegative clamp of the margin box. Explicit box-origin/baseline offsets relate the Text participant to the actual committed node rectangle. Any independent atomic snap displacement relative to the line is part of those facts before acceptance. Text consumes the supplied allocation and participant identity without interpreting CSS margins. The pinned [CSS Inline layout-bounds and baseline rules](../references/css-inline-3--WD-css-inline-3-20241218--a73a73a45bf5.md) motivate this distinction; integer snapping and the single-anchor granularity are Surgeist policy, not CSS requirements.
 
@@ -2012,8 +2081,12 @@ actual placed result. Its ordered observations retain selected source
 intersections, expanded typographic-unit coverage where applicable, finalized
 line/fragment and placement identities, advance edges and associated font-metric
 extent. Native `Layout::source_range_fragments` implements this observation
-boundary for admitted horizontal placements; the complete web consumer remains
-separate. Generic source slots and caret affinities are distinct.
+boundary for admitted Native placements; the complete web consumer remains
+separate. Piece rectangles use the actual physical placed basis. Ordinary line
+pieces expose directed advance edges in physical inline coordinates and a
+baseline in the physical cross coordinate. Ordinary font ascent/descent retain their unrotated before/after distances,
+interpreted through the query's actual Layout orientation.
+Generic source slots and caret affinities are distinct.
 The selected evidence is the [current CSSOM View §9 capture](../references/cssom-view-range--editor-capture-20261022.md),
 checked with the [bounded CSSWG and browser-test audit](../references/range-geometry-csswg-tests--20261022.md).
 That audit found no adopted resolution for the remaining endpoint choices in
@@ -2026,6 +2099,18 @@ They are distinct from float-prefix units: an optional Latin `AA` ligature can
 share one provider cluster while containing two Range units; a base and combining
 mark remain one grapheme-based unit. Partial selection expands the actual Range
 unit, not every provider cluster touching it.
+
+A combined Cell retains its actual post-edge semantic EGC partition for Range,
+rather than becoming one opaque unit or a one-em rectangle. Partial original
+selection closes only its actual EGC; selected source endpoints remain exact and
+expanded coverage retains all original members. Removed-only selection units
+retain metadata and no geometry. Font-backed pieces use actual retained
+horizontal metrics through the executed compression, centering and once-applied
+scope/placement frame. Their common metric reference differs from the
+font-design paint origin by the retained font baseline offset; do not apply that
+offset twice. Native CSS TAB pieces instead consume their executed spans and
+real container-referenced em band, without a body font or glyph baseline. Ordinary
+line, Cell font and Cell native-layout geometry remain explicit variants.
 
 Preserve authentic per-unit advance positions and allocated adjustments first.
 For an admitted monotonic horizontal shaped cluster containing multiple complete
@@ -2188,7 +2273,7 @@ This is a mechanism-level extraction inventory proven by the installed 0.9 sourc
 | --- | --- | --- |
 | `analysis/mod.rs`, `analysis/cluster.rs`, `bidi.rs` | Unicode/cluster analysis and bidi facts. | Additional CSS feature semantics stay in their existing issues. |
 | `resolve/mod.rs`, `resolve/range.rs`, relevant `style/` conversion | Font-family, feature/variation/style resolution for the current owned source model. | Tree builder and upstream style front door are not required; adapt `setting.rs`/`inline_box.rs` conversions to the existing owned setting/inline-box values instead of retaining parallel public models. |
-| `shape/mod.rs`, `shape/cache.rs`, `convert.rs` | Harfrust buffers/plans/instances, fallback shaping, source clusters and safe provider conversions. | Replace external-input unwraps and compact-offset assumptions. |
+| `shape/mod.rs`, `shape/cache.rs`, `convert.rs` | Shaper buffers/plans/instances, fallback shaping, source clusters and safe provider conversions. | Replace external-input unwraps and compact-offset assumptions. |
 | `context.rs`, `builder.rs`, `font.rs` | Necessary preparation orchestration and safe Fontique calls, folded into existing `System`. | Do not ingest parallel public builder/context/font APIs. |
 | `layout/data.rs`, `layout/run.rs`, cluster/line access mechanisms | Shaped storage, normalized coordinates, effective font metrics, cluster/source mapping and finalized line access. | Separate shaped data from line placement; do not preserve provider-chosen composed wrapping. |
 | `layout/line_break.rs`, `layout/alignment.rs` | Selected-line finalization/line-edge and glyph-adjustment mechanisms; required simple standalone chooser subset. | Composed break/float choice, box allocation and placement stay in layout. Consolidate duplicated L2 reorder. |
@@ -2201,7 +2286,7 @@ The baseline is Parley `0.9.0`, crates.io checksum `8fad031076f48f0d4d85ce1aea9b
 | Provider | Resolved version | Text requested features (`default-features = false`) | Role |
 | --- | --- | --- | --- |
 | Fontique | 0.9.0 | `std`, `system` | Safe font catalogue/matching/fallback and byte resources; native implementation remains external. |
-| Harfrust | 0.6.2 | `std` | Shaping. Parley 0.9 is not Swash-backed. |
+| [surgeist-shaper](../crates/surgeist-shaper/README.md) | 0.1.0 (Harfrust 0.6.2 origin) | `std` | Owned shaping provider. Parley 0.9 is not Swash-backed. |
 | Skrifa | 0.42.1 | `std` | Same-instance font/outline metrics. Render independently owns its Skrifa feature needs. |
 | ICU normalizer/properties/segmenter | 2.2.0 each | `compiled_data` | Current Unicode analysis data. Segmenter's `auto`/LSTM feature is not implied by current Parley behavior. |
 | Parley Data | 0.9.0 | `baked` | Unicode analysis data; package use does not preserve the Parley intermediary. |

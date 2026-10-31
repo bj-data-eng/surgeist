@@ -9,10 +9,13 @@ Standalone layout retains raw Preserve and automatic direction. Explicit compose
 paragraphs execute source processing and capture their actual base direction;
 inline-box alignment requests do not imply CSS vertical-alignment execution.
 See the [support reference](docs/reference.md) for the current contract.
-Native prepared lines also support [clockwise sideways placement](docs/reference.md#clockwise-sideways-placement),
+Native prepared lines also support [clockwise](docs/reference.md#clockwise-sideways-placement)
+and [counterclockwise sideways placement](docs/reference.md#counterclockwise-sideways-placement),
 with preparation-bound font features and the same physical basis for paint and
-interaction. Independent atomic content and upright/mixed typography retain
-explicit capability refusals.
+interaction. Matching upright analyses also support a complete
+[native unrotated upright paragraph](docs/reference.md#native-whole-upright-paragraphs)
+through placement, interaction and Text accessibility, within explicit script,
+font, decoration and atomic-content limits.
 
 `process_source_whitespace` executes source-local whitespace processing before
 fonts. `process_contextual_source` additionally consumes captured box, paragraph
@@ -22,9 +25,21 @@ internal child text remains outside the parent view. Both fronts share whitespac
 correspondence and partial plaintext without inserting presentation characters.
 See [contextual processing](docs/reference.md#contextual-source-processing).
 
+[Captured-scope alignment](docs/scope-alignment.md) retains genuine parent font
+context and allocates complete selected subtrees. Its early formatting facts,
+line-relative edge groups and feature limits remain separate from a standalone
+inline-box request.
+
 `Text` retains exact UTF-16 code units, and public source positions and ranges
 count those units. Edits can split or join surrogate pairs. `AnalyzedSource`
-retains original source and pre-font semantic analysis. `Style::word_space_transform`
+retains original source and pre-font semantic analysis. Its constructors take
+`AnalysisTypography::HorizontalComposition` for existing horizontal/sideways
+interpretation, or `Upright { computed_direction }` for [font-independent upright
+source analysis](docs/reference.md#source-typography-and-upright-analysis).
+Upright executes used-LTR bidi while retaining computed direction and genuine
+body/control custody. Its native paragraph path requires matching Vertical
+preparation; the standalone convenience layout remains horizontal.
+`Style::word_space_transform`
 replaces eligible original U+200B with SPACE or IDEOGRAPHIC SPACE using
 `WordSpaceTransform::{Space, IdeographicSpace}`; None is neutral. This runs after
 Phase I, followed by contextual casing, full-width and full-size-kana, before
@@ -100,15 +115,26 @@ with retained font/script identity and unhinted horizontal-Y or vertical-X
 coordinates. Alphabetic and central availability are independent. These metrics
 leave vertical paragraph shaping and placement with their own capability gates.
 
+Horizontal and either sideways preparation can explicitly request
+[used Alphabetic composition](docs/reference.md#used-named-preparation-references).
+It retains raw font observations while carrying the shared alignment reference
+and each actual font's displaced paint origin through placement.
+
+A separate [used upright metric observation](docs/reference.md#used-upright-font-metrics)
+retains absolute BASE or nominal-pen-relative em sides, Central and provenance.
+It preserves qualified fractional BASE and same-instance vhea/MVAR values without
+admitting upright paragraphs or imposing a glyph shaper's coordinate grid.
+
 `EffectiveFontInstance::glyph_outline` reads conservative same-instance outline
 bounds, including synthesis, or proven empty geometry. It qualifies simple and
 dense-variable TrueType outlines and static translation-only composites; other
 outline formats refuse explicitly. These bounds do not select color or bitmap paint.
 
 Borrowed run, face and effective-instance views expose actual positioned output
-without copying glyph arrays. Logical origins and pens are `f64`; raw canonical
-glyph offsets/advances and font sizes remain `f32`. The optional standalone paint adapter belongs to
-[Render](../surgeist-render/README.md) under its `render-text` feature; Text does
+without copying glyph arrays. `GlyphBasis` distinguishes outline axes from the
+line cell frame. Logical origins and pens are `f64`; raw canonical glyph
+offsets/advances and font sizes remain `f32`. The optional standalone paint
+adapter belongs to [Render](../surgeist-render/README.md) under its `render-text` feature; Text does
 not depend on Render.
 
 ## Start

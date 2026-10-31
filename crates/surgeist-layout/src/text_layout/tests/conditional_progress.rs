@@ -79,6 +79,7 @@ fn leading_band<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(12.0)).unwrap();
@@ -164,6 +165,7 @@ fn forced_tie<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(20.0)).unwrap();
@@ -196,27 +198,30 @@ fn registered(
     let ancestor_wrap = style.wrap;
     let source = Source::new(source);
     let length = source.text().len();
-    let analyzed = surgeist_text::AnalyzedSource::from_paragraph(surgeist_text::ParagraphInput {
-        terminal_edge: surgeist_text::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        source: source.clone(),
-        base_style: style,
-        base_direction: direction,
-        segment_breaks: surgeist_text::DocumentSegmentBreaks::LineFeedDefault,
-        paragraph_strut: surgeist_text::ParagraphStrut::DefaultFont,
-        origins: vec![surgeist_text::ParagraphOrigin {
-            text_node: None,
-            source,
-            local: Range::new(0, length),
-            aggregate: Range::new(0, length),
-            kind: surgeist_text::ParagraphOriginKind::Authored,
-        }],
-        connections: vec![],
-        controls: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-        anchor_order: vec![],
-    })
+    let analyzed = surgeist_text::AnalyzedSource::from_paragraph(
+        surgeist_text::ParagraphInput {
+            terminal_edge: surgeist_text::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            source: source.clone(),
+            base_style: style,
+            base_direction: direction,
+            segment_breaks: surgeist_text::DocumentSegmentBreaks::LineFeedDefault,
+            paragraph_strut: surgeist_text::ParagraphStrut::DefaultFont,
+            origins: vec![surgeist_text::ParagraphOrigin {
+                text_node: None,
+                source,
+                local: Range::new(0, length),
+                aggregate: Range::new(0, length),
+                kind: surgeist_text::ParagraphOriginKind::Authored,
+            }],
+            connections: vec![],
+            controls: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: vec![],
+        },
+        surgeist_text::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, ancestor_wrap);
     let mut system = surgeist_text::System::new(surgeist_text::SystemOptions {
@@ -286,6 +291,7 @@ fn registered_batch<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     compute_layout_with_flow(&capture, 0, request(width)).unwrap()
@@ -391,7 +397,12 @@ fn reshaped<S: LayoutScalar>() {
     let mut style = ahem_style(12.5, 16.0);
     style.letter_spacing = 5.0;
     style.overflow_wrap = OverflowWrap::Anywhere;
-    let bytes = super::super::canonical::fonts::ligature_ahem();
+    // Required ccmp keeps its internal boundary protected. Its actual X cell
+    // is20px, exceeding the18px float band; a reshaped A cell is12.5px.
+    let bytes = super::super::canonical::fonts::with_advances(
+        &super::super::canonical::fonts::ligature_ahem(),
+        &[(58, 1600)],
+    );
     let binding = registered(
         bytes.clone(),
         "AA",
@@ -400,7 +411,7 @@ fn reshaped<S: LayoutScalar>() {
     );
     let whole =
         crate::test_support::text_fragment::fragment_for(&binding.prepared).finalized_line();
-    qualify_whole(&whole, &bytes, 12.5, 22.5, &[(Range::new(0, 2), 58, 12.5)]);
+    qualify_whole(&whole, &bytes, 12.5, 20.0, &[(Range::new(0, 2), 58, 20.0)]);
     let origin = binding.origins[0].origin.clone();
     let seam = surgeist_text::TextSeam::Origin {
         local: surgeist_text::SourcePosition::try_new(origin.view().source().text(), 1).unwrap(),
@@ -416,7 +427,7 @@ fn reshaped<S: LayoutScalar>() {
             batch.placed_text()[0].layout().lines()[index].range(),
             Range::new(index, index + 1)
         );
-        assert_eq!(line.feedback().advance, 17.5);
+        assert_eq!(line.feedback().advance, 12.5);
         let glyphs = line
             .run_views()
             .flat_map(|run| {
@@ -547,6 +558,7 @@ fn phantom_frontier<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(20.0)).unwrap();
@@ -664,7 +676,12 @@ fn native_later_ordinary_fit_restores_its_own_float_receipt_after_a_rejected_lon
 fn raw_minimum<S: LayoutScalar>(overflow: OverflowWrap) -> (f64, Vec<LineFact>) {
     let mut style = ahem_style(10.0, 10.0);
     style.overflow_wrap = overflow;
-    let analyzed = surgeist_text::AnalyzedSource::new(Source::new("AAAA"), style).unwrap();
+    let analyzed = surgeist_text::AnalyzedSource::new(
+        Source::new("AAAA"),
+        style,
+        surgeist_text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let mut system = surgeist_text::System::new(surgeist_text::SystemOptions {
         font_catalogue: surgeist_text::FontCatalogueMode::RegisteredOnly,
     })
@@ -708,6 +725,7 @@ fn raw_minimum<S: LayoutScalar>(overflow: OverflowWrap) -> (f64, Vec<LineFact>) 
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let request = LayoutRootRequestOf::viewport(Size::new(

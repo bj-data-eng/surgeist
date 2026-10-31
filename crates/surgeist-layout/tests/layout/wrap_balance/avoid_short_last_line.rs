@@ -25,14 +25,27 @@ pub(super) fn with_style<S: l::LayoutScalar>(style: l::TextWrapStyle) {
                     t::LineEnd::Paragraph,
                 ),
             ]);
-            let before = fixture.prepared.captured_paragraph();
+            let before = fixture
+                .prepared
+                .captured_owner()
+                .unwrap()
+                .members()
+                .collect::<Vec<_>>();
             set_normalized_wrap_style(&mut fixture, style);
             let actual = compute_changed_wrap_style(&fixture);
             fixture.assert_lines(&actual, &expected, direction);
             assert_real_capacity_and_tab_basis(&fixture, &actual, expected.len());
             let replay = fixture.compute();
             fixture.assert_lines(&replay, &expected, direction);
-            assert_eq!(fixture.prepared.captured_paragraph(), before);
+            assert_eq!(
+                fixture
+                    .prepared
+                    .captured_owner()
+                    .unwrap()
+                    .members()
+                    .collect::<Vec<_>>(),
+                before
+            );
             let ordinary_expected = if forced {
                 vec![
                     (t::Range::new(0, 7), 60.0, t::LineEnd::Soft),

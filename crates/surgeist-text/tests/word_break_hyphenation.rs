@@ -57,7 +57,9 @@ fn paragraph(source: t::Source, base: t::Style) -> t::ParagraphInput {
 
 fn prepare_input(input: t::ParagraphInput) -> t::PreparedText {
     let wrap = input.base_style.wrap;
-    let analyzed = t::AnalyzedSource::from_paragraph(input).unwrap();
+    let analyzed =
+        t::AnalyzedSource::from_paragraph(input, t::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|relation| relation.ancestor_wrap().is_none())
@@ -144,6 +146,7 @@ fn finish(
         })
         .collect();
     p.select(t::LineSelectionRequest {
+        segment: p.source_segments().next().unwrap(),
         start,
         end: boundary,
         participants,
@@ -187,7 +190,10 @@ fn finish(
         },
     })
     .unwrap()
-    .finalize(t::SpacingAllocations::None)
+    .finalize(surgeist_text::LineAllocations {
+        spacing: t::SpacingAllocations::None,
+        scopes: surgeist_text::ScopeAllocations::None,
+    })
     .unwrap()
 }
 
@@ -851,6 +857,7 @@ fn suppressed_source_shy_retains_whole_word_portion_and_measurement_tail() {
     let to = portion.end().view().participant_offset();
     let measured = p
         .select(t::LineSelectionRequest {
+            segment: p.source_segments().next().unwrap(),
             start: portion.start(),
             end: portion.end(),
             participants: p.participants().skip(from).take(to - from).collect(),
@@ -878,7 +885,10 @@ fn suppressed_source_shy_retains_whole_word_portion_and_measurement_tail() {
             },
         })
         .unwrap()
-        .finalize(t::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: t::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(measured.feedback().advance, 20.0);
     assert_eq!(

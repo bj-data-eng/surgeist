@@ -70,6 +70,7 @@ members = [
     "crates/surgeist-render",
     "crates/surgeist-runtime",
     "crates/surgeist-shape",
+    "crates/surgeist-shaper",
     "crates/surgeist-task",
     "crates/surgeist-template",
     "crates/surgeist-test",
@@ -80,8 +81,4 @@ members = [
 exclude = [
     "api/generator",
     "crates/surgeist-layout/tools/surgeist-layout-audits",
-    "vendor/harfrust",
 ]
-
-[patch.crates-io]
-harfrust = { path = "vendor/harfrust" }

@@ -257,14 +257,16 @@ impl<'owner> NumberConversion<'owner> {
             })
             .map_err(|_| ColorProtocolError::Input)
     }
-    pub(crate) fn scratch_record(
+    /// The digit of the pending scratch write at `index`, without minting a
+    /// record.
+    fn pending_scratch_digit(
         &self,
         index: usize,
-    ) -> Result<CssColorSlot<'owner>, ColorProtocolError> {
+    ) -> Result<crate::numeric::bounded_decimal::DecimalDigit, ColorProtocolError> {
         if self.stopped {
             return Err(ColorProtocolError::Terminal);
         }
-        let digit = match *self.cursor.next_request() {
+        match *self.cursor.next_request() {
             DecimalRequest::AppendScratch {
                 index: expected,
                 digit,
@@ -272,9 +274,15 @@ impl<'owner> NumberConversion<'owner> {
             | DecimalRequest::ReplaceScratch {
                 index: expected,
                 digit,
-            } if index == self.scratch_base + expected => digit,
-            _ => return Err(ColorProtocolError::WrongIndex),
-        };
+            } if index == self.scratch_base + expected => Ok(digit),
+            _ => Err(ColorProtocolError::WrongIndex),
+        }
+    }
+    pub(crate) fn scratch_record(
+        &self,
+        index: usize,
+    ) -> Result<CssColorSlot<'owner>, ColorProtocolError> {
+        let digit = self.pending_scratch_digit(index)?;
         Ok(CssColorSlot::new(
             self.table.owner,
             self.table.phase,
@@ -291,15 +299,8 @@ impl<'owner> NumberConversion<'owner> {
         record: &CssColorSlot<'_>,
     ) -> Result<(), ColorProtocolError> {
         self.qualify(index, record)?;
-        let expected = self.scratch_record(index)?;
+        let expected_digit = self.pending_scratch_digit(index)?;
         let Data::DecimalDigit { digit, .. } = record.data else {
-            return Err(ColorProtocolError::WrongSlot);
-        };
-        let Data::DecimalDigit {
-            digit: expected_digit,
-            ..
-        } = expected.data
-        else {
             return Err(ColorProtocolError::WrongSlot);
         };
         if digit != expected_digit {

@@ -1,13 +1,16 @@
 //! Independent whole-paragraph clockwise composition witnesses.
 //! Literal geometry uses horizontal Ahem10 metrics8/2 and the exact CW map;
 //! the qualified GSUB fixture supplies real distinct retained outlines.
+mod atomics;
+mod break_all;
 mod constraints;
 mod movement;
+mod source_ranges;
 
 use super::*;
 use crate::{Affinity, Cursor, Hit, Id, Movement, Point, Range, Rect, Selection, Size};
 
-const CW: LineOrientation = LineOrientation::Sideways;
+const CW: LineOrientation = LineOrientation::SidewaysClockwise;
 const H: LineOrientation = LineOrientation::Horizontal;
 
 fn own_style() -> Style {
@@ -68,7 +71,8 @@ fn system_with(bytes: Vec<u8>) -> System {
 }
 fn analyze(value: ParagraphInput) -> AnalyzedSource {
     crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(value).unwrap(),
+        &AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap(),
         crate::Wrap::Word,
     )
 }
@@ -150,7 +154,10 @@ fn terminal(p: &PreparedText) -> PreparedOpportunity {
 fn whole(p: &PreparedText) -> FinalizedLine {
     p.select(selected_request(p, start(p), terminal(p)))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn placed(p: &PreparedText, rows: Vec<(FinalizedLine, f64, f64)>) -> crate::Layout {
@@ -472,12 +479,18 @@ fn forced_columns_use_real_anchors_nearest_rectangles_and_line_ordinals() {
     let first = p
         .select(selected_request(&p, start(&p), forced.clone()))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let second = p
         .select(selected_request(&p, forced.view().boundary(), terminal(&p)))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(
         (first.feedback().advance, second.feedback().advance),
@@ -545,12 +558,18 @@ fn terminal_forced_receipt_and_nonformatted_completion_keep_distinct_custody() {
     let first = p
         .select(selected_request(&p, start(&p), forced.clone()))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let last = p
         .select(selected_request(&p, forced.view().boundary(), terminal(&p)))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(first.feedback().advance, 10.0);
     assert_eq!(last.feedback().advance, 0.0);
@@ -635,10 +654,13 @@ fn spacing_and_css_tabs_remain_logical_while_physical_extent_turns_once() {
     let slots = selected.spacing_slots().collect::<Vec<_>>();
     assert_eq!(slots.len(), 1);
     let line = selected
-        .finalize(SpacingAllocations::Complete(vec![SpacingAllocation {
-            slot: slots[0].clone(),
-            amount: 20.0,
-        }]))
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
+                slot: slots[0].clone(),
+                amount: 20.0,
+            }]),
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 50.0);
     assert_eq!(
@@ -679,7 +701,10 @@ fn spacing_and_css_tabs_remain_logical_while_physical_extent_turns_once() {
     let line = p
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 50.0);
     assert_eq!(
@@ -734,14 +759,20 @@ fn before_after_and_both_indications_keep_one_source_choice_and_rotated_receiver
         let first = p
             .select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         let mut r = selected_request(&p, offer.view().boundary(), terminal(&p));
         r.incoming = first.hyphenation_continuation();
         let second = p
             .select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(
             (first.feedback().advance, second.feedback().advance),
@@ -818,7 +849,7 @@ fn profile_and_feature_switches_reuse_real_system_without_changing_retained_pack
 }
 
 #[test]
-fn real_in_flow_and_out_of_flow_atomics_refuse_before_sideways_preparation_publication() {
+fn real_in_flow_and_out_of_flow_atomics_prepare_with_retained_sideways_occurrences() {
     let mut s = system_with(crate::shaping_test_fonts::sideways_ahem());
     for kind in [
         crate::InlineBoxKind::InFlow,
@@ -855,13 +886,16 @@ fn real_in_flow_and_out_of_flow_atomics_refuse_before_sideways_preparation_publi
             h.atomic_views().next().unwrap().original_box().id(),
             Id::from_u64(1515003)
         );
-        assert_eq!(
-            reason(
-                &s.prepare(&a, PreparationOptions::default().with_orientation(CW))
-                    .unwrap_err()
-            ),
-            &ProtocolError::UnsupportedSidewaysAtomic { occurrence: 0 }
-        );
+        let sideways = s
+            .prepare(&a, PreparationOptions::default().with_orientation(CW))
+            .expect("actual native clockwise atomic occurrence must prepare");
+        assert_eq!(sideways.orientation(), CW);
+        assert_eq!(sideways.analyzed_source().identity(), a.identity());
+        assert_eq!(sideways.atomic_views().count(), 1);
+        let actual = sideways.atomic_views().next().unwrap();
+        assert_eq!(actual.original_box().id(), Id::from_u64(1515003));
+        assert_eq!(actual.original_box().kind(), kind);
+        assert_eq!(actual.source_position().get(), 1);
         assert_eq!(h.analyzed_source().source().text().code_units(), [65, 66]);
     }
 }
@@ -986,12 +1020,18 @@ fn authentic_wbr_control_is_an_optional_source_free_cut_with_clockwise_receipts(
     let first = p
         .select(selected_request(&p, start(&p), offer.clone()))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let second = p
         .select(selected_request(&p, offer.view().boundary(), terminal(&p)))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(
         (first.feedback().advance, second.feedback().advance),
@@ -1026,6 +1066,7 @@ fn owned_vertical_scalar_run_is_total_without_authorizing_vertical_placement() {
         actual.style().clone(),
         actual.brush(),
         crate::RunMetrics::new(10.0, 100.0, 20.0, 10.0, LineOrientation::Vertical),
+        crate::GlyphBasis::Unrotated,
         actual.glyphs().to_vec(),
     );
     assert_eq!(record.orientation(), LineOrientation::Vertical);

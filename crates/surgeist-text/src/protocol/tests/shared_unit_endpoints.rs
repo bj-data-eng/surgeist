@@ -67,6 +67,8 @@ fn capture(endpoints: bool, anywhere: bool) -> PreparedText {
     }
     let processed = Arc::new(
         crate::process_contextual_source(ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             source: Source::identified("A\u{301}B", Id::from_u64(1_507_000), 7),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
             envelope: SourceProcessingEnvelope::Complete,
@@ -110,12 +112,18 @@ fn capture(endpoints: bool, anywhere: bool) -> PreparedText {
             replacements: vec![],
             scopes: vec![
                 SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
+                    font_reference: None,
                     topology: SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: base.clone(),
                     used_direction: ParagraphBaseDirection::LeftToRight,
                 },
                 SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: Default::default(),
                     style: Some(base),
                     boundaries: endpoints
@@ -130,8 +138,11 @@ fn capture(endpoints: bool, anywhere: bool) -> PreparedText {
         })
         .unwrap(),
     );
-    let analyzed =
-        AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap()).unwrap();
+    let analyzed = AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::Word);
     let mut system = System::new(SystemOptions {
         font_catalogue: FontCatalogueMode::RegisteredOnly,
@@ -182,7 +193,10 @@ fn finish(p: &PreparedText, mut input: LineSelectionRequest, edges: [f64; 2]) ->
     }
     p.select(input)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 
@@ -427,6 +441,8 @@ fn nested_capture(text: &str) -> PreparedText {
     };
     let processed = Arc::new(
         crate::process_contextual_source(ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             source: input.source.clone(),
             segment_breaks: input.segment_breaks,
             envelope: SourceProcessingEnvelope::Complete,
@@ -464,17 +480,26 @@ fn nested_capture(text: &str) -> PreparedText {
             replacements: vec![],
             scopes: vec![
                 SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
+                    font_reference: None,
                     topology: SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: input.base_style,
                     used_direction: ParagraphBaseDirection::LeftToRight,
                 },
                 SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: Default::default(),
                     style: None,
                     boundaries: Some(SourceProcessingScopeBoundaries { start: 0, end: 3 }),
                 },
                 SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: Default::default(),
                     style: None,
                     boundaries: Some(SourceProcessingScopeBoundaries { start: 1, end: 2 }),
@@ -511,7 +536,11 @@ fn nested_capture(text: &str) -> PreparedText {
         .unwrap(),
     );
     prepare_native(
-        &AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap()).unwrap(),
+        &AnalyzedSource::from_processed_paragraph(
+            processed.paragraphs().next().unwrap(),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap(),
     )
 }
 
@@ -523,10 +552,15 @@ fn nested_physical_pairs_retain_distinct_coincident_end_events_and_shared_glyphs
     assert_eq!(controls.len(), 4);
     assert_eq!(units.len(), 3);
     let scopes = p
-        .captured_paragraph()
+        .captured_owner()
         .unwrap()
-        .scope_intersections()
-        .map(|intersection| intersection.scope())
+        .members()
+        .flat_map(|member| {
+            member
+                .scope_intersections()
+                .map(|intersection| intersection.scope())
+                .collect::<Vec<_>>()
+        })
         .filter(|scope| scope.role() == crate::ScopeRole::Inline)
         .collect::<Vec<_>>();
     assert_eq!(scopes.len(), 2);
@@ -622,7 +656,8 @@ fn native_disconnected_surrogate_atoms_admit_exact_end_but_connected_scalar_refu
             following_wrap: Wrap::Word,
             ancestor_wrap: Wrap::Word,
         }];
-        let result = AnalyzedSource::from_paragraph(input);
+        let result =
+            AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition);
         if kind == ParagraphConnectionKind::Continuous {
             let error = result.unwrap_err();
             assert!(
@@ -660,11 +695,10 @@ fn native_disconnected_surrogate_atoms_admit_exact_end_but_connected_scalar_refu
 
 #[test]
 fn phase_one_removed_seam_preserves_end_event_but_straddling_replacement_refuses() {
-    let analysis = AnalyzedSource::from_paragraph(native_pair(
-        crate::Text::from("A  B"),
-        2,
-        WhiteSpace::Discard,
-    ))
+    let analysis = AnalyzedSource::from_paragraph(
+        native_pair(crate::Text::from("A  B"), 2, WhiteSpace::Discard),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     assert_eq!(analysis.source().text().code_units(), [65, 32, 32, 66]);
     assert_eq!(
@@ -690,7 +724,9 @@ fn phase_one_removed_seam_preserves_end_event_but_straddling_replacement_refuses
     // A physical End at2 has no exact emitted scalar side inside that row.
     let mut input = native_pair(crate::Text::from("A\r\nB"), 2, WhiteSpace::PreserveSpaces);
     input.segment_breaks = DocumentSegmentBreaks::Defined(vec![Range::new(1, 3)]);
-    let error = AnalyzedSource::from_paragraph(input).unwrap_err();
+    let error =
+        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap_err();
     assert!(
         matches!(
             error.detail(),
@@ -708,7 +744,9 @@ fn compatible_case_expansion_keeps_end_between_original_components() {
     input.base_style.text_transform = crate::TextTransform::Set(
         crate::TextTransformSet::none().with_case(crate::CaseTransform::Uppercase),
     );
-    let analysis = AnalyzedSource::from_paragraph(input).unwrap();
+    let analysis =
+        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     assert_eq!(analysis.source().text().code_units(), [223, 769, 66]);
     assert_eq!(
         analysis.graphemes().collect::<Vec<_>>(),
@@ -790,7 +828,11 @@ fn transparent_empty_and_out_of_flow_occurrences_do_not_split_the_shared_unit() 
     // Existing generic After affinity moves Empty/OOF to EGC-end2. Keeping
     // them before physical End1 is a genuine descending projected request;
     // exact endpoint support does not redefine those other roles' affinity.
-    let error = AnalyzedSource::from_paragraph(input.clone()).unwrap_err();
+    let error = AnalyzedSource::from_paragraph(
+        input.clone(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap_err();
     assert!(matches!(
         error.detail(),
         Some(crate::ErrorDetail::InvalidTextProtocol {
@@ -815,7 +857,10 @@ fn transparent_empty_and_out_of_flow_occurrences_do_not_split_the_shared_unit() 
         affinity: Affinity::After,
     })
     .collect();
-    let p = prepare_native(&AnalyzedSource::from_paragraph(input).unwrap());
+    let p = prepare_native(
+        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap(),
+    );
     assert_eq!(
         p.analyzed_source().graphemes().collect::<Vec<_>>(),
         [Range::new(0, 2), Range::new(2, 3)]
@@ -929,10 +974,15 @@ fn odd_shared_unit_keeps_each_nested_end_interval_on_its_actual_visual_side() {
     // Exact canonical pairs are retained even though their source positions
     // coincide. No array/source-offset pairing convention supplies authority.
     let scopes = p
-        .captured_paragraph()
+        .captured_owner()
         .unwrap()
-        .scope_intersections()
-        .map(|i| i.scope())
+        .members()
+        .flat_map(|member| {
+            member
+                .scope_intersections()
+                .map(|i| i.scope())
+                .collect::<Vec<_>>()
+        })
         .filter(|s| s.role() == crate::ScopeRole::Inline)
         .collect::<Vec<_>>();
     assert_eq!(scopes.len(), 2);

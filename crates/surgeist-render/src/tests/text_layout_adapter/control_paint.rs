@@ -233,32 +233,35 @@ fn retained_native_default_ignorables_paint_no_pixels_with_absent_or_visible_nom
 
 fn selected_placed(system: &mut text::System, value: &str) -> text::Layout {
     let source = text::Source::new(value);
-    let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-        source: source.clone(),
-        base_style: text::Style {
-            size: FONT_SIZE,
-            line_height: text::LineHeight::Absolute(f64::from(FONT_SIZE)),
-            white_space: text::WhiteSpace::Preserve,
-            ..style()
+    let analyzed = text::AnalyzedSource::from_paragraph(
+        text::ParagraphInput {
+            source: source.clone(),
+            base_style: text::Style {
+                size: FONT_SIZE,
+                line_height: text::LineHeight::Absolute(f64::from(FONT_SIZE)),
+                white_space: text::WhiteSpace::Preserve,
+                ..style()
+            },
+            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            origins: vec![text::ParagraphOrigin {
+                text_node: None,
+                source,
+                local: text::Range::new(0, 1),
+                aggregate: text::Range::new(0, 1),
+                kind: text::ParagraphOriginKind::Authored,
+            }],
+            connections: vec![],
+            controls: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: vec![],
         },
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: text::ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: text::ParagraphStrut::DefaultFont,
-        terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        origins: vec![text::ParagraphOrigin {
-            text_node: None,
-            source,
-            local: text::Range::new(0, 1),
-            aggregate: text::Range::new(0, 1),
-            kind: text::ParagraphOriginKind::Authored,
-        }],
-        connections: vec![],
-        controls: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-        anchor_order: vec![],
-    })
+        text::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let prepared = system
         .prepare(&analyzed, text::PreparationOptions::default())
@@ -270,6 +273,7 @@ fn selected_placed(system: &mut text::System, value: &str) -> text::Layout {
         .handle();
     let line = prepared
         .select(text::LineSelectionRequest {
+            segment: prepared.source_segments().next().unwrap(),
             line_box_struts: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
@@ -297,7 +301,10 @@ fn selected_placed(system: &mut text::System, value: &str) -> text::Layout {
             },
         })
         .unwrap()
-        .finalize(text::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: text::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     text::Layout::from_finalized_lines(text::PlacementRequest {
         prepared,

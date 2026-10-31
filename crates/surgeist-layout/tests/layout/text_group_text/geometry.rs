@@ -33,7 +33,10 @@ fn pair_geometry<S: l::LayoutScalar>(
     for (index, (line, natural)) in lines.iter().zip([60.0, 40.0]).enumerate() {
         assert_eq!(
             line.selected_line()
-                .finalize(t::SpacingAllocations::None)
+                .finalize(surgeist_text::LineAllocations {
+                    spacing: t::SpacingAllocations::None,
+                    scopes: surgeist_text::ScopeAllocations::None
+                })
                 .unwrap()
                 .measurements()
                 .alignment()
@@ -198,7 +201,12 @@ fn justify<S: l::LayoutScalar>(direction: l::Direction) {
             ),
             (20.0, 20.0)
         );
-        let before_expansion = selected.finalize(t::SpacingAllocations::None).unwrap();
+        let before_expansion = selected
+            .finalize(surgeist_text::LineAllocations {
+                spacing: t::SpacingAllocations::None,
+                scopes: surgeist_text::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_eq!(
             before_expansion.measurements().alignment().advance(),
             natural
@@ -266,7 +274,10 @@ fn natural_frames<S: l::LayoutScalar>() {
             .iter()
             .map(|line| line
                 .selected_line()
-                .finalize(t::SpacingAllocations::None)
+                .finalize(surgeist_text::LineAllocations {
+                    spacing: t::SpacingAllocations::None,
+                    scopes: surgeist_text::ScopeAllocations::None
+                })
                 .unwrap()
                 .measurements()
                 .alignment()
@@ -318,7 +329,10 @@ fn natural_frames<S: l::LayoutScalar>() {
             .iter()
             .map(|line| line
                 .selected_line()
-                .finalize(t::SpacingAllocations::None)
+                .finalize(surgeist_text::LineAllocations {
+                    spacing: t::SpacingAllocations::None,
+                    scopes: surgeist_text::ScopeAllocations::None
+                })
                 .unwrap()
                 .measurements()
                 .alignment()
@@ -469,7 +483,10 @@ fn mixed<S: l::LayoutScalar>() {
             .iter()
             .map(|line| line
                 .selected_line()
-                .finalize(t::SpacingAllocations::None)
+                .finalize(surgeist_text::LineAllocations {
+                    spacing: t::SpacingAllocations::None,
+                    scopes: surgeist_text::ScopeAllocations::None
+                })
                 .unwrap()
                 .measurements()
                 .alignment()
@@ -543,7 +560,10 @@ fn real_float_bands<S: l::LayoutScalar>() {
             .iter()
             .map(|line| line
                 .selected_line()
-                .finalize(t::SpacingAllocations::None)
+                .finalize(surgeist_text::LineAllocations {
+                    spacing: t::SpacingAllocations::None,
+                    scopes: surgeist_text::ScopeAllocations::None
+                })
                 .unwrap()
                 .measurements()
                 .alignment()

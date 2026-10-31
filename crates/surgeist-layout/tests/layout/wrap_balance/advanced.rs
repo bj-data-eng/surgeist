@@ -212,6 +212,8 @@ impl<S: l::LayoutScalar> Advanced<S> {
         events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
         let capture = Arc::new(
             t::process_contextual_source(t::ContextualSourceInput {
+                joint_flows: Vec::new(),
+                scope_alignment_limits: None,
                 source: source.clone(),
                 segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
                 envelope: t::SourceProcessingEnvelope::Complete,
@@ -249,6 +251,9 @@ impl<S: l::LayoutScalar> Advanced<S> {
                     })
                     .collect(),
                 scopes: vec![t::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
+                    font_reference: None,
                     topology: t::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: base,
@@ -264,9 +269,11 @@ impl<S: l::LayoutScalar> Advanced<S> {
             })
             .unwrap(),
         );
-        let analyzed =
-            t::AnalyzedSource::from_processed_paragraph(capture.paragraphs().next().unwrap())
-                .unwrap();
+        let analyzed = t::AnalyzedSource::from_processed_paragraph(
+            capture.paragraphs().next().unwrap(),
+            t::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let policies = analyzed
             .wrapping_relations()
             .filter(|r| r.ancestor_wrap().is_none())
@@ -388,6 +395,7 @@ impl<S: l::LayoutScalar> Advanced<S> {
             0,
             vec![self.binding.clone()],
             l::WrappingInput::default(),
+            Vec::new(),
         )
         .unwrap();
         let request = l::LayoutRootRequestOf::viewport(l::Size::new(
@@ -438,7 +446,10 @@ impl<S: l::LayoutScalar> Advanced<S> {
             .map(|line| {
                 let natural = line
                     .selected_line()
-                    .finalize(t::SpacingAllocations::None)
+                    .finalize(surgeist_text::LineAllocations {
+                        spacing: t::SpacingAllocations::None,
+                        scopes: surgeist_text::ScopeAllocations::None,
+                    })
                     .unwrap();
                 (
                     line.selected_line()

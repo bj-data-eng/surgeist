@@ -22,6 +22,9 @@ pub(crate) use session::{observe_grid_probe, seed_grid_leaf_requests};
 type CompletedTreeBatch<Tree> =
     CompletedLayoutBatchOf<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>;
 
+type TextPassBasis<Tree> =
+    crate::text_layout::state::PassBasis<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>;
+
 type ComputeLayoutResult<Tree> = LayoutResultOf<
     <Tree as Traverse>::Node,
     CompletedTreeBatch<Tree>,
@@ -125,7 +128,7 @@ fn run_session<Tree: LayoutTree>(
     request: LayoutRootRequestOf<Tree::Scalar>,
 ) -> ComputeLayoutResult<Tree> {
     let replay = session.has_text() || session.groups_active();
-    let mut rejected_bases = Vec::new();
+    let mut rejected_bases: Vec<(_, Option<TextPassBasis<Tree>>, _)> = Vec::new();
     loop {
         match request.context() {
             LayoutRootContextOf::Viewport => {
@@ -144,11 +147,16 @@ fn run_session<Tree: LayoutTree>(
             return Ok(session.complete_for_root(root));
         }
         let frames = session.canonical_frames(root)?;
-        let text = session
-            .has_text()
-            .then(|| session.text_pass_basis(frames.clone()));
+        let text = if session.has_text() {
+            Some(session.text_pass_basis(root, frames.clone())?)
+        } else {
+            None
+        };
         let groups = session.group_basis(root)?;
         let basis = (frames.clone(), text, groups.clone());
+        if let Some((_, previous, _)) = rejected_bases.last() {
+            session.admit_text_pass_comparison(root, basis.1.as_ref(), previous.as_ref())?;
+        }
         if rejected_bases.last() == Some(&basis)
             && (!session.has_text() || frames == session.text_basis())
             && session.formatted_text_valid()
@@ -159,6 +167,12 @@ fn run_session<Tree: LayoutTree>(
             } else {
                 Ok(session.complete_for_root(root))
             };
+        }
+        // The last comparison and the history search are distinct executions.
+        // Admit every possible new scope-key equality before pure contains;
+        // native frame/group/history-container work keeps its existing owner.
+        for (_, previous, _) in &rejected_bases {
+            session.admit_text_pass_comparison(root, basis.1.as_ref(), previous.as_ref())?;
         }
         if rejected_bases.contains(&basis) {
             return Err(crate::LayoutErrorOf::new(

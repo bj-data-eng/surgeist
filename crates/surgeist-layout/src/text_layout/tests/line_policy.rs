@@ -55,6 +55,7 @@ fn batch<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     compute_layout_with_flow(&capture, 0, request(width)).unwrap()
@@ -218,7 +219,32 @@ fn assert_retained_and_discarded<S: LayoutScalar>() {
             SpacingSlotDisposition::Retained { trailing }
         );
         assert_eq!(slot.advance, 20.0);
-        assert!(matches!(slot.slot.owner(), SpacingSlotOwner::Unit(_)));
+        let range = if trailing {
+            surgeist_text::Range::new(1, 2)
+        } else {
+            surgeist_text::Range::new(0, 1)
+        };
+        let unit = paragraph
+            .prepared
+            .unit_views()
+            .find(|unit| unit.source_range() == range)
+            .unwrap()
+            .handle();
+        assert_eq!(
+            slot.slot.participants().cloned().collect::<Vec<_>>(),
+            [surgeist_text::PreparedParticipant::Text(unit)]
+        );
+        assert_eq!(
+            slot.slot
+                .pieces()
+                .map(|piece| piece.owner())
+                .collect::<Vec<_>>(),
+            [SpacingSlotOwner::Source {
+                origin: paragraph.origin(1),
+                local: range,
+                aggregate: range,
+            }]
+        );
     }
     let paragraph = prepare("  X  ", WhiteSpace::Collapse, false);
     let batch = batch::<S>(
@@ -341,10 +367,29 @@ fn assert_alternative_spacing<S: LayoutScalar>() {
     );
     let slots = actual[0].spacing_slots().collect::<Vec<_>>();
     assert_eq!(slots.len(), 2);
-    for row in &slots {
+    assert_eq!(alternative.view().insertion_anchor().get(), 3);
+    for (row, local) in slots.iter().zip([
+        surgeist_text::Range::new(0, 1),
+        surgeist_text::Range::new(2, 3),
+    ]) {
         assert_eq!(
-            row.slot.owner(),
-            SpacingSlotOwner::Alternative(alternative.clone())
+            row.slot
+                .pieces()
+                .map(|piece| piece.owner())
+                .collect::<Vec<_>>(),
+            [SpacingSlotOwner::Alternative {
+                alternative: alternative.clone(),
+                local,
+            }]
+        );
+        assert_eq!(row.slot.participants().count(), 0);
+        let surgeist_text::SpacingSlotTarget::Separator(unit) = row.slot.target() else {
+            panic!("the inserted Spaces target is a complete separator")
+        };
+        assert_eq!(unit.pieces().len(), 1);
+        assert_eq!(
+            unit.pieces().collect::<Vec<_>>(),
+            row.slot.pieces().collect::<Vec<_>>()
         );
     }
     assert_eq!(slots[0].advance, 15.0);
@@ -454,6 +499,7 @@ fn assert_float_amounts<S: LayoutScalar>() {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let batch = compute_layout_with_flow(&capture, 0, request(45.0)).unwrap();
@@ -592,6 +638,7 @@ fn native_fractional_expansion_keeps_three_words_inside_the_actual_f64_band() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(31.0)).unwrap();
@@ -632,25 +679,31 @@ fn native_fractional_expansion_keeps_three_words_inside_the_actual_f64_band() {
     proposed.participants = paragraph.prepared.participants().take(6).collect();
     let selected = paragraph.prepared.select(proposed).unwrap();
     let natural = selected
-        .finalize(surgeist_text::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: surgeist_text::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(natural.feedback().advance, 23.28125);
     let extra = 30.65125 - natural.feedback().advance;
     let expanded = selected
-        .finalize(surgeist_text::SpacingAllocations::Complete(
-            selected
-                .spacing_slots()
-                .enumerate()
-                .map(|(index, slot)| surgeist_text::SpacingAllocation {
-                    slot,
-                    amount: match index {
-                        0 => extra / 2.0,
-                        1 => extra - extra / 2.0,
-                        _ => 0.0,
-                    },
-                })
-                .collect(),
-        ))
+        .finalize(surgeist_text::LineAllocations {
+            spacing: surgeist_text::SpacingAllocations::Complete(
+                selected
+                    .spacing_slots()
+                    .enumerate()
+                    .map(|(index, slot)| surgeist_text::SpacingAllocation {
+                        slot,
+                        amount: match index {
+                            0 => extra / 2.0,
+                            1 => extra - extra / 2.0,
+                            _ => 0.0,
+                        },
+                    })
+                    .collect(),
+            ),
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(expanded.feedback().advance, 30.651250000000005);
     assert!(expanded.feedback().advance > 30.65125);

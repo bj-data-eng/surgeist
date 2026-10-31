@@ -6,6 +6,9 @@ fn block(mut base: t::Style, rtl: bool, break_all: bool) -> t::SourceProcessingS
         base.word_break = t::WordBreak::BreakAll;
     }
     t::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
+        font_reference: None,
         topology: t::SourceProcessingTopology::Complete,
         trim: t::WhiteSpaceTrim::default(),
         base_style: base,
@@ -57,6 +60,7 @@ fn request(
         })
         .collect();
     t::LineSelectionRequest {
+        segment: p.source_segments().next().unwrap(),
         start,
         end: boundary,
         participants,
@@ -121,7 +125,10 @@ fn answer(p: &t::PreparedText, request: &mut t::LineSelectionRequest, facts: &[(
 fn finalize(p: &t::PreparedText, request: t::LineSelectionRequest) -> t::FinalizedLine {
     p.select(request)
         .unwrap()
-        .finalize(t::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: t::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap()
 }
 
@@ -247,7 +254,12 @@ fn positive_end_owns_its_interval_and_stops_hanging_without_donating_source_geom
             .units()
             .flat_map(|unit| unit
                 .pieces()
-                .map(|piece| piece.advance_edges())
+                .map(|piece| {
+                    let t::SourceRangeGeometry::Line(piece) = piece else {
+                        panic!("ordinary Range fixture must retain Line geometry");
+                    };
+                    piece.advance_edges()
+                })
                 .collect::<Vec<_>>())
             .collect::<Vec<_>>(),
         [(10.0, 20.0)]

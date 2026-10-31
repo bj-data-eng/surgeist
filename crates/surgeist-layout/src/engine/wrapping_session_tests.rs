@@ -111,6 +111,7 @@ fn native_avoid_results_do_not_enter_geometry_only_host_caches() {
                     scopes: scopes(policy),
                     child_order: Vec::new(),
                 },
+                Vec::new(),
             )
             .unwrap();
             let mut owner = ComputeSession::with_flow(&capture, capture.invalidated.clone());
@@ -160,6 +161,7 @@ fn a_float_packet_cannot_cross_an_immutable_wrapping_basis() {
                 scopes: scopes(WrapInside::Avoid),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let auto = LayoutFlowInput::try_new(
@@ -170,6 +172,7 @@ fn a_float_packet_cannot_cross_an_immutable_wrapping_basis() {
                 scopes: scopes(WrapInside::Auto),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let mut owner = ComputeSession::with_flow(&avoid, avoid.invalidated.clone());

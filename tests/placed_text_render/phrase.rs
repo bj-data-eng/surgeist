@@ -146,6 +146,9 @@ fn capture(
         vec![]
     };
     let mut scopes = vec![text::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
+        font_reference: None,
         trim: text::WhiteSpaceTrim::default(),
         base_style: owner.clone(),
         used_direction: text::ParagraphBaseDirection::LeftToRight,
@@ -157,6 +160,9 @@ fn capture(
     ];
     if inline {
         scopes.push(text::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
+            alignment_boundary: None,
+            font_reference: None,
             trim: text::WhiteSpaceTrim::default(),
             style: Some(owner),
             boundaries: Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
@@ -188,6 +194,8 @@ fn capture(
     ]);
     let processed = std::sync::Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -212,9 +220,11 @@ fn capture(
         })
         .unwrap(),
     );
-    let analyzed =
-        text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-            .unwrap();
+    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let policies = analyzed
         .wrapping_relations()
         .filter(|row| row.ancestor_wrap().is_none())
@@ -301,6 +311,7 @@ fn capture(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = layout::compute_layout_with_flow(

@@ -71,6 +71,9 @@ fn atomic_domain_shape(
     let domain = |atomic| {
         if plain_child {
             text::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: text::SourceProcessingTopology::Complete,
                 trim: text::WhiteSpaceTrim::default(),
                 base_style: base.clone(),
@@ -78,6 +81,9 @@ fn atomic_domain_shape(
             }
         } else if kind == text::InlineBoxKind::InFlow {
             text::SourceProcessingScope::AtomicBlock {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: text::SourceProcessingTopology::Complete,
                 trim: text::WhiteSpaceTrim::default(),
                 base_style: base.clone(),
@@ -86,6 +92,9 @@ fn atomic_domain_shape(
             }
         } else {
             text::SourceProcessingScope::OutOfFlowBlock {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: text::SourceProcessingTopology::Complete,
                 trim: text::WhiteSpaceTrim::default(),
                 base_style: base.clone(),
@@ -96,6 +105,9 @@ fn atomic_domain_shape(
     };
     let mut scopes = vec![
         text::SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
+            font_reference: None,
             topology: text::SourceProcessingTopology::Complete,
             trim: text::WhiteSpaceTrim::default(),
             base_style: base.clone(),
@@ -109,6 +121,9 @@ fn atomic_domain_shape(
     let owner_scope = scopes.len();
     let start = if two_domains { 2 } else { 0 };
     scopes.push(text::SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
+        alignment_boundary: None,
+        font_reference: None,
         trim: text::WhiteSpaceTrim::default(),
         style: Some(owner),
         boundaries: Some(text::SourceProcessingScopeBoundaries {
@@ -156,6 +171,9 @@ fn atomic_domain_shape(
     if two_domains {
         let empty_inline = scopes.len();
         scopes.push(text::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
+            alignment_boundary: None,
+            font_reference: None,
             trim: text::WhiteSpaceTrim::default(),
             style: None,
             boundaries: Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
@@ -226,6 +244,9 @@ fn atomic_domain_shape(
             },
         ]);
         scopes.push(text::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
+            alignment_boundary: None,
+            font_reference: None,
             trim: text::WhiteSpaceTrim::default(),
             style: None,
             boundaries: Some(text::SourceProcessingScopeBoundaries {
@@ -265,6 +286,8 @@ fn atomic_domain_shape(
     }
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -312,7 +335,11 @@ fn atomic_domain_shape(
     let mut prepared: Vec<_> = processed
         .paragraphs()
         .map(|paragraph| {
-            let analyzed = text::AnalyzedSource::from_processed_paragraph(paragraph).unwrap();
+            let analyzed = text::AnalyzedSource::from_processed_paragraph(
+                paragraph,
+                text::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap();
             let analyzed =
                 crate::test_support::text::in_flat_wrapping_context(analyzed, Wrap::Word);
             system
@@ -546,6 +573,7 @@ fn earlier_same_anchor_atomic_accepts_its_own_content_domain_and_computes_phrase
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
@@ -587,6 +615,7 @@ fn later_same_anchor_atomic_rejects_the_earlier_atomics_content_domain() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("A0's captured atomic content domain must not be accepted under A1")
     };
@@ -612,6 +641,7 @@ fn out_of_flow_content_domain_keeps_its_exact_same_anchor_atomic_custody() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let wrong_tree = tree.children(A0, []).children(A1, INLINE_NODES);
@@ -625,6 +655,7 @@ fn out_of_flow_content_domain_keeps_its_exact_same_anchor_atomic_custody() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("out-of-flow atomic identity cannot be donated");
     };
@@ -649,6 +680,7 @@ fn parent_atomic_order_is_not_replaced_by_content_domain_schedule() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("the genuine parent atomic participants retain their own order");
     };
@@ -673,6 +705,7 @@ fn deferred_child_content_cannot_reverse_its_actual_boundary_controls() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("deferred scheduling does not change child control custody or order");
     };
@@ -698,6 +731,7 @@ fn several_deferred_atomic_content_domains_keep_independent_actual_flows() {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
@@ -731,6 +765,7 @@ fn deferred_entry_cannot_donate_a_later_inline_parent_to_an_earlier_atomic() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("the nominated atomic must belong to its retained parent inline ancestry");
     };
@@ -746,8 +781,15 @@ fn deferred_entry_cannot_donate_a_later_inline_parent_to_an_earlier_atomic() {
 fn deferred_content_can_follow_its_nominated_atomics_parent_paragraph_exit() {
     let (tree, bindings) =
         atomic_domain_shape(text::InlineBoxKind::InFlow, DomainShape::ClosedParent);
-    let parent = bindings[0].prepared.captured_paragraph().unwrap();
-    let child = bindings[1].prepared.captured_paragraph().unwrap().domain();
+    let parent_members = bindings[0]
+        .prepared
+        .captured_owner()
+        .unwrap()
+        .members()
+        .collect::<Vec<_>>();
+    assert_eq!(parent_members.len(), 1);
+    let parent = &parent_members[0];
+    let child = bindings[1].prepared.captured_owner().unwrap().domain();
     assert!(parent.exit_position() < child.enter_position());
     let capture = LayoutFlowInput::try_new(
         &tree,
@@ -757,6 +799,7 @@ fn deferred_content_can_follow_its_nominated_atomics_parent_paragraph_exit() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
@@ -783,6 +826,7 @@ fn plain_block_subtree_root_keeps_its_own_flow_without_an_outside_parent_associa
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 50, request(500.0)).unwrap();
@@ -807,6 +851,7 @@ fn atomic_content_root_cannot_guess_its_missing_nominated_atomic_binding() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("an atomic content root still requires authentic nominated custody");
     };
@@ -830,6 +875,7 @@ fn plain_block_custody_allows_unmapped_layout_only_wrappers() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
@@ -882,6 +928,7 @@ fn plain_block_definition_cannot_reuse_an_actual_prepared_atomic_container() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("a plain Block cannot claim an explicitly bound atomic role");
     };

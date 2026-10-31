@@ -17,7 +17,10 @@ fn preserved_tab_positions_the_next_glyph_at_its_block_stop() {
     let control = prepared
         .select(control)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(control.feedback().advance, 60.0);
     let glyphs = |line: &FinalizedLine| {
@@ -48,7 +51,10 @@ fn preserved_tab_positions_the_next_glyph_at_its_block_stop() {
     let line = prepared
         .select(selection)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 100.0);
     assert_eq!(glyphs(&line), [(35, 20.0, 0.0), (36, 20.0, 80.0)]);
@@ -98,7 +104,11 @@ fn css(
     system
         .prepare(
             &crate::test_wrapping::bind_missing(
-                &AnalyzedSource::from_paragraph(input).unwrap(),
+                &AnalyzedSource::from_paragraph(
+                    input,
+                    crate::AnalysisTypography::HorizontalComposition,
+                )
+                .unwrap(),
                 crate::Wrap::Word,
             ),
             PreparationOptions::try_new(1.0, crate::TabPreparation::CssStops).unwrap(),
@@ -118,7 +128,10 @@ fn finish(p: &PreparedText, origin: Option<f64>, indent: f64) -> crate::Result<F
         _ => crate::LineBoxDirection::LeftToRight,
     };
     r.context.indent = indent;
-    p.select(r)?.finalize(SpacingAllocations::None)
+    p.select(r)?.finalize(crate::LineAllocations {
+        spacing: SpacingAllocations::None,
+        scopes: crate::ScopeAllocations::None,
+    })
 }
 
 fn intrinsic_request(p: &PreparedText, indent: f64) -> LineSelectionRequest {
@@ -166,7 +179,10 @@ fn intrinsic_logical_grid_uses_exact_signed_pen_thresholds_in_both_directions() 
             let line = p
                 .select(intrinsic_request(&p, pen))
                 .unwrap()
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap();
             assert_eq!(line.feedback().advance, expected, "{direction:?}/{pen}");
             assert_eq!(
@@ -204,7 +220,10 @@ fn intrinsic_grid_is_distinct_from_used_grid_and_refinalizes_real_source_geometr
             let intrinsic = p
                 .select(intrinsic_request(&p, 0.0))
                 .unwrap()
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap();
             assert_eq!(intrinsic.feedback().advance, expected);
         }
@@ -217,13 +236,19 @@ fn intrinsic_grid_is_distinct_from_used_grid_and_refinalizes_real_source_geometr
         let intrinsic = p
             .select(intrinsic_request(&p, 0.0))
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         for (indent, expected) in [(10.0, 40.0), (-10.0, 60.0)] {
             let line = p
                 .select(intrinsic_request(&p, indent))
                 .unwrap()
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap();
             assert_eq!(line.feedback().advance, expected);
             assert_eq!(indent + line.feedback().advance, 50.0);
@@ -240,7 +265,10 @@ fn intrinsic_grid_is_distinct_from_used_grid_and_refinalizes_real_source_geometr
         let used = p
             .select(used)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(used.feedback().advance, 30.0);
         assert_ne!(
@@ -306,7 +334,10 @@ fn intrinsic_grid_is_distinct_from_used_grid_and_refinalizes_real_source_geometr
         assert_eq!(
             p.select(intrinsic_request(&p, 0.0))
                 .unwrap()
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None
+                })
                 .unwrap()
                 .feedback()
                 .advance,
@@ -346,14 +377,20 @@ fn intrinsic_grid_requires_css_preparation_and_an_unbounded_request() {
     let intrinsic = p
         .select(intrinsic_request(&p, 0.0))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let mut used_zero = intrinsic_request(&p, 0.0);
     used_zero.context.tabs = TabContext::CssStops { origin: Some(0.0) };
     let used_zero = p
         .select(used_zero)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(intrinsic.feedback().advance, used_zero.feedback().advance);
     assert_ne!(
@@ -428,7 +465,10 @@ fn indent_changes_pen_while_alignment_does_not_restart_grid() {
     let line = p
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 80.0);
     let glyphs: Vec<_> = line
@@ -463,14 +503,22 @@ fn check_spacing_before_tab(tabs: TabContext) {
     let selected = p.select(r).unwrap();
     let slots: Vec<_> = selected.spacing_slots().collect();
     assert_eq!(slots.len(), 1);
-    let natural = selected.finalize(SpacingAllocations::None).unwrap();
+    let natural = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(natural.feedback().advance, 100.0);
     for (amount, expected) in [(20.0, 100.0), (40.0, 180.0)] {
         let line = selected
-            .finalize(SpacingAllocations::Complete(vec![SpacingAllocation {
-                slot: slots[0].clone(),
-                amount,
-            }]))
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
+                    slot: slots[0].clone(),
+                    amount,
+                }]),
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(line.feedback().advance, expected);
     }
@@ -572,7 +620,7 @@ fn css_capture(
     scale: f32,
 ) -> crate::Result<PreparedText> {
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(input)?,
+        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)?,
         crate::Wrap::Word,
     );
     system.prepare(
@@ -675,7 +723,10 @@ fn zero_tab_is_fontless_but_still_needs_actual_line_metrics() {
         reason(
             &p.select(r.clone())
                 .unwrap()
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None
+                })
                 .unwrap_err()
         ),
         ProtocolError::MissingLineMetrics
@@ -687,7 +738,10 @@ fn zero_tab_is_fontless_but_still_needs_actual_line_metrics() {
     let line = p
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert!(line.has_in_flow_content());
     assert_eq!(line.feedback().advance, 0.0);
@@ -799,7 +853,10 @@ fn selected_replacement_tabs_are_ready_and_keep_definition_custody() {
     let line = p
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 100.0);
     assert_eq!(
@@ -902,7 +959,10 @@ fn source_less_zero_tab_replacement_retains_alternative_bounds() {
     let line = p
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let fragment=line.fragment_views().find(|f|matches!(f.owner(),crate::FinalizedFragmentOwner::Alternative(ref a) if *a==alternative)).unwrap();
     assert!(fragment.origin().is_none());
@@ -1341,7 +1401,10 @@ fn check_atomic_tab_traversal(tabs: TabContext) {
         let line = p
             .select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(line.feedback().advance, 100.0);
         let tab=p.participants().find(|p|matches!(p,PreparedParticipant::Text(u) if u.view().source_range()==crate::Range::new(1,2))).unwrap();
@@ -1400,7 +1463,11 @@ fn huge_atomic_after_first_unit(
     system
         .prepare(
             &crate::test_wrapping::bind_missing(
-                &AnalyzedSource::from_paragraph(input).unwrap(),
+                &AnalyzedSource::from_paragraph(
+                    input,
+                    crate::AnalysisTypography::HorizontalComposition,
+                )
+                .unwrap(),
                 crate::Wrap::Word,
             ),
             PreparationOptions::try_new(1.0, demand).unwrap(),
@@ -1434,7 +1501,10 @@ fn finish_with_huge_atomic(p: &PreparedText, tabs: TabContext) -> crate::Result<
             },
         })
         .collect();
-    p.select(r)?.finalize(SpacingAllocations::None)
+    p.select(r)?.finalize(crate::LineAllocations {
+        spacing: SpacingAllocations::None,
+        scopes: crate::ScopeAllocations::None,
+    })
 }
 
 #[test]
@@ -1509,7 +1579,10 @@ fn rtl_last_tab_needs_no_unrepresentable_temporary_destination() {
         r.context.indent = huge;
         r.context.available_inline = Some(huge);
         r.context.tabs = tabs;
-        p.select(r).unwrap().finalize(SpacingAllocations::None)
+        p.select(r).unwrap().finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
     };
     let control = css(
         &mut system,
@@ -1616,7 +1689,10 @@ fn zero_tab_layout_keeps_source_and_refuses_fabricated_range_font_metrics() {
     let line = p
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let layout = crate::Layout::from_finalized_lines(PlacementRequest {
         prepared: p.clone(),
@@ -1722,7 +1798,11 @@ fn block_space_metric_uses_actual_used_direction_and_zero_keeps_even_level() {
             direction,
         );
         let analyzed = crate::test_wrapping::bind_missing(
-            &AnalyzedSource::from_paragraph(input).unwrap(),
+            &AnalyzedSource::from_paragraph(
+                input,
+                crate::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap(),
             crate::Wrap::Word,
         );
         let p = system
@@ -1737,7 +1817,10 @@ fn block_space_metric_uses_actual_used_direction_and_zero_keeps_even_level() {
         let line = p
             .select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(line.feedback().advance, advance);
         assert_eq!(
@@ -1806,7 +1889,8 @@ fn absent_tabs_do_not_consume_a_temporary_signed_pen() {
     let mut system = system();
     let input = captured("A", style(), None, ParagraphBaseDirection::RightToLeft);
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(input).unwrap(),
+        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap(),
         crate::Wrap::Word,
     );
     // Genuine ordinary control: huge indent cancels the same available width in
@@ -1823,7 +1907,10 @@ fn absent_tabs_do_not_consume_a_temporary_signed_pen() {
         ordinary
             .select(request_ordinary)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .unwrap()
             .feedback()
             .advance,
@@ -1844,7 +1931,10 @@ fn absent_tabs_do_not_consume_a_temporary_signed_pen() {
     assert_eq!(
         p.select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .unwrap()
             .feedback()
             .advance,
@@ -1857,7 +1947,11 @@ fn zero_tabs_do_not_consume_a_temporary_signed_pen() {
     let mut system = system();
     let ordinary_input = captured("AB", style(), None, ParagraphBaseDirection::RightToLeft);
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(ordinary_input).unwrap(),
+        &AnalyzedSource::from_paragraph(
+            ordinary_input,
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap(),
         crate::Wrap::Word,
     );
     let ordinary = system
@@ -1872,7 +1966,10 @@ fn zero_tabs_do_not_consume_a_temporary_signed_pen() {
         ordinary
             .select(control)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .unwrap()
             .feedback()
             .advance,
@@ -1898,7 +1995,10 @@ fn zero_tabs_do_not_consume_a_temporary_signed_pen() {
     assert_eq!(
         p.select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .unwrap()
             .feedback()
             .advance,

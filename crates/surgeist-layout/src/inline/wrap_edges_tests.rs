@@ -127,7 +127,7 @@ impl<S: LayoutScalar> Fixture<S> {
         self.tree.insert_children(0, self.nodes.iter().copied());
     }
     fn flow(&self) -> LayoutFlowInput<'_, PublicLayoutTreeOf<S>> {
-        LayoutFlowInput::try_new(&self.tree, 0, vec![], self.wrapping.clone()).unwrap()
+        LayoutFlowInput::try_new(&self.tree, 0, vec![], self.wrapping.clone(), Vec::new()).unwrap()
     }
     fn numeric(&self) -> MixedInlineRunInputOf<S> {
         let flow = self.flow();
@@ -383,7 +383,10 @@ fn empty_edges<S: LayoutScalar>() {
         );
         assert_eq!(r.block_extent, n(10.0));
         assert_eq!(
-            r.atomics.iter().map(|a| a.block_start).collect::<Vec<_>>(),
+            r.atomics
+                .iter()
+                .map(|a| crate::inline::expect_logical_position(a.position).block)
+                .collect::<Vec<_>>(),
             [S::ZERO; 3]
         );
         assert_eq!(output(&leading.compute(), 0).size.height, n(10.0));
@@ -404,8 +407,8 @@ fn empty_edges<S: LayoutScalar>() {
         assert_eq!(groups(&r), [vec![1, 2, 3]]);
         assert_eq!(r.lines.iter().map(|l| l.end).collect::<Vec<_>>(), [Forced]);
         assert_eq!(r.block_extent, n(10.0));
-        assert_eq!(r.first_baseline, Some(n(10.0)));
-        assert_eq!(r.last_baseline, Some(n(10.0)));
+        assert_eq!(r.baselines.numeric().first, Some(n(10.0)));
+        assert_eq!(r.baselines.numeric().last, Some(n(10.0)));
         assert_eq!(output(&terminal.compute(), 0).size.height, n(10.0));
         edges = [WrapEdges::AUTO; 3];
         edges[0].after = WrapEdge::Line;
@@ -629,7 +632,7 @@ fn side_proof<S: LayoutScalar>() {
         [vec![1], vec![2, 3]]
     );
     f.wrapping.child_order[1].prefix = ChildOrderCompleteness::Unknown;
-    let error = LayoutFlowInput::try_new(&f.tree, 0, vec![], f.wrapping.clone())
+    let error = LayoutFlowInput::try_new(&f.tree, 0, vec![], f.wrapping.clone(), Vec::new())
         .err()
         .expect("requested propagation lacks actual first-child proof");
     assert!(matches!(
@@ -836,7 +839,8 @@ fn warm_force<S: LayoutScalar>() {
             );
         let run = |host: &Cached<S>| {
             let flow =
-                LayoutFlowInput::try_new(host, 100, vec![], WrappingInput::default()).unwrap();
+                LayoutFlowInput::try_new(host, 100, vec![], WrappingInput::default(), Vec::new())
+                    .unwrap();
             compute_layout_with_flow(&flow, 100, request(n(100.0))).unwrap()
         };
         let mut warm = Cached::new(tree.clone());
@@ -1006,7 +1010,7 @@ fn mixed_inside_and_edge_constraints_keep_incomparable_preference_and_actual_sub
 }
 
 fn expect_missing_child_order<S: LayoutScalar>(f: &Fixture<S>) {
-    let error = LayoutFlowInput::try_new(&f.tree, 0, vec![], f.wrapping.clone())
+    let error = LayoutFlowInput::try_new(&f.tree, 0, vec![], f.wrapping.clone(), Vec::new())
         .err()
         .expect("a demanded unknown generated-child incidence cannot be declared complete");
     assert!(matches!(
@@ -1195,7 +1199,8 @@ fn separated_numeric_runs<S: LayoutScalar>() {
             // locality. Observe each actual run through its own host-derived
             // projection: an after force must end only that owner's atomic.
             let flow =
-                LayoutFlowInput::try_new(&tree, 0, vec![], WrappingInput::default()).unwrap();
+                LayoutFlowInput::try_new(&tree, 0, vec![], WrappingInput::default(), Vec::new())
+                    .unwrap();
             for (node, edges) in [(1, early), (3, late)] {
                 // Allocation fields are genuine owner inputs from the already
                 // required unrounded public batch, never ending/cursor oracles.

@@ -177,7 +177,7 @@ fn logical_spacing_retains_precision_without_rewriting_provider_advance() {
     assert_eq!(rows[0].advance(), 1.0_f32);
     assert_eq!(rows[1].advance(), 1.0_f32);
     assert_eq!(rows[1].pen(), 1.0 + spacing);
-    assert_eq!(layout.metrics().full_width(), 2.0 + 2.0 * spacing);
+    assert_eq!(layout.metrics().full_width(), 2.0 + spacing);
 }
 
 #[test]

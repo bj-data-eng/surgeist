@@ -107,6 +107,7 @@ fn compute<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(width)).unwrap();
@@ -508,6 +509,7 @@ fn automatic_intrinsic_refinement_is_distinct_from_finite_manual_priority() {
                         scopes: Vec::new(),
                         child_order: Vec::new(),
                     },
+                    Vec::new(),
                 )
                 .unwrap();
                 for (available, expected) in [

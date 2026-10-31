@@ -3,9 +3,16 @@
 A Rust library for developers integrating layout into Surgeist document surfaces.
 It computes box, line, and scroll geometry from layout-ready inputs, with block,
 inline, flex, grid, subgrid, and experimental grid-lanes algorithms. Prepared Text
-composition supports normal and last-line alignment, signed indentation and
+composition supports `HorizontalTb`, clockwise `SidewaysRl`, and native upright
+or clockwise Sideways preparation in `VerticalRl`/`VerticalLr`, normal and
+last-line alignment, signed indentation and
 explicit U+0020 space expansion; see the [Text input contract](docs/reference.md#node-input).
-Numeric atomic-box flow also supports explicit alphabetic and central
+Native upright paragraphs support explicit Central baseline matching. Horizontal
+and clockwise Sideways paragraphs support explicit Alphabetic matching when
+their Text preparation uses that named reference. Native
+upright and clockwise Sideways flow retain physical in-flow and positioned
+atomic boxes with independently oriented contents. Numeric atomic-box flow also
+supports alphabetic and central
 [baseline matching](docs/reference.md#numeric-inline-baseline-references).
 
 The crate is at version `0.1.0`. Its grid support is a defined subset, and it does

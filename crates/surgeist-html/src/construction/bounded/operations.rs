@@ -764,23 +764,46 @@ fn name_units(name: &QualifiedName) -> Result<usize, HtmlConstructionError> {
         name.namespace().uri().map_or(0, DocumentString::len),
     )
 }
-fn attribute_units(attribute: &Attribute) -> Result<usize, HtmlConstructionError> {
+pub(super) fn attribute_units(attribute: &Attribute) -> Result<usize, HtmlConstructionError> {
     add(name_units(attribute.name())?, attribute.value().len())
+}
+fn processing_instruction_units(
+    value: &HtmlProcessingInstruction,
+) -> Result<usize, HtmlConstructionError> {
+    add(value.target().len(), value.data().len())
+}
+fn doctype_units(value: &HtmlDoctype) -> Result<usize, HtmlConstructionError> {
+    add(
+        add(
+            value.name().len(),
+            value.public_id().map_or(0, DocumentString::len),
+        )?,
+        value.system_id().map_or(0, DocumentString::len),
+    )
 }
 fn leaf_units(kind: &HtmlNodeKind) -> Result<usize, HtmlConstructionError> {
     match kind {
         HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment => Ok(0),
         HtmlNodeKind::Element(value) => name_units(value.name()),
         HtmlNodeKind::Text(value) | HtmlNodeKind::Comment(value) => Ok(value.len()),
-        HtmlNodeKind::ProcessingInstruction(value) => add(value.target().len(), value.data().len()),
-        HtmlNodeKind::Doctype(value) => add(
-            add(
-                value.name().len(),
-                value.public_id().map_or(0, DocumentString::len),
-            )?,
-            value.system_id().map_or(0, DocumentString::len),
-        ),
+        HtmlNodeKind::ProcessingInstruction(value) => processing_instruction_units(value),
+        HtmlNodeKind::Doctype(value) => doctype_units(value),
     }
+}
+/// Attributes and UTF-16 units a `Create` of `kind` commits: the same helpers
+/// the bounded operation's plan sums, evaluated in one step so native admission
+/// can check the usage before committing it.
+pub(in crate::construction) fn created_usage(
+    kind: &HtmlNodeKind,
+) -> Result<(usize, usize), HtmlConstructionError> {
+    let mut units = leaf_units(kind)?;
+    let HtmlNodeKind::Element(element) = kind else {
+        return Ok((0, units));
+    };
+    for attribute in element.attributes().iter() {
+        units = add(units, attribute_units(attribute)?)?;
+    }
+    Ok((element.attributes().len(), units))
 }
 fn structural_parent(arena: &Arena, index: usize) -> Option<usize> {
     let record = &arena.records[index];
@@ -945,18 +968,12 @@ impl HtmlConstructionOperation {
                             HtmlNodeKind::ProcessingInstruction(old),
                             HtmlConstructionContent::ProcessingInstruction(new),
                         ) => {
-                            plan.old_units = add(old.target.len(), old.data.len())?;
-                            plan.new_units = add(new.target.len(), new.data.len())?;
+                            plan.old_units = processing_instruction_units(old)?;
+                            plan.new_units = processing_instruction_units(new)?;
                         }
-                        (HtmlNodeKind::Doctype(_), HtmlConstructionContent::Doctype(new)) => {
-                            plan.old_units = leaf_units(old)?;
-                            plan.new_units = add(
-                                add(
-                                    new.name.len(),
-                                    new.public_id.as_ref().map_or(0, DocumentString::len),
-                                )?,
-                                new.system_id.as_ref().map_or(0, DocumentString::len),
-                            )?;
+                        (HtmlNodeKind::Doctype(old), HtmlConstructionContent::Doctype(new)) => {
+                            plan.old_units = doctype_units(old)?;
+                            plan.new_units = doctype_units(new)?;
                         }
                         _ => return Err(HtmlConstructionError::WrongNodeKind),
                     }

@@ -54,6 +54,9 @@ fn fixture_empty<S: l::LayoutScalar>()
     let mut source = t::Source::identified("AX", t::Id::from_u64(658200), 41);
     source.span(t::Range::new(0, 2), base.clone());
     let block = || t::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
+        font_reference: None,
         topology: t::SourceProcessingTopology::Complete,
         trim: Default::default(),
         base_style: base.clone(),
@@ -61,6 +64,8 @@ fn fixture_empty<S: l::LayoutScalar>()
     };
     let capture = Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
             envelope: t::SourceProcessingEnvelope::Complete,
@@ -81,6 +86,9 @@ fn fixture_empty<S: l::LayoutScalar>()
             scopes: vec![
                 block(),
                 t::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: Default::default(),
                     style: None,
                     boundaries: None,
@@ -166,7 +174,11 @@ fn fixture_empty<S: l::LayoutScalar>()
                     t::Range::new(2, 2)
                 }
             );
-            let a = t::AnalyzedSource::from_processed_paragraph(p).unwrap();
+            let a = t::AnalyzedSource::from_processed_paragraph(
+                p,
+                t::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap();
             let missing = a
                 .wrapping_relations()
                 .filter(|r| r.ancestor_wrap().is_none())
@@ -177,7 +189,14 @@ fn fixture_empty<S: l::LayoutScalar>()
                 .collect();
             let a = a.with_wrapping_policies(missing).unwrap();
             let prepared = fonts.prepare(&a, t::PreparationOptions::default()).unwrap();
-            assert_eq!(prepared.captured_paragraph(), capture.captured_paragraph(i));
+            assert_eq!(
+                prepared
+                    .captured_owner()
+                    .unwrap()
+                    .members()
+                    .collect::<Vec<_>>(),
+                vec![capture.captured_paragraph(i).unwrap()]
+            );
             let (container, nodes, origins) = if i < 2 {
                 let node = if i == 0 { 1 } else { 3 };
                 let origin = prepared.origin_views().next().unwrap().handle();
@@ -253,8 +272,9 @@ fn captured_wrapping(scope: t::CapturedScope) -> l::WrappingInput<u32> {
 
 fn full_empty<S: l::LayoutScalar>() {
     let (tree, bindings, scope) = fixture_empty::<S>();
-    let flow = l::LayoutFlowInput::try_new(&tree, 0, bindings, captured_wrapping(scope))
-        .expect("the supplied real itemless ending paragraph authenticates S's closure");
+    let flow =
+        l::LayoutFlowInput::try_new(&tree, 0, bindings, captured_wrapping(scope), Vec::new())
+            .expect("the supplied real itemless ending paragraph authenticates S's closure");
     // This is admission only: absence of a supplied box strut makes no zero
     // geometry promise, and no selected line/fit is requested.
     drop(flow);
@@ -270,9 +290,10 @@ fn missing_empty<S: l::LayoutScalar>() {
     // A1/X3 are still covered by the first two bindings in the unchanged tree.
     // Complete S order still claims its real original after edge; without p2
     // that needed captured region is unavailable, rather than implied by glyphs.
-    let error = l::LayoutFlowInput::try_new(&tree, 0, bindings, captured_wrapping(scope))
-        .err()
-        .expect("all text covered is insufficient without S's real ending paragraph");
+    let error =
+        l::LayoutFlowInput::try_new(&tree, 0, bindings, captured_wrapping(scope), Vec::new())
+            .err()
+            .expect("all text covered is insufficient without S's real ending paragraph");
     assert!(
         matches!(
             error.kind(),

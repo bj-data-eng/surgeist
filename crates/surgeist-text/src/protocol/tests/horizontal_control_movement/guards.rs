@@ -20,43 +20,46 @@ fn real_lines(
     }
     let source = Source::identified(text, Id::from_u64(1519008), 1);
     let len = source.text().len();
-    let a = AnalyzedSource::from_paragraph(ParagraphInput {
-        source: source.clone(),
-        base_style: Style {
-            font: Font::new().family("Ahem"),
-            size: 10.0,
-            line_height: LineHeight::Absolute(10.0),
-            white_space: WhiteSpace::Preserve,
-            ..Style::default()
+    let a = AnalyzedSource::from_paragraph(
+        ParagraphInput {
+            source: source.clone(),
+            base_style: Style {
+                font: Font::new().family("Ahem"),
+                size: 10.0,
+                line_height: LineHeight::Absolute(10.0),
+                white_space: WhiteSpace::Preserve,
+                ..Style::default()
+            },
+            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: ParagraphStrut::DefaultFont,
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            origins: vec![crate::ParagraphOrigin {
+                text_node: None,
+                source,
+                local: Range::new(0, len),
+                aggregate: Range::new(0, len),
+                kind: crate::ParagraphOriginKind::Authored,
+            }],
+            controls: (0..breaks)
+                .map(|_| crate::ParagraphControl {
+                    at,
+                    kind: crate::ParagraphControlKind::ForcedBreak,
+                })
+                .collect(),
+            connections: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: (0..breaks)
+                .map(|control| crate::ParagraphAnchor {
+                    item: crate::ParagraphAnchorItem::Control(control),
+                    affinity: Affinity::After,
+                })
+                .collect(),
         },
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: ParagraphStrut::DefaultFont,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        origins: vec![crate::ParagraphOrigin {
-            text_node: None,
-            source,
-            local: Range::new(0, len),
-            aggregate: Range::new(0, len),
-            kind: crate::ParagraphOriginKind::Authored,
-        }],
-        controls: (0..breaks)
-            .map(|_| crate::ParagraphControl {
-                at,
-                kind: crate::ParagraphControlKind::ForcedBreak,
-            })
-            .collect(),
-        connections: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-        anchor_order: (0..breaks)
-            .map(|control| crate::ParagraphAnchor {
-                item: crate::ParagraphAnchorItem::Control(control),
-                affinity: Affinity::After,
-            })
-            .collect(),
-    })
+        crate::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let a = crate::test_wrapping::bind_missing(&a, crate::Wrap::Word);
     let p = s.prepare(&a, PreparationOptions::default()).unwrap();
@@ -118,7 +121,10 @@ fn real_lines(
         let line = p
             .select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(line.feedback().line_height, 10.0);
         let slots = line

@@ -9,6 +9,35 @@ use std::{
 use crate::engine::{self, AnalyzedData};
 use crate::{Direction, Range, Result, Source, Style, ValidatedSource, ValidatedStyle};
 
+pub(crate) mod captured;
+mod combined;
+mod domain;
+pub use captured::CapturedAnalysisOwner;
+pub use combined::{AnalyzedCombinedCell, AnalyzedCombinedSourcePiece};
+pub use domain::AnalyzedDomain;
+
+/// Resolved source interpretation, established before Unicode bidi analysis.
+/// This is independent of font shaping and placed line geometry.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum AnalysisTypography {
+    /// Ordinary Unicode interpretation for horizontal and both sideways profiles.
+    /// No computed direction is asserted for the standalone automatic policy.
+    HorizontalComposition,
+    /// Mixed vertical typography with ordinary paragraph bidi and source-owned orientation.
+    Mixed,
+    /// Whole-upright strong-L interpretation with a separately retained computed authority.
+    Upright {
+        /// Actual computed paragraph direction; the used direction is LTR.
+        /// This is not a replacement for an already-resolved captured used base.
+        computed_direction: crate::ParagraphBaseDirection,
+    },
+}
+impl AnalysisTypography {
+    pub(crate) const fn is_upright(self) -> bool {
+        matches!(self, Self::Upright { .. })
+    }
+}
+
 /// Immutable original-source analysis, constructible without a font catalogue.
 ///
 /// Clones retain one analysis identity. Font preparation and placed layouts
@@ -28,14 +57,39 @@ impl fmt::Debug for AnalyzedSource {
 }
 
 impl AnalyzedSource {
+    /// Completed source cells, before any font preparation or placed geometry.
+    pub fn combined_cells(&self) -> impl ExactSizeIterator<Item = AnalyzedCombinedCell<'_>> + '_ {
+        let output = self.inner.combination.as_deref();
+        (0..output.map_or(0, |output| output.cells.len())).map(move |index| {
+            let output = output.expect("nonempty cell iterator");
+            AnalyzedCombinedCell {
+                core: &self.inner.core,
+                output,
+                index,
+            }
+        })
+    }
+    /// Genuine captured Raw/Joint authority of this completed output.
+    #[must_use]
+    pub fn captured_owner(&self) -> Option<CapturedAnalysisOwner<'_>> {
+        self.inner
+            .paragraph
+            .scope_topology
+            .as_ref()
+            .map(|topology| CapturedAnalysisOwner {
+                owner: &topology.owner,
+            })
+    }
     /// Validates source/styles and analyzes the post-transform semantic stream.
     /// Exact original source and Phase-I correspondence remain separately owned.
-    /// No font discovery, selection, glyph shaping or placement occurs.
-    pub fn new(source: Source, style: Style) -> Result<Self> {
+    /// No font discovery, selection, glyph shaping or placement occurs. Upright
+    /// retains its computed direction while executing used-LTR interpretation.
+    /// Existing standalone Style admission remains unchanged.
+    pub fn new(source: Source, style: Style, typography: AnalysisTypography) -> Result<Self> {
         let source = ValidatedSource::try_from(source)?;
         let style = ValidatedStyle::try_from(style)?;
         Ok(Self {
-            inner: engine::analyze(source, style)?,
+            inner: engine::analyze(source, style, typography)?,
         })
     }
 
@@ -93,7 +147,14 @@ impl AnalyzedSource {
             })
     }
 
-    /// Resolved original-source paragraph direction, before glyph substitution.
+    /// Actual source interpretation and its separately retained computed authority.
+    #[must_use]
+    pub fn typography(&self) -> AnalysisTypography {
+        self.inner.typography
+    }
+
+    /// Resolved used paragraph direction, before glyph substitution.
+    /// Upright is LTR without changing its retained computed direction.
     #[must_use]
     pub fn direction(&self) -> Direction {
         if self.inner.analysis.base_level & 1 == 0 {

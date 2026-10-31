@@ -12,22 +12,36 @@
 use crate::{Result, engine::resolve, projection::SourceProjection};
 
 mod casing;
+pub(crate) mod combined;
+pub use combined::TextCombineError;
+pub(crate) mod context;
+pub(crate) mod domain;
 mod execute;
 mod greek;
 mod irish;
+mod mapping;
 mod math;
 mod math_data;
+mod project;
 pub(crate) mod relation;
 pub(crate) mod separators;
+mod transaction;
 mod width;
 mod width_data;
+
+/// Completed exact transform output, with its immutable source-selection plan.
+pub(crate) struct CompletedTransform {
+    pub(crate) projection: SourceProjection,
+    pub(crate) relation: std::sync::Arc<relation::TransformMap>,
+    pub(crate) combination: Option<std::sync::Arc<combined::CombinedOutput>>,
+}
 
 pub(crate) fn apply(
     input: SourceProjection,
     styles: &mut Vec<resolve::AnalyzedStyleRun>,
     processed: &crate::ProcessedSource,
     paragraph: &crate::protocol::paragraph::ParagraphData,
-) -> Result<(SourceProjection, std::sync::Arc<relation::TransformMap>)> {
+) -> Result<CompletedTransform> {
     execute::apply(input, styles, processed, paragraph)
 }
 

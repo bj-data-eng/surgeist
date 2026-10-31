@@ -35,7 +35,11 @@ fn prepare(system: &mut System, input: ParagraphInput) -> PreparedText {
     system
         .prepare(
             &crate::test_wrapping::bind_missing(
-                &AnalyzedSource::from_paragraph(input).unwrap(),
+                &AnalyzedSource::from_paragraph(
+                    input,
+                    crate::AnalysisTypography::HorizontalComposition,
+                )
+                .unwrap(),
                 crate::Wrap::Word,
             ),
             PreparationOptions::default(),
@@ -46,7 +50,10 @@ fn line(p: &PreparedText, width: Option<f64>, indent: f64) -> crate::Result<Fina
     let mut r = request(p);
     r.context.available_inline = width;
     r.context.indent = indent;
-    p.select(r)?.finalize(SpacingAllocations::None)
+    p.select(r)?.finalize(crate::LineAllocations {
+        spacing: SpacingAllocations::None,
+        scopes: crate::ScopeAllocations::None,
+    })
 }
 
 #[test]
@@ -110,7 +117,6 @@ fn zero_preserved_edges_consume_context_only_for_a_material_preceding_group() {
                 Range::new(1, 2),
                 Style {
                     white_space: WhiteSpace::Collapse,
-                    letter_spacing: preceding - 10.0,
                     ..captured.base_style.clone()
                 },
             );
@@ -118,6 +124,9 @@ fn zero_preserved_edges_consume_context_only_for_a_material_preceding_group() {
                 Range::new(2, 3),
                 Style {
                     word_spacing: -10.0,
+                    // X/EM has gap0. EM/SPACE has half this full value,
+                    // charged to EM; SPACE's raw10 plus word−10 stays0.
+                    letter_spacing: 2.0 * (preceding - 10.0),
                     ..captured.base_style.clone()
                 },
             );
@@ -135,6 +144,43 @@ fn zero_preserved_edges_consume_context_only_for_a_material_preceding_group() {
                 assert_eq!(reason(&error), &expected);
             } else {
                 let actual = result.unwrap();
+                let raw: Vec<_> = actual
+                    .run_views()
+                    .flat_map(|run| {
+                        run.glyphs()
+                            .map(|glyph| {
+                                (
+                                    glyph.range(),
+                                    glyph.id(),
+                                    glyph.x(),
+                                    glyph.y(),
+                                    glyph.advance(),
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .collect();
+                assert_eq!(
+                    raw,
+                    [
+                        (Range::new(0, 1), 58, 0.0, 0.0, 10.0),
+                        (Range::new(1, 2), 247, 0.0, 0.0, 10.0),
+                        (Range::new(2, 3), 3, 0.0, 0.0, 10.0),
+                    ]
+                );
+                let cells: Vec<_> = actual.edge_units().collect();
+                assert_eq!(cells.len(), 3);
+                assert_eq!(
+                    cells.iter().map(|cell| cell.advance()).collect::<Vec<_>>(),
+                    [10.0, preceding, 0.0]
+                );
+                for (index, cell) in cells.iter().enumerate() {
+                    assert_eq!(
+                        cell.source_pieces().collect::<Vec<_>>(),
+                        [Range::new(index, index + 1)]
+                    );
+                    assert_ne!(cell.disposition(), crate::LineEdgeDisposition::Removed);
+                }
                 assert_eq!(actual.feedback().advance, 10.0 + preceding);
                 assert_eq!(
                     actual.measurements().alignment().advance(),
@@ -224,17 +270,40 @@ fn allocated_zero_retains_natural_eligibility_and_real_source_geometry_both_dire
         r.context.available_inline = Some(15.0);
         r.context.alignment = crate::Alignment::Center;
         let selected = p.select(r).unwrap();
-        let natural = selected.finalize(SpacingAllocations::None).unwrap();
+        let natural = selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_eq!(natural.feedback().advance, 20.0);
         assert_eq!(natural.measurements().alignment().advance(), 15.0);
         let slots: Vec<_> = selected.spacing_slots().collect();
         assert_eq!(slots.len(), 1);
-        assert_eq!(slots[0].source_range(), Range::new(1, 2));
+        assert_eq!(
+            slots[0]
+                .pieces()
+                .map(|piece| piece.owner())
+                .collect::<Vec<_>>(),
+            [crate::SpacingSlotOwner::Source {
+                origin: selected
+                    .prepared_text()
+                    .origin_views()
+                    .next()
+                    .unwrap()
+                    .handle(),
+                local: Range::new(1, 2),
+                aggregate: Range::new(1, 2),
+            }]
+        );
         let actual = selected
-            .finalize(SpacingAllocations::Complete(vec![SpacingAllocation {
-                slot: slots[0].clone(),
-                amount: -10.0,
-            }]))
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
+                    slot: slots[0].clone(),
+                    amount: -10.0,
+                }]),
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(
             (
@@ -296,7 +365,15 @@ fn allocated_zero_retains_natural_eligibility_and_real_source_geometry_both_dire
             .unwrap();
         let units: Vec<_> = fragments.units().collect();
         assert_eq!(units.len(), 1);
-        let pieces: Vec<_> = units[0].pieces().collect();
+        let pieces: Vec<_> = units[0]
+            .pieces()
+            .map(|piece| {
+                let crate::SourceRangeGeometry::Line(piece) = piece else {
+                    panic!("ordinary Range fixture must retain Line geometry");
+                };
+                piece
+            })
+            .collect();
         assert_eq!(pieces.len(), 1);
         assert_eq!(pieces[0].advance_edges(), (point, point));
         assert_eq!(pieces[0].effective_instance().font_size(), 10.0);
@@ -533,7 +610,10 @@ fn omitted_soft_space_inside_wide_frame_has_no_physical_outward_overlap() {
     let actual = p
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(
         (
@@ -594,7 +674,11 @@ fn selected_replacement_space_and_css_tab_keep_alternative_custody_and_geometry(
             .unwrap(),
         );
         let analyzed = crate::test_wrapping::bind_missing(
-            &AnalyzedSource::from_paragraph(native).unwrap(),
+            &AnalyzedSource::from_paragraph(
+                native,
+                crate::AnalysisTypography::HorizontalComposition,
+            )
+            .unwrap(),
             crate::Wrap::Word,
         );
         let p = system
@@ -620,7 +704,10 @@ fn selected_replacement_space_and_css_tab_keep_alternative_custody_and_geometry(
         let line = p
             .select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         let advance = if replacement == " " { 10.0 } else { 20.0 };
         assert_eq!(
@@ -676,7 +763,12 @@ fn selected_replacement_space_and_css_tab_keep_alternative_custody_and_geometry(
         assert_eq!(
             units[0]
                 .pieces()
-                .map(|p| p.advance_edges())
+                .map(|p| {
+                    let crate::SourceRangeGeometry::Line(p) = p else {
+                        panic!("ordinary Range fixture must retain Line geometry");
+                    };
+                    p.advance_edges()
+                })
                 .collect::<Vec<_>>(),
             [(20.0, 20.0 + advance)]
         );
@@ -712,7 +804,12 @@ fn unallocated_zero_terminal_is_neutral_but_known_block_retains_classification()
     ] {
         let selected =
             zero_preserved_selection(&mut system, terminal, ParagraphBaseDirection::LeftToRight);
-        let natural = selected.finalize(SpacingAllocations::None).unwrap();
+        let natural = selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_eq!(
             (
                 natural.feedback().advance,
@@ -723,7 +820,22 @@ fn unallocated_zero_terminal_is_neutral_but_known_block_retains_classification()
         );
         let slots: Vec<_> = selected.spacing_slots().collect();
         assert_eq!(slots.len(), 1);
-        assert_eq!(slots[0].source_range(), Range::new(0, 1));
+        assert_eq!(
+            slots[0]
+                .pieces()
+                .map(|piece| piece.owner())
+                .collect::<Vec<_>>(),
+            [crate::SpacingSlotOwner::Source {
+                origin: selected
+                    .prepared_text()
+                    .origin_views()
+                    .next()
+                    .unwrap()
+                    .handle(),
+                local: Range::new(0, 1),
+                aggregate: Range::new(0, 1),
+            }]
+        );
         let edge = natural.edge_units().next().unwrap();
         assert_eq!(edge.source_pieces().collect::<Vec<_>>(), [Range::new(0, 1)]);
         if terminal != Terminal::BlockEnd {
@@ -736,10 +848,13 @@ fn unallocated_zero_terminal_is_neutral_but_known_block_retains_classification()
         }
         if terminal == Terminal::BlockEnd {
             let allocated = selected
-                .finalize(SpacingAllocations::Complete(vec![SpacingAllocation {
-                    slot: slots[0].clone(),
-                    amount: 10.0,
-                }]))
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
+                        slot: slots[0].clone(),
+                        amount: 10.0,
+                    }]),
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap();
             assert_eq!(
                 (
@@ -775,15 +890,32 @@ fn expanded_zero_terminal_error(
 ) -> crate::Error {
     let mut system = system();
     let selected = zero_preserved_selection(&mut system, terminal, direction);
-    let natural = selected.finalize(SpacingAllocations::None).unwrap();
+    let natural = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(natural.feedback().advance, 0.0);
     let slot = selected.spacing_slots().next().unwrap();
-    assert_eq!(slot.source_range(), Range::new(0, 1));
+    assert_eq!(
+        slot.pieces().map(|piece| piece.owner()).collect::<Vec<_>>(),
+        [crate::SpacingSlotOwner::Source {
+            origin: selected
+                .prepared_text()
+                .origin_views()
+                .next()
+                .unwrap()
+                .handle(),
+            local: Range::new(0, 1),
+            aggregate: Range::new(0, 1),
+        }]
+    );
     selected
-        .finalize(SpacingAllocations::Complete(vec![SpacingAllocation {
-            slot,
-            amount,
-        }]))
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::Complete(vec![SpacingAllocation { slot, amount }]),
+            scopes: crate::ScopeAllocations::None,
+        })
         .expect_err("expanded preserved source consumes actual terminal authority")
 }
 
@@ -846,7 +978,12 @@ fn deferred_zero_preserved_edge_tracks_its_exact_earlier_group_not_ordinary_pref
         );
         let p = prepare(&mut system, captured);
         let selected = p.select(request(&p)).unwrap();
-        let natural = selected.finalize(SpacingAllocations::None).unwrap();
+        let natural = selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_eq!(
             (
                 natural.feedback().advance,
@@ -856,32 +993,49 @@ fn deferred_zero_preserved_edge_tracks_its_exact_earlier_group_not_ordinary_pref
         );
         let slots: Vec<_> = selected.spacing_slots().collect();
         assert_eq!(slots.len(), 2);
-        assert_eq!(
-            (slots[0].source_range(), slots[1].source_range()),
-            (Range::new(1, 2), Range::new(2, 3))
-        );
+        for (slot, range) in slots.iter().zip([Range::new(1, 2), Range::new(2, 3)]) {
+            assert_eq!(
+                slot.pieces().map(|piece| piece.owner()).collect::<Vec<_>>(),
+                [crate::SpacingSlotOwner::Source {
+                    origin: selected
+                        .prepared_text()
+                        .origin_views()
+                        .next()
+                        .unwrap()
+                        .handle(),
+                    local: range,
+                    aggregate: range,
+                }]
+            );
+        }
         let unchanged = selected
-            .finalize(SpacingAllocations::Complete(
-                slots
-                    .iter()
-                    .map(|slot| SpacingAllocation {
-                        slot: slot.clone(),
-                        amount: 0.0,
-                    })
-                    .collect(),
-            ))
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::Complete(
+                    slots
+                        .iter()
+                        .map(|slot| SpacingAllocation {
+                            slot: slot.clone(),
+                            amount: 0.0,
+                        })
+                        .collect(),
+                ),
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(unchanged.feedback().advance, 10.0);
-        let expanded = selected.finalize(SpacingAllocations::Complete(vec![
-            SpacingAllocation {
-                slot: slots[0].clone(),
-                amount: 10.0,
-            },
-            SpacingAllocation {
-                slot: slots[1].clone(),
-                amount: 0.0,
-            },
-        ]));
+        let expanded = selected.finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::Complete(vec![
+                SpacingAllocation {
+                    slot: slots[0].clone(),
+                    amount: 10.0,
+                },
+                SpacingAllocation {
+                    slot: slots[1].clone(),
+                    amount: 0.0,
+                },
+            ]),
+            scopes: crate::ScopeAllocations::None,
+        });
         if terminal == Terminal::BlockEnd {
             let expanded = expanded.unwrap();
             assert_eq!(
@@ -920,21 +1074,35 @@ fn allocation_outside_deferred_terminal_dependencies_remains_admitted() {
         let selected = p.select(request(&p)).unwrap();
         let slots: Vec<_> = selected.spacing_slots().collect();
         assert_eq!(slots.len(), 2);
-        assert_eq!(
-            (slots[0].source_range(), slots[1].source_range()),
-            (Range::new(0, 1), Range::new(2, 3))
-        );
+        for (slot, range) in slots.iter().zip([Range::new(0, 1), Range::new(2, 3)]) {
+            assert_eq!(
+                slot.pieces().map(|piece| piece.owner()).collect::<Vec<_>>(),
+                [crate::SpacingSlotOwner::Source {
+                    origin: selected
+                        .prepared_text()
+                        .origin_views()
+                        .next()
+                        .unwrap()
+                        .handle(),
+                    local: range,
+                    aggregate: range,
+                }]
+            );
+        }
         let actual = selected
-            .finalize(SpacingAllocations::Complete(vec![
-                SpacingAllocation {
-                    slot: slots[0].clone(),
-                    amount: 10.0,
-                },
-                SpacingAllocation {
-                    slot: slots[1].clone(),
-                    amount: 0.0,
-                },
-            ]))
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::Complete(vec![
+                    SpacingAllocation {
+                        slot: slots[0].clone(),
+                        amount: 10.0,
+                    },
+                    SpacingAllocation {
+                        slot: slots[1].clone(),
+                        amount: 0.0,
+                    },
+                ]),
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(
             (
@@ -970,20 +1138,28 @@ fn cancellation_between_deferred_rows_cannot_hide_terminal_dependence() {
         );
         let p = prepare(&mut system, captured);
         let selected = p.select(request(&p)).unwrap();
-        let retained = selected.finalize(SpacingAllocations::None).unwrap();
+        let retained = selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         let slots: Vec<_> = selected.spacing_slots().collect();
         assert_eq!(slots.len(), 2);
         let error = selected
-            .finalize(SpacingAllocations::Complete(vec![
-                SpacingAllocation {
-                    slot: slots[0].clone(),
-                    amount: 10.0,
-                },
-                SpacingAllocation {
-                    slot: slots[1].clone(),
-                    amount: -10.0,
-                },
-            ]))
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::Complete(vec![
+                    SpacingAllocation {
+                        slot: slots[0].clone(),
+                        amount: 10.0,
+                    },
+                    SpacingAllocation {
+                        slot: slots[1].clone(),
+                        amount: -10.0,
+                    },
+                ]),
+                scopes: crate::ScopeAllocations::None,
+            })
             .expect_err("net zero allocations still change exact terminal dependencies");
         let expected = if terminal == Terminal::Unknown {
             ProtocolError::MissingPhaseTwoContext(crate::PhaseTwoContext::TerminalBlockEdge)
@@ -1041,7 +1217,12 @@ fn forced_zero_point_outside_frame_cannot_make_preceding_group_terminal() {
     r.context.available_inline = Some(15.0);
     r.termination = PreparedTermination::Ordinary(ending);
     let selected = p.select(r).unwrap();
-    let natural = selected.finalize(SpacingAllocations::None).unwrap();
+    let natural = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(
         (
             natural.feedback().advance,
@@ -1066,19 +1247,19 @@ fn forced_zero_point_outside_frame_cannot_make_preceding_group_terminal() {
     );
     let slots: Vec<_> = selected.spacing_slots().collect();
     let actual = selected
-        .finalize(SpacingAllocations::Complete(
+        .finalize(crate::LineAllocations { spacing: SpacingAllocations::Complete(
             slots
                 .iter()
                 .map(|slot| SpacingAllocation {
                     slot: slot.clone(),
-                    amount: if slot.source_range() == Range::new(2, 3) {
+                    amount: if slot.pieces().any(|piece| matches!(piece.owner(), crate::SpacingSlotOwner::Source { aggregate, .. } if aggregate == Range::new(2, 3))) {
                         10.0
                     } else {
                         0.0
                     },
                 })
                 .collect(),
-        ))
+        ), scopes: crate::ScopeAllocations::None })
         .unwrap();
     assert_eq!(
         (
@@ -1165,7 +1346,12 @@ fn deferred_terminal_failure_keeps_real_atomic_allocation_and_prior_result_retry
             })
             .collect();
         let selected = p.select(r).unwrap();
-        let natural = selected.finalize(SpacingAllocations::None).unwrap();
+        let natural = selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_eq!(
             (
                 natural.feedback().advance,
@@ -1175,20 +1361,26 @@ fn deferred_terminal_failure_keeps_real_atomic_allocation_and_prior_result_retry
         );
         let slot = selected.spacing_slots().next().unwrap();
         let error = selected
-            .finalize(SpacingAllocations::Complete(vec![SpacingAllocation {
-                slot: slot.clone(),
-                amount: 10.0,
-            }]))
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
+                    slot: slot.clone(),
+                    amount: 10.0,
+                }]),
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap_err();
         assert_eq!(
             reason(&error),
             &ProtocolError::MissingPhaseTwoContext(crate::PhaseTwoContext::TerminalBlockEdge)
         );
         let retry = selected
-            .finalize(SpacingAllocations::Complete(vec![SpacingAllocation {
-                slot,
-                amount: 0.0,
-            }]))
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
+                    slot,
+                    amount: 0.0,
+                }]),
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(
             (natural.feedback().advance, retry.feedback().advance),
@@ -1229,10 +1421,10 @@ fn genuine_soft_zero_preserved_edge_uses_its_break_without_terminal_authority() 
     let selected = p.select(r).unwrap();
     let slot = selected.spacing_slots().next().unwrap();
     let actual = selected
-        .finalize(SpacingAllocations::Complete(vec![SpacingAllocation {
-            slot,
-            amount: 10.0,
-        }]))
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::Complete(vec![SpacingAllocation { slot, amount: 10.0 }]),
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(
         (

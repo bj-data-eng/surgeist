@@ -81,7 +81,9 @@ fn prepare(kerning: bool) -> PreparedText {
         replacements: vec![],
         anchor_order: vec![],
     };
-    let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+    let analyzed =
+        AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+            .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::None);
     let mut system = System::new(SystemOptions {
         font_catalogue: FontCatalogueMode::RegisteredOnly,
@@ -103,6 +105,7 @@ fn finalize(prepared: &PreparedText) -> FinalizedLine {
         .unwrap();
     prepared
         .select(LineSelectionRequest {
+            segment: prepared.source_segments().next().unwrap(),
             boundary_context: vec![],
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
@@ -130,7 +133,10 @@ fn finalize(prepared: &PreparedText) -> FinalizedLine {
             },
         })
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 

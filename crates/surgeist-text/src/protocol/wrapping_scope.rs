@@ -13,11 +13,15 @@ use crate::{CapturedScope, Result};
 /// It grants no additional break opportunity, selection or placement authority.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct PreparedBoundaryIncidence {
+    segment: super::PreparedSourceSegment,
     boundary: PreparedBoundary,
     placement: crate::engine::analysis::scope::Placement,
 }
 
 impl PreparedBoundaryIncidence {
+    pub fn source_segment(&self) -> super::PreparedSourceSegment {
+        self.segment.clone()
+    }
     /// The unchanged executed mixed-prefix boundary observed by this incidence.
     pub fn boundary(&self) -> PreparedBoundary {
         self.boundary.clone()
@@ -61,8 +65,10 @@ impl PreparedText {
     /// already issued termination before using one for line selection.
     pub fn boundary_incidences(
         &self,
+        segment: &super::PreparedSourceSegment,
         boundary: &PreparedBoundary,
     ) -> Result<Vec<PreparedBoundaryIncidence>> {
+        super::segments::admit_points(self, segment, boundary, boundary)?;
         require_prepared(
             self,
             &boundary.prepared,
@@ -72,11 +78,12 @@ impl PreparedText {
         let index = self.incidence_index()?;
         let cut = self.inner.tables.boundaries[boundary.index].relation_cut;
         let placements = index
-            .placements(cut)
+            .placements_in(cut, &self.inner.analyzed.sections[segment.index])
             .ok_or_else(|| refusal(WrappingScopeQueryError::UnrepresentedIncidence))?;
         Ok(placements
             .into_iter()
             .map(|placement| PreparedBoundaryIncidence {
+                segment: segment.clone(),
                 boundary: boundary.clone(),
                 placement,
             })
@@ -95,6 +102,12 @@ impl PreparedText {
             &incidence.boundary.prepared,
             ProtocolHandleKind::BoundaryIncidence,
             incidence.boundary.index,
+        )?;
+        super::segments::admit_points(
+            self,
+            &incidence.segment,
+            &incidence.boundary,
+            &incidence.boundary,
         )?;
         let topology = self
             .inner
@@ -189,9 +202,11 @@ impl PreparedText {
     /// unrepresented context is an error, never an assumed outside result.
     pub fn boundary_inside_captured_scope(
         &self,
+        segment: &super::PreparedSourceSegment,
         boundary: &PreparedBoundary,
         scope: &CapturedScope,
     ) -> Result<bool> {
+        super::segments::admit_points(self, segment, boundary, boundary)?;
         require_prepared(
             self,
             &boundary.prepared,
@@ -220,10 +235,11 @@ impl PreparedText {
             .as_ref()
             .map_err(|error| error.error())?;
         index
-            .inside(
+            .inside_in(
                 self.inner.tables.boundaries[boundary.index].relation_cut,
                 fact.enter,
                 fact.exit,
+                &analyzed.sections[segment.index],
             )
             .ok_or_else(|| refusal(WrappingScopeQueryError::UnrepresentedIncidence))
     }
@@ -264,7 +280,9 @@ mod tests {
                 affinity: Affinity::After,
             }],
         };
-        let analyzed = AnalyzedSource::from_paragraph(input).unwrap();
+        let analyzed =
+            AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
+                .unwrap();
         let mut system = System::new(SystemOptions {
             font_catalogue: FontCatalogueMode::RegisteredOnly,
         })

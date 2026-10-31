@@ -1,5 +1,16 @@
 //! Explicit producer facts for owning fixtures with a known containing context.
 
+/// Returns the genuine segment only for a fixture with one structural section.
+pub(crate) fn only_source_segment(prepared: &crate::PreparedText) -> crate::PreparedSourceSegment {
+    let mut segments = prepared.source_segments();
+    let segment = segments.next().expect("fixture has a source segment");
+    assert!(
+        segments.next().is_none(),
+        "fixture has exactly one source segment"
+    );
+    segment
+}
+
 pub(crate) fn bind_missing(
     analyzed: &crate::AnalyzedSource,
     ancestor_wrap: crate::Wrap,

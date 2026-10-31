@@ -405,7 +405,8 @@ pub use metrics::{
     FontBaseline, FontBaselineAbsence, FontBaselineAxis, FontBaselineMeasurement,
     FontBaselineOutcome, FontBaselineProvenance, FontBaselineScript, FontBaselineUnavailable,
     FontBaselineUnavailableReason, FontBaselineValue, FontLineMetricSource, FontMetrics,
-    StrikeoutMetrics, VerticalGlyphMetricProvenance, VerticalGlyphMetrics,
+    StrikeoutMetrics, UprightFontMetrics, UprightMetricProvenance, UprightMetricReference,
+    VerticalGlyphMetricProvenance, VerticalGlyphMetrics,
 };
 pub use outline::{FontOutlineCapability, FontOutlineError, GlyphOutlineGeometry};
 

@@ -1,10 +1,16 @@
 //! Functional qualification of the real standalone Text consumer.
 //! Literal geometry comes from retained Ahem tables (UPEM1000, ascent800,
 //! descent-200, A/X advance1000), not another adapter invocation.
+mod combined;
 mod composed;
 mod control_paint;
+mod counterclockwise;
 mod endpoint_paint;
+mod inter_character;
+mod mixed;
+mod scope_alignment;
 mod sideways;
+mod upright;
 
 use surgeist_text as text;
 

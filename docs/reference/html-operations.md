@@ -783,7 +783,9 @@ unavailable facts remain unchecked. Those observations do not establish a
 capture-qualified semantic result. Each supplied raw value has the standalone
 UTF-16 admission cap; native values and reports use ordinary allocation without
 aggregate work accounting, cancellation or allocation-failure recovery. URL
-validity and resource properties remain unchecked. These operations do not
+validity and resource properties remain unchecked. A present `sizes` or
+`imagesizes` keeps the context author state unchecked until a source-size-list
+owner validates it. These operations do not
 parse CSS `sizes`, normalize source sets, select or fetch resources, or implement
 the controlled semantic pipeline.
 

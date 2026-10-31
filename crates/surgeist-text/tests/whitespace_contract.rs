@@ -45,6 +45,8 @@ fn collapsed_space_cuts(first: text::Wrap, second: text::Wrap, ancestor: text::W
     use text::SourceProcessingEvent as E;
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -65,17 +67,26 @@ fn collapsed_space_cuts(first: text::Wrap, second: text::Wrap, ancestor: text::W
             }],
             scopes: vec![
                 text::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
+                    font_reference: None,
                     topology: text::SourceProcessingTopology::Unknown,
                     trim: text::WhiteSpaceTrim::default(),
                     base_style: local(ancestor),
                     used_direction: text::ParagraphBaseDirection::LeftToRight,
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: text::WhiteSpaceTrim::default(),
                     style: Some(local(first)),
                     boundaries: None,
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: text::WhiteSpaceTrim::default(),
                     style: Some(local(second)),
                     boundaries: None,
@@ -114,7 +125,11 @@ fn collapsed_space_cuts(first: text::Wrap, second: text::Wrap, ancestor: text::W
         paragraph.source_pieces().collect::<Vec<_>>(),
         [text::Range::new(0, 2), text::Range::new(2, 4)]
     );
-    let analyzed = text::AnalyzedSource::from_processed_paragraph(paragraph).unwrap();
+    let analyzed = text::AnalyzedSource::from_processed_paragraph(
+        paragraph,
+        text::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let prepared = system(AHEM)
         .prepare(&analyzed, text::PreparationOptions::default())
         .unwrap();
@@ -301,27 +316,30 @@ struct Rendered {
 fn rendered(bytes: &[u8], value: &str) -> Rendered {
     let source = text::Source::new(value);
     let end = source.text().len();
-    let analyzed = text::AnalyzedSource::from_paragraph(text::ParagraphInput {
-        source: source.clone(),
-        base_style: style(text::Wrap::Word),
-        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: text::ParagraphBaseDirection::LeftToRight,
-        paragraph_strut: text::ParagraphStrut::DefaultFont,
-        terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        origins: vec![text::ParagraphOrigin {
-            text_node: None,
-            source,
-            local: text::Range::new(0, end),
-            aggregate: text::Range::new(0, end),
-            kind: text::ParagraphOriginKind::Authored,
-        }],
-        connections: vec![],
-        controls: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-        anchor_order: vec![],
-    })
+    let analyzed = text::AnalyzedSource::from_paragraph(
+        text::ParagraphInput {
+            source: source.clone(),
+            base_style: style(text::Wrap::Word),
+            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: text::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            origins: vec![text::ParagraphOrigin {
+                text_node: None,
+                source,
+                local: text::Range::new(0, end),
+                aggregate: text::Range::new(0, end),
+                kind: text::ParagraphOriginKind::Authored,
+            }],
+            connections: vec![],
+            controls: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
+            anchor_order: vec![],
+        },
+        text::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let prepared = system(bytes)
         .prepare(&analyzed, text::PreparationOptions::default())
@@ -333,6 +351,7 @@ fn rendered(bytes: &[u8], value: &str) -> Rendered {
         .handle();
     let line = prepared
         .select(text::LineSelectionRequest {
+            segment: prepared.source_segments().next().unwrap(),
             boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
@@ -360,7 +379,10 @@ fn rendered(bytes: &[u8], value: &str) -> Rendered {
             },
         })
         .unwrap()
-        .finalize(text::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: text::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     let registered_faces = line.run_views().all(|run| run.face().bytes() == bytes);
     let glyphs = line

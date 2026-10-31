@@ -34,6 +34,8 @@ fn input(text: &str, ranges: &[Range]) -> ContextualSourceInput {
     }
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     ContextualSourceInput {
+        joint_flows: Vec::new(),
+        scope_alignment_limits: None,
         source: source.clone(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
         envelope: SourceProcessingEnvelope::Complete,
@@ -66,6 +68,9 @@ fn input(text: &str, ranges: &[Range]) -> ContextualSourceInput {
         computed_line_boundaries: vec![],
         replacements: vec![],
         scopes: vec![SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
+            font_reference: None,
             topology: SourceProcessingTopology::Complete,
             trim: WhiteSpaceTrim::default(),
             base_style: base(),
@@ -88,6 +93,9 @@ fn seam(text: &str, at: usize, side: SourceBoxSide) -> ContextualSourceInput {
         ],
     );
     value.scopes.push(SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
+        alignment_boundary: None,
+        font_reference: None,
         trim: WhiteSpaceTrim::default(),
         style: None,
         boundaries: None,
@@ -133,8 +141,11 @@ fn font_system() -> System {
 }
 
 fn prepare(system: &mut System, processed: &Arc<crate::ProcessedSource>) -> PreparedText {
-    let analysis =
-        AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap()).unwrap();
+    let analysis = AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().next().unwrap(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     system
         .prepare(
             &crate::test_wrapping::bind_missing(&analysis, Wrap::Word),
@@ -201,7 +212,10 @@ fn finish(p: &PreparedText) -> Vec<FinalizedLine> {
             let line = p
                 .select(selected)
                 .unwrap()
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap();
             start = line.selected_line().request().end.clone();
             line
@@ -324,8 +338,16 @@ fn computed_scope_cause_has_its_own_canonical_capture_and_prepared_participant()
     assert_eq!(participant.view().source_position().get(), 1);
     assert_eq!(participant.view().processed_position().get(), 1);
     assert_eq!(p.participants().filter(|part| matches!(part, PreparedParticipant::ComputedLineBoundary(c) if *c == participant)).count(), 1);
+    let mut segments = p.source_segments();
+    assert_eq!(
+        segments.len(),
+        1,
+        "this inline-seam fixture has one genuine source segment"
+    );
+    let segment = segments.next().unwrap();
+    drop(segments);
     assert!(
-        !p.boundary_inside_captured_scope(&forced[0].boundary(), &scope)
+        !p.boundary_inside_captured_scope(&segment, &forced[0].boundary(), &scope)
             .unwrap()
     );
     let lines = finish(&p);
@@ -773,6 +795,9 @@ fn computed_hard_boundary_resets_an_authentic_embedding_before_receiving_text() 
 fn distinct_sides_of_a_real_empty_scope_keep_equal_offset_mandatory_progress() {
     let mut value = input("AA", &[Range::new(0, 1), Range::new(1, 2)]);
     value.scopes.push(SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
+        alignment_boundary: None,
+        font_reference: None,
         trim: WhiteSpaceTrim::default(),
         style: None,
         boundaries: None,
@@ -851,6 +876,9 @@ fn distinct_sides_of_a_real_empty_scope_keep_equal_offset_mandatory_progress() {
 fn real_exterior_scope_edges_keep_leading_and_terminal_empty_groups() {
     let mut value = input("A", &[Range::new(0, 1)]);
     value.scopes.push(SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
+        alignment_boundary: None,
+        font_reference: None,
         trim: WhiteSpaceTrim::default(),
         style: None,
         boundaries: None,
@@ -954,6 +982,9 @@ fn computed_targets_refuse_bounds_wrong_roles_and_uncaptured_paragraph_edges() {
     refusal(control, crate::ComputedLineBoundaryError::TargetRole);
     let mut outside = input("A", &[Range::new(0, 1)]);
     outside.scopes.push(SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
+        alignment_boundary: None,
+        font_reference: None,
         trim: WhiteSpaceTrim::default(),
         style: None,
         boundaries: None,
@@ -1081,6 +1112,9 @@ fn out_of_flow_atomic_is_not_an_outer_edge_but_its_own_inline_domain_can_force()
         crate::Size::new(10.0, 10.0),
     ));
     value.scopes.push(SourceProcessingScope::OutOfFlowBlock {
+        writing_axis: None,
+        horizontal_inner_direction: None,
+        font_reference: None,
         topology: SourceProcessingTopology::Complete,
         trim: WhiteSpaceTrim::default(),
         base_style: base(),
@@ -1088,6 +1122,9 @@ fn out_of_flow_atomic_is_not_an_outer_edge_but_its_own_inline_domain_can_force()
         atomic: 0,
     });
     value.scopes.push(SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
+        alignment_boundary: None,
+        font_reference: None,
         trim: WhiteSpaceTrim::default(),
         style: None,
         boundaries: None,
@@ -1152,8 +1189,11 @@ fn out_of_flow_atomic_is_not_an_outer_edge_but_its_own_inline_domain_can_force()
             .opportunity_views()
             .any(|o| o.kind() == PreparedBreakKind::Forced)
     );
-    let child_analysis =
-        AnalyzedSource::from_processed_paragraph(processed.paragraphs().nth(1).unwrap()).unwrap();
+    let child_analysis = AnalyzedSource::from_processed_paragraph(
+        processed.paragraphs().nth(1).unwrap(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     let child = system
         .prepare(
             &crate::test_wrapping::bind_missing(&child_analysis, Wrap::Word),
@@ -1246,7 +1286,10 @@ fn computed_forced_edge_stops_opposite_endpoint_context_demand() {
     let line = p
         .select(selected)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(glyphs(&line), [(35, 10.0)]);
 }
@@ -1300,7 +1343,10 @@ fn computed_forced_receiving_body_stops_preceding_endpoint_context_demand() {
     let line = p
         .select(selected)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(glyphs(&line), [(35, 10.0)]);
 }
@@ -1309,6 +1355,9 @@ fn computed_forced_receiving_body_stops_preceding_endpoint_context_demand() {
 fn computed_forced_terminal_offer_has_cause_but_coincident_paragraph_end_does_not() {
     let mut value = input("A", &[Range::new(0, 1)]);
     value.scopes.push(SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
+        alignment_boundary: None,
+        font_reference: None,
         trim: WhiteSpaceTrim::default(),
         style: None,
         boundaries: None,
@@ -1390,7 +1439,10 @@ fn foreign_computed_participant_is_rejected_even_when_capture_and_anchor_match()
         local
             .select(selected.clone())
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .unwrap()
             .feedback()
             .advance,
@@ -1462,6 +1514,9 @@ fn later_expanded_wbr_preserves_an_earlier_computed_hard_base_mark_boundary() {
             ],
         );
         value.scopes.push(SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
+            alignment_boundary: None,
+            font_reference: None,
             trim: WhiteSpaceTrim::default(),
             style: None,
             boundaries: None,
@@ -1522,11 +1577,11 @@ fn later_expanded_wbr_preserves_an_earlier_computed_hard_base_mark_boundary() {
             processed.processed_text().code_units(),
             [0x41, 0x307, 0x41, 0x41]
         );
-        let analysis =
-            AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-                .unwrap_or_else(|error| {
-                    panic!("forced={forced}, operation={operation:?}: {error:?}")
-                });
+        let analysis = AnalyzedSource::from_processed_paragraph(
+            processed.paragraphs().next().unwrap(),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap_or_else(|error| panic!("forced={forced}, operation={operation:?}: {error:?}"));
         let p = font_system()
             .prepare(
                 &crate::test_wrapping::bind_missing(&analysis, Wrap::Word),
@@ -1603,7 +1658,10 @@ fn later_expanded_wbr_preserves_an_earlier_computed_hard_base_mark_boundary() {
             let tail = p
                 .select(tail)
                 .unwrap()
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap();
             assert_eq!(
                 tail.mapping_views()

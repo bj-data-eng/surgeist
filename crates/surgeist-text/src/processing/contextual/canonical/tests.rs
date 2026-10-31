@@ -5,17 +5,25 @@ fn processed(forced: bool) -> Arc<ProcessedSource> {
     let source = Source::new("A");
     Arc::new(
         process_contextual_source(ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
             envelope: SourceProcessingEnvelope::Complete,
             scopes: vec![
                 SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
+                    font_reference: None,
                     topology: SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: Style::default(),
                     used_direction: ParagraphBaseDirection::LeftToRight,
                 },
                 SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: Default::default(),
                     style: None,
                     boundaries: None,
@@ -136,8 +144,11 @@ fn census_counts_computed_admission_facts_before_local_index_and_only_once() {
     let source = processed(true);
     let captured = source.captured_scope(1).unwrap();
     assert!(captured.capture.canonical.0.lock().unwrap().is_some());
-    let analyzed =
-        AnalyzedSource::from_processed_paragraph(source.paragraphs().next().unwrap()).unwrap();
+    let analyzed = AnalyzedSource::from_processed_paragraph(
+        source.paragraphs().next().unwrap(),
+        crate::AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
     assert!(analyzed.inner.scope_cuts.get().is_none());
     let mut census = crate::engine::analysis::scope::IndexPayloadCensus::default();
     census.analyzed(&analyzed.inner.core);

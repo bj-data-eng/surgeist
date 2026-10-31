@@ -10,7 +10,7 @@ const AHEM: &[u8] = include_bytes!(concat!(
     "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
 ));
 
-fn paragraph(text: &str, y_spacing: f64) -> PreparedParagraph {
+fn paragraph(text: &str, y_adjustment: f64) -> (PreparedParagraph, Vec<u8>) {
     let mut style = ahem_style(10.0, 10.0);
     style.hyphens = Hyphens::Auto;
     style.locale = Some("en-US".into());
@@ -18,6 +18,45 @@ fn paragraph(text: &str, y_spacing: f64) -> PreparedParagraph {
     style.white_space = WhiteSpace::Collapse;
     style.wrap = Wrap::Word;
     style.overflow_wrap = OverflowWrap::Normal;
+    let (delta, expected): (i16, f32) = if y_adjustment == 0.0 {
+        (0, 10.0)
+    } else if y_adjustment == -10.0 {
+        (-1000, 0.0)
+    } else {
+        assert_eq!(y_adjustment, -15.0);
+        (-1500, -5.0)
+    };
+    let font = if delta == 0 {
+        AHEM.to_vec()
+    } else {
+        super::canonical::fonts::positioned_ahem(&[(59, delta)])
+    };
+    style.font = style.font.feature("\"kern\" 1");
+    let control = |enabled| {
+        let mut own = style.clone();
+        own.font = surgeist_text::Font::new()
+            .family("Ahem")
+            .feature(if enabled { "\"kern\" 1" } else { "\"kern\" 0" });
+        let p = PreparedParagraph::with_registered_font(
+            vec![ParagraphPart::text(1, Source::new("Y"), own.clone())],
+            own,
+            ParagraphBaseDirection::LeftToRight,
+            &font,
+        );
+        let line = crate::test_support::text_fragment::fragment_for(&p.prepared).finalized_line();
+        let actual = line
+            .run_views()
+            .flat_map(|run| {
+                assert_eq!(run.face().bytes(), font);
+                run.glyphs()
+                    .map(|g| (g.id(), g.advance()))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(actual, [(59, if enabled { expected } else { 10.0 })]);
+    };
+    control(true);
+    control(false);
     let mut source = Source::new(text);
     for (offset, byte) in text.bytes().enumerate() {
         if byte == b'\n' {
@@ -28,21 +67,20 @@ fn paragraph(text: &str, y_spacing: f64) -> PreparedParagraph {
                     ..style.clone()
                 },
             );
-        } else if byte == b'Y' {
-            source.span(
-                Range::new(offset, offset + 1),
-                surgeist_text::Style {
-                    letter_spacing: y_spacing,
-                    ..style.clone()
-                },
-            );
         }
     }
-    PreparedParagraph::plain(1, source, style)
+    let paragraph = PreparedParagraph::with_registered_font(
+        vec![ParagraphPart::text(1, source, style.clone())],
+        style,
+        ParagraphBaseDirection::LeftToRight,
+        &font,
+    );
+    (paragraph, font)
 }
 
 fn check<S: LayoutScalar>(
     paragraph: &PreparedParagraph,
+    font: &[u8],
     text: &str,
     policy: HyphenateLimitLast,
     expected: &[(Range, f64, LineEnd)],
@@ -114,6 +152,7 @@ fn check<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(100.0)).unwrap_or_else(|error| {
@@ -175,7 +214,7 @@ fn check<S: LayoutScalar>(
         } else {
             assert!(alternative.is_none());
         }
-        assert!(finalized.run_views().all(|run| run.face().bytes() == AHEM
+        assert!(finalized.run_views().all(|run| run.face().bytes() == font
             && run.effective_instance().unwrap().font_size() == 10.0));
     }
     let completions = layout.nonformatted_lines().collect::<Vec<_>>();
@@ -211,12 +250,12 @@ fn check<S: LayoutScalar>(
 
 fn check_case<S: LayoutScalar>(
     text: &str,
-    y_spacing: f64,
+    y_adjustment: f64,
     ordinary: &[(Range, f64, LineEnd)],
     protected: &[(Range, f64, LineEnd)],
     wrap_style: TextWrapStyle,
 ) {
-    let paragraph = paragraph(text, y_spacing);
+    let (paragraph, font) = paragraph(text, y_adjustment);
     // The same immutable preparation is consumed before, during and after tail
     // restriction. The changed block policy cannot mutate its resource offers
     // or carry branch exclusions into a later independent computation.
@@ -227,6 +266,7 @@ fn check_case<S: LayoutScalar>(
     ] {
         check::<S>(
             &paragraph,
+            &font,
             text,
             policy,
             if policy == HyphenateLimitLast::Always {
@@ -340,15 +380,32 @@ fn check_choice_order<S: LayoutScalar>() {
     style.white_space = WhiteSpace::Collapse;
     style.wrap = Wrap::Word;
     style.overflow_wrap = OverflowWrap::Anywhere;
-    let mut source = Source::new("X cooperate");
-    source.span(
-        Range::new(0, 2),
-        surgeist_text::Style {
-            letter_spacing: -10.0,
-            ..style.clone()
-        },
+    // Both prefix cells are really0; later letters and the indication A stay10.
+    let font = super::canonical::fonts::with_advances(AHEM, &[(58, 0), (3, 0)]);
+    let paragraph = PreparedParagraph::with_registered_font(
+        vec![ParagraphPart::text(
+            1,
+            Source::new("X cooperate"),
+            style.clone(),
+        )],
+        style,
+        ParagraphBaseDirection::LeftToRight,
+        &font,
     );
-    let paragraph = PreparedParagraph::plain(1, source, style);
+    let whole =
+        crate::test_support::text_fragment::fragment_for(&paragraph.prepared).finalized_line();
+    let actual = whole
+        .run_views()
+        .flat_map(|run| {
+            assert_eq!(run.face().bytes(), font);
+            run.glyphs()
+                .map(|g| (g.range(), g.advance()))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    for (range, advance) in actual {
+        assert_eq!(advance, if range.end <= 2 { 0.0 } else { 10.0 });
+    }
     let prepared = &paragraph.prepared;
     let word = prepared
         .word_views()
@@ -407,6 +464,7 @@ fn check_choice_order<S: LayoutScalar>() {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let batch = compute_layout_with_flow(&capture, 0, request(60.0)).unwrap();
@@ -478,7 +536,7 @@ fn check_choice_order<S: LayoutScalar>() {
                     ));
                 }
             }
-            assert!(finalized.run_views().all(|run| run.face().bytes() == AHEM
+            assert!(finalized.run_views().all(|run| run.face().bytes() == font
                 && run.effective_instance().unwrap().font_size() == 10.0));
         }
     }

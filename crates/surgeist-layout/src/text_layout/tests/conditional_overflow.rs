@@ -149,6 +149,7 @@ fn paragraph<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let request =
@@ -328,6 +329,7 @@ fn native_hyphen_policy_and_empty_indication_preserve_intrinsic_wrap_distinction
                         scopes: Vec::new(),
                         child_order: Vec::new(),
                     },
+                    Vec::new(),
                 )
                 .unwrap();
                 // Five actual Ahem glyphs are 50px unbroken; manual's empty
@@ -441,6 +443,7 @@ fn interleaved<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(20.0)).unwrap();

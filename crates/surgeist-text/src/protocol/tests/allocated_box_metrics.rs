@@ -5,6 +5,7 @@ use crate::{LineBoxAlignment, LineBoxStrut, LineHeight, LineStrut, Range};
 
 fn row(baseline: f64, line_extent: f64, alignment: LineBoxAlignment) -> LineBoxStrut {
     LineBoxStrut {
+        scope: None,
         metrics: LineStrut {
             baseline,
             line_extent,
@@ -19,33 +20,36 @@ fn allocated_empty_paragraph_uses_only_real_box_metric_groups() {
     // paragraph explicitly requests allocated contributions rather than font
     // metrics, so these literal used boxes are the only metric suppliers.
     let source = Source::new("");
-    let analyzed = AnalyzedSource::from_paragraph(ParagraphInput {
-        source: source.clone(),
-        base_style: Style {
-            line_height: LineHeight::Absolute(100.0),
-            ..style()
+    let analyzed = AnalyzedSource::from_paragraph(
+        ParagraphInput {
+            source: source.clone(),
+            base_style: Style {
+                line_height: LineHeight::Absolute(100.0),
+                ..style()
+            },
+            paragraph_strut: ParagraphStrut::AllocatedContributions,
+            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+            base_direction: ParagraphBaseDirection::LeftToRight,
+            origins: vec![crate::ParagraphOrigin {
+                text_node: None,
+                source,
+                local: Range::new(0, 0),
+                aggregate: Range::new(0, 0),
+                kind: crate::ParagraphOriginKind::Authored,
+            }],
+            anchor_order: vec![crate::ParagraphAnchor {
+                item: crate::ParagraphAnchorItem::EmptyOrigin(0),
+                affinity: crate::Affinity::After,
+            }],
+            connections: vec![],
+            controls: vec![],
+            boundary_policies: vec![],
+            replacements: vec![],
         },
-        paragraph_strut: ParagraphStrut::AllocatedContributions,
-        terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-        tab_reference: None,
-        segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-        base_direction: ParagraphBaseDirection::LeftToRight,
-        origins: vec![crate::ParagraphOrigin {
-            text_node: None,
-            source,
-            local: Range::new(0, 0),
-            aggregate: Range::new(0, 0),
-            kind: crate::ParagraphOriginKind::Authored,
-        }],
-        anchor_order: vec![crate::ParagraphAnchor {
-            item: crate::ParagraphAnchorItem::EmptyOrigin(0),
-            affinity: crate::Affinity::After,
-        }],
-        connections: vec![],
-        controls: vec![],
-        boundary_policies: vec![],
-        replacements: vec![],
-    })
+        crate::AnalysisTypography::HorizontalComposition,
+    )
     .unwrap();
     let p = system()
         .prepare(&analyzed, PreparationOptions::default())
@@ -53,7 +57,10 @@ fn allocated_empty_paragraph_uses_only_real_box_metric_groups() {
     let no_allocations = p
         .select(request(&p))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap_err();
     assert!(matches!(
         no_allocations.detail(),
@@ -87,7 +94,10 @@ fn allocated_empty_paragraph_uses_only_real_box_metric_groups() {
         let line = p
             .select(input)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(
             (line.feedback().baseline, line.feedback().line_height),
@@ -108,8 +118,10 @@ fn allocated_empty_paragraph_uses_only_real_box_metric_groups() {
 fn measurement_observation_retains_and_validates_real_aligned_box_allocations() {
     let p = prepared(&mut system(), "AB", WhiteSpace::Preserve);
     let portion = p.word_views().next().unwrap().portions().unwrap().remove(0);
+    let source_segment = p.source_segments().next().unwrap();
     let flow = p
         .measurement_flow(
+            &source_segment,
             &request(&p).start,
             None,
             &PreparedTermination::Measurement(portion),

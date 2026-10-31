@@ -264,6 +264,36 @@ impl HangingPunctuation {
     }
 }
 
+/// Computed text-combine-upright value, independent of font/provider output.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum TextCombineUpright {
+    #[default]
+    None,
+    All,
+    Digits(TextCombineUprightDigits),
+}
+
+/// The closed computed digit limit. A CSS producer resolves an omitted limit
+/// to Two; integers outside 2–4 cannot be represented by this native value.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum TextCombineUprightDigits {
+    Two,
+    Three,
+    Four,
+}
+
+impl TextCombineUprightDigits {
+    /// Maximum number of eligible combination-stage typographic units.
+    #[must_use]
+    pub const fn max_units(self) -> usize {
+        match self {
+            Self::Two => 2,
+            Self::Three => 3,
+            Self::Four => 4,
+        }
+    }
+}
+
 /// Resolved text style accepted by the text layout engine.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Style {
@@ -274,6 +304,9 @@ pub struct Style {
     pub size: f32,
     pub line_height: LineHeight,
     pub letter_spacing: f64,
+    /// Additional spacing on the native declared word-separator repertoire.
+    /// Actual zero-intrinsic-advance units gain none; admitted spacing is split
+    /// equally around the complete unit without changing raw provider packets.
     pub word_spacing: f64,
     pub brush: Brush,
     pub underline: Decoration,
@@ -286,6 +319,9 @@ pub struct Style {
     pub wrap: Wrap,
     pub overflow_wrap: OverflowWrap,
     pub text_transform: TextTransform,
+    /// Effective combination declaration. Writing-axis and inner-direction
+    /// evidence belong to the actual captured source scopes, not font axes.
+    pub text_combine_upright: TextCombineUpright,
     pub word_space_transform: WordSpaceTransform,
     /// Defaults to Manual; Auto also permits Text's qualified en-US resource.
     pub hyphens: crate::Hyphens,
@@ -372,6 +408,7 @@ impl Default for Style {
             wrap: Wrap::Word,
             overflow_wrap: OverflowWrap::Normal,
             text_transform: TextTransform::none(),
+            text_combine_upright: TextCombineUpright::None,
             word_space_transform: WordSpaceTransform::None,
             tab_size: crate::TabSize::default(),
             hyphens: crate::Hyphens::Manual,
@@ -659,7 +696,10 @@ impl Default for Decoration {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum DecorationOffset {
+    /// Actual font-design metric, converted once to the prepared reference.
     Auto,
+    /// Literal positive-up offset from the prepared alignment reference,
+    /// independently of a run's displaced font-design-zero paint origin.
     Absolute(DecorationOffsetValue),
 }
 
@@ -781,6 +821,11 @@ impl ValidatedStyle {
         self.authored.text_transform
     }
 
+    #[must_use]
+    pub const fn text_combine_upright(&self) -> TextCombineUpright {
+        self.authored.text_combine_upright
+    }
+
     pub(crate) const fn font_locale(&self) -> Option<Language> {
         self.locale
     }
@@ -824,6 +869,16 @@ struct ParsedStyle {
 enum StyleInputPhase {
     Standalone,
     Processed,
+}
+
+/// A glyph-free receipt consumes font selection/instance and own-height fields.
+/// Paint, spacing, shaping features and lexical requests are not font context;
+/// their unrelated values neither induce allocation nor a scaling refusal.
+pub(crate) fn scope_style_locale(style: &Style) -> Result<Option<Language>> {
+    validate_positive_f32(style.size, "font size")?;
+    validate_line_height(style.line_height)?;
+    validate_slant(style.font.slant)?;
+    style.locale.as_deref().map(parse_language).transpose()
 }
 
 fn validate_style(style: &Style, phase: StyleInputPhase) -> Result<ParsedStyle> {

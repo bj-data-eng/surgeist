@@ -23,10 +23,10 @@ use crate::{
 
 use super::{
     FinalizedFragment, FinalizedLine, LineSelectionRequest, PreparedAlternative, PreparedAtomic,
-    PreparedBoundary, PreparedComputedLineBoundary, PreparedControl, PreparedOpportunity,
-    PreparedOrigin, PreparedParticipant, PreparedScope, PreparedText, PreparedUnit,
-    PreparedVirtualSeparator, PresentationRange, SelectedLine, SpacingSlot, SpacingSlotFeedback,
-    SpacingSlotOwner,
+    PreparedBoundary, PreparedCell, PreparedComputedLineBoundary, PreparedControl,
+    PreparedOpportunity, PreparedOrigin, PreparedParticipant, PreparedScope, PreparedText,
+    PreparedUnit, PreparedVirtualSeparator, PresentationRange, SelectedLine, SpacingSlot,
+    SpacingSlotFeedback, SpacingSlotOwner,
     paragraph::{FragmentOwner, OriginIntersection, ParagraphControlKind, ParagraphOriginKind},
     prepared::{
         AlternativeData, AlternativeDefinition, AtomicData, BoundaryData, ComputedBoundaryData,
@@ -35,28 +35,102 @@ use super::{
     },
 };
 
-impl SpacingSlot {
-    /// Retains the actual original unit or selected computed replacement that
-    /// owns this slot, even when several inserted spaces share a source anchor.
-    #[must_use]
-    pub fn owner(&self) -> SpacingSlotOwner {
-        let row = &self.selected.spacing_slots[self.index];
-        let unit = &self.selected.presentation.units[row.unit];
-        match unit.kind {
-            super::prepared::PresentationUnitKind::Replacement { alternative } => {
-                SpacingSlotOwner::Alternative(PreparedAlternative {
-                    prepared: Arc::clone(&self.selected.prepared),
-                    index: alternative,
-                })
-            }
-            super::prepared::PresentationUnitKind::Text => {
-                let Some(PreparedParticipant::Text(unit)) = self.participant() else {
-                    unreachable!("a selected original SPACE retains its issued text unit")
-                };
-                SpacingSlotOwner::Unit(unit.clone())
-            }
-            _ => unreachable!("only original or replacement SPACE units issue spacing slots"),
+fn spacing_piece(
+    selected: &Arc<super::selection::SelectedData>,
+    piece: &super::selection::SpacingSlotPieceData,
+) -> super::SpacingSlotPiece {
+    let prepared = &selected.prepared;
+    let owner = match piece.owner {
+        crate::SpacingPiece::Atomic { occurrence } => SpacingSlotOwner::Atomic(PreparedAtomic {
+            prepared: Arc::clone(prepared),
+            index: prepared
+                .tables
+                .atomics
+                .iter()
+                .position(|a| a.occurrence == occurrence)
+                .expect("actual atomic inventory"),
+        }),
+        crate::SpacingPiece::Source {
+            origin,
+            local,
+            aggregate,
+        } => SpacingSlotOwner::Source {
+            origin: PreparedOrigin {
+                prepared: Arc::clone(prepared),
+                index: origin,
+            },
+            local,
+            aggregate,
+        },
+        crate::SpacingPiece::Alternative {
+            alternative, local, ..
+        } => SpacingSlotOwner::Alternative {
+            alternative: PreparedAlternative {
+                prepared: Arc::clone(prepared),
+                index: alternative,
+            },
+            local,
+        },
+        crate::SpacingPiece::Control { occurrence } => SpacingSlotOwner::Control(PreparedControl {
+            prepared: Arc::clone(prepared),
+            index: control_index(prepared, occurrence),
+        }),
+        crate::SpacingPiece::VirtualSeparator { occurrence } => {
+            SpacingSlotOwner::VirtualSeparator(PreparedVirtualSeparator {
+                prepared: Arc::clone(prepared),
+                index: occurrence,
+            })
         }
+    };
+    super::SpacingSlotPiece {
+        owner,
+        presentation: piece.presentation,
+    }
+}
+
+impl SpacingSlot {
+    /// Exact source, alternative, generated and atomic custody in target order.
+    pub fn pieces(&self) -> impl ExactSizeIterator<Item = super::SpacingSlotPiece> + '_ {
+        self.selected.spacing_slots[self.index]
+            .pieces
+            .iter()
+            .map(|piece| spacing_piece(&self.selected, piece))
+    }
+}
+
+impl super::SpacingUnit {
+    /// Actual governing full values before neighboring-side averaging.
+    #[must_use]
+    pub fn letter_spacing_before(&self) -> f64 {
+        self.selected.spacing_slots[self.slot]
+            .target
+            .unit(self.side)
+            .left
+    }
+    #[must_use]
+    pub fn letter_spacing_after(&self) -> f64 {
+        self.selected.spacing_slots[self.slot]
+            .target
+            .unit(self.side)
+            .right
+    }
+    pub fn pieces(&self) -> impl ExactSizeIterator<Item = super::SpacingSlotPiece> + '_ {
+        let range = self.selected.spacing_slots[self.slot]
+            .target
+            .unit(self.side)
+            .pieces
+            .clone();
+        self.selected.spacing_slots[self.slot].pieces[range]
+            .iter()
+            .map(|piece| spacing_piece(&self.selected, piece))
+    }
+    pub fn participants(&self) -> impl Iterator<Item = &PreparedParticipant> {
+        self.selected.spacing_slots[self.slot]
+            .target
+            .unit(self.side)
+            .participants
+            .iter()
+            .map(|&i| &self.selected.request.participants[i])
     }
 }
 
@@ -110,7 +184,13 @@ impl FinalizedLine {
                     index,
                 },
                 disposition: row.disposition,
-                advance: self.inner.data.clusters[row.cluster].advance,
+                advance: row.advance,
+                geometry: row.geometry,
+                stretchability: row.stretchability,
+                traversal_order: row.traversal_order,
+                authored_word_spacing: row.authored,
+                authored_letter_spacing: row.letter,
+                allocation: row.allocation,
             })
     }
 }
@@ -184,6 +264,67 @@ macro_rules! prepared_view {
 }
 
 prepared_view!(PreparedUnitView, PreparedUnit, units, UnitData);
+prepared_view!(
+    PreparedCellView,
+    PreparedCell,
+    cells,
+    super::prepared::cells::CellData
+);
+
+impl PreparedCellView<'_> {
+    fn shaped(&self) -> &crate::engine::layout::data::PreparedCell {
+        &self.prepared.shaped.cells[self.data().cell]
+    }
+
+    /// The actual completed Source operation that issued this cell.
+    #[must_use]
+    pub fn source_cell(&self) -> crate::AnalyzedCombinedCell<'_> {
+        crate::AnalyzedCombinedCell {
+            core: &self.prepared.analyzed.core,
+            output: self
+                .prepared
+                .analyzed
+                .combination
+                .as_deref()
+                .expect("prepared cells retain their completed source operation"),
+            index: self.data().binding,
+        }
+    }
+
+    /// Intrinsic one-em square extent, independently of inner glyphs and outer tracking.
+    #[must_use]
+    pub fn extent(&self) -> f64 {
+        self.shaped().extent
+    }
+
+    #[must_use]
+    pub fn before(&self) -> f64 {
+        self.shaped().before
+    }
+
+    #[must_use]
+    pub fn after(&self) -> f64 {
+        self.shaped().after
+    }
+
+    #[must_use]
+    pub fn level(&self) -> BidiLevel {
+        resolved_level(self.shaped().level)
+    }
+
+    /// Actual dispatched provider-input presence; glyph/ink emptiness does not decide it.
+    /// A retained CSS-tab-only layout has no provider input.
+    #[must_use]
+    pub fn has_provider_input(&self) -> bool {
+        matches!(
+            self.shaped().payload,
+            crate::engine::layout::data::CellPayload::LaidOut {
+                provider: Some(_),
+                ..
+            }
+        )
+    }
+}
 prepared_view!(PreparedAtomicView, PreparedAtomic, atomics, AtomicData);
 prepared_view!(PreparedControlView, PreparedControl, controls, ControlData);
 prepared_view!(
@@ -409,18 +550,31 @@ impl PreparedVirtualSeparatorView<'_> {
 }
 
 impl PreparedText {
-    /// Canonical contextual paragraph, including when no virtual output exists.
-    /// Flat and standalone preparation have no contextual capture authority.
+    /// Real outer cells, including source-proved cells with no provider input.
+    pub fn cells(&self) -> impl ExactSizeIterator<Item = PreparedCell> + '_ {
+        (0..self.inner.tables.cells.len()).map(|index| PreparedCell {
+            prepared: Arc::clone(&self.inner),
+            index,
+        })
+    }
+
+    pub fn cell_views(&self) -> impl ExactSizeIterator<Item = PreparedCellView<'_>> {
+        (0..self.inner.tables.cells.len()).map(|index| PreparedCellView {
+            prepared: &self.inner,
+            index,
+        })
+    }
+
+    /// Actual Raw/Joint output authority, including metadata-only outputs.
     #[must_use]
-    pub fn captured_paragraph(&self) -> Option<CapturedParagraph> {
+    pub fn captured_owner(&self) -> Option<crate::CapturedAnalysisOwner<'_>> {
         self.inner
             .analyzed
             .paragraph
             .scope_topology
             .as_ref()
-            .map(|topology| CapturedParagraph {
-                capture: Arc::clone(&topology.capture),
-                index: topology.paragraph,
+            .map(|topology| crate::CapturedAnalysisOwner {
+                owner: &topology.owner,
             })
     }
 
@@ -508,6 +662,10 @@ impl PreparedText {
             .participants
             .iter()
             .map(|participant| match *participant {
+                ParticipantData::Cell(index) => PreparedParticipant::Cell(PreparedCell {
+                    prepared: Arc::clone(&self.inner),
+                    index,
+                }),
                 ParticipantData::Text(index) => PreparedParticipant::Text(PreparedUnit {
                     prepared: Arc::clone(&self.inner),
                     index,
@@ -559,15 +717,12 @@ impl PreparedOriginView<'_> {
     /// Genuine original occurrence in global mixed-event order, when captured.
     #[must_use]
     pub fn capture_position(&self) -> Option<CapturedEventPosition> {
-        self.prepared
-            .analyzed
-            .paragraph
-            .scope_topology
-            .as_ref()
-            .map(|topology| CapturedEventPosition {
-                capture: Arc::clone(&topology.capture),
-                index: topology.origin_orders[self.index],
-            })
+        let paragraph = &self.prepared.analyzed.paragraph;
+        let topology = paragraph.scope_topology.as_ref()?;
+        Some(CapturedEventPosition {
+            capture: Arc::clone(&topology.capture),
+            index: paragraph.captured_origin_event(self.index)?,
+        })
     }
 
     /// Retains the actual occurrence capability; equal Source values do not alias it.
@@ -901,7 +1056,10 @@ impl PreparedBoundaryView<'_> {
     }
 }
 
-impl PreparedOpportunityView<'_> {
+impl<'a> PreparedOpportunityView<'a> {
+    pub(super) fn new(prepared: &'a Arc<PreparedData>, index: usize) -> Self {
+        Self { prepared, index }
+    }
     /// The exact prepared boundary at which this opportunity was issued.
     #[must_use]
     pub fn boundary(&self) -> PreparedBoundary {
@@ -1072,6 +1230,8 @@ impl FinalizedLine {
     /// Borrows the actual selected source/processed/presentation correspondence.
     pub fn mapping_views(&self) -> impl ExactSizeIterator<Item = SelectedMappingView<'_>> {
         self.inner
+            .selected
+            .basis
             .mapping
             .pieces
             .iter()
@@ -1101,13 +1261,42 @@ impl FinalizedLine {
                 let Some(bounds) = geometry.bounds() else {
                     continue;
                 };
-                let x = outline_add("outline logical pen", origin.x, glyph.pen())?;
-                let x = outline_add("outline glyph x offset", x, f64::from(glyph.x()))?;
-                let y = outline_add("outline glyph y offset", origin.y, f64::from(glyph.y()))?;
-                let left = outline_add("outline left", x, bounds.origin.x)?;
-                let top = outline_add("outline top", y, bounds.origin.y)?;
-                let right = outline_add("outline right", left, bounds.size.width)?;
-                let bottom = outline_add("outline bottom", top, bounds.size.height)?;
+                let (left, top, right, bottom) = match run.run.frame {
+                    crate::engine::layout::data::FinalizedRunFrame::Line => {
+                        let x = outline_add("outline logical pen", origin.x, glyph.pen())?;
+                        let x = outline_add("outline glyph x offset", x, f64::from(glyph.x()))?;
+                        let y =
+                            outline_add("outline glyph y offset", origin.y, f64::from(glyph.y()))?;
+                        let left = outline_add("outline left", x, bounds.origin.x)?;
+                        let top = outline_add("outline top", y, bounds.origin.y)?;
+                        let right = outline_add("outline right", left, bounds.size.width)?;
+                        let bottom = outline_add("outline bottom", top, bounds.size.height)?;
+                        (left, top, right, bottom)
+                    }
+                    crate::engine::layout::data::FinalizedRunFrame::Cell(index) => {
+                        let rect = crate::engine::layout::data::cell_geometry::outline_rect(
+                            &self.inner.data.cells[index],
+                            run.run,
+                            glyph.glyph,
+                            bounds,
+                            self.inner.selected.request.context.orientation,
+                        )?;
+                        (
+                            rect.origin.x,
+                            rect.origin.y,
+                            outline_add(
+                                "cell outline union right",
+                                rect.origin.x,
+                                rect.size.width,
+                            )?,
+                            outline_add(
+                                "cell outline union bottom",
+                                rect.origin.y,
+                                rect.size.height,
+                            )?,
+                        )
+                    }
+                };
                 ink = Some(match ink {
                     None => (left, top, right, bottom),
                     Some((x0, y0, x1, y1)) => (
@@ -1294,6 +1483,7 @@ pub struct FinalizedControlView<'a> {
     prepared: &'a Arc<PreparedData>,
     occurrence: usize,
     slot: Point,
+    scope_displacement: crate::BaselineShift,
     level: u8,
     inline_end: f64,
 }
@@ -1306,6 +1496,11 @@ impl fmt::Debug for FinalizedControlView<'_> {
     }
 }
 impl FinalizedControlView<'_> {
+    /// Actual inherited contribution applied to this occurrence. Escaped
+    /// Top/Bottom control leaves retain zero inherited contribution.
+    pub const fn scope_displacement(&self) -> crate::BaselineShift {
+        self.scope_displacement
+    }
     #[must_use]
     pub fn control(&self) -> PreparedControl {
         PreparedControl {
@@ -1339,6 +1534,7 @@ impl FinalizedLine {
                 prepared: &self.inner.selected.prepared,
                 occurrence,
                 slot: anchor.slot,
+                scope_displacement: anchor.scope_displacement,
                 level: anchor.level,
                 inline_end: anchor.inline_end,
             })
@@ -1478,7 +1674,87 @@ pub struct FinalizedRunView<'a> {
     shaped: &'a PreparedRun,
 }
 
+/// One actual finalized outer square, including a cell without provider input.
+#[derive(Debug)]
+pub struct FinalizedCellView<'a> {
+    line: &'a FinalizedLine,
+    index: usize,
+}
+
+impl FinalizedCellView<'_> {
+    fn data(&self) -> &crate::engine::layout::data::FinalizedCell {
+        &self.line.inner.data.cells[self.index]
+    }
+
+    #[must_use]
+    pub fn finalized_line(&self) -> &FinalizedLine {
+        self.line
+    }
+
+    #[must_use]
+    pub fn source_cell(&self) -> crate::AnalyzedCombinedCell<'_> {
+        self.line.inner.source_cell(self.index)
+    }
+
+    /// `(inline,line-under)` square after its one enclosing scope displacement.
+    #[must_use]
+    pub fn square(&self) -> Rect {
+        let cell = self.data();
+        Rect::new(
+            cell.inline.start,
+            cell.under.start,
+            cell.inline.end - cell.inline.start,
+            cell.under.end - cell.under.start,
+        )
+    }
+
+    #[must_use]
+    pub fn reference(&self) -> f64 {
+        self.data().reference
+    }
+
+    #[must_use]
+    pub fn scope_displacement(&self) -> crate::BaselineShift {
+        self.data().scope_displacement
+    }
+
+    #[must_use]
+    pub fn level(&self) -> BidiLevel {
+        resolved_level(self.data().level)
+    }
+}
+
+impl FinalizedLine {
+    pub fn cell_views(&self) -> impl ExactSizeIterator<Item = FinalizedCellView<'_>> {
+        (0..self.inner.data.cells.len()).map(|index| FinalizedCellView { line: self, index })
+    }
+}
+
 impl FinalizedRunView<'_> {
+    /// The genuine outer cell whose horizontal inner frame owns this run.
+    #[must_use]
+    pub fn cell(&self) -> Option<FinalizedCellView<'_>> {
+        match self.run.frame {
+            crate::engine::layout::data::FinalizedRunFrame::Line => None,
+            crate::engine::layout::data::FinalizedRunFrame::Cell(index) => {
+                Some(FinalizedCellView {
+                    line: self.line,
+                    index,
+                })
+            }
+        }
+    }
+    /// Actual outline axes retained by this run's shaping operation.
+    ///
+    /// Horizontal and upright outlines are unrotated. Mixed R outlines are
+    /// clockwise; whole sideways profiles retain their requested clockwise or
+    /// counterclockwise basis independently of the containing cell frame.
+    /// The finalized pen follows the inline axis separately from raw offsets.
+    #[must_use]
+    pub fn glyph_basis(&self) -> crate::GlyphBasis {
+        self.shaped.glyph_basis
+    }
+
     /// The aggregate original UTF-16 association of this run.
     ///
     /// This is source correspondence, not an origin-occurrence identity or a
@@ -1508,22 +1784,39 @@ impl FinalizedRunView<'_> {
         self.shaped.font.face()
     }
 
-    /// The run's line-local origin on the actual finalized baseline.
+    /// The run's actual line-local paint origin. For named Alphabetic H/Sideways
+    /// composition, this is font-design zero rather than the common alignment
+    /// reference retained in the line's feedback.
     ///
-    /// Physical placement adds one common translation to this point and every
-    /// other point in the same finalized line.
+    /// Line-frame coordinates are `(inline, line-under)` before physical placement.
+    /// For a genuine [`Self::cell`], coordinates are intrinsic horizontal inner
+    /// offsets, before that cell's square/frame and enclosing scope translation.
+    /// Vertical and SidewaysClockwise cells map `(u,v)` to
+    /// `(cross_anchor+local_baseline-v, inline_origin+u)`.
+    /// SidewaysCounterclockwise cells map them to
+    /// `(cross_anchor+v-local_baseline, inline_origin-u)`. The cell map does
+    /// not rotate whole-upright glyph outlines. Once placed, glyph origins use
+    /// the owning run's physical origin and its separate pen/offset axes.
     #[must_use]
     pub fn origin(&self) -> Point {
-        Point::new(self.run.x, self.line.inner.data.metrics.baseline)
+        Point::new(self.run.x, self.run.y)
     }
 
-    /// Final logical advance, including the admitted spacing allocation.
+    /// Advance in the actual run frame, including admitted spacing. A cell run
+    /// retains its inner horizontal advance; its outer square supplies one em.
     #[must_use]
     pub const fn advance(&self) -> f64 {
         self.run.advance
     }
 
-    /// Borrows raw provider glyph facts and their separate finalized pens.
+    /// Borrows raw provider glyph facts and their separate finalized inline pens.
+    ///
+    /// After placement, rotate raw offsets `(dx,dy)` by [`Self::glyph_basis`]:
+    /// Unrotated keeps `(dx,dy)`, Clockwise gives `(-dy,dx)` and
+    /// Counterclockwise gives `(dy,-dx)`. Add those offsets to the physical run
+    /// origin. The pen advances along physical x for Horizontal, positive y for
+    /// Vertical/SidewaysClockwise and negative y for SidewaysCounterclockwise.
+    /// Raw offsets are not cell coordinates and are never rotated in storage.
     pub fn glyphs(&self) -> impl ExactSizeIterator<Item = FinalizedGlyphView<'_>> {
         self.line.inner.data.glyphs[self.run.glyphs.clone()]
             .iter()
@@ -1645,9 +1938,21 @@ impl PreparedComputedLineBoundaryView<'_> {
             .scope_topology
             .as_ref()
             .expect("computed capture");
+        let group = &self.prepared.analyzed.paragraph.computed_boundaries[self.data().occurrence];
+        let mut owners = group
+            .causes
+            .iter()
+            .map(|&cause| topology.capture.computed[cause].paragraph);
+        let owner = owners
+            .next()
+            .expect("an effective computed boundary has actual causes");
+        assert!(
+            owners.all(|candidate| candidate == owner),
+            "computed boundary causes must have one admitted raw paragraph owner"
+        );
         CapturedParagraph {
             capture: Arc::clone(&topology.capture),
-            index: topology.paragraph,
+            index: owner,
         }
     }
     /// Genuine computed causes at this one effective mandatory incidence.
@@ -1830,47 +2135,50 @@ mod tests {
         .unwrap();
         system.register_fonts(AHEM.to_vec()).unwrap();
         let source = Source::new("A");
-        let analysis = crate::AnalyzedSource::from_paragraph(ParagraphInput {
-            terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
-            tab_reference: None,
-            source: source.clone(),
-            base_style: Style {
-                font: Font::new().family("Ahem"),
-                size: 20.0,
-                line_height: LineHeight::FontSizeRelative(2.0),
-                ..Style::default()
+        let analysis = crate::AnalyzedSource::from_paragraph(
+            ParagraphInput {
+                terminal_edge: crate::ParagraphTerminalEdge::BlockEnd,
+                tab_reference: None,
+                source: source.clone(),
+                base_style: Style {
+                    font: Font::new().family("Ahem"),
+                    size: 20.0,
+                    line_height: LineHeight::FontSizeRelative(2.0),
+                    ..Style::default()
+                },
+                segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
+                base_direction: ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: ParagraphStrut::DefaultFont,
+                origins: vec![
+                    ParagraphOrigin {
+                        text_node: None,
+                        source,
+                        local: Range::new(0, 1),
+                        aggregate: Range::new(0, 1),
+                        kind: ParagraphOriginKind::Authored,
+                    },
+                    ParagraphOrigin {
+                        text_node: None,
+                        source: Source::new(""),
+                        local: Range::new(0, 0),
+                        aggregate: Range::new(1, 1),
+                        kind: ParagraphOriginKind::Authored,
+                    },
+                ],
+                connections: vec![ParagraphConnection {
+                    at: 1,
+                    kind: ParagraphConnectionKind::Disconnected,
+                }],
+                controls: vec![],
+                boundary_policies: vec![],
+                replacements: vec![],
+                anchor_order: vec![ParagraphAnchor {
+                    item: ParagraphAnchorItem::EmptyOrigin(1),
+                    affinity: crate::Affinity::After,
+                }],
             },
-            segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
-            base_direction: ParagraphBaseDirection::LeftToRight,
-            paragraph_strut: ParagraphStrut::DefaultFont,
-            origins: vec![
-                ParagraphOrigin {
-                    text_node: None,
-                    source,
-                    local: Range::new(0, 1),
-                    aggregate: Range::new(0, 1),
-                    kind: ParagraphOriginKind::Authored,
-                },
-                ParagraphOrigin {
-                    text_node: None,
-                    source: Source::new(""),
-                    local: Range::new(0, 0),
-                    aggregate: Range::new(1, 1),
-                    kind: ParagraphOriginKind::Authored,
-                },
-            ],
-            connections: vec![ParagraphConnection {
-                at: 1,
-                kind: ParagraphConnectionKind::Disconnected,
-            }],
-            controls: vec![],
-            boundary_policies: vec![],
-            replacements: vec![],
-            anchor_order: vec![ParagraphAnchor {
-                item: ParagraphAnchorItem::EmptyOrigin(1),
-                affinity: crate::Affinity::After,
-            }],
-        })
+            crate::AnalysisTypography::HorizontalComposition,
+        )
         .unwrap();
         let prepared = system
             .prepare(&analysis, PreparationOptions::default())
@@ -1883,6 +2191,7 @@ mod tests {
             .handle();
         let selected = prepared
             .select(LineSelectionRequest {
+                segment: prepared.source_segments().next().unwrap(),
                 boundary_context: Vec::new(),
                 incoming: None,
                 start: prepared.boundary_views().next().unwrap().handle(),
@@ -1911,7 +2220,12 @@ mod tests {
                 line_strut: None,
             })
             .unwrap();
-        let line = selected.finalize(SpacingAllocations::None).unwrap();
+        let line = selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_eq!(line.feedback().baseline, 26.0);
         assert_eq!(line.feedback().line_height, 40.0);
         let empty = line

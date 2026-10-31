@@ -49,7 +49,7 @@ fn input(source: Source, base_style: Style) -> ParagraphInput {
 }
 fn capture(system: &mut System, input: ParagraphInput) -> crate::Result<PreparedText> {
     let analyzed = crate::test_wrapping::bind_missing(
-        &AnalyzedSource::from_paragraph(input)?,
+        &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)?,
         crate::Wrap::Word,
     );
     system.prepare(&analyzed, PreparationOptions::default())
@@ -83,7 +83,10 @@ fn whole(p: &PreparedText) -> FinalizedLine {
         .collect();
     p.select(value)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn selected(p: &PreparedText, offer: PreparedOpportunity) -> FinalizedLine {
@@ -119,7 +122,10 @@ fn selected(p: &PreparedText, offer: PreparedOpportunity) -> FinalizedLine {
         .collect();
     p.select(value)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn error_reason(error: &crate::Error) -> HyphenationError {
@@ -500,7 +506,10 @@ fn automatic_points_use_their_own_preceding_styles_and_keep_rejected_shy_identit
         let measured = p
             .select(value)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(measured.feedback().advance, 90.0);
         let mut system = system();
@@ -536,7 +545,12 @@ fn native_direct_analysis_consumes_custom_limits_while_raw_remains_unconstrained
         (limits(usize::MAX, usize::MAX, usize::MAX), false),
     ] {
         let style = own(minimum);
-        let analyzed = AnalyzedSource::new(source.clone(), style.clone()).unwrap();
+        let analyzed = AnalyzedSource::new(
+            source.clone(),
+            style.clone(),
+            crate::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let native = system
             .prepare(&analyzed, PreparationOptions::default())
             .unwrap();

@@ -1,4 +1,6 @@
 //! Actual empty-box incidence assigns its supplied metrics to one real line.
+#[path = "scope_alignment/context_only.rs"]
+mod context_only;
 use super::*;
 use std::sync::Arc;
 use surgeist_text as text;
@@ -12,6 +14,13 @@ struct EmptyBox {
 }
 impl EmptyBox {
     fn new(direction: Direction) -> Self {
+        Self::new_with_context(direction, None, None)
+    }
+    fn new_with_context(
+        direction: Direction,
+        scope_alignment_limits: Option<text::ScopeAlignmentLimits>,
+        domain_font_reference: Option<text::ScopeFontReference>,
+    ) -> Self {
         use text::SourceProcessingEvent as E;
         let base_direction = if direction == Direction::Ltr {
             text::ParagraphBaseDirection::LeftToRight
@@ -28,6 +37,8 @@ impl EmptyBox {
         source.span(text::Range::new(0, 2), style.clone());
         let processed = Arc::new(
             text::process_contextual_source(text::ContextualSourceInput {
+                joint_flows: Vec::new(),
+                scope_alignment_limits,
                 source,
                 segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
                 envelope: text::SourceProcessingEnvelope::Complete,
@@ -62,12 +73,18 @@ impl EmptyBox {
                 }],
                 scopes: vec![
                     text::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
+                        font_reference: domain_font_reference,
                         topology: text::SourceProcessingTopology::Complete,
                         trim: Default::default(),
                         base_style: style,
                         used_direction: base_direction,
                     },
                     text::SourceProcessingScope::Inline {
+                        horizontal_inner_direction: None,
+                        alignment_boundary: None,
+                        font_reference: None,
                         trim: Default::default(),
                         style: None,
                         boundaries: None,
@@ -98,9 +115,11 @@ impl EmptyBox {
             .unwrap(),
         );
         let scope = processed.captured_scope(1).unwrap();
-        let analyzed =
-            text::AnalyzedSource::from_processed_paragraph(processed.paragraphs().next().unwrap())
-                .unwrap();
+        let analyzed = text::AnalyzedSource::from_processed_paragraph(
+            processed.paragraphs().next().unwrap(),
+            text::AnalysisTypography::HorizontalComposition,
+        )
+        .unwrap();
         let analyzed =
             crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::Word);
         let mut system = text::System::new(text::SystemOptions {
@@ -130,7 +149,12 @@ impl EmptyBox {
             .find(|o| o.kind() == text::PreparedBreakKind::Allowed)
             .unwrap()
             .boundary();
-        let incidences = prepared.boundary_incidences(&soft).unwrap();
+        let mut source_segments = prepared.source_segments();
+        let source_segment = source_segments.next().expect("fixture source segment");
+        assert_eq!(source_segments.count(), 0, "one structural fixture segment");
+        let incidences = prepared
+            .boundary_incidences(&source_segment, &soft)
+            .unwrap();
         assert_eq!(incidences.len(), 2);
         assert_eq!(
             incidences
@@ -230,6 +254,7 @@ impl EmptyBox {
                     row(inline, vec![]),
                 ],
             },
+            Vec::new(),
         )
         .unwrap();
         compute_layout_with_flow(
@@ -242,6 +267,12 @@ impl EmptyBox {
             .unwrap(),
         )
         .unwrap()
+    }
+}
+fn expected_owner(scope: &text::CapturedScope, raw: &text::LineBoxStrut) -> text::LineBoxStrut {
+    text::LineBoxStrut {
+        scope: Some(scope.clone()),
+        ..raw.clone()
     }
 }
 fn assert_result<S: LayoutScalar>(
@@ -303,7 +334,7 @@ fn assert_result<S: LayoutScalar>(
         assert_eq!(
             request.line_box_struts,
             if index == owning_line {
-                vec![strut]
+                vec![strut.clone()]
             } else {
                 vec![]
             }
@@ -358,28 +389,30 @@ fn asymmetric<S: LayoutScalar>() {
             (Bottom, [18.0, 28.0], [8.0, 28.0]),
         ] {
             let strut = text::LineBoxStrut {
+                scope: None,
                 metrics: text::LineStrut {
                     baseline: 16.0,
                     line_extent: 20.0,
                 },
                 alignment,
             };
+            let expected = expected_owner(&f.scope, &strut);
             let after = f.run::<S>(
                 WrapEdges {
                     before: WrapEdge::Avoid,
                     after: WrapEdge::Auto,
                 },
-                Some(InlineBoxMetricContribution::Strut(strut)),
+                Some(InlineBoxMetricContribution::Strut(strut.clone())),
             );
-            assert_result(&after, &f, outgoing, [20.0, 10.0], strut, 0);
+            assert_result(&after, &f, outgoing, [20.0, 10.0], expected.clone(), 0);
             let before = f.run::<S>(
                 WrapEdges {
                     before: WrapEdge::Auto,
                     after: WrapEdge::Avoid,
                 },
-                Some(InlineBoxMetricContribution::Strut(strut)),
+                Some(InlineBoxMetricContribution::Strut(strut.clone())),
             );
-            assert_result(&before, &f, receiving, [10.0, 20.0], strut, 1);
+            assert_result(&before, &f, receiving, [10.0, 20.0], expected, 1);
         }
     }
 }
@@ -443,21 +476,23 @@ fn neutral_geometry<S: LayoutScalar>() {
             (Bottom, [18.0, 28.0], [8.0, 28.0]),
         ] {
             let strut = text::LineBoxStrut {
+                scope: None,
                 metrics: text::LineStrut {
                     baseline: 16.0,
                     line_extent: 20.0,
                 },
                 alignment,
             };
+            let expected = expected_owner(&f.scope, &strut);
             let first = f.run::<S>(
                 WrapEdges::AUTO,
-                Some(InlineBoxMetricContribution::Strut(strut)),
+                Some(InlineBoxMetricContribution::Strut(strut.clone())),
             );
             let rows = assigned_rows(&first);
             let owners = rows
                 .iter()
                 .enumerate()
-                .filter(|(_, row)| row.as_slice() == [strut])
+                .filter(|(_, row)| row.as_slice() == [expected.clone()])
                 .map(|(i, _)| i)
                 .collect::<Vec<_>>();
             assert_eq!(
@@ -482,7 +517,7 @@ fn neutral_geometry<S: LayoutScalar>() {
                 } else {
                     [10.0, 20.0]
                 },
-                strut,
+                expected.clone(),
                 owning_line,
             );
             let repeated = f.run::<S>(

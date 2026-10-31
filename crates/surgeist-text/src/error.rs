@@ -2,15 +2,115 @@ use std::{error, fmt};
 
 use super::{FontCatalogueIdentity, TextStyleFeature, UnsupportedTextStyleReason, WhiteSpace};
 
+mod upright;
+pub use upright::{
+    TextScript, TextStyleOwner, UprightContent, UprightContentPiece, UprightDecorationRole,
+    UprightPresentation, UprightScriptContext, UprightScriptContextFailure, UprightScriptFailure,
+    UprightTabMeasurement, VerticalOriginReferenceReason, VerticalPositionStage,
+    VerticalShapingContextReason,
+};
+
 /// Text crate result alias.
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// Provider-observation domain behind a material spacing demand.
+/// SelectedShaping also identifies retained selected output reused without reshaping.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SpacingStage {
+    /// Admission of a source-owned complete-basis request or its receipt-qualified topology.
+    Selection,
+    Preparation,
+    SelectedShaping,
+}
+
+/// The material spacing contribution, independently of its source ownership.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SpacingOperation {
+    InterCharacterBasis,
+    AuthoredWord,
+    AuthoredTracking,
+    InterCharacterAllocation,
+    InterWordAllocation,
+}
+
+/// Ordered actual content of an unsupported spacing target. Ordinals describe
+/// the executed phase's inventory and do not issue capabilities.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SpacingPiece {
+    Atomic {
+        occurrence: usize,
+    },
+    Source {
+        origin: usize,
+        local: super::Range,
+        aggregate: super::Range,
+    },
+    Alternative {
+        alternative: usize,
+        local: super::Range,
+        insertion_anchor: usize,
+    },
+    Control {
+        occurrence: usize,
+    },
+    VirtualSeparator {
+        occurrence: usize,
+    },
+}
+
+/// Capability needed by an actual material spacing operation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SpacingFailureReason {
+    InterleavedUnit,
+    UnqualifiedWritingSystem,
+    UnqualifiedProviderPath,
+    PreservedOptionalLigature,
+    CrossUnitConstraint,
+}
+
+/// Actual relation or observed context scope constraining independent movement.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SpacingConstraintKind {
+    Ligature,
+    MarkAttachment,
+    CursiveAttachment,
+    UnqualifiedProviderPath(surgeist_shaper::ComponentPath),
+    /// Joining actions used context across separately emitted invocations. This
+    /// identifies an unqualified movement dependency, not an observed attachment.
+    /// Both ranges use the actual preparation or selected-presentation atoms.
+    ExternalJoiningContext {
+        body: std::ops::Range<usize>,
+        context: std::ops::Range<usize>,
+    },
+}
+
+/// Governing source context of one endpoint in a rejected spacing operation.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SpacingContext {
+    pub pieces: Box<[SpacingPiece]>,
+    pub locale: Option<String>,
+    pub candidates: Box<[TextScript]>,
+    pub writing_systems: Box<[TextScript]>,
+    pub resolved_scripts: Box<[TextScript]>,
+    pub letter_spacing_before: f64,
+    pub letter_spacing_after: f64,
+}
+
+/// Actual provider relation retained for a rejected spacing target.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SpacingConstraint {
+    pub kind: SpacingConstraintKind,
+    pub run: usize,
+    pub components: Box<[std::ops::Range<usize>]>,
+    pub provenance: Box<[surgeist_shaper::FeatureProvenance]>,
+}
 
 /// Stable text diagnostic.
 #[derive(Debug)]
 pub struct Error {
     pub code: ErrorCode,
     pub message: String,
-    detail: Option<ErrorDetail>,
+    detail: Option<Box<ErrorDetail>>,
     pub source: Option<Box<dyn error::Error + Send + Sync>>,
 }
 
@@ -27,13 +127,16 @@ impl Error {
 
     #[must_use]
     pub fn with_detail(mut self, detail: ErrorDetail) -> Self {
-        self.detail = Some(detail);
+        self.detail = Some(Box::new(detail));
         self
     }
 
     #[must_use]
     pub const fn detail(&self) -> Option<&ErrorDetail> {
-        self.detail.as_ref()
+        match &self.detail {
+            Some(detail) => Some(detail),
+            None => None,
+        }
     }
 }
 
@@ -53,6 +156,8 @@ impl error::Error for Error {
 pub enum ErrorCode {
     /// Invalid complete contextual source-processing capture.
     InvalidSourceProcessing,
+    /// Captured-scope alignment could not admit its facts, resources or allocation.
+    ScopeAlignmentRefused,
     /// Final semantic phrase analysis received invalid retained model data.
     InvalidPhraseAnalysis,
     /// Font-independent text analysis could not retain its complete result.
@@ -93,6 +198,25 @@ pub enum ErrorCode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErrorDetail {
+    /// Source-owned text-combination context or preparation capability refusal.
+    TextCombine {
+        reason: crate::TextCombineError,
+    },
+    /// A typed captured-scope alignment refusal from its owning phase.
+    ScopeAlignment {
+        reason: super::ScopeAlignmentError,
+    },
+    /// A material spacing operation needs unavailable profile or movement capability.
+    UnsupportedSpacing {
+        stage: SpacingStage,
+        operation: SpacingOperation,
+        pieces: Box<[SpacingPiece]>,
+        /// Exact atom pieces in the actual preparation or selected presentation.
+        provider_atoms: Box<[std::ops::Range<usize>]>,
+        reason: SpacingFailureReason,
+        contexts: Box<[SpacingContext]>,
+        constraints: Box<[SpacingConstraint]>,
+    },
     /// Executed pre-analysis transformation could not retain its operation.
     TextTransform {
         reason: TextTransformError,
@@ -137,6 +261,43 @@ pub enum ErrorDetail {
     /// The actual shaping invocation returned incomplete output.
     ShapingRefused {
         reason: ShapingRefusalReason,
+    },
+    /// Effective script candidates cannot use the unrotated upright profile.
+    UprightScript {
+        content: Box<UprightContent>,
+        candidates: Box<[TextScript]>,
+        contexts: Box<[UprightScriptContext]>,
+        reason: UprightScriptFailure,
+    },
+    /// An enabled decoration needs an unavailable automatic upright metric.
+    UprightDecoration {
+        owner: TextStyleOwner,
+        kind: super::DecorationKind,
+        role: UprightDecorationRole,
+    },
+    /// Actual selected provider context cannot use supplied vertical positioning.
+    VerticalShapingContext {
+        content: UprightContent,
+        reason: VerticalShapingContextReason,
+    },
+    /// Actual unscaled origin reference cannot enter the provider input grid.
+    VerticalOriginReference {
+        content: UprightContent,
+        reference: super::UprightMetricReference,
+        value: f64,
+        reason: VerticalOriginReferenceReason,
+    },
+    /// Actual positioning exceeded the provider's half-design-unit range.
+    VerticalPositionRange {
+        content: UprightContent,
+        stage: VerticalPositionStage,
+    },
+    /// The actual post-substitution glyph's metric supplier failed.
+    ///
+    /// The unchanged original Text error is retained in [`Error::source`].
+    VerticalMetricSupplier {
+        content: UprightContent,
+        glyph_id: u32,
     },
     /// Logical or canonical geometry could not be represented truthfully.
     InvalidTextNumeric {
@@ -271,6 +432,14 @@ pub enum ErrorDetail {
         range: super::Range,
         bytes: usize,
     },
+    /// Placed accessibility geometry for an actual Cell is not supported.
+    /// Source-only analyzed accessibility remains independently available.
+    UnsupportedAccessibilityCell {
+        /// Actual placed-line ordinal in the requested Layout.
+        line: usize,
+        /// Actual finalized Cell ordinal within that placed line.
+        cell: usize,
+    },
     AccessibilityBindingMismatch,
     AccessibilityIdentityConflict {
         id: u64,
@@ -320,6 +489,11 @@ pub enum ErrorDetail {
 /// Exact source-transform admission or execution refusal.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TextTransformError {
+    /// Required original-unit envelope for diagnostics. Actual original pieces,
+    /// rather than this envelope, establish membership in the requested view.
+    IndivisibleCoverage {
+        source: crate::Range,
+    },
     InvalidPhraseData,
     MissingPhraseTopology {
         at: usize,
@@ -593,6 +767,16 @@ pub enum FontMetricField {
     StrikeoutThickness,
     /// Named font-design baseline coordinate.
     BaselineCoordinate,
+    /// Used upright em-under coordinate or nominal-pen distance.
+    UprightEmUnder,
+    /// Used upright em-over coordinate or nominal-pen distance.
+    UprightEmOver,
+    /// Used upright Central coordinate or nominal-pen distance.
+    UprightCentral,
+    /// Em-under distance from used upright Central.
+    UprightUsedUnder,
+    /// Em-over distance from used upright Central.
+    UprightUsedOver,
     /// Nominal horizontal advance.
     HorizontalAdvance,
     /// Nonnegative vertical advance magnitude.
@@ -671,8 +855,8 @@ pub enum TextNumericError {
     OutOfRange,
 }
 
-pub(crate) fn shaping_refused(reason: harfrust::ShapingRefusal) -> Error {
-    use harfrust::ShapingRefusal as Provider;
+pub(crate) fn shaping_refused(reason: surgeist_shaper::ShapingRefusal) -> Error {
+    use surgeist_shaper::ShapingRefusal as Provider;
     let reason = match reason {
         Provider::GrowthLimit => ShapingRefusalReason::GrowthLimit,
         Provider::WorkLimit => ShapingRefusalReason::WorkLimit,
