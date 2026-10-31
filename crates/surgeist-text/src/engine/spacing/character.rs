@@ -586,7 +586,8 @@ pub(crate) fn original(
                     let mut pieces = Vec::new();
                     for atoms in &unit.atoms {
                         for atom in atoms.clone() {
-                            super::original_pieces(analyzed, atom, &mut pieces);
+                            super::original_pieces(analyzed, atom, &mut pieces, &mut None)
+                                .expect("Native source-piece collection has no scope admission");
                         }
                     }
                     pieces.extend(
@@ -1117,7 +1118,8 @@ impl<'a> DiagnosticSource<'a> {
                 Self::Original(a) => {
                     let mut pieces = Vec::new();
                     for atom in atoms.clone() {
-                        super::original_pieces(a, atom, &mut pieces);
+                        super::original_pieces(a, atom, &mut pieces, &mut None)
+                            .expect("Native source-piece collection has no scope admission");
                     }
                     pieces
                 }
@@ -1358,7 +1360,8 @@ fn original_unit_error(analyzed: &super::super::AnalyzedData, unit: &Unit) -> cr
     let mut pieces = Vec::new();
     for atoms in &unit.atoms {
         for a in atoms.clone() {
-            super::original_pieces(analyzed, a, &mut pieces);
+            super::original_pieces(analyzed, a, &mut pieces, &mut None)
+                .expect("Native source-piece collection has no scope admission");
         }
     }
     pieces.extend(

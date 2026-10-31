@@ -4,6 +4,7 @@ pub(super) mod width;
 
 use super::*;
 use crate::engine::layout::data::{CellClusterPosition, CellFrame, CellPayload, PreparedCell};
+use crate::engine::spacing::{CellWordExecution, CellWordPlan, SeparatorCandidate};
 use crate::engine::{AnalyzedData, scope_alignment};
 use crate::processing::contextual::alignment::operations;
 use crate::protocol::paragraph::SemanticAnchorItem;
@@ -105,7 +106,6 @@ impl Inputs {
     pub(super) fn new(
         analyzed: &AnalyzedData,
         scopes: &scope_alignment::PreparedScopes,
-        styles: &[super::super::resolve::ResolvedStyleRun],
         ledger: &mut Ledger,
     ) -> Result<Self> {
         let output = analyzed.combination.as_ref().expect("actual source cells");
@@ -166,11 +166,6 @@ impl Inputs {
                 if atom >= binding.atoms.end
                     || analyzed.transform.emission_for_atom(atom).selection_part != Some(part)
                 {
-                    return Err(unsupported());
-                }
-                // Inner word-spacing geometry is not lowered before width
-                // choice; character tracking belongs to the outer Cell node.
-                if styles[analyzed.analysis.infos[atom].1].style.word_spacing != 0.0 {
                     return Err(unsupported());
                 }
                 atom_cells[atom] = Some(cell);
@@ -285,14 +280,27 @@ impl Inputs {
         scopes: &scope_alignment::PreparedScopes,
         ledger: &mut Ledger,
     ) -> Result<()> {
+        let words = CellWordPlan::new(
+            &analyzed.projection,
+            &analyzed.analysis,
+            horizontal.styles,
+            &self.atom_cells,
+            self.rows.len(),
+            ledger,
+        )?;
         let mut trials = Vec::new();
         account::header::<Vec<PreparedCell>>(ledger)?;
         for (index, row) in self.rows.iter().enumerate() {
             account::work(ledger, 1)?;
+            let composition = Composition {
+                analyzed,
+                horizontal,
+                words: words.for_cell(index),
+            };
             let payload = if row.atoms.is_empty() {
                 CellPayload::NoProviderInput
             } else {
-                normal_payload(output, row, ledger)?
+                normal_payload(output, row, &composition, ledger)?
             };
             let overwide = match &payload {
                 CellPayload::Shaped { advance, .. } => advance.end - advance.start > row.extent,
@@ -305,7 +313,7 @@ impl Inputs {
                 }
             }
             let (payload, trial) = if overwide {
-                width::choose(output, row, payload, analyzed, horizontal, scratch, ledger)?
+                width::choose(output, row, payload, &composition, scratch, ledger)?
             } else {
                 (payload, None)
             };
@@ -327,6 +335,7 @@ impl Inputs {
                 },
             )?;
         }
+        words.drop(ledger)?;
         width::assemble(output, &mut trials, ledger)?;
         account::drop_vec(ledger, trials)?;
         // The cell-active branch did not allocate ordinary mixed items. Build
@@ -574,6 +583,7 @@ impl SelectedCells {
                             CellClusterPosition {
                                 cluster: cluster_base + position.cluster - clusters.start,
                                 pen: position.pen,
+                                word: position.word,
                             },
                         )?;
                     }
@@ -678,7 +688,20 @@ impl SelectedCells {
     }
 }
 
-fn normal_payload(output: &ShapedData, input: &Input, ledger: &mut Ledger) -> Result<CellPayload> {
+/// Real source and already-resolved horizontal policy for one packet; it never
+/// substitutes mapped output or an alternate paragraph into source context.
+struct Composition<'a, 'input> {
+    analyzed: &'a AnalyzedData,
+    horizontal: &'a ShapingInput<'input>,
+    words: &'a [SeparatorCandidate],
+}
+
+fn normal_payload(
+    output: &mut ShapedData,
+    input: &Input,
+    composition: &Composition<'_, '_>,
+    ledger: &mut Ledger,
+) -> Result<CellPayload> {
     let first_run = operations::partition_point(&output.runs, ledger.as_mut(), |run| {
         run.atoms.end <= input.atoms.start
     })?;
@@ -709,6 +732,15 @@ fn normal_payload(output: &ShapedData, input: &Input, ledger: &mut Ledger) -> Re
         ascent = Some(ascent.map_or(run.metrics.ascent, |old| old.max(run.metrics.ascent)));
         descent = Some(descent.map_or(run.metrics.descent, |old| old.max(run.metrics.descent)));
     }
+    let execution = CellWordExecution::new(
+        composition.analyzed,
+        composition.horizontal.styles,
+        output,
+        input.atoms.clone(),
+        clusters.clone(),
+        composition.words,
+        ledger,
+    )?;
     // Provider-cluster operands move as one L2 object. Native extraction may
     // retain several source/caret rows for one ligature; those are not distinct
     // glyph streams to reverse and offset independently.
@@ -770,6 +802,29 @@ fn normal_payload(output: &ShapedData, input: &Input, ledger: &mut Ledger) -> Re
     crate::SuppliedLine::new(&slots)
         .reorder_into(&mut order)
         .map_err(|_| unsupported())?;
+    let mut ranks = if execution.is_empty() {
+        Vec::new()
+    } else {
+        account::filled(ledger, clusters.len(), 0usize)?
+    };
+    if !ranks.is_empty() {
+        let mut rank = 0;
+        for local in &order {
+            account::work(ledger, 1)?;
+            for index in groups[*local].clone() {
+                account::work(ledger, 1)?;
+                ranks[index - clusters.start] = rank;
+                rank += 1;
+            }
+        }
+    }
+    let halves = execution.place(
+        &mut output.clusters[clusters.clone()],
+        clusters.start,
+        &ranks,
+        ledger,
+    )?;
+    account::drop_vec(ledger, std::mem::take(&mut ranks))?;
     let mut positions = Vec::new();
     let mut pen = 0.0f64;
     let mut start = 0.0f64;
@@ -778,6 +833,10 @@ fn normal_payload(output: &ShapedData, input: &Input, ledger: &mut Ledger) -> Re
         for index in groups[*local].clone() {
             account::work(ledger, 1)?;
             let cluster = &output.clusters[index];
+            let word = halves
+                .get(index - clusters.start)
+                .copied()
+                .unwrap_or_default();
             glyph_start = Some(glyph_start.map_or(cluster.glyphs.start, |old: usize| {
                 old.min(cluster.glyphs.start)
             }));
@@ -790,9 +849,17 @@ fn normal_payload(output: &ShapedData, input: &Input, ledger: &mut Ledger) -> Re
                 CellClusterPosition {
                     cluster: index,
                     pen,
+                    word,
                 },
             )?;
-            let mut glyph_pen = pen;
+            // Logical edges preserve positive added whitespace even with blank
+            // ink. The independent half translates raw provider progression;
+            // signed terminal flow is not a substitute for this interval.
+            start = start.min(pen);
+            end = end.max(pen);
+            let mut glyph_pen = logical_add("cell word half", pen, word.half)?;
+            start = start.min(glyph_pen);
+            end = end.max(glyph_pen);
             for glyph in &output.glyphs[cluster.glyphs.clone()] {
                 account::work(ledger, 1)?;
                 glyph_pen = logical_add("cell glyph pen", glyph_pen, f64::from(glyph.advance))?;
@@ -819,6 +886,7 @@ fn normal_payload(output: &ShapedData, input: &Input, ledger: &mut Ledger) -> Re
             -descent.expect("actual normal font") / 2.0,
         )?,
     )?;
+    account::drop_vec(ledger, halves)?;
     account::drop_vec(ledger, groups)?;
     account::drop_vec(ledger, slots)?;
     account::drop_vec(ledger, order)?;

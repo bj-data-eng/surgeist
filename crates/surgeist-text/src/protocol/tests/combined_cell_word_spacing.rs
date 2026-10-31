@@ -2,6 +2,15 @@
 //! width choice/compression (pinned Text3 §7.1 and WM4 combined-upright rules).
 //! Ahem's actual negative width receipts retain normal glyphs, not fake variants.
 
+#[path = "combined_cell_word_spacing_signed.rs"]
+mod signed;
+
+#[path = "combined_cell_word_spacing_variants.rs"]
+mod variants;
+
+#[path = "combined_cell_word_spacing_collapsed.rs"]
+mod collapsed;
+
 use super::*;
 use skrifa::{GlyphId, MetadataProvider};
 use surgeist_shaper::{
@@ -218,10 +227,15 @@ fn native_control(
     );
 }
 
-fn captured(text: &str, white_space: WhiteSpace) -> (Arc<ProcessedSource>, AnalyzedSource) {
-    assert!(!text.is_empty() && text.chars().all(|ch| matches!(ch, 'A' | ' ')));
-    let extent = Range::new(0, text.len());
-    let body = style(white_space, 4.0, TextCombineUpright::All);
+fn captured(
+    text: &str,
+    white_space: WhiteSpace,
+    word_spacing: f64,
+) -> (Arc<ProcessedSource>, AnalyzedSource) {
+    assert!(!text.is_empty() && text.chars().all(|ch| matches!(ch, 'A' | ' ' | '\u{a0}')));
+    let length = text.encode_utf16().count();
+    let extent = Range::new(0, length);
+    let body = style(white_space, word_spacing, TextCombineUpright::All);
     let root = style(white_space, 0.0, TextCombineUpright::None);
     let mut source = Source::identified(text, Id::from_u64(784_954), 1);
     source.span(extent, body.clone());
@@ -230,7 +244,7 @@ fn captured(text: &str, white_space: WhiteSpace) -> (Arc<ProcessedSource>, Analy
         SourceProcessingEvent::EnterParagraph(0),
         SourceProcessingEvent::EnterScope(1),
     ];
-    for index in 0..text.len() {
+    for index in 0..length {
         if index > 0 {
             events.push(SourceProcessingEvent::Connection(index - 1));
         }
@@ -249,7 +263,7 @@ fn captured(text: &str, white_space: WhiteSpace) -> (Arc<ProcessedSource>, Analy
             source: source.clone(),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
             envelope: SourceProcessingEnvelope::Complete,
-            origins: (0..text.len())
+            origins: (0..length)
                 .map(|index| ParagraphOrigin {
                     text_node: None,
                     source: source.clone(),
@@ -258,14 +272,14 @@ fn captured(text: &str, white_space: WhiteSpace) -> (Arc<ProcessedSource>, Analy
                     kind: ParagraphOriginKind::Authored,
                 })
                 .collect(),
-            connections: (0..text.len() - 1)
+            connections: (0..length - 1)
                 .map(|index| SourceProcessingConnection {
                     before_origin: index,
                     after_origin: index + 1,
                     kind: ParagraphConnectionKind::Continuous,
                 })
                 .collect(),
-            boundary_policies: (0..text.len() - 1)
+            boundary_policies: (0..length - 1)
                 .map(|index| ParagraphBoundaryPolicy {
                     definition: ParagraphBoundaryDefinition::Connection(index),
                     preceding_wrap: Wrap::Word,
@@ -325,7 +339,12 @@ fn captured(text: &str, white_space: WhiteSpace) -> (Arc<ProcessedSource>, Analy
     (processed, analyzed)
 }
 
-fn source_custody(processed: &ProcessedSource, analyzed: &AnalyzedSource, used: &[usize]) {
+fn source_custody(
+    processed: &ProcessedSource,
+    analyzed: &AnalyzedSource,
+    used: &[usize],
+    word_spacing: f64,
+) {
     assert_eq!(analyzed.combined_cells().len(), 1);
     let cell = analyzed.combined_cells().next().unwrap();
     assert_eq!(cell.scope(), processed.captured_scope(1).unwrap());
@@ -366,7 +385,7 @@ fn source_custody(processed: &ProcessedSource, analyzed: &AnalyzedSource, used: 
         scope.style().unwrap().white_space,
         analyzed.source().spans()[0].style().white_space
     );
-    assert_eq!(scope.style().unwrap().word_spacing, 4.0);
+    assert_eq!(scope.style().unwrap().word_spacing, word_spacing);
     assert_eq!(scope.style().unwrap().letter_spacing, 0.0);
     assert_eq!(scope.style().unwrap().size, 10.0);
 }
@@ -468,8 +487,8 @@ fn preserved_inner_word_spacing_is_measured_before_normal_compression_and_retain
     // Same actual registered font/instance: SPACE4 splits2/2, not after-only4.
     native_control(&mut system, &font, 0.0, [0.0, 10.0, 20.0], 30.0);
     native_control(&mut system, &font, 4.0, [0.0, 12.0, 24.0], 34.0);
-    let (processed, analyzed) = captured("A A", WhiteSpace::Preserve);
-    source_custody(&processed, &analyzed, &[0, 1, 2]);
+    let (processed, analyzed) = captured("A A", WhiteSpace::Preserve, 4.0);
+    source_custody(&processed, &analyzed, &[0, 1, 2], 4.0);
     let prepared = system
         .prepare(
             &analyzed,
@@ -509,6 +528,7 @@ fn preserved_inner_word_spacing_is_measured_before_normal_compression_and_retain
         &processed,
         &replay.prepared_text().analyzed_source(),
         &[0, 1, 2],
+        4.0,
     );
     assert_payload(
         &prepared,
@@ -524,8 +544,8 @@ fn preserved_inner_word_spacing_is_measured_before_normal_compression_and_retain
 #[test]
 fn collapsed_inner_edge_spaces_keep_selection_custody_but_add_no_word_term_to_used_a() {
     let font = qualified_font();
-    let (processed, analyzed) = captured(" A ", WhiteSpace::Collapse);
-    source_custody(&processed, &analyzed, &[1]);
+    let (processed, analyzed) = captured(" A ", WhiteSpace::Collapse, 4.0);
+    source_custody(&processed, &analyzed, &[1], 4.0);
     let mut system = System::new(SystemOptions {
         font_catalogue: FontCatalogueMode::RegisteredOnly,
     })
@@ -550,7 +570,12 @@ fn collapsed_inner_edge_spaces_keep_selection_custody_but_add_no_word_term_to_us
     );
     drop(system);
     let replay = line.with_spacing(SpacingAllocations::None).unwrap();
-    source_custody(&processed, &replay.prepared_text().analyzed_source(), &[1]);
+    source_custody(
+        &processed,
+        &replay.prepared_text().analyzed_source(),
+        &[1],
+        4.0,
+    );
     assert_payload(
         &prepared,
         &replay,
@@ -565,8 +590,8 @@ fn collapsed_inner_edge_spaces_keep_selection_custody_but_add_no_word_term_to_us
 #[test]
 fn collapsed_whitespace_only_with_word_spacing_keeps_one_em_and_no_provider_input() {
     let font = qualified_font();
-    let (processed, analyzed) = captured(" ", WhiteSpace::Collapse);
-    source_custody(&processed, &analyzed, &[]);
+    let (processed, analyzed) = captured(" ", WhiteSpace::Collapse, 4.0);
+    source_custody(&processed, &analyzed, &[], 4.0);
     let mut system = System::new(SystemOptions {
         font_catalogue: FontCatalogueMode::RegisteredOnly,
     })
@@ -595,6 +620,11 @@ fn collapsed_whitespace_only_with_word_spacing_keeps_one_em_and_no_provider_inpu
     assert_payload(&prepared, &line, &processed, &font, &[], 1.0, 0.0);
     drop(system);
     let replay = line.with_spacing(SpacingAllocations::None).unwrap();
-    source_custody(&processed, &replay.prepared_text().analyzed_source(), &[]);
+    source_custody(
+        &processed,
+        &replay.prepared_text().analyzed_source(),
+        &[],
+        4.0,
+    );
     assert_payload(&prepared, &replay, &processed, &font, &[], 1.0, 0.0);
 }

@@ -8,7 +8,7 @@ use super::{
 };
 use crate::engine::{
     PlacedLine, PreparedData, editing,
-    layout::data::{FinalizedRunFrame, PlacedLayout},
+    layout::data::{FinalizedCell, FinalizedRunFrame, PlacedLayout},
 };
 use crate::{Layout, Point, Range, Rect, Result, TextNumericError, TextNumericPhase};
 
@@ -58,12 +58,20 @@ pub(crate) enum PlacementMetricPolicy {
 
 fn qualify_spacing_displacement(
     placed: &PlacedLine,
+    frame: FinalizedRunFrame,
     before: crate::Point,
     after: crate::Point,
     half: f64,
 ) -> Result<()> {
-    let before = crate::layout::inline_coordinate(placed.orientation, before);
-    let after = crate::layout::inline_coordinate(placed.orientation, after);
+    let (before, after) = match frame {
+        FinalizedRunFrame::Line => (
+            crate::layout::inline_coordinate(placed.orientation, before),
+            crate::layout::inline_coordinate(placed.orientation, after),
+        ),
+        // Actual Cell contents remain physically horizontal, independently of
+        // the enclosing line's inline direction and its scope displacement.
+        FinalizedRunFrame::Cell(_) => (before.x, after.x),
+    };
     finite("placed spacing displacement", after)?;
     if half != 0.0 && before == after {
         return Err(crate::error::text_numeric_error(
@@ -74,6 +82,24 @@ fn qualify_spacing_displacement(
         ));
     }
     Ok(())
+}
+
+/// Qualify the same actual square/inner mapping used by immutable glyph readback.
+/// This also serves retained word units that have no glyph or font run.
+fn qualify_cell_frame(
+    placed: &PlacedLine,
+    cell: &FinalizedCell,
+    local: Point,
+) -> Result<crate::GlyphFrame> {
+    let inner = cell
+        .frame
+        .expect("an actual shaped cell has an inner frame");
+    let square = crate::layout::cell_square_origin(placed, cell);
+    let x = checked_add("placed cell centering x", square.x, inner.x_offset)?;
+    let y = checked_add("placed cell baseline y", square.y, inner.baseline)?;
+    checked_add("placed cell run x", x, inner.x_scale * local.x)?;
+    checked_add("placed cell run y", y, local.y)?;
+    Ok(crate::layout::cell_glyph_frame(placed, cell, local))
 }
 
 /// A locally representable allocated shift can disappear at a physical anchor.
@@ -466,17 +492,16 @@ pub(crate) fn place_request(
                 )?;
             }
             let shaped = &placed.finalized.data.font_runs[run.run];
-            let frame = crate::layout::run_glyph_frame(&placed, run, shaped);
-            let origin = if let FinalizedRunFrame::Cell(index) = run.frame {
-                let cell = &placed.finalized.data.cells[index];
-                let inner = cell.frame.expect("an actual cell run has an inner frame");
-                let square = crate::layout::cell_square_origin(&placed, cell);
-                let x = checked_add("placed cell centering x", square.x, inner.x_offset)?;
-                let y = checked_add("placed cell baseline y", square.y, inner.baseline)?;
-                Point::new(
-                    checked_add("placed cell run x", x, inner.x_scale * run.x)?,
-                    checked_add("placed cell run y", y, run.y)?,
-                )
+            let frame = match run.frame {
+                FinalizedRunFrame::Line => crate::layout::run_glyph_frame(&placed, run, shaped),
+                FinalizedRunFrame::Cell(index) => qualify_cell_frame(
+                    &placed,
+                    &placed.finalized.data.cells[index],
+                    Point::new(run.x, run.y),
+                )?,
+            };
+            let origin = if matches!(run.frame, FinalizedRunFrame::Cell(_)) {
+                frame.origin()
             } else {
                 let vector = crate::layout::line_vector(
                     &placed,
@@ -514,7 +539,13 @@ pub(crate) fn place_request(
                         f64::from(glyph.glyph.x),
                         f64::from(glyph.glyph.y),
                     );
-                    qualify_spacing_displacement(&placed, before, point, glyph.word_half)?;
+                    qualify_spacing_displacement(
+                        &placed,
+                        run.frame,
+                        before,
+                        point,
+                        glyph.word_half,
+                    )?;
                 }
             }
         }
@@ -525,9 +556,27 @@ pub(crate) fn place_request(
             .iter()
             .chain(&placed.finalized.data.character_anchors)
         {
-            let before = crate::layout::line_point(&placed, unit.before);
-            let after = crate::layout::line_point(&placed, unit.after);
-            qualify_spacing_displacement(&placed, before, after, unit.amount)?;
+            let (before, after) = match unit.frame {
+                FinalizedRunFrame::Line => (
+                    crate::layout::line_point(&placed, unit.before),
+                    crate::layout::line_point(&placed, unit.after),
+                ),
+                FinalizedRunFrame::Cell(index) => {
+                    let frame = qualify_cell_frame(
+                        &placed,
+                        &placed.finalized.data.cells[index],
+                        Point::new(0.0, 0.0),
+                    )?;
+                    let before = frame.point(unit.before.x, 0.0, unit.before.y);
+                    let after = frame.point(unit.after.x, 0.0, unit.after.y);
+                    for point in [before, after] {
+                        finite("placed cell word spacing x", point.x)?;
+                        finite("placed cell word spacing y", point.y)?;
+                    }
+                    (before, after)
+                }
+            };
+            qualify_spacing_displacement(&placed, unit.frame, before, after, unit.amount)?;
         }
         let metric_rect = crate::layout::line_rect(
             &placed,

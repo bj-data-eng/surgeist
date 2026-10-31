@@ -661,8 +661,14 @@ glyph frame retain their intrinsic geometry. Inner letter spacing is suppressed
 before width selection; authored font settings remain effective. A lone cell has
 no outside tracking at line edges.
 
-Nonzero inner word spacing, allocated spacing (`SpacingPolicy` other than `None`),
-and interior endpoint or directional controls still return
+Inner [authored word spacing](#authored-word-separator-spacing) is applied before
+each candidate's width is measured. Logical edges and the shifted raw advance
+intervals determine fitting and compression; the selected payload retains its
+independent half-space offsets and original provider advances. Intrinsically
+zero-width separators receive no word-spacing term.
+
+Allocated spacing (`SpacingPolicy` other than `None`) and interior endpoint or
+directional controls still return
 `TextCombineError::UnsupportedCellPreparation`. An in-cell TAB with deferred CSS
 tab stops is also unsupported; source processing retains genuine forced-break
 removal and glyph-free input provenance. A cell without a raw logical participant

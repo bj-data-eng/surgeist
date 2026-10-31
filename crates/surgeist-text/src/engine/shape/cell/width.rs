@@ -259,11 +259,12 @@ pub(super) fn choose(
     normal: &ShapedData,
     input: &Input,
     normal_payload: CellPayload,
-    analyzed: &AnalyzedData,
-    horizontal: &ShapingInput<'_>,
+    composition: &Composition<'_, '_>,
     scratch: &mut ShapeContext,
     ledger: &mut Ledger,
 ) -> Result<(CellPayload, Option<Trial>)> {
+    let analyzed = composition.analyzed;
+    let horizontal = composition.horizontal;
     let CellPayload::Shaped { advance, runs, .. } = &normal_payload else {
         return Ok((normal_payload, None));
     };
@@ -363,7 +364,7 @@ pub(super) fn choose(
             events: input.events.clone(),
             scope_relations: Some(0..data.scope_relations.len()),
         };
-        let payload = super::normal_payload(&data, &trial_input, ledger)?;
+        let payload = super::normal_payload(&mut data, &trial_input, composition, ledger)?;
         let width = payload_width(&payload);
         let better = best.as_ref().is_none_or(|(old, _)| {
             let previous = payload_width(old);
@@ -418,11 +419,19 @@ fn compress(payload: &mut CellPayload, extent: f64) -> Result<()> {
     if let CellPayload::Shaped { advance, frame, .. } = payload {
         let width = logical_add("cell occupied advance", advance.end, -advance.start)?;
         let scale = if width > extent { extent / width } else { 1.0 };
+        if width > extent && scale == 0.0 {
+            return Err(crate::engine::text_numeric_error(
+                "cell horizontal compression",
+                TextNumericPhase::Shaping,
+                TextNumericError::PositiveLost,
+                scale,
+            ));
+        }
         frame.x_scale = scale;
         frame.x_offset = logical_add(
             "cell horizontal centering",
-            (extent - scale * width) / 2.0,
-            -scale * advance.start,
+            (extent - logical_multiply("cell compressed width", scale, width)?) / 2.0,
+            -logical_multiply("cell compressed origin", scale, advance.start)?,
         )?;
     }
     Ok(())

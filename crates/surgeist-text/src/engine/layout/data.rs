@@ -183,7 +183,9 @@ pub(crate) struct CellFrame {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct CellClusterPosition {
     pub(crate) cluster: usize,
+    /// Executed logical cluster start before its independent word half.
     pub(crate) pen: f64,
+    pub(crate) word: super::super::spacing::WordSpacingPlacement,
 }
 
 /// Provider input absence is source-proved; glyph/ink emptiness is not absence.
@@ -394,6 +396,8 @@ pub(crate) struct FinalizedGlyph {
 /// Executed local endpoint pair, retained even without a glyph inventory.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct SpacingDisplacement {
+    /// Coordinate frame of the executed pair; outer Cell tracking is Line.
+    pub(crate) frame: FinalizedRunFrame,
     pub(crate) before: crate::Point,
     pub(crate) after: crate::Point,
     pub(crate) amount: f64,

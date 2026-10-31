@@ -464,7 +464,7 @@ pub(crate) fn prepare(
         return shape(catalogue, input, scratch, scope_budget);
     }
     let horizontal = cell::horizontal_input(&input);
-    let mut cells = cell::Inputs::new(analyzed, scopes, input.styles, scope_budget)?;
+    let mut cells = cell::Inputs::new(analyzed, scopes, scope_budget)?;
     let mut output = shape_impl(
         catalogue,
         input,
@@ -1175,8 +1175,13 @@ pub(crate) fn finalize(
         output.clusters.sort_by_key(|cluster| cluster.atoms.start);
     }
     retain_external_invocations(&mut output);
-    super::spacing::authored_selected(selected, &mut output, separator_feedback)?;
     cells.retain(prepared, presentation, &mut output, &mut scope_budget)?;
+    super::spacing::authored_selected(
+        selected,
+        &mut output,
+        separator_feedback,
+        &mut scope_budget,
+    )?;
     // Each real atom receives one extracted cluster; ligature components lend
     // their actual shared glyph association rather than duplicating glyphs.
     let mut clusters = output.clusters.iter().enumerate().peekable();

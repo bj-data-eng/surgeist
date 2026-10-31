@@ -481,7 +481,7 @@ pub(crate) fn prepare(
         &mut scope_budget,
     )?;
     shaped.character_requirements = Some(characters);
-    spacing::authored_original(&analyzed, &styles, &mut shaped)?;
+    spacing::authored_original(&analyzed, &styles, &mut shaped, &mut scope_budget)?;
     let characters = spacing::character::build(
         spacing::character::Input::original(&analyzed, &styles, options.scale()),
         false,

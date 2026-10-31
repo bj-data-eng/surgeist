@@ -515,17 +515,30 @@ pub(crate) fn run_glyph_frame(
         ),
         FinalizedRunFrame::Cell(index) => {
             let cell = &line.finalized.data.cells[index];
-            let frame = cell.frame.expect("a cell run has executed provider input");
-            let square = cell_square_origin(line, cell);
-            crate::GlyphFrame::horizontal(
-                Point::new(
-                    square.x + frame.x_offset + frame.x_scale * run.x,
-                    square.y + frame.baseline + run.y,
-                ),
-                frame.x_scale,
-            )
+            cell_glyph_frame(line, cell, Point::new(run.x, run.y))
         }
     }
+}
+
+/// Map a genuine intrinsic Cell origin without manufacturing a font run.
+/// Local Y is relative to the executed common inner baseline. The square already
+/// contains its enclosing scope displacement; the frame adds only inner geometry.
+pub(crate) fn cell_glyph_frame(
+    line: &PlacedLine,
+    cell: &FinalizedCell,
+    local: Point,
+) -> crate::GlyphFrame {
+    let frame = cell
+        .frame
+        .expect("a shaped cell has its executed inner frame");
+    let square = cell_square_origin(line, cell);
+    crate::GlyphFrame::horizontal(
+        Point::new(
+            square.x + frame.x_offset + frame.x_scale * local.x,
+            square.y + frame.baseline + local.y,
+        ),
+        frame.x_scale,
+    )
 }
 
 pub(crate) fn cell_square_origin(line: &PlacedLine, cell: &FinalizedCell) -> Point {

@@ -690,6 +690,7 @@ fn execute(
                         &mut ledger,
                         &mut data.character_anchors,
                         SpacingDisplacement {
+                            frame: FinalizedRunFrame::Line,
                             before: Point::new(before, baseline),
                             after: Point::new(after, baseline),
                             amount: gap,
@@ -787,6 +788,7 @@ fn execute(
                         &mut ledger,
                         &mut data.word_anchors,
                         SpacingDisplacement {
+                            frame: FinalizedRunFrame::Line,
                             before: Point::new(
                                 cluster_x,
                                 data.clusters[cluster_index]
@@ -974,7 +976,7 @@ fn execute(
                     let before = add("character pre-gap endpoint", TextNumericPhase::Finalization, pen, gap.base)?;
                     let after = add("character cell endpoint", TextNumericPhase::Finalization, pen, output.advance)?;
                     if before == after { return Err(super::super::text_numeric_error("character boundary displacement", TextNumericPhase::Finalization, TextNumericError::NonZeroLost, gap.amount)); }
-                    account::push(&mut ledger,&mut data.character_anchors,SpacingDisplacement { before: Point::new(before, output.reference.unwrap_or(metrics.baseline)), after: Point::new(after, output.reference.unwrap_or(metrics.baseline)), amount: gap.amount })?;
+                    account::push(&mut ledger,&mut data.character_anchors,SpacingDisplacement { frame: FinalizedRunFrame::Line, before: Point::new(before, output.reference.unwrap_or(metrics.baseline)), after: Point::new(after, output.reference.unwrap_or(metrics.baseline)), amount: gap.amount })?;
                 }
                 pen = add(
                     "line logical advance",
@@ -1399,6 +1401,48 @@ struct CellFlow<'a> {
     gap: Option<&'a super::super::spacing::character::Gap>,
 }
 
+/// The required half must survive the actual inner paint mapping, including
+/// compression and centering. Glyph-free units use the same baseline frame.
+fn qualify_cell_word_half(
+    frame: crate::GlyphFrame,
+    pen_base: f64,
+    pen: f64,
+    offset: Point,
+    half: f64,
+) -> Result<()> {
+    if half == 0.0 {
+        return Ok(());
+    }
+    let scaled = finite(
+        "cell word spacing scaled half",
+        TextNumericPhase::Finalization,
+        frame.outline_x().x * half,
+    )?;
+    let before = frame.point(pen_base, offset.x, offset.y);
+    let after = frame.point(pen, offset.x, offset.y);
+    for point in [before, after] {
+        finite(
+            "cell word spacing x",
+            TextNumericPhase::Finalization,
+            point.x,
+        )?;
+        finite(
+            "cell word spacing y",
+            TextNumericPhase::Finalization,
+            point.y,
+        )?;
+    }
+    if scaled == 0.0 || before.x == after.x {
+        return Err(super::super::text_numeric_error(
+            "cell word spacing displacement",
+            TextNumericPhase::Finalization,
+            TextNumericError::NonZeroLost,
+            half,
+        ));
+    }
+    Ok(())
+}
+
 fn append_cell(
     selected: &SelectedData,
     shaped: &ShapedData,
@@ -1465,6 +1509,7 @@ fn append_cell(
             ledger,
             &mut data.character_anchors,
             SpacingDisplacement {
+                frame: FinalizedRunFrame::Line,
                 before: Point::new(before, reference),
                 after: Point::new(flow_end, reference),
                 amount: gap.amount,
@@ -1509,15 +1554,48 @@ fn append_cell(
         &mut data.visual_order,
         FinalizedVisualItem::Cell(index),
     )?;
-    let CellPayload::Shaped { positions, .. } = &cell.payload else {
+    let CellPayload::Shaped {
+        positions,
+        frame: inner,
+        ..
+    } = &cell.payload
+    else {
         return Ok(flow_end);
     };
+    let unit_frame =
+        crate::GlyphFrame::horizontal(Point::new(inner.x_offset, inner.baseline), inner.x_scale);
     let mut last_run: Option<usize> = None;
     for position in positions {
         account::work(ledger, 1)?;
         let cluster = &shaped.clusters[position.cluster];
         data.clusters[position.cluster].x = position.pen;
         data.clusters[position.cluster].reference = Some(reference);
+        let word_half = position.word.half;
+        if position.word.unit_start && word_half != 0.0 {
+            let after = add(
+                "cell word spacing unit half",
+                TextNumericPhase::Finalization,
+                position.pen,
+                word_half,
+            )?;
+            qualify_cell_word_half(
+                unit_frame,
+                position.pen,
+                after,
+                Point::new(0.0, 0.0),
+                word_half,
+            )?;
+            account::push(
+                ledger,
+                &mut data.word_anchors,
+                SpacingDisplacement {
+                    frame: FinalizedRunFrame::Cell(index),
+                    before: Point::new(position.pen, 0.0),
+                    after: Point::new(after, 0.0),
+                    amount: word_half,
+                },
+            )?;
+        }
         let mut glyph_pen = 0.0;
         for glyph in &shaped.glyphs[cluster.glyphs.clone()] {
             account::work(ledger, 1)?;
@@ -1563,14 +1641,46 @@ fn append_cell(
                 actual,
                 -data.runs[run].x,
             )?;
+            let pen = add(
+                "cell word spacing glyph half",
+                TextNumericPhase::Finalization,
+                relative,
+                word_half,
+            )?;
+            if word_half != 0.0 {
+                // The run origin is PRE-half. Preserve that independent operand;
+                // never recover it by subtracting a half from rounded paint data.
+                let local_frame = crate::GlyphFrame::horizontal(
+                    Point::new(
+                        finite(
+                            "cell local run x",
+                            TextNumericPhase::Finalization,
+                            inner.x_offset + inner.x_scale * data.runs[run].x,
+                        )?,
+                        finite(
+                            "cell local run y",
+                            TextNumericPhase::Finalization,
+                            inner.baseline + data.runs[run].y,
+                        )?,
+                    ),
+                    inner.x_scale,
+                );
+                qualify_cell_word_half(
+                    local_frame,
+                    relative,
+                    pen,
+                    Point::new(f64::from(glyph.x), f64::from(glyph.y)),
+                    word_half,
+                )?;
+            }
             account::push(
                 ledger,
                 &mut data.glyphs,
                 FinalizedGlyph {
                     glyph: *glyph,
-                    pen: relative,
+                    pen,
                     pen_base: relative,
-                    word_half: 0.0,
+                    word_half,
                 },
             )?;
             data.runs[run].glyphs.end = data.glyphs.len();
