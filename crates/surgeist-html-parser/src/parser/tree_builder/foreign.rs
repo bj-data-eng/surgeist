@@ -811,14 +811,45 @@ mod tests {
                 .current
                 < required
         );
-        let mut unlisted = control(1_000_000, HtmlParseCancellation::new());
-        assert!(
-            !mathml_text_point(
-                &QualifiedName::new(Namespace::mathml(), None, "mglyph"),
-                &mut unlisted,
-            )
-            .unwrap()
-        );
+        // The list is exactly the five MathML elements of the definition at
+        // references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md
+        // lines 3403-3410: mi, mo, mn, ms and mtext. Every one is a point;
+        // other MathML elements, including the two the tree builder treats
+        // specially (mglyph, malignmark) and annotation-xml, are not.
+        for local in ["mi", "mo", "mn", "ms", "mtext"] {
+            let mut listed = control(1_000_000, HtmlParseCancellation::new());
+            assert!(
+                mathml_text_point(
+                    &QualifiedName::new(Namespace::mathml(), None, local),
+                    &mut listed,
+                )
+                .unwrap(),
+                "{local}"
+            );
+        }
+        for local in ["mglyph", "malignmark", "annotation-xml", "mrow", "m"] {
+            let mut unlisted = control(1_000_000, HtmlParseCancellation::new());
+            assert!(
+                !mathml_text_point(
+                    &QualifiedName::new(Namespace::mathml(), None, local),
+                    &mut unlisted,
+                )
+                .unwrap(),
+                "{local}"
+            );
+        }
+        // The same local names outside the MathML namespace are not points.
+        for local in ["mi", "mo", "mn", "ms", "mtext"] {
+            let mut html = control(1_000_000, HtmlParseCancellation::new());
+            assert!(
+                !mathml_text_point(
+                    &QualifiedName::new(Namespace::html(), None, local),
+                    &mut html,
+                )
+                .unwrap(),
+                "{local}"
+            );
+        }
 
         // The work depends only on the namespace URI and the local name's
         // length and bytes, not on unrelated parts of the name. namespace()
