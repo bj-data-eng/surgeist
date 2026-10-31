@@ -130,7 +130,7 @@ impl<'a> NativeView<'a> {
                 .storage
                 .construction
                 .node_at(index)
-                .expect("retained construction position")
+                .ok_or_else(SessionError::registry_row)?
                 .kind()
             {
                 HtmlNodeKind::Document(mode) => NativeKind::Document(*mode),
@@ -178,7 +178,7 @@ impl<'a> NativeView<'a> {
             .storage
             .construction
             .node_at(index)
-            .expect("retained construction position")
+            .ok_or_else(SessionError::registry_row)?
             .kind()
         {
             HtmlNodeKind::Element(element) => Ok(element.attributes().len()),
@@ -197,7 +197,7 @@ impl<'a> NativeView<'a> {
             .storage
             .construction
             .node_at(index)
-            .expect("retained construction position")
+            .ok_or_else(SessionError::registry_row)?
             .kind()
         else {
             return Err(SessionError::WrongToken);
@@ -228,7 +228,7 @@ impl<'a> NativeView<'a> {
             .storage
             .construction
             .node_at(index)
-            .expect("retained construction position")
+            .ok_or_else(SessionError::registry_row)?
             .child_count())
     }
     #[cfg(test)]
@@ -244,7 +244,7 @@ impl<'a> NativeView<'a> {
                 .storage
                 .construction
                 .node_at(index)
-                .expect("retained construction position")
+                .ok_or_else(SessionError::registry_row)?
                 .child_count()
         {
             return Ok(None);
@@ -254,9 +254,9 @@ impl<'a> NativeView<'a> {
             .storage
             .construction
             .node_at(index)
-            .expect("retained construction position")
+            .ok_or_else(SessionError::registry_row)?
             .child_at(position)
-            .expect("retained child ordinal")
+            .ok_or_else(SessionError::registry_row)?
             .position();
         self.storage.node(self.control, child).map(Some)
     }
@@ -267,7 +267,7 @@ impl<'a> NativeView<'a> {
         self.storage
             .construction
             .node_at(index)
-            .expect("retained construction position")
+            .ok_or_else(SessionError::registry_row)?
             .parent()
             .map(|parent| self.storage.node(self.control, parent.position()))
             .transpose()
@@ -282,7 +282,7 @@ impl<'a> NativeView<'a> {
         self.storage
             .construction
             .node_at(index)
-            .expect("retained construction position")
+            .ok_or_else(SessionError::registry_row)?
             .template_contents()
             .map(|contents| self.storage.node(self.control, contents.position()))
             .transpose()
@@ -311,7 +311,7 @@ impl<'a> NativeView<'a> {
             .storage
             .construction
             .node_at(index)
-            .expect("retained construction position")
+            .ok_or_else(SessionError::registry_row)?
             .fragment_owner()
         {
             Some(HtmlFragmentOwner::Template(owner)) => self

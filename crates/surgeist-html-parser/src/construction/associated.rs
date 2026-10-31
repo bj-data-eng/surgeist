@@ -275,11 +275,13 @@ impl SessionStorage {
             payload_write::<crate::HtmlParseBaseFacts>(c, 1)?;
             let facts = facts.clone();
             self.prepare_payload_slot_owned(c)?;
-            self.payloads.values.push(RetainedPayload::BaseDocument {
-                node,
-                facts,
-                first: None,
-            });
+            self.payloads
+                .push_row(RetainedPayload::BaseDocument {
+                    node,
+                    facts,
+                    first: None,
+                })
+                .map_err(|_| latch_registry_row(c))?;
         }
         Ok(())
     }
@@ -325,16 +327,18 @@ impl SessionStorage {
             let document = self.node_document_ref(c, node)?;
             let cause = self.associated_cause(c)?;
             self.prepare_payload_slot_owned(c)?;
-            self.payloads.values.push(RetainedPayload::Hyperlink {
-                node,
-                state: HyperlinkMetadata {
-                    document,
-                    raw: None,
-                    value: HyperlinkValue::Absent,
-                    cause,
-                    usage: AssociatedStorageUsage::default(),
-                },
-            });
+            self.payloads
+                .push_row(RetainedPayload::Hyperlink {
+                    node,
+                    state: HyperlinkMetadata {
+                        document,
+                        raw: None,
+                        value: HyperlinkValue::Absent,
+                        cause,
+                        usage: AssociatedStorageUsage::default(),
+                    },
+                })
+                .map_err(|_| latch_registry_row(c))?;
             self.set_hyperlink(c, node, None)?;
         } else if tag == Some(KnownHtmlElement::Img) {
             self.prepare_payload_slot_owned(c)?;
@@ -345,17 +349,19 @@ impl SessionStorage {
             usage.add(mem::size_of::<Vec<u16>>(), 0, 0, c)?;
             payload_write::<ImageMetadata>(c, 1)?;
             usage.acquire(c)?;
-            self.payloads.values.push(RetainedPayload::Image {
-                node,
-                state: ImageMetadata {
-                    fresh: HtmlImgFreshState::fresh(),
-                    dimension_source: node,
-                    latest: 0,
-                    waiting: None,
-                    cause: None,
-                    usage,
-                },
-            });
+            self.payloads
+                .push_row(RetainedPayload::Image {
+                    node,
+                    state: ImageMetadata {
+                        fresh: HtmlImgFreshState::fresh(),
+                        dimension_source: node,
+                        latest: 0,
+                        waiting: None,
+                        cause: None,
+                        usage,
+                    },
+                })
+                .map_err(|_| latch_registry_row(c))?;
             self.start_img_update(c, node, HtmlImageUpdateFlags::new(false, false))?;
         } else {
             return Ok(());
@@ -482,8 +488,8 @@ impl SessionStorage {
         node: usize,
         raw: usize,
     ) -> Result<Result<HtmlHyperlinkUrlSnapshot, HyperlinkUnavailable>, SessionError> {
-        let RetainedPayload::String { value: raw, .. } = &self.payloads.values[raw] else {
-            return Err(SessionError::WrongToken);
+        let Some(RetainedPayload::String { value: raw, .. }) = self.payloads.values.get(raw) else {
+            return Err(latch_registry_row(c));
         };
         let context = match self.encoding_url_context(c, node)? {
             Ok(value) => value,
@@ -522,13 +528,13 @@ impl SessionStorage {
             return Ok(Err(HyperlinkUnavailable::PolicyHistory));
         }
         let mut environment = None;
-        for payload in &self.payloads.values {
+        if let Some(slot) = self.payloads.joined(c, document, Join::BaseDocument)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::BaseDocument { node, facts, first } = payload
+            if let Some(RetainedPayload::BaseDocument { node, facts, first }) =
+                self.payloads.values.get(slot)
                 && *node == document
             {
                 environment = Some((facts, first));
-                break;
             }
         }
         let Some((facts, first)) = environment else {
@@ -542,19 +548,18 @@ impl SessionStorage {
             )));
         };
         let mut frozen = None;
-        if let Some(first) = first {
-            for payload in &self.payloads.values {
-                c.charge(WorkCategory::RecordVisit, 1)?;
-                if let RetainedPayload::Base {
-                    node: Some(node),
-                    frozen: base::BaseValue::Frozen(value),
-                    ..
-                } = payload
-                    && node == first
-                {
-                    frozen = Some(&value.value);
-                    break;
-                }
+        if let Some(first) = first
+            && let Some(slot) = self.payloads.joined(c, *first, Join::Base)?
+        {
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            if let Some(RetainedPayload::Base {
+                node: Some(node),
+                frozen: base::BaseValue::Frozen(value),
+                ..
+            }) = self.payloads.values.get(slot)
+                && node == first
+            {
+                frozen = Some(&value.value);
             }
         }
         let selection = if first.is_some() {
@@ -644,15 +649,10 @@ impl SessionStorage {
         node: usize,
         raw: Option<usize>,
     ) -> Result<(), SessionError> {
-        let mut slot = None;
-        for (index, payload) in self.payloads.values.iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(payload, RetainedPayload::Hyperlink { node: n, .. } if *n == node) {
-                slot = Some(index);
-                break;
-            }
-        }
-        let slot = slot.ok_or(SessionError::WrongToken)?;
+        let slot = self
+            .payloads
+            .joined(c, node, Join::Hyperlink)?
+            .ok_or(SessionError::WrongToken)?;
         let mut cursor = HtmlHyperlinkSetUrlCursor::new();
         let mut result = None;
         loop {
@@ -660,9 +660,10 @@ impl SessionStorage {
             let reply = match cursor.action() {
                 Action::ClearUrl => {
                     payload_write::<HyperlinkValue>(c, 1)?;
-                    let RetainedPayload::Hyperlink { state, .. } = &mut self.payloads.values[slot]
+                    let Some(RetainedPayload::Hyperlink { state, .. }) =
+                        self.payloads.values.get_mut(slot)
                     else {
-                        unreachable!()
+                        return Err(latch_registry_row(c));
                     };
                     let old = mem::replace(&mut state.value, HyperlinkValue::Absent);
                     let old_usage = mem::take(&mut state.usage);
@@ -717,8 +718,9 @@ impl SessionStorage {
                 }
             });
         }
-        let RetainedPayload::Hyperlink { state, .. } = &mut self.payloads.values[slot] else {
-            unreachable!()
+        let Some(RetainedPayload::Hyperlink { state, .. }) = self.payloads.values.get_mut(slot)
+        else {
+            return Err(latch_registry_row(c));
         };
         let old = mem::replace(
             state,
@@ -752,22 +754,14 @@ impl SessionStorage {
         node: usize,
         flags: HtmlImageUpdateFlags,
     ) -> Result<(), SessionError> {
-        let mut slot = None;
-        for (index, payload) in self.payloads.values.iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(payload, RetainedPayload::Image { node: n, .. } if *n == node) {
-                slot = Some(index);
-                break;
-            }
-        }
-        let Some(slot) = slot else {
+        let Some(slot) = self.payloads.joined(c, node, Join::Image)? else {
             return Ok(());
         };
         let activity = self.image_document_activity(c, node)?;
         let decision = surgeist_html::image_update_start(activity);
         let cause = self.associated_cause(c)?;
-        let RetainedPayload::Image { state, .. } = &self.payloads.values[slot] else {
-            unreachable!()
+        let Some(RetainedPayload::Image { state, .. }) = self.payloads.values.get(slot) else {
+            return Err(latch_registry_row(c));
         };
         let next = state.latest.checked_add(1).ok_or_else(|| {
             c.representation::<()>(HtmlParseResource::AuxiliaryEntries)
@@ -784,8 +778,8 @@ impl SessionStorage {
             Option<HtmlImageUpdateFlags>,
             Option<provenance::ConstructionCauseRef>,
         )>(c, 1)?;
-        let RetainedPayload::Image { state, .. } = &mut self.payloads.values[slot] else {
-            unreachable!()
+        let Some(RetainedPayload::Image { state, .. }) = self.payloads.values.get_mut(slot) else {
+            return Err(latch_registry_row(c));
         };
         state.latest = next;
         state.waiting =

@@ -166,7 +166,7 @@ impl ParserArenaSession {
             match &storage
                 .construction
                 .node_at(index)
-                .expect("retained construction position")
+                .ok_or_else(|| latch_registry_row(c))?
                 .kind()
             {
                 HtmlNodeKind::Element(value) => Some(value.attributes()),
@@ -1100,19 +1100,19 @@ impl SessionStorage {
                 self.bind_string(
                     local_ticket,
                     StringLocation::AttributeName(container, position),
-                );
+                )?;
                 self.bind_string(
                     value_ticket,
                     StringLocation::AttributeValue(container, position),
-                );
+                )?;
                 if let Some(ticket) = namespace_ticket {
                     self.bind_string(
                         ticket,
                         StringLocation::AttributeNamespace(container, position),
-                    );
+                    )?;
                 }
                 if let Some(ticket) = prefix_ticket {
-                    self.bind_string(ticket, StringLocation::AttributePrefix(container, position));
+                    self.bind_string(ticket, StringLocation::AttributePrefix(container, position))?;
                 }
             }
             self.reverse_attributes(control, container)?;
@@ -1146,9 +1146,12 @@ impl SessionStorage {
                 Err((error, backing)) => {
                     // Preserve the admitted shared wrapper in the owning phase
                     // even when intrinsic duplicate checking or work stops.
-                    let values = control.release_shared(backing, shared).unwrap_or_else(|_| {
-                        panic!("unpublished attribute builder is uniquely owned")
-                    });
+                    let Ok(values) = control.release_shared(backing, shared) else {
+                        // Unpublished backing is uniquely owned; a refusal is an
+                        // invariant stop, and the container row stays empty for
+                        // cleanup to report.
+                        return Err(latch_registry_row(control));
+                    };
                     *storage = Some(AttributeStorage::Building {
                         values,
                         allocation,
@@ -1198,9 +1201,9 @@ impl SessionStorage {
             if let Some(slot) = svg {
                 self.bind_svg_slot(slot, node.index);
             }
-            self.bind_string(name_ticket, StringLocation::ElementName(node.index));
+            self.bind_string(name_ticket, StringLocation::ElementName(node.index))?;
             if let Some(ticket) = namespace_ticket {
-                self.bind_string(ticket, StringLocation::Namespace(node.index));
+                self.bind_string(ticket, StringLocation::Namespace(node.index))?;
             }
             let RetainedPayload::Attributes(Some(AttributeStorage::Frozen { element, .. })) =
                 &mut self.payloads.values[container]
@@ -1208,6 +1211,7 @@ impl SessionStorage {
                 unreachable!()
             };
             *element = Some(node.index);
+            self.payloads.join_row(container)?;
 
             self.initial_nonce_attributes(control, node.index)?;
             Ok(node)

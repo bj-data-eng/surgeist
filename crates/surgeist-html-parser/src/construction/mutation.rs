@@ -170,7 +170,7 @@ impl SessionStorage {
                 let HtmlNodeKind::Element(element) = &self
                     .construction
                     .node_at(node)
-                    .expect("retained construction position")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .kind()
                 else {
                     unreachable!()
@@ -266,13 +266,13 @@ impl SessionStorage {
             },
         )));
         let prepared = (|| {
-            let RetainedPayload::Attributes(Some(AttributeStorage::Building {
+            let Some(RetainedPayload::Attributes(Some(AttributeStorage::Building {
                 values,
                 allocation,
                 ..
-            })) = &mut self.payloads.values[stage]
+            }))) = self.payloads.values.get_mut(stage)
             else {
-                unreachable!()
+                return Err(latch_registry_row(c));
             };
             c.reserve_vector(values, allocation, 1)?;
             payload_write::<Attribute>(c, 1)?;
@@ -284,20 +284,22 @@ impl SessionStorage {
             drop(incoming);
             return Err(error);
         }
-        let RetainedPayload::Attributes(Some(AttributeStorage::Building { values, .. })) =
-            &mut self.payloads.values[stage]
+        let Some(RetainedPayload::Attributes(Some(AttributeStorage::Building { values, .. }))) =
+            self.payloads.values.get_mut(stage)
         else {
-            unreachable!()
+            return Err(latch_registry_row(c));
         };
         values.push(incoming);
-        self.bind_string(name_slot, StringLocation::AttributeName(stage, 0));
-        self.bind_string(value_slot, StringLocation::AttributeValue(stage, 0));
+        self.bind_string(name_slot, StringLocation::AttributeName(stage, 0))
+            .map_err(|_| latch_registry_row(c))?;
+        self.bind_string(value_slot, StringLocation::AttributeValue(stage, 0))
+            .map_err(|_| latch_registry_row(c))?;
         self.edit_attributes(c, node, container, stage, 1, false)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(record) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             unreachable!()
@@ -373,16 +375,19 @@ impl SessionStorage {
                 &old_slots,
             )?;
             for slot in old_slots.into_iter().flatten() {
-                self.bind_string(slot, StringLocation::Detached);
+                self.bind_string(slot, StringLocation::Detached)
+                    .map_err(|_| latch_registry_row(c))?;
             }
             self.bind_string(
                 name_slot,
                 StringLocation::AttributeName(container, position),
-            );
+            )
+            .map_err(|_| latch_registry_row(c))?;
             self.bind_string(
                 value_slot,
                 StringLocation::AttributeValue(container, position),
-            );
+            )
+            .map_err(|_| latch_registry_row(c))?;
 
             drop(old);
             Ok::<_, SessionError>(())
@@ -406,7 +411,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             return Err(SessionError::WrongToken);
@@ -434,17 +439,20 @@ impl SessionStorage {
             )
         });
         payload_write::<Option<AttributeStorage>>(c, 2)?;
-        let RetainedPayload::Attributes(storage) = &mut self.payloads.values[container] else {
-            unreachable!()
+        let Some(RetainedPayload::Attributes(storage)) = self.payloads.values.get_mut(container)
+        else {
+            return Err(latch_registry_row(c));
         };
-        let AttributeStorage::Frozen {
+        let taken = storage.take();
+        let Some(AttributeStorage::Frozen {
             values,
             allocation,
             shared,
             element,
-        } = storage.take().expect("qualified real attributes")
+        }) = taken
         else {
-            unreachable!()
+            *storage = taken;
+            return Err(latch_registry_row(c));
         };
         let len = values.len();
         *storage = Some(AttributeStorage::Removing {
@@ -474,7 +482,9 @@ impl SessionStorage {
             c.charge(WorkCategory::RecordVisit, 1)?;
             payload_write::<StringLocation>(c, 1)?;
             payload_write::<usize>(c, 1)?;
-            if let RetainedPayload::String { location, .. } = &mut self.payloads.values[slot] {
+            if let Some(RetainedPayload::String { location, .. }) =
+                self.payloads.values.get_mut(slot)
+            {
                 let (owner, position) = match *location {
                     StringLocation::AttributeName(o, p)
                     | StringLocation::AttributeValue(o, p)
@@ -505,27 +515,31 @@ impl SessionStorage {
                     };
                 }
             }
-            let RetainedPayload::Attributes(Some(AttributeStorage::Removing { rebound, .. })) =
-                &mut self.payloads.values[container]
+            let Some(RetainedPayload::Attributes(Some(AttributeStorage::Removing {
+                rebound, ..
+            }))) = self.payloads.values.get_mut(container)
             else {
-                unreachable!()
+                return Err(latch_registry_row(c));
             };
             *rebound = slot + 1;
         }
         payload_write::<Option<AttributeStorage>>(c, 2)?;
         payload_write::<usize>(c, 2)?;
-        let RetainedPayload::Attributes(storage) = &mut self.payloads.values[container] else {
-            unreachable!()
+        let Some(RetainedPayload::Attributes(storage)) = self.payloads.values.get_mut(container)
+        else {
+            return Err(latch_registry_row(c));
         };
-        let AttributeStorage::Removing {
+        let taken = storage.take();
+        let Some(AttributeStorage::Removing {
             values,
             allocation,
             shared,
             element,
             ..
-        } = storage.take().expect("retained removal")
+        }) = taken
         else {
-            unreachable!()
+            *storage = taken;
+            return Err(latch_registry_row(c));
         };
         *storage = Some(AttributeStorage::Frozen {
             values,
@@ -551,7 +565,7 @@ impl SessionStorage {
         if base::is_base(
             self.construction
                 .node_at(node)
-                .expect("retained construction position"),
+                .ok_or_else(|| latch_registry_row(c))?,
         ) && local == "href"
         {
             self.base_change(c, node, None, true)?;
@@ -650,7 +664,7 @@ impl ParserArenaSession {
         let HtmlNodeKind::Element(element) = &storage
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             unreachable!()

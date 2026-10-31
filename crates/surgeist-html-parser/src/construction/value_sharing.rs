@@ -702,8 +702,7 @@ impl Finalizing {
                 construction,
                 payloads,
             },
-        );
-        Ok(())
+        )
     }
 
     fn make_joins(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {

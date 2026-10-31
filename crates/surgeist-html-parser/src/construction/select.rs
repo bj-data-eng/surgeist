@@ -179,7 +179,7 @@ impl SessionStorage {
                 if self
                     .construction
                     .node_at(target)
-                    .expect("retained construction position")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .child_count()
                     == 0
                 {
@@ -200,9 +200,9 @@ impl SessionStorage {
                 let child = self
                     .construction
                     .node_at(target)
-                    .expect("retained construction position")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .child_at(0)
-                    .expect("retained child ordinal")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .position();
                 self.remove_index(c, child)
             }
@@ -237,7 +237,7 @@ impl SessionStorage {
                     == self
                         .construction
                         .node_at(option)
-                        .expect("retained construction position")
+                        .ok_or_else(|| latch_registry_row(c))?
                         .child_count()
                 {
                     return self.write_current_effect(c, None);
@@ -246,9 +246,9 @@ impl SessionStorage {
                 let child = self
                     .construction
                     .node_at(option)
-                    .expect("retained construction position")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .child_at(cursor)
-                    .expect("retained child ordinal")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .position();
                 let document = self.node_document_ref(c, child)?;
                 let child_document = document.try_clone(c)?;
@@ -511,7 +511,7 @@ impl SessionStorage {
         if self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .child_count()
             != 0
         {
@@ -529,7 +529,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             return Err(SessionError::WrongToken);
@@ -839,12 +839,12 @@ fn retained_select_metadata(
     c: &mut ParseControl,
     node: usize,
 ) -> Result<(usize, SelectMetadata), SessionError> {
-    for (slot, payload) in payloads.values.iter().enumerate() {
+    if let Some(slot) = payloads.joined(c, node, Join::SelectFamily)? {
         c.charge(WorkCategory::RecordVisit, 1)?;
-        if let RetainedPayload::SelectFamily {
+        if let Some(RetainedPayload::SelectFamily {
             node: Some(owner),
             state,
-        } = payload
+        }) = payloads.values.get(slot)
             && *owner == node
         {
             c.charge(

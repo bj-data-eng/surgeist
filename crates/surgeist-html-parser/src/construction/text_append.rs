@@ -339,7 +339,8 @@ impl SessionStorage {
                 };
                 let slot = merged_slot.expect("admitted initialized append destination");
                 if !dispose_old {
-                    self.bind_string(old_slot, StringLocation::Detached);
+                    self.bind_string(old_slot, StringLocation::Detached)
+                        .map_err(|_| latch_registry_row(control))?;
                 }
                 self.payloads.values[slot] = RetainedPayload::String {
                     value,
@@ -347,7 +348,9 @@ impl SessionStorage {
                     origins: merged_group,
                     location: StringLocation::Text(index),
                 };
-                self.payloads.append_fields[index].text = Some(slot);
+                self.payloads
+                    .join_text(index, slot)
+                    .map_err(|_| latch_registry_row(control))?;
                 if children_changed {
                     self.effects.form = Some(FormEffects {
                         root: parent,

@@ -126,7 +126,7 @@ impl SessionStorage {
         if !matches!(
             self.construction
                 .node_at(0)
-                .expect("retained construction position")
+                .ok_or_else(|| latch_registry_row(c))?
                 .kind(),
             HtmlNodeKind::Document(_)
         ) {

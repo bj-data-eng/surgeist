@@ -24,14 +24,16 @@ impl SessionStorage {
         let cause = self.associated_cause(c)?;
         self.prepare_payload_slot_owned(c)?;
         payload_write::<StyleMetadata>(c, 1)?;
-        self.payloads.values.push(RetainedPayload::Style {
-            node,
-            state: StyleMetadata {
-                state: surgeist_html::HtmlStyleState::fresh(),
-                parser_document: None,
-                cause,
-            },
-        });
+        self.payloads
+            .push_row(RetainedPayload::Style {
+                node,
+                state: StyleMetadata {
+                    state: surgeist_html::HtmlStyleState::fresh(),
+                    parser_document: None,
+                    cause,
+                },
+            })
+            .map_err(|_| latch_registry_row(c))?;
         self.record_association(
             c,
             node,
@@ -50,13 +52,10 @@ impl SessionStorage {
         if !self.html_local(c, node, "style")? {
             return Ok(None);
         }
-        for (slot, payload) in self.payloads.values.iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(payload, RetainedPayload::Style {node:n, ..} if *n == node) {
-                return Ok(Some(slot));
-            }
-        }
-        Err(SessionError::WrongToken)
+        self.payloads
+            .joined(c, node, Join::Style)?
+            .map(Some)
+            .ok_or(SessionError::WrongToken)
     }
     /// Called only by the sealed original create-element-for-token operation.
     /// Template contents have another current owner; their creating parser is
@@ -72,8 +71,8 @@ impl SessionStorage {
         self.document_slot(c, 0)?;
         let cause = self.associated_cause(c)?;
         payload_write::<StyleMetadata>(c, 1)?;
-        let RetainedPayload::Style { state, .. } = &mut self.payloads.values[slot] else {
-            unreachable!()
+        let Some(RetainedPayload::Style { state, .. }) = self.payloads.values.get_mut(slot) else {
+            return Err(latch_registry_row(c));
         };
         state.state = surgeist_html::HtmlStyleState::document_parser_created();
         state.parser_document = Some(DocumentRef::Owned(0));
@@ -99,8 +98,8 @@ impl SessionStorage {
         };
         let cause = self.associated_cause(c)?;
         payload_write::<StyleMetadata>(c, 1)?;
-        let RetainedPayload::Style { state, .. } = &mut self.payloads.values[slot] else {
-            unreachable!()
+        let Some(RetainedPayload::Style { state, .. }) = self.payloads.values.get_mut(slot) else {
+            return Err(latch_registry_row(c));
         };
         if added {
             state.state.parser_stack_added()

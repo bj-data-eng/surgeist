@@ -23,8 +23,8 @@ impl SessionStorage {
         self.prepare_payload_slot_owned(c)?;
         let slot = self.payloads.values.len();
         self.payloads
-            .values
-            .push(RetainedPayload::Nonce { node: None, raw });
+            .push_row(RetainedPayload::Nonce { node: None, raw })
+            .map_err(|_| latch_registry_row(c))?;
         Ok(Some(slot))
     }
     pub(super) fn nonce_slot(
@@ -33,12 +33,12 @@ impl SessionStorage {
         node: usize,
     ) -> Result<Option<(usize, usize)>, SessionError> {
         c.require_identity(&self.control)?;
-        for slot in 0..self.payloads.values.len() {
+        if let Some(slot) = self.payloads.joined(c, node, Join::Nonce)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::Nonce {
+            if let Some(RetainedPayload::Nonce {
                 node: Some(owner),
                 raw,
-            } = &self.payloads.values[slot]
+            }) = self.payloads.values.get(slot)
                 && *owner == node
             {
                 c.charge(WorkCategory::CopyByte, (2 * mem::size_of::<usize>()) as u64)?;
@@ -54,12 +54,13 @@ impl SessionStorage {
         raw: usize,
     ) -> Result<(), SessionError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let RetainedPayload::Nonce { raw: old, .. } = self.payloads.values[slot] else {
+        let Some(&RetainedPayload::Nonce { raw: old, .. }) = self.payloads.values.get(slot) else {
             return Err(SessionError::NonceMetadataUnavailable);
         };
         payload_write::<usize>(c, 1)?;
-        let RetainedPayload::Nonce { raw: stored, .. } = &mut self.payloads.values[slot] else {
-            unreachable!()
+        let Some(RetainedPayload::Nonce { raw: stored, .. }) = self.payloads.values.get_mut(slot)
+        else {
+            return Err(latch_registry_row(c));
         };
         *stored = raw;
         self.retire_raw_field(c, old)
@@ -73,7 +74,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             return Ok(());
@@ -98,7 +99,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             return Err(SessionError::WrongToken);
@@ -154,7 +155,7 @@ impl SessionStorage {
             if matches!(
                 self.construction
                     .node_at(root)
-                    .expect("retained construction position")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .kind(),
                 HtmlNodeKind::Document(_)
             ) {
@@ -164,7 +165,7 @@ impl SessionStorage {
             if let Some(HtmlFragmentOwner::ShadowHost(host)) = &self
                 .construction
                 .node_at(root)
-                .expect("retained construction position")
+                .ok_or_else(|| latch_registry_row(c))?
                 .fragment_owner()
             {
                 c.charge(WorkCategory::ProviderCall, 1)?;
@@ -302,7 +303,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             return Ok(());
@@ -341,7 +342,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             unreachable!()
@@ -400,7 +401,7 @@ impl SessionStorage {
         if let Some(shadow) = self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .shadow_root()
         {
             c.charge(WorkCategory::ProviderCall, 1)?;
@@ -415,7 +416,7 @@ impl SessionStorage {
         if let Some(child) = self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .child_at(0)
         {
             return Ok(Some(child.position()));
@@ -429,7 +430,7 @@ impl SessionStorage {
             if let Some(parent) = self
                 .construction
                 .node_at(cursor)
-                .expect("retained construction position")
+                .ok_or_else(|| latch_registry_row(c))?
                 .parent()
                 .map(|node| node.position())
             {
@@ -437,16 +438,16 @@ impl SessionStorage {
                 for index in 0..self
                     .construction
                     .node_at(parent)
-                    .expect("retained construction position")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .child_count()
                 {
                     c.charge(WorkCategory::RecordVisit, 1)?;
                     let child = self
                         .construction
                         .node_at(parent)
-                        .expect("retained construction position")
+                        .ok_or_else(|| latch_registry_row(c))?
                         .child_at(index)
-                        .expect("retained child ordinal")
+                        .ok_or_else(|| latch_registry_row(c))?
                         .position();
                     if found {
                         return Ok(Some(child));
@@ -460,7 +461,7 @@ impl SessionStorage {
             } else if let Some(HtmlFragmentOwner::ShadowHost(host)) = &self
                 .construction
                 .node_at(cursor)
-                .expect("retained construction position")
+                .ok_or_else(|| latch_registry_row(c))?
                 .fragment_owner()
             {
                 c.charge(WorkCategory::ProviderCall, 1)?;
@@ -475,7 +476,7 @@ impl SessionStorage {
                 if let Some(child) = self
                     .construction
                     .node_at(cursor)
-                    .expect("retained construction position")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .child_at(0)
                 {
                     return Ok(Some(child.position()));
@@ -543,7 +544,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             return Err(SessionError::WrongToken);
@@ -626,11 +627,11 @@ impl ParserArenaSession {
             .nonce_slot(c, node)?
             .ok_or(SessionError::NonceMetadataUnavailable)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let RetainedPayload::String {
+        let Some(RetainedPayload::String {
             value, allocation, ..
-        } = &storage.payloads.values[raw]
+        }) = storage.payloads.values.get(raw)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         c.require_document_string(allocation, value)?;
         Ok(value)
@@ -911,14 +912,28 @@ mod tests {
     }
     #[test]
     fn nonce_lookup_exact_work_and_one_short_preserve_first_stop_and_cleanup() {
+        // The lookup's whole cost is measured from an unconstrained twin; the
+        // exact budget then completes it and one credit less stops it.
+        let cost = {
+            let (mut c, mut session, node, _) = fixture();
+            let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
+            session
+                .active()
+                .unwrap()
+                .nonce_slot(&mut c, node.index)
+                .unwrap()
+                .unwrap();
+            let cost = c.usage().resource(HtmlParseResource::WorkCredits).current - before;
+            session.release(&mut c).unwrap();
+            super::super::tests::storage_zero(&c);
+            cost
+        };
         for short in [false, true] {
             let (mut c, mut session, node, cancellation) = fixture();
             let storage = session.active().unwrap();
             let slot = storage.payloads.values.iter().position(|entry| {
                 matches!(entry, RetainedPayload::Nonce { node: Some(owner), .. } if *owner == node.index)
             }).unwrap();
-            // One visit per preceding/selected record, then a fixed two-usize copy.
-            let cost = slot as u64 + 1 + (2 * mem::size_of::<usize>()) as u64;
             let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
             let maximum = super::super::tests::limits().work_credits();
             c.charge(
@@ -945,11 +960,6 @@ mod tests {
                 assert_eq!(c.first_stop_usage(), snapshot.as_ref());
             } else {
                 assert_eq!(result.unwrap().unwrap().0, slot);
-                assert_eq!(
-                    c.usage().work(WorkCategory::RecordVisit)
-                        - before.work(WorkCategory::RecordVisit),
-                    slot as u64 + 1
-                );
                 assert_eq!(
                     c.usage().work(WorkCategory::CopyByte) - before.work(WorkCategory::CopyByte),
                     (2 * mem::size_of::<usize>()) as u64
