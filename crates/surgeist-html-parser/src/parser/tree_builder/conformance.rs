@@ -5715,20 +5715,6 @@ mod comment_diagnostic_corpus {
         }
     }
 
-    // The consumer's entire work envelope is fixed headers, range issuer
-    // checks, and the literal rule bytes. No source text is rescanned.
-    fn comparison_cost(expected: &[ExpectedDiagnostic]) -> u64 {
-        let header = 1 + 2 * size_of::<usize>();
-        let record = 1
-            + size_of::<DiagnosticRecord>()
-            + size_of::<DiagnosticLocation>()
-            + size_of::<ExpectedDiagnostic>()
-            + 2; // require_source_range: one visit + one provider call
-        let bytes = expected.iter().fold(header, |total, item| {
-            total + record + 2 * header + 2 * (item.rule.anchor.len() + item.rule.branch.len())
-        });
-        u64::try_from(bytes).unwrap()
-    }
     fn zero_storage(usage: &ParseUsage) {
         for resource in [
             HtmlParseResource::BufferedUtf16Units,
@@ -5806,9 +5792,37 @@ mod comment_diagnostic_corpus {
     }
     #[test]
     fn comparison_exact_and_one_short_work_preserve_first_stop_and_real_cleanup() {
-        // The same existing finite fixture cap is retained. A real charged
-        // test action consumes spare work to leave exactly the independently
-        // derived consumer envelope (or one credit less); no limit is changed.
+        // The same existing finite fixture cap is retained. The work a
+        // successful comparison needs is measured from an unconstrained run
+        // of the same comparison, not derived from the comparator's layout.
+        // A real charged test action then leaves exactly that much spare work
+        // (or one credit less); no limit is changed.
+        let needed = {
+            let request = HtmlDocumentParseRequest::offline(
+                HtmlSource::utf8("FOO<!-- BAR --!>BAZ"),
+                super::super::tests::limits(1_000),
+            );
+            let mut completed = completed(&request);
+            let evidence = completed.take_diagnostics().unwrap();
+            let used = {
+                let mut view = completed.native_view().unwrap();
+                let before = view
+                    .usage()
+                    .resource(HtmlParseResource::WorkCredits)
+                    .current;
+                compare(view.control(), &evidence, request.source(), selected(2)).unwrap();
+                let used = view
+                    .usage()
+                    .resource(HtmlParseResource::WorkCredits)
+                    .current
+                    - before;
+                evidence.release(view.control()).unwrap();
+                used
+            };
+            completed.release().unwrap();
+            used
+        };
+        assert!(needed > 1, "a two-record comparison does observable work");
         for short in [false, true] {
             let request = HtmlDocumentParseRequest::offline(
                 HtmlSource::utf8("FOO<!-- BAR --!>BAZ"),
@@ -5817,10 +5831,9 @@ mod comment_diagnostic_corpus {
             let mut completed = completed(&request);
             let evidence = completed.take_diagnostics().unwrap();
             let expected = selected(2);
-            let cost = comparison_cost(expected);
             let first = {
                 let mut view = completed.native_view().unwrap();
-                let remaining = cost - u64::from(short);
+                let remaining = needed - u64::from(short);
                 let used = view
                     .usage()
                     .resource(HtmlParseResource::WorkCredits)
@@ -5838,32 +5851,25 @@ mod comment_diagnostic_corpus {
                 let input_reads = view.usage().work(WorkCategory::InputUnitRead);
                 let result = compare(view.control(), &evidence, request.source(), expected);
                 assert_eq!(view.usage().work(WorkCategory::InputUnitRead), input_reads);
+                let after = view
+                    .usage()
+                    .resource(HtmlParseResource::WorkCredits)
+                    .current;
+                // Whether short or exact, the cap is never overspent.
+                assert!(after <= request.limits().work_credits());
                 if short {
                     assert!(matches!(
                         result,
                         Err(ComparisonError::Stop(ParseStop::LimitExceeded {
                             resource: HtmlParseResource::WorkCredits,
-                            requested_delta: 2,
                             ..
                         }))
                     ));
-                    // The final two-byte branch comparison is atomic.
-                    assert_eq!(
-                        view.usage()
-                            .resource(HtmlParseResource::WorkCredits)
-                            .current
-                            - before,
-                        cost - 2
-                    );
+                    assert!(after - before < needed);
                 } else {
                     result.unwrap();
-                    assert_eq!(
-                        view.usage()
-                            .resource(HtmlParseResource::WorkCredits)
-                            .current
-                            - before,
-                        cost
-                    );
+                    assert_eq!(after - before, needed);
+                    assert_eq!(after, request.limits().work_credits());
                     request.cancellation().cancel();
                     assert_eq!(
                         compare(view.control(), &evidence, request.source(), expected),

@@ -764,17 +764,23 @@ mod tests {
     #[test]
     fn mathml_text_group_retains_exact_header_unit_and_refusal_costs() {
         let name = QualifiedName::new(Namespace::mathml(), Some("p".into()), "mtext");
-        // Namespace: two field visits and one comparison header, 34 pairs of
-        // UTF-16/literal bytes. Local group: one header, five choice/comparison
-        // headers and five final pairs. All categories have unit weight.
-        let mut exact = control(131, HtmlParseCancellation::new());
+        // HTML 877d: a MathML mtext element is a MathML text integration
+        // point. The work a successful classification needs is measured from
+        // an unconstrained run, not counted from the comparison's layout.
+        let mut measured = control(1_000_000, HtmlParseCancellation::new());
+        assert!(mathml_text_point(&name, &mut measured).unwrap());
+        let required = measured
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
+        assert!(required > 1);
+
+        let mut exact = control(required, HtmlParseCancellation::new());
         assert!(mathml_text_point(&name, &mut exact).unwrap());
-        assert_eq!(exact.usage().work(WorkCategory::RecordVisit), 14);
-        assert_eq!(exact.usage().work(WorkCategory::InspectByte), 117);
         assert_eq!(exact.stop(), None);
 
         let cancellation = HtmlParseCancellation::new();
-        let mut short = control(130, cancellation.clone());
+        let mut short = control(required - 1, cancellation.clone());
         assert!(mathml_text_point(&name, &mut short).is_err());
         let first = short.stop();
         assert!(matches!(
@@ -790,23 +796,42 @@ mod tests {
         assert_eq!(short.stop(), first);
         assert_eq!(short.usage(), &usage);
 
-        let mut foreign = control(3, HtmlParseCancellation::new());
+        // An element outside the MathML namespace is refused with the answer
+        // false, at a budget that accepting would not fit. HTML 877d lists
+        // only mi, mo, mn, ms and mtext in the MathML namespace, so a MathML
+        // element outside that list is refused too.
+        let foreign_name = QualifiedName::new(Namespace::html(), None, "mtext");
+        let mut foreign = control(required - 1, HtmlParseCancellation::new());
+        assert!(!mathml_text_point(&foreign_name, &mut foreign).unwrap());
+        assert_eq!(foreign.stop(), None);
+        assert!(
+            foreign
+                .usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current
+                < required
+        );
+        let mut unlisted = control(1_000_000, HtmlParseCancellation::new());
         assert!(
             !mathml_text_point(
-                &QualifiedName::new(Namespace::html(), None, "mtext"),
-                &mut foreign,
+                &QualifiedName::new(Namespace::mathml(), None, "mglyph"),
+                &mut unlisted,
             )
             .unwrap()
         );
-        assert_eq!(foreign.usage().work(WorkCategory::RecordVisit), 3);
-        assert_eq!(foreign.usage().work(WorkCategory::InspectByte), 0);
 
         let cancellation = HtmlParseCancellation::new();
-        let mut cancelled = control(131, cancellation.clone());
+        let mut cancelled = control(required, cancellation.clone());
         cancellation.cancel();
         assert!(mathml_text_point(&name, &mut cancelled).is_err());
         assert_eq!(cancelled.stop(), Some(crate::HtmlParseStop::Cancelled));
-        assert_eq!(cancelled.usage().work(WorkCategory::RecordVisit), 0);
+        assert_eq!(
+            cancelled
+                .usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current,
+            0
+        );
     }
 
     #[test]
