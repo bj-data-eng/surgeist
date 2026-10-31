@@ -498,3 +498,283 @@ fn unchanged_projected_size_preserves_observed_outer_extent() {
         })
     );
 }
+
+fn complete_geometry_capture(size: Size) -> HostEnvironment {
+    HostEnvironment {
+        native_scale: Some(scale(1.0)),
+        page_zoom: Some(scale(1.25)),
+        output: OutputDevice::Present(OutputResolution::Raster(scale(1.0))),
+        screen: Some(
+            ScreenMetrics::new(
+                Rect {
+                    origin: Point::default(),
+                    size: extent(1920.0, 1080.0),
+                },
+                None,
+                ScreenAreaSource::OutputDevice,
+                None,
+                None,
+            )
+            .unwrap(),
+        ),
+        viewport: Some(ViewportMetrics::new(size, ViewportSizes::fixed(size).unwrap()).unwrap()),
+        client_area: Some(
+            ClientWindowMetrics::new(Rect {
+                origin: Point { x: 100.0, y: 200.0 },
+                size,
+            })
+            .unwrap(),
+        ),
+        blending: Some(EnvironmentBlending::Opaque),
+        display_mode: Some(DisplayMode::Standalone),
+        input: Some(
+            InputCapabilities::new(
+                pointer(PointerAccuracy::Fine, true),
+                [pointer(PointerAccuracy::Fine, true)],
+            )
+            .unwrap(),
+        ),
+        navigation: Some(NavigationControls::Back),
+        preferences: UserPreferences {
+            color_scheme: Some(Theme::Dark),
+            reduced_motion: Some(ReductionPreference::Reduce),
+            ..UserPreferences::default()
+        },
+    }
+}
+
+#[derive(Default)]
+struct CaptureObserver {
+    snapshots: Vec<WindowSnapshot>,
+    coordinates: Vec<NativePointerCoordinates>,
+}
+
+impl Handler for CaptureObserver {
+    fn resize(&mut self, window: &mut Resize<'_>) -> Result<()> {
+        self.snapshots.push(window.state().clone());
+        Ok(())
+    }
+
+    fn input(&mut self, input: &mut Input<'_>) -> Result<()> {
+        if let InputEvent::Pointer(pointer) = input.event() {
+            self.coordinates
+                .push(pointer.native_coordinates(input.state())?);
+        }
+        self.snapshots.push(input.state().clone());
+        Ok(())
+    }
+}
+
+fn runner_with_geometry_capture() -> (testing::Runner<CaptureObserver>, Id) {
+    let mut runner = testing::Runner::new(CaptureObserver::default());
+    runner.startup(vec![open("capture").into()]).unwrap();
+    runner.resume();
+    let id = runner.host().window_id("capture").unwrap();
+    let snapshot = snapshot_with_observed_outer_extent(id);
+    runner.transition(
+        NativeEventTransition::resized(snapshot.metrics().clone())
+            .with_environment(complete_geometry_capture(extent(400.0, 300.0))),
+    );
+    (runner, id)
+}
+
+fn assert_geometry_capture_unavailable(environment: &HostEnvironment) {
+    assert_eq!(
+        environment.viewport, None,
+        "old viewport must not describe a new capture basis"
+    );
+    assert_eq!(environment.client_area, None);
+    assert_eq!(environment.native_scale, None);
+    assert_eq!(environment.page_zoom, None);
+    assert_eq!(environment.output, OutputDevice::Unavailable);
+    assert_eq!(environment.screen, None);
+    assert_eq!(environment.blending, None);
+    let original = complete_geometry_capture(extent(400.0, 300.0));
+    assert_eq!(environment.preferences, original.preferences);
+    assert_eq!(environment.input, original.input);
+    assert_eq!(environment.navigation, original.navigation);
+    assert_eq!(environment.display_mode, original.display_mode);
+}
+
+fn assert_size_command_invalidates_capture_basis(
+    command: impl FnOnce(Id) -> Command,
+    expected: Size,
+) {
+    let (mut runner, id) = runner_with_geometry_capture();
+    runner.dispatch(command(id));
+    assert!(runner.result().is_none());
+    let snapshot = runner.handler().snapshots.last().unwrap();
+    assert_eq!(snapshot.metrics().logical_size(), expected);
+    assert_geometry_capture_unavailable(snapshot.environment());
+}
+
+#[test]
+fn size_command_invalidates_geometry_capture_basis_before_resize_callback() {
+    assert_size_command_invalidates_capture_basis(
+        |id| Command::SetInnerSize {
+            id,
+            size: extent(800.0, 600.0),
+        },
+        extent(800.0, 600.0),
+    );
+}
+
+#[test]
+fn minimum_bounds_invalidate_geometry_capture_basis_before_resize_callback() {
+    assert_size_command_invalidates_capture_basis(
+        |id| Command::SetMinInnerSize {
+            id,
+            size: Some(extent(800.0, 600.0)),
+        },
+        extent(800.0, 600.0),
+    );
+}
+
+#[test]
+fn maximum_bounds_invalidate_geometry_capture_basis_before_resize_callback() {
+    assert_size_command_invalidates_capture_basis(
+        |id| Command::SetMaxInnerSize {
+            id,
+            size: Some(extent(200.0, 150.0)),
+        },
+        extent(200.0, 150.0),
+    );
+}
+
+fn inject_capture_pointer(runner: &mut testing::Runner<CaptureObserver>, id: Id) {
+    runner.transition(NativeEventTransition::mouse_moved(
+        id,
+        Point { x: 10.0, y: 20.0 },
+        PhysicalPoint { x: 10, y: 20 },
+        None,
+        ModifierState::default(),
+    ));
+}
+
+#[test]
+fn position_command_invalidates_capture_basis_before_pointer_callback() {
+    let (mut runner, id) = runner_with_geometry_capture();
+    runner.dispatch(Command::SetPosition {
+        id,
+        position: Point { x: 600.0, y: 700.0 },
+    });
+    inject_capture_pointer(&mut runner, id);
+    assert!(runner.result().is_none());
+    let coordinates = runner.handler().coordinates.last().unwrap();
+    assert_eq!(coordinates.client(), Some(Point { x: 10.0, y: 20.0 }));
+    assert_eq!(
+        coordinates.desktop(),
+        None,
+        "old client origin cannot locate a moved window"
+    );
+    assert_eq!(coordinates.screen(), None);
+    let snapshot = runner.handler().snapshots.last().unwrap();
+    assert_eq!(snapshot.position(), Some(Point { x: 600.0, y: 700.0 }));
+    assert_geometry_capture_unavailable(snapshot.environment());
+}
+
+#[test]
+fn projected_size_invalidates_geometry_capture_basis() {
+    let mut snapshot = snapshot_with_observed_outer_extent(Id::from_u64(1))
+        .with_environment(complete_geometry_capture(extent(400.0, 300.0)));
+    crate::planning::set_snapshot_size(&mut snapshot, extent(800.0, 600.0)).unwrap();
+    assert_geometry_capture_unavailable(snapshot.environment());
+}
+
+#[test]
+fn scale_outer_extent_and_safe_area_changes_invalidate_capture_basis() {
+    let id = Id::from_u64(1);
+    let original = snapshot_with_observed_outer_extent(id);
+    let scaled = Metrics::from_physical_size(id, original.metrics().physical_size(), 2.0).unwrap();
+    let outer_changed = original
+        .metrics()
+        .clone()
+        .with_outer_geometry(original.position(), Some(extent(420.0, 340.0)))
+        .unwrap();
+    let safe_area_changed = original
+        .metrics()
+        .clone()
+        .with_safe_area(Insets {
+            top: 10.0,
+            ..Insets::default()
+        })
+        .unwrap();
+    for metrics in [scaled, outer_changed, safe_area_changed] {
+        let mut snapshot = original
+            .clone()
+            .with_environment(complete_geometry_capture(extent(400.0, 300.0)));
+        WindowStatePatch::metrics(metrics, MetricsEvent::Resized)
+            .apply(&mut snapshot)
+            .unwrap();
+        assert_geometry_capture_unavailable(snapshot.environment());
+    }
+}
+
+#[test]
+fn unchanged_metrics_preserve_geometry_capture_basis() {
+    let (mut runner, id) = runner_with_geometry_capture();
+    let original = runner.handler().snapshots.last().unwrap().clone();
+    runner.transition(NativeEventTransition::resized(original.metrics().clone()));
+    assert!(runner.result().is_none());
+    assert_eq!(runner.handler().snapshots.last().unwrap(), &original);
+    assert_eq!(
+        runner.host().registry().get(id).unwrap().environment(),
+        original.environment()
+    );
+}
+
+#[test]
+fn unchanged_position_preserves_geometry_capture_basis_and_pointer_origin() {
+    let (mut runner, id) = runner_with_geometry_capture();
+    runner.dispatch(Command::SetPosition {
+        id,
+        position: Point { x: 20.0, y: 40.0 },
+    });
+    inject_capture_pointer(&mut runner, id);
+    assert!(runner.result().is_none());
+    assert_eq!(
+        runner.handler().coordinates.last().unwrap().desktop(),
+        Some(Point { x: 110.0, y: 220.0 })
+    );
+    assert_eq!(
+        runner.handler().snapshots.last().unwrap().environment(),
+        &complete_geometry_capture(extent(400.0, 300.0))
+    );
+}
+
+#[test]
+fn explicit_fresh_environment_replaces_capture_basis_atomically() {
+    let (mut runner, id) = runner_with_geometry_capture();
+    let fresh = complete_geometry_capture(extent(800.0, 600.0));
+    let metrics = Metrics::from_physical_size(
+        id,
+        PhysicalSize {
+            width: 800,
+            height: 600,
+        },
+        1.0,
+    )
+    .unwrap();
+    runner.transition(
+        NativeEventTransition::resized(metrics.clone()).with_environment(fresh.clone()),
+    );
+    assert!(runner.result().is_none());
+    let committed = runner.handler().snapshots.last().unwrap();
+    assert_eq!(committed.metrics(), &metrics);
+    assert_eq!(committed.environment(), &fresh);
+    let mut rejected = committed.clone();
+    let before = rejected.clone();
+    assert!(
+        NativeEventTransition::moved(
+            id,
+            Point {
+                x: f64::NAN,
+                y: 0.0
+            }
+        )
+        .with_environment(HostEnvironment::default())
+        .apply(&mut rejected)
+        .is_err()
+    );
+    assert_eq!(rejected, before);
+}
