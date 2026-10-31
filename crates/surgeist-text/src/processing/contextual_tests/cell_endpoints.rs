@@ -1,4 +1,8 @@
 //! Genuine Inline endpoints remain exterior to accepted combined Cells.
+#[cfg(feature = "text-accessibility")]
+#[path = "cell_accessibility.rs"]
+mod accessibility;
+
 use super::*;
 use skrifa::{GlyphId, MetadataProvider, raw::TableProvider};
 use std::sync::Arc;
