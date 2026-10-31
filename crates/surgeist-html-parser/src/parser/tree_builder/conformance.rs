@@ -6653,6 +6653,94 @@ mod comment_diagnostic_corpus {
         }
 
         #[test]
+        fn html_context_fragment_after_body_comment_is_a_fragment_child() {
+            // HTML877d "after body" comment rule: insert the comment given (the
+            // first element in the stack of open elements, the html element,
+            // null). In the fragment case that element is the root whose
+            // children are the fragment. The expected tree follows that rule,
+            // not current output.
+            let input = "</body><!--abc-->";
+            let raw = "#data\n</body><!--abc-->\n#errors\n#document-fragment\nhtml\n#document\n| <head>\n| <body>\n| <!-- abc -->\n";
+            let fixture = decode(raw).unwrap().into_iter().next().unwrap();
+            let expected = parsed_expected(&fixture, HtmlDocumentMode::NoQuirks).unwrap();
+            for utf16 in [false, true] {
+                check_fragment(html_context_request("html", input, utf16), &expected)
+                    .unwrap_or_else(|error| panic!("utf16={utf16}: {error}"));
+            }
+        }
+
+        #[test]
+        fn html_context_fragment_ignores_after_body_html_end_tags() {
+            // HTML877d "after body", an end tag whose tag name is "html": "If
+            // the parser's fragment context element is non-null, this is a
+            // parse error; ignore the token." The mode stays after body, so a
+            // later comment goes to the html root and later text reprocesses
+            // in body. Expected trees follow that rule, not current output.
+            for (input, raw, ignored) in [
+                (
+                    "</html><!--abc-->",
+                    "#data\n</html><!--abc-->\n#errors\n#document-fragment\nhtml\n#document\n| <head>\n| <body>\n| <!-- abc -->\n",
+                    1,
+                ),
+                (
+                    "</html></html><!--abc-->",
+                    "#data\n</html></html><!--abc-->\n#errors\n#document-fragment\nhtml\n#document\n| <head>\n| <body>\n| <!-- abc -->\n",
+                    2,
+                ),
+                (
+                    "</html>x",
+                    "#data\n</html>x\n#errors\n#document-fragment\nhtml\n#document\n| <head>\n| <body>\n|   \"x\"\n",
+                    1,
+                ),
+            ] {
+                let fixture = decode(raw).unwrap().into_iter().next().unwrap();
+                let expected = parsed_expected(&fixture, HtmlDocumentMode::NoQuirks).unwrap();
+                for utf16 in [false, true] {
+                    check_fragment(html_context_request("html", input, utf16), &expected)
+                        .unwrap_or_else(|error| panic!("{input:?} utf16={utf16}: {error}"));
+                    let report = html_context_request("html", input, utf16)
+                        .parse()
+                        .unwrap_or_else(|error| panic!("{input:?} utf16={utf16}: {error:?}"));
+                    let diagnostics = report.diagnostics();
+                    let mut count = 0;
+                    for index in 0..diagnostics.len() {
+                        let (record, _) = diagnostics.retained_record(index).unwrap();
+                        if record.rule().branch() == "after-body/html-end/fragment-case" {
+                            assert_eq!(
+                                record.kind(),
+                                crate::HtmlParseDiagnosticKind::Tree(
+                                    crate::HtmlTreeDiagnostic::UnexpectedEndTag
+                                ),
+                                "{input:?}"
+                            );
+                            assert_eq!(record.rule().anchor(), "parsing-main-afterbody");
+                            count += 1;
+                        }
+                    }
+                    assert_eq!(count, ignored, "{input:?} utf16={utf16}");
+                }
+            }
+        }
+
+        #[test]
+        fn document_after_body_html_end_tag_still_enters_after_after_body() {
+            // Without a fragment context element the same token switches to
+            // "after after body", whose comment rule inserts into the Document.
+            let input = "</html><!--abc-->";
+            let raw = "#data\n</html><!--abc-->\n#errors\n#document\n| <html>\n|   <head>\n|   <body>\n| <!-- abc -->\n";
+            let fixture = decode(raw).unwrap().into_iter().next().unwrap();
+            let expected = parsed_expected(&fixture, HtmlDocumentMode::Quirks).unwrap();
+            for utf16 in [false, true] {
+                let request = HtmlDocumentParseRequest::offline(
+                    source(input, utf16),
+                    super::super::super::tests::limits(1_000),
+                );
+                check(&request, &expected)
+                    .unwrap_or_else(|error| panic!("utf16={utf16}: {error:?}"));
+            }
+        }
+
+        #[test]
         fn initial_lf_is_ignored_only_when_it_is_the_next_token() {
             // HTML877d pre/listing and textarea start tags: "If the next token is
             // a U+000A LINE FEED (LF) character token, then ignore that token and

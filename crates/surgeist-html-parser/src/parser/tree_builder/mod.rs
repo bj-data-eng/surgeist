@@ -480,6 +480,18 @@ impl LocationKernel {
         self.at(0, control)
     }
 
+    /// The topmost stack element as an explicit insertion parent. In the
+    /// fragment case its children are the fragment root's, so the parent is
+    /// redirected exactly as an adjusted location targeting it would be.
+    fn first_as_parent(&self, control: &mut ParseControl) -> Result<ParserNode, KernelError> {
+        self.require(control)?;
+        let Some(root_target) = &self.root_target else {
+            return self.at(0, control);
+        };
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        Ok(copy_node(root_target, control)?)
+    }
+
     /// Namespace-qualified membership, not ordinary tree ancestry or scope.
     fn contains_html_template(&self, control: &mut ParseControl) -> Result<bool, KernelError> {
         self.require(control)?;
