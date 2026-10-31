@@ -729,3 +729,6 @@ fn collapsed_space_cell_interaction_keeps_the_original_source_without_a_provider
 
 #[path = "combined_cell_resources.rs"]
 mod resources;
+
+#[path = "combined_cell_widths.rs"]
+mod widths;
