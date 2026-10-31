@@ -4,6 +4,10 @@
 
 use super::*;
 
+#[cfg(feature = "text-accessibility")]
+#[path = "combined_cell_accessibility.rs"]
+mod accessibility;
+
 #[path = "combined_cell_range.rs"]
 mod ranges;
 
