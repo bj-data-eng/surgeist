@@ -13,6 +13,9 @@ mod guard_cases;
 #[path = "combined_cell_observation_resources.rs"]
 mod resources;
 
+#[path = "combined_cell_allocated_empty.rs"]
+mod allocated_empty;
+
 fn prepared_cell(
     text: &str,
 ) -> (

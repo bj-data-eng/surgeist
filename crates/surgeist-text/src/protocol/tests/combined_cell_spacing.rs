@@ -4,6 +4,9 @@
 
 use super::*;
 
+#[path = "combined_cell_allocated_provider_empty.rs"]
+mod allocated_provider_empty;
+
 fn tracked_empty_cell(
     letter_spacing: f64,
 ) -> (System, Arc<ProcessedSource>, AnalyzedSource, Vec<u8>) {

@@ -1,6 +1,9 @@
 //! Named retained-subset qualification of genuine mixed ordinary/Cell tracking.
 //! Private Graph script/region buffers are outside these storage assertions;
 //! their complete inventory remains an owning-source review obligation.
+#[path = "combined_cell_allocated_tracking.rs"]
+mod allocated;
+
 use super::*;
 use crate::engine::{
     layout::data::ShapedData,
