@@ -6,7 +6,7 @@ id = "surgeist-html::unicode-document"
 owner = "surgeist-html"
 binary = "html-document-worker"
 properties = ["surgeist-html::source-preservation", "surgeist-html::native-report", "surgeist-html::diagnostic-provenance", "surgeist-html::terminal-ownership", "surgeist-html::immutable-after-cancel", "surgeist-html::literal-semantics"]
-source_references = ["references/SOURCE-EDITIONS.md#pinned-html-language-baseline", "crates/surgeist-html/src/request.rs", "crates/surgeist-html/src/source.rs", "crates/surgeist-html/src/construction/parser_session/read.rs", "crates/surgeist-html/tests/public_parse.rs", "crates/surgeist-html/fuzz/README.md"]
+source_references = ["references/SOURCE-EDITIONS.md#pinned-html-language-baseline", "crates/surgeist-html-parser/src/request.rs", "crates/surgeist-html-parser/src/source.rs", "crates/surgeist-html-parser/src/construction/read.rs", "crates/surgeist-html-parser/tests/parser/parse/reports.rs", "crates/surgeist-html/fuzz/README.md"]
 format = { identity = "surgeist-html::unicode-parse", revision = 1 }
 generator_identity = { identity = "surgeist-html::unicode-document", revision = 1 }
 encoding = "structured"
@@ -20,7 +20,7 @@ id = "surgeist-html::unicode-fragment"
 owner = "surgeist-html"
 binary = "html-fragment-worker"
 properties = ["surgeist-html::source-preservation", "surgeist-html::native-report", "surgeist-html::diagnostic-provenance", "surgeist-html::terminal-ownership", "surgeist-html::immutable-after-cancel", "surgeist-html::literal-semantics"]
-source_references = ["references/SOURCE-EDITIONS.md#pinned-html-language-baseline", "crates/surgeist-html/src/request.rs", "crates/surgeist-html/src/source.rs", "crates/surgeist-html/src/construction/parser_session/read.rs", "crates/surgeist-html/tests/public_parse.rs", "crates/surgeist-html/fuzz/README.md"]
+source_references = ["references/SOURCE-EDITIONS.md#pinned-html-language-baseline", "crates/surgeist-html-parser/src/request.rs", "crates/surgeist-html-parser/src/source.rs", "crates/surgeist-html-parser/src/construction/read.rs", "crates/surgeist-html-parser/tests/parser/parse/reports.rs", "crates/surgeist-html/fuzz/README.md"]
 format = { identity = "surgeist-html::unicode-parse", revision = 1 }
 generator_identity = { identity = "surgeist-html::unicode-fragment", revision = 1 }
 encoding = "structured"

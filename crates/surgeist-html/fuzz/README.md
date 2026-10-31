@@ -29,7 +29,7 @@ Canonical revision 1 is little endian:
 | 164..end | exactly that payload, with no trailing bytes |
 
 Lanes are 0 arbitrary/general, 1 pre-cancelled, 2 nonempty source denial,
-3 work denial, 4 independent literal (ID 0..7), 5 missing captured scripting.
+3 work denial, 4 independent literal (ID 0..8), 5 missing captured scripting.
 The two denial lanes keep other caps at the documented generous envelope;
 literals require their exact input and that envelope. General cases can lower
 any cap through the checked constructor. A case always preserves all nineteen
@@ -70,11 +70,11 @@ including isolated surrogates. No lossy UTF8 conversion occurs.
 
 Literal seeds independently cover duplicate attribute first occurrence/order,
 references, CRLF, literal BOM, isolated surrogate input, NUL recovery, qualified
-SVG attributes, template association, HTML 877d processing instructions,
+SVG attributes, template association, HTML 877d processing instructions ending in `?>` and in `>`,
 malformed paragraph recovery and foster parenting. Expected native values and
 selected exact source/diagnostic intervals are handwritten from the pinned HTML
 contract and existing public source-qualified examples, not sampled parser
-output. Each target has eight canonical `.case` files in its seed directory.
+output. Each target has nine canonical `.case` files in its seed directory.
 The descriptor records both directories for provider hashing; select the matching
 target directory for replay/check. No fabricated defect regression is bundled.
 
@@ -116,7 +116,7 @@ cargo fmt --all -- --check
 ```
 
 Use bounded `pisct run` and an isolated target for concurrent package changes.
-Tests exercise actual workers, registry, strict codec, all 16 literal successes,
+Tests exercise actual workers, registry, strict codec, all 18 literal successes,
 resource/cancel evidence, canonical replay/reduction, and (when selected) finite
 property and coverage drivers. Coverage-driver parity is not an instrumented
 libFuzzer campaign. The normal worker's capture precedes evaluator execution.

@@ -67,7 +67,7 @@ impl CaseTarget for UnicodeTarget {
         // entropy preserves all u16 values; odd trailing byte has high byte 0.
         let choice = input.first().copied().unwrap_or(0);
         if choice % 4 == 0 {
-            return self.literal((choice / 4) % 8).map(Generation::Generated);
+            return self.literal((choice / 4) % 9).map(Generation::Generated);
         }
         let raw = input.get(1..).unwrap_or_default();
         let units = if choice % 4 == 1 {
