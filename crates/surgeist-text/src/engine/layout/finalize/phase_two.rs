@@ -25,6 +25,9 @@ pub(super) struct AllocatedMeasurements {
     formatted_usage: FormattedLineUsage,
     pub(super) alignment: InlineMeasure,
     fit: InlineMeasure,
+    margin_fit: crate::MarginEdgeFit,
+    margin_minimum: crate::MarginEdgeFit,
+    margin_maximum: crate::MarginEdgeFit,
     minimum: InlineMeasure,
     maximum: InlineMeasure,
     edges: AllocatedEdges,
@@ -81,6 +84,9 @@ impl AllocatedMeasurements {
         Ok(LineMeasurements {
             formatted_usage: self.formatted_usage,
             fit: self.fit,
+            margin_fit: self.margin_fit,
+            margin_minimum: self.margin_minimum,
+            margin_maximum: self.margin_maximum,
             alignment: self.alignment,
             minimum: self.minimum,
             maximum: self.maximum,
@@ -624,11 +630,12 @@ fn measure(
     exclusions: &[Exclusion],
     baseline: Baseline,
     ledger: &mut Ledger,
-) -> Result<InlineMeasure> {
+) -> Result<(InlineMeasure, crate::MarginEdgeFit)> {
     account::work(ledger, shaped.items.len())?;
     let mut advance = baseline.raw_advance.unwrap_or(0.0);
     let mut bounds = None;
     let mut anchor = 0.0;
+    let mut css_composed = false;
     for item in &shaped.items {
         let contribution = match *item {
             ShapedItem::Cell(cell) => {
@@ -671,13 +678,15 @@ fn measure(
                 }
             }
             ShapedItem::InlineBox { occurrence, .. } => {
+                let (flow, _, _, fit) = inflow_allocation(atomics[&occurrence])?;
+                css_composed |= matches!(fit, crate::AtomicFitAllocation::CssMarginBox(_));
                 if baseline.raw_advance.is_some() {
                     0.0
                 } else {
                     super::super::super::spacing::character::atomic_advance(
                         shaped,
                         occurrence,
-                        inflow_allocation(atomics[&occurrence])?.0.advance,
+                        flow.advance,
                     )?
                 }
             }
@@ -701,6 +710,8 @@ fn measure(
         include(&mut bounds, anchor, anchor)
     }
     let mut pen = 0.0;
+    let mut fit_flow = 0.0;
+    let mut opaque = None;
     // Finalization has already admitted this exact selected permutation. A
     // measurement view changes exclusions, never the retained traversal.
     for &ordinal in &selected.basis.order {
@@ -732,22 +743,23 @@ fn measure(
                 }
             }
             ShapedItem::InlineBox { occurrence, .. } => {
-                let flow = inflow_allocation(atomics[&occurrence])?.0;
-                include(
-                    &mut bounds,
-                    add(
-                        "occupied atomic start",
-                        TextNumericPhase::Finalization,
-                        pen,
-                        flow.occupied_start,
-                    )?,
-                    add(
-                        "occupied atomic end",
-                        TextNumericPhase::Finalization,
-                        pen,
-                        flow.occupied_end,
-                    )?,
-                );
+                let (flow, _, _, fit) = inflow_allocation(atomics[&occurrence])?;
+                let left = add(
+                    "occupied atomic start",
+                    TextNumericPhase::Finalization,
+                    pen,
+                    flow.occupied_start,
+                )?;
+                let right = add(
+                    "occupied atomic end",
+                    TextNumericPhase::Finalization,
+                    pen,
+                    flow.occupied_end,
+                )?;
+                include(&mut bounds, left, right);
+                if css_composed && matches!(fit, crate::AtomicFitAllocation::NativeOccupied) {
+                    include(&mut opaque, left, right);
+                }
                 super::super::super::spacing::character::atomic_advance(
                     shaped,
                     occurrence,
@@ -766,6 +778,31 @@ fn measure(
                 n
             }
         };
+        if css_composed {
+            // This view's actual retained contribution, in the canonical visual
+            // traversal. Geometry and Native opaque positions above remain raw.
+            let delta = match shaped.items[ordinal] {
+                ShapedItem::TextCluster(i)
+                    if shaped.clusters[i].whitespace != Whitespace::Newline =>
+                {
+                    let excluded =
+                        exclusions[i].excluded(positions[i], shaped.clusters[i].advance)?;
+                    add(
+                        "CSS-composed retained flow",
+                        TextNumericPhase::Finalization,
+                        shaped.clusters[i].advance,
+                        -excluded,
+                    )?
+                }
+                _ => contribution,
+            };
+            fit_flow = add(
+                "CSS-composed visual flow",
+                TextNumericPhase::Finalization,
+                fit_flow,
+                delta,
+            )?;
+        }
         pen = add(
             "occupied edge flow",
             TextNumericPhase::Finalization,
@@ -774,11 +811,17 @@ fn measure(
         )?;
     }
     let (occupied_start, occupied_end) = bounds.unwrap_or((0.0, 0.0));
-    Ok(InlineMeasure {
+    let raw = InlineMeasure {
         advance,
         occupied_start,
         occupied_end,
-    })
+    };
+    let admission = if css_composed {
+        crate::MarginEdgeFit::css(fit_flow, opaque)?
+    } else {
+        crate::MarginEdgeFit::native(raw)?
+    };
+    Ok((raw, admission))
 }
 
 /// Response attribution uses the same actual natural causes/exclusion algebra
@@ -1062,7 +1105,7 @@ pub(super) fn allocated(
         },
         fit_anchor: false,
     };
-    let fit = measure(
+    let (fit, margin_fit) = measure(
         selected,
         shaped,
         atomics,
@@ -1074,7 +1117,7 @@ pub(super) fn allocated(
         },
         ledger,
     )?;
-    let minimum = measure(
+    let (minimum, margin_minimum) = measure(
         selected,
         shaped,
         atomics,
@@ -1083,7 +1126,7 @@ pub(super) fn allocated(
         baseline,
         ledger,
     )?;
-    let maximum = measure(
+    let (maximum, margin_maximum) = measure(
         selected,
         shaped,
         atomics,
@@ -1092,7 +1135,7 @@ pub(super) fn allocated(
         baseline,
         ledger,
     )?;
-    let alignment = measure(
+    let (alignment, _) = measure(
         selected,
         shaped,
         atomics,
@@ -1180,6 +1223,9 @@ pub(super) fn allocated(
         AllocatedEdges::Outer(outer)
     };
     Ok(AllocatedMeasurements {
+        margin_fit,
+        margin_minimum,
+        margin_maximum,
         fit,
         alignment,
         minimum,

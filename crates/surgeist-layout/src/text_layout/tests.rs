@@ -10,6 +10,10 @@ use surgeist_text::{ParagraphBaseDirection, ParagraphControlKind, Source, Wrap};
 
 #[path = "tests/atomic_hyphen_receivers.rs"]
 mod atomic_hyphen_receivers;
+#[path = "tests/atomic_margin_fit.rs"]
+mod atomic_margin_fit;
+#[path = "tests/atomic_numeric_intrinsic.rs"]
+mod atomic_numeric_intrinsic;
 #[path = "tests/auto_phrase.rs"]
 mod auto_phrase;
 #[path = "tests/automatic_phrase.rs"]

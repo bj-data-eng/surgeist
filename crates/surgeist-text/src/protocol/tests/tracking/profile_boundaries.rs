@@ -89,6 +89,7 @@ fn prepared_raw(system: &mut System, source: &Source, style: Style) -> crate::Re
 
 fn flow() -> AtomicLineAllocation {
     AtomicLineAllocation::InFlow {
+        fit: crate::AtomicFitAllocation::NativeOccupied,
         flow: AtomicFlowAllocation {
             advance: 10.0,
             before_baseline: 8.0,

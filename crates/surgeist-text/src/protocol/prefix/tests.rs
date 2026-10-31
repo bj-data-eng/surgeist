@@ -451,6 +451,7 @@ fn finalized_prefix_optional_unit_failure_does_not_poison_other_actual_queries()
         .unwrap()
         .handle();
     let allocation = AtomicLineAllocation::InFlow {
+        fit: crate::AtomicFitAllocation::NativeOccupied,
         flow: AtomicFlowAllocation {
             advance: -TEXT_ADVANCE,
             before_baseline: 0.0,

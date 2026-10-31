@@ -10,6 +10,9 @@ use crate::engine::PreparedData;
 use crate::{Alignment, FontCatalogueIdentity, Point, Range, Rect, Result};
 use selection::SelectedData;
 
+mod atomic_fit;
+pub use atomic_fit::{AtomicFitAllocation, CssMarginBoxFit};
+
 mod alignment;
 pub use alignment::LineAlignmentInsets;
 
@@ -68,7 +71,7 @@ pub use hyphenation::{
 };
 pub use measurements::{
     InlineMeasure, LineEdgeDisposition, LineEdgeOwner, LineEdgeSide, LineEdgeUnitView,
-    LineMeasurements,
+    LineMeasurements, MarginEdgeFit, MarginEdgeFitAuthority,
 };
 pub use paragraph::{ParagraphBaseDirection, ParagraphInput, ParagraphTerminalEdge};
 pub use prepared::PreparedBreakKind;
@@ -429,6 +432,7 @@ pub struct AtomicBoxAllocation {
 pub enum AtomicLineAllocation {
     InFlow {
         flow: AtomicFlowAllocation,
+        fit: AtomicFitAllocation,
         box_geometry: AtomicBoxAllocation,
         alignment: LineBoxAlignment,
     },

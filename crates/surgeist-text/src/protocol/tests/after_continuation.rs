@@ -1596,6 +1596,7 @@ fn transparent_oof_does_not_split_the_actual_mixed_in_flow_rtl_run() {
                         } else {
                             let width = a.view().original_box().size().width;
                             AtomicLineAllocation::InFlow {
+                                fit: crate::AtomicFitAllocation::NativeOccupied,
                                 flow: AtomicFlowAllocation {
                                     advance: width,
                                     before_baseline: 8.0,

@@ -48,6 +48,7 @@ fn atomic_input() -> ParagraphInput {
 }
 fn allocation(shift: f64) -> AtomicLineAllocation {
     AtomicLineAllocation::InFlow {
+        fit: crate::AtomicFitAllocation::NativeOccupied,
         flow: AtomicFlowAllocation {
             advance: 14.0,
             before_baseline: 2.0,

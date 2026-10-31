@@ -1329,6 +1329,7 @@ fn deferred_terminal_failure_keeps_real_atomic_allocation_and_prior_result_retry
             .map(|atomic| AtomicAllocation {
                 occurrence: atomic.handle(),
                 allocation: AtomicLineAllocation::InFlow {
+                    fit: crate::AtomicFitAllocation::NativeOccupied,
                     flow: AtomicFlowAllocation {
                         advance: 10.0,
                         before_baseline: 8.0,

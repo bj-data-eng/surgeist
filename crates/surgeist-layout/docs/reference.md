@@ -772,7 +772,15 @@ and overflow geometry. The adapter converts those boxes to Text's local
 inline/line-under cells before finalization, then maps the accepted geometry
 back once. A physical 6×14 child therefore uses a local 14×6 cell without
 rotating its content. Signed margins and flow advance remain separate from
-occupied bounds. Relative offsets place the physical box without being added
+occupied bounds. The adapter carries explicit CSS margin-box fitting authority
+from actual used atomic margins and size. Text returns a separate
+[margin-edge admission observation](../../surgeist-text/docs/atomic-fit.md);
+finite, intrinsic and conditional fitting compose actual signed indent with
+that result once, then compare against the full preindent band while preserving
+raw occupied and rendered geometry. Block intrinsic inline demand follows the
+accepted line report; actual border/content/scroll extents remain independent.
+Native opaque requirements retain their
+own authority even beside a CSS margin box. Relative offsets place the physical box without being added
 to its signed flow advance; changed canonical box edges still reenter fitting.
 
 Named Central alignment uses the existing child first/last resolver and its

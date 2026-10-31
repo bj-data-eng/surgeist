@@ -436,6 +436,7 @@ fn real_atomic_and_positive_endpoint_allocations_follow_the_same_alignment_trans
     let controls = p.control_views().map(|c| c.handle()).collect::<Vec<_>>();
     assert_eq!(controls.len(), 2);
     let allocation = AtomicLineAllocation::InFlow {
+        fit: crate::AtomicFitAllocation::NativeOccupied,
         flow: AtomicFlowAllocation {
             advance: 20.0,
             before_baseline: 8.0,

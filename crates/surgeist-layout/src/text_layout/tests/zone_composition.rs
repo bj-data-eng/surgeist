@@ -10,9 +10,9 @@ const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fon
 
 /// Actual rectangular shape x=0..40/y=10..30 in a leading 40x30 float.
 /// In particular [0,10) does not intersect it; [0,20) does.
-struct RecessedShape<S: LayoutScalar> {
-    tree: PublicLayoutTreeOf<S>,
-    queries: std::cell::RefCell<Vec<(FloatExclusionQueryOf<S>, bool)>>,
+pub(super) struct RecessedShape<S: LayoutScalar> {
+    pub(super) tree: PublicLayoutTreeOf<S>,
+    pub(super) queries: std::cell::RefCell<Vec<(FloatExclusionQueryOf<S>, bool)>>,
 }
 
 impl<S: LayoutScalar> Traverse for RecessedShape<S> {

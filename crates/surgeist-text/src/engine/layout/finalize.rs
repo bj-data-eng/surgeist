@@ -638,7 +638,7 @@ fn execute(
                     .get(&occurrence)
                     .copied()
                     .ok_or_else(|| invalid("selected atomic has no admitted allocation"))?;
-                let (flow, geometry, alignment) = inflow_allocation(allocation)?;
+                let (flow, geometry, alignment, fit) = inflow_allocation(allocation)?;
                 let delta = atomic_scope_displacement(
                     &selected,
                     &scopes,
@@ -733,6 +733,7 @@ fn execute(
                         following_gap: shaped.atomic_gaps.get(&occurrence).copied().unwrap_or(0.0),
                         geometry: FinalizedBoxGeometry::InFlow {
                             flow,
+                            fit,
                             alignment,
                             box_geometry: geometry,
                             rect,
@@ -1998,13 +1999,15 @@ fn inflow_allocation(
     crate::protocol::AtomicFlowAllocation,
     crate::protocol::AtomicBoxAllocation,
     LineBoxAlignment,
+    crate::AtomicFitAllocation,
 )> {
     match allocation.allocation {
         crate::protocol::AtomicLineAllocation::InFlow {
             flow,
             box_geometry,
             alignment,
-        } => Ok((flow, box_geometry, alignment)),
+            fit,
+        } => Ok((flow, box_geometry, alignment, fit)),
         crate::protocol::AtomicLineAllocation::OutOfFlow => {
             Err(protocol_error(ProtocolError::InvalidAtomicGeometry {
                 occurrence: allocation.occurrence.index,
@@ -2830,7 +2833,7 @@ fn native_metrics_scoped(
     }
     for item in &shaped.items {
         if let ShapedItem::InlineBox { occurrence, .. } = *item {
-            let (flow, _, alignment) = inflow_allocation(
+            let (flow, _, alignment, _) = inflow_allocation(
                 atomics
                     .get(&occurrence)
                     .copied()
@@ -3753,6 +3756,7 @@ mod tests {
                     occurrence: view.handle(),
                     allocation: if inflow {
                         AtomicLineAllocation::InFlow {
+                            fit: crate::AtomicFitAllocation::NativeOccupied,
                             alignment: LineBoxAlignment::Baseline,
                             flow: AtomicFlowAllocation {
                                 advance: 5.0,
@@ -3953,6 +3957,7 @@ mod tests {
                 flow,
                 box_geometry,
                 alignment: actual,
+                ..
             } = &mut request.atomics[0].allocation
             else {
                 panic!("the actual captured box is in-flow")
@@ -4203,6 +4208,7 @@ mod tests {
                 atomics: vec![AtomicAllocation {
                     occurrence: occurrence.clone(),
                     allocation: AtomicLineAllocation::InFlow {
+                        fit: crate::AtomicFitAllocation::NativeOccupied,
                         // Four-unit border box, internal baseline3, margins-10/-10:
                         // before=-10+3=-7; after=(4-3)-10=-9.
                         flow: AtomicFlowAllocation {

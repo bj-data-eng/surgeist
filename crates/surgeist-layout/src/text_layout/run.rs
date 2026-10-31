@@ -1307,17 +1307,19 @@ fn initial_allocation<Node: Copy + Eq, S: LayoutScalar>(
         .occurrence
         .clone();
     let item = atomic.item;
+    let (flow, fit) = flow(
+        frame,
+        item,
+        item.size.width.to_f64(),
+        item.size.height.to_f64(),
+        frame.atomic_baseline(item)?,
+    )?;
     Ok(AtomicAllocation {
         occurrence,
         allocation: AtomicLineAllocation::InFlow {
+            fit,
             alignment: alignment(item.alignment)?,
-            flow: flow(
-                frame,
-                item,
-                item.size.width.to_f64(),
-                item.size.height.to_f64(),
-                frame.atomic_baseline(item)?,
-            )?,
+            flow,
             box_geometry: initial_box(frame, atomic)?,
         },
     })
@@ -1372,7 +1374,7 @@ fn flow<S: LayoutScalar>(
     width: f64,
     height: f64,
     baseline: f64,
-) -> Result<AtomicFlowAllocation, FitError> {
+) -> Result<(AtomicFlowAllocation, surgeist_text::AtomicFitAllocation), FitError> {
     let (left, right, over, under, inline, cross) = if frame.vertical_cell() {
         (
             item.margin.top,
@@ -1394,18 +1396,23 @@ fn flow<S: LayoutScalar>(
     };
     let left = left.to_f64();
     let right = right.to_f64();
-    let advance = add(add(left, inline)?, right)?;
-    Ok(AtomicFlowAllocation {
-        advance,
-        before_baseline: add(over.to_f64(), baseline)?,
-        after_baseline: if item.first_baseline.is_some() {
-            add(cross - baseline, under.to_f64())?
-        } else {
-            0.0
+    let css = surgeist_text::CssMarginBoxFit::try_new(left, inline, right)?;
+    let advance = css.advance();
+    let (occupied_start, occupied_end) = css.occupied_inline_bounds();
+    Ok((
+        AtomicFlowAllocation {
+            advance,
+            before_baseline: add(over.to_f64(), baseline)?,
+            after_baseline: if item.first_baseline.is_some() {
+                add(cross - baseline, under.to_f64())?
+            } else {
+                0.0
+            },
+            occupied_start,
+            occupied_end,
         },
-        occupied_start: 0.0f64.min(left).min(advance),
-        occupied_end: 0.0f64.max(add(left, inline)?).max(advance),
-    })
+        surgeist_text::AtomicFitAllocation::CssMarginBox(css),
+    ))
 }
 
 fn canonical_allocations<Node: Copy + Eq, S: LayoutScalar>(
@@ -1500,11 +1507,13 @@ fn canonical_allocations<Node: Copy + Eq, S: LayoutScalar>(
             } else {
                 finite(actual_baseline - top)?
             };
+            let (flow, fit) = flow(frame, item, width, height, baseline_over)?;
             Ok(AtomicAllocation {
                 occurrence: slot.occurrence,
                 allocation: AtomicLineAllocation::InFlow {
+                    fit,
                     alignment: alignment(item.alignment)?,
-                    flow: flow(frame, item, width, height, baseline_over)?,
+                    flow,
                     box_geometry: AtomicBoxAllocation {
                         border: frame.atomic_local_rect(
                             anchor,
@@ -1839,6 +1848,19 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             AvailableOf::MaxContent => line.finalized.measurements().max_content_contribution(),
             AvailableOf::Definite(_) => line.finalized.measurements().fit(),
         };
+        let admission = match context.available {
+            AvailableOf::MinContent => line
+                .finalized
+                .measurements()
+                .margin_edge_min_content_contribution(),
+            AvailableOf::MaxContent => line
+                .finalized
+                .measurements()
+                .margin_edge_max_content_contribution(),
+            AvailableOf::Definite(_) => line.finalized.measurements().margin_edge_fit(),
+        };
+        let indent = line.finalized.selected_line().request().context.indent;
+        let css_width = fit::css_margin_edge_width(admission, indent)?;
         if is_formatted {
             report.indent_state.commit(
                 line.finalized.selected_line().request().context.end
@@ -1926,8 +1948,8 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         add(-origin_baseline, anchor.baseline)?;
         // Normal-flow allocations and placed metric bounds both contribute to
         // overflow, including lines without a source fragment or ink. Intrinsic
-        // allocation uses the exact requested contribution plus signed indent;
-        // actual Text metric and source-fragment geometry remain independent.
+        // allocation composes actual signed indent once with the requested
+        // admission operands; metric and source geometry remain independent.
         let width = match line
             .finalized
             .selected_line()
@@ -1936,10 +1958,10 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             .available_inline
         {
             Some(width) => width,
-            None => finite(
-                contribution.advance() + line.finalized.selected_line().request().context.indent,
-            )?
-            .max(0.0),
+            None => match css_width {
+                Some(width) => width,
+                None => finite(contribution.advance() + indent)?.max(0.0),
+            },
         };
         let allocation = frame.allocation_rect(
             line.inline_start,
@@ -1980,10 +2002,12 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         baselines.last = Some(local_baseline);
         baselines.last_named = named;
         report.block_extent = report.block_extent.max(number(line.flow.next)?);
+        let inline_end = match css_width {
+            Some(width) => add(line.inline_start, width)?,
+            None => line.inline_start + contribution.advance() + indent,
+        };
         report.inline_extent = report.inline_extent.max(number(
-            line.inline_start
-                + contribution.advance()
-                + line.finalized.selected_line().request().context.indent
+            inline_end
                 + line
                     .bands
                     .combined()
