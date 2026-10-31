@@ -80,3 +80,6 @@ exclude = [
     "api/generator",
     "crates/surgeist-layout/tools/surgeist-layout-audits",
 ]
+
+[patch.crates-io]
+accesskit_consumer = { path = "vendor/accesskit-consumer" }

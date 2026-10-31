@@ -19,6 +19,9 @@ keyboard-types = "=0.7.0"
 raw-window-handle = "=0.6.2"
 winit = "=0.30.13"
 
+[dev-dependencies]
+accesskit_consumer = "=0.36.0"
+
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = { version = "=0.6.4", default-features = false, features = ["std"] }
 objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSAccessibility", "NSFont", "NSFontManager", "NSGraphics", "NSScreen", "NSWorkspace", "objc2-core-foundation"] }
@@ -33,6 +36,11 @@ harness = false
 name = "native_preferences_native"
 path = "tests/native_preferences_native.rs"
 harness = false
+
+[[test]]
+name = "accesskit_word_navigation"
+path = "tests/accesskit_word_navigation.rs"
+required-features = ["accessibility"]
 
 [features]
 default = []
