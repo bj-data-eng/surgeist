@@ -116,6 +116,14 @@ reports changes that do not need another event kind. The native adapter observes
 the system theme independently of an application `SetTheme` request, so an
 application override does not become the baseline user preference.
 
+A changed metrics or position basis invalidates captured geometry and output
+facts unless the transition supplies a fresh environment. Independent baseline
+preferences, input/navigation facts and presentation mode remain captured.
+Unchanged geometry preserves the existing capture. This rule also governs
+deterministic commands and planner projections; they report unavailable facts
+until a host supplies a new capture instead of inferring viewport policy from
+a requested size.
+
 Native display scale, page zoom and visual viewport scale have separate values.
 The current native content host uses page zoom one and has no retractable UA
 chrome, so its large, small and dynamic viewport sizes coincide. Hosts supplying

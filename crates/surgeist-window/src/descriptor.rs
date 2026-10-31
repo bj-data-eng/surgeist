@@ -735,13 +735,23 @@ impl WindowSnapshot {
             .with_id(metrics_id));
         }
 
+        if self.metrics != metrics {
+            // These observations belong to the prior complete geometry basis.
+            // A producer can supply a fresh capture with the same transition.
+            self.environment.native_scale = None;
+            self.environment.page_zoom = None;
+            self.environment.output = crate::OutputDevice::Unavailable;
+            self.environment.screen = None;
+            self.environment.viewport = None;
+            self.environment.client_area = None;
+            self.environment.blending = None;
+        }
         self.metrics = metrics;
         Ok(())
     }
 
     pub(crate) fn set_position(&mut self, position: Option<Point>) -> Result<()> {
-        self.metrics = self.metrics.clone().with_outer_position(position)?;
-        Ok(())
+        self.set_metrics(self.metrics.clone().with_outer_position(position)?)
     }
 
     pub(crate) const fn set_focused(&mut self, focused: bool) {

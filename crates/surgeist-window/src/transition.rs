@@ -228,8 +228,8 @@ impl NativeEventTransition {
             return Self::apply_kind(self.kind, snapshot);
         };
         let mut next = snapshot.clone();
-        next.set_environment(environment);
         let event = Self::apply_kind(self.kind, &mut next)?;
+        next.set_environment(environment);
         *snapshot = next;
         Ok(event)
     }
