@@ -22,6 +22,153 @@ impl InlineMeasure {
     }
 }
 
+/// Authority of the operation-specific admission observation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MarginEdgeFitAuthority {
+    /// The existing signed-advance and occupied-span Native contract.
+    NativeOnly,
+    /// Explicit CSS margin-box flow composed with positioned opaque requirements.
+    CssComposed,
+}
+
+/// Text-owned indent-free admission, distinct from raw occupied geometry.
+/// `CssComposed` is Surgeist's explicit native mixing policy: final signed
+/// flow may retract, while independently positioned opaque endpoints remain.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MarginEdgeFit {
+    data: MarginEdgeFitData,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum MarginEdgeFitData {
+    Native {
+        raw: InlineMeasure,
+        required: f64,
+    },
+    CssWithoutOpaque {
+        advance: f64,
+        required: f64,
+    },
+    CssWithOpaque {
+        advance: f64,
+        native_min: f64,
+        native_max: f64,
+        required: f64,
+    },
+}
+impl MarginEdgeFit {
+    pub const fn authority(self) -> MarginEdgeFitAuthority {
+        match self.data {
+            MarginEdgeFitData::Native { .. } => MarginEdgeFitAuthority::NativeOnly,
+            MarginEdgeFitData::CssWithoutOpaque { .. }
+            | MarginEdgeFitData::CssWithOpaque { .. } => MarginEdgeFitAuthority::CssComposed,
+        }
+    }
+    pub const fn advance(self) -> f64 {
+        match self.data {
+            MarginEdgeFitData::Native { raw, .. } => raw.advance,
+            MarginEdgeFitData::CssWithoutOpaque { advance, .. }
+            | MarginEdgeFitData::CssWithOpaque { advance, .. } => advance,
+        }
+    }
+    /// Signed indent-free policy endpoint, not a rendered or relocated origin.
+    pub const fn constraint_start(self) -> f64 {
+        match self.data {
+            MarginEdgeFitData::Native { raw, .. } => raw.occupied_start,
+            MarginEdgeFitData::CssWithoutOpaque { .. } => 0.0,
+            MarginEdgeFitData::CssWithOpaque { native_min, .. } => {
+                if native_min < 0.0 {
+                    native_min
+                } else {
+                    0.0
+                }
+            }
+        }
+    }
+    pub const fn constraint_end(self) -> f64 {
+        match self.data {
+            MarginEdgeFitData::Native { raw, .. } => raw.occupied_end,
+            MarginEdgeFitData::CssWithoutOpaque { advance, .. } => advance,
+            MarginEdgeFitData::CssWithOpaque {
+                advance,
+                native_max,
+                ..
+            } => {
+                if native_max > advance {
+                    native_max
+                } else {
+                    advance
+                }
+            }
+        }
+    }
+    /// Requirement at zero indent. A consumer composing a nonzero indent must
+    /// use the actual opaque extrema, not translate the artificial zero anchor.
+    pub const fn required_inline_size(self) -> f64 {
+        match self.data {
+            MarginEdgeFitData::Native { required, .. }
+            | MarginEdgeFitData::CssWithoutOpaque { required, .. }
+            | MarginEdgeFitData::CssWithOpaque { required, .. } => required,
+        }
+    }
+    /// Unanchored positioned `NativeOccupied` atomic extrema constraining a
+    /// `CssComposed` selection. Genuine absence is distinct from a zero-width
+    /// opaque interval. `NativeOnly` retains its separate width-only contract
+    /// and returns `None` here.
+    pub const fn native_occupied_bounds(self) -> Option<(f64, f64)> {
+        match self.data {
+            MarginEdgeFitData::CssWithOpaque {
+                native_min,
+                native_max,
+                ..
+            } => Some((native_min, native_max)),
+            MarginEdgeFitData::Native { .. } | MarginEdgeFitData::CssWithoutOpaque { .. } => None,
+        }
+    }
+
+    pub(crate) fn native(raw: InlineMeasure) -> crate::Result<Self> {
+        // Preserve the existing Native width-only reduction, including its
+        // original subtraction. Do not introduce an origin anchor or CSS policy.
+        let span = raw.occupied_end - raw.occupied_start;
+        let required = raw.advance.max(span).max(0.0);
+        if !required.is_finite() {
+            return Err(crate::error::text_numeric_error(
+                "Native fit requirement",
+                crate::TextNumericPhase::Finalization,
+                crate::TextNumericError::NonFinite,
+                required,
+            ));
+        }
+        Ok(Self {
+            data: MarginEdgeFitData::Native { raw, required },
+        })
+    }
+    pub(crate) fn css(advance: f64, opaque: Option<(f64, f64)>) -> crate::Result<Self> {
+        let (start, end) = opaque.map_or((0.0, advance), |(left, right)| {
+            (left.min(0.0), right.max(advance))
+        });
+        // No implicit zero upper endpoint and no prefix maximum. Floor only
+        // the final required size; retain the unanchored opaque operands.
+        let required = crate::engine::layout::add(
+            "CSS-composed fit width",
+            crate::TextNumericPhase::Finalization,
+            end,
+            -start,
+        )?
+        .max(0.0);
+        let data = match opaque {
+            None => MarginEdgeFitData::CssWithoutOpaque { advance, required },
+            Some((native_min, native_max)) => MarginEdgeFitData::CssWithOpaque {
+                advance,
+                native_min,
+                native_max,
+                required,
+            },
+        };
+        Ok(Self { data })
+    }
+}
+
 /// Actual physical edge, independent of source order and signed flow.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LineEdgeSide {
@@ -105,6 +252,9 @@ impl EdgeRows {
 #[derive(Clone, Debug)]
 pub struct LineMeasurements {
     pub(crate) formatted_usage: super::FormattedLineUsage,
+    pub(crate) margin_fit: MarginEdgeFit,
+    pub(crate) margin_minimum: MarginEdgeFit,
+    pub(crate) margin_maximum: MarginEdgeFit,
     pub(crate) fit: InlineMeasure,
     pub(crate) alignment: InlineMeasure,
     pub(crate) minimum: InlineMeasure,
@@ -112,6 +262,15 @@ pub struct LineMeasurements {
     pub(crate) edges: EdgeRows,
 }
 impl LineMeasurements {
+    pub const fn margin_edge_fit(&self) -> MarginEdgeFit {
+        self.margin_fit
+    }
+    pub const fn margin_edge_min_content_contribution(&self) -> MarginEdgeFit {
+        self.margin_minimum
+    }
+    pub const fn margin_edge_max_content_contribution(&self) -> MarginEdgeFit {
+        self.margin_maximum
+    }
     pub const fn formatted_line_usage(&self) -> super::FormattedLineUsage {
         self.formatted_usage
     }
@@ -299,5 +458,55 @@ impl LineEdgeUnitView<'_> {
                     })
                 }
             })
+    }
+}
+
+#[cfg(test)]
+mod atomic_fit_tests {
+    use super::*;
+
+    #[test]
+    fn positioned_opaque_envelope_and_final_css_flow_follow_the_native_mixing_policy() {
+        // CSS100 + Native6/[0,10]; then CSS−100 + that Native; then
+        // the latter selection followed by a genuine CSS100 restoration.
+        for (flow, opaque, expected) in [
+            (106.0, Some((100.0, 110.0)), (0.0, 110.0, 110.0)),
+            (-94.0, Some((-100.0, -90.0)), (-100.0, -90.0, 10.0)),
+            (6.0, Some((-100.0, -90.0)), (-100.0, 6.0, 106.0)),
+            (-200.0, Some((-100.0, 10.0)), (-100.0, 10.0, 110.0)),
+            (-5.0, None, (0.0, -5.0, 0.0)),
+            (5.0, None, (0.0, 5.0, 5.0)),
+        ] {
+            let fit = MarginEdgeFit::css(flow, opaque).unwrap();
+            assert_eq!(fit.authority(), MarginEdgeFitAuthority::CssComposed);
+            assert_eq!(fit.advance(), flow);
+            assert_eq!(
+                (
+                    fit.constraint_start(),
+                    fit.constraint_end(),
+                    fit.required_inline_size()
+                ),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn native_only_does_not_acquire_the_css_origin_anchor() {
+        let raw = InlineMeasure {
+            advance: 6.0,
+            occupied_start: 100.0,
+            occupied_end: 110.0,
+        };
+        let native = MarginEdgeFit::native(raw).unwrap();
+        assert_eq!(native.authority(), MarginEdgeFitAuthority::NativeOnly);
+        assert_eq!(
+            (native.constraint_start(), native.constraint_end()),
+            (100.0, 110.0)
+        );
+        assert_eq!(native.required_inline_size(), 10.0);
+        let css = MarginEdgeFit::css(6.0, Some((100.0, 110.0))).unwrap();
+        assert_eq!(css.required_inline_size(), 110.0);
+        assert_ne!(native, css);
     }
 }

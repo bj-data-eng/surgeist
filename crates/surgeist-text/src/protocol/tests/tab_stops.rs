@@ -1381,6 +1381,7 @@ fn check_atomic_tab_traversal(tabs: TabContext) {
                     AtomicLineAllocation::OutOfFlow
                 } else {
                     AtomicLineAllocation::InFlow {
+                        fit: crate::AtomicFitAllocation::NativeOccupied,
                         flow: AtomicFlowAllocation {
                             advance: 15.0,
                             before_baseline: 8.0,
@@ -1485,6 +1486,7 @@ fn finish_with_huge_atomic(p: &PreparedText, tabs: TabContext) -> crate::Result<
         .map(|a| AtomicAllocation {
             occurrence: a.handle(),
             allocation: AtomicLineAllocation::InFlow {
+                fit: crate::AtomicFitAllocation::NativeOccupied,
                 flow: AtomicFlowAllocation {
                     advance,
                     before_baseline: 8.0,

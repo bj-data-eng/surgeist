@@ -80,7 +80,9 @@ uses the same selected-line and placement machinery.
    same relation, while semantic beginning and end do not acquire soft breaks.
 3. Supply a `LineSelectionRequest` with issued start/end boundaries, every selected
    mixed participant in order, an actual terminating opportunity, complete context
-   and occurrence-qualified atomic/control allocations. Signed atomic flow and
+   and occurrence-qualified atomic/control allocations. In-flow atomics explicitly
+   distinguish Native occupied fitting from actual CSS margin-box authority; see
+   [atomic fitting](atomic-fit.md). Signed atomic flow and
    canonical border/content geometry remain distinct. `LineBoxAlignment` captures
    actual baseline/top/bottom metric participation for in-flow atomics and controls;
    their final slot and baseline relation are returned by the finalizer. Out-of-flow
@@ -185,7 +187,9 @@ uses the same selected-line and placement machinery.
    min/max-content contributions of this exact selection. These signed flow
    observations exclude indentation; their ordered occupied intervals are in
    the prealignment line frame. The consumer supplies indentation once and
-   still decides fit. `metric_bounds()` observes the actual Text metric frame,
+   still decides fit. The separate margin-edge admission observations preserve
+   explicit CSS versus Native authority without redefining these raw intervals;
+   see [atomic fitting](atomic-fit.md). `metric_bounds()` observes the actual Text metric frame,
    independently of a consumer's intrinsic allocation.
    `edge_units()` distinguishes natural eligibility and terminal grouping from
    final allocated exclusion and physical outward overlap, with genuine issued

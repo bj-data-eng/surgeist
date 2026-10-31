@@ -473,6 +473,7 @@ pub(crate) struct FinalizedBox {
 pub(crate) enum FinalizedBoxGeometry {
     InFlow {
         flow: crate::protocol::AtomicFlowAllocation,
+        fit: crate::AtomicFitAllocation,
         box_geometry: crate::protocol::AtomicBoxAllocation,
         alignment: crate::protocol::LineBoxAlignment,
         rect: Rect,

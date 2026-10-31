@@ -236,6 +236,7 @@ impl VisibleInlineRunTransition {
         if let Some(committed) = placement.indent_state {
             *indent_state = Some(committed);
         }
+        let placement_size = constants.flow_axes.logical_size(placement.size);
         let placement_content_size = constants.flow_axes.logical_size(placement.content_size);
         // An individual float still contributes its actual margin width.
         // Captured Max cohorts use actual Text-line and float-query receipts;
@@ -250,9 +251,12 @@ impl VisibleInlineRunTransition {
                     .and_then(|accepted| accepted.intrinsic_inline_demand),
             );
         }
+        // Intrinsic inline demand follows the accepted flow/fit report. Actual
+        // atomic borders and visible overflow remain in the independent content
+        // and scroll geometry; a negative margin does not shrink those boxes.
         content_size.inline = content_size
             .inline
-            .max(placement_content_size.inline)
+            .max(placement_size.inline)
             .max(float_intrinsics.result());
         content_size.block = content_size.block.max(placement_content_size.block);
         let placement_scroll_content_size = constants

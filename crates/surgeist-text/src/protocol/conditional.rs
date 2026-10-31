@@ -686,8 +686,22 @@ pub(crate) fn request_context(request: super::input::RequestInput<'_>) -> Vec<u6
                 flow,
                 box_geometry,
                 alignment,
+                fit,
             } => {
                 values.push(1);
+                match fit {
+                    super::AtomicFitAllocation::NativeOccupied => values.push(0),
+                    super::AtomicFitAllocation::CssMarginBox(css) => {
+                        values.push(1);
+                        for value in [
+                            css.margin_start(),
+                            css.border_inline_size(),
+                            css.margin_end(),
+                        ] {
+                            number(&mut values, value);
+                        }
+                    }
+                }
                 allocation_alignment(&mut values, alignment);
                 for value in [
                     flow.advance,
@@ -742,7 +756,7 @@ pub(crate) fn request_context(request: super::input::RequestInput<'_>) -> Vec<u6
     }
     values
 }
-/// The native numeric proof remains unchanged. New scope identity borrows the
+/// Native numeric proof includes the actual atomic fitting authority. Scope identity borrows the
 /// actual completed immutable owner, rather than copying a shadow transcript.
 /// Completed frames precede each search/request: Prepared has no reverse cache.
 #[derive(Clone, Debug, Default)]

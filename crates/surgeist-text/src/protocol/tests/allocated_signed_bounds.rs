@@ -80,6 +80,7 @@ fn actual_fontless_signed_atomic_keeps_ten_unit_occupied_extent_without_a_parent
     r.atomics = vec![AtomicAllocation {
         occurrence: atomic.clone(),
         allocation: AtomicLineAllocation::InFlow {
+            fit: crate::AtomicFitAllocation::NativeOccupied,
             flow: AtomicFlowAllocation {
                 advance: 6.0,
                 before_baseline: 20.0,

@@ -314,6 +314,7 @@ fn nonformatted_eligibility_rejects_forced_text_and_real_zero_inflow_atomic() {
         .map(|a| AtomicAllocation {
             occurrence: a.handle(),
             allocation: AtomicLineAllocation::InFlow {
+                fit: crate::AtomicFitAllocation::NativeOccupied,
                 flow: AtomicFlowAllocation {
                     advance: 0.0,
                     before_baseline: 0.0,

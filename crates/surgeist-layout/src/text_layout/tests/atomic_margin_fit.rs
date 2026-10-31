@@ -79,6 +79,7 @@ fn actual_source_premises(paragraph: &PreparedParagraph) {
 fn compute<S: LayoutScalar>(
     paragraph: &PreparedParagraph,
     width: f64,
+    start_margin: f64,
     end_margin: f64,
 ) -> CompletedLayoutBatchOf<u32, S> {
     let n = S::from_f64;
@@ -105,6 +106,7 @@ fn compute<S: LayoutScalar>(
                 display: Display::InlineBlock,
                 size: Size::new(PreferredSizeOf::px(n(10.0)), PreferredSizeOf::px(n(10.0))),
                 margin: Edges {
+                    left: LengthAutoOf::px(n(start_margin)),
                     right: LengthAutoOf::px(n(end_margin)),
                     ..Edges::all(LengthAutoOf::ZERO)
                 },
@@ -287,9 +289,14 @@ fn atomic_margin_lane<S: LayoutScalar>() {
     // Real source A plus border10 needs20
     // with zero margin; the actual negative-margin full candidate at band20
     // publishes flow15 while KEEPING occupied20 and exact border10..20.
-    one_line(&compute::<S>(&paragraph, 20.0, 0.0), &paragraph, 20.0, 0.0);
     one_line(
-        &compute::<S>(&paragraph, 20.0, -5.0),
+        &compute::<S>(&paragraph, 20.0, 0.0, 0.0),
+        &paragraph,
+        20.0,
+        0.0,
+    );
+    one_line(
+        &compute::<S>(&paragraph, 20.0, 0.0, -5.0),
         &paragraph,
         20.0,
         -5.0,
@@ -298,7 +305,7 @@ fn atomic_margin_lane<S: LayoutScalar>() {
     //2-line result if dual occupied admission is wrong. No overflow fallback
     // or fabricated indivisibility is used as evidence for success/failure.
     one_line(
-        &compute::<S>(&paragraph, 15.0, -5.0),
+        &compute::<S>(&paragraph, 15.0, 0.0, -5.0),
         &paragraph,
         15.0,
         -5.0,
@@ -347,6 +354,7 @@ fn direct_native_allocation_keeps_occupied10_when_its_unrelated_flow_is6() {
             atomics: vec![text::AtomicAllocation {
                 occurrence: atomic,
                 allocation: text::AtomicLineAllocation::InFlow {
+                    fit: surgeist_text::AtomicFitAllocation::NativeOccupied,
                     flow: text::AtomicFlowAllocation {
                         advance: 6.0,
                         before_baseline: 8.0,
@@ -407,6 +415,14 @@ fn direct_native_allocation_keeps_occupied10_when_its_unrelated_flow_is6() {
     // an opaque6px caller band may accept10px. It pins the independent10px
     // native requirement until the FUTURE owner-aware fit observation exists.
 }
+
+#[path = "atomic_margin_fit/authority.rs"]
+mod authority;
+#[path = "atomic_margin_fit/signed.rs"]
+mod signed;
+
+#[path = "atomic_margin_fit/composition.rs"]
+mod composition;
 
 #[path = "atomic_margin_fit/indent.rs"]
 mod indent;

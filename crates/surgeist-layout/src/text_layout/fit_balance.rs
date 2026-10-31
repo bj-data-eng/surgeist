@@ -51,6 +51,7 @@ pub(super) struct LineProof {
     flow: LineFlow,
     feedback: surgeist_text::LineFeedback,
     fit: surgeist_text::InlineMeasure,
+    margin_fit: surgeist_text::MarginEdgeFit,
     alignment: surgeist_text::InlineMeasure,
     metrics: surgeist_text::Rect,
 }
@@ -80,6 +81,7 @@ impl LineProof {
             flow: line.flow,
             feedback: line.finalized.feedback(),
             fit: line.finalized.measurements().fit(),
+            margin_fit: line.finalized.measurements().margin_edge_fit(),
             alignment: line.finalized.measurements().alignment(),
             metrics: line.finalized.metric_bounds(),
         }
