@@ -542,6 +542,7 @@ pub struct WindowSnapshot {
     fullscreen: bool,
     theme: Option<Theme>,
     role: Role,
+    environment: crate::HostEnvironment,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -578,6 +579,7 @@ impl WindowSnapshot {
             fullscreen: false,
             theme: None,
             role: Role::Root,
+            environment: crate::HostEnvironment::default(),
         }
     }
 
@@ -595,7 +597,25 @@ impl WindowSnapshot {
             fullscreen: seed.fullscreen,
             theme: seed.theme,
             role: seed.role,
+            environment: crate::HostEnvironment::default(),
         }
+    }
+
+    /// Adds coherent host observations to this snapshot.
+    #[must_use]
+    pub fn with_environment(mut self, environment: crate::HostEnvironment) -> Self {
+        self.environment = environment;
+        self
+    }
+
+    /// Returns baseline host observations; missing facts remain explicit.
+    #[must_use]
+    pub const fn environment(&self) -> &crate::HostEnvironment {
+        &self.environment
+    }
+
+    pub(crate) fn set_environment(&mut self, environment: crate::HostEnvironment) {
+        self.environment = environment;
     }
 
     /// Adds an optional live lookup/uniqueness label to this snapshot.

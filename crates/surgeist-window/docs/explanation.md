@@ -107,6 +107,77 @@ state only, with no live target or handle. The contract is implemented by
 [handle access](../src/registry.rs), [lease ownership](../src/lease.rs), and
 [native closing](../src/winit_adapter.rs).
 
+## Host observations and consumer inputs
+
+`WindowSnapshot::environment` retains a `HostEnvironment` with the window's
+observed geometry. A native resize, scale or move transition commits its captured
+environment before delivering the corresponding callback. `EnvironmentChanged`
+reports changes that do not need another event kind. The native adapter observes
+the system theme independently of an application `SetTheme` request, so an
+application override does not become the baseline user preference.
+
+Native display scale, page zoom and visual viewport scale have separate values.
+The current native content host uses page zoom one and has no retractable UA
+chrome, so its large, small and dynamic viewport sizes coincide. Hosts supplying
+their own observations can retain distinct viewport variants and visual
+magnification. Layout-dependent initial containing block, scroll offsets, paged
+area and root scrollbar facts remain explicit inputs from their owning consumer.
+
+An unavailable observation is distinct from a known absent device or a known
+`no-preference` value. The winit adapter supplies monitor and client geometry,
+display scale and the system theme where its platform API supports them. It does
+not infer primary pointer capabilities from the most recent input event or guess
+reduced-motion, contrast, navigation, work-area or output-blending facts. Those
+remain unavailable until a host supplies them. CSS matching, document activity,
+origin preference overlays and coherent downstream publication remain with
+their consuming owners.
+
+## Native geometry admission
+
+`NativeGeometryRequest` resolves a captured `WindowSnapshot` and an explicit
+`NativeGeometryBasis` under a native host authorization. The basis names the
+selected screen origin and logical units per CSS pixel; it does not silently
+substitute display scale or page zoom. Admission can allow, deny or clamp a
+request. A successful resolution produces an existing `Command` for ordinary
+normalization, capability planning and application. Denied, unchanged and
+unavailable geometry have explicit no-action outcomes.
+
+Absolute movement uses the selected output-device origin; open features use
+the selected exposed-screen origin. Relative movement uses the
+captured outer position. Absolute resizing requests viewport dimensions;
+relative resizing adds to the captured viewport size. A containment clamp uses
+observed decoration extents and declines when they are unavailable or
+inconsistent. An approved command expresses intent and does not prove the OS
+accepted it. Resolution keeps the supplied capture even if the window changes
+before command application.
+
+`NativeOpenFeatures` consumes already-tokenized `left`, `top`, `width` and
+`height` features. It uses HTML integer parsing, with zero for a syntax error and
+independent zero-dimension skips. HTML owns feature-string tokenization. This
+native admission policy does not assert that a native window satisfies the
+browser's script-created auxiliary-context predicate; JavaScript bindings remain
+outside this implementation.
+
+`PointerEvent::native_coordinates` retains fractional client positions and uses
+the captured client-area origin to obtain desktop and screen-relative positions.
+Missing positions and origins remain unavailable. These values use native
+logical units; DOM dispatch state, document scroll and target padding geometry
+are needed separately for complete CSSOM View page and offset coordinates.
+
+## Native UI fonts
+
+`SystemFontEnvironment::capture` observes actual macOS UI fonts on the main
+thread through safe AppKit APIs. The result retains family and face names, native
+weight and traits, point size and vertical metrics. Unsupported platforms and
+wrong-thread calls have explicit errors. Consumers own CSS-pixel conversion,
+CSS shorthand resolution and selecting the matching text font resource; native
+metrics do not replace shaped-text metrics.
+
+The selected macOS role policy uses the system UI font for caption, icon and
+message-box roles; the menu font for menu; the small system size for small
+caption; and the system UI font at label size for status bar. This is a host
+policy for obtaining real preferences, not a new CSS grammar.
+
 ## Optional accessibility
 
 The `accessibility` feature enables typed accessibility events and AccessKit tree

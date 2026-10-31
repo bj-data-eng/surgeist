@@ -644,6 +644,7 @@ pub(crate) struct WinitRunner<H> {
     draw: DrawScheduler,
     capabilities: Option<HostCapabilities>,
     clipboard: Box<dyn Clipboard>,
+    system_theme: Option<Theme>,
     #[cfg(test)]
     pub(crate) commands: Vec<Command>,
     #[cfg(test)]
@@ -713,6 +714,7 @@ impl<H> WinitRunner<H> {
             draw: window_loop.draw,
             capabilities: None,
             clipboard: window_loop.clipboard,
+            system_theme: None,
             #[cfg(test)]
             commands: window_loop.commands,
             #[cfg(test)]
@@ -1324,6 +1326,7 @@ impl<H: Handler> WinitRunner<H> {
         plan: HostCommandPlan,
         callbacks: &mut Vec<BackendCallback>,
     ) -> Result<()> {
+        self.system_theme = event_loop.system_theme().map(Into::into);
         let resolved = take_resolved_host_command(plan);
         let ime_request = resolved.ime_request;
         #[cfg(feature = "accessibility")]
@@ -1358,6 +1361,12 @@ impl<H: Handler> WinitRunner<H> {
                                 .with_source(source)
                         })?;
                         let state = state_from_winit(id, &request, &window)?;
+                        let environment = crate::environment_native::observe_environment(
+                            &window,
+                            state.metrics(),
+                            event_loop.system_theme().map(Into::into),
+                        )?;
+                        let state = state.with_environment(environment);
                         let window_id = window.id();
                         #[cfg(feature = "accessibility")]
                         let adapter = prepare_accessible_open(
@@ -1490,7 +1499,18 @@ impl<H: Handler> WinitRunner<H> {
             Command::SetTheme { id, theme } => {
                 self.handle(id)?
                     .with_winit(|window| window.set_theme(theme.map(Into::into)))?;
-                if let Some(event) = self.apply_patch(WindowStatePatch::Theme { id, theme })? {
+                let metrics = self
+                    .registry
+                    .get(id)
+                    .expect("the native handle is live")
+                    .metrics()
+                    .clone();
+                let transition = self.attach_environment(
+                    id,
+                    &metrics,
+                    NativeEventTransition::theme_changed(id, theme),
+                )?;
+                if let Some(event) = self.apply_native_transition_state(id, transition)? {
                     callbacks.push(BackendCallback::Event(event));
                 }
             }
@@ -2265,6 +2285,7 @@ impl<H: Handler> winit::application::ApplicationHandler<UserEvent> for WinitRunn
         window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
+        self.system_theme = event_loop.system_theme().map(Into::into);
         let live_id = self.id_for_winit(window_id);
         let closing_id = self.id_for_closing_winit(window_id);
         if matches!(&event, winit::event::WindowEvent::Destroyed) {
@@ -2333,8 +2354,25 @@ impl<H: Handler> winit::application::ApplicationHandler<UserEvent> for WinitRunn
             }
             winit::event::WindowEvent::ThemeChanged(theme) => {
                 let theme = Some(theme.into());
-                let transition = NativeEventTransition::theme_changed(id, theme);
-                self.apply_native_transition(event_loop, id, transition);
+                let result = self
+                    .registry
+                    .get(id)
+                    .map(|window| window.metrics().clone())
+                    .ok_or_else(|| Error::new(ErrorCode::StaleWindow, "unknown window").with_id(id))
+                    .and_then(|metrics| {
+                        self.attach_environment(
+                            id,
+                            &metrics,
+                            NativeEventTransition::theme_changed(id, theme),
+                        )
+                    });
+                match result {
+                    Ok(transition) => self.apply_native_transition(event_loop, id, transition),
+                    Err(error) => {
+                        self.fail_terminal(error);
+                        self.drain_pump(event_loop);
+                    }
+                }
             }
             winit::event::WindowEvent::Occluded(occluded) => {
                 if !occluded {
@@ -2546,6 +2584,15 @@ impl<H: Handler> winit::application::ApplicationHandler<UserEvent> for WinitRunn
             return;
         }
 
+        if let Err(error) =
+            self.refresh_environment_baselines(event_loop.system_theme().map(Into::into))
+        {
+            self.fail_terminal(error);
+        }
+        self.drain_pump(event_loop);
+        if !self.pump.is_running() {
+            return;
+        }
         if self.handler.wants_idle() {
             self.dispatch_callback(event_loop, BackendCallback::Idle);
         }
@@ -2674,12 +2721,13 @@ impl<H: Handler> WinitRunner<H> {
             existing.scale_factor(),
         )?
         .with_outer_geometry(existing.outer_position(), existing.outer_size())?;
-        Ok(match event {
-            MetricsEvent::Resized => NativeEventTransition::resized(metrics),
+        let transition = match event {
+            MetricsEvent::Resized => NativeEventTransition::resized(metrics.clone()),
             MetricsEvent::ScaleFactorChanged => {
-                NativeEventTransition::scale_factor_changed(metrics)
+                NativeEventTransition::scale_factor_changed(metrics.clone())
             }
-        })
+        };
+        self.attach_environment(id, &metrics, transition)
     }
 
     fn scale_factor_transition(&self, id: Id, scale_factor: f64) -> Result<NativeEventTransition> {
@@ -2690,7 +2738,11 @@ impl<H: Handler> WinitRunner<H> {
             .ok_or_else(|| Error::new(ErrorCode::CommandFailed, "unknown window").with_id(id))?;
         let metrics = Metrics::from_physical_size(id, existing.physical_size(), scale_factor)?
             .with_outer_geometry(existing.outer_position(), existing.outer_size())?;
-        Ok(NativeEventTransition::scale_factor_changed(metrics))
+        self.attach_environment(
+            id,
+            &metrics,
+            NativeEventTransition::scale_factor_changed(metrics.clone()),
+        )
     }
 
     fn moved_transition(
@@ -2703,10 +2755,59 @@ impl<H: Handler> WinitRunner<H> {
             .get(id)
             .map(|window| window.metrics())
             .ok_or_else(|| Error::new(ErrorCode::CommandFailed, "unknown window").with_id(id))?;
-        Ok(NativeEventTransition::moved(
+        self.attach_environment(
             id,
-            metrics.physical_to_logical_point(physical_position),
-        ))
+            &metrics,
+            NativeEventTransition::moved(id, metrics.physical_to_logical_point(physical_position)),
+        )
+    }
+
+    fn attach_environment(
+        &self,
+        id: Id,
+        metrics: &Metrics,
+        transition: NativeEventTransition,
+    ) -> Result<NativeEventTransition> {
+        let window = self
+            .registry
+            .get(id)
+            .ok_or_else(|| Error::new(ErrorCode::StaleWindow, "unknown window").with_id(id))?;
+        let Some(handle) = window.instance.handle.as_ref() else {
+            return Ok(transition);
+        };
+        let environment = handle.with_winit(|native| {
+            crate::environment_native::observe_environment(native, metrics, self.system_theme)
+        })??;
+        Ok(transition.with_environment(environment))
+    }
+
+    fn refresh_environment_baselines(&mut self, theme: Option<Theme>) -> Result<()> {
+        self.system_theme = theme;
+        let ids = self.windows.values().copied().collect::<Vec<_>>();
+        for id in ids {
+            let Some(window) = self.registry.get(id) else {
+                continue;
+            };
+            if window
+                .instance
+                .state()
+                .environment()
+                .preferences
+                .color_scheme
+                == theme
+            {
+                continue;
+            }
+            let mut environment = window.instance.state().environment().clone();
+            environment.preferences.color_scheme = theme;
+            if let Some(event) = self.apply_native_transition_state(
+                id,
+                NativeEventTransition::environment_changed(id, environment),
+            )? {
+                self.enqueue_callback(BackendCallback::Event(event));
+            }
+        }
+        Ok(())
     }
 
     fn apply_native_transition_patch_state(
@@ -3532,6 +3633,72 @@ mod tests {
     struct NoopHandler;
 
     impl Handler for NoopHandler {}
+
+    #[test]
+    fn native_baseline_refresh_updates_behind_window_theme_override() {
+        #[derive(Default)]
+        struct Observer {
+            observed: Vec<(Option<Theme>, Option<Theme>)>,
+        }
+        impl Handler for Observer {
+            fn event(&mut self, event: &mut Event<'_>) -> Result<()> {
+                if matches!(event.event(), EventKind::EnvironmentChanged { .. }) {
+                    let state = event.state().unwrap();
+                    self.observed
+                        .push((state.theme(), state.environment().preferences.color_scheme));
+                }
+                Ok(())
+            }
+        }
+        let id = Id::from_u64(1);
+        let mut window_loop = Loop::new(Observer::default());
+        let environment = HostEnvironment {
+            preferences: UserPreferences {
+                color_scheme: Some(Theme::Light),
+                ..UserPreferences::default()
+            },
+            ..HostEnvironment::default()
+        };
+        window_loop
+            .registry
+            .insert(Instance::new(state(id).with_environment(environment)))
+            .unwrap();
+        let mut runner = WinitRunner::from_loop(window_loop);
+        runner.resolve_capabilities_for_test(HostCapabilities::builder().build());
+        runner.windows.insert(winit::window::WindowId::dummy(), id);
+        runner
+            .apply_patch(WindowStatePatch::Theme {
+                id,
+                theme: Some(Theme::Light),
+            })
+            .unwrap();
+        runner
+            .refresh_environment_baselines(Some(Theme::Dark))
+            .unwrap();
+        runner.drain_pump_for_test();
+        assert_eq!(
+            runner.handler.observed,
+            [(Some(Theme::Light), Some(Theme::Dark))]
+        );
+        runner
+            .apply_patch(WindowStatePatch::Theme { id, theme: None })
+            .unwrap();
+        assert_eq!(
+            runner
+                .registry
+                .get(id)
+                .unwrap()
+                .environment()
+                .preferences
+                .color_scheme,
+            Some(Theme::Dark)
+        );
+        runner
+            .refresh_environment_baselines(Some(Theme::Dark))
+            .unwrap();
+        runner.drain_pump_for_test();
+        assert_eq!(runner.handler.observed.len(), 1);
+    }
 
     fn state(id: Id) -> WindowSnapshot {
         WindowSnapshot::new(

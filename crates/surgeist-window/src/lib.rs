@@ -200,15 +200,18 @@ mod context;
 mod cursor;
 mod descriptor;
 mod dsl;
+mod environment;
+mod environment_native;
 mod error;
 mod event;
 mod geometry;
 mod handler;
 mod lease;
 mod loop_;
-mod normalization;
 mod native_geometry;
+mod normalization;
 mod planning;
+mod pointer_coordinates;
 mod pump;
 mod registry;
 mod scheduler;
@@ -236,6 +239,12 @@ pub use dsl::{
     App, Close, Closed, ControlsBuilder, Event, Frame, Input, Open, Ready, Resize, Scope, Selector,
     Target, app, controls, open, point, rect, size,
 };
+pub use environment::{
+    ClientWindowMetrics, ContrastPreference, DisplayMode, EnvironmentBlending, HostEnvironment,
+    InputCapabilities, NavigationControls, OutputDevice, OutputResolution, PointerAccuracy,
+    PointerCapability, ReductionPreference, ScaleFactor, ScreenAreaSource, ScreenMetrics,
+    UserPreferences, ViewportMetrics, ViewportSizes, VisualViewportMetrics,
+};
 pub use error::{Error, ErrorCode, Result};
 pub use event::{
     EventKind, FileDragEvent, ImeConfig, ImeEvent, ImeHint, ImePurpose, ImeRequest,
@@ -251,6 +260,7 @@ pub use native_geometry::{
     NativeGeometryNoAction, NativeGeometryOutcome, NativeGeometryRequest, NativeOpenFeatures,
 };
 pub use planning::HostCommandPlan;
+pub use pointer_coordinates::NativePointerCoordinates;
 pub use registry::{Access, Handle, Instance, Proxy, Ref, Registry};
 pub use system_fonts::{
     SystemFont, SystemFontEnvironment, SystemFontError, SystemFontMetrics, SystemFontRole,
@@ -261,5 +271,7 @@ pub use transition::{MetricsEvent, NativeEventTransition, WindowStatePatch};
 pub(crate) use registry::UserEvent;
 pub(crate) use scheduler::DrawScheduler;
 
+#[cfg(test)]
+mod environment_tests;
 #[cfg(test)]
 mod tests;

@@ -128,6 +128,14 @@ pub struct Ref<'a> {
     pub(crate) instance: &'a Instance,
 }
 
+impl Ref<'_> {
+    /// Borrows coherent baseline host observations for this live window.
+    #[must_use]
+    pub fn environment(&self) -> &crate::HostEnvironment {
+        self.instance.state().environment()
+    }
+}
+
 /// Cloneable native handle lease for renderer integrations.
 ///
 /// Clones share ownership of one native window resource. [`HasWindowHandle`] and
