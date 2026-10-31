@@ -207,6 +207,7 @@ mod handler;
 mod lease;
 mod loop_;
 mod normalization;
+mod native_geometry;
 mod planning;
 mod pump;
 mod registry;
@@ -244,6 +245,10 @@ pub use event::{
 pub use geometry::{Id, Insets, PhysicalPoint, PhysicalSize, Point, Rect, Size};
 pub use handler::Handler;
 pub use loop_::Loop;
+pub use native_geometry::{
+    NativeGeometryAuthorization, NativeGeometryBasis, NativeGeometryDisposition,
+    NativeGeometryNoAction, NativeGeometryOutcome, NativeGeometryRequest, NativeOpenFeatures,
+};
 pub use planning::HostCommandPlan;
 pub use registry::{Access, Handle, Instance, Proxy, Ref, Registry};
 pub use transition::{MetricsEvent, NativeEventTransition, WindowStatePatch};
