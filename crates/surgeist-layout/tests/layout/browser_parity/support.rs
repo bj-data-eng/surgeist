@@ -6112,6 +6112,141 @@ mod tests {
     }
 
     #[test]
+    fn native_range_observation_uses_actual_font_band_instead_of_authored_line_strut() {
+        // Authored input, not measured/source-substituted data: the maintained
+        // helper captures original X, pinned Ahem10, LH10.5, no tracking/word spacing,
+        // no controls/atomics, one genuine source origin and an ordinary inline root.
+        let golden = native_test_golden(&[("X", 10.0, 0.0)], false);
+        let (tree, batch) = generated_native_batch(&golden);
+        let [binding] = tree.paragraphs.as_slice() else {
+            panic!("one actual prepared paragraph")
+        };
+        let [bound_origin] = binding.origins.as_slice() else {
+            panic!("one actual original")
+        };
+        let origin = bound_origin.origin.clone();
+        assert_eq!(origin.view().source().text().code_units(), [0x0058]);
+        assert_eq!(origin.view().local_range(), surgeist_text::Range::new(0, 1));
+        assert_eq!(
+            origin.view().aggregate_range(),
+            surgeist_text::Range::new(0, 1)
+        );
+
+        let placed = batch
+            .placed_text()
+            .iter()
+            .find(|output| output.container() == binding.container)
+            .expect("the same computed batch retains actual placed Text")
+            .layout();
+        assert_eq!(
+            placed.analyzed_source().identity(),
+            origin.prepared_text().analyzed_source().identity()
+        );
+        assert_eq!(placed.lines().len(), 1);
+        let baseline = placed.lines()[0].baseline();
+        let actual = batch
+            .unrounded_inline_fragments()
+            .iter()
+            .filter(|entry| {
+                entry
+                    .fragment()
+                    .finalized_fragment()
+                    .view()
+                    .origin()
+                    .as_ref()
+                    == Some(&origin)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        let [entry] = actual.as_slice() else {
+            panic!("one actual source-owned X fragment")
+        };
+        let fragment = entry.fragment();
+        let finalized = fragment.finalized_fragment().finalized_line();
+        assert_eq!(finalized.prepared_text(), origin.prepared_text());
+        assert_eq!(fragment.line_index(), 0);
+
+        // Qualify the real unchanged resource/instance independently before either
+        // Range observation. Pinned hhea800/-200 at10px gives ascent8/descent-2,
+        // whereas authored extra leading0.5 distributes0.25 on each strut side.
+        let runs = finalized.run_views().collect::<Vec<_>>();
+        let [run] = runs.as_slice() else {
+            panic!("one real pinned-font run")
+        };
+        assert_eq!(run.face().bytes(), pinned_font::BYTES);
+        assert_eq!(run.face().index(), 0);
+        assert_eq!(run.font_size(), 10.0);
+        let instance = run.effective_instance().unwrap();
+        let metrics = instance
+            .metrics(instance.face().catalogue_identity())
+            .unwrap();
+        assert_eq!((metrics.ascent(), metrics.descent()), (8.0, -2.0));
+        assert_eq!(
+            run.glyphs()
+                .map(|glyph| (glyph.range(), glyph.id(), glyph.advance(), glyph.pen()))
+                .collect::<Vec<_>>(),
+            [(surgeist_text::Range::new(0, 1), 58, 10.0, 0.0)]
+        );
+        let strut = fragment
+            .rect()
+            .expect("genuine source-fragment strut control");
+        assert_eq!(strut.size().height, 10.5);
+        assert_eq!(f64::from(strut.origin().y), baseline - 8.25);
+        assert_eq!((strut.origin().x, strut.size().width), (0.0, 10.0));
+
+        // Independent oracle from original X's admitted font metrics and actual
+        // placement: top=baseline-8, height8+2=10, x0/advance10. The canonical
+        // public query is an ADDITIONAL consistency/custody control, never the
+        // source of these expected numbers and never a substitute Source string.
+        let query = placed
+            .source_range_fragments(&origin, surgeist_text::Range::new(0, 1))
+            .expect("canonical query over the very same real placed result");
+        assert_eq!(query.origin(), &origin);
+        assert_eq!(query.local_range(), surgeist_text::Range::new(0, 1));
+        let units = query.units().collect::<Vec<_>>();
+        let [unit] = units.as_slice() else {
+            panic!("one real original X EGC")
+        };
+        assert_eq!(unit.finalized_line(), finalized);
+        let pieces = unit.pieces().collect::<Vec<_>>();
+        let [surgeist_text::SourceRangeGeometry::Line(piece)] = pieces.as_slice() else {
+            panic!("actual ordinary font-metric Range contribution")
+        };
+        assert_eq!(
+            piece.effective_instance().face().bytes(),
+            pinned_font::BYTES
+        );
+        assert_eq!((piece.font_ascent(), piece.font_descent()), (8.0, 2.0));
+        assert_eq!(piece.baseline(), baseline);
+        assert_eq!(
+            piece.rect(),
+            surgeist_text::Rect::new(0.0, baseline - 8.0, 10.0, 10.0)
+        );
+
+        // Existing-callable consumer under correction. Its current fragment-based
+        // reconstruction instead returns the LH10.5 strut rectangle checked above.
+        // Keep strict browser XML and its inline-only comparison policy unchanged.
+        let observed = native_range_rectangles("canonical-native-font-band", &actual).unwrap();
+        let [observation] = observed.as_slice() else {
+            panic!("one source/line Range observation")
+        };
+        assert_eq!(observation.origin, origin);
+        assert_eq!(observation.line, finalized);
+        assert_eq!(observation.source, surgeist_text::Range::new(0, 1));
+        assert_eq!(observation.line_index, 0);
+        assert_eq!(
+            observation.rect.size().height,
+            10.0,
+            "native Range observation must expose the actual font band, not line-height leading"
+        );
+        assert_eq!(f64::from(observation.rect.origin().y), baseline - 8.0);
+        assert_eq!(
+            (observation.rect.origin().x, observation.rect.size().width),
+            (0.0, 10.0)
+        );
+    }
+
+    #[test]
     fn native_browser_range_rectangles_cover_actual_origin_intersections() {
         let golden = generated_native_golden("fri06_inline_mixed_text_atomic_wrap__border_box_ltr");
         let (_, batch) = generated_native_batch(&golden);
