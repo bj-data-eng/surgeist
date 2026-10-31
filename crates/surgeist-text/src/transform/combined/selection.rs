@@ -457,6 +457,8 @@ pub(super) fn select(
     let capture = capture(canonical);
     let domain = canonical.context.scope_topology.expect("domain").domain;
     let mut fences = Vec::new();
+    // Combination-only atomic stops must not reset generic whitespace replay.
+    let mut atomic_fences = Vec::new();
     let mut boxes = Vec::new();
     let mut box_orders = Vec::new();
     let mut hard = Vec::new();
@@ -514,7 +516,7 @@ pub(super) fn select(
                 // Every actual box interrupts combination. OOF transparency
                 // in generic text processing does not erase this box, but it
                 // must not manufacture a new EGC boundary either.
-                context::push(&mut fences, ends[order])?;
+                context::push(&mut atomic_fences, ends[order])?;
                 context::push(&mut box_orders, order)?;
             }
             _ => (),
@@ -522,6 +524,8 @@ pub(super) fn select(
     }
     fences.sort_unstable();
     fences.dedup();
+    atomic_fences.sort_unstable();
+    atomic_fences.dedup();
     boxes.sort_unstable();
     boxes.dedup();
     hard.sort_unstable();
@@ -594,6 +598,7 @@ pub(super) fn select(
             let following = &selected_units[next];
             let cut = previous.parts.end;
             if fences.binary_search(&cut).is_ok()
+                || atomic_fences.binary_search(&cut).is_ok()
                 || boxes.binary_search(&cut).is_ok()
                 || following.scope != unit.scope
                 || following.crosses_box
@@ -621,7 +626,9 @@ pub(super) fn select(
         {
             let a = &selected_units[left];
             let b = &selected_units[right];
-            if fences.binary_search(&a.parts.end).is_ok() {
+            if fences.binary_search(&a.parts.end).is_ok()
+                || atomic_fences.binary_search(&a.parts.end).is_ok()
+            {
                 continue;
             }
             let ancestor = common(capture, a.scope, b.scope);
