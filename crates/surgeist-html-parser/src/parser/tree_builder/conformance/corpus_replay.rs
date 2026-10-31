@@ -360,6 +360,12 @@ fn render<T: Tree>(tree: &T) -> String {
     out
 }
 
+/// Corpus-dump rendering of a public fragment result, for the direct tests
+/// that assert the public tree against an independently written expectation.
+pub(super) fn render_fragment(fragment: &HtmlFragment) -> String {
+    render(fragment)
+}
+
 fn actual_document(input: &str, utf16: bool) -> String {
     match document_request(input, utf16).parse() {
         Ok(report) => report.document().map_or("(no document)".to_owned(), render),
