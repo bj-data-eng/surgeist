@@ -274,12 +274,14 @@ fn tracked_cell_line(
             .rect(),
         Rect::new(95.0, 20.0 + cell_start, 10.0, 1.0)
     );
+    // Native tracking assigns the following gap to this visual owner. The
+    // caret ends at its flow endpoint, beyond the fixed one-em square.
     assert_eq!(
         layout
             .cursor(Cursor::new(2, Affinity::Before))
             .unwrap()
             .rect(),
-        Rect::new(95.0, 30.0 + cell_start, 10.0, 1.0)
+        Rect::new(95.0, 20.0 + second_b, 10.0, 1.0)
     );
     assert_eq!(layout.source().text(), &Text::from("B B"));
 }

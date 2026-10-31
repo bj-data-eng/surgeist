@@ -835,8 +835,56 @@ fn selected_relation(
     };
     let mut base_positions = vec![None; relation.len()];
     let mut cursor = relation.start;
+    // Canonical participant cuts can lend following removals to an ordinary
+    // unit. A real cell instead owns its retained source-event interval, even
+    // when suppression leaves it with no raw logical participant or atom.
+    // Resolve each selected cell once in order; ordinary rows only borrow the
+    // next entry frontier, without rescanning the remaining selected units.
+    let mut cell_frontiers = units
+        .iter()
+        .enumerate()
+        .take(if prepared.shaped.cells.is_empty() {
+            0
+        } else {
+            units.len()
+        })
+        .filter_map(|(unit, row)| match row.kind {
+            PresentationUnitKind::Cell { cell } => Some((unit, cell)),
+            _ => None,
+        })
+        .map(|(unit, cell)| {
+            let binding = prepared
+                .shaped
+                .cells
+                .get(cell)
+                .and_then(|cell| {
+                    prepared
+                        .analyzed
+                        .combination
+                        .as_deref()
+                        .and_then(|output| output.bindings.get(cell.binding))
+                })
+                .ok_or_else(invalid)?;
+            Ok::<_, crate::Error>((unit, binding))
+        });
+    let mut next_cell = cell_frontiers.next().transpose()?;
     for (unit, row) in units.iter().enumerate() {
         let first = output.events.len();
+        let binding = if matches!(row.kind, PresentationUnitKind::Cell { .. }) {
+            let (owner, binding) = next_cell.ok_or_else(invalid)?;
+            if owner != unit
+                || row.participant.is_none()
+                || binding.events.is_empty()
+                || binding.events.start < relation.start
+                || binding.events.end > relation.end
+                || cursor > binding.events.start
+            {
+                return Err(invalid());
+            }
+            Some(binding)
+        } else {
+            None
+        };
         if let Some(participant) = row.participant {
             let prefix = participants
                 .start
@@ -851,18 +899,13 @@ fn selected_relation(
             // end of this interval, even when the next section has no units.
             let end = if captured && prefix == participants.end {
                 relation.end
-            } else if let PresentationUnitKind::Cell { cell } = row.kind {
-                let cell = &prepared.shaped.cells[cell];
-                prepared
-                    .analyzed
-                    .combination
-                    .as_deref()
-                    .ok_or_else(invalid)?
-                    .bindings[cell.binding]
-                    .events
-                    .end
+            } else if let Some(binding) = binding {
+                binding.events.end
             } else {
-                map.cut_for_participant(prepared.tables.source_prefix(prefix).ok_or_else(invalid)?)
+                let end = map.cut_for_participant(
+                    prepared.tables.source_prefix(prefix).ok_or_else(invalid)?,
+                );
+                next_cell.map_or(end, |(_, binding)| end.min(binding.events.start))
             };
             if end < cursor || end > relation.end {
                 return Err(invalid());
@@ -893,6 +936,9 @@ fn selected_relation(
             }
         }
         output.unit_events.push(first..output.events.len());
+        if binding.is_some() {
+            next_cell = cell_frontiers.next().transpose()?;
+        }
     }
     for event in cursor..relation.end {
         output.events.push(SelectedRelationEvent::Base { event });
