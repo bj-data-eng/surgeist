@@ -81,6 +81,13 @@ pub enum Event {
         /// The observed theme, or `None` when the host has no explicit value.
         theme: Option<Theme>,
     },
+    /// The host committed complete baseline host observations.
+    EnvironmentChanged {
+        /// The affected window identity.
+        id: Id,
+        /// Coherent observations after the transition.
+        environment: HostEnvironment,
+    },
     /// The host recorded a normalized file-drag payload.
     FileDrag(FileDragEvent),
     /// The host recorded normalized input.
@@ -103,7 +110,8 @@ impl Event {
             Self::Focused { id, .. }
             | Self::Moved { id, .. }
             | Self::Occluded { id, .. }
-            | Self::ThemeChanged { id, .. } => *id,
+            | Self::ThemeChanged { id, .. }
+            | Self::EnvironmentChanged { id, .. } => *id,
             Self::Resized(metrics) | Self::ScaleFactorChanged(metrics) => metrics.id(),
             Self::FileDrag(event) => event.id(),
             Self::Input(event) => event.id(),
@@ -125,6 +133,9 @@ impl From<EventKind> for Event {
             EventKind::Moved { id, position } => Self::Moved { id, position },
             EventKind::Occluded { id, occluded } => Self::Occluded { id, occluded },
             EventKind::ThemeChanged { id, theme } => Self::ThemeChanged { id, theme },
+            EventKind::EnvironmentChanged { id, environment } => {
+                Self::EnvironmentChanged { id, environment }
+            }
             EventKind::FileDrag(event) => Self::FileDrag(event),
             EventKind::Input(event) => Self::Input(event),
             #[cfg(feature = "accessibility")]
@@ -821,8 +832,13 @@ impl Host {
             return Ok(());
         };
         let existing = self.state_mut(id)?.metrics().clone();
-        let metrics = Metrics::from_physical_size(id, size, existing.scale_factor())?
-            .with_outer_geometry(existing.outer_position(), existing.outer_size())?;
+        let metrics = Metrics::from_physical_size(id, size, existing.scale_factor())?;
+        let outer_size = if metrics.physical_size() == existing.physical_size() {
+            existing.outer_size()
+        } else {
+            None
+        };
+        let metrics = metrics.with_outer_geometry(existing.outer_position(), outer_size)?;
         self.apply_patch(WindowStatePatch::metrics(metrics, MetricsEvent::Resized))
     }
 

@@ -30,9 +30,6 @@ enum Exclusion {
     /// must equal the tree derived from the pinned edition, so a stale record,
     /// a failed parse or any unrelated divergence fails.
     Spec(&'static str, &'static str),
-    /// A divergence tracked by an open issue without a fix yet; not asserted
-    /// either way.
-    Defect(&'static str),
 }
 
 /// Exclusions keyed by bundled file and one-based case ordinal.
@@ -87,13 +84,6 @@ const EXCLUSIONS: &[(&str, usize, Exclusion)] = &[
         "tests_innerHTML_1.dat",
         76,
         Exclusion::Spec(SELECT_INPUT_REASON, "| <option>\n"),
-    ),
-    (
-        "tests_innerHTML_1.dat",
-        79,
-        Exclusion::Defect(
-            "#1344: html context: after-body `</html>` must be ignored in the fragment case, keeping the comment under html",
-        ),
     ),
 ];
 
@@ -522,15 +512,6 @@ fn replay(kind_filter: fn(&Fixture<'_>) -> bool) -> Tally {
                         }
                     }
                 }
-                // A tracked defect may diverge, but a panic is never the defect.
-                Some(Exclusion::Defect(reason)) => {
-                    for panic in divergences.iter().filter(|d| d.contains(": panicked: ")) {
-                        failures.push(format!(
-                            "{file}/{} panicked ({reason}): {panic}",
-                            fixture.ordinal
-                        ));
-                    }
-                }
             }
         }
     }
@@ -572,7 +553,7 @@ fn exclusions_and_mode_bindings_name_only_retained_cases_once_with_reasons() {
                 .any(|(f, o, _)| f == file && o == ordinal),
             "{file}/{ordinal} repeated"
         );
-        let (Exclusion::Spec(reason, _) | Exclusion::Defect(reason)) = exclusion;
+        let Exclusion::Spec(reason, _) = exclusion;
         assert!(!reason.is_empty(), "{file}/{ordinal}");
     }
     for (i, (file, ordinal, _)) in HAND_DERIVED_MODES.iter().enumerate() {
