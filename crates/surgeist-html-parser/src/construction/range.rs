@@ -661,7 +661,7 @@ impl SessionStorage {
         let current = self.input_raw_slot(c, slot)?;
         let state = self.read_input_state(c, slot)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let RetainedPayload::Input { complete, .. } = &self.payloads.values[slot] else {
+        let Some(RetainedPayload::Input { complete, .. }) = self.payloads.values.get(slot) else {
             return Err(integrity(c));
         };
         let fresh_empty = !*complete
@@ -940,7 +940,7 @@ impl SessionStorage {
         payload_write::<usize>(c, 1)?;
         payload_write::<RetainedPayload>(c, 2)?;
         self.retire_field_group(c, previous)?;
-        let RetainedPayload::Input { raw, .. } = &mut self.payloads.values[slot] else {
+        let Some(RetainedPayload::Input { raw, .. }) = self.payloads.values.get_mut(slot) else {
             return Err(integrity(c));
         };
         *raw = next;

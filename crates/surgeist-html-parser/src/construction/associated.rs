@@ -482,7 +482,7 @@ impl SessionStorage {
         node: usize,
         raw: usize,
     ) -> Result<Result<HtmlHyperlinkUrlSnapshot, HyperlinkUnavailable>, SessionError> {
-        let RetainedPayload::String { value: raw, .. } = &self.payloads.values[raw] else {
+        let Some(RetainedPayload::String { value: raw, .. }) = self.payloads.values.get(raw) else {
             return Err(SessionError::WrongToken);
         };
         let context = match self.encoding_url_context(c, node)? {
@@ -712,8 +712,9 @@ impl SessionStorage {
                 }
             });
         }
-        let RetainedPayload::Hyperlink { state, .. } = &mut self.payloads.values[slot] else {
-            unreachable!()
+        let Some(RetainedPayload::Hyperlink { state, .. }) = self.payloads.values.get_mut(slot)
+        else {
+            return Err(SessionError::WrongToken);
         };
         let old = mem::replace(
             state,

@@ -308,8 +308,8 @@ impl SessionStorage {
             drop(pair);
             return Err(stop.into());
         }
-        self.bind_string(name_slot, StringLocation::PiName(map, index));
-        self.bind_string(value_slot, StringLocation::PiValue(map, index));
+        self.bind_string(name_slot, StringLocation::PiName(map, index))?;
+        self.bind_string(value_slot, StringLocation::PiValue(map, index))?;
         Ok(())
     }
 
@@ -320,8 +320,8 @@ impl SessionStorage {
             return Err(SessionError::WrongToken);
         };
         let pair = values.try_pop(c)?.ok_or(SessionError::WrongToken)?;
-        self.bind_string(pair.name_slot, StringLocation::Detached);
-        self.bind_string(pair.value_slot, StringLocation::Detached);
+        self.bind_string(pair.name_slot, StringLocation::Detached)?;
+        self.bind_string(pair.value_slot, StringLocation::Detached)?;
         let PseudoAttribute {
             name,
             value,

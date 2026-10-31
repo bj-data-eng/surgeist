@@ -227,8 +227,9 @@ impl SessionStorage {
         )?;
         payload_write::<usize>(c, 1)?;
         payload_write::<bool>(c, 1)?;
-        let RetainedPayload::Attributes(storage) = &mut self.payloads.values[container] else {
-            unreachable!()
+        let Some(RetainedPayload::Attributes(storage)) = self.payloads.values.get_mut(container)
+        else {
+            return Err(SessionError::WrongToken);
         };
         let AttributeStorage::Removing {
             values,

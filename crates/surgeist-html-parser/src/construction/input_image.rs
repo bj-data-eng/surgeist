@@ -77,10 +77,10 @@ impl SessionStorage {
         } else {
             let slot = self.completion_slot(c)?;
             c.charge(WorkCategory::RecordVisit, 1)?;
-            let RetainedPayload::StandaloneDocumentCompletion { state, .. } =
-                &self.payloads.values[slot]
+            let Some(RetainedPayload::StandaloneDocumentCompletion { state, .. }) =
+                self.payloads.values.get(slot)
             else {
-                unreachable!("checked completion fact")
+                return Err(SessionError::CompletionMetadataUnavailable);
             };
             let _ = state;
             // Only the admitted fresh offline prologue issues this fact; the

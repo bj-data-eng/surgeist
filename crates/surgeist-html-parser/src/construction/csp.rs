@@ -266,9 +266,9 @@ impl SessionStorage {
                     1
                 },
             )?;
-            this.meta_history_mut(doc).csp = Some(index);
+            this.meta_history_mut(doc)?.csp = Some(index);
             if state.initial_base && document == 0 {
-                this.meta_history_mut(doc).base_csp = Some(index);
+                this.meta_history_mut(doc)?.base_csp = Some(index);
             }
             Ok(())
         })
@@ -501,7 +501,7 @@ impl SessionStorage {
                     unreachable!()
                 };
                 value.value = Some(completion.into_parts());
-                s.meta_history_mut(doc).csp = Some(next_slot);
+                s.meta_history_mut(doc)?.csp = Some(next_slot);
                 let _ = current_slot;
                 Ok(())
             })();

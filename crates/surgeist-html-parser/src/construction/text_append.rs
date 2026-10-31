@@ -339,7 +339,7 @@ impl SessionStorage {
                 };
                 let slot = merged_slot.expect("admitted initialized append destination");
                 if !dispose_old {
-                    self.bind_string(old_slot, StringLocation::Detached);
+                    self.bind_string(old_slot, StringLocation::Detached)?;
                 }
                 self.payloads.values[slot] = RetainedPayload::String {
                     value,

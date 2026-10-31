@@ -93,11 +93,11 @@ impl SessionStorage {
                         let slot = self.document_slot(c, *inert)?;
                         c.charge(WorkCategory::RecordVisit, 1)?;
                         if !matches!(
-                            self.payloads.values[slot],
-                            RetainedPayload::Document {
+                            self.payloads.values.get(slot),
+                            Some(RetainedPayload::Document {
                                 state: DocumentState::InertTemplate,
                                 ..
-                            }
+                            })
                         ) {
                             return Err(SessionError::NodeDocumentUnavailable);
                         }
@@ -390,8 +390,9 @@ impl SessionStorage {
         let document = document.owned()?;
         let slot = self.document_slot(c, document)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let RetainedPayload::Document { state, class, .. } = self.payloads.values[slot] else {
-            unreachable!()
+        let Some(&RetainedPayload::Document { state, class, .. }) = self.payloads.values.get(slot)
+        else {
+            return Err(SessionError::NodeDocumentUnavailable);
         };
         let inert = match state {
             DocumentState::Ordinary { inert } => inert,
@@ -434,22 +435,24 @@ impl SessionStorage {
                     0,
                     0,
                 )?;
-                let RetainedPayload::Document { node: bound, .. } = &mut self.payloads.values[fact]
+                let Some(RetainedPayload::Document { node: bound, .. }) =
+                    self.payloads.values.get_mut(fact)
                 else {
-                    unreachable!()
+                    return Err(SessionError::WrongToken);
                 };
                 *bound = Some(node.index);
-                self.payloads.join_row(fact);
-                let RetainedPayload::NodeDocument { node: bound, .. } =
-                    &mut self.payloads.values[binding]
+                self.payloads.join_row(fact)?;
+                let Some(RetainedPayload::NodeDocument { node: bound, .. }) =
+                    self.payloads.values.get_mut(binding)
                 else {
-                    unreachable!()
+                    return Err(SessionError::WrongToken);
                 };
                 *bound = Some(node.index);
-                self.payloads.join_row(binding);
-                let RetainedPayload::Document { state, .. } = &mut self.payloads.values[slot]
+                self.payloads.join_row(binding)?;
+                let Some(RetainedPayload::Document { state, .. }) =
+                    self.payloads.values.get_mut(slot)
                 else {
-                    unreachable!()
+                    return Err(SessionError::WrongToken);
                 };
                 *state = DocumentState::Ordinary {
                     inert: Some(node.index),
@@ -513,11 +516,11 @@ impl SessionStorage {
             c.charge(WorkCategory::RecordVisit, 1)?;
             template
                 && matches!(
-                    self.payloads.values[slot],
-                    RetainedPayload::Document {
+                    self.payloads.values.get(slot),
+                    Some(RetainedPayload::Document {
                         state: DocumentState::Ordinary { inert: None },
                         ..
-                    }
+                    })
                 )
         } else {
             false
@@ -643,39 +646,41 @@ impl SessionStorage {
         }
         let node = self.allocate_native_record(c, command, template, attributes, units)?;
         if let Some(slot) = registry {
-            let RetainedPayload::LookupRegistry { node: bound, .. } =
-                &mut self.payloads.values[slot]
+            let Some(RetainedPayload::LookupRegistry { node: bound, .. }) =
+                self.payloads.values.get_mut(slot)
             else {
-                unreachable!()
+                return Err(SessionError::WrongToken);
             };
             *bound = Some(node.index);
-            self.payloads.join_row(slot);
+            self.payloads.join_row(slot)?;
         }
         if let Some(binding) = binding {
-            let RetainedPayload::NodeDocument { node: bound, .. } =
-                &mut self.payloads.values[binding]
+            let Some(RetainedPayload::NodeDocument { node: bound, .. }) =
+                self.payloads.values.get_mut(binding)
             else {
-                unreachable!()
+                return Err(SessionError::WrongToken);
             };
             *bound = Some(node.index);
-            self.payloads.join_row(binding);
+            self.payloads.join_row(binding)?;
         }
         if let Some(slot) = contents_binding {
-            let RetainedPayload::NodeDocument { node: bound, .. } = &mut self.payloads.values[slot]
+            let Some(RetainedPayload::NodeDocument { node: bound, .. }) =
+                self.payloads.values.get_mut(slot)
             else {
-                unreachable!()
+                return Err(SessionError::WrongToken);
             };
             *bound = Some(node.index + 1);
-            self.payloads.join_row(slot);
+            self.payloads.join_row(slot)?;
         }
         if let Some(slot) = facts {
-            let RetainedPayload::Template { node: bound, state } = &mut self.payloads.values[slot]
+            let Some(RetainedPayload::Template { node: bound, state }) =
+                self.payloads.values.get_mut(slot)
             else {
-                unreachable!()
+                return Err(SessionError::WrongToken);
             };
             *bound = Some(node.index);
             state.contents = node.index + 1;
-            self.payloads.join_row(slot);
+            self.payloads.join_row(slot)?;
         }
         Ok(node)
     }
@@ -826,9 +831,10 @@ impl ParserArenaSession {
         state.start = Some(start);
         state.end = end;
         payload_write::<TemplateMetadata>(c, 3)?;
-        let RetainedPayload::Template { state: stored, .. } = &mut storage.payloads.values[slot]
+        let Some(RetainedPayload::Template { state: stored, .. }) =
+            storage.payloads.values.get_mut(slot)
         else {
-            unreachable!()
+            return Err(SessionError::WrongToken);
         };
         *stored = state;
         if Some(start) == end {
@@ -847,8 +853,10 @@ impl ParserArenaSession {
             if Some(current) == end {
                 break;
             }
-            let RetainedPayload::WorkList(Some(nodes)) = &mut storage.payloads.values[list] else {
-                unreachable!()
+            let Some(RetainedPayload::WorkList(Some(nodes))) =
+                storage.payloads.values.get_mut(list)
+            else {
+                return Err(SessionError::WrongToken);
             };
             nodes.try_push(c, current)?;
             payload_write::<Option<usize>>(c, 1)?;
@@ -891,9 +899,10 @@ impl ParserArenaSession {
         state.start = None;
         state.end = None;
         payload_write::<TemplateMetadata>(c, 3)?;
-        let RetainedPayload::Template { state: stored, .. } = &mut storage.payloads.values[slot]
+        let Some(RetainedPayload::Template { state: stored, .. }) =
+            storage.payloads.values.get_mut(slot)
         else {
-            unreachable!()
+            return Err(SessionError::WrongToken);
         };
         *stored = state;
         Ok(())

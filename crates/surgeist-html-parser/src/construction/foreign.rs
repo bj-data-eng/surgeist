@@ -1100,19 +1100,19 @@ impl SessionStorage {
                 self.bind_string(
                     local_ticket,
                     StringLocation::AttributeName(container, position),
-                );
+                )?;
                 self.bind_string(
                     value_ticket,
                     StringLocation::AttributeValue(container, position),
-                );
+                )?;
                 if let Some(ticket) = namespace_ticket {
                     self.bind_string(
                         ticket,
                         StringLocation::AttributeNamespace(container, position),
-                    );
+                    )?;
                 }
                 if let Some(ticket) = prefix_ticket {
-                    self.bind_string(ticket, StringLocation::AttributePrefix(container, position));
+                    self.bind_string(ticket, StringLocation::AttributePrefix(container, position))?;
                 }
             }
             self.reverse_attributes(control, container)?;
@@ -1198,9 +1198,9 @@ impl SessionStorage {
             if let Some(slot) = svg {
                 self.bind_svg_slot(slot, node.index);
             }
-            self.bind_string(name_ticket, StringLocation::ElementName(node.index));
+            self.bind_string(name_ticket, StringLocation::ElementName(node.index))?;
             if let Some(ticket) = namespace_ticket {
-                self.bind_string(ticket, StringLocation::Namespace(node.index));
+                self.bind_string(ticket, StringLocation::Namespace(node.index))?;
             }
             let RetainedPayload::Attributes(Some(AttributeStorage::Frozen { element, .. })) =
                 &mut self.payloads.values[container]
@@ -1208,7 +1208,7 @@ impl SessionStorage {
                 unreachable!()
             };
             *element = Some(node.index);
-            self.payloads.join_row(container);
+            self.payloads.join_row(container)?;
 
             self.initial_nonce_attributes(control, node.index)?;
             Ok(node)

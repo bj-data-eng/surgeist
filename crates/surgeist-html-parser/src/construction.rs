@@ -423,29 +423,38 @@ impl NodeJoins {
             .get(join as usize)
             .copied()
             .flatten()
-            .map(|slot| slot.get().saturating_sub(1))
+            .and_then(|slot| slot.get().checked_sub(1))
     }
     /// Names the latest registry row, the one a back-to-front scan finds.
-    fn set_latest(&mut self, join: Join, slot: usize) {
-        if let Some(cell) = self.rows.get_mut(join as usize) {
-            *cell = Some(joined_cell(slot));
-        }
+    fn set_latest(&mut self, join: Join, slot: usize) -> Result<(), SessionError> {
+        let cell = self
+            .rows
+            .get_mut(join as usize)
+            .ok_or(SessionError::WrongToken)?;
+        *cell = Some(joined_cell(slot)?);
+        Ok(())
     }
     /// Keeps the earliest registry row, the one a front-to-back scan finds.
-    fn set_first(&mut self, join: Join, slot: usize) {
-        if let Some(cell) = self.rows.get_mut(join as usize) {
-            let slot = joined_cell(slot);
-            if cell.is_none_or(|current| slot < current) {
-                *cell = Some(slot);
-            }
+    fn set_first(&mut self, join: Join, slot: usize) -> Result<(), SessionError> {
+        let cell = self
+            .rows
+            .get_mut(join as usize)
+            .ok_or(SessionError::WrongToken)?;
+        let slot = joined_cell(slot)?;
+        if cell.is_none_or(|current| slot < current) {
+            *cell = Some(slot);
         }
+        Ok(())
     }
 }
-/// Slot plus one as a nonzero cell. A registry slot is a vector index, so the
-/// sum cannot overflow; saturation keeps the conversion total, and a cell that
-/// names no matching row is rejected by the caller's row check.
-fn joined_cell(slot: usize) -> NonZeroUsize {
-    NonZeroUsize::new(slot.saturating_add(1)).unwrap_or(NonZeroUsize::MAX)
+/// Slot plus one as a nonzero cell. A slot is an index into the registry
+/// vector, so it is below `isize::MAX / size_of::<RetainedPayload>()` and the
+/// sum cannot overflow; the checked sum still fails typed, never wrapping or
+/// naming another row, if that bound were ever broken.
+fn joined_cell(slot: usize) -> Result<NonZeroUsize, SessionError> {
+    NonZeroUsize::MIN
+        .checked_add(slot)
+        .ok_or(SessionError::WrongToken)
 }
 /// Registry-wide kind lists with their own admitted backing.
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -845,13 +854,14 @@ impl PayloadStorage {
     /// Registers the row at `slot` under the record it is bound to. Binding a
     /// row and joining it are one infallible step at every binding site; the
     /// test-build check at release compares every join with the registry.
-    fn join_row(&mut self, slot: usize) {
+    fn join_row(&mut self, slot: usize) -> Result<(), SessionError> {
         let Some((join, node)) = self.values.get(slot).and_then(row_join) else {
-            return;
+            return Ok(());
         };
-        if let Some(cell) = self.node_joins.get_mut(node) {
-            cell.set_first(join, slot);
-        }
+        self.node_joins
+            .get_mut(node)
+            .ok_or(SessionError::ForeignNode)?
+            .set_first(join, slot)
     }
     /// The registry row now holding a record's merged text.
     fn join_text(&mut self, node: usize, slot: usize) {
@@ -890,16 +900,23 @@ impl PayloadStorage {
         if let Some(kind) = list.and_then(|list| self.kind_slots.get_mut(list as usize)) {
             kind.slots.push(slot);
         }
-        self.join_row(slot);
+        self.join_row(slot)?;
         Ok(slot)
     }
     /// Records where creation registered the record's attribute strings: the
     /// name of its last attribute, followed by that attribute's value, then the
     /// previous attribute's name and value, and so on.
-    fn record_attribute_strings(&mut self, node: usize, last_name_slot: usize) {
-        if let Some(cell) = self.node_joins.get_mut(node) {
-            cell.attribute_strings = Some(joined_cell(last_name_slot));
-        }
+    fn record_attribute_strings(
+        &mut self,
+        node: usize,
+        last_name_slot: usize,
+    ) -> Result<(), SessionError> {
+        let cell = self
+            .node_joins
+            .get_mut(node)
+            .ok_or(SessionError::ForeignNode)?;
+        cell.attribute_strings = Some(joined_cell(last_name_slot)?);
+        Ok(())
     }
     /// An attribute edit makes the creation-time layout unreliable.
     fn forget_attribute_strings(&mut self, node: usize) {
@@ -949,13 +966,15 @@ impl PayloadStorage {
                     cell.get(join).is_none(),
                     "two {join:?} rows are bound to record {node}"
                 );
-                cell.set_first(join, slot);
+                cell.set_first(join, slot).unwrap();
             }
             if let Some(list) = row_list(row) {
                 lists[list as usize].push(slot);
             }
             if let Some(subject) = pending_association::style_occurrence_subject(row) {
-                expected[subject].set_latest(Join::StyleOccurrence, slot);
+                expected[subject]
+                    .set_latest(Join::StyleOccurrence, slot)
+                    .unwrap();
             }
         }
         for (node, (cell, joined)) in expected.iter().zip(&self.node_joins).enumerate() {
@@ -1096,7 +1115,11 @@ impl PayloadStorage {
         Ok(())
     }
 
-    fn release(self, control: &mut ParseControl, owner: &ControlIdentity) {
+    fn release(
+        self,
+        control: &mut ParseControl,
+        owner: &ControlIdentity,
+    ) -> Result<(), SessionError> {
         #[cfg(test)]
         self.assert_joins_match_registry();
         let Self {
@@ -1109,8 +1132,10 @@ impl PayloadStorage {
         } = self;
         let mut csp_storage = crate::meta_csp::Storage::ZERO;
         let join_entries = node_joins.len() as u64;
-        // A refused release has already latched its stop in the controller.
-        let _ = release_vector(control, node_joins, node_joins_allocation);
+        // A refused release latches its stop in the controller (`ParseControl::fail`),
+        // and cleanup continues so every other owner is still released; the first
+        // refusal is returned once the walk is complete.
+        let mut refused = release_vector(control, node_joins, node_joins_allocation).err();
         release_logical(
             control,
             owner,
@@ -1119,7 +1144,9 @@ impl PayloadStorage {
         );
         for list in kind_slots {
             let list_entries = list.slots.len() as u64;
-            let _ = release_vector(control, list.slots, list.allocation);
+            if let Err(error) = release_vector(control, list.slots, list.allocation) {
+                refused.get_or_insert(error);
+            }
             release_logical(
                 control,
                 owner,
@@ -1269,6 +1296,7 @@ impl PayloadStorage {
         csp_storage.release(control);
         release_vector(control, values, allocation).expect("actual payload registry capacity");
         release_logical(control, owner, HtmlParseResource::AuxiliaryEntries, entries);
+        refused.map_or(Ok(()), Err)
     }
 }
 impl StringLocation {
@@ -1570,7 +1598,9 @@ impl SessionStorage {
         let allocated = payload_write::<Option<FormEffects>>(control, 1)
             .and_then(|()| session.allocate_native(control, kind, false, 0, 0));
         if let Err(error) = allocated {
-            session.release(control);
+            // The allocation failure is the error reported; a refused release has
+            // latched its own stop, which is not reported over the first.
+            let _ = session.release(control);
             return Err(error);
         }
         if matches!(
@@ -1598,7 +1628,7 @@ impl SessionStorage {
                 Ok::<_, SessionError>(())
             })();
             if let Err(error) = facts {
-                session.release(control);
+                let _ = session.release(control);
                 return Err(error);
             }
         }
@@ -1806,18 +1836,19 @@ impl SessionStorage {
             self.payloads.node_joins.push(NodeJoins::default());
         }
         if let Some(slot) = nonce_slot {
-            let RetainedPayload::Nonce { node, .. } = &mut self.payloads.values[slot] else {
-                unreachable!()
+            let Some(RetainedPayload::Nonce { node, .. }) = self.payloads.values.get_mut(slot)
+            else {
+                return Err(SessionError::WrongToken);
             };
             *node = Some(index);
-            self.payloads.join_row(slot);
+            self.payloads.join_row(slot)?;
         }
         for (offset, slot) in cause_slots.into_iter().enumerate().take(count) {
             if let Some(slot) = slot {
-                let RetainedPayload::ConstructionCause { node, .. } =
-                    &mut self.payloads.values[slot]
+                let Some(RetainedPayload::ConstructionCause { node, .. }) =
+                    self.payloads.values.get_mut(slot)
                 else {
-                    unreachable!()
+                    return Err(SessionError::WrongToken);
                 };
                 *node = Some(index + offset);
             }
@@ -1901,14 +1932,14 @@ impl SessionStorage {
             origins,
             location: StringLocation::Detached,
         });
-        let RetainedPayload::String {
+        let Some(RetainedPayload::String {
             value,
             allocation,
             origins,
             ..
-        } = &mut self.payloads.values[index]
+        }) = self.payloads.values.get_mut(index)
         else {
-            unreachable!()
+            return Err(SessionError::WrongToken);
         };
         control.move_document_string_to_managed(allocation, value)?;
         if let Some(origins) = origins {
@@ -1953,10 +1984,10 @@ impl SessionStorage {
             match creation {
                 OrderedCreation::Details { metadata } => {
                     payload_write::<Option<usize>>(control, 1)?;
-                    let RetainedPayload::Details { node: bound, .. } =
-                        &mut self.payloads.values[metadata]
+                    let Some(RetainedPayload::Details { node: bound, .. }) =
+                        self.payloads.values.get_mut(metadata)
                     else {
-                        unreachable!()
+                        return Err(SessionError::WrongToken);
                     };
                     *bound = Some(node.index);
                 }
@@ -1966,38 +1997,38 @@ impl SessionStorage {
                     source,
                 } => {
                     payload_write::<[Option<usize>; 3]>(control, 3)?;
-                    let RetainedPayload::InputSource { node: bound, .. } =
-                        &mut self.payloads.values[source]
+                    let Some(RetainedPayload::InputSource { node: bound, .. }) =
+                        self.payloads.values.get_mut(source)
                     else {
-                        unreachable!()
+                        return Err(SessionError::WrongToken);
                     };
                     *bound = Some(node.index);
-                    let RetainedPayload::Input { node: bound, .. } =
-                        &mut self.payloads.values[input]
+                    let Some(RetainedPayload::Input { node: bound, .. }) =
+                        self.payloads.values.get_mut(input)
                     else {
-                        unreachable!()
+                        return Err(SessionError::WrongToken);
                     };
                     *bound = Some(node.index);
-                    self.payloads.join_row(input);
-                    let RetainedPayload::FormAssociation { node: bound, .. } =
-                        &mut self.payloads.values[association]
+                    self.payloads.join_row(input)?;
+                    let Some(RetainedPayload::FormAssociation { node: bound, .. }) =
+                        self.payloads.values.get_mut(association)
                     else {
-                        unreachable!()
+                        return Err(SessionError::WrongToken);
                     };
                     *bound = Some(node.index);
-                    self.payloads.join_row(association);
+                    self.payloads.join_row(association)?;
                 }
                 OrderedCreation::Select {
                     metadata: Some(slot),
                 } => {
                     payload_write::<Option<usize>>(control, 1)?;
-                    let RetainedPayload::SelectFamily { node: bound, .. } =
-                        &mut self.payloads.values[slot]
+                    let Some(RetainedPayload::SelectFamily { node: bound, .. }) =
+                        self.payloads.values.get_mut(slot)
                     else {
-                        unreachable!()
+                        return Err(SessionError::WrongToken);
                     };
                     *bound = Some(node.index);
-                    self.payloads.join_row(slot);
+                    self.payloads.join_row(slot)?;
                 }
                 OrderedCreation::Select { metadata: None } => {}
             }
@@ -2028,13 +2059,13 @@ impl SessionStorage {
                     }
                 };
                 let (value, value_ticket) = self.register_text(control, attribute.value)?;
-                let RetainedPayload::Attributes(Some(AttributeStorage::Building {
+                let Some(RetainedPayload::Attributes(Some(AttributeStorage::Building {
                     values,
                     allocation,
                     ..
-                })) = &mut self.payloads.values[stage]
+                }))) = self.payloads.values.get_mut(stage)
                 else {
-                    unreachable!()
+                    return Err(SessionError::WrongToken);
                 };
                 control.reserve_vector(values, allocation, 1)?;
                 payload_write::<Attribute>(control, 1)?;
@@ -2048,11 +2079,11 @@ impl SessionStorage {
                 self.bind_string(
                     local_ticket,
                     StringLocation::AttributeName(stage, remaining),
-                );
+                )?;
                 self.bind_string(
                     value_ticket,
                     StringLocation::AttributeValue(stage, remaining),
-                );
+                )?;
             }
             self.edit_attributes(control, node.index, container, stage, count, false)?;
             self.begin_attribute_transfer(control, stage, container, 0)?;
@@ -2113,7 +2144,7 @@ impl SessionStorage {
         slot: usize,
     ) -> Result<usize, SessionError> {
         control.charge(WorkCategory::RecordVisit, 1)?;
-        let RetainedPayload::Input { raw, .. } = &self.payloads.values[slot] else {
+        let Some(RetainedPayload::Input { raw, .. }) = self.payloads.values.get(slot) else {
             return Err(SessionError::InputMetadataUnavailable);
         };
         control.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
@@ -2126,7 +2157,7 @@ impl SessionStorage {
     ) -> Result<InputState, SessionError> {
         control.charge(WorkCategory::RecordVisit, 1)?;
         control.charge(WorkCategory::CopyByte, mem::size_of::<InputState>() as u64)?;
-        let RetainedPayload::Input { state, .. } = &self.payloads.values[slot] else {
+        let Some(RetainedPayload::Input { state, .. }) = self.payloads.values.get(slot) else {
             return Err(SessionError::InputMetadataUnavailable);
         };
         Ok(*state)
@@ -2138,7 +2169,7 @@ impl SessionStorage {
         next: InputState,
     ) -> Result<(), SessionError> {
         payload_write::<InputState>(control, 1)?;
-        let RetainedPayload::Input { state, .. } = &mut self.payloads.values[slot] else {
+        let Some(RetainedPayload::Input { state, .. }) = self.payloads.values.get_mut(slot) else {
             return Err(SessionError::InputMetadataUnavailable);
         };
         *state = next;
@@ -2172,8 +2203,8 @@ impl SessionStorage {
         payload_write::<usize>(control, 1)?;
         payload_write::<RetainedPayload>(control, 2)?;
         self.retire_field_group(control, previous)?;
-        let RetainedPayload::Input { raw, .. } = &mut self.payloads.values[slot] else {
-            unreachable!()
+        let Some(RetainedPayload::Input { raw, .. }) = self.payloads.values.get_mut(slot) else {
+            return Err(SessionError::WrongToken);
         };
         *raw = next;
         if dispose_previous {
@@ -2650,9 +2681,9 @@ impl SessionStorage {
             incoming,
             [name_slot, value_slot],
         )?;
-        let RetainedPayload::Input {
+        let Some(RetainedPayload::Input {
             state: destination, ..
-        } = &mut self.payloads.values[slot]
+        }) = self.payloads.values.get_mut(slot)
         else {
             return Err(SessionError::WrongToken);
         };
@@ -2709,14 +2740,15 @@ impl SessionStorage {
             );
             match result {
                 Ok(old) => {
-                    self.bind_string(old_slot, StringLocation::Detached);
+                    self.bind_string(old_slot, StringLocation::Detached)?;
                     self.bind_string(
                         new_slot,
                         StringLocation::AttributeValue(container, position),
-                    );
-                    let RetainedPayload::Input { state, .. } = &mut self.payloads.values[slot]
+                    )?;
+                    let Some(RetainedPayload::Input { state, .. }) =
+                        self.payloads.values.get_mut(slot)
                     else {
-                        unreachable!()
+                        return Err(SessionError::WrongToken);
                     };
                     *state = next_state;
                     drop(old);
@@ -2812,8 +2844,9 @@ impl SessionStorage {
         state.selected_files_empty = true;
         self.write_input_state(control, slot, state)?;
         payload_write::<bool>(control, 1)?;
-        let RetainedPayload::Input { complete, .. } = &mut self.payloads.values[slot] else {
-            unreachable!()
+        let Some(RetainedPayload::Input { complete, .. }) = self.payloads.values.get_mut(slot)
+        else {
+            return Err(SessionError::WrongToken);
         };
         *complete = true;
         #[cfg(test)]
@@ -2851,9 +2884,10 @@ impl SessionStorage {
         if reset {
             payload_write::<TextareaState>(control, 1)?;
             state.flags.reset();
-            let RetainedPayload::Textarea { state: stored, .. } = &mut self.payloads.values[slot]
+            let Some(RetainedPayload::Textarea { state: stored, .. }) =
+                self.payloads.values.get_mut(slot)
             else {
-                unreachable!()
+                return Err(SessionError::WrongToken);
             };
             *stored = state;
         } else if state.flags.children_changed() == HtmlTextareaRawValueAction::Keep {
@@ -2930,9 +2964,10 @@ impl SessionStorage {
         payload_write::<TextareaState>(control, 1)?;
         payload_write::<RetainedPayload>(control, 2)?;
         self.retire_field_group(control, state.raw)?;
-        let RetainedPayload::Textarea { state: stored, .. } = &mut self.payloads.values[slot]
+        let Some(RetainedPayload::Textarea { state: stored, .. }) =
+            self.payloads.values.get_mut(slot)
         else {
-            unreachable!()
+            return Err(SessionError::WrongToken);
         };
         let previous = state.raw;
         state.raw = next;
@@ -3022,14 +3057,14 @@ impl SessionStorage {
             origins,
             location: StringLocation::Detached,
         });
-        let RetainedPayload::String {
+        let Some(RetainedPayload::String {
             value,
             allocation,
             origins,
             ..
-        } = &mut self.payloads.values[index]
+        }) = self.payloads.values.get_mut(index)
         else {
-            unreachable!()
+            return Err(SessionError::WrongToken);
         };
         control.move_document_string_to_managed(allocation, value)?;
         if let Some(origins) = origins {
@@ -3202,13 +3237,13 @@ impl SessionStorage {
                             .representation::<()>(HtmlParseResource::ManagedUtf16Units)
                             .unwrap_err()
                     })?;
-                let RetainedPayload::Attributes(Some(AttributeStorage::Building {
+                let Some(RetainedPayload::Attributes(Some(AttributeStorage::Building {
                     values,
                     allocation,
                     ..
-                })) = &mut self.payloads.values[container]
+                }))) = self.payloads.values.get_mut(container)
                 else {
-                    unreachable!()
+                    return Err(SessionError::WrongToken);
                 };
                 control.reserve_vector(values, allocation, 1)?;
                 control.charge(WorkCategory::CopyByte, mem::size_of::<Attribute>() as u64)?;
@@ -3222,15 +3257,17 @@ impl SessionStorage {
                 self.bind_string(
                     local_ticket,
                     StringLocation::AttributeName(container, position),
-                );
+                )?;
                 self.bind_string(
                     value_ticket,
                     StringLocation::AttributeValue(container, position),
-                );
+                )?;
             }
             self.reverse_attributes(control, container)?;
-            let RetainedPayload::Attributes(storage) = &mut self.payloads.values[container] else {
-                unreachable!()
+            let Some(RetainedPayload::Attributes(storage)) =
+                self.payloads.values.get_mut(container)
+            else {
+                return Err(SessionError::WrongToken);
             };
             let AttributeStorage::Building {
                 values,
@@ -3281,10 +3318,11 @@ impl SessionStorage {
                 WorkCategory::CopyByte,
                 mem::size_of::<OrderedAttributes>() as u64,
             )?;
-            let RetainedPayload::Attributes(Some(AttributeStorage::Frozen { values, .. })) =
-                &self.payloads.values[container]
+            let Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
+                values, ..
+            }))) = self.payloads.values.get(container)
             else {
-                unreachable!()
+                return Err(SessionError::WrongToken);
             };
             let attributes = values.clone();
             let template = exact_ascii(control, Some(&name), "template")?;
@@ -3303,17 +3341,18 @@ impl SessionStorage {
                 0,
                 prepared,
             )?;
-            self.bind_string(name_ticket, StringLocation::ElementName(node.index));
-            self.bind_string(namespace_ticket, StringLocation::Namespace(node.index));
-            let RetainedPayload::Attributes(Some(AttributeStorage::Frozen { element, .. })) =
-                &mut self.payloads.values[container]
+            self.bind_string(name_ticket, StringLocation::ElementName(node.index))?;
+            self.bind_string(namespace_ticket, StringLocation::Namespace(node.index))?;
+            let Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
+                element, ..
+            }))) = self.payloads.values.get_mut(container)
             else {
-                unreachable!()
+                return Err(SessionError::WrongToken);
             };
             *element = Some(node.index);
-            self.payloads.join_row(container);
+            self.payloads.join_row(container)?;
             if let Some(slot) = last_name_slot {
-                self.payloads.record_attribute_strings(node.index, slot);
+                self.payloads.record_attribute_strings(node.index, slot)?;
             }
             self.initial_nonce_attributes(control, node.index)?;
             self.initial_associated_state(control, node.index)?;
@@ -3453,7 +3492,7 @@ impl SessionStorage {
                 0,
                 prepared,
             )?;
-            self.bind_string(ticket, StringLocation::Text(node.index));
+            self.bind_string(ticket, StringLocation::Text(node.index))?;
             self.insert(control, parent, &node, before, InsertionCause::NonParser)?;
             Ok(Some(TextInsertion {
                 _node: node,
@@ -3468,12 +3507,12 @@ impl SessionStorage {
         native: bool,
     ) -> Result<bool, SessionError> {
         control.charge(WorkCategory::RecordVisit, 1)?;
-        let RetainedPayload::String {
+        let Some(RetainedPayload::String {
             value,
             allocation,
             origins,
             ..
-        } = &self.payloads.values[slot]
+        }) = self.payloads.values.get(slot)
         else {
             return Err(SessionError::WrongToken);
         };
@@ -3537,17 +3576,18 @@ impl SessionStorage {
         }
         Ok(())
     }
-    fn bind_string(&mut self, index: usize, location: StringLocation) {
-        let RetainedPayload::String {
+    fn bind_string(&mut self, index: usize, location: StringLocation) -> Result<(), SessionError> {
+        let Some(RetainedPayload::String {
             location: current, ..
-        } = &mut self.payloads.values[index]
+        }) = self.payloads.values.get_mut(index)
         else {
-            unreachable!()
+            return Err(SessionError::WrongToken);
         };
         *current = location;
         if let StringLocation::Text(node) = location {
             self.payloads.join_text(node, index);
         }
+        Ok(())
     }
     /// Same parser-owned HTML root, real slots and original lexical origins.
     /// Imported/native attribute backing requires a later admitted importer.
@@ -3718,13 +3758,13 @@ impl SessionStorage {
                     }
                 };
                 let (value, value_ticket) = self.register_text(control, attribute.value)?;
-                let RetainedPayload::Attributes(Some(AttributeStorage::Building {
+                let Some(RetainedPayload::Attributes(Some(AttributeStorage::Building {
                     values,
                     allocation,
                     ..
-                })) = &mut self.payloads.values[stage]
+                }))) = self.payloads.values.get_mut(stage)
                 else {
-                    unreachable!()
+                    return Err(SessionError::WrongToken);
                 };
                 control.reserve_vector(values, allocation, 1)?;
                 control.charge(
@@ -3738,11 +3778,11 @@ impl SessionStorage {
                     value,
                 ));
                 remaining -= 1;
-                self.bind_string(name_ticket, StringLocation::AttributeName(stage, remaining));
+                self.bind_string(name_ticket, StringLocation::AttributeName(stage, remaining))?;
                 self.bind_string(
                     value_ticket,
                     StringLocation::AttributeValue(stage, remaining),
-                );
+                )?;
             }
             if count == 0 {
                 self.construction.finish_attributes(control)?;
@@ -3803,8 +3843,8 @@ impl SessionStorage {
         // rebound. A stop above retains the exact transfer phase.
         payload_write::<Option<AttributeStorage>>(control, 2)?;
         payload_write::<usize>(control, 2)?;
-        let RetainedPayload::Attributes(storage) = &mut self.payloads.values[stage] else {
-            unreachable!()
+        let Some(RetainedPayload::Attributes(storage)) = self.payloads.values.get_mut(stage) else {
+            return Err(SessionError::WrongToken);
         };
         let AttributeStorage::Transferring {
             values, allocation, ..
@@ -3866,8 +3906,8 @@ impl SessionStorage {
         start: usize,
     ) -> Result<(), SessionError> {
         payload_write::<Option<AttributeStorage>>(control, 2)?;
-        let RetainedPayload::Attributes(storage) = &mut self.payloads.values[stage] else {
-            unreachable!()
+        let Some(RetainedPayload::Attributes(storage)) = self.payloads.values.get_mut(stage) else {
+            return Err(SessionError::WrongToken);
         };
         let AttributeStorage::Building {
             values,
@@ -3904,7 +3944,8 @@ impl SessionStorage {
         control.charge(WorkCategory::RecordVisit, 1)?;
         #[cfg(test)]
         control.observe_registry_iteration();
-        if let RetainedPayload::String { location, .. } = &mut self.payloads.values[index] {
+        if let Some(RetainedPayload::String { location, .. }) = self.payloads.values.get_mut(index)
+        {
             control.charge(
                 WorkCategory::CopyByte,
                 (2 * mem::size_of::<StringLocation>()) as u64,
@@ -3967,8 +4008,9 @@ impl SessionStorage {
     ) -> Result<Option<FormEffects>, SessionError> {
         control.require_identity(&self.control)?;
         control.charge(WorkCategory::RecordVisit, 2)?;
-        let RetainedPayload::Attributes(Some(AttributeStorage::Transferring { values, .. })) =
-            &self.payloads.values[stage]
+        let Some(RetainedPayload::Attributes(Some(AttributeStorage::Transferring {
+            values, ..
+        }))) = self.payloads.values.get(stage)
         else {
             return Err(control
                 .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
@@ -4145,10 +4187,10 @@ impl SessionStorage {
         control: &mut ParseControl,
         container: usize,
     ) -> Result<(), SessionError> {
-        let RetainedPayload::Attributes(Some(AttributeStorage::Building { values, .. })) =
-            &self.payloads.values[container]
+        let Some(RetainedPayload::Attributes(Some(AttributeStorage::Building { values, .. }))) =
+            self.payloads.values.get(container)
         else {
-            unreachable!()
+            return Err(SessionError::WrongToken);
         };
         let len = values.len();
         for left in 0..len / 2 {
@@ -4160,13 +4202,13 @@ impl SessionStorage {
             )?;
             control.charge(WorkCategory::RecordVisit, 1)?;
             control.charge(WorkCategory::RecordWrite, 3)?;
-            let RetainedPayload::Attributes(Some(AttributeStorage::Building {
+            let Some(RetainedPayload::Attributes(Some(AttributeStorage::Building {
                 values,
                 reversed_pairs,
                 ..
-            })) = &mut self.payloads.values[container]
+            }))) = self.payloads.values.get_mut(container)
             else {
-                unreachable!()
+                return Err(SessionError::WrongToken);
             };
             values.swap(left, right);
             *reversed_pairs += 1;
@@ -5004,10 +5046,10 @@ impl SessionStorage {
                         .copied();
                     if let Some(next_slot) = next_slot {
                         control.charge(WorkCategory::RecordVisit, 1)?;
-                        if let RetainedPayload::FormAssociation {
+                        if let Some(RetainedPayload::FormAssociation {
                             node: Some(candidate),
                             state,
-                        } = &self.payloads.values[next_slot]
+                        }) = self.payloads.values.get(next_slot)
                         {
                             control.charge(
                                 WorkCategory::CopyByte,
@@ -5535,7 +5577,7 @@ impl SessionStorage {
 
     /// Called only after the owning transition verifies cleanup identity. This
     /// consumes actual storage; exact private tickets prove the release invariant.
-    fn release(self, control: &mut ParseControl) {
+    fn release(self, control: &mut ParseControl) -> Result<(), SessionError> {
         let Self {
             csp_slot: _,
             control: owner,
@@ -5586,7 +5628,7 @@ impl SessionStorage {
                 construction,
                 payloads,
             },
-        );
+        )
     }
 }
 
@@ -5988,13 +6030,13 @@ impl ParserArenaSession {
             CreationProfile::Ordinary,
             context,
         )?;
-        let RetainedPayload::Script { node: bound, .. } =
-            &mut self.active_mut()?.payloads.values[script]
+        let Some(RetainedPayload::Script { node: bound, .. }) =
+            self.active_mut()?.payloads.values.get_mut(script)
         else {
-            unreachable!()
+            return Err(SessionError::ScriptMetadataUnavailable);
         };
         *bound = Some(node.index);
-        self.active_mut()?.payloads.join_row(script);
+        self.active_mut()?.payloads.join_row(script)?;
         Ok(node)
     }
     #[cfg(test)]
@@ -6542,9 +6584,10 @@ impl ParserArenaSession {
             storage.mark_document_parser_style(control, node.index)?;
             if let Some(link) = link_slot {
                 payload_write::<Option<usize>>(control, 1)?;
-                let RetainedPayload::Link { node: bound, .. } = &mut storage.payloads.values[link]
+                let Some(RetainedPayload::Link { node: bound, .. }) =
+                    storage.payloads.values.get_mut(link)
                 else {
-                    unreachable!()
+                    return Err(SessionError::WrongToken);
                 };
                 *bound = Some(node.index);
             }
@@ -6564,10 +6607,10 @@ impl ParserArenaSession {
                 payload_write::<Option<usize>>(control, 1)?;
                 payload_write::<Option<usize>>(control, 1)?;
                 payload_write::<TextareaState>(control, 1)?;
-                let RetainedPayload::Textarea { node: bound, state } =
-                    &mut storage.payloads.values[textarea]
+                let Some(RetainedPayload::Textarea { node: bound, state }) =
+                    storage.payloads.values.get_mut(textarea)
                 else {
-                    unreachable!()
+                    return Err(SessionError::WrongToken);
                 };
                 *bound = Some(node.index);
                 state.flags.reset();
@@ -6593,10 +6636,10 @@ impl ParserArenaSession {
                 }
                 payload_write::<Option<usize>>(control, 1)?;
                 payload_write::<OutputState>(control, 1)?;
-                let RetainedPayload::Output { node: bound, state } =
-                    &mut storage.payloads.values[output]
+                let Some(RetainedPayload::Output { node: bound, state }) =
+                    storage.payloads.values.get_mut(output)
                 else {
-                    unreachable!()
+                    return Err(SessionError::WrongToken);
                 };
                 *bound = Some(node.index);
                 state.default_value_override = OutputDefaultValueOverride::Null;
@@ -6614,13 +6657,13 @@ impl ParserArenaSession {
                     return Err(SessionError::FormAssociationMetadataUnavailable);
                 };
                 *bound = Some(node.index);
-                storage.payloads.join_row(slot);
+                storage.payloads.join_row(slot)?;
                 if reset_before_association {
                     payload_write::<FormAssociationState>(control, 1)?;
-                    let RetainedPayload::FormAssociation { state, .. } =
-                        &mut storage.payloads.values[slot]
+                    let Some(RetainedPayload::FormAssociation { state, .. }) =
+                        storage.payloads.values.get_mut(slot)
                     else {
-                        unreachable!()
+                        return Err(SessionError::WrongToken);
                     };
                     state.owner = owner;
                     state.parser_inserted = owner.is_some();
@@ -7170,7 +7213,7 @@ impl ParserArenaSession {
             0,
             prepared,
         )?;
-        storage.bind_string(ticket, StringLocation::Comment(node.index));
+        storage.bind_string(ticket, StringLocation::Comment(node.index))?;
         Ok(node)
     }
     pub(crate) fn allocate_processing_instruction(
@@ -7212,11 +7255,11 @@ impl ParserArenaSession {
         storage.bind_string(
             target_ticket,
             StringLocation::ProcessingInstructionTarget(node.index),
-        );
+        )?;
         storage.bind_string(
             data_ticket,
             StringLocation::ProcessingInstructionData(node.index),
-        );
+        )?;
         storage.bind_pi_map(map, node.index);
         storage.parse_pi_map(control, node.index, map)?;
         Ok(node)
@@ -7280,9 +7323,9 @@ impl ParserArenaSession {
                 0,
                 0,
             )?;
-            storage.bind_string(a, StringLocation::DoctypeName(node.index));
-            storage.bind_string(b, StringLocation::DoctypePublic(node.index));
-            storage.bind_string(d, StringLocation::DoctypeSystem(node.index));
+            storage.bind_string(a, StringLocation::DoctypeName(node.index))?;
+            storage.bind_string(b, StringLocation::DoctypePublic(node.index))?;
+            storage.bind_string(d, StringLocation::DoctypeSystem(node.index))?;
             Ok(node)
         })();
         for text in incoming.into_iter().flatten() {
@@ -7815,8 +7858,7 @@ impl ParserArenaSession {
         self.storage
             .take()
             .expect("verified active owner retains storage")
-            .release(control);
-        Ok(())
+            .release(control)
     }
 }
 
@@ -8219,8 +8261,7 @@ impl FrozenArena {
                 construction,
                 payloads,
             },
-        );
-        Ok(())
+        )
     }
 }
 
@@ -8235,7 +8276,11 @@ fn release_vector<T>(
     })
 }
 
-fn release_parts(control: &mut ParseControl, owner: &ControlIdentity, parts: ReleasedStorage) {
+fn release_parts(
+    control: &mut ParseControl,
+    owner: &ControlIdentity,
+    parts: ReleasedStorage,
+) -> Result<(), SessionError> {
     let ReleasedStorage {
         construction,
         payloads,
@@ -8262,7 +8307,7 @@ fn release_parts(control: &mut ParseControl, owner: &ControlIdentity, parts: Rel
             .cleanup_release(owner, resource, units)
             .expect("private session's admitted logical storage has not been released elsewhere");
     }
-    payloads.release(control, owner);
+    payloads.release(control, owner)
 }
 
 fn cleanup_owner(control: &mut ParseControl, owner: &ControlIdentity) -> Result<(), SessionError> {
@@ -9294,9 +9339,9 @@ fn copy_selected_input_value(
     mode: crate::HtmlInputEmailMode,
 ) -> Result<(FieldCopy, Option<usize>), SessionError> {
     control.charge(WorkCategory::RecordVisit, 1)?;
-    let RetainedPayload::String {
+    let Some(RetainedPayload::String {
         value, allocation, ..
-    } = &payloads.values[slot]
+    }) = payloads.values.get(slot)
     else {
         return Err(SessionError::InputMetadataUnavailable);
     };
@@ -9357,10 +9402,10 @@ fn copy_whole_generated_input_value(
     if retained != 0 {
         return Err(SessionError::OriginSplitUnavailable);
     }
-    let RetainedPayload::String {
+    let Some(RetainedPayload::String {
         origins: Some(group),
         ..
-    } = &payloads.values[source]
+    }) = payloads.values.get(source)
     else {
         return Err(SessionError::WrongToken);
     };
@@ -9406,12 +9451,12 @@ fn copy_input_value_core(
     generated_mode: crate::HtmlInputEmailMode,
 ) -> Result<(FieldCopy, Option<usize>), SessionError> {
     control.charge(WorkCategory::RecordVisit, 1)?;
-    let RetainedPayload::String {
+    let Some(RetainedPayload::String {
         value,
         origins,
         allocation,
         ..
-    } = &payloads.values[slot]
+    }) = payloads.values.get(slot)
     else {
         return Err(SessionError::InputMetadataUnavailable);
     };
@@ -9678,10 +9723,10 @@ fn find_output_state(
 ) -> Result<OutputState, SessionError> {
     for slot in 0..payloads.values.len() {
         control.charge(WorkCategory::RecordVisit, 1)?;
-        if let RetainedPayload::Output {
+        if let Some(RetainedPayload::Output {
             node: Some(owner),
             state,
-        } = &payloads.values[slot]
+        }) = payloads.values.get(slot)
             && *owner == node
         {
             control.charge(WorkCategory::CopyByte, mem::size_of::<OutputState>() as u64)?;
@@ -24350,7 +24395,9 @@ mod tests {
             let node = storage
                 .allocate_owned(&mut c, HtmlNodeKind::Text(value), false, 0, 0)
                 .unwrap();
-            storage.bind_string(slot, StringLocation::Text(node.index));
+            storage
+                .bind_string(slot, StringLocation::Text(node.index))
+                .unwrap();
             storage
                 .insert(&mut c, &root, &node, None, InsertionCause::NonParser)
                 .unwrap();

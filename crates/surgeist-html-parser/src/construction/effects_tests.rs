@@ -2128,12 +2128,38 @@ fn attribute_value_lookup_uses_the_creation_hint_then_falls_back_after_edits() {
         .active_mut()
         .unwrap()
         .payloads
-        .record_attribute_strings(dialog.index, stale);
+        .record_attribute_strings(dialog.index, stale)
+        .unwrap();
     let verified = lookups(&session, &mut c, 3);
     assert_eq!(
         verified.iter().map(|(slot, _)| *slot).collect::<Vec<_>>(),
         expected(&session)
     );
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn a_join_naming_no_row_fails_typed_instead_of_panicking() {
+    let request = request("<body><img src=a>");
+    let (mut c, mut session, _proof, nodes) = graph(&request);
+    let img = named(&nodes, "img", 0).index;
+    let storage = session.active_mut().unwrap();
+    let good = storage.payloads.node_joins[img];
+    // A join past the registry names no row: the lookup reports a typed error.
+    storage.payloads.node_joins[img].rows[Join::Image as usize] =
+        Some(joined_cell(usize::MAX / 2).unwrap());
+    assert_eq!(
+        storage.start_img_update(
+            &mut c,
+            img,
+            surgeist_html::HtmlImageUpdateFlags::new(false, false)
+        ),
+        Err(SessionError::WrongToken)
+    );
+    // A slot whose successor does not exist is refused, never wrapped.
+    assert_eq!(joined_cell(usize::MAX), Err(SessionError::WrongToken));
+    storage.payloads.node_joins[img] = good;
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }

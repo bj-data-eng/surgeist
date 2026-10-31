@@ -53,12 +53,13 @@ impl SessionStorage {
         raw: usize,
     ) -> Result<(), SessionError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let RetainedPayload::Nonce { raw: old, .. } = self.payloads.values[slot] else {
+        let Some(&RetainedPayload::Nonce { raw: old, .. }) = self.payloads.values.get(slot) else {
             return Err(SessionError::NonceMetadataUnavailable);
         };
         payload_write::<usize>(c, 1)?;
-        let RetainedPayload::Nonce { raw: stored, .. } = &mut self.payloads.values[slot] else {
-            unreachable!()
+        let Some(RetainedPayload::Nonce { raw: stored, .. }) = self.payloads.values.get_mut(slot)
+        else {
+            return Err(SessionError::WrongToken);
         };
         *stored = raw;
         self.retire_raw_field(c, old)
@@ -625,9 +626,9 @@ impl ParserArenaSession {
             .nonce_slot(c, node)?
             .ok_or(SessionError::NonceMetadataUnavailable)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let RetainedPayload::String {
+        let Some(RetainedPayload::String {
             value, allocation, ..
-        } = &storage.payloads.values[raw]
+        }) = storage.payloads.values.get(raw)
         else {
             return Err(SessionError::WrongToken);
         };

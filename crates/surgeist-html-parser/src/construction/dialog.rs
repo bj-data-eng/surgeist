@@ -115,8 +115,10 @@ impl SessionStorage {
             DocumentRef::Captured(_) => None,
         };
         let document_missing = if let Some(owner) = owned {
-            let RetainedPayload::Document { interaction, .. } = &self.payloads.values[owner] else {
-                unreachable!("actual Document payload")
+            let Some(RetainedPayload::Document { interaction, .. }) =
+                self.payloads.values.get(owner)
+            else {
+                return Err(SessionError::NodeDocumentUnavailable);
             };
             interaction.first.is_none()
         } else {
@@ -137,8 +139,8 @@ impl SessionStorage {
             None
         };
         payload_write::<Missing>(c, 1)?;
-        let RetainedPayload::Dialog { state, .. } = &mut self.payloads.values[slot] else {
-            unreachable!("actual Dialog payload")
+        let Some(RetainedPayload::Dialog { state, .. }) = self.payloads.values.get_mut(slot) else {
+            return Err(SessionError::WrongToken);
         };
         state.first = Some(Missing {
             subject: node,
@@ -147,10 +149,10 @@ impl SessionStorage {
             cause,
         });
         if let Some(missing) = duplicate {
-            let RetainedPayload::Document { interaction, .. } =
-                &mut self.payloads.values[owned.unwrap()]
+            let Some(RetainedPayload::Document { interaction, .. }) =
+                owned.and_then(|owner| self.payloads.values.get_mut(owner))
             else {
-                unreachable!("actual Document payload")
+                return Err(SessionError::NodeDocumentUnavailable);
             };
             interaction.first = Some(missing);
         }
@@ -167,8 +169,8 @@ impl SessionStorage {
             return Ok(());
         };
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let RetainedPayload::Dialog { state, .. } = &self.payloads.values[slot] else {
-            unreachable!("actual Dialog payload")
+        let Some(RetainedPayload::Dialog { state, .. }) = self.payloads.values.get(slot) else {
+            return Err(SessionError::WrongToken);
         };
         if state.first.is_some() {
             // Structural parsing continues; unknown services cannot be resumed

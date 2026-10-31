@@ -172,7 +172,8 @@ impl SessionStorage {
         c: &mut ParseControl,
         slot: usize,
     ) -> Result<OriginGroupRef, SessionError> {
-        let RetainedPayload::String { value, origins, .. } = &self.payloads.values[slot] else {
+        let Some(RetainedPayload::String { value, origins, .. }) = self.payloads.values.get(slot)
+        else {
             return Err(SessionError::WrongToken);
         };
         if let Some(group) = origins {
@@ -188,8 +189,9 @@ impl SessionStorage {
         evidence.bind_leaf_value(c, &group, slot)?;
         let retained = evidence.copy_group_reference(c, &group)?;
         payload_write::<Option<OriginGroupRef>>(c, 1)?;
-        let RetainedPayload::String { origins, .. } = &mut self.payloads.values[slot] else {
-            unreachable!()
+        let Some(RetainedPayload::String { origins, .. }) = self.payloads.values.get_mut(slot)
+        else {
+            return Err(SessionError::WrongToken);
         };
         *origins = Some(retained);
         Ok(group)
@@ -442,8 +444,9 @@ impl SessionStorage {
                 };
                 context.mode = *mode;
                 let slot = self.document_slot(c, *document)?;
-                let RetainedPayload::Document { class, .. } = &self.payloads.values[slot] else {
-                    unreachable!()
+                let Some(RetainedPayload::Document { class, .. }) = self.payloads.values.get(slot)
+                else {
+                    return Err(SessionError::WrongToken);
                 };
                 context.class = *class;
                 // First document Element and only its direct body/frameset child.
@@ -507,17 +510,18 @@ impl SessionStorage {
                 if let Some(first) = context.first_base {
                     context.base_input = self.association_attribute(c, first, "href")?;
                     let slot = self.base_slot(c, first)?;
-                    let RetainedPayload::Base { frozen, .. } = &self.payloads.values[slot] else {
-                        unreachable!()
+                    let Some(RetainedPayload::Base { frozen, .. }) = self.payloads.values.get(slot)
+                    else {
+                        return Err(SessionError::WrongToken);
                     };
                     if let base::BaseValue::Frozen(value) = frozen {
                         let Some(facts_slot) = context.base_document else {
                             return Err(SessionError::WrongToken);
                         };
-                        let RetainedPayload::BaseDocument { facts, .. } =
-                            &self.payloads.values[facts_slot]
+                        let Some(RetainedPayload::BaseDocument { facts, .. }) =
+                            self.payloads.values.get(facts_slot)
                         else {
-                            unreachable!()
+                            return Err(SessionError::WrongToken);
                         };
                         let raw = self
                             .form_attribute(c, first, "href")?
@@ -588,10 +592,10 @@ impl SessionStorage {
             let prior_style = self.payloads.joined(c, node, Join::StyleOccurrence)?;
             let cause = self.associated_cause(c)?;
             let prior_sheet = prior_style.is_some_and(|slot| matches!(self.payloads.values.get(slot), Some(RetainedPayload::AssociationOccurrence(values)) if values.as_slice().first().is_some_and(|first| first.may_have_sheet)));
-            let RetainedPayload::AssociationDocument(summary) =
-                &self.payloads.values[document_slot]
+            let Some(RetainedPayload::AssociationDocument(summary)) =
+                self.payloads.values.get(document_slot)
             else {
-                unreachable!()
+                return Err(SessionError::WrongToken);
             };
             let count = summary
                 .count
@@ -688,13 +692,17 @@ impl SessionStorage {
                 self.payloads
                     .values
                     .push(RetainedPayload::AssociationOccurrence(values));
-                if styled && let Some(cell) = self.payloads.node_joins.get_mut(node) {
-                    cell.set_latest(Join::StyleOccurrence, slot);
+                if styled {
+                    self.payloads
+                        .node_joins
+                        .get_mut(node)
+                        .ok_or(SessionError::ForeignNode)?
+                        .set_latest(Join::StyleOccurrence, slot)?;
                 }
-                let RetainedPayload::AssociationDocument(summary) =
-                    &mut self.payloads.values[document_slot]
+                let Some(RetainedPayload::AssociationDocument(summary)) =
+                    self.payloads.values.get_mut(document_slot)
                 else {
-                    unreachable!()
+                    return Err(SessionError::WrongToken);
                 };
                 summary.count = count;
                 summary.obligations = obligations;
@@ -745,8 +753,8 @@ impl SessionStorage {
             let Some(slot) = self.style_slot(c, node)? else {
                 return Ok(());
             };
-            let RetainedPayload::Style { state, .. } = &self.payloads.values[slot] else {
-                unreachable!()
+            let Some(RetainedPayload::Style { state, .. }) = self.payloads.values.get(slot) else {
+                return Err(SessionError::WrongToken);
             };
             let on_parser_stack = state.state.on_parser_stack();
             let connected = self.shadow_including_connected(c, node, detached)?;
@@ -781,8 +789,8 @@ impl SessionStorage {
         let Some(slot) = self.style_slot(c, parent)? else {
             return Ok(());
         };
-        let RetainedPayload::Style { state, .. } = &self.payloads.values[slot] else {
-            unreachable!()
+        let Some(RetainedPayload::Style { state, .. }) = self.payloads.values.get(slot) else {
+            return Err(SessionError::WrongToken);
         };
         self.association_style_trigger(
             c,
@@ -1232,8 +1240,8 @@ impl<'a> ContextView<'a> {
             return None;
         }
         let slot = self.value.csp?;
-        let RetainedPayload::CspPolicy(value) = &self.storage.payloads.values[slot] else {
-            unreachable!("qualified policy")
+        let Some(RetainedPayload::CspPolicy(value)) = self.storage.payloads.values.get(slot) else {
+            return None;
         };
         value.value.as_ref()
     }
@@ -1338,9 +1346,9 @@ impl<'a> ContextView<'a> {
     pub fn base_facts(&self) -> Option<&'a crate::HtmlParseBaseFacts> {
         self.value
             .base_document
-            .map(|slot| match &self.storage.payloads.values[slot] {
-                RetainedPayload::BaseDocument { facts, .. } => facts,
-                _ => unreachable!("qualified base provider"),
+            .and_then(|slot| match self.storage.payloads.values.get(slot) {
+                Some(RetainedPayload::BaseDocument { facts, .. }) => Some(facts),
+                _ => None,
             })
     }
     pub fn captured_context(
@@ -1348,9 +1356,9 @@ impl<'a> ContextView<'a> {
     ) -> Option<&'a surgeist_html_semantics::HtmlDocumentEncodingUrlContext> {
         self.value
             .captured
-            .map(|slot| match &self.storage.payloads.values[slot] {
-                RetainedPayload::AssociationCapturedContext(value) => &value.value,
-                _ => unreachable!("qualified captured provider"),
+            .and_then(|slot| match self.storage.payloads.values.get(slot) {
+                Some(RetainedPayload::AssociationCapturedContext(value)) => Some(&value.value),
+                _ => None,
             })
     }
     pub fn first_base(&self) -> Option<HtmlNode<'a>> {

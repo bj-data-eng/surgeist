@@ -266,13 +266,13 @@ impl SessionStorage {
             },
         )));
         let prepared = (|| {
-            let RetainedPayload::Attributes(Some(AttributeStorage::Building {
+            let Some(RetainedPayload::Attributes(Some(AttributeStorage::Building {
                 values,
                 allocation,
                 ..
-            })) = &mut self.payloads.values[stage]
+            }))) = self.payloads.values.get_mut(stage)
             else {
-                unreachable!()
+                return Err(SessionError::WrongToken);
             };
             c.reserve_vector(values, allocation, 1)?;
             payload_write::<Attribute>(c, 1)?;
@@ -284,14 +284,14 @@ impl SessionStorage {
             drop(incoming);
             return Err(error);
         }
-        let RetainedPayload::Attributes(Some(AttributeStorage::Building { values, .. })) =
-            &mut self.payloads.values[stage]
+        let Some(RetainedPayload::Attributes(Some(AttributeStorage::Building { values, .. }))) =
+            self.payloads.values.get_mut(stage)
         else {
-            unreachable!()
+            return Err(SessionError::WrongToken);
         };
         values.push(incoming);
-        self.bind_string(name_slot, StringLocation::AttributeName(stage, 0));
-        self.bind_string(value_slot, StringLocation::AttributeValue(stage, 0));
+        self.bind_string(name_slot, StringLocation::AttributeName(stage, 0))?;
+        self.bind_string(value_slot, StringLocation::AttributeValue(stage, 0))?;
         self.edit_attributes(c, node, container, stage, 1, false)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(record) = &self
@@ -373,16 +373,16 @@ impl SessionStorage {
                 &old_slots,
             )?;
             for slot in old_slots.into_iter().flatten() {
-                self.bind_string(slot, StringLocation::Detached);
+                self.bind_string(slot, StringLocation::Detached)?;
             }
             self.bind_string(
                 name_slot,
                 StringLocation::AttributeName(container, position),
-            );
+            )?;
             self.bind_string(
                 value_slot,
                 StringLocation::AttributeValue(container, position),
-            );
+            )?;
 
             drop(old);
             Ok::<_, SessionError>(())
@@ -434,8 +434,9 @@ impl SessionStorage {
             )
         });
         payload_write::<Option<AttributeStorage>>(c, 2)?;
-        let RetainedPayload::Attributes(storage) = &mut self.payloads.values[container] else {
-            unreachable!()
+        let Some(RetainedPayload::Attributes(storage)) = self.payloads.values.get_mut(container)
+        else {
+            return Err(SessionError::WrongToken);
         };
         let AttributeStorage::Frozen {
             values,
@@ -474,7 +475,9 @@ impl SessionStorage {
             c.charge(WorkCategory::RecordVisit, 1)?;
             payload_write::<StringLocation>(c, 1)?;
             payload_write::<usize>(c, 1)?;
-            if let RetainedPayload::String { location, .. } = &mut self.payloads.values[slot] {
+            if let Some(RetainedPayload::String { location, .. }) =
+                self.payloads.values.get_mut(slot)
+            {
                 let (owner, position) = match *location {
                     StringLocation::AttributeName(o, p)
                     | StringLocation::AttributeValue(o, p)
@@ -505,17 +508,19 @@ impl SessionStorage {
                     };
                 }
             }
-            let RetainedPayload::Attributes(Some(AttributeStorage::Removing { rebound, .. })) =
-                &mut self.payloads.values[container]
+            let Some(RetainedPayload::Attributes(Some(AttributeStorage::Removing {
+                rebound, ..
+            }))) = self.payloads.values.get_mut(container)
             else {
-                unreachable!()
+                return Err(SessionError::WrongToken);
             };
             *rebound = slot + 1;
         }
         payload_write::<Option<AttributeStorage>>(c, 2)?;
         payload_write::<usize>(c, 2)?;
-        let RetainedPayload::Attributes(storage) = &mut self.payloads.values[container] else {
-            unreachable!()
+        let Some(RetainedPayload::Attributes(storage)) = self.payloads.values.get_mut(container)
+        else {
+            return Err(SessionError::WrongToken);
         };
         let AttributeStorage::Removing {
             values,

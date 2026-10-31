@@ -748,8 +748,10 @@ impl SessionStorage {
                 }
             };
             if include {
-                let RetainedPayload::WorkList(Some(list)) = &mut self.payloads.values[slot] else {
-                    unreachable!()
+                let Some(RetainedPayload::WorkList(Some(list))) =
+                    self.payloads.values.get_mut(slot)
+                else {
+                    return Err(SessionError::WrongToken);
                 };
                 list.try_push_recover(c, node)
                     .map_err(|(stop, _)| SessionError::Stop(stop))?;
@@ -796,8 +798,10 @@ impl SessionStorage {
             c.charge(WorkCategory::RecordWrite, 1)?;
             let mut next = Some(root);
             while let Some(node) = next {
-                let RetainedPayload::WorkList(Some(list)) = &mut self.payloads.values[slot] else {
-                    unreachable!()
+                let Some(RetainedPayload::WorkList(Some(list))) =
+                    self.payloads.values.get_mut(slot)
+                else {
+                    return Err(SessionError::WrongToken);
                 };
                 list.try_push_recover(c, node)
                     .map_err(|(stop, _)| SessionError::Stop(stop))?;

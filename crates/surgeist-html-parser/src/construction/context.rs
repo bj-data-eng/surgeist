@@ -267,17 +267,20 @@ impl SessionStorage {
             0,
             0,
         )?;
-        let RetainedPayload::Document { node: bound, .. } = &mut self.payloads.values[fact] else {
-            unreachable!()
-        };
-        *bound = Some(node.index);
-        self.payloads.join_row(fact);
-        let RetainedPayload::NodeDocument { node: bound, .. } = &mut self.payloads.values[binding]
+        let Some(RetainedPayload::Document { node: bound, .. }) =
+            self.payloads.values.get_mut(fact)
         else {
-            unreachable!()
+            return Err(SessionError::WrongToken);
         };
         *bound = Some(node.index);
-        self.payloads.join_row(binding);
+        self.payloads.join_row(fact)?;
+        let Some(RetainedPayload::NodeDocument { node: bound, .. }) =
+            self.payloads.values.get_mut(binding)
+        else {
+            return Err(SessionError::WrongToken);
+        };
+        *bound = Some(node.index);
+        self.payloads.join_row(binding)?;
         let ContextEffect::TemplateCache { inert, .. } = self
             .fragment
             .as_mut()
@@ -531,19 +534,19 @@ impl ParserArenaSession {
         // Both qualified replacements are admitted before either canonical
         // slot changes. Superseded source-less causes stay in the sole issuer.
         payload_write::<[provenance::ConstructionCauseRef; 2]>(c, 2)?;
-        let RetainedPayload::ConstructionCause {
+        let Some(RetainedPayload::ConstructionCause {
             cause: root_cause, ..
-        } = &mut storage.payloads.values[root_slot]
+        }) = storage.payloads.values.get_mut(root_slot)
         else {
-            unreachable!()
+            return Err(SessionError::WrongToken);
         };
         *root_cause = cause;
-        let RetainedPayload::ConstructionCause {
+        let Some(RetainedPayload::ConstructionCause {
             cause: output_cause,
             ..
-        } = &mut storage.payloads.values[output_slot]
+        }) = storage.payloads.values.get_mut(output_slot)
         else {
-            unreachable!()
+            return Err(SessionError::WrongToken);
         };
         *output_cause = copy;
         Ok(())
@@ -968,13 +971,13 @@ impl SessionStorage {
         let effective = self.effective_global_registry(c, registry)?;
         if let Some(slot) = self.payloads.joined(c, node, Join::LookupRegistry)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(self.payloads.values[slot],RetainedPayload::LookupRegistry {node:Some(bound),..} if bound==node)
+            if matches!(self.payloads.values.get(slot),Some(RetainedPayload::LookupRegistry {node:Some(bound),..}) if *bound==node)
             {
                 payload_write::<RegistryRef>(c, 1)?;
-                let RetainedPayload::LookupRegistry { registry, .. } =
-                    &mut self.payloads.values[slot]
+                let Some(RetainedPayload::LookupRegistry { registry, .. }) =
+                    self.payloads.values.get_mut(slot)
                 else {
-                    unreachable!()
+                    return Err(SessionError::WrongToken);
                 };
                 *registry = effective;
                 return Ok(());
@@ -1208,7 +1211,8 @@ impl ParserArenaSession {
                 let creation = storage.element_creation_state(c, host)?;
                 let saved_is = if let Some(slot) = creation.saved_is {
                     c.charge(WorkCategory::RecordVisit, 1)?;
-                    let RetainedPayload::String { value, .. } = &storage.payloads.values[slot]
+                    let Some(RetainedPayload::String { value, .. }) =
+                        storage.payloads.values.get(slot)
                     else {
                         return Err(SessionError::ContextUnavailable);
                     };
@@ -1362,10 +1366,10 @@ impl ParserArenaSession {
             });
             payload_write::<Option<usize>>(c, 1)?;
             let root = storage.allocate_shadow_contents(c, properties, document)?;
-            let RetainedPayload::Shadow { root: bound, .. } =
-                &mut storage.payloads.values[shadow_slot]
+            let Some(RetainedPayload::Shadow { root: bound, .. }) =
+                storage.payloads.values.get_mut(shadow_slot)
             else {
-                unreachable!()
+                return Err(SessionError::WrongToken);
             };
             *bound = Some(root.index);
             storage.prepare_payload_slot_owned(c)?;
@@ -1443,10 +1447,10 @@ impl ParserArenaSession {
             *declarative = true;
             *available_to_internals = true;
             *keep_registry_null = keep_null;
-            let RetainedPayload::Template { state, .. } =
-                &mut storage.payloads.values[template_slot]
+            let Some(RetainedPayload::Template { state, .. }) =
+                storage.payloads.values.get_mut(template_slot)
             else {
-                unreachable!("preflighted template metadata")
+                return Err(SessionError::TemplateMetadataUnavailable);
             };
             state.contents = root.index;
             Ok::<(), SessionError>(())
@@ -1855,16 +1859,18 @@ impl SessionStorage {
         payload_write::<Option<usize>>(c, 2)?;
         let document = document.try_clone(c)?;
         let root = self.allocate_shadow_contents(c, properties, document)?;
-        let RetainedPayload::Shadow { root: bound, .. } = &mut self.payloads.values[fact] else {
-            unreachable!()
-        };
-        *bound = Some(root.index);
-        let RetainedPayload::LookupRegistry { node: bound, .. } = &mut self.payloads.values[lookup]
+        let Some(RetainedPayload::Shadow { root: bound, .. }) = self.payloads.values.get_mut(fact)
         else {
-            unreachable!()
+            return Err(SessionError::WrongToken);
         };
         *bound = Some(root.index);
-        self.payloads.join_row(lookup);
+        let Some(RetainedPayload::LookupRegistry { node: bound, .. }) =
+            self.payloads.values.get_mut(lookup)
+        else {
+            return Err(SessionError::WrongToken);
+        };
+        *bound = Some(root.index);
+        self.payloads.join_row(lookup)?;
         c.charge(WorkCategory::ProviderCall, 2)?;
         let host = self
             .construction
@@ -1981,7 +1987,8 @@ impl ParserArenaSession {
         let state = storage.element_creation_state(c, index)?;
         let saved = if let Some(slot) = state.saved_is {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            let RetainedPayload::String { value, .. } = &storage.payloads.values[slot] else {
+            let Some(RetainedPayload::String { value, .. }) = storage.payloads.values.get(slot)
+            else {
                 return Err(SessionError::ContextUnavailable);
             };
             Some(value)
@@ -2029,7 +2036,8 @@ impl FrozenArena {
                 )?;
                 let saved = if let Some(slot) = state.saved_is {
                     c.charge(WorkCategory::RecordVisit, 1)?;
-                    let RetainedPayload::String { value, .. } = &storage.payloads.values[slot]
+                    let Some(RetainedPayload::String { value, .. }) =
+                        storage.payloads.values.get(slot)
                     else {
                         return Err(SessionError::ContextUnavailable);
                     };

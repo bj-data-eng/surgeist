@@ -69,8 +69,8 @@ impl SessionStorage {
         self.document_slot(c, 0)?;
         let cause = self.associated_cause(c)?;
         payload_write::<StyleMetadata>(c, 1)?;
-        let RetainedPayload::Style { state, .. } = &mut self.payloads.values[slot] else {
-            unreachable!()
+        let Some(RetainedPayload::Style { state, .. }) = self.payloads.values.get_mut(slot) else {
+            return Err(SessionError::WrongToken);
         };
         state.state = surgeist_html::HtmlStyleState::document_parser_created();
         state.parser_document = Some(DocumentRef::Owned(0));
@@ -96,8 +96,8 @@ impl SessionStorage {
         };
         let cause = self.associated_cause(c)?;
         payload_write::<StyleMetadata>(c, 1)?;
-        let RetainedPayload::Style { state, .. } = &mut self.payloads.values[slot] else {
-            unreachable!()
+        let Some(RetainedPayload::Style { state, .. }) = self.payloads.values.get_mut(slot) else {
+            return Err(SessionError::WrongToken);
         };
         if added {
             state.state.parser_stack_added()

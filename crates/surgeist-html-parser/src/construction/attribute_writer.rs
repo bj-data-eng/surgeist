@@ -12,8 +12,9 @@ impl SessionStorage {
     ) -> Result<Attribute, SessionError> {
         self.begin_attribute_edit(control, node, HtmlConstructionAttributeEditMode::Slots)?;
         let mut group = self.construction.take_attribute_edit();
-        let RetainedPayload::Attributes(backing) = &mut self.payloads.values[container] else {
-            unreachable!()
+        let Some(RetainedPayload::Attributes(backing)) = self.payloads.values.get_mut(container)
+        else {
+            return Err(SessionError::WrongToken);
         };
         let AttributeStorage::Frozen {
             values,
@@ -47,8 +48,9 @@ impl SessionStorage {
         };
         control.restore_attribute_weak(record.attributes().shared_attributes(), &mut shared);
         let values = record.attributes().clone();
-        let RetainedPayload::Attributes(backing) = &mut self.payloads.values[container] else {
-            unreachable!()
+        let Some(RetainedPayload::Attributes(backing)) = self.payloads.values.get_mut(container)
+        else {
+            return Err(SessionError::WrongToken);
         };
         *backing = Some(AttributeStorage::Frozen {
             values,

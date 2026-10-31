@@ -107,8 +107,9 @@ impl ParserArenaSession {
         let storage = self.active_mut()?;
         let slot = storage.base_slot(c, index)?;
         payload_write::<ResponseDomain>(c, 1)?;
-        let RetainedPayload::Base { domain, .. } = &mut storage.payloads.values[slot] else {
-            unreachable!()
+        let Some(RetainedPayload::Base { domain, .. }) = storage.payloads.values.get_mut(slot)
+        else {
+            return Err(SessionError::WrongToken);
         };
         *domain = ResponseDomain::ClosedOwned;
         Ok(())
@@ -234,9 +235,10 @@ impl SessionStorage {
         let missing_policy = self.meta_policy_missing(c, document)?;
         if let Some(missing) = missing_policy {
             let previous_first = if let Some(slot) = self.base_document_slot(c, document)? {
-                let RetainedPayload::BaseDocument { first, .. } = &self.payloads.values[slot]
+                let Some(RetainedPayload::BaseDocument { first, .. }) =
+                    self.payloads.values.get(slot)
                 else {
-                    unreachable!()
+                    return Err(SessionError::WrongToken);
                 };
                 *first
             } else {
@@ -247,10 +249,10 @@ impl SessionStorage {
             }
             if let Some(slot) = self.base_document_slot(c, document)? {
                 payload_write::<Option<usize>>(c, 1)?;
-                let RetainedPayload::BaseDocument { first: binding, .. } =
-                    &mut self.payloads.values[slot]
+                let Some(RetainedPayload::BaseDocument { first: binding, .. }) =
+                    self.payloads.values.get_mut(slot)
                 else {
-                    unreachable!()
+                    return Err(SessionError::WrongToken);
                 };
                 *binding = first;
             }
@@ -261,8 +263,9 @@ impl SessionStorage {
                     self.base_slot(c, first)?
                 };
                 payload_write::<BaseValue>(c, 1)?;
-                let RetainedPayload::Base { frozen, .. } = &mut self.payloads.values[slot] else {
-                    unreachable!()
+                let Some(RetainedPayload::Base { frozen, .. }) = self.payloads.values.get_mut(slot)
+                else {
+                    return Err(SessionError::WrongToken);
                 };
                 let previous = match mem::replace(frozen, BaseValue::Unfrozen) {
                     BaseValue::Unfrozen => None,
@@ -279,21 +282,21 @@ impl SessionStorage {
             }
             return Ok(());
         };
-        let RetainedPayload::BaseDocument {
+        let Some(RetainedPayload::BaseDocument {
             facts, first: old, ..
-        } = &self.payloads.values[document_slot]
+        }) = self.payloads.values.get(document_slot)
         else {
-            unreachable!()
+            return Err(SessionError::WrongToken);
         };
         if first == *old && !(href_changed && first == Some(node)) {
             return Ok(());
         }
         let Some(first) = first else {
             payload_write::<Option<usize>>(c, 1)?;
-            let RetainedPayload::BaseDocument { first, .. } =
-                &mut self.payloads.values[document_slot]
+            let Some(RetainedPayload::BaseDocument { first, .. }) =
+                self.payloads.values.get_mut(document_slot)
             else {
-                unreachable!()
+                return Err(SessionError::WrongToken);
             };
             *first = None;
             return Ok(());
@@ -349,17 +352,17 @@ impl SessionStorage {
                 Response::Returned
             },
         };
-        let RetainedPayload::BaseDocument { first: binding, .. } =
-            &mut self.payloads.values[document_slot]
+        let Some(RetainedPayload::BaseDocument { first: binding, .. }) =
+            self.payloads.values.get_mut(document_slot)
         else {
-            unreachable!()
+            return Err(SessionError::WrongToken);
         };
         *binding = Some(first);
-        let RetainedPayload::Base {
+        let Some(RetainedPayload::Base {
             frozen: binding, ..
-        } = &mut self.payloads.values[chosen_slot]
+        }) = self.payloads.values.get_mut(chosen_slot)
         else {
-            unreachable!()
+            return Err(SessionError::WrongToken);
         };
         *binding = BaseValue::Frozen(frozen);
         #[cfg(test)]
@@ -371,20 +374,20 @@ impl SessionStorage {
         if respond {
             // This real checkpoint is after assignment and before response.
             c.charge(WorkCategory::RecordVisit, 1)?;
-            let RetainedPayload::Base {
+            let Some(RetainedPayload::Base {
                 domain: ResponseDomain::ClosedOwned,
                 ..
-            } = &self.payloads.values[chosen_slot]
+            }) = self.payloads.values.get(chosen_slot)
             else {
                 return Err(c.stop_base_facts(HtmlBaseMissing::ResponseDomain).into());
             };
             payload_write::<Response>(c, 1)?;
-            let RetainedPayload::Base {
+            let Some(RetainedPayload::Base {
                 frozen: BaseValue::Frozen(frozen),
                 ..
-            } = &mut self.payloads.values[chosen_slot]
+            }) = self.payloads.values.get_mut(chosen_slot)
             else {
-                unreachable!()
+                return Err(SessionError::WrongToken);
             };
             frozen.response = Response::Finished;
         }
@@ -435,9 +438,10 @@ impl SessionStorage {
                 let slot = self
                     .base_document_slot(c, frozen.document)?
                     .ok_or(SessionError::WrongToken)?;
-                let RetainedPayload::BaseDocument { facts, .. } = &self.payloads.values[slot]
+                let Some(RetainedPayload::BaseDocument { facts, .. }) =
+                    self.payloads.values.get(slot)
                 else {
-                    unreachable!()
+                    return Err(SessionError::WrongToken);
                 };
                 c.charge(WorkCategory::ProviderCall, 1)?;
                 if !facts.same_owner(&frozen.environment) {
