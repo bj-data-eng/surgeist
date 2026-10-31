@@ -2,6 +2,32 @@
 //! Root/declaration fonts remain distinct available resources, not metric donors.
 use super::*;
 
+#[path = "combined_cell_sideways.rs"]
+mod sideways;
+
+#[derive(Clone, Copy)]
+struct ContainerContext {
+    typography: AnalysisTypography,
+    writing_axis: SourceWritingAxis,
+    root_reference: ScopeFontReference,
+    container_reference: Option<ScopeFontReference>,
+    combination: TextCombineUpright,
+    alignment: Option<ScopeAlignmentBoundary>,
+}
+
+impl ContainerContext {
+    fn vertical() -> Self {
+        Self {
+            typography: AnalysisTypography::Mixed,
+            writing_axis: SourceWritingAxis::Vertical,
+            root_reference: font_reference(),
+            container_reference: Some(font_reference()),
+            combination: TextCombineUpright::All,
+            alignment: None,
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 enum ContainerShape {
     Inline,
@@ -18,7 +44,7 @@ struct ContainerFixture {
     lexical_parent: Option<usize>,
 }
 
-fn fixture(shape: ContainerShape, text: &str, missing_reference: bool) -> ContainerFixture {
+fn fixture(shape: ContainerShape, text: &str, context: ContainerContext) -> ContainerFixture {
     assert_eq!(
         text.encode_utf16().count(),
         1,
@@ -51,7 +77,7 @@ fn fixture(shape: ContainerShape, text: &str, missing_reference: bool) -> Contai
         font: Font::new().family(crate::shaping_test_fonts::COMBINED_WIDTH_FAMILY),
         size: 10.0,
         line_height: LineHeight::Absolute(10.0),
-        text_combine_upright: TextCombineUpright::All,
+        text_combine_upright: context.combination,
         ..root_style.clone()
     };
     let root_style = if matches!(shape, ContainerShape::RootInline) {
@@ -64,15 +90,15 @@ fn fixture(shape: ContainerShape, text: &str, missing_reference: bool) -> Contai
         trim: WhiteSpaceTrim::default(),
         base_style: root_style,
         used_direction: ParagraphBaseDirection::LeftToRight,
-        writing_axis: Some(SourceWritingAxis::Vertical),
+        writing_axis: Some(context.writing_axis),
         horizontal_inner_direction: Some(ParagraphBaseDirection::LeftToRight),
-        font_reference: Some(font_reference()),
+        font_reference: Some(context.root_reference),
     }];
-    let inline = |style: Style, reference| SourceProcessingScope::Inline {
+    let inline = |style: Style, reference, alignment_boundary| SourceProcessingScope::Inline {
         trim: WhiteSpaceTrim::default(),
         style: Some(style),
         boundaries: None,
-        alignment_boundary: None,
+        alignment_boundary,
         font_reference: reference,
         horizontal_inner_direction: Some(ParagraphBaseDirection::LeftToRight),
     };
@@ -85,10 +111,11 @@ fn fixture(shape: ContainerShape, text: &str, missing_reference: bool) -> Contai
                 font: Font::new().family("Ahem"),
                 size: 20.0,
                 line_height: LineHeight::Absolute(24.0),
-                text_combine_upright: TextCombineUpright::All,
+                text_combine_upright: context.combination,
                 ..body_style.clone()
             },
-            Some(font_reference()),
+            Some(context.root_reference),
+            None,
         ));
     }
     let container = if matches!(shape, ContainerShape::RootInline) {
@@ -99,11 +126,8 @@ fn fixture(shape: ContainerShape, text: &str, missing_reference: bool) -> Contai
     if container != 0 {
         scopes.push(inline(
             body_style.clone(),
-            if missing_reference {
-                None
-            } else {
-                Some(font_reference())
-            },
+            context.container_reference,
+            context.alignment,
         ));
     }
     let lexical_parent = container.checked_sub(1);
@@ -163,7 +187,7 @@ fn fixture(shape: ContainerShape, text: &str, missing_reference: bool) -> Contai
     assert_eq!(processed.processed_text(), &Text::from(text));
     let domain = AnalyzedDomain::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        AnalysisTypography::Mixed,
+        context.typography,
     )
     .unwrap();
     assert!(Arc::ptr_eq(domain.processed_source(), &processed));
@@ -334,25 +358,46 @@ fn actual_container_cell(mut fixture: ContainerFixture, empty: bool) {
 
 #[test]
 fn inline10_container_does_not_borrow_root20_em_or_font_reference() {
-    actual_container_cell(fixture(ContainerShape::Inline, "A", false), false);
+    actual_container_cell(
+        fixture(ContainerShape::Inline, "A", ContainerContext::vertical()),
+        false,
+    );
 }
 
 #[test]
 fn direct_block_text_uses_its_real_root_inline_without_a_lexical_parent() {
-    actual_container_cell(fixture(ContainerShape::RootInline, "A", false), false);
+    actual_container_cell(
+        fixture(
+            ContainerShape::RootInline,
+            "A",
+            ContainerContext::vertical(),
+        ),
+        false,
+    );
 }
 
 #[test]
 fn inherited_computed_all_uses_nearest_inline10_instead_of_outer_inline20() {
     actual_container_cell(
-        fixture(ContainerShape::NestedComputedAll, "A", false),
+        fixture(
+            ContainerShape::NestedComputedAll,
+            "A",
+            ContainerContext::vertical(),
+        ),
         false,
     );
 }
 
 #[test]
 fn missing_inline_container_reference_refuses_despite_real_root_reference() {
-    let mut fixture = fixture(ContainerShape::Inline, "A", true);
+    let mut fixture = fixture(
+        ContainerShape::Inline,
+        "A",
+        ContainerContext {
+            container_reference: None,
+            ..ContainerContext::vertical()
+        },
+    );
     source_custody(&fixture, false);
     assert_eq!(
         fixture
@@ -394,7 +439,10 @@ fn missing_inline_container_reference_refuses_despite_real_root_reference() {
 
 #[test]
 fn glyph_free_space_keeps_actual_inline10_metrics_and_original_custody_under_root20() {
-    actual_container_cell(fixture(ContainerShape::Inline, " ", false), true);
+    actual_container_cell(
+        fixture(ContainerShape::Inline, " ", ContainerContext::vertical()),
+        true,
+    );
 }
 
 #[test]

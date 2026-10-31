@@ -14,6 +14,9 @@ mod collapsed;
 #[path = "combined_cell_observation_boundaries.rs"]
 mod observation_boundaries;
 
+#[path = "combined_cell_word_spacing_sideways.rs"]
+mod sideways;
+
 use super::*;
 use skrifa::{GlyphId, MetadataProvider};
 use surgeist_shaper::{
@@ -22,10 +25,19 @@ use surgeist_shaper::{
 };
 
 fn qualified_font() -> Vec<u8> {
+    qualified_font_for("A A")
+}
+
+fn qualified_font_for(text: &str) -> Vec<u8> {
+    assert!(matches!(text, "A A" | " "));
+    let count = text.chars().count();
     let bytes = parent_font();
     glyph_frame_font_premises(&bytes);
     let parsed = skrifa::FontRef::new(&bytes).unwrap();
-    for (character, glyph) in [('A', 35), (' ', 3)] {
+    for (character, glyph) in [('A', 35), (' ', 3)]
+        .into_iter()
+        .chain(text.contains(' ').then_some((' ', 153)))
+    {
         assert_eq!(parsed.charmap().map(character), Some(GlyphId::new(glyph)));
         assert_eq!(
             sfnt::u16_at(
@@ -47,7 +59,7 @@ fn qualified_font() -> Vec<u8> {
         Some((*b"qwid", WidthFeature::QuarterWidth)),
     ] {
         let mut input = UnicodeBuffer::new();
-        for (ordinal, ch) in "A A".chars().enumerate() {
+        for (ordinal, ch) in text.chars().enumerate() {
             input.add(ch, u32::try_from(ordinal).unwrap());
         }
         input.set_direction(Direction::LeftToRight);
@@ -67,7 +79,18 @@ fn qualified_font() -> Vec<u8> {
                 .iter()
                 .map(|info| (info.glyph_id, info.cluster))
                 .collect::<Vec<_>>(),
-            [(35, 0), (3, 1), (35, 2)]
+            text.chars()
+                .enumerate()
+                .map(|(index, ch)| {
+                    let glyph = match ch {
+                        'A' => 35,
+                        ' ' => 3,
+                        ' ' => 153,
+                        _ => unreachable!(),
+                    };
+                    (glyph, u32::try_from(index).unwrap())
+                })
+                .collect::<Vec<_>>()
         );
         assert_eq!(
             output
@@ -80,20 +103,20 @@ fn qualified_font() -> Vec<u8> {
                     position.y_offset
                 ))
                 .collect::<Vec<_>>(),
-            [(1000, 0, 0, 0); 3]
+            vec![(1000, 0, 0, 0); count]
         );
         if let Some((_, feature)) = request {
             let receipt = output.width_feature_receipt().unwrap().unwrap();
             assert_eq!(receipt.feature(), feature);
-            assert_eq!(receipt.input_len(), 3);
+            assert_eq!(receipt.input_len(), count);
             assert_eq!(receipt.coverage(), WidthObservationCoverage::Complete);
-            for ordinal in 0..3 {
+            for ordinal in 0..count {
                 assert_eq!(
                     receipt.input(ordinal).unwrap().outcome(),
                     WidthInputOutcome::NoAction
                 );
             }
-            assert!(receipt.input(3).is_none());
+            assert!(receipt.input(count).is_none());
         } else {
             assert!(output.width_feature_receipt().unwrap().is_none());
         }
@@ -164,6 +187,24 @@ fn native_control(
     pens: [f64; 3],
     advance: f64,
 ) {
+    native_control_with_orientation(
+        system,
+        font,
+        word_spacing,
+        pens,
+        advance,
+        LineOrientation::Horizontal,
+    );
+}
+
+fn native_control_with_orientation(
+    system: &mut System,
+    font: &[u8],
+    word_spacing: f64,
+    pens: [f64; 3],
+    advance: f64,
+    orientation: LineOrientation,
+) {
     let extent = Range::new(0, 3);
     let own = style(WhiteSpace::Preserve, word_spacing, TextCombineUpright::None);
     let mut source = Source::identified("A A", Id::from_u64(784_953), 1);
@@ -198,7 +239,10 @@ fn native_control(
     );
     assert_eq!(analyzed.combined_cells().len(), 0);
     let prepared = system
-        .prepare(&analyzed, PreparationOptions::default())
+        .prepare(
+            &analyzed,
+            PreparationOptions::default().with_orientation(orientation),
+        )
         .unwrap();
     assert_eq!(prepared.analyzed_source().source(), &source);
     assert_eq!(prepared.cell_views().len(), 0);
@@ -235,10 +279,28 @@ fn captured(
     white_space: WhiteSpace,
     word_spacing: f64,
 ) -> (Arc<ProcessedSource>, AnalyzedSource) {
+    captured_with_context(
+        text,
+        white_space,
+        word_spacing,
+        AnalysisTypography::Mixed,
+        font_reference(),
+        TextCombineUpright::All,
+    )
+}
+
+fn captured_with_context(
+    text: &str,
+    white_space: WhiteSpace,
+    word_spacing: f64,
+    typography: AnalysisTypography,
+    reference: ScopeFontReference,
+    combination: TextCombineUpright,
+) -> (Arc<ProcessedSource>, AnalyzedSource) {
     assert!(!text.is_empty() && text.chars().all(|ch| matches!(ch, 'A' | ' ' | '\u{a0}')));
     let length = text.encode_utf16().count();
     let extent = Range::new(0, length);
-    let body = style(white_space, word_spacing, TextCombineUpright::All);
+    let body = style(white_space, word_spacing, combination);
     let root = style(white_space, 0.0, TextCombineUpright::None);
     let mut source = Source::identified(text, Id::from_u64(784_954), 1);
     source.span(extent, body.clone());
@@ -305,14 +367,14 @@ fn captured(
                     used_direction: ParagraphBaseDirection::LeftToRight,
                     writing_axis: Some(SourceWritingAxis::Vertical),
                     horizontal_inner_direction: Some(ParagraphBaseDirection::LeftToRight),
-                    font_reference: Some(font_reference()),
+                    font_reference: Some(reference),
                 },
                 SourceProcessingScope::Inline {
                     trim: WhiteSpaceTrim::default(),
                     style: Some(body),
                     boundaries: None,
                     alignment_boundary: None,
-                    font_reference: Some(font_reference()),
+                    font_reference: Some(reference),
                     horizontal_inner_direction: Some(ParagraphBaseDirection::LeftToRight),
                 },
             ],
@@ -327,7 +389,7 @@ fn captured(
     assert_eq!(processed.source(), &source);
     let domain = AnalyzedDomain::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        AnalysisTypography::Mixed,
+        typography,
     )
     .unwrap();
     assert!(Arc::ptr_eq(domain.processed_source(), &processed));
@@ -347,6 +409,16 @@ fn source_custody(
     analyzed: &AnalyzedSource,
     used: &[usize],
     word_spacing: f64,
+) {
+    source_custody_with_reference(processed, analyzed, used, word_spacing, font_reference());
+}
+
+fn source_custody_with_reference(
+    processed: &ProcessedSource,
+    analyzed: &AnalyzedSource,
+    used: &[usize],
+    word_spacing: f64,
+    reference: ScopeFontReference,
 ) {
     assert_eq!(analyzed.combined_cells().len(), 1);
     let cell = analyzed.combined_cells().next().unwrap();
@@ -383,7 +455,7 @@ fn source_custody(
         assert_eq!(piece.is_used(), used.contains(&index));
     }
     let scope = processed.captured_scope(1).unwrap();
-    assert_eq!(scope.font_reference(), Some(font_reference()));
+    assert_eq!(scope.font_reference(), Some(reference));
     assert_eq!(
         scope.style().unwrap().white_space,
         analyzed.source().spans()[0].style().white_space

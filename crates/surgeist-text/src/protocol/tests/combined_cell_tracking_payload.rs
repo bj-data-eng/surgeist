@@ -12,6 +12,9 @@ mod observation_mixed;
 #[path = "combined_cell_allocated_source.rs"]
 mod allocated_source;
 
+#[path = "combined_cell_sideways_tracking.rs"]
+mod sideways;
+
 struct Fixture {
     processed: Arc<ProcessedSource>,
     analyzed: AnalyzedSource,
@@ -131,6 +134,46 @@ fn fixture_with_processing(
     white_space: WhiteSpace,
     uppercase: bool,
 ) -> (System, Fixture) {
+    fixture_with_profile(
+        inner,
+        tracking,
+        leading_b,
+        trailing_b,
+        size,
+        FixtureProfile {
+            white_space,
+            uppercase,
+            typography: AnalysisTypography::Mixed,
+            reference: font_reference(),
+            exterior_spaces: false,
+        },
+    )
+}
+
+struct FixtureProfile {
+    white_space: WhiteSpace,
+    uppercase: bool,
+    typography: AnalysisTypography,
+    reference: ScopeFontReference,
+    exterior_spaces: bool,
+}
+
+fn fixture_with_profile(
+    inner: &str,
+    tracking: f64,
+    leading_b: bool,
+    trailing_b: bool,
+    size: f32,
+    profile: FixtureProfile,
+) -> (System, Fixture) {
+    let FixtureProfile {
+        white_space,
+        uppercase,
+        typography,
+        reference,
+        exterior_spaces,
+    } = profile;
+    assert!(!exterior_spaces || (leading_b && trailing_b));
     assert!(
         inner
             .chars()
@@ -222,13 +265,18 @@ fn fixture_with_processing(
         },
         ..outside.clone()
     };
-    let text = format!(
-        "{}{}{}",
-        if leading_b { "B" } else { "" },
-        inner,
-        if trailing_b { "B" } else { "" }
-    );
-    let start = usize::from(leading_b);
+    let prefix = if leading_b {
+        if exterior_spaces { "B " } else { "B" }
+    } else {
+        ""
+    };
+    let suffix = if trailing_b {
+        if exterior_spaces { " B" } else { "B" }
+    } else {
+        ""
+    };
+    let text = format!("{prefix}{inner}{suffix}");
+    let start = prefix.encode_utf16().count();
     let range = Range::new(start, start + inner.encode_utf16().count());
     let text_len = text.encode_utf16().count();
     let mut source = Source::identified(text.as_str(), Id::from_u64(784_944), 1);
@@ -306,14 +354,14 @@ fn fixture_with_processing(
                     used_direction: ParagraphBaseDirection::LeftToRight,
                     writing_axis: Some(SourceWritingAxis::Vertical),
                     horizontal_inner_direction: Some(ParagraphBaseDirection::LeftToRight),
-                    font_reference: Some(font_reference()),
+                    font_reference: Some(reference),
                 },
                 SourceProcessingScope::Inline {
                     trim: WhiteSpaceTrim::default(),
                     style: Some(inside),
                     boundaries: None,
                     alignment_boundary: None,
-                    font_reference: Some(font_reference()),
+                    font_reference: Some(reference),
                     horizontal_inner_direction: Some(ParagraphBaseDirection::LeftToRight),
                 },
             ],
@@ -334,16 +382,11 @@ fn fixture_with_processing(
         }
         previous_space = ch == ' ';
     }
-    let phase_one = format!(
-        "{}{}{}",
-        if leading_b { "B" } else { "" },
-        phase_one_inner,
-        if trailing_b { "B" } else { "" }
-    );
+    let phase_one = format!("{prefix}{phase_one_inner}{suffix}");
     assert_eq!(processed.processed_text(), &Text::from(phase_one.as_str()));
     let domain = AnalyzedDomain::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
-        AnalysisTypography::Mixed,
+        typography,
     )
     .unwrap();
     assert!(Arc::ptr_eq(domain.processed_source(), &processed));
