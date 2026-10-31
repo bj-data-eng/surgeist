@@ -129,6 +129,115 @@ fn refuse(
     owner.unwrap().abort().into_parts().0
 }
 
+/// What the actions of one driven operation describe, excluding the
+/// capacity-growth actions an amortizing consumer pays only occasionally.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct DescribedWork {
+    actions: usize,
+    record_visits: usize,
+    copied_bytes: usize,
+    record_writes: usize,
+}
+
+/// Inserts `node` under `parent` before `before`, performing every action, and
+/// returns the steady work the operation described.
+fn driven_insert(
+    storage: HtmlConstructionStorage,
+    node: &HtmlBuilderNode,
+    parent: &HtmlBuilderNode,
+    before: Option<&HtmlBuilderNode>,
+) -> (HtmlConstructionStorage, DescribedWork) {
+    let mut operation = Some(
+        storage
+            .prepare(HtmlConstructionCommand::Insert {
+                node: node.clone(),
+                parent: parent.clone(),
+                before: before.cloned(),
+            })
+            .unwrap_or_else(|_| panic!("preparation")),
+    );
+    let mut work = DescribedWork::default();
+    while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
+        let (visits, copied, writes, growth) = match action.description() {
+            HtmlConstructionActionDescription::Inspect { record_visits, .. } => {
+                (record_visits, 0, 0, false)
+            }
+            HtmlConstructionActionDescription::CopyChildOrderSource {
+                record_visits,
+                copied_bytes,
+            } => (record_visits, copied_bytes, 0, false),
+            HtmlConstructionActionDescription::PushChildOrder {
+                copied_bytes,
+                record_writes,
+                ..
+            } => (0, copied_bytes, record_writes, false),
+            HtmlConstructionActionDescription::PrepareChildOrderTransfers {
+                record_writes,
+                copied_bytes,
+                ..
+            } => (0, copied_bytes, record_writes, false),
+            HtmlConstructionActionDescription::InitializeChildOrder {
+                initialized_bytes, ..
+            } => (0, initialized_bytes, 0, false),
+            HtmlConstructionActionDescription::Commit {
+                record_writes,
+                copied_bytes,
+                ..
+            } => (0, copied_bytes, record_writes, false),
+            // Reserving and reporting a bank's capacity is amortized growth.
+            HtmlConstructionActionDescription::Reserve { .. }
+            | HtmlConstructionActionDescription::PrepareAllocationReport { .. } => (0, 0, 0, true),
+            _ => (0, 0, 0, false),
+        };
+        if !growth {
+            work.actions += 1;
+            work.record_visits += visits;
+            work.copied_bytes += copied;
+            work.record_writes += writes;
+        }
+        action.perform().unwrap().accept();
+    }
+    let ready = HtmlConstructionOperation::try_ready(&mut operation).unwrap();
+    let HtmlConstructionCommit::Changed {
+        storage,
+        mut retired_orders,
+        ..
+    } = ready.commit()
+    else {
+        panic!("mutation produced publication")
+    };
+    while let Some(action) = retired_orders.next_action() {
+        action.perform();
+    }
+    (storage, work)
+}
+
+#[test]
+fn appending_a_child_describes_the_same_work_at_every_fanout() {
+    let (mut owner, root) = fragment(storage());
+    let mut children = 0;
+    let mut measured = Vec::new();
+    for fanout in [1, 16, 128, 1024] {
+        while children < fanout {
+            let (next, node) = create(owner, element("c"));
+            owner = driven_insert(next, &node, &root, None).0;
+            children += 1;
+        }
+        let (next, node) = create(owner, element("measured"));
+        let (next, work) = driven_insert(next, &node, &root, None);
+        owner = next;
+        children += 1;
+        measured.push((fanout, work));
+    }
+    let (first_fanout, first) = measured[0];
+    for (fanout, work) in &measured {
+        assert_eq!(
+            *work, first,
+            "appending under {fanout} children described different work than under {first_fanout}"
+        );
+    }
+}
+
 #[test]
 fn initialization_and_observations_cannot_be_skipped_or_promoted_after_refusal() {
     let mut initialization = Some(HtmlConstructionStorage::begin());
