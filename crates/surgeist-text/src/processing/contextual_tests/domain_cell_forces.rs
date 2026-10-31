@@ -304,3 +304,6 @@ fn a_real_forced_break_inside_an_accepted_all_cell_keeps_custody_without_outer_f
 fn a_computed_empty_inline_side_inside_an_accepted_all_cell_keeps_its_cause_without_outer_force() {
     qualify(Force::ComputedScopeSide);
 }
+
+#[path = "domain_cell_box_fences.rs"]
+mod box_fences;
