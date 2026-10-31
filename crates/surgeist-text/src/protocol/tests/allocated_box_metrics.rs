@@ -118,8 +118,10 @@ fn allocated_empty_paragraph_uses_only_real_box_metric_groups() {
 fn measurement_observation_retains_and_validates_real_aligned_box_allocations() {
     let p = prepared(&mut system(), "AB", WhiteSpace::Preserve);
     let portion = p.word_views().next().unwrap().portions().unwrap().remove(0);
+    let source_segment = p.source_segments().next().unwrap();
     let flow = p
         .measurement_flow(
+            &source_segment,
             &request(&p).start,
             None,
             &PreparedTermination::Measurement(portion),

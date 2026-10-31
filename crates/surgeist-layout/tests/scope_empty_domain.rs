@@ -66,6 +66,8 @@ fn prepare() -> Vec<text::PreparedText> {
         kind: text::ParagraphOriginKind::Authored,
     };
     let block = || text::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         font_reference: None,
         topology: text::SourceProcessingTopology::Complete,
         trim: Default::default(),
@@ -83,6 +85,7 @@ fn prepare() -> Vec<text::PreparedText> {
     };
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
@@ -105,6 +108,7 @@ fn prepare() -> Vec<text::PreparedText> {
             scopes: vec![
                 block(),
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),
@@ -406,6 +410,7 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
     use text::SourceProcessingEvent as E;
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
@@ -423,6 +428,8 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
             boundary_policies: vec![],
             replacements: vec![],
             scopes: vec![text::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: text::SourceProcessingTopology::Complete,
                 trim: Default::default(),

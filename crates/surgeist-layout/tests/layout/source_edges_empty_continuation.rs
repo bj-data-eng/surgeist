@@ -54,6 +54,8 @@ fn fixture_empty<S: l::LayoutScalar>()
     let mut source = t::Source::identified("AX", t::Id::from_u64(658200), 41);
     source.span(t::Range::new(0, 2), base.clone());
     let block = || t::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         font_reference: None,
         topology: t::SourceProcessingTopology::Complete,
         trim: Default::default(),
@@ -62,6 +64,7 @@ fn fixture_empty<S: l::LayoutScalar>()
     };
     let capture = Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
@@ -83,6 +86,7 @@ fn fixture_empty<S: l::LayoutScalar>()
             scopes: vec![
                 block(),
                 t::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),
@@ -185,7 +189,14 @@ fn fixture_empty<S: l::LayoutScalar>()
                 .collect();
             let a = a.with_wrapping_policies(missing).unwrap();
             let prepared = fonts.prepare(&a, t::PreparationOptions::default()).unwrap();
-            assert_eq!(prepared.captured_paragraph(), capture.captured_paragraph(i));
+            assert_eq!(
+                prepared
+                    .captured_owner()
+                    .unwrap()
+                    .members()
+                    .collect::<Vec<_>>(),
+                vec![capture.captured_paragraph(i).unwrap()]
+            );
             let (container, nodes, origins) = if i < 2 {
                 let node = if i == 0 { 1 } else { 3 };
                 let origin = prepared.origin_views().next().unwrap().handle();

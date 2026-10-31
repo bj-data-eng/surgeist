@@ -199,6 +199,8 @@ impl Case {
         ];
         let mut scopes = vec![
             text::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: Some(reference()),
                 topology: text::SourceProcessingTopology::Complete,
                 trim: Default::default(),
@@ -206,6 +208,7 @@ impl Case {
                 used_direction: ParagraphBaseDirection::LeftToRight,
             },
             text::SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
                 alignment_boundary: Some(outer),
                 font_reference: Some(reference()),
                 trim: Default::default(),
@@ -229,6 +232,7 @@ impl Case {
                 },
             ]);
             scopes.push(text::SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
                 alignment_boundary: Some(text::ScopeAlignmentBoundary::NonInitial),
                 font_reference: Some(reference()),
                 trim: Default::default(),
@@ -254,6 +258,7 @@ impl Case {
                 },
             ]);
             scopes.push(text::SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
                 style: None,
@@ -266,6 +271,7 @@ impl Case {
             // Real empty capture, no source/control/metric occurrence. Missing
             // dormant font context must not become an eager resolver demand.
             scopes.push(text::SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
                 alignment_boundary: Some(text::ScopeAlignmentBoundary::NonInitial),
                 font_reference: None,
                 style: None,
@@ -372,6 +378,7 @@ impl Case {
         let input_control_count = controls.len();
         let processed = Arc::new(
             text::process_contextual_source(text::ContextualSourceInput {
+                joint_flows: Vec::new(),
                 scope_alignment_limits: Some(limits),
                 source,
                 segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,

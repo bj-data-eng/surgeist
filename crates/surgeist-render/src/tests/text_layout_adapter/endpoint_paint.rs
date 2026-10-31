@@ -42,6 +42,7 @@ fn captured_pair(system: &mut text::System) -> text::PreparedText {
     };
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
@@ -81,6 +82,8 @@ fn captured_pair(system: &mut text::System) -> text::PreparedText {
             replacements: vec![],
             scopes: vec![
                 text::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: text::SourceProcessingTopology::Complete,
                     trim: text::WhiteSpaceTrim::default(),
@@ -88,6 +91,7 @@ fn captured_pair(system: &mut text::System) -> text::PreparedText {
                     used_direction: text::ParagraphBaseDirection::LeftToRight,
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: text::WhiteSpaceTrim::default(),
@@ -188,6 +192,7 @@ fn placed_pair(prepared: &text::PreparedText, opening: f64) -> text::Layout {
         })
         .collect();
     let mut request = text::LineSelectionRequest {
+        segment: prepared.source_segments().next().unwrap(),
         line_box_struts: Vec::new(),
         start: prepared.boundary_views().next().unwrap().handle(),
         end: end.view().boundary(),

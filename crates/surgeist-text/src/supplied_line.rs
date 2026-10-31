@@ -51,6 +51,11 @@ pub enum SuppliedInlineParticipant {
     Atomic {
         level: BidiLevel,
     },
+    /// A complete upright cell. It is indivisible and non-whitespace at an
+    /// outer line edge even when its genuine inner provider input is empty.
+    Cell {
+        level: BidiLevel,
+    },
     Boundary {
         level: BidiLevel,
     },
@@ -61,9 +66,10 @@ impl SuppliedInlineParticipant {
         #[cfg(test)]
         ORDER_VISITS.with(|visits| visits.set(visits.get() + 1));
         match self {
-            Self::Text { level, .. } | Self::Atomic { level } | Self::Boundary { level } => {
-                level.get()
-            }
+            Self::Text { level, .. }
+            | Self::Atomic { level }
+            | Self::Cell { level }
+            | Self::Boundary { level } => level.get(),
         }
     }
 

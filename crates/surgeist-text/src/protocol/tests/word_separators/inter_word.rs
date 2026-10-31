@@ -520,6 +520,7 @@ fn contextual(source: &Source, style: Style, cuts: &[usize]) -> AnalyzedSource {
     let wrap = style.wrap;
     let processed = std::sync::Arc::new(
         crate::process_contextual_source(crate::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
@@ -553,6 +554,8 @@ fn contextual(source: &Source, style: Style, cuts: &[usize]) -> AnalyzedSource {
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![crate::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: crate::SourceProcessingTopology::Complete,
                 trim: Default::default(),
@@ -854,7 +857,11 @@ fn a_published_phrase_separator_keeps_its_actual_virtual_owner_through_interword
     let prepared = system
         .prepare(&analysis, PreparationOptions::default())
         .unwrap();
-    assert!(prepared.captured_paragraph().is_some());
+    assert!(
+        prepared
+            .captured_owner()
+            .is_some_and(|owner| owner.members().next().is_some())
+    );
     let virtuals = prepared.virtual_separators().collect::<Vec<_>>();
     assert_eq!(virtuals.len(), 1);
     assert_eq!(virtuals[0].view().source_position().get(), 3);

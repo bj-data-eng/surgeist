@@ -4,8 +4,15 @@ use super::*;
 use CapturedFlowEvent as F;
 use SourceProcessingEvent as E;
 
-fn captured(prepared: &PreparedText) -> CapturedParagraph {
-    prepared.captured_paragraph().unwrap()
+pub(super) fn captured(prepared: &PreparedText) -> CapturedParagraph {
+    let owner = prepared.captured_owner().unwrap();
+    let mut members = owner.members();
+    assert_eq!(
+        members.len(),
+        1,
+        "this flow fixture requires one actual raw paragraph"
+    );
+    members.next().unwrap()
 }
 
 fn original(prepared: &PreparedText, index: usize) -> F {
@@ -98,6 +105,8 @@ fn deferred(kind: InlineBoxKind, closed_parent: bool) -> Arc<ProcessedSource> {
     }
     let domain = |atomic| match kind {
         InlineBoxKind::InFlow => SourceProcessingScope::AtomicBlock {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: SourceProcessingTopology::Unknown,
             trim: WhiteSpaceTrim::default(),
@@ -106,6 +115,8 @@ fn deferred(kind: InlineBoxKind, closed_parent: bool) -> Arc<ProcessedSource> {
             atomic,
         },
         InlineBoxKind::OutOfFlow => SourceProcessingScope::OutOfFlowBlock {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: SourceProcessingTopology::Unknown,
             trim: WhiteSpaceTrim::default(),
@@ -116,6 +127,7 @@ fn deferred(kind: InlineBoxKind, closed_parent: bool) -> Arc<ProcessedSource> {
     };
     Arc::new(
         process_contextual_source(ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
@@ -157,6 +169,7 @@ fn deferred(kind: InlineBoxKind, closed_parent: bool) -> Arc<ProcessedSource> {
                 domain(0),
                 domain(1),
                 SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: WhiteSpaceTrim::default(),
@@ -272,6 +285,7 @@ fn deferred_atomic_and_out_of_flow_contents_have_independent_complete_sequences(
 fn zero_source_nested_blocks_retain_all_empty_paragraphs_and_parent_markers() {
     let processed = Arc::new(
         process_contextual_source(ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: Source::new(""),
@@ -354,6 +368,7 @@ fn inline_and_connection_facts_do_not_add_flow_events_or_hide_originals() {
     let source = Source::new("AB");
     let processed = Arc::new(
         process_contextual_source(ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
@@ -376,6 +391,7 @@ fn inline_and_connection_facts_do_not_add_flow_events_or_hide_originals() {
             scopes: vec![
                 block(SourceProcessingTopology::Unknown),
                 SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: WhiteSpaceTrim::default(),

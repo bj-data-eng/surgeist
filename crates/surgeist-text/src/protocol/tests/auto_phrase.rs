@@ -754,6 +754,9 @@ fn phrase_measurements_are_complete_nonplaceable_and_semantically_repeatable() {
     let again_frame = ordinary_trial(&p, start.clone(), None, 20.0);
     assert_eq!(frame.feedback().advance, 30.0);
     let search = p
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &start,
             None,
@@ -764,6 +767,9 @@ fn phrase_measurements_are_complete_nonplaceable_and_semantically_repeatable() {
         )
         .unwrap();
     let again = p
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &start,
             None,
@@ -852,6 +858,9 @@ fn phrase_measurements_are_complete_nonplaceable_and_semantically_repeatable() {
 
     let frame = ordinary_trial(&p, start.clone(), None, 40.0);
     let search = p
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &start,
             None,
@@ -881,6 +890,9 @@ fn finite_normal_hyphen_and_arbitrary_stages_require_exact_complete_trials() {
     let ceiling = first_after(&p, &start);
     let frame = ordinary_trial(&p, start.clone(), None, 5.0);
     let search = p
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &start,
             None,
@@ -935,6 +947,9 @@ fn intrinsic_anywhere_has_its_own_authority_and_cannot_unlock_finite_relaxation(
         let start = p.boundary_views().next().unwrap().handle();
         let ceiling = first_after(&p, &start);
         let intrinsic = p
+            .source_segments()
+            .next()
+            .unwrap()
             .conditional_search(
                 &start,
                 None,
@@ -956,15 +971,18 @@ fn intrinsic_anywhere_has_its_own_authority_and_cannot_unlock_finite_relaxation(
             }
         );
         assert!(
-            p.conditional_search(
-                &start,
-                None,
-                &ceiling,
-                ConditionalPurpose::Overflow,
-                &[],
-                None
-            )
-            .is_err()
+            p.source_segments()
+                .next()
+                .unwrap()
+                .conditional_search(
+                    &start,
+                    None,
+                    &ceiling,
+                    ConditionalPurpose::Overflow,
+                    &[],
+                    None
+                )
+                .is_err()
         );
         for cut in batch.opportunities() {
             let line = conditional_trial(&p, cut, None, None);
@@ -996,6 +1014,9 @@ fn a_restored_cut_reissues_only_the_actual_remaining_phrase_on_the_next_line() {
     let ceiling = first_after(&p, &start);
     let frame = ordinary_trial(&p, start.clone(), None, 20.0);
     let search = p
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &start,
             None,
@@ -1022,6 +1043,9 @@ fn a_restored_cut_reissues_only_the_actual_remaining_phrase_on_the_next_line() {
     let second = ordinary_trial(&p, remaining_start.clone(), None, 20.0);
     assert_eq!(second.feedback().advance, 10.0);
     let remaining = p
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &remaining_start,
             None,
@@ -1105,6 +1129,9 @@ fn phrase_receipts_reject_foreign_start_context_and_measurement_mismatches() {
     let ceiling = first_after(&p, &start);
     let frame = ordinary_trial(&p, start.clone(), None, 20.0);
     let search = p
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &start,
             None,
@@ -1117,15 +1144,18 @@ fn phrase_receipts_reject_foreign_start_context_and_measurement_mismatches() {
     let portion = search.phrase_portions()[0].clone();
     let trial = phrase_trial(&p, &portion, 20.0);
     assert!(
-        p.conditional_search(
-            &start,
-            None,
-            &ceiling,
-            ConditionalPurpose::Overflow,
-            &[],
-            Some(&trial)
-        )
-        .is_err(),
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &start,
+                None,
+                &ceiling,
+                ConditionalPurpose::Overflow,
+                &[],
+                Some(&trial)
+            )
+            .is_err(),
         "a nonplaceable measurement is not an ordinary search frame"
     );
     assert!(
@@ -1139,18 +1169,24 @@ fn phrase_receipts_reject_foreign_start_context_and_measurement_mismatches() {
     let other_ceiling = first_after(&other, &other_start);
     let other_frame = ordinary_trial(&other, other_start.clone(), None, 20.0);
     assert!(
-        p.conditional_search(
-            &start,
-            None,
-            &ceiling,
-            ConditionalPurpose::Overflow,
-            &[],
-            Some(&other_frame)
-        )
-        .is_err()
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &start,
+                None,
+                &ceiling,
+                ConditionalPurpose::Overflow,
+                &[],
+                Some(&other_frame)
+            )
+            .is_err()
     );
     assert!(
         other
+            .source_segments()
+            .next()
+            .unwrap()
             .conditional_search(
                 &start,
                 None,
@@ -1162,6 +1198,9 @@ fn phrase_receipts_reject_foreign_start_context_and_measurement_mismatches() {
             .is_err()
     );
     let other_search = other
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &other_start,
             None,
@@ -1179,6 +1218,9 @@ fn phrase_receipts_reject_foreign_start_context_and_measurement_mismatches() {
 
     let changed_frame = ordinary_trial(&p, start.clone(), None, 40.0);
     let changed_search = p
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &start,
             None,
@@ -1230,6 +1272,9 @@ fn phrase_receipts_reject_foreign_start_context_and_measurement_mismatches() {
         "the fitting prefix is not the issued whole portion"
     );
     let intrinsic = p
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &start,
             None,
@@ -1270,6 +1315,9 @@ fn unsupported_phrase_language_restores_only_eligible_actual_hyphen_variants_bef
         let ceiling = first_after(&p, &start);
         let frame = ordinary_trial(&p, start.clone(), None, 5.0);
         let search = p
+            .source_segments()
+            .next()
+            .unwrap()
             .conditional_search(
                 &start,
                 None,
@@ -1375,6 +1423,9 @@ fn after_and_both_latent_controls_require_real_counts_and_exact_incoming_custody
         let ceiling = first_after(&p, &start);
         let frame = ordinary_trial(&p, start.clone(), None, 5.0);
         let search = p
+            .source_segments()
+            .next()
+            .unwrap()
             .conditional_search(
                 &start,
                 None,
@@ -1460,6 +1511,9 @@ fn after_and_both_latent_controls_require_real_counts_and_exact_incoming_custody
         let frame = ordinary_trial(&p, start.clone(), None, 20.0);
         assert_eq!(frame.feedback().advance, 50.0);
         let search = p
+            .source_segments()
+            .next()
+            .unwrap()
             .conditional_search(
                 &start,
                 None,
@@ -1502,6 +1556,9 @@ fn after_and_both_latent_controls_require_real_counts_and_exact_incoming_custody
             "receiving A plus the complete four-unit suffix"
         );
         let remaining = p
+            .source_segments()
+            .next()
+            .unwrap()
             .conditional_search(
                 &residual_start,
                 Some(&incoming),
@@ -1514,15 +1571,18 @@ fn after_and_both_latent_controls_require_real_counts_and_exact_incoming_custody
         assert!(remaining.phrase_portions().is_empty());
         assert!(remaining.begin(&[]).unwrap().opportunities().is_empty());
         assert!(
-            p.conditional_search(
-                &residual_start,
-                None,
-                &residual_ceiling,
-                ConditionalPurpose::Overflow,
-                &[],
-                Some(&second)
-            )
-            .is_err()
+            p.source_segments()
+                .next()
+                .unwrap()
+                .conditional_search(
+                    &residual_start,
+                    None,
+                    &residual_ceiling,
+                    ConditionalPurpose::Overflow,
+                    &[],
+                    Some(&second)
+                )
+                .is_err()
         );
         assert!(second.hyphenation_continuation().is_none());
         let place_lines = |lines: Vec<FinalizedLine>| {
@@ -1628,6 +1688,9 @@ fn supported_phrase_measurement_authenticates_after_and_both_incoming_on_the_res
         let frame = ordinary_trial(&p, start.clone(), None, 20.0);
         assert_eq!(frame.feedback().advance, 50.0);
         let search = p
+            .source_segments()
+            .next()
+            .unwrap()
             .conditional_search(
                 &start,
                 None,
@@ -1666,6 +1729,9 @@ fn supported_phrase_measurement_authenticates_after_and_both_incoming_on_the_res
         let second = ordinary_trial(&p, remaining_start.clone(), Some(incoming.clone()), 50.0);
         assert_eq!(second.feedback().advance, 50.0);
         let remaining = p
+            .source_segments()
+            .next()
+            .unwrap()
             .conditional_search(
                 &remaining_start,
                 Some(&incoming),

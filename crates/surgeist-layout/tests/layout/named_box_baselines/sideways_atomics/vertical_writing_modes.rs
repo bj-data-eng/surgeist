@@ -16,6 +16,7 @@ fn qualify(parent: &Captured) {
         .handle();
     let line = p
         .select(t::LineSelectionRequest {
+            segment: p.source_segments().next().unwrap(),
             start: p.boundary_views().next().unwrap().handle(),
             end: end.view().boundary(),
             termination: t::PreparedTermination::Ordinary(end),

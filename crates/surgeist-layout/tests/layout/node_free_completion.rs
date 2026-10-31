@@ -67,6 +67,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
             ..t::Style::default()
         };
         let inline = || t::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             trim: Default::default(),
@@ -75,6 +76,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
         };
         let capture = Arc::new(
             t::process_contextual_source(t::ContextualSourceInput {
+                joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 source: t::Source::identified("", t::Id::from_u64(658300), 51),
                 segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
@@ -94,6 +96,8 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 },
                 scopes: vec![
                     t::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
                         font_reference: None,
                         topology: t::SourceProcessingTopology::Complete,
                         trim: Default::default(),
@@ -159,7 +163,14 @@ impl<S: l::LayoutScalar> Fixture<S> {
         let prepared = fonts
             .prepare(&analyzed, t::PreparationOptions::default())
             .unwrap();
-        assert_eq!(prepared.captured_paragraph(), capture.captured_paragraph(0));
+        assert_eq!(
+            prepared
+                .captured_owner()
+                .unwrap()
+                .members()
+                .collect::<Vec<_>>(),
+            vec![capture.captured_paragraph(0).unwrap()]
+        );
         assert_eq!(prepared.terminal_edge(), t::ParagraphTerminalEdge::BlockEnd);
         assert_eq!(prepared.origin_views().count(), 0);
         assert_eq!(prepared.control_views().count(), 0);
@@ -309,7 +320,10 @@ impl<S: l::LayoutScalar> Fixture<S> {
             }
         );
         assert_eq!(group.view().causes().collect::<Vec<_>>(), [cause]);
-        let incidences = self.prepared.boundary_incidences(&boundary).unwrap();
+        let incidences = self
+            .prepared
+            .boundary_incidences(&self.prepared.source_segments().next().unwrap(), &boundary)
+            .unwrap();
         assert_eq!(incidences.len(), 1);
         assert_eq!(incidences[0].boundary(), boundary);
         for (scope, expected) in self.scopes.iter().zip([
@@ -325,7 +339,10 @@ impl<S: l::LayoutScalar> Fixture<S> {
         }
         assert_eq!(
             self.prepared
-                .boundary_incidences(&offers[1].view().boundary())
+                .boundary_incidences(
+                    &self.prepared.source_segments().next().unwrap(),
+                    &offers[1].view().boundary()
+                )
                 .unwrap(),
             incidences
         );
@@ -373,8 +390,13 @@ impl<S: l::LayoutScalar> Fixture<S> {
         assert_eq!(flow.paragraphs().len(), 1);
         assert_eq!(flow.paragraphs()[0].prepared, self.prepared);
         assert_eq!(
-            flow.paragraphs()[0].prepared.captured_paragraph(),
-            self.capture.captured_paragraph(0)
+            flow.paragraphs()[0]
+                .prepared
+                .captured_owner()
+                .unwrap()
+                .members()
+                .collect::<Vec<_>>(),
+            vec![self.capture.captured_paragraph(0).unwrap()]
         );
         assert!(flow.paragraphs()[0].nodes.is_empty());
         let request =
@@ -615,6 +637,7 @@ impl<S: l::LayoutScalar> SharedGap<S> {
             t::ParagraphBaseDirection::RightToLeft
         };
         let inline = || t::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             trim: Default::default(),
@@ -623,6 +646,7 @@ impl<S: l::LayoutScalar> SharedGap<S> {
         };
         let capture = Arc::new(
             t::process_contextual_source(t::ContextualSourceInput {
+                joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 source: t::Source::identified("", t::Id::from_u64(658301), 52),
                 segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
@@ -644,6 +668,8 @@ impl<S: l::LayoutScalar> SharedGap<S> {
                 ],
                 scopes: vec![
                     t::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
                         font_reference: None,
                         topology: t::SourceProcessingTopology::Complete,
                         trim: Default::default(),
@@ -823,7 +849,10 @@ impl<S: l::LayoutScalar> SharedGap<S> {
         assert_ne!(self.prepared[0], self.prepared[2]);
         let mut pins = vec![];
         for (i, p) in self.prepared.iter().enumerate() {
-            assert_eq!(p.captured_paragraph(), Some(paragraphs[i].clone()));
+            assert_eq!(
+                p.captured_owner().unwrap().members().collect::<Vec<_>>(),
+                vec![paragraphs[i].clone()]
+            );
             assert_eq!(p.analyzed_source().source(), self.capture.source());
             assert_eq!(p.origin_views().count(), 0);
             assert_eq!(p.control_views().count(), 0);
@@ -886,7 +915,12 @@ impl<S: l::LayoutScalar> SharedGap<S> {
             );
             assert!(offers[1].view().computed_line_boundary().is_none());
             assert_eq!(offers[0].view().boundary(), offers[1].view().boundary());
-            let pin = p.boundary_incidences(&offers[0].view().boundary()).unwrap();
+            let pin = p
+                .boundary_incidences(
+                    &p.source_segments().next().unwrap(),
+                    &offers[0].view().boundary(),
+                )
+                .unwrap();
             assert_eq!(pin.len(), 1);
             for (scope, relation) in self.scopes.iter().zip(if i == 0 {
                 [
@@ -1004,8 +1038,12 @@ impl<S: l::LayoutScalar> SharedGap<S> {
             let tail = tails[0].line.finalized_line();
             assert_eq!(tail.prepared_text(), self.prepared[paragraph]);
             assert_eq!(
-                tail.prepared_text().captured_paragraph(),
-                self.capture.captured_paragraph(paragraph)
+                tail.prepared_text()
+                    .captured_owner()
+                    .unwrap()
+                    .members()
+                    .collect::<Vec<_>>(),
+                vec![self.capture.captured_paragraph(paragraph).unwrap()]
             );
             assert_eq!(tail.feedback().line_height, nominal);
             assert_eq!(tail.feedback().baseline, baseline);
@@ -1154,6 +1192,8 @@ impl<S: l::LayoutScalar> BlockFence<S> {
         let mut source = t::Source::identified("X", t::Id::from_u64(658302), 53);
         source.span(t::Range::new(0, 1), style.clone());
         let block = || t::SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: t::SourceProcessingTopology::Complete,
             trim: Default::default(),
@@ -1161,6 +1201,7 @@ impl<S: l::LayoutScalar> BlockFence<S> {
             used_direction: base,
         };
         let inline = || t::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             trim: Default::default(),
@@ -1169,6 +1210,7 @@ impl<S: l::LayoutScalar> BlockFence<S> {
         };
         let capture = Arc::new(
             t::process_contextual_source(t::ContextualSourceInput {
+                joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 source: source.clone(),
                 segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
@@ -1398,7 +1440,10 @@ impl<S: l::LayoutScalar> BlockFence<S> {
         assert!(block.exit_position() < paragraphs[2].enter_position());
         let mut pins = vec![];
         for (i, p) in self.prepared.iter().enumerate() {
-            assert_eq!(p.captured_paragraph(), Some(paragraphs[i].clone()));
+            assert_eq!(
+                p.captured_owner().unwrap().members().collect::<Vec<_>>(),
+                vec![paragraphs[i].clone()]
+            );
             assert_eq!(p.analyzed_source().source(), self.capture.source());
             assert_eq!(p.control_views().count(), 0);
             assert_eq!(p.atomic_views().count(), 0);
@@ -1466,7 +1511,12 @@ impl<S: l::LayoutScalar> BlockFence<S> {
             );
             assert!(offers[1].view().computed_line_boundary().is_none());
             assert_eq!(offers[0].view().boundary(), offers[1].view().boundary());
-            let pin = p.boundary_incidences(&offers[0].view().boundary()).unwrap();
+            let pin = p
+                .boundary_incidences(
+                    &p.source_segments().next().unwrap(),
+                    &offers[0].view().boundary(),
+                )
+                .unwrap();
             assert_eq!(pin.len(), 1);
             assert_eq!(
                 p.incidence_scope_relation(&pin[0], &self.scopes[pair])
@@ -1578,8 +1628,12 @@ impl<S: l::LayoutScalar> BlockFence<S> {
             let tail = tails[0].line.finalized_line();
             assert_eq!(tail.prepared_text(), self.prepared[i]);
             assert_eq!(
-                tail.prepared_text().captured_paragraph(),
-                self.capture.captured_paragraph(i)
+                tail.prepared_text()
+                    .captured_owner()
+                    .unwrap()
+                    .members()
+                    .collect::<Vec<_>>(),
+                vec![self.capture.captured_paragraph(i).unwrap()]
             );
             assert_eq!(tail.feedback().baseline, baseline);
             assert_eq!(
@@ -1809,12 +1863,25 @@ fn independent_capture_gap<S: l::LayoutScalar>(direction: l::Direction) {
     let b = Fixture::<S>::new(direction, true);
     let pins = [a.inventory_facts(true), b.inventory_facts(true)];
     assert_eq!(a.capture.source(), b.capture.source());
-    assert_ne!(
-        a.prepared.captured_paragraph(),
-        b.prepared.captured_paragraph()
-    );
-    let a_paragraph = a.prepared.captured_paragraph().unwrap();
-    let b_paragraph = b.prepared.captured_paragraph().unwrap();
+    let a_members = a
+        .prepared
+        .captured_owner()
+        .unwrap()
+        .members()
+        .collect::<Vec<_>>();
+    let b_members = b
+        .prepared
+        .captured_owner()
+        .unwrap()
+        .members()
+        .collect::<Vec<_>>();
+    assert_ne!(a_members, b_members);
+    let [a_paragraph]: [_; 1] = a_members
+        .try_into()
+        .expect("fixture has one captured paragraph");
+    let [b_paragraph]: [_; 1] = b_members
+        .try_into()
+        .expect("fixture has one captured paragraph");
     assert!(
         !a_paragraph
             .enter_position()
@@ -1869,6 +1936,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
             side: t::SourceBoxSide::After,
         };
         let inline = || t::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             trim: Default::default(),
@@ -1877,6 +1945,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
         };
         let capture = Arc::new(
             t::process_contextual_source(t::ContextualSourceInput {
+                joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 source: t::Source::identified("", t::Id::from_u64(658303), 54),
                 segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
@@ -1893,6 +1962,8 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 },
                 scopes: vec![
                     t::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
                         font_reference: None,
                         topology: t::SourceProcessingTopology::Complete,
                         trim: Default::default(),
@@ -1978,8 +2049,12 @@ impl<S: l::LayoutScalar> Fixture<S> {
         assert!(self.capture.source().text().code_units().is_empty());
         assert!(self.capture.processed_text().code_units().is_empty());
         assert_eq!(
-            self.prepared.captured_paragraph(),
-            self.capture.captured_paragraph(0)
+            self.prepared
+                .captured_owner()
+                .unwrap()
+                .members()
+                .collect::<Vec<_>>(),
+            vec![self.capture.captured_paragraph(0).unwrap()]
         );
         assert_eq!(self.prepared.origin_views().count(), 0);
         assert_eq!(self.prepared.control_views().count(), 0);
@@ -2002,8 +2077,12 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 }
             );
             assert_eq!(
-                Some(causes[i].paragraph()),
-                self.prepared.captured_paragraph()
+                vec![causes[i].paragraph()],
+                self.prepared
+                    .captured_owner()
+                    .unwrap()
+                    .members()
+                    .collect::<Vec<_>>()
             );
         }
         if duplicates {
@@ -2063,7 +2142,10 @@ impl<S: l::LayoutScalar> Fixture<S> {
             );
             let pin = self
                 .prepared
-                .boundary_incidences(&offers[i].view().boundary())
+                .boundary_incidences(
+                    &self.prepared.source_segments().next().unwrap(),
+                    &offers[i].view().boundary(),
+                )
                 .unwrap();
             assert_eq!(pin.len(), 1);
             assert_eq!(

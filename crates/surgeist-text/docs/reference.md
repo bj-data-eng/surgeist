@@ -34,7 +34,7 @@ private implementation organization.
 | Native inline endpoints | `InlineBoundaryAllocation`, `InlineBoundaryContextAllocation`, `ControlAllocation::boundary`, `LineSelectionRequest::boundary_context`, `PreparedText::boundary_context_demand`, `FinalizedControlView::inline_bounds` | [protocol types](../src/protocol/mod.rs), [selection](../src/protocol/selection.rs), [readback](../src/protocol/readback.rs) |
 | Supplied mixed lines | `BidiLevel`, `InlineWhitespaceEdge`, `SuppliedLine`, edge decisions and borrowed visual order | [supplied_line.rs](../src/supplied_line.rs) |
 | Paragraph layout | `Options`, `Alignment`, `Indent`, `ValidatedOptions` | [options.rs](../src/options.rs) |
-| Original analysis and layout | `AnalyzedSource`, `AnalysisIdentity`, `System`, `Builder`, `SystemOptions` | [analyzed.rs](../src/analyzed.rs), [system.rs](../src/system.rs) |
+| Original analysis and layout | `AnalyzedSource`, `AnalyzedDomain`, `AnalysisIdentity`, `System`, `Builder`, `SystemOptions` | [analyzed.rs](../src/analyzed.rs), [system.rs](../src/system.rs) |
 | Font catalogue | `FontCatalogueMode`, issued `FontCatalogueIdentity`, `System::register_fonts` and `refresh_fonts` | [catalogue.rs](../src/catalogue.rs) |
 | Font resources and metrics | `FontData`, `FontFace`, `EffectiveFontInstance`, `FontMetrics`, `StrikeoutMetrics`, `VerticalGlyphMetrics`, `FontBaselineMeasurement`, `UprightFontMetrics` | [font.rs](../src/font.rs), [font/metrics.rs](../src/font/metrics.rs), [vertical glyph metrics](../src/font/metrics/vertical.rs), [named baselines](../src/font/metrics/baseline.rs) |
 | Borrowed readback | `RunView`, `FinalizedRunView`, `GlyphBasis`, positioned `GlyphPlacement`, actual decorations | [views.rs](../src/views.rs) |
@@ -71,8 +71,9 @@ measurement/continuation and intrinsic sizing. Separator insertion has its own
 [capture and execution contract](#native-automatic-phrase-separators).
 
 `PreparedText::phrases` exposes final phrase provenance and ordered original,
-control or virtual pieces. `conditional_search` captures the actual interval and
-purpose. Measure its issued `phrase_portions` with
+control or virtual pieces. `PreparedSourceSegment::conditional_search` captures
+the actual interval and purpose using that segment's preparation and ordinary
+opportunity inventory. Measure its issued `phrase_portions` with
 `PreparedTermination::PhraseMeasurement`, then supply genuine
 `PhraseOverflowDecision` receipts to `begin`. `PreparedConditionalBatch::advance`
 requires complete ordered variant dispositions before issuing the next stage.
@@ -469,15 +470,17 @@ validated all-zero default axes omitted by the provider. Malformed instance
 metadata and unresolved faux-bold/skew return typed failures. These views retain
 no independent layout or preparation identity; their lifetime comes from the
 original immutable Layout.
-`RunView::origin()` is physical; `FinalizedRunView::origin()` is line-local
-`(inline, line-under)`. Both views and owned `Run` expose the actual shaping
+`RunView::origin()` is physical. `FinalizedRunView::origin()` is line-local
+`(inline, line-under)` for an ordinary run; a run with `cell()` retains its
+intrinsic horizontal inner offsets before the cell frame. Both views and owned
+`Run` expose the actual shaping
 run's retained `glyph_basis()`, independently of the placed line frame. Native
 Horizontal and whole-upright Vertical retain `GlyphBasis::Unrotated`;
 SidewaysClockwise retains `Clockwise` and SidewaysCounterclockwise retains
 `Counterclockwise`. `Run::new` takes the outline basis explicitly. The logical
-pen advances along the line's inline axis independently of raw font-x and
-converted font-y offsets. With physical run origin `(X,Y)`, pen `p` and raw
-scaled offsets `(dx,dy)`, glyph origins are:
+pen of an ordinary run advances along the line's inline axis independently of
+raw font-x and converted font-y offsets. With physical run origin `(X,Y)`, pen
+`p` and raw scaled offsets `(dx,dy)`, ordinary-run glyph origins are:
 
 | Line frame | Outline basis | Physical glyph origin |
 | --- | --- | --- |
@@ -495,6 +498,16 @@ Vertical and SidewaysClockwise line **cells** share a physical mapping from inli
 line-under coordinates; that map does not rotate upright outlines. Raw glyph
 offsets are never rotated in storage. Logical spacing changes the pen without
 rewriting the provider advance. Decoration rectangles are already physical.
+
+Borrowed `RunView::glyph_frame()` and owned `Run::glyph_frame()` retain the
+executed physical origin, outline-axis vectors and pen direction in outline
+coordinates. A combined cell keeps horizontal inner pens and unrotated outlines
+even in a vertical line. Its frame applies horizontal-only scale to both the pen
+and raw glyph x; glyph y remains downward and unscaled. The actual physical cell
+square receives the enclosing scope displacement once, before inner placement.
+The run's canonical font size, raw advances and retained resource remain
+independent of that geometric scale. Provider-input-empty cells have a square
+without a synthetic body run.
 
 ## Source-local whitespace processing
 
@@ -615,21 +628,97 @@ Retain the result in `Arc<ProcessedSource>` and obtain views from `paragraphs()`
 style and coverage; no later range or replacement style can rebind it.
 `admit_paragraph` checks the actual processing owner, not equal input values.
 
+`AnalyzedDomain::from_processed_paragraph` uses a genuine member to select its
+captured domain and publishes all completed outputs atomically. Independent
+outputs retain their own paragraph facts; an admitted joint owns its complete
+member inventory with one designated facts owner. Source continuity supplies
+context, not permission to merge outputs. The exact single-view constructor
+keeps its original coverage when an indivisible unit requires domain analysis.
+Combination reads the captured writing axis and inner direction; typography
+does not supply either fact. Native cell preparation supports matching explicit
+Vertical composition with horizontal scalar payloads, or source-proved absence
+of provider input.
+It demands the genuine text-containing Inline or same-domain inherited
+RootInline font reference and captured limits, including for glyph-free cells.
+The cell's intrinsic square is one em; its inner runs retain their actual horizontal
+advances. A fitting normal composition retains its executed glyphs. Otherwise,
+bounded `hwid`, `twid` and `qwid` trials reuse its actual font instances and
+respect authored feature settings. Genuine source-attached mark-only descendants
+may inherit a covered base; surviving Normal default-ignorables require their own
+width action. Complete source-unit coverage selects the widest fitting candidate,
+or the narrowest covered overwide candidate with
+horizontal compression. Complete negative evidence for every variant selects
+compressed normal output. Exact ties retain `hwid`, `twid`, `qwid` order. Glyph
+ink can overflow the square; vertical scale remains one. Unqualified demanded
+observations return `TextCombineError::UnqualifiedWidthObservation`. Finalization
+and spacing replay retain the selected payload and frame. Private inner script
+context does not seed the ordinary text stream around the cell.
+
+Outer authored character tracking treats the whole cell, including a glyph-free
+cell, as one unit under the [native tracking policy](#character-tracking-and-native-intercharacter).
+Boundary gaps change flow and interaction endpoints while the square and inner
+glyph frame retain their intrinsic geometry. Inner letter spacing is suppressed
+before width selection; authored font settings remain effective. A lone cell has
+no outside tracking at line edges.
+
+The cell's fixed square contributes once to placed metric bounds. Cluster views
+retain the inner horizontal font-metric allocations through the executed cell
+frame; they can extend outside that square. `edge_units()` observes the whole
+cell, including glyph-free input, with its signed executed flow contribution and
+the full line metric band. `outline_ink()` reports same-instance outline ink in
+logical line coordinates; compression does not clip overflowing ink to the square.
+
+Inner [authored word spacing](#authored-word-separator-spacing) is applied before
+each candidate's width is measured. Logical edges and the shifted raw advance
+intervals determine fitting and compression; the selected payload retains its
+independent half-space offsets and original provider advances. Intrinsically
+zero-width separators receive no word-spacing term.
+
+Allocated spacing (`SpacingPolicy` other than `None`) and interior endpoint or
+directional controls still return
+`TextCombineError::UnsupportedCellPreparation`. An in-cell TAB with deferred CSS
+tab stops is also unsupported; source processing retains genuine forced-break
+removal and glyph-free input provenance. A cell without a raw logical participant
+retains its actual relation-event interval for direction queries. Its whole
+occurrence can supply an eligible strong bidi contribution when a raw empty point cannot;
+the complete body context still determines isolate eligibility.
+
+`source_range_fragments` returns `SourceRangeFragmentError::UnsupportedCell` when
+the requested original range intersects an actual placed Cell's source pieces.
+Disjoint ordinary ranges remain observable in the same layout. Placed
+`accessibility_update` returns `ErrorDetail::UnsupportedAccessibilityCell` without
+replacing the prior binding; source-only analyzed accessibility remains available.
+
+`combined_cells()` borrows completed source-cell facts, including separate
+selection and used unit counts, inner direction and exact original-resource
+pieces. These are semantic observations, not glyph counts or font metrics.
+An interior zero-advance SPACE can remain a used semantic unit without becoming
+provider input.
+
 `computed_line_boundaries` supplies mandatory box-edge requests before processing.
 Each `ComputedLineBoundaryInput` names an actual input scope side, endpoint or
 atomic side; scalar interiors, document-delimiter interiors and invalid target
 roles are refused. Processing preserves distinct causes and coalesces only their
 effective semantic cut. The returned capture and preparation expose those causes
 and original event neighbors. They create no source character, authored control,
-glyph, allocation or host node. The hard boundary stops contextual transforms,
-typographic-unit formation and shaping; its Forced opportunity must be consumed
-before later content. `CapturedFlowEvent` continues to describe original input.
+glyph, allocation or host node. For ordinary text, the hard boundary stops
+contextual transforms, typographic-unit formation and shaping; its Forced
+opportunity must be consumed before later content. Combination analysis suppresses
+an internal forced-break effect in a selected cell while retaining its original
+cause and custody. `CapturedFlowEvent` continues to describe original input.
 Layout owns declaration applicability, propagation and native flow association;
 Text does not infer those facts from a UTF-16 offset.
 
+`PreparedText::source_segments()` issues the actual structural sections of an
+output, including distinct empty sections at equal numeric cuts. Selection,
+measurement, conditional searches, direction queries and
+`boundary_inside_captured_scope` require that issued segment; a raw member seam
+grants no new section.
+
 `PreparedText::boundary_incidences` observes ordered original box-cut choices
-under an existing prepared boundary. Each `PreparedBoundaryIncidence` retains
-that boundary and supplies one consistent `CapturedScopeIncidence` relation for
+under an existing prepared boundary and its issued source segment. Each
+`PreparedBoundaryIncidence` retains both and supplies one consistent
+`CapturedScopeIncidence` relation for
 every queried scope. Transparent connections alias shared edges; genuine empty
 boxes can retain distinct before/after choices. Capture, domain, endpoint pins,
 removed contributions and indivisible units constrain those choices. The
@@ -995,8 +1084,9 @@ itself grants no paragraph or consumer-adapter admission.
 
 ## Source typography and upright analysis
 
-All three analysis fronts require `AnalysisTypography`: `AnalyzedSource::new`,
-`from_paragraph` and `from_processed_paragraph`. `HorizontalComposition` retains
+The analysis fronts require `AnalysisTypography`: `AnalyzedSource::new`,
+`from_paragraph`, `from_processed_paragraph` and the domain operation above.
+`HorizontalComposition` retains
 the current Unicode interpretation used for horizontal and clockwise-sideways
 composition. `Upright { computed_direction }` retains an actual computed LTR/RTL
 paragraph direction while resolving used LTR before the bidi algorithm.
@@ -1460,8 +1550,11 @@ same capture and actual occurrence; equal ordinals or source offsets from a
 different capture cannot substitute. Independently prepared projections of one
 capture share canonical identity while retaining distinct prepared identities.
 
-`PreparedText::captured_paragraph()` exposes authentic scope intersections and
-mixed-event positions independently of generated output. Canonical Style and
+`PreparedText::captured_owner()` identifies an output's actual raw or joint
+ownership. Its complete `members()` inventory retains authentic scope
+intersections and mixed-event positions independently of generated output.
+The designated `facts_owner()` supplies paragraph facts without replacing the
+other members' source provenance. Canonical Style and
 endpoint facts remain optional when genuinely uncaptured; unused metadata is
 not replaced by defaults. `ScopeRole` distinguishes inline and domain ownership.
 `CapturedDomainDefinition` retains each domain's actual Block, AtomicBlock or

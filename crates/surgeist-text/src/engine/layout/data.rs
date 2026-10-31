@@ -12,6 +12,9 @@ use crate::{FontData, FontSynthesis, Range, Rect};
 
 use super::super::{PlacedLine, PreparedData, analysis::Boundary};
 
+#[path = "cell_geometry.rs"]
+pub(crate) mod cell_geometry;
+
 /// Canonical provider glyph offsets and advance, with its authentic source unit extent.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct GlyphData {
@@ -160,6 +163,7 @@ pub(crate) struct PreparedCluster {
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum ShapedItem {
     TextCluster(usize),
+    Cell(usize),
     InlineBox {
         occurrence: usize,
         level: u8,
@@ -170,8 +174,65 @@ pub(crate) enum ShapedItem {
     },
 }
 
+/// Actual horizontal coordinates inside the cell square: x points right and
+/// y points down. They are independent of the outer native line axes.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CellFrame {
+    pub(crate) x_scale: f64,
+    pub(crate) x_offset: f64,
+    pub(crate) baseline: f64,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CellClusterPosition {
+    pub(crate) cluster: usize,
+    /// Executed logical cluster start before its independent word half.
+    pub(crate) pen: f64,
+    pub(crate) word: super::super::spacing::WordSpacingPlacement,
+}
+
+/// Provider input absence is source-proved; glyph/ink emptiness is not absence.
+#[derive(Clone, Debug)]
+pub(crate) enum CellPayload {
+    NoProviderInput,
+    Shaped {
+        runs: IndexRange<usize>,
+        clusters: IndexRange<usize>,
+        glyphs: IndexRange<usize>,
+        scope_relations: IndexRange<usize>,
+        advance: IndexRange<f64>,
+        positions: Vec<CellClusterPosition>,
+        frame: CellFrame,
+    },
+}
+
+/// One genuine source cell and its already executed winning horizontal payload.
+#[derive(Clone, Debug)]
+pub(crate) struct PreparedCell {
+    /// Local ordinal in the analyzed output's actual CombinedOutput bindings.
+    pub(crate) binding: usize,
+    pub(crate) metrics: usize,
+    pub(crate) level: u8,
+    /// Intrinsic one-em square; outer tracking never changes its geometry.
+    pub(crate) extent: f64,
+    /// Current outer flow contribution, including only this operation's gaps.
+    pub(crate) advance: f64,
+    pub(crate) before: f64,
+    pub(crate) after: f64,
+    pub(crate) payload: CellPayload,
+}
+
+/// Whether actual shared native payload arenas have transferred to Cell ownership.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) enum CellArenaOwnership {
+    #[default]
+    Native,
+    Owned,
+}
+
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ShapedData {
+    pub(crate) cell_arenas: CellArenaOwnership,
     /// Feature-only custody appended at each actual non-residual glyph insertion;
     /// it follows the same extraction ordering and clone lifetime as glyphs.
     pub(crate) scope_glyph_custody: Vec<super::super::scope_alignment::GlyphCustody>,
@@ -185,16 +246,17 @@ pub(crate) struct ShapedData {
     /// Invocation-qualified provider observations, before component apportioning.
     pub(crate) provider_groups: Vec<ProviderGroup>,
     pub(crate) character_gaps: Vec<super::super::spacing::character::Gap>,
+    pub(crate) character_gap_ownership: super::super::spacing::character::GapArenaOwnership,
     pub(crate) character_invocations: Vec<super::super::spacing::character::Invocation>,
     /// The same immutable upfront requirement used by this actual operation.
     pub(crate) character_requirements:
         Option<Arc<super::super::spacing::character::PlanRequirements>>,
     /// Complete invocation-mapped DI exclusions; absence means eligible input.
-    pub(crate) character_exclusions:
-        Arc<std::collections::BTreeMap<usize, super::super::spacing::character::Exclusion>>,
+    pub(crate) character_exclusions: Arc<OrdinalMap<super::super::spacing::character::Exclusion>>,
     pub(crate) atomic_gaps: OrdinalMap<f64>,
     pub(crate) word_spacing: Vec<super::super::spacing::WordSpacingUnit>,
     pub(crate) items: Vec<ShapedItem>,
+    pub(crate) cells: Vec<PreparedCell>,
     /// An actual admitted default face with zero source/glyph extent, for empty metrics.
     pub(crate) empty_run: Option<PreparedRun>,
 }
@@ -211,6 +273,12 @@ impl<T> Default for OrdinalMap<T> {
     }
 }
 impl<T> OrdinalMap<T> {
+    pub(crate) fn contains_key(&self, key: &usize) -> bool {
+        self.get(key).is_some()
+    }
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (&usize, &T)> {
+        self.rows.iter().map(|(key, value)| (key, value))
+    }
     pub(crate) fn get(&self, key: &usize) -> Option<&T> {
         self.rows
             .binary_search_by_key(key, |row| row.0)
@@ -236,7 +304,7 @@ impl<T> OrdinalMap<T> {
         self.rows.clear();
     }
     pub(crate) fn values(&self) -> impl Iterator<Item = &T> {
-        self.rows.iter().map(|row| &row.1)
+        self.iter().map(|(_, value)| value)
     }
 }
 impl<T> std::ops::Index<&usize> for OrdinalMap<T> {
@@ -278,6 +346,7 @@ pub(crate) struct LineMetrics {
 /// canonical f32; logical run-local pens and the run origin remain f64.
 #[derive(Clone, Debug)]
 pub(crate) struct FinalizedRun {
+    pub(crate) frame: FinalizedRunFrame,
     /// Executed common reference, distinct from the font-design paint origin.
     pub(crate) reference: Option<f64>,
     pub(crate) run: usize,
@@ -292,6 +361,32 @@ pub(crate) struct FinalizedRun {
     pub(crate) advance: f64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum FinalizedRunFrame {
+    Line,
+    Cell(usize),
+}
+
+/// The actual outer square has already received its enclosing scope shift.
+/// The retained shift records custody and must not be applied a second time.
+#[derive(Clone, Debug)]
+pub(crate) struct FinalizedCell {
+    pub(crate) unit: usize,
+    pub(crate) cell: usize,
+    pub(crate) binding: usize,
+    pub(crate) reference: f64,
+    /// Fixed intrinsic square interval in the native line frame.
+    pub(crate) inline: IndexRange<f64>,
+    /// Executed outer flow endpoint, distinct from the square's trailing edge.
+    pub(crate) flow_end: f64,
+    /// Exact working Cell contribution after finalization restores/reapplies spacing.
+    pub(crate) advance: f64,
+    pub(crate) under: IndexRange<f64>,
+    pub(crate) scope_displacement: crate::BaselineShift,
+    pub(crate) level: u8,
+    pub(crate) frame: Option<CellFrame>,
+}
+
 /// One actual logical glyph position, separate from its canonical provider offsets.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct FinalizedGlyph {
@@ -303,15 +398,19 @@ pub(crate) struct FinalizedGlyph {
     pub(crate) word_half: f64,
 }
 
-/// Pre-half unit origin retained even when its actual glyph inventory is empty.
+/// Executed local endpoint pair, retained even without a glyph inventory.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct WordSpacingAnchor {
-    pub(crate) base: crate::Point,
-    pub(crate) half: f64,
+pub(crate) struct SpacingDisplacement {
+    /// Coordinate frame of the executed pair; outer Cell tracking is Line.
+    pub(crate) frame: FinalizedRunFrame,
+    pub(crate) before: crate::Point,
+    pub(crate) after: crate::Point,
+    pub(crate) amount: f64,
 }
 
 #[derive(Clone, Debug)]
 pub(crate) struct FinalizedCluster {
+    pub(crate) frame: FinalizedRunFrame,
     pub(crate) reference: Option<f64>,
     /// The actually selected component's resolved font-backed line height.
     pub(crate) line_height: f64,
@@ -371,6 +470,7 @@ impl FinalizedBox {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum FinalizedVisualItem {
     Cluster(usize),
+    Cell(usize),
     InlineBox(usize),
     Anchor(usize),
 }
@@ -416,9 +516,10 @@ pub(crate) struct FinalizedLineData {
     pub(crate) clusters: Vec<FinalizedCluster>,
     /// Paint-order canonical local glyphs, with original associations.
     pub(crate) glyphs: Vec<FinalizedGlyph>,
-    pub(crate) word_anchors: Vec<WordSpacingAnchor>,
-    pub(crate) character_anchors: Vec<WordSpacingAnchor>,
+    pub(crate) word_anchors: Vec<SpacingDisplacement>,
+    pub(crate) character_anchors: Vec<SpacingDisplacement>,
     pub(crate) boxes: Vec<FinalizedBox>,
+    pub(crate) cells: Vec<FinalizedCell>,
     pub(crate) visual_order: Vec<FinalizedVisualItem>,
     pub(crate) anchors: Vec<FinalizedAnchor>,
     pub(crate) spacing_slots: Vec<FinalizedSpacingSlot>,
@@ -456,6 +557,7 @@ impl FinalizedLineData {
             self.character_anchors.len(),
         )?)?;
         visit(W::buffer(&self.boxes, self.boxes.len())?)?;
+        visit(W::buffer(&self.cells, self.cells.len())?)?;
         visit(W::buffer(&self.visual_order, self.visual_order.len())?)?;
         visit(W::buffer(&self.anchors, self.anchors.len())?)?;
         visit(W::buffer(&self.spacing_slots, self.spacing_slots.len())?)?;
@@ -468,7 +570,7 @@ impl FinalizedLineData {
         )?)?;
         visit(W::buffer(&self.fragments, self.fragments.len())?)?;
         if let Some(measurements) = &self.measurements {
-            visit(W::buffer(&measurements.edges, measurements.edges.len())?)?;
+            measurements.edges.visit_scope_allocations(visit)?;
         }
         self.prefix.visit_scope_allocations(visit)
     }

@@ -6,7 +6,10 @@ use super::{
     LineOrientation, LinePlacement, PlacementCoverage, PlacementEntry, PlacementRequest,
     PreparedBoundary, ProtocolContextField, ProtocolError, protocol_error,
 };
-use crate::engine::{PlacedLine, PreparedData, editing, layout::data::PlacedLayout};
+use crate::engine::{
+    PlacedLine, PreparedData, editing,
+    layout::data::{FinalizedCell, FinalizedRunFrame, PlacedLayout, cell_geometry},
+};
 use crate::{Layout, Point, Range, Rect, Result, TextNumericError, TextNumericPhase};
 
 /// Original coverage plus its actual mixed-occurrence authority. A numeric
@@ -19,27 +22,21 @@ pub(crate) struct PlacedCoverage {
 
 impl PlacedCoverage {
     pub(crate) fn whole(prepared: &Arc<PreparedData>) -> Result<Self> {
-        if prepared
+        let first = prepared
             .tables
-            .boundaries
+            .source_segments
             .first()
-            .is_none_or(|row| row.participant != 0)
-        {
-            return Err(protocol_error(ProtocolError::EmptyPlacement));
-        }
-        let end = prepared
-            .tables
-            .boundaries
-            .len()
-            .checked_sub(1)
-            .filter(|&index| {
-                prepared.tables.boundaries[index].participant == prepared.tables.participants.len()
-            })
             .ok_or_else(|| protocol_error(ProtocolError::EmptyPlacement))?;
+        let last = prepared
+            .tables
+            .source_segments
+            .last()
+            .ok_or_else(|| protocol_error(ProtocolError::EmptyPlacement))?;
+        let end = last.end;
         Ok(Self {
             start: PreparedBoundary {
                 prepared: Arc::clone(prepared),
-                index: 0,
+                index: first.start,
             },
             end: PreparedBoundary {
                 prepared: Arc::clone(prepared),
@@ -61,12 +58,20 @@ pub(crate) enum PlacementMetricPolicy {
 
 fn qualify_spacing_displacement(
     placed: &PlacedLine,
+    frame: FinalizedRunFrame,
     before: crate::Point,
     after: crate::Point,
     half: f64,
 ) -> Result<()> {
-    let before = crate::layout::inline_coordinate(placed.orientation, before);
-    let after = crate::layout::inline_coordinate(placed.orientation, after);
+    let (before, after) = match frame {
+        FinalizedRunFrame::Line => (
+            crate::layout::inline_coordinate(placed.orientation, before),
+            crate::layout::inline_coordinate(placed.orientation, after),
+        ),
+        // Actual Cell contents remain physically horizontal, independently of
+        // the enclosing line's inline direction and its scope displacement.
+        FinalizedRunFrame::Cell(_) => (before.x, after.x),
+    };
     finite("placed spacing displacement", after)?;
     if half != 0.0 && before == after {
         return Err(crate::error::text_numeric_error(
@@ -77,6 +82,24 @@ fn qualify_spacing_displacement(
         ));
     }
     Ok(())
+}
+
+/// Qualify the same actual square/inner mapping used by immutable glyph readback.
+/// This also serves retained word units that have no glyph or font run.
+fn qualify_cell_frame(
+    placed: &PlacedLine,
+    cell: &FinalizedCell,
+    local: Point,
+) -> Result<crate::GlyphFrame> {
+    let inner = cell
+        .frame
+        .expect("an actual shaped cell has an inner frame");
+    let square = crate::layout::cell_square_origin(placed, cell);
+    let x = checked_add("placed cell centering x", square.x, inner.x_offset)?;
+    let y = checked_add("placed cell baseline y", square.y, inner.baseline)?;
+    checked_add("placed cell run x", x, inner.x_scale * local.x)?;
+    checked_add("placed cell run y", y, local.y)?;
+    Ok(crate::layout::cell_glyph_frame(placed, cell, local))
 }
 
 /// A locally representable allocated shift can disappear at a physical anchor.
@@ -192,6 +215,18 @@ pub(crate) fn place_request(
         source,
     };
     let mut next = start;
+    let mut source_segment = match request.coverage {
+        PlacementCoverage::WholeParagraph => 0,
+        PlacementCoverage::Range { .. } => {
+            request.entries[0]
+                .finalized_line()
+                .inner
+                .selected
+                .request
+                .segment
+                .index
+        }
+    };
     let mut incoming = None;
     let mut seen = BTreeSet::new();
     let count = request.entries.len();
@@ -249,6 +284,17 @@ pub(crate) fn place_request(
                 line: ordinal,
             }));
         }
+        super::segments::admit(&request.prepared, &selected.request.segment)?;
+        if selected.request.segment.index != source_segment {
+            return Err(protocol_error(ProtocolError::MismatchedSourceSegment {
+                expected: source_segment,
+                actual: selected.request.segment.index,
+            }));
+        }
+        let section = &prepared.tables.source_segments[source_segment];
+        let completes_segment = matches!(&selected.request.termination, super::PreparedTermination::Ordinary(offer) if offer.index == section.end_opportunity)
+            && selected.request.end.index == section.end
+            && selected.request.context.end == super::LineEnd::Paragraph;
         if selected.request.start != next {
             return Err(protocol_error(ProtocolError::IncompleteLineCoverage {
                 line: ordinal,
@@ -272,25 +318,45 @@ pub(crate) fn place_request(
         }
         let from = row(&selected.request.start)?.participant;
         let to = row(&selected.request.end)?.participant;
-        if to < from || to > end_participant || (to == from && ordinal + 1 != count) {
+        if to < from
+            || to > end_participant
+            || (to == from && !completes_segment && ordinal + 1 != count)
+        {
             return Err(protocol_error(ProtocolError::IncompleteLineCoverage {
                 line: ordinal,
             }));
         }
-        if selected.request.context.end == super::LineEnd::Paragraph && ordinal + 1 != count {
-            return Err(protocol_error(ProtocolError::IncompleteLineCoverage {
-                line: ordinal,
-            }));
-        }
-        if ordinal + 1 == count
-            && matches!(request.coverage, PlacementCoverage::WholeParagraph)
-            && selected.request.context.end != super::LineEnd::Paragraph
+        if (selected.request.context.end == super::LineEnd::Paragraph
+            || (ordinal + 1 == count
+                && matches!(request.coverage, PlacementCoverage::WholeParagraph)))
+            && !completes_segment
         {
             return Err(protocol_error(ProtocolError::IncompleteLineCoverage {
                 line: ordinal,
             }));
         }
         next = selected.request.end.clone();
+        if completes_segment {
+            if incoming.is_some() {
+                return Err(crate::hyphenation::error(
+                    crate::HyphenationError::InvalidContinuation,
+                ));
+            }
+            source_segment += 1;
+            if ordinal + 1 < count {
+                let following = prepared
+                    .tables
+                    .source_segments
+                    .get(source_segment)
+                    .ok_or_else(|| {
+                        protocol_error(ProtocolError::IncompleteLineCoverage { line: ordinal })
+                    })?;
+                next = PreparedBoundary {
+                    prepared: Arc::clone(&prepared),
+                    index: following.start,
+                };
+            }
+        }
         if placement.orientation == LineOrientation::Vertical
             && prepared.options.orientation() != LineOrientation::Vertical
         {
@@ -394,8 +460,38 @@ pub(crate) fn place_request(
         }
         // Glyph-outline axes are independent from the line's cell frame.
         // Qualify every actual emitted origin before publishing placement.
+        for cell in &placed.finalized.data.cells {
+            qualify_allocated_shift(&placed, cell.scope_displacement, cell.inline.start, 0.0)?;
+            let extent = placed.finalized.selected.basis.shaped.cells[cell.cell].extent;
+            if cell.inline.end <= cell.inline.start || cell.under.end <= cell.under.start {
+                return Err(numeric(
+                    "placed cell square extent",
+                    TextNumericError::PositiveLost,
+                    extent,
+                ));
+            }
+            include(
+                &mut bounds,
+                crate::layout::line_rect(
+                    &placed,
+                    Rect::new(
+                        cell.inline.start,
+                        cell.under.start,
+                        cell.inline.end - cell.inline.start,
+                        cell.under.end - cell.under.start,
+                    ),
+                ),
+            )?;
+            cell_geometry::qualify_edge_rect(cell, &metrics, TextNumericPhase::Placement)?;
+            qualify_rect(crate::layout::line_rect(
+                &placed,
+                cell_geometry::edge_rect(cell, &metrics),
+            ))?;
+        }
         for run in &placed.finalized.data.runs {
-            if let Some(reference) = run.reference {
+            if let FinalizedRunFrame::Line = run.frame
+                && let Some(reference) = run.reference
+            {
                 qualify_allocated_shift(
                     &placed,
                     crate::BaselineShift::try_new(metrics.baseline - reference)?,
@@ -404,32 +500,41 @@ pub(crate) fn place_request(
                 )?;
             }
             let shaped = &placed.finalized.data.font_runs[run.run];
-            let vector = crate::layout::line_vector(
-                &placed,
-                crate::Point::new(run.x, run.y - metrics.baseline),
-            );
-            // Finalization qualifies the local font displacement. Translation
-            // can lose it again at a finite physical anchor, so check the
-            // required cross-axis contribution in this owning phase as well.
-            let origin = match placed.orientation {
-                LineOrientation::Horizontal => crate::Point::new(
-                    placed.anchor.x + vector.x,
-                    checked_add("placed run origin y", placed.anchor.y, vector.y)?,
-                ),
-                LineOrientation::SidewaysClockwise
-                | LineOrientation::SidewaysCounterclockwise
-                | LineOrientation::Vertical => crate::Point::new(
-                    checked_add("placed run origin x", placed.anchor.x, vector.x)?,
-                    placed.anchor.y + vector.y,
-                ),
+            let frame = match run.frame {
+                FinalizedRunFrame::Line => crate::layout::run_glyph_frame(&placed, run, shaped),
+                FinalizedRunFrame::Cell(index) => qualify_cell_frame(
+                    &placed,
+                    &placed.finalized.data.cells[index],
+                    Point::new(run.x, run.y),
+                )?,
+            };
+            let origin = if matches!(run.frame, FinalizedRunFrame::Cell(_)) {
+                frame.origin()
+            } else {
+                let vector = crate::layout::line_vector(
+                    &placed,
+                    crate::Point::new(run.x, run.y - metrics.baseline),
+                );
+                // Finalization qualifies the local font displacement. Translation
+                // can lose it again at a finite physical anchor, so check the
+                // required cross-axis contribution in this owning phase as well.
+                match placed.orientation {
+                    LineOrientation::Horizontal => crate::Point::new(
+                        placed.anchor.x + vector.x,
+                        checked_add("placed run origin y", placed.anchor.y, vector.y)?,
+                    ),
+                    LineOrientation::SidewaysClockwise
+                    | LineOrientation::SidewaysCounterclockwise
+                    | LineOrientation::Vertical => crate::Point::new(
+                        checked_add("placed run origin x", placed.anchor.x, vector.x)?,
+                        placed.anchor.y + vector.y,
+                    ),
+                }
             };
             finite("placed run origin x", origin.x)?;
             finite("placed run origin y", origin.y)?;
             for glyph in &placed.finalized.data.glyphs[run.glyphs.clone()] {
-                let point = crate::layout::glyph_origin(
-                    placed.orientation,
-                    shaped.glyph_basis,
-                    origin,
+                let point = frame.point(
                     glyph.pen,
                     f64::from(glyph.glyph.x),
                     f64::from(glyph.glyph.y),
@@ -437,15 +542,18 @@ pub(crate) fn place_request(
                 finite("placed glyph origin x", point.x)?;
                 finite("placed glyph origin y", point.y)?;
                 if glyph.word_half != 0.0 {
-                    let before = crate::layout::glyph_origin(
-                        placed.orientation,
-                        shaped.glyph_basis,
-                        origin,
+                    let before = frame.point(
                         glyph.pen_base,
                         f64::from(glyph.glyph.x),
                         f64::from(glyph.glyph.y),
                     );
-                    qualify_spacing_displacement(&placed, before, point, glyph.word_half)?;
+                    qualify_spacing_displacement(
+                        &placed,
+                        run.frame,
+                        before,
+                        point,
+                        glyph.word_half,
+                    )?;
                 }
             }
         }
@@ -456,12 +564,27 @@ pub(crate) fn place_request(
             .iter()
             .chain(&placed.finalized.data.character_anchors)
         {
-            let before = crate::layout::line_point(&placed, unit.base);
-            let after = crate::layout::line_point(
-                &placed,
-                crate::Point::new(unit.base.x + unit.half, unit.base.y),
-            );
-            qualify_spacing_displacement(&placed, before, after, unit.half)?;
+            let (before, after) = match unit.frame {
+                FinalizedRunFrame::Line => (
+                    crate::layout::line_point(&placed, unit.before),
+                    crate::layout::line_point(&placed, unit.after),
+                ),
+                FinalizedRunFrame::Cell(index) => {
+                    let frame = qualify_cell_frame(
+                        &placed,
+                        &placed.finalized.data.cells[index],
+                        Point::new(0.0, 0.0),
+                    )?;
+                    let before = frame.point(unit.before.x, 0.0, unit.before.y);
+                    let after = frame.point(unit.after.x, 0.0, unit.after.y);
+                    for point in [before, after] {
+                        finite("placed cell word spacing x", point.x)?;
+                        finite("placed cell word spacing y", point.y)?;
+                    }
+                    (before, after)
+                }
+            };
+            qualify_spacing_displacement(&placed, unit.frame, before, after, unit.amount)?;
         }
         let metric_rect = crate::layout::line_rect(
             &placed,
@@ -499,6 +622,23 @@ pub(crate) fn place_request(
             }
         }
         for cluster in &placed.finalized.data.clusters {
+            if let FinalizedRunFrame::Cell(index) = cluster.frame {
+                qualify_cell_frame(
+                    &placed,
+                    &placed.finalized.data.cells[index],
+                    Point::new(0.0, 0.0),
+                )?;
+                cell_geometry::qualify_cluster_rect(
+                    &placed.finalized.data,
+                    cluster,
+                    placed.orientation,
+                    Some(&placed),
+                    TextNumericPhase::Placement,
+                )?;
+                qualify_rect(cell_geometry::placed_cluster_rect(&placed, cluster))?;
+                // The inner metric allocation is qualified, never a second outer box.
+                continue;
+            }
             let x0 = cluster.x.min(cluster.x + cluster.advance);
             let width = cluster.advance.abs();
             include(
@@ -542,7 +682,10 @@ pub(crate) fn place_request(
         )?;
         lines.push(placed);
     }
-    if next != end {
+    if next != end
+        || (matches!(request.coverage, PlacementCoverage::WholeParagraph)
+            && source_segment != prepared.tables.source_segments.len())
+    {
         return Err(protocol_error(ProtocolError::IncompleteLineCoverage {
             line: count,
         }));

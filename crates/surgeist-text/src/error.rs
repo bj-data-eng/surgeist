@@ -198,6 +198,10 @@ pub enum ErrorCode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErrorDetail {
+    /// Source-owned text-combination context or preparation capability refusal.
+    TextCombine {
+        reason: crate::TextCombineError,
+    },
     /// A typed captured-scope alignment refusal from its owning phase.
     ScopeAlignment {
         reason: super::ScopeAlignmentError,
@@ -428,6 +432,14 @@ pub enum ErrorDetail {
         range: super::Range,
         bytes: usize,
     },
+    /// Placed accessibility geometry for an actual Cell is not supported.
+    /// Source-only analyzed accessibility remains independently available.
+    UnsupportedAccessibilityCell {
+        /// Actual placed-line ordinal in the requested Layout.
+        line: usize,
+        /// Actual finalized Cell ordinal within that placed line.
+        cell: usize,
+    },
     AccessibilityBindingMismatch,
     AccessibilityIdentityConflict {
         id: u64,
@@ -477,6 +489,11 @@ pub enum ErrorDetail {
 /// Exact source-transform admission or execution refusal.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TextTransformError {
+    /// Required original-unit envelope for diagnostics. Actual original pieces,
+    /// rather than this envelope, establish membership in the requested view.
+    IndivisibleCoverage {
+        source: crate::Range,
+    },
     InvalidPhraseData,
     MissingPhraseTopology {
         at: usize,

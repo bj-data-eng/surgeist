@@ -86,6 +86,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
         let mut source = t::Source::identified("AB", t::Id::from_u64(652900), 9);
         source.span(t::Range::new(0, 2), style.clone());
         let inline = || t::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             trim: Default::default(),
@@ -94,6 +95,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
         };
         let processed = Arc::new(
             t::process_contextual_source(t::ContextualSourceInput {
+                joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 source,
                 segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
@@ -132,6 +134,8 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 },
                 scopes: vec![
                     t::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
                         font_reference: None,
                         topology: t::SourceProcessingTopology::Complete,
                         trim: Default::default(),
@@ -361,7 +365,10 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 side: t::SourceBoxSide::Before
             }
         );
-        let incidences = self.prepared.boundary_incidences(&forced).unwrap();
+        let incidences = self
+            .prepared
+            .boundary_incidences(&self.prepared.source_segments().next().unwrap(), &forced)
+            .unwrap();
         assert_eq!(incidences.len(), 1);
         assert_eq!(incidences[0].boundary(), forced);
         for (scope, expected) in self.scopes.iter().zip([
@@ -377,7 +384,10 @@ impl<S: l::LayoutScalar> Fixture<S> {
         }
         assert_eq!(
             self.prepared
-                .boundary_incidences(&offers[2].view().boundary())
+                .boundary_incidences(
+                    &self.prepared.source_segments().next().unwrap(),
+                    &offers[2].view().boundary()
+                )
                 .unwrap(),
             incidences
         );

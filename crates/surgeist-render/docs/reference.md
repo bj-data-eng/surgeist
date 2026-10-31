@@ -103,11 +103,13 @@ The optional `prepare_text_layout` adapter consumes the actual placed Text
 snapshot without reshaping or choosing lines. Its complete `TextLayoutLimits`
 budget also covers font copies, mapping buffers and decoration commands. Font
 copies are shared within one invocation; the original Text storage remains an
-input loan. The adapter consumes each run's physical origin and `GlyphBasis`;
-line orientation independently determines the logical pen's physical axis.
+input loan. The adapter consumes each run's executed `GlyphFrame`: its physical
+origin, outline axes and independent pen direction in outline coordinates.
 Native upright runs keep their outlines unrotated and place each glyph at
-`(origin.x + dx, origin.y + pen + dy)`. Clockwise and counterclockwise sideways
-runs receive their exact right-angle basis. The counterclockwise matrix is
+`(origin.x + dx, origin.y + pen + dy)`. Combined cells retain horizontal inner
+pens and the outline frame supplied by Text inside their vertical outer line.
+Clockwise and counterclockwise sideways runs receive their exact right-angle
+basis. The counterclockwise matrix is
 `[0,-1,1,0,origin.x,origin.y]`; its raw pen is converted into the actual glyph
 basis before applying that matrix. Existing outline synthesis operates in glyph coordinates
 before that basis; caller placement follows once. Decorations are already

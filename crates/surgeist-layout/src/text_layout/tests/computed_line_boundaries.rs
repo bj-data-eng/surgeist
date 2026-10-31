@@ -35,6 +35,7 @@ fn base_input(rtl: bool, strut: text::ParagraphStrut) -> text::ContextualSourceI
         Source::identified("A", text::Id::from_u64(650_752), 12),
     ];
     text::ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: Source::identified("AA", text::Id::from_u64(650_750), 12),
@@ -65,6 +66,8 @@ fn base_input(rtl: bool, strut: text::ParagraphStrut) -> text::ContextualSourceI
         }],
         replacements: vec![],
         scopes: vec![text::SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: text::SourceProcessingTopology::Complete,
             trim: Default::default(),
@@ -103,6 +106,7 @@ fn control_event(control: usize) -> E {
 fn scope_input(rtl: bool, side: Side, forced: bool) -> text::ContextualSourceInput {
     let mut input = base_input(rtl, text::ParagraphStrut::DefaultFont);
     input.scopes.push(text::SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         trim: Default::default(),
@@ -158,6 +162,7 @@ fn paired_input(rtl: bool, side: Side) -> text::ContextualSourceInput {
         },
     ];
     input.scopes.push(text::SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         trim: Default::default(),
@@ -244,6 +249,7 @@ fn empty_input(anchors: bool, strut: text::ParagraphStrut) -> text::ContextualSo
     input.connections.clear();
     input.boundary_policies.clear();
     input.scopes.push(text::SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         trim: Default::default(),
@@ -752,6 +758,7 @@ fn computed_atomic_edges_split_original_flow_and_keep_the_actual_atomic_geometry
 fn whole_scope_input(rtl: bool, side: Side) -> text::ContextualSourceInput {
     let mut input = base_input(rtl, text::ParagraphStrut::DefaultFont);
     input.scopes.push(text::SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         trim: Default::default(),
@@ -988,8 +995,13 @@ fn node_free_computed_paragraph_admits_its_real_capture_without_child_nodes() {
     assert_eq!(actual.container, f.binding.container);
     assert_eq!(actual.prepared, f.binding.prepared);
     assert_eq!(
-        actual.prepared.captured_paragraph(),
-        f.processed.captured_paragraph(0)
+        actual
+            .prepared
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        vec![f.processed.captured_paragraph(0).unwrap()]
     );
     assert!(actual.nodes.is_empty());
     assert!(actual.origins.is_empty());

@@ -42,6 +42,7 @@ fn fixture_in_direction(
     source.span(whole, source_style);
     let control = |kind, at| text::ParagraphControl { kind, at };
     let inline = |style, start, end| text::SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         trim: text::WhiteSpaceTrim::default(),
@@ -55,6 +56,7 @@ fn fixture_in_direction(
     };
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
@@ -78,6 +80,8 @@ fn fixture_in_direction(
             replacements: vec![],
             scopes: vec![
                 text::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: text::SourceProcessingTopology::Complete,
                     trim: text::WhiteSpaceTrim::default(),
@@ -655,8 +659,18 @@ fn empty_domain_capture_identity_and_remote_endpoint_invalidation_rebuild_warm_o
     let before = tree.retained.clone();
     let (next_tree, next) = super::scope_continuation::empty_block_capture();
     assert_ne!(
-        first[1].prepared.captured_paragraph(),
-        next[1].prepared.captured_paragraph()
+        first[1]
+            .prepared
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        next[1]
+            .prepared
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>()
     );
     assert!(next[1].nodes.is_empty());
     assert_eq!(next[1].prepared.participants().count(), 0);

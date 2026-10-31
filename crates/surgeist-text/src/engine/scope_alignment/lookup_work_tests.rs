@@ -40,6 +40,8 @@ fn fixture(classified: bool) -> Fixture {
     let mut source = Source::identified("XX", Id::from_u64(1578076), 59);
     source.span(Range::new(0, 2), style.clone());
     let mut scopes = vec![SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         topology: SourceProcessingTopology::Complete,
         trim: WhiteSpaceTrim::default(),
         base_style: style.clone(),
@@ -49,6 +51,7 @@ fn fixture(classified: bool) -> Fixture {
     // Genuine unrelated empty boxes remain in the captured inventory. They are
     // not injected owner entries or substitute selected scope rows.
     scopes.extend((0..2).map(|_| SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         trim: WhiteSpaceTrim::default(),
         style: None,
         boundaries: None,
@@ -60,6 +63,7 @@ fn fixture(classified: bool) -> Fixture {
         ScopeAlignmentBoundary::NonInitial,
     ] {
         scopes.push(SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
             trim: WhiteSpaceTrim::default(),
             style: Some(style.clone()),
             boundaries: None,
@@ -68,6 +72,7 @@ fn fixture(classified: bool) -> Fixture {
         });
     }
     let input = ContextualSourceInput {
+        joint_flows: Vec::new(),
         source: source.clone(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
         envelope: SourceProcessingEnvelope::Complete,
@@ -223,6 +228,7 @@ fn request(prepared: &PreparedText) -> LineSelectionRequest {
         .unwrap()
         .handle();
     LineSelectionRequest {
+        segment: crate::test_wrapping::only_source_segment(prepared),
         start: prepared.boundary_views().next().unwrap().handle(),
         end: termination.view().boundary(),
         participants: prepared.participants().collect(),

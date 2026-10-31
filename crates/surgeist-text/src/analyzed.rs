@@ -9,6 +9,13 @@ use std::{
 use crate::engine::{self, AnalyzedData};
 use crate::{Direction, Range, Result, Source, Style, ValidatedSource, ValidatedStyle};
 
+pub(crate) mod captured;
+mod combined;
+mod domain;
+pub use captured::CapturedAnalysisOwner;
+pub use combined::{AnalyzedCombinedCell, AnalyzedCombinedSourcePiece};
+pub use domain::AnalyzedDomain;
+
 /// Resolved source interpretation, established before Unicode bidi analysis.
 /// This is independent of font shaping and placed line geometry.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -50,6 +57,29 @@ impl fmt::Debug for AnalyzedSource {
 }
 
 impl AnalyzedSource {
+    /// Completed source cells, before any font preparation or placed geometry.
+    pub fn combined_cells(&self) -> impl ExactSizeIterator<Item = AnalyzedCombinedCell<'_>> + '_ {
+        let output = self.inner.combination.as_deref();
+        (0..output.map_or(0, |output| output.cells.len())).map(move |index| {
+            let output = output.expect("nonempty cell iterator");
+            AnalyzedCombinedCell {
+                core: &self.inner.core,
+                output,
+                index,
+            }
+        })
+    }
+    /// Genuine captured Raw/Joint authority of this completed output.
+    #[must_use]
+    pub fn captured_owner(&self) -> Option<CapturedAnalysisOwner<'_>> {
+        self.inner
+            .paragraph
+            .scope_topology
+            .as_ref()
+            .map(|topology| CapturedAnalysisOwner {
+                owner: &topology.owner,
+            })
+    }
     /// Validates source/styles and analyzes the post-transform semantic stream.
     /// Exact original source and Phase-I correspondence remain separately owned.
     /// No font discovery, selection, glyph shaping or placement occurs. Upright

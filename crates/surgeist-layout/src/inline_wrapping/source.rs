@@ -1076,7 +1076,7 @@ impl<Node: Copy + Eq> ResolvedWrapEdges<Node> {
             for paragraph in paragraphs {
                 if paragraph
                     .prepared
-                    .captured_paragraph()
+                    .captured_owner()
                     .is_some_and(|p| p.domain() == domain)
                 {
                     observed = true;

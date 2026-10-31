@@ -99,12 +99,21 @@ impl ClusterPath {
 
 fn at_source(layout: &PlacedLayout, index: usize) -> Option<ClusterPath> {
     for (line, row) in layout.lines.iter().enumerate() {
-        if let Some(cluster) = row
-            .finalized
-            .data
-            .clusters
-            .iter()
-            .position(|c| c.source.contains(index))
+        if let Some(cluster) =
+            row.finalized
+                .data
+                .clusters
+                .iter()
+                .enumerate()
+                .position(|(cluster, c)| {
+                    c.source.contains(index)
+                        && (row.finalized.data.cells.is_empty()
+                            || row
+                                .finalized
+                                .data
+                                .visual_order
+                                .contains(&FinalizedVisualItem::Cluster(cluster)))
+                })
         {
             let visual = row
                 .finalized
@@ -148,6 +157,9 @@ fn normalize(layout: &PlacedLayout, index: usize, affinity: Affinity) -> Cursor 
         if index == original_end {
             return Cursor::new(original_end, Affinity::Before);
         }
+    }
+    if let Some(position) = super::position::cell_position(layout, Cursor::new(index, affinity)) {
+        return layout.interaction.positions[position].source;
     }
     if let Some(cluster) = at_source(layout, index) {
         let index = cluster.get(layout).source.start;
@@ -222,7 +234,14 @@ fn logical_pair(layout: &PlacedLayout, value: Cursor) -> [Option<ClusterPath>; 2
     if pair.iter().any(Option::is_none) {
         for (line, placed) in layout.lines.iter().enumerate() {
             for (cluster, row) in placed.finalized.data.clusters.iter().enumerate() {
-                if row.source.is_empty() {
+                if row.source.is_empty()
+                    || (!placed.finalized.data.cells.is_empty()
+                        && !placed
+                            .finalized
+                            .data
+                            .visual_order
+                            .contains(&FinalizedVisualItem::Cluster(cluster)))
+                {
                     continue;
                 }
                 let side = if row.source.end <= value.index() {
@@ -296,6 +315,14 @@ fn visual_pair(layout: &PlacedLayout, value: Cursor) -> [Option<ClusterPath>; 2]
 }
 
 pub(super) fn geometry(layout: &PlacedLayout, value: Cursor) -> (usize, Rect) {
+    if let Some(position) = super::position::cell_position(layout, value) {
+        return (
+            layout.interaction.positions[position].line,
+            super::position::geometry(layout, position)
+                .expect("owned cell position")
+                .rect(),
+        );
+    }
     let (line, x, reference) = local_geometry(layout, value);
     (
         line,
@@ -312,6 +339,13 @@ pub(super) fn geometry(layout: &PlacedLayout, value: Cursor) -> (usize, Rect) {
 // Retain the actual source/occurrence edge before turning its caret into a
 // physical hull. A counterclockwise caret's hull starts one inline unit later.
 fn local_geometry(layout: &PlacedLayout, value: Cursor) -> (usize, f64, Option<f64>) {
+    if let Some(position) = super::position::cell_position(layout, value) {
+        return (
+            layout.interaction.positions[position].line,
+            super::position::inline(layout, position).expect("owned cell position"),
+            super::position::reference(layout, position).expect("owned cell position"),
+        );
+    }
     // Deleted anchors are genuine source-associated occurrences. This does not
     // change the historical raw-source visual-neighbor policy around atomics:
     // a physical atomic gap and an executed source deletion have different owners.
@@ -392,7 +426,16 @@ fn anchor_geometry(
                 consider((line_index, anchor.unit), anchor.slot.x, anchor.reference);
             }
         }
-        for cluster in &line.finalized.data.clusters {
+        for (index, cluster) in line.finalized.data.clusters.iter().enumerate() {
+            if !line.finalized.data.cells.is_empty()
+                && !line
+                    .finalized
+                    .data
+                    .visual_order
+                    .contains(&FinalizedVisualItem::Cluster(index))
+            {
+                continue;
+            }
             let replacement_incident = cluster.source.is_empty()
                 && line
                     .finalized
@@ -503,6 +546,22 @@ fn cursor_at_inline(layout: &PlacedLayout, line_index: usize, x: f64) -> Option<
     let data = &line.finalized.data;
     let mut visual = 0;
     while visual < data.visual_order.len() {
+        if let FinalizedVisualItem::Cell(index) = data.visual_order[visual] {
+            let cell = &data.cells[index];
+            if x <= cell.inline.start.max(cell.flow_end) || visual + 1 == data.visual_order.len() {
+                // Halve the retained endpoints before adding: signed tracking
+                // may reverse the flow interval without changing its square.
+                let midpoint = cell.inline.start * 0.5 + cell.flow_end * 0.5;
+                let end_side = if cell.flow_end >= cell.inline.start {
+                    x > midpoint
+                } else {
+                    x < midpoint
+                };
+                return Some(super::position::cell_cursor(line, index, end_side));
+            }
+            visual += 1;
+            continue;
+        }
         let FinalizedVisualItem::Cluster(first) = data.visual_order[visual] else {
             visual += 1;
             continue;
@@ -518,7 +577,9 @@ fn cursor_at_inline(layout: &PlacedLayout, line_index: usize, x: f64) -> Option<
         }
         let last = match data.visual_order[end - 1] {
             FinalizedVisualItem::Cluster(index) => &data.clusters[index],
-            FinalizedVisualItem::InlineBox(_) | FinalizedVisualItem::Anchor(_) => {
+            FinalizedVisualItem::Cell(_)
+            | FinalizedVisualItem::InlineBox(_)
+            | FinalizedVisualItem::Anchor(_) => {
                 unreachable!()
             }
         };
@@ -568,7 +629,9 @@ pub(super) fn from_point(layout: &PlacedLayout, point: Point) -> Cursor {
             .enumerate()
             .find_map(|(visual, item)| match item {
                 FinalizedVisualItem::Cluster(cluster) => Some((visual, *cluster)),
-                FinalizedVisualItem::InlineBox(_) | FinalizedVisualItem::Anchor(_) => None,
+                FinalizedVisualItem::Cell(_)
+                | FinalizedVisualItem::InlineBox(_)
+                | FinalizedVisualItem::Anchor(_) => None,
             })
     {
         return point_edge(
@@ -618,6 +681,20 @@ pub(crate) fn move_cursor(
     movement: Movement,
 ) -> Result<Cursor> {
     let value = admit(layout, value)?;
+    // A cell's source wrapper consumes the same real occurrence rows as exact
+    // placed movement. Inner payload clusters are never surrogate outer rows.
+    if !matches!(movement, Movement::DocumentStart | Movement::DocumentEnd)
+        && layout
+            .lines
+            .iter()
+            .any(|line| !line.finalized.data.cells.is_empty())
+        && let Some(position) = super::position::source_position(layout, value)
+    {
+        let target = super::position::movement(layout, position, movement)?;
+        let result = layout.interaction.positions[target].source;
+        super::position::validate_source(layout, result)?;
+        return Ok(result);
+    }
     let result = match movement {
         Movement::DocumentStart => admit(
             layout,
@@ -931,7 +1008,7 @@ fn adjacent_word_row(
 
 /// One traversal over actual neighboring logical rows. Source lookup locates
 /// the input only; an executed deletion gap cannot become a fabricated end.
-fn word_target<K: Copy>(
+pub(super) fn word_target<K: Copy>(
     value: Cursor,
     forward: bool,
     extent: crate::Range,

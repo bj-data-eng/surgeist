@@ -187,7 +187,12 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
         .find(|o| o.kind() == text::PreparedBreakKind::Forced)
         .unwrap();
     let forced_boundary = forced.boundary();
-    let pin = prepared.boundary_incidences(&forced_boundary).unwrap();
+    let pin = prepared
+        .boundary_incidences(
+            &prepared.source_segments().next().unwrap(),
+            &forced_boundary,
+        )
+        .unwrap();
     assert!(!pin.is_empty());
     let px =
         |v| layout::PreferredSizeOf::value(layout::LengthPercentageOf::px(S::from_f64(v)).unwrap());
@@ -328,7 +333,15 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
     let flow =
         layout::LayoutFlowInput::try_new(&tree, 0, vec![binding], wrapping, Vec::new()).unwrap();
     let batch = layout::compute_layout_with_flow(&flow, 0, request()).unwrap();
-    assert_eq!(prepared.boundary_incidences(&forced_boundary).unwrap(), pin);
+    assert_eq!(
+        prepared
+            .boundary_incidences(
+                &prepared.source_segments().next().unwrap(),
+                &forced_boundary
+            )
+            .unwrap(),
+        pin
+    );
     let placed = batch.placed_text()[0].layout();
     assert!(placed.analyzed_source().identity() == prepared.analyzed_source().identity());
     let real = kind.real();
@@ -727,7 +740,10 @@ fn retained_text_receiver<S: layout::LayoutScalar>(space: bool, direction: layou
     );
     let pin = f
         .prepared
-        .boundary_incidences(&offers[0].view().boundary())
+        .boundary_incidences(
+            &f.prepared.source_segments().next().unwrap(),
+            &offers[0].view().boundary(),
+        )
         .unwrap();
     let flow = layout::LayoutFlowInput::try_new(
         &f.tree,
@@ -876,7 +892,10 @@ fn retained_text_receiver<S: layout::LayoutScalar>(space: bool, direction: layou
     assert_eq!(glyphs, expected);
     assert_eq!(
         f.prepared
-            .boundary_incidences(&offers[0].view().boundary())
+            .boundary_incidences(
+                &f.prepared.source_segments().next().unwrap(),
+                &offers[0].view().boundary()
+            )
             .unwrap(),
         pin
     );
@@ -952,7 +971,10 @@ fn successive_forced_receivers<S: layout::LayoutScalar>(direction: layout::Direc
         .take(2)
         .map(|offer| {
             f.prepared
-                .boundary_incidences(&offer.view().boundary())
+                .boundary_incidences(
+                    &f.prepared.source_segments().next().unwrap(),
+                    &offer.view().boundary(),
+                )
                 .unwrap()
         })
         .collect::<Vec<_>>();
@@ -1036,7 +1058,10 @@ fn successive_forced_receivers<S: layout::LayoutScalar>(direction: layout::Direc
     for (offer, pin) in offers.iter().take(2).zip(pins) {
         assert_eq!(
             f.prepared
-                .boundary_incidences(&offer.view().boundary())
+                .boundary_incidences(
+                    &f.prepared.source_segments().next().unwrap(),
+                    &offer.view().boundary()
+                )
                 .unwrap(),
             pin
         );

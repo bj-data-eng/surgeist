@@ -97,6 +97,9 @@ pub struct TextScopeBinding<Node> {
 pub struct TextParagraphBinding<Node> {
     pub prepared: PreparedText,
     pub container: Node,
+    /// Complete native participating-node inventory in actual container order.
+    /// A structural child block may separate its admitted native run windows;
+    /// this does not split the one analyzed output or its preparation.
     pub nodes: Vec<Node>,
     pub origins: Vec<TextOriginBinding<Node>>,
     pub atomics: Vec<TextAtomicBinding<Node>>,
@@ -104,6 +107,24 @@ pub struct TextParagraphBinding<Node> {
     /// Genuine normalized line allocation, when the caller supplies one.
     /// Absence never guesses an empty/default font or a zero-size line.
     pub line_strut: Option<surgeist_text::LineStrut>,
+}
+
+/// One admitted native use of the same output-level binding and preparation.
+/// The segment is issued by Text; the native slice is derived from the checked
+/// immutable tree. This view declares no source or paragraph authority.
+#[derive(Clone)]
+pub(crate) struct AdmittedRun<'input, Node> {
+    pub(crate) binding_index: usize,
+    pub(crate) binding: &'input TextParagraphBinding<Node>,
+    pub(crate) inventory: std::ops::Range<usize>,
+    pub(crate) native: std::ops::Range<usize>,
+    pub(crate) segment: surgeist_text::PreparedSourceSegment,
+}
+
+impl<Node> AdmittedRun<'_, Node> {
+    pub(crate) fn nodes(&self) -> &[Node] {
+        &self.binding.nodes[self.inventory.clone()]
+    }
 }
 
 /// A rejected association between immutable Layout and Text inputs.
@@ -164,6 +185,7 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
         wrapping_input: crate::WrappingInput<Tree::Node>,
         scope_alignments: Vec<TextScopeAlignmentInputOf<Tree::Scalar>>,
     ) -> crate::LayoutResultOf<Tree::Node, Self, Tree::Scalar, Tree::MeasureError> {
+        Self::validate_run_nodes(&paragraphs)?;
         Self::try_new_inner(
             tree,
             root,
@@ -187,6 +209,7 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
     where
         Tree: crate::WrapEdgeSource,
     {
+        Self::validate_run_nodes(&paragraphs)?;
         let graph = receipt.validate_final(tree, root, &paragraphs, &wrapping_input)?;
         Self::try_new_inner(
             tree,
@@ -196,6 +219,24 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
             scope_alignments,
             Some(graph),
         )
+    }
+
+    /// Node occurrence uniqueness is an input-only guard. It precedes every
+    /// capture receipt, native tree observation and run-window projection.
+    fn validate_run_nodes(
+        paragraphs: &[TextParagraphBinding<Tree::Node>],
+    ) -> crate::LayoutResultOf<Tree::Node, (), Tree::Scalar, Tree::MeasureError> {
+        for paragraph in paragraphs {
+            for (index, node) in paragraph.nodes.iter().enumerate() {
+                if paragraph.nodes[..index].contains(node) {
+                    return Err(binding_error(
+                        paragraph.container,
+                        TextBindingError::DuplicateRunNode,
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     fn try_new_inner(
@@ -248,50 +289,64 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                 return Err(error(TextBindingError::EmptyRun));
             }
             let children: Vec<_> = tree.children(paragraph.container).collect();
-            let ordinary = crate::inline::run_ranges(&children, |node| tree.layout_input(node))
-                .iter()
-                .any(|range| children[range.clone()] == paragraph.nodes);
-            let window = children
-                .windows(paragraph.nodes.len())
-                .position(|nodes| nodes == paragraph.nodes);
-            if paragraph.prepared.terminal_edge() == surgeist_text::ParagraphTerminalEdge::BlockEnd
-                && window.is_some_and(|start| {
-                    children[start + paragraph.nodes.len()..]
-                        .iter()
-                        .any(|&node| {
-                            let input = tree.layout_input(node);
-                            input.as_box().is_none_or(|input| {
-                                input.display != crate::Display::None
-                                    && input.position != crate::Position::Absolute
-                            })
-                        })
+            let ordinary = crate::inline::run_ranges(&children, |node| tree.layout_input(node));
+            let transparent_float = |node| {
+                tree.layout_input(node).as_box().is_some_and(|input| {
+                    !input.float.is_none()
+                        && input.position != crate::Position::Absolute
+                        && input.display != crate::Display::None
                 })
-            {
-                return Err(error(TextBindingError::TerminalBlockEdge));
+            };
+            let structural_block = |node| {
+                tree.layout_input(node).as_box().is_some_and(|input| {
+                    input.display != crate::Display::None
+                        && input.position != crate::Position::Absolute
+                        && input.float.is_none()
+                        && !input.display.is_inline_level()
+                })
+            };
+            let complete_window = |start: usize, end: usize| {
+                ordinary
+                    .iter()
+                    .any(|range| range.start == start && range.end == end)
+                    || children[start..end].iter().all(|&node| {
+                        crate::inline::continues_run(tree.layout_input(node))
+                            || transparent_float(node)
+                    }) && (start == 0
+                        || !crate::inline::continues_run(tree.layout_input(children[start - 1])))
+                        && (end == children.len()
+                            || !crate::inline::continues_run(tree.layout_input(children[end])))
+            };
+            let first = children
+                .iter()
+                .position(|node| paragraph.nodes.first() == Some(node))
+                .ok_or_else(|| error(TextBindingError::RunMembership))?;
+            let mut start = first;
+            let mut previous = first;
+            for node in paragraph.nodes.iter().skip(1) {
+                let position = children
+                    .iter()
+                    .position(|child| child == node)
+                    .ok_or_else(|| error(TextBindingError::RunMembership))?;
+                if position <= previous {
+                    return Err(error(TextBindingError::RunMembership));
+                }
+                if position != previous + 1 {
+                    if !complete_window(start, previous + 1)
+                        || !children[previous + 1..position]
+                            .iter()
+                            .all(|&node| structural_block(node))
+                    {
+                        return Err(error(TextBindingError::RunMembership));
+                    }
+                    start = position;
+                }
+                previous = position;
             }
-            let complete_window = window.is_some_and(|start| {
-                let end = start + paragraph.nodes.len();
-                let transparent_float = |node| {
-                    tree.layout_input(node).as_box().is_some_and(|input| {
-                        !input.float.is_none()
-                            && input.position != crate::Position::Absolute
-                            && input.display != crate::Display::None
-                    })
-                };
-                paragraph.nodes.iter().all(|&node| {
-                    crate::inline::continues_run(tree.layout_input(node)) || transparent_float(node)
-                }) && (start == 0
-                    || !crate::inline::continues_run(tree.layout_input(children[start - 1])))
-                    && (end == children.len()
-                        || !crate::inline::continues_run(tree.layout_input(children[end])))
-            });
-            if !ordinary && !complete_window {
+            if !complete_window(start, previous + 1) {
                 return Err(error(TextBindingError::RunMembership));
             }
-            for (index, node) in paragraph.nodes.iter().copied().enumerate() {
-                if paragraph.nodes[..index].contains(&node) {
-                    return Err(error(TextBindingError::DuplicateRunNode));
-                }
+            for node in paragraph.nodes.iter().copied() {
                 if occupied.contains(&node) {
                     return Err(error(TextBindingError::OverlappingParagraphs));
                 }
@@ -469,6 +524,25 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                                 .controls()
                                 .map(|control| control_position(&control)),
                         )
+                        .collect::<Vec<_>>(),
+                    surgeist_text::PreparedParticipant::Cell(cell) => cell
+                        .view()
+                        .source_cell()
+                        .source_pieces()
+                        .map(|piece| {
+                            let captured = piece.origin_position();
+                            position(
+                                paragraph
+                                    .origins
+                                    .iter()
+                                    .find(|row| {
+                                        row.origin.view().capture_position().as_ref()
+                                            == Some(&captured)
+                                    })
+                                    .expect("complete cell original occurrence inventory")
+                                    .node,
+                            )
+                        })
                         .collect::<Vec<_>>(),
                     surgeist_text::PreparedParticipant::Atomic(atomic) => vec![position(
                         paragraph

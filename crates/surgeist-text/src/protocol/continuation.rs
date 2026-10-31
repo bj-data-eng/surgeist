@@ -49,9 +49,11 @@ impl FinalizedLine {
 
 pub(super) fn validate(
     prepared: &super::PreparedText,
+    segment: &super::PreparedSourceSegment,
     start: &PreparedBoundary,
     incoming: Option<&HyphenationContinuation>,
 ) -> crate::Result<()> {
+    super::segments::admit(prepared, segment)?;
     if let Some(value) = incoming
         && (!std::sync::Arc::ptr_eq(&prepared.inner, &value.alternative.prepared)
             || value.boundary != *start
@@ -61,6 +63,21 @@ pub(super) fn validate(
         return Err(crate::hyphenation::error(
             crate::HyphenationError::InvalidContinuation,
         ));
+    }
+    if let Some(value) = incoming {
+        let row = &prepared.inner.tables.alternatives[value.alternative.index];
+        let cut = prepared.inner.tables.boundaries[row.boundary].relation_cut;
+        let section = &prepared.inner.analyzed.sections[segment.index];
+        if cut <= section.events.start
+            || cut > section.events.end
+            || row.opportunity.is_some_and(|index| {
+                prepared.inner.tables.opportunities[index].source_segment != Some(segment.index)
+            })
+        {
+            return Err(crate::hyphenation::error(
+                crate::HyphenationError::InvalidContinuation,
+            ));
+        }
     }
     Ok(())
 }

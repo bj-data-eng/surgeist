@@ -6,8 +6,12 @@ pub(crate) mod census;
 mod lookup_work_tests;
 mod preparation;
 #[cfg(test)]
+pub(crate) use preparation::visit_prepared_allocations;
+#[cfg(test)]
 mod work_tests;
-pub(crate) use preparation::{ScopeMetricsData, prepare_resources};
+pub(crate) use preparation::{
+    ScopeMetricsData, cell_metric_index, prepare_cell_resources, prepare_resources,
+};
 
 use std::sync::Arc;
 
@@ -262,7 +266,11 @@ fn original_atom_owners(
             for piece in &analyzed.transform.pieces[analyzed.transform.rows[row].pieces.clone()] {
                 budget.work(1)?;
                 insert(
-                    topology.capture.events[topology.origin_orders[piece.origin]].before,
+                    topology.capture.events[piece
+                        .origin
+                        .captured_event()
+                        .expect("captured transform origin retains its event")]
+                    .before,
                     budget,
                 )?;
             }
@@ -559,6 +567,108 @@ fn retain_owner_group(
     }
     finish_owner_group(frames, pairs, budget)
 }
+
+/// A text container is proved by actual selected source membership, not the
+/// common ancestor that a transformed Part may retain for contextual lookup.
+fn cell_container(
+    analyzed: &AnalyzedData,
+    binding: usize,
+    budget: &mut ScopeAlignmentBudget,
+) -> Result<usize> {
+    let topology = analyzed
+        .paragraph
+        .scope_topology
+        .as_ref()
+        .ok_or_else(|| refusal(ScopeAlignmentError::MissingCapture))?;
+    let capture = &topology.capture;
+    let output = analyzed.combination.as_ref().expect("actual source cell");
+    budget.work(2)?;
+    let binding = &output.bindings[binding];
+    let group = &output.plan.groups[binding.group];
+    let scope = group.scope;
+    budget.work(1)?;
+    let fact = &capture.scopes[scope];
+    if fact.domain != topology.domain {
+        return Err(refusal(ScopeAlignmentError::WrongDomain));
+    }
+    if fact.definition.is_some() {
+        budget.work(1)?;
+        if capture.domain_scopes[topology.domain] != scope {
+            return Err(refusal(ScopeAlignmentError::WrongDomain));
+        }
+    }
+    for part in &output.plan.parts[group.parts.clone()] {
+        budget.work(1)?;
+        if part.scope != scope {
+            return Err(refusal(ScopeAlignmentError::UnrepresentedOwnership {
+                scope,
+            }));
+        }
+        for piece in &part.pieces {
+            budget.work(1)?;
+            let order = piece
+                .origin
+                .captured_event()
+                .ok_or_else(|| refusal(ScopeAlignmentError::UnrepresentedOwnership { scope }))?;
+            budget.work(1)?;
+            if capture.events[order].before != Some(scope) {
+                return Err(refusal(ScopeAlignmentError::UnrepresentedOwnership {
+                    scope,
+                }));
+            }
+        }
+    }
+    Ok(scope)
+}
+
+/// One indivisible cell retains one actual frame even without glyph relations.
+/// Nonpainting computed/control anchors use their canonical cause/owner facets;
+/// an empty origin alone does not activate an otherwise dormant target.
+fn visit_cell_frame_owners(
+    analyzed: &AnalyzedData,
+    binding: usize,
+    budget: &mut ScopeAlignmentBudget,
+    mut emit: impl FnMut(usize, &mut ScopeAlignmentBudget) -> Result<()>,
+) -> Result<()> {
+    let scope = cell_container(analyzed, binding, budget)?;
+    emit(scope, budget)?;
+    let topology = analyzed
+        .paragraph
+        .scope_topology
+        .as_ref()
+        .expect("cell capture");
+    let capture = &topology.capture;
+    let output = analyzed.combination.as_ref().expect("actual source cell");
+    budget.work(1)?;
+    let binding = &output.bindings[binding];
+    for event in &analyzed.transform.events[binding.events.clone()] {
+        budget.work(1)?;
+        let crate::transform::relation::RelationEvent::Anchor { order } = *event else {
+            continue;
+        };
+        budget.work(1)?;
+        use crate::protocol::paragraph::SemanticAnchorItem;
+        let owner = match analyzed.paragraph.anchor_order[order].item {
+            SemanticAnchorItem::ComputedLineBoundary(index) => {
+                visit_computed_frame_owners(analyzed, index, budget, &mut emit)?;
+                None
+            }
+            SemanticAnchorItem::Control(index) => {
+                control_frame_owner(capture, topology, index, budget)?
+            }
+            SemanticAnchorItem::Atomic(index) => {
+                budget.work(1)?;
+                capture.events[capture.atomic_orders[index]].before
+            }
+            SemanticAnchorItem::EmptyOrigin(_) => None,
+        };
+        if let Some(owner) = owner {
+            emit(owner, budget)?;
+        }
+    }
+    Ok(())
+}
+
 fn selected_unit_index(
     presentation: &crate::protocol::prepared::SelectedPresentation,
     kind: crate::protocol::prepared::PresentationUnitKind,
@@ -651,7 +761,9 @@ fn alternative_owner(
     let topology = analyzed.paragraph.scope_topology.as_ref()?;
     let order = match definition {
         AlternativeDefinition::Source { origin, .. }
-        | AlternativeDefinition::Automatic { origin, .. } => *topology.origin_orders.get(origin)?,
+        | AlternativeDefinition::Automatic { origin, .. } => {
+            analyzed.paragraph.captured_origin_event(origin)?
+        }
         AlternativeDefinition::Control { control, .. } => *topology.control_orders.get(control)?,
     };
     topology
@@ -701,9 +813,26 @@ fn visit_unit_source_owners(
     let capture = &topology.capture;
     budget.work(1)?;
     let owner = match unit.kind {
+        K::Cell { cell } => {
+            budget.work(1)?;
+            visit_cell_frame_owners(
+                &prepared.analyzed,
+                prepared.shaped.cells[cell].binding,
+                budget,
+                &mut emit,
+            )?;
+            None
+        }
         K::Atomic { occurrence } => capture.events[capture.atomic_orders[occurrence]].before,
         K::Control { occurrence } => capture.events[topology.control_orders[occurrence]].before,
-        K::EmptyOrigin { origin } => capture.events[topology.origin_orders[origin]].before,
+        K::EmptyOrigin { origin } => {
+            capture.events[prepared
+                .analyzed
+                .paragraph
+                .captured_origin_event(origin)
+                .expect("captured empty origin retains its event")]
+            .before
+        }
         K::Replacement { alternative, .. } => alternative_owner(
             &prepared.analyzed,
             prepared.tables.alternatives[alternative].definition,
@@ -730,8 +859,12 @@ fn visit_unit_source_owners(
                         } => {
                             if !aggregate.is_empty() {
                                 budget.work(1)?;
-                                if let Some(owner) =
-                                    capture.events[topology.origin_orders[origin]].before
+                                if let Some(owner) = capture.events[prepared
+                                    .analyzed
+                                    .paragraph
+                                    .captured_origin_event(origin)
+                                    .expect("captured source origin retains its event")]
+                                .before
                                 {
                                     emit(owner, budget)?;
                                 }
@@ -1053,6 +1186,16 @@ pub(crate) fn admit_selected_resources(
                 break;
             }
         }
+        if !pinned && prepared.shaped.cell_arenas == super::layout::data::CellArenaOwnership::Owned
+        {
+            for run in &prepared.shaped.runs {
+                budget.work(1)?;
+                if same(&run.font, font) {
+                    pinned = true;
+                    break;
+                }
+            }
+        }
         if !pinned {
             let mut previous_fonts = fonts.clone();
             for _ in 0..index {
@@ -1083,6 +1226,8 @@ pub(crate) fn select(
     presentation: &crate::protocol::prepared::SelectedPresentation,
     shaped: &super::layout::data::ShapedData,
     request: &crate::LineSelectionRequest,
+    characters: &super::spacing::character::Graph,
+    order: &Vec<usize>,
     plan: SelectionPlan,
 ) -> Result<SelectedScopes> {
     let Some(_retention) = prepared.scope_alignment.retention else {
@@ -1140,6 +1285,16 @@ pub(crate) fn select(
     for unit in &presentation.units {
         budget.work(1)?;
         let owner = match unit.kind {
+            K::Cell { cell } => {
+                budget.work(1)?;
+                visit_cell_frame_owners(
+                    &prepared.analyzed,
+                    prepared.shaped.cells[cell].binding,
+                    &mut budget,
+                    &mut activate,
+                )?;
+                None
+            }
             K::Atomic { occurrence } => capture.events[capture.atomic_orders[occurrence]].before,
             K::Control { occurrence } => {
                 control_frame_owner(capture, topology, occurrence, &mut budget)?
@@ -1238,6 +1393,17 @@ pub(crate) fn select(
             &mut budget,
         )?;
     }
+    for cell in &shaped.cells {
+        budget.work(1)?;
+        let mut frames = Vec::new();
+        visit_cell_frame_owners(
+            &prepared.analyzed,
+            cell.binding,
+            &mut budget,
+            |owner, budget| append_owner_frame(owner, &result.rows, &mut frames, budget),
+        )?;
+        finish_owner_group(frames, &mut shared, &mut budget)?;
+    }
     let mut uncertain = Vec::new();
     for relation in &shaped.scope_relations {
         budget.work(1)?;
@@ -1287,6 +1453,14 @@ pub(crate) fn select(
     let mut unit_owners = Vec::new();
     for unit in &presentation.units {
         budget.work(1)?;
+        if let K::Cell { cell } = unit.kind {
+            budget.work(2)?;
+            let cell = &prepared.shaped.cells[cell];
+            let source = prepared.scope_alignment.metrics[cell.metrics].scope.index;
+            let owner = selected_frame(&result.rows, source, &mut budget)?;
+            push(&mut budget, &mut unit_owners, owner)?;
+            continue;
+        }
         let mut sources = Vec::new();
         if !unit.atoms.is_empty() {
             for atom in unit.atoms.clone() {
@@ -1343,14 +1517,57 @@ pub(crate) fn select(
     result.shared = shared;
     result.uncertain = uncertain;
     result.unit_owners = unit_owners;
-    for (index, cluster) in shaped.clusters.iter().enumerate() {
-        budget.work(1)?;
-        if let Some(run) = cluster.content.font_run() {
-            let metrics = super::layout::scope_font_contribution(
-                &shaped.runs[run].metrics,
-                cluster.line_height,
-            )?;
-            result.push_contribution(result.cluster_owners[index], metrics, &mut budget)?;
+    if shaped.cells.is_empty() {
+        for (index, cluster) in shaped.clusters.iter().enumerate() {
+            budget.work(1)?;
+            if let Some(run) = cluster.content.font_run() {
+                let metrics = super::layout::scope_font_contribution(
+                    &shaped.runs[run].metrics,
+                    cluster.line_height,
+                )?;
+                result.push_contribution(result.cluster_owners[index], metrics, &mut budget)?;
+            }
+        }
+    } else {
+        // The genuine outer item stream contains one Cell in place of its
+        // inner clusters. Thus even zero-input cells contribute their square,
+        // and inner font struts cannot become a second outer contribution.
+        use super::layout::data::ShapedItem;
+        for item in &shaped.items {
+            budget.work(1)?;
+            match *item {
+                ShapedItem::Cell(index) => {
+                    budget.work(2)?;
+                    let cell = &shaped.cells[index];
+                    let scope = prepared.scope_alignment.metrics[cell.metrics].scope.index;
+                    let owner = selected_frame(&result.rows, scope, &mut budget)?;
+                    result.push_contribution(
+                        owner,
+                        crate::ScopeMetricContribution {
+                            before: cell.before,
+                            after: cell.after,
+                            alignment: crate::LineBoxAlignment::Baseline,
+                        },
+                        &mut budget,
+                    )?;
+                }
+                ShapedItem::TextCluster(index) => {
+                    budget.work(1)?;
+                    let cluster = &shaped.clusters[index];
+                    if let Some(run) = cluster.content.font_run() {
+                        let metrics = super::layout::scope_font_contribution(
+                            &shaped.runs[run].metrics,
+                            cluster.line_height,
+                        )?;
+                        result.push_contribution(
+                            result.cluster_owners[index],
+                            metrics,
+                            &mut budget,
+                        )?;
+                    }
+                }
+                ShapedItem::InlineBox { .. } | ShapedItem::Anchor { .. } => {}
+            }
         }
     }
     for allocation in &request.atomics {
@@ -1476,6 +1693,8 @@ pub(crate) fn select(
         prepared,
         &result,
         shaped,
+        characters,
+        order,
         &mut budget,
     )?);
     result.usage = Some(budget.usage());

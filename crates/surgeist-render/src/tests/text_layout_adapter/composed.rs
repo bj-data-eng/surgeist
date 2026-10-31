@@ -24,6 +24,7 @@ fn finalized(source: text::Source) -> (text::PreparedText, text::FinalizedLine) 
         .handle();
     let selected = prepared
         .select(text::LineSelectionRequest {
+            segment: prepared.source_segments().next().unwrap(),
             line_box_struts: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
@@ -194,6 +195,7 @@ fn hanging_punctuation_reaches_paint_with_its_original_advance_and_source() {
         .handle();
     let line = prepared
         .select(text::LineSelectionRequest {
+            segment: prepared.source_segments().next().unwrap(),
             line_box_struts: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
@@ -310,6 +312,7 @@ fn actual_gpos_mark_placement_reaches_admitted_outline_ink_without_advance_subst
         .handle();
     let finalized = prepared
         .select(text::LineSelectionRequest {
+            segment: prepared.source_segments().next().unwrap(),
             line_box_struts: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),

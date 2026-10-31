@@ -56,6 +56,8 @@ fn capture(
         ..styles[0].clone()
     };
     let mut scopes = vec![text::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         font_reference: None,
         topology: text::SourceProcessingTopology::Complete,
         trim: Default::default(),
@@ -79,6 +81,7 @@ fn capture(
             ]);
         }
         scopes.push(text::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             trim: Default::default(),
@@ -162,6 +165,7 @@ fn capture(
         .collect();
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source,
@@ -235,7 +239,13 @@ fn capture(
     let prepared = system
         .prepare(&analyzed, text::PreparationOptions::default())
         .unwrap();
-    let captured = prepared.captured_paragraph().unwrap();
+    let members = prepared
+        .captured_owner()
+        .unwrap()
+        .members()
+        .collect::<Vec<_>>();
+    assert_eq!(members.len(), 1);
+    let captured = &members[0];
     let inline = captured
         .scope_intersections()
         .map(|i| i.scope())

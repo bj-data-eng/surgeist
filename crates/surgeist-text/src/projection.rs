@@ -32,6 +32,38 @@ pub(crate) struct SourceProjection {
     original_points: Vec<(usize, usize)>,
 }
 
+/// Visits pinned ICU EGC boundaries in adjacent caller-supplied components.
+/// All positions are UTF-8 bytes in `text`. The caller supplies its actual
+/// scalar representation and hard cuts, including coverage endpoints, and owns
+/// cut normalization, semantic mapping, seam deduplication and empty fallback.
+/// This operation chooses neither control representatives nor barrier policy.
+pub(crate) fn visit_grapheme_boundaries(
+    text: &str,
+    hard_cuts: &[usize],
+    mut visit: impl FnMut(usize) -> Result<()>,
+) -> Result<()> {
+    if hard_cuts.first().copied() != Some(0) || hard_cuts.last().copied() != Some(text.len()) {
+        return Err(Error::new(
+            ErrorCode::InvalidSourceProcessing,
+            "grapheme hard cuts do not cover the supplied UTF-8 stream",
+        ));
+    }
+    for (index, &cut) in hard_cuts.iter().enumerate() {
+        if !text.is_char_boundary(cut) || index > 0 && hard_cuts[index - 1] > cut {
+            return Err(Error::new(
+                ErrorCode::InvalidSourceProcessing,
+                "grapheme hard cuts are not ordered UTF-8 scalar boundaries",
+            ));
+        }
+    }
+    for pair in hard_cuts.windows(2) {
+        for byte in GraphemeClusterSegmenter::new().segment_str(&text[pair[0]..pair[1]]) {
+            visit(pair[0].checked_add(byte).ok_or_else(length_overflow)?)?;
+        }
+    }
+    Ok(())
+}
+
 impl SourceProjection {
     pub(crate) fn admit(source: &Source) -> Result<()> {
         for span in source.spans() {
@@ -132,7 +164,7 @@ impl SourceProjection {
     /// replacement. Genuine Wbr also separates decoding without resetting context.
     pub(crate) fn host(
         source: &Source,
-        paragraph: &crate::protocol::paragraph::ParagraphData,
+        paragraph: &crate::protocol::paragraph::ParagraphContext,
     ) -> Result<Self> {
         if paragraph.base_direction.is_none() {
             return Self::new(source);
@@ -198,7 +230,7 @@ impl SourceProjection {
     /// pieces before any removed original units can falsely join surrogate halves.
     pub(crate) fn from_processed(
         processed: &crate::ProcessedSource,
-        paragraph: &crate::protocol::paragraph::ParagraphData,
+        paragraph: &crate::protocol::paragraph::ParagraphContext,
     ) -> Result<Self> {
         use crate::processing::MappingKind;
         let source = processed.source();
@@ -324,16 +356,13 @@ impl SourceProjection {
         stops.sort_unstable();
         stops.dedup();
         let mut graphemes = Vec::new();
-        for pair in stops.windows(2) {
-            for byte in GraphemeClusterSegmenter::new()
-                .segment_str(&projection.segmentation[pair[0]..pair[1]])
-            {
-                let at = projection.segmentation_unit(pair[0] + byte)?;
-                if graphemes.last() != Some(&at) {
-                    graphemes.push(at);
-                }
+        visit_grapheme_boundaries(&projection.segmentation, &stops, |byte| {
+            let at = projection.segmentation_unit(byte)?;
+            if graphemes.last() != Some(&at) {
+                graphemes.push(at);
             }
-        }
+            Ok(())
+        })?;
         if graphemes.is_empty() {
             graphemes.push(semantic_len);
         }
@@ -418,7 +447,7 @@ impl SourceProjection {
 /// separate original units.
 fn admit_physical_endpoint_cuts(
     atoms: &[OriginalAtom],
-    paragraph: &crate::protocol::paragraph::ParagraphData,
+    paragraph: &crate::protocol::paragraph::ParagraphContext,
 ) -> Result<()> {
     if paragraph.base_direction.is_none() {
         return Ok(());
@@ -445,7 +474,7 @@ fn admit_physical_endpoint_cuts(
 
 fn paragraph_barriers(
     source: &Source,
-    paragraph: &crate::protocol::paragraph::ParagraphData,
+    paragraph: &crate::protocol::paragraph::ParagraphContext,
 ) -> Vec<usize> {
     let mut barriers: Vec<_> = paragraph.disconnections().collect();
     barriers.extend(
@@ -484,7 +513,7 @@ fn paragraph_barriers(
 /// Decoding cuts are consumed before original atoms are frozen. Only the real
 /// context barriers are retained by the rebuilt projection and its consumers.
 fn paragraph_decode_boundaries(
-    paragraph: &crate::protocol::paragraph::ParagraphData,
+    paragraph: &crate::protocol::paragraph::ParagraphContext,
     barriers: &[usize],
 ) -> Vec<usize> {
     let mut cuts = barriers.to_vec();
@@ -497,7 +526,7 @@ fn paragraph_decode_boundaries(
 fn admit_connected(
     source: &Source,
     decode_boundaries: &[usize],
-    paragraph: &crate::protocol::paragraph::ParagraphData,
+    paragraph: &crate::protocol::paragraph::ParagraphContext,
 ) -> Result<()> {
     let owned_text = paragraph
         .coverage
@@ -650,5 +679,57 @@ mod tests {
             );
         }
         assert!(projection.unit(ProviderIndex(1)).is_err());
+    }
+
+    #[test]
+    fn canonical_graphemes_use_supplied_scalars_without_control_presentation() {
+        // Unicode 17 GB4/GB5 break around controls; GB9 attaches Extend.
+        for (text, expected) in [
+            ("a\u{301}", vec![0, 3]),
+            ("a\0\u{301}", vec![0, 1, 2, 4]),
+            ("9\u{fe0f}\u{20e3}", vec![0, 7]),
+        ] {
+            let mut boundaries = Vec::new();
+            visit_grapheme_boundaries(text, &[0, text.len()], |byte| {
+                boundaries.push(byte);
+                Ok(())
+            })
+            .unwrap();
+            assert_eq!(boundaries, expected);
+        }
+    }
+
+    #[test]
+    fn canonical_graphemes_preserve_only_the_callers_actual_hard_cuts() {
+        let text = "a\u{301}";
+        let mut boundaries = Vec::new();
+        visit_grapheme_boundaries(text, &[0, 1, text.len()], |byte| {
+            boundaries.push(byte);
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(boundaries, [0, 1, 1, 3]);
+    }
+
+    #[test]
+    fn malformed_grapheme_cuts_refuse_before_any_partial_boundary_output() {
+        let text = "a\u{301}";
+        for cuts in [
+            vec![],
+            vec![0, 1],
+            vec![1, 3],
+            vec![0, 2, 3],
+            vec![0, 3, 1, 3],
+            vec![0, 4, 3],
+        ] {
+            let mut boundaries = Vec::new();
+            let error = visit_grapheme_boundaries(text, &cuts, |byte| {
+                boundaries.push(byte);
+                Ok(())
+            })
+            .unwrap_err();
+            assert_eq!(error.code, ErrorCode::InvalidSourceProcessing);
+            assert!(boundaries.is_empty());
+        }
     }
 }

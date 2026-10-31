@@ -68,17 +68,24 @@ pub(super) fn removed_mark(cp: u32) -> bool {
     accent(cp) || breathing(cp) || matches!(cp, 0x308 | 0x344)
 }
 
-pub(super) fn preceded_by_letter(before: &[u32]) -> bool {
-    before
-        .iter()
-        .rev()
-        .copied()
-        .find(|&cp| !removed_mark(cp) && cp != 0x345)
-        .is_some_and(|cp| letter(cp).is_some())
+pub(super) fn preceded_by_letter(
+    before: super::casing::Cursor<'_>,
+) -> Result<bool, super::casing::MappingError> {
+    for cp in before {
+        let cp = cp?;
+        if !removed_mark(cp) && cp != 0x345 {
+            return Ok(letter(cp).is_some());
+        }
+    }
+    Ok(false)
 }
 
-pub(super) fn following(mut d: Diacritics, after: &[u32]) -> Diacritics {
-    for &cp in after {
+pub(super) fn following(
+    mut d: Diacritics,
+    after: super::casing::Cursor<'_>,
+) -> Result<Diacritics, super::casing::MappingError> {
+    for cp in after {
+        let cp = cp?;
         if accent(cp) {
             d.accented = true;
         } else if cp == 0x344 {
@@ -92,12 +99,15 @@ pub(super) fn following(mut d: Diacritics, after: &[u32]) -> Diacritics {
             break;
         }
     }
-    d
+    Ok(d)
 }
 
-pub(super) fn preceding(before: &[u32]) -> Option<(Diacritics, Diacritics)> {
+pub(super) fn preceding(
+    before: super::casing::Cursor<'_>,
+) -> Result<Option<(Diacritics, Diacritics)>, super::casing::MappingError> {
     let mut combining = Diacritics::default();
-    for &cp in before.iter().rev() {
+    for cp in before {
+        let cp = cp?;
         if accent(cp) {
             combining.accented = true;
         } else if cp == 0x344 {
@@ -106,11 +116,11 @@ pub(super) fn preceding(before: &[u32]) -> Option<(Diacritics, Diacritics)> {
         } else if cp == 0x308 {
             combining.dialytika = true;
         } else if !breathing(cp) {
-            return match letter(cp)? {
-                Letter::Vowel(_, precomposed) => Some((precomposed, combining)),
-                Letter::Consonant { .. } => None,
-            };
+            return Ok(match letter(cp) {
+                Some(Letter::Vowel(_, precomposed)) => Some((precomposed, combining)),
+                _ => None,
+            });
         }
     }
-    None
+    Ok(None)
 }

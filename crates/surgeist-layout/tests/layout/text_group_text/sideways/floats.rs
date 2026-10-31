@@ -97,8 +97,13 @@ fn qualify<S: l::LayoutScalar>(host: &Host<S>, paragraph: &Paragraph, float: u32
         t::LineOrientation::SidewaysClockwise
     );
     assert_eq!(
-        paragraph.prepared.captured_paragraph(),
-        paragraph.capture.captured_paragraph(0)
+        paragraph
+            .prepared
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        vec![paragraph.capture.captured_paragraph(0).unwrap()]
     );
     assert_eq!(
         paragraph

@@ -27,6 +27,8 @@ pub(super) fn style(size: f32, height: f64) -> Style {
 pub(super) fn captured_input(inlines: usize) -> ContextualSourceInput {
     let source = Source::identified("A", Id::from_u64(1578001), 23);
     let mut scopes = vec![SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         topology: SourceProcessingTopology::Complete,
         trim: WhiteSpaceTrim::default(),
         base_style: style(20.0, 24.0),
@@ -34,6 +36,7 @@ pub(super) fn captured_input(inlines: usize) -> ContextualSourceInput {
         font_reference: None,
     }];
     scopes.extend((0..inlines).map(|_| SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         trim: WhiteSpaceTrim::default(),
         style: Some(style(10.0, 12.0)),
         boundaries: None,
@@ -55,6 +58,7 @@ pub(super) fn captured_input(inlines: usize) -> ContextualSourceInput {
         SourceProcessingEvent::ExitScope(0),
     ]);
     ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         source: source.clone(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,

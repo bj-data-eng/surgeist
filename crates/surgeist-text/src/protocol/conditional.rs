@@ -84,6 +84,7 @@ impl ConditionalDisposition {
 #[derive(Clone, Debug)]
 pub struct PreparedConditionalOpportunity {
     prepared: PreparedText,
+    segment: super::PreparedSourceSegment,
     start: usize,
     incoming: Option<super::HyphenationContinuation>,
     ceiling: usize,
@@ -101,6 +102,7 @@ pub struct PreparedConditionalOpportunity {
 impl PartialEq for PreparedConditionalOpportunity {
     fn eq(&self, other: &Self) -> bool {
         self.prepared == other.prepared
+            && self.segment == other.segment
             && self.start == other.start
             && self.incoming == other.incoming
             && self.ceiling == other.ceiling
@@ -118,6 +120,7 @@ impl Eq for PreparedConditionalOpportunity {}
 impl Hash for PreparedConditionalOpportunity {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.prepared.hash(state);
+        self.segment.hash(state);
         self.start.hash(state);
         self.incoming.hash(state);
         self.ceiling.hash(state);
@@ -133,6 +136,9 @@ impl Hash for PreparedConditionalOpportunity {
 }
 
 impl PreparedConditionalOpportunity {
+    pub fn source_segment(&self) -> super::PreparedSourceSegment {
+        self.segment.clone()
+    }
     #[must_use]
     pub fn prepared_text(&self) -> PreparedText {
         self.prepared.clone()
@@ -181,6 +187,12 @@ impl PreparedConditionalOpportunity {
             return Err(protocol_error(ProtocolError::ForeignPreparation {
                 kind: ProtocolHandleKind::ConditionalOpportunity,
                 occurrence: self.end,
+            }));
+        }
+        if self.segment != request.segment {
+            return Err(protocol_error(ProtocolError::MismatchedSourceSegment {
+                expected: request.segment.index,
+                actual: self.segment.index,
             }));
         }
         let invalid = || {
@@ -290,15 +302,23 @@ impl PreparedText {
     /// interval and disposition validation still applies.
     fn arbitrary_opportunities(
         &self,
+        segment: &super::PreparedSourceSegment,
         start: &PreparedBoundary,
         incoming: Option<&super::HyphenationContinuation>,
         ceiling: &PreparedOpportunity,
         purpose: ConditionalPurpose,
         skipped_ordinary: &[ConditionalDisposition],
     ) -> crate::Result<Vec<PreparedConditionalOpportunity>> {
-        super::continuation::validate(self, start, incoming)?;
-        let (frontier, identities) =
-            validate_query(self, start, incoming, ceiling, purpose, skipped_ordinary)?;
+        super::continuation::validate(self, segment, start, incoming)?;
+        let (frontier, identities) = validate_query(
+            self,
+            segment,
+            start,
+            incoming,
+            ceiling,
+            purpose,
+            skipped_ordinary,
+        )?;
         let tables = &self.inner.tables;
         let end = tables.opportunities[ceiling.index].boundary;
         let boundaries = super::prepared::conditional_boundaries(
@@ -315,6 +335,7 @@ impl PreparedText {
             .filter(|end| *end > frontier)
             .map(|end| PreparedConditionalOpportunity {
                 prepared: self.clone(),
+                segment: segment.clone(),
                 start: start.index,
                 incoming: incoming.cloned(),
                 ceiling: ceiling.index,
@@ -334,12 +355,15 @@ impl PreparedText {
 
 fn validate_query(
     prepared: &PreparedText,
+    segment: &super::PreparedSourceSegment,
     start: &PreparedBoundary,
     incoming: Option<&super::HyphenationContinuation>,
     ceiling: &PreparedOpportunity,
     purpose: ConditionalPurpose,
     skipped_ordinary: &[ConditionalDisposition],
 ) -> crate::Result<(usize, Vec<DispositionIdentity>)> {
+    super::segments::admit_opportunity(prepared, segment, ceiling)?;
+    super::segments::admit_boundaries(prepared, segment, start, &ceiling.view().boundary())?;
     for (owner, kind, occurrence) in [
         (&start.prepared, ProtocolHandleKind::Boundary, start.index),
         (
@@ -372,6 +396,7 @@ fn validate_query(
     }
     validate_frontier(
         prepared,
+        segment,
         start,
         incoming,
         ceiling,
@@ -382,6 +407,7 @@ fn validate_query(
 
 fn validate_frontier(
     prepared: &PreparedText,
+    segment: &super::PreparedSourceSegment,
     start: &PreparedBoundary,
     incoming: Option<&super::HyphenationContinuation>,
     ceiling: &PreparedOpportunity,
@@ -448,6 +474,12 @@ fn validate_frontier(
                 }
                 let selected = receipt.selected_line();
                 let request = selected.request();
+                if request.segment != *segment {
+                    return Err(protocol_error(ProtocolError::MismatchedSourceSegment {
+                        expected: segment.index,
+                        actual: request.segment.index,
+                    }));
+                }
                 if request.context.available_inline.is_some()
                     != (purpose == ConditionalPurpose::Overflow)
                 {
@@ -716,6 +748,7 @@ pub(crate) fn request_context(request: super::input::RequestInput<'_>) -> Vec<u6
 #[derive(Clone, Debug, Default)]
 struct PolicyContext {
     native: Vec<u64>,
+    source_segment: Option<super::PreparedSourceSegment>,
     scope_frame: Option<FinalizedLine>,
 }
 impl PolicyContext {
@@ -727,13 +760,16 @@ impl PolicyContext {
 }
 impl PartialEq for PolicyContext {
     fn eq(&self, other: &Self) -> bool {
-        self.native == other.native && self.scopes() == other.scopes()
+        self.native == other.native
+            && self.source_segment == other.source_segment
+            && self.scopes() == other.scopes()
     }
 }
 impl Eq for PolicyContext {}
 impl Hash for PolicyContext {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.native.hash(state);
+        self.source_segment.hash(state);
         self.scopes().len().hash(state);
         for row in self.scopes() {
             row.scope.hash(state);
@@ -752,6 +788,7 @@ fn policy_context(line: &FinalizedLine) -> PolicyContext {
     }
     PolicyContext {
         native: values,
+        source_segment: Some(selected.request().segment.clone()),
         scope_frame: (!line.scope_allocations().is_empty()).then(|| line.clone()),
     }
 }
@@ -864,6 +901,7 @@ struct PhraseDecisionIdentity {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(super) struct SearchIdentity {
     prepared: PreparedText,
+    segment: super::PreparedSourceSegment,
     start: usize,
     incoming: Option<super::HyphenationContinuation>,
     ceiling: usize,
@@ -921,10 +959,10 @@ impl Hash for PreparedConditionalBatch {
         self.opportunities.hash(state);
     }
 }
-impl PreparedText {
+impl super::PreparedSourceSegment {
     /// Captures one ordinary interval and its complete earlier variant dispositions.
     /// Finite AutoPhrase searches require an actual failed ordinary `frame` from
-    /// this preparation/start/incoming. Consumers own fit and frame freshness;
+    /// this segment's preparation/start/incoming. Consumers own fit and frame freshness;
     /// Text retains its visible context and authenticates all issued capabilities.
     /// Min-content requires no finite frame and independently issues only the
     /// arbitrary opportunities permitted by overflow-wrap:anywhere.
@@ -937,11 +975,12 @@ impl PreparedText {
         skipped: &[ConditionalDisposition],
         frame: Option<&FinalizedLine>,
     ) -> crate::Result<PreparedConditionalSearch> {
+        let prepared = self.prepared_text();
         let (frontier, ordinary) =
-            validate_query(self, start, incoming, ceiling, purpose, skipped)?;
-        let auto_phrase = self.inner.tables.auto_phrase_between(
+            validate_query(&prepared, self, start, incoming, ceiling, purpose, skipped)?;
+        let auto_phrase = self.prepared.tables.auto_phrase_between(
             start.index,
-            self.inner.tables.opportunities[ceiling.index].boundary,
+            self.prepared.tables.opportunities[ceiling.index].boundary,
         );
         if purpose == ConditionalPurpose::Overflow && auto_phrase && frame.is_none() {
             return Err(protocol_error(ProtocolError::InvalidConditionalStage));
@@ -950,7 +989,8 @@ impl PreparedText {
         let context = if let Some(frame) = frame {
             let selected = frame.selected_line();
             let request = selected.request();
-            if frame.prepared_text() != *self
+            if frame.prepared_text() != prepared
+                || request.segment != *self
                 || request.start != *start
                 || request.incoming.as_ref() != incoming
                 || request.context.available_inline.is_none()
@@ -966,7 +1006,8 @@ impl PreparedText {
         };
         Ok(PreparedConditionalSearch {
             identity: SearchIdentity {
-                prepared: self.clone(),
+                prepared,
+                segment: self.clone(),
                 start: start.index,
                 incoming: incoming.cloned(),
                 ceiling: ceiling.index,
@@ -982,13 +1023,18 @@ impl PreparedText {
     }
 }
 impl PreparedConditionalSearch {
+    pub fn source_segment(&self) -> super::PreparedSourceSegment {
+        self.identity.segment.clone()
+    }
     pub(super) fn matches_flow_query(
         &self,
         prepared: &PreparedText,
+        segment: &super::PreparedSourceSegment,
         start: usize,
         incoming: Option<&super::HyphenationContinuation>,
     ) -> bool {
         self.identity.prepared == *prepared
+            && self.identity.segment == *segment
             && self.identity.start == start
             && self.identity.incoming.as_ref() == incoming
     }
@@ -1146,6 +1192,7 @@ impl PreparedConditionalSearch {
                 candidates.extend(
                     prepared
                         .arbitrary_opportunities(
+                            &self.identity.segment,
                             &start,
                             self.identity.incoming.as_ref(),
                             &ceiling,
@@ -1170,6 +1217,7 @@ impl PreparedConditionalSearch {
             .into_iter()
             .map(|(end, alternative)| PreparedConditionalOpportunity {
                 prepared: prepared.clone(),
+                segment: self.identity.segment.clone(),
                 start: self.identity.start,
                 incoming: self.identity.incoming.clone(),
                 ceiling: self.identity.ceiling,

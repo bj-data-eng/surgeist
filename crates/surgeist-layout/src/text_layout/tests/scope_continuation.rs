@@ -41,6 +41,8 @@ fn continuation(
         kind: text::ParagraphOriginKind::Authored,
     };
     let block = || text::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         font_reference: None,
         topology: text::SourceProcessingTopology::Complete,
         trim: text::WhiteSpaceTrim::default(),
@@ -58,6 +60,7 @@ fn continuation(
     };
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
@@ -80,6 +83,7 @@ fn continuation(
             scopes: vec![
                 block(),
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: text::WhiteSpaceTrim::default(),
@@ -385,6 +389,8 @@ fn segmented_fixture(
     let end = source.text().len();
     source.span(text::Range::new(0, end), authored);
     let block = || text::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         font_reference: None,
         topology: text::SourceProcessingTopology::Complete,
         trim: text::WhiteSpaceTrim::default(),
@@ -401,6 +407,7 @@ fn segmented_fixture(
         });
         boundary_nodes.push(100);
         scopes.push(text::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             trim: text::WhiteSpaceTrim::default(),
@@ -428,6 +435,7 @@ fn segmented_fixture(
         boundary_nodes.push(103);
     }
     scopes.push(text::SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         trim: text::WhiteSpaceTrim::default(),
@@ -554,6 +562,7 @@ fn segmented_fixture(
     root_children.extend(&boundary_nodes[start + 1..]);
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source,

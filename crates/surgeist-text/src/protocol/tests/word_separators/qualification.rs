@@ -93,6 +93,7 @@ fn prepared(
         events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
         let processed = std::sync::Arc::new(
             crate::process_contextual_source(crate::ContextualSourceInput {
+                joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 source: source.clone(),
                 segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
@@ -126,6 +127,8 @@ fn prepared(
                 replacements: vec![],
                 computed_line_boundaries: vec![],
                 scopes: vec![crate::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: crate::SourceProcessingTopology::Complete,
                     trim: Default::default(),

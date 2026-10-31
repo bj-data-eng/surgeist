@@ -44,6 +44,7 @@ impl Fixture {
         source.span(text::Range::new(0, 4), style.clone());
         let captured = Arc::new(
             text::process_contextual_source(text::ContextualSourceInput {
+                joint_flows: Vec::new(),
                 source,
                 segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
                 envelope: text::SourceProcessingEnvelope::Complete,
@@ -88,6 +89,8 @@ impl Fixture {
                 }],
                 scopes: vec![
                     text::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
                         topology: text::SourceProcessingTopology::Complete,
                         trim: Default::default(),
                         base_style: style.clone(),
@@ -95,6 +98,7 @@ impl Fixture {
                         font_reference: Some(reference),
                     },
                     text::SourceProcessingScope::Inline {
+                        horizontal_inner_direction: None,
                         trim: Default::default(),
                         style: Some(style),
                         boundaries: Some(text::SourceProcessingScopeBoundaries {

@@ -1,6 +1,6 @@
 //! Shared natural/allocated hanging over actual signed contributions.
 use super::*;
-use crate::protocol::measurements::EdgeRow;
+use crate::protocol::measurements::{EdgeRow, EdgeRows, OuterEdge};
 use crate::{
     FormattedLineUsage, HangingPunctuationEnd, InlineMeasure, LineEdgeDisposition as Edge,
     LineEdgeSide as Side, LineMeasurements,
@@ -11,6 +11,83 @@ const FIT: usize = 0;
 const ALIGN: usize = 1;
 const MIN: usize = 2;
 const MAX: usize = 3;
+
+/// Phase II observations before actual finalized Cell ordinals exist.
+enum AllocatedEdges {
+    Clusters(Vec<EdgeRow>),
+    Outer(Vec<AllocatedEdge>),
+}
+enum AllocatedEdge {
+    Cluster { cluster: usize, row: EdgeRow },
+    Cell { selected_cell: usize },
+}
+pub(super) struct AllocatedMeasurements {
+    formatted_usage: FormattedLineUsage,
+    pub(super) alignment: InlineMeasure,
+    fit: InlineMeasure,
+    minimum: InlineMeasure,
+    maximum: InlineMeasure,
+    edges: AllocatedEdges,
+}
+impl AllocatedMeasurements {
+    pub(super) fn seal(
+        self,
+        cells: &[FinalizedCell],
+        cell_count: usize,
+        ledger: &mut Ledger,
+    ) -> Result<LineMeasurements> {
+        let edges = match self.edges {
+            AllocatedEdges::Clusters(rows) => EdgeRows::Clusters(rows),
+            AllocatedEdges::Outer(rows) => {
+                let mut ordinals = account::filled(ledger, cell_count, None)?;
+                for (index, cell) in cells.iter().enumerate() {
+                    account::work(ledger, 1)?;
+                    let ordinal = ordinals
+                        .get_mut(cell.cell)
+                        .ok_or_else(|| invalid("finalized Cell has no selected owner"))?;
+                    if ordinal.replace(index).is_some() {
+                        return Err(invalid("selected Cell was finalized more than once"));
+                    }
+                }
+                let mut sealed = Vec::new();
+                for row in &rows {
+                    account::work(ledger, 1)?;
+                    let row = match row {
+                        AllocatedEdge::Cluster { cluster, row } => OuterEdge::Cluster {
+                            cluster: *cluster,
+                            row: row.clone(),
+                        },
+                        AllocatedEdge::Cell { selected_cell } => {
+                            let cell = ordinals
+                                .get_mut(*selected_cell)
+                                .and_then(Option::take)
+                                .ok_or_else(|| invalid("outer Cell edge has no finalized owner"))?;
+                            OuterEdge::Cell { cell }
+                        }
+                    };
+                    account::push(ledger, &mut sealed, row)?;
+                }
+                for ordinal in &ordinals {
+                    account::work(ledger, 1)?;
+                    if ordinal.is_some() {
+                        return Err(invalid("finalized Cell has no unique Phase II edge"));
+                    }
+                }
+                account::drop_vec(ledger, ordinals)?;
+                account::drop_vec(ledger, rows)?;
+                EdgeRows::Outer(sealed)
+            }
+        };
+        Ok(LineMeasurements {
+            formatted_usage: self.formatted_usage,
+            fit: self.fit,
+            alignment: self.alignment,
+            minimum: self.minimum,
+            maximum: self.maximum,
+            edges,
+        })
+    }
+}
 
 pub(super) struct Natural {
     causes: Vec<Cause>,
@@ -61,6 +138,7 @@ fn positions(
     let mut pen = 0.0;
     for (ordinal, _) in order.iter() {
         let advance = match shaped.items[ordinal] {
+            ShapedItem::Cell(cell) => shaped.cells[cell].advance,
             ShapedItem::TextCluster(i) => {
                 let advance = if shaped.clusters[i].whitespace == Whitespace::Newline {
                     0.0
@@ -267,7 +345,7 @@ pub(super) fn natural(
                     }
                     continue;
                 }
-                ShapedItem::InlineBox { .. } => break,
+                ShapedItem::Cell(_) | ShapedItem::InlineBox { .. } => break,
                 ShapedItem::TextCluster(row) => row,
             };
             if result.removed[row] {
@@ -553,6 +631,13 @@ fn measure(
     let mut anchor = 0.0;
     for item in &shaped.items {
         let contribution = match *item {
+            ShapedItem::Cell(cell) => {
+                if baseline.raw_advance.is_some() {
+                    0.0
+                } else {
+                    shaped.cells[cell].advance
+                }
+            }
             ShapedItem::TextCluster(i) if shaped.clusters[i].whitespace != Whitespace::Newline => {
                 let excluded = exclusions[i].excluded(positions[i], shaped.clusters[i].advance)?;
                 if baseline.fit_anchor && exclusions[i].punctuation_start {
@@ -620,6 +705,20 @@ fn measure(
     // measurement view changes exclusions, never the retained traversal.
     for &ordinal in &selected.basis.order {
         let contribution = match shaped.items[ordinal] {
+            ShapedItem::Cell(cell) => {
+                let extent = shaped.cells[cell].extent;
+                include(
+                    &mut bounds,
+                    pen,
+                    add(
+                        "occupied cell end",
+                        TextNumericPhase::Finalization,
+                        pen,
+                        extent,
+                    )?,
+                );
+                shaped.cells[cell].advance
+            }
             ShapedItem::TextCluster(i) => {
                 if shaped.clusters[i].whitespace != Whitespace::Newline
                     && let Some((a, b)) = exclusions[i].clip(positions[i])
@@ -766,7 +865,7 @@ pub(super) fn allocated(
     natural: Natural,
     metrics: &mut LineMetrics,
     ledger: &mut Ledger,
-) -> Result<LineMeasurements> {
+) -> Result<AllocatedMeasurements> {
     for (i, cause) in natural.deferred.iter().enumerate() {
         if let Some((cause, _)) = cause
             && shaped.clusters[i].advance != 0.0
@@ -1060,12 +1159,32 @@ pub(super) fn allocated(
     account::drop_vec(ledger, priority)?;
     account::drop_vec(ledger, placement)?;
     drop_natural(ledger, natural)?;
-    Ok(LineMeasurements {
+    let edges = if shaped.cells.is_empty() {
+        AllocatedEdges::Clusters(rows)
+    } else {
+        let mut outer = Vec::new();
+        for item in &shaped.items {
+            account::work(ledger, 1)?;
+            let row = match *item {
+                ShapedItem::TextCluster(cluster) => AllocatedEdge::Cluster {
+                    cluster,
+                    row: rows[cluster].clone(),
+                },
+                // Actual opaque Cell stops hanging classification and was measured once.
+                ShapedItem::Cell(selected_cell) => AllocatedEdge::Cell { selected_cell },
+                ShapedItem::InlineBox { .. } | ShapedItem::Anchor { .. } => continue,
+            };
+            account::push(ledger, &mut outer, row)?;
+        }
+        account::drop_vec(ledger, rows)?;
+        AllocatedEdges::Outer(outer)
+    };
+    Ok(AllocatedMeasurements {
         fit,
         alignment,
         minimum,
         maximum,
-        edges: rows,
+        edges,
         formatted_usage,
     })
 }

@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use surgeist_text::{PreparedAlternative, PreparedBoundary, PreparedText};
+use surgeist_text::{PreparedAlternative, PreparedBoundary, PreparedSourceSegment};
 
 #[cfg(test)]
 #[path = "formatted_tests.rs"]
@@ -53,18 +53,18 @@ impl FormattedTailAssignment {
 /// never manufactures that answer. Resolution occurs only after Text demands it.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct FormattedTailSnapshot {
-    prepared: Option<PreparedText>,
+    segment: Option<PreparedSourceSegment>,
     assignments: Option<Arc<[FormattedTailAssignment]>>,
     observes: bool,
 }
 
 impl FormattedTailSnapshot {
     pub(crate) fn known(
-        prepared: PreparedText,
+        segment: PreparedSourceSegment,
         assignments: Option<Arc<[FormattedTailAssignment]>>,
     ) -> Self {
         Self {
-            prepared: Some(prepared),
+            segment: Some(segment),
             assignments,
             observes: false,
         }
@@ -81,29 +81,44 @@ impl FormattedTailSnapshot {
 
     pub(crate) fn resolve(
         &self,
+        segment: &PreparedSourceSegment,
         boundary: &PreparedBoundary,
         alternative: Option<&PreparedAlternative>,
     ) -> Option<FormattedTailAssignment> {
-        self.resolve_predicate(boundary, alternative, TailPredicate::AcceptedEndpoint)
+        self.resolve_predicate(
+            segment,
+            boundary,
+            alternative,
+            TailPredicate::AcceptedEndpoint,
+        )
     }
 
     pub(crate) fn resolve_external(
         &self,
+        segment: &PreparedSourceSegment,
         boundary: &PreparedBoundary,
         alternative: Option<&PreparedAlternative>,
     ) -> Option<FormattedTailAssignment> {
-        self.resolve_predicate(boundary, alternative, TailPredicate::ExternalAfterRun)
+        self.resolve_predicate(
+            segment,
+            boundary,
+            alternative,
+            TailPredicate::ExternalAfterRun,
+        )
     }
 
     fn resolve_predicate(
         &self,
+        requested_segment: &PreparedSourceSegment,
         boundary: &PreparedBoundary,
         alternative: Option<&PreparedAlternative>,
         predicate: TailPredicate,
     ) -> Option<FormattedTailAssignment> {
-        let prepared = self.prepared.as_ref()?;
-        if boundary.prepared_text() != *prepared
-            || alternative.is_some_and(|value| value.prepared_text() != *prepared)
+        let segment = self.segment.as_ref()?;
+        let prepared = segment.start().prepared_text();
+        if segment != requested_segment
+            || boundary.prepared_text() != prepared
+            || alternative.is_some_and(|value| value.prepared_text() != prepared)
         {
             return None;
         }
@@ -169,7 +184,7 @@ pub(crate) struct SelectedFlow<Node, S: crate::LayoutScalar> {
 pub(crate) struct RunBinding<Node, S: crate::LayoutScalar> {
     pub(crate) container: Node,
     pub(crate) nodes: Vec<Node>,
-    pub(crate) prepared: PreparedText,
+    pub(crate) segment: PreparedSourceSegment,
     pub(crate) input: crate::ComputeInputOf<S>,
     pub(crate) mode: super::fit::Available,
     pub(crate) lineage: Vec<ComputeScope<Node, S>>,
@@ -266,7 +281,7 @@ impl<Node: Copy + Eq, S: crate::LayoutScalar> FormattedState<Node, S> {
         &self,
         container: Node,
         nodes: &[Node],
-        prepared: &PreparedText,
+        segment: &PreparedSourceSegment,
         input: crate::ComputeInputOf<S>,
         mode: super::fit::Available,
     ) -> RunBinding<Node, S> {
@@ -279,7 +294,7 @@ impl<Node: Copy + Eq, S: crate::LayoutScalar> FormattedState<Node, S> {
         RunBinding {
             container,
             nodes: nodes.to_vec(),
-            prepared: prepared.clone(),
+            segment: segment.clone(),
             input,
             mode,
             lineage: self.stack.clone(),
@@ -295,7 +310,7 @@ impl<Node: Copy + Eq, S: crate::LayoutScalar> FormattedState<Node, S> {
             .map(|value| value.assignment.clone())
             .collect::<Vec<_>>();
         FormattedTailSnapshot::known(
-            binding.prepared.clone(),
+            binding.segment.clone(),
             (!assignments.is_empty()).then(|| assignments.into()),
         )
         .observing(!self.demanded.is_empty())

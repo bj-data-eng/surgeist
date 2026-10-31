@@ -10,6 +10,7 @@ mod auto_phrase;
 mod automatic_model;
 mod automatic_opportunities;
 mod casing;
+mod combined_cells;
 mod computed_boundaries;
 mod conditional;
 mod count_admission;
@@ -123,6 +124,7 @@ fn request(prepared: &PreparedText) -> LineSelectionRequest {
         .unwrap()
         .handle();
     LineSelectionRequest {
+        segment: prepared.source_segments().next().unwrap(),
         boundary_context: Vec::new(),
         incoming: None,
         start,
@@ -515,6 +517,7 @@ fn selected_empty_control(policy: ParagraphStrut) -> SelectedLine {
         })
         .collect();
     p.select(LineSelectionRequest {
+        segment: p.source_segments().next().unwrap(),
         boundary_context: Vec::new(),
         incoming: None,
         start: p.boundary_views().next().unwrap().handle(),

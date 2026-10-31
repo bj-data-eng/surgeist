@@ -68,6 +68,15 @@ fn selection(
     };
     context.spacing = SpacingPolicy::None;
     LineSelectionRequest {
+        segment: {
+            let mut segments = p.source_segments();
+            assert_eq!(
+                segments.len(),
+                1,
+                "this fixture has one genuine source segment"
+            );
+            segments.next().unwrap()
+        },
         start: p.boundary_views().next().unwrap().handle(),
         participants: p
             .participants()

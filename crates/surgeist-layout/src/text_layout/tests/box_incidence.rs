@@ -37,6 +37,7 @@ impl EmptyBox {
         source.span(text::Range::new(0, 2), style.clone());
         let processed = Arc::new(
             text::process_contextual_source(text::ContextualSourceInput {
+                joint_flows: Vec::new(),
                 scope_alignment_limits,
                 source,
                 segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -72,6 +73,8 @@ impl EmptyBox {
                 }],
                 scopes: vec![
                     text::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
                         font_reference: domain_font_reference,
                         topology: text::SourceProcessingTopology::Complete,
                         trim: Default::default(),
@@ -79,6 +82,7 @@ impl EmptyBox {
                         used_direction: base_direction,
                     },
                     text::SourceProcessingScope::Inline {
+                        horizontal_inner_direction: None,
                         alignment_boundary: None,
                         font_reference: None,
                         trim: Default::default(),
@@ -145,7 +149,12 @@ impl EmptyBox {
             .find(|o| o.kind() == text::PreparedBreakKind::Allowed)
             .unwrap()
             .boundary();
-        let incidences = prepared.boundary_incidences(&soft).unwrap();
+        let mut source_segments = prepared.source_segments();
+        let source_segment = source_segments.next().expect("fixture source segment");
+        assert_eq!(source_segments.count(), 0, "one structural fixture segment");
+        let incidences = prepared
+            .boundary_incidences(&source_segment, &soft)
+            .unwrap();
         assert_eq!(incidences.len(), 2);
         assert_eq!(
             incidences

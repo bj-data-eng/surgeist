@@ -4,6 +4,7 @@
 // replace scalar-source/compressed carriers; actual provider status gates rows.
 
 mod cache;
+mod cell;
 mod font_instance;
 pub(crate) use font_instance::{CanonicalFontInstance, scope_font};
 use font_instance::{ResourceSelection, canonical_instance, selected_resource};
@@ -32,10 +33,7 @@ fn observe_provider_call() {
     PROVIDER_CALLS.set(PROVIDER_CALLS.get() + 1);
 }
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    ops::Range as IndexRange,
-};
+use std::{collections::BTreeSet, ops::Range as IndexRange};
 
 use fontique::{Attributes, Query, QueryFamily, QueryFont, QueryStatus};
 use icu_properties::props::Script;
@@ -438,7 +436,52 @@ pub(crate) fn shape(
     scratch: &mut ShapeContext,
     scope_budget: &mut super::scope_alignment::accounting::Ledger,
 ) -> Result<ShapedData> {
-    shape_impl(catalogue, input, scratch, false, scope_budget)
+    shape_impl(catalogue, input, scratch, false, scope_budget, None)
+}
+
+pub(crate) fn admit_cells(
+    analyzed: &super::AnalyzedData,
+    tabs: crate::TabPreparation,
+) -> Result<()> {
+    cell::admit(analyzed, tabs)
+}
+
+/// Execute real native source cells alongside ordinary body shaping. Each
+/// normal inner invocation uses its retained horizontal levels and settings.
+pub(crate) fn prepare(
+    catalogue: &mut crate::catalogue::Catalogue,
+    input: ShapingInput<'_>,
+    scratch: &mut ShapeContext,
+    analyzed: &super::AnalyzedData,
+    scopes: &super::scope_alignment::PreparedScopes,
+    scope_budget: &mut super::scope_alignment::accounting::Ledger,
+) -> Result<ShapedData> {
+    if !analyzed
+        .combination
+        .as_ref()
+        .is_some_and(|output| !output.cells.is_empty())
+    {
+        return shape(catalogue, input, scratch, scope_budget);
+    }
+    let horizontal = cell::horizontal_input(&input);
+    let mut cells = cell::Inputs::new(analyzed, scopes, scope_budget)?;
+    let mut output = shape_impl(
+        catalogue,
+        input,
+        scratch,
+        false,
+        scope_budget,
+        Some(&mut cells),
+    )?;
+    cells.finish(
+        &mut output,
+        analyzed,
+        &horizontal,
+        scratch,
+        scopes,
+        scope_budget,
+    )?;
+    Ok(output)
 }
 
 /// Actual matching/instance capture without a redundant glyph-shaping operation.
@@ -447,7 +490,7 @@ pub(crate) fn capture_fonts(
     input: ShapingInput<'_>,
     scratch: &mut ShapeContext,
 ) -> Result<Vec<FontQueryWitness>> {
-    shape_impl(catalogue, input, scratch, true, &mut None).map(|output| output.font_queries)
+    shape_impl(catalogue, input, scratch, true, &mut None, None).map(|output| output.font_queries)
 }
 
 fn shape_impl(
@@ -456,6 +499,7 @@ fn shape_impl(
     scratch: &mut ShapeContext,
     capture_only: bool,
     scope_budget: &mut super::scope_alignment::accounting::Ledger,
+    mut cells: Option<&mut cell::Inputs>,
 ) -> Result<ShapedData> {
     let intrinsic = if input
         .projection
@@ -475,27 +519,87 @@ fn shape_impl(
     let mut queries = Vec::new();
     let sources = AnalysisDataSources;
     let barriers = shaping_barriers(&input);
+    let horizontal = ShapingInput {
+        formatting_breaks: input.formatting_breaks,
+        scope_custody: input.scope_custody,
+        separator_geometry: input.separator_geometry,
+        characters: None,
+        profile: super::upright::ShapingProfile::Horizontal,
+        baseline_reference: Some(crate::FontBaseline::Alphabetic),
+        projection: input.projection,
+        analysis: input.analysis,
+        styles: input.styles,
+        boxes: input.boxes,
+        font_catalogue: input.font_catalogue,
+        paragraph: input.paragraph,
+        css_tabs: input.css_tabs,
+    };
     let count = input.projection.atoms.len();
     // Empty/default-font metrics are an explicit preparation-profile operation.
     // Body shaping never infers that policy from source content or body style.
     if count != 0 {
         let mut item_start = 0;
-        let mut script = input
-            .analysis
-            .infos
-            .iter()
-            .map(|(info, _)| info.script)
-            .find(|script| real_script(*script))
-            .unwrap_or(Script::Latin);
+        let mut script = if let Some(cells) = cells.as_deref() {
+            let mut script = Script::Latin;
+            for (atom, (info, _)) in input.analysis.infos.iter().enumerate() {
+                super::scope_alignment::accounting::work(scope_budget, 1)?;
+                if cells.owner(atom).is_none() && real_script(info.script) {
+                    script = info.script;
+                    break;
+                }
+            }
+            script
+        } else {
+            input
+                .analysis
+                .infos
+                .iter()
+                .map(|(info, _)| info.script)
+                .find(|script| real_script(*script))
+                .unwrap_or(Script::Latin)
+        };
+        let mut ordinary_script = script;
+        let mut inner_script: Option<(usize, Script)> = None;
         while item_start < count {
+            let cell = cells.as_deref().and_then(|cells| cells.owner(item_start));
+            script = if let Some(cell) = cell {
+                if let Some((_, script)) = inner_script.filter(|(owner, _)| *owner == cell) {
+                    script
+                } else {
+                    cells.as_deref().expect("actual cell input").first_script(
+                        cell,
+                        input.analysis,
+                        scope_budget,
+                    )?
+                }
+            } else {
+                ordinary_script
+            };
+            let input = if cell.is_some() { &horizontal } else { &input };
+            if let Some(cell) = cell {
+                cells
+                    .as_deref_mut()
+                    .expect("actual cells")
+                    .begin(cell, output.scope_relations.len());
+            }
             if input.css_tabs && input.projection.atoms[item_start].code_point == 9 {
-                append_tab(&input, item_start, None, &mut output);
+                append_tab(input, item_start, None, &mut output);
+                if let Some(cell) = cell {
+                    cells
+                        .as_deref_mut()
+                        .expect("actual cells")
+                        .end(cell, output.scope_relations.len());
+                }
                 item_start += 1;
                 continue;
             }
             let style_index = input.analysis.infos[item_start].1;
             let style = &input.styles[style_index].style;
-            let level = input.analysis.levels[item_start];
+            let level = cells
+                .as_deref()
+                .map_or(input.analysis.levels[item_start], |cells| {
+                    cells.level(item_start, input.analysis.levels[item_start])
+                });
             if real_script(input.analysis.infos[item_start].0.script) {
                 script = input.analysis.infos[item_start].0.script;
             }
@@ -508,7 +612,20 @@ fn shape_impl(
                     script
                 };
                 if (input.css_tabs && input.projection.atoms[item_end].code_point == 9)
-                    || input.analysis.levels[item_end] != level
+                    || cells
+                        .as_deref()
+                        .map_or(input.analysis.levels[item_end], |cells| {
+                            cells.level(item_end, input.analysis.levels[item_end])
+                        })
+                        != level
+                    || cells
+                        .as_deref()
+                        .is_some_and(|cells| cells.owner(item_end) != cell)
+                    || if let Some(cells) = cells.as_deref() {
+                        cells.boundary(item_end, scope_budget)?
+                    } else {
+                        false
+                    }
                     || next_script != script
                     || !same_shaping_style(style, &input.styles[next_style].style)
                     || barriers.contains(&item_end)
@@ -533,7 +650,12 @@ fn shape_impl(
                 .analysis
                 .graphemes
                 .partition_point(|range| range.start < item_end);
-            let context = bounded_context(item_start..item_end, 0..count, &barriers);
+            let domain = if let Some(cells) = cells.as_deref() {
+                cells.context(item_start, count, scope_budget)?
+            } else {
+                0..count
+            };
+            let context = bounded_context(item_start..item_end, domain, &barriers);
             for range in input.analysis.graphemes[grapheme_start..grapheme_end]
                 .iter()
                 .flat_map(|grapheme| {
@@ -543,7 +665,7 @@ fn shape_impl(
                     )
                 })
             {
-                fill_cluster(&input, range.clone(), &mut scratch.cluster);
+                fill_cluster(input, range.clone(), &mut scratch.cluster);
                 queries.push((
                     range.clone(),
                     scratch.cluster.chars.clone(),
@@ -569,7 +691,7 @@ fn shape_impl(
                 if current.as_ref().is_some_and(|font| font != &selected) {
                     let old = current.take().expect("the selected segment owns a font");
                     append_selected(
-                        &input,
+                        input,
                         SelectedSegment {
                             atoms: segment_start..range.start,
                             style: style_index,
@@ -589,7 +711,7 @@ fn shape_impl(
             }
             let selected = current.ok_or_else(no_font)?;
             append_selected(
-                &input,
+                input,
                 SelectedSegment {
                     atoms: segment_start..item_end,
                     style: style_index,
@@ -603,6 +725,17 @@ fn shape_impl(
                 scope_budget,
                 capture_only,
             )?;
+            if let Some(cell) = cell {
+                cells
+                    .as_deref_mut()
+                    .expect("actual cells")
+                    .end(cell, output.scope_relations.len());
+            }
+            if let Some(cell) = cell {
+                inner_script = Some((cell, script));
+            } else {
+                ordinary_script = script;
+            }
             item_start = item_end;
         }
     }
@@ -628,7 +761,9 @@ fn shape_impl(
     }
     if !capture_only {
         retain_external_invocations(&mut output);
-        install_mixed_order(&mut output, &input);
+        if cells.is_none() {
+            install_mixed_order(&mut output, &input);
+        }
     }
     Ok(output)
 }
@@ -694,16 +829,26 @@ pub(crate) fn finalize(
     use crate::protocol::prepared::PresentationUnitKind;
     let prepared = &selected.prepared;
     let presentation = &selected.presentation;
+    if spacing != crate::SpacingPolicy::None
+        && presentation
+            .units
+            .iter()
+            .any(|unit| matches!(unit.kind, PresentationUnitKind::Cell { .. }))
+    {
+        return Err(crate::transform::combined::refused(
+            crate::TextCombineError::UnsupportedCellPreparation,
+        ));
+    }
     let mut scope_plan =
         super::scope_alignment::selection_plan(prepared, presentation, allowance, scope_input)?;
     let mut scope_budget = scope_plan.budget.take();
+    let mut cells = cell::SelectedCells::new(prepared, presentation, &mut scope_budget)?;
+    let character_input =
+        super::spacing::character::Input::selected(prepared, presentation, &mut scope_budget)?;
     let characters = super::spacing::character::plan(
-        &presentation.projection,
-        &presentation.analysis,
-        &prepared.styles,
-        prepared.analyzed.processed.source().boxes(),
-        Some(presentation),
+        character_input,
         spacing == crate::SpacingPolicy::InterCharacter,
+        &mut scope_budget,
     )?;
     let separator_feedback = match spacing {
         crate::SpacingPolicy::None | crate::SpacingPolicy::InterCharacter => false,
@@ -831,6 +976,9 @@ pub(crate) fn finalize(
         let mut original_barriers = shaping_barriers(&original_input);
         original_barriers.extend(selected.boundaries.original.iter().copied());
         for assignment in assignments {
+            if cells.assignment(assignment.atoms.clone(), &mut scope_budget)? {
+                continue;
+            }
             let run = &assignment.run;
             if input.role(assignment.atoms.start) == super::upright::RunRole::Upright {
                 let mut first = assignment.atoms.start;
@@ -1004,6 +1152,9 @@ pub(crate) fn finalize(
     }
     if input.css_tabs {
         for atom in 0..input.projection.atoms.len() {
+            if cells.assignment(atom..atom + 1, &mut scope_budget)? {
+                continue;
+            }
             if input.projection.atoms[atom].code_point == 9 {
                 let style = input.analysis.infos[atom].1;
                 let font = if let Some(run) = prepared.tab_metrics[style]
@@ -1024,34 +1175,60 @@ pub(crate) fn finalize(
         output.clusters.sort_by_key(|cluster| cluster.atoms.start);
     }
     retain_external_invocations(&mut output);
-    super::spacing::authored_selected(selected, &mut output, separator_feedback)?;
+    cells.retain(prepared, presentation, &mut output, &mut scope_budget)?;
+    super::spacing::authored_selected(
+        selected,
+        &mut output,
+        separator_feedback,
+        &mut scope_budget,
+    )?;
     // Each real atom receives one extracted cluster; ligature components lend
     // their actual shared glyph association rather than duplicating glyphs.
     let mut clusters = output.clusters.iter().enumerate().peekable();
     for (unit, value) in presentation.units.iter().enumerate() {
         match value.kind {
+            PresentationUnitKind::Cell { cell } => {
+                cells.push_item(
+                    &mut output.items,
+                    ShapedItem::Cell(cells.cell(cell)),
+                    &mut scope_budget,
+                )?;
+            }
             PresentationUnitKind::Atomic { occurrence } => {
                 if input.boxes[occurrence].kind() == crate::InlineBoxKind::InFlow {
-                    output.items.push(ShapedItem::InlineBox {
-                        occurrence,
-                        level: value.level,
-                    });
+                    cells.push_item(
+                        &mut output.items,
+                        ShapedItem::InlineBox {
+                            occurrence,
+                            level: value.level,
+                        },
+                        &mut scope_budget,
+                    )?;
                 }
             }
-            _ if value.atoms.is_empty() => output.items.push(ShapedItem::Anchor { unit }),
+            _ if value.atoms.is_empty() => cells.push_item(
+                &mut output.items,
+                ShapedItem::Anchor { unit },
+                &mut scope_budget,
+            )?,
             _ => {
                 while let Some(&(index, cluster)) = clusters.peek() {
                     if cluster.atoms.start >= value.atoms.end {
                         break;
                     }
                     if cluster.atoms.start >= value.atoms.start {
-                        output.items.push(ShapedItem::TextCluster(index));
+                        cells.push_item(
+                            &mut output.items,
+                            ShapedItem::TextCluster(index),
+                            &mut scope_budget,
+                        )?;
                     }
                     clusters.next();
                 }
             }
         }
     }
+    cells.finish(&mut scope_budget)?;
     scope_plan.budget = scope_budget;
     Ok((
         output,
@@ -1256,6 +1433,9 @@ fn install_mixed_order(data: &mut ShapedData, input: &ShapingInput<'_>) {
             (positions[occurrence].0, 0, positions[occurrence].1)
         }
         ShapedItem::Anchor { unit, .. } => (0, 0, unit),
+        ShapedItem::Cell(_) => {
+            unreachable!("source cells are installed after ordinary mixed order")
+        }
     });
 }
 
@@ -1401,6 +1581,208 @@ fn append_retained_run(
     )
 }
 
+/// Width execution consumes the normal run's exact effective instance. Plans
+/// remain invocation-local; no adapter key/feature copies escape into a cache.
+fn append_width_run(
+    input: &ShapingInput<'_>,
+    run: &PreparedRun,
+    context: IndexRange<usize>,
+    observation: &mut cell::width::Observation<'_>,
+    scratch: &mut ShapeContext,
+    output: &mut ShapedData,
+    ledger: &mut super::scope_alignment::accounting::Ledger,
+) -> Result<()> {
+    use super::scope_alignment::accounting as account;
+    use crate::processing::contextual::alignment::operations;
+    let mut context = context;
+    let left =
+        operations::partition_point(&input.projection.barrier_atoms, ledger.as_mut(), |cut| {
+            *cut <= run.atoms.start
+        })?;
+    if left != 0 {
+        context.start = context.start.max(input.projection.barrier_atoms[left - 1]);
+    }
+    let right =
+        operations::partition_point(&input.projection.barrier_atoms, ledger.as_mut(), |cut| {
+            *cut < run.atoms.end
+        })?;
+    if let Some(cut) = input.projection.barrier_atoms.get(right) {
+        context.end = context.end.min(*cut);
+    }
+    let request = RunRequest {
+        input,
+        atoms: run.atoms.clone(),
+        style: run.style,
+        script: run.script,
+        level: run.level,
+        font: &run.font,
+        attrs: run.font_attrs,
+        synthesis: run.synthesis,
+        suggested_variations: Vec::new(),
+        retained_coords: Some(&run.coords),
+        context: RunContext::new(input.projection, run.atoms.clone(), context),
+    };
+    let font = surgeist_shaper::FontRef::from_index(run.font.bytes(), run.font.index())
+        .map_err(|_| Error::new(ErrorCode::FontLoadFailed, "invalid retained cell font"))?;
+    let instance = surgeist_shaper::ShaperInstance::from_coords(
+        &font,
+        run.coords
+            .iter()
+            .copied()
+            .map(surgeist_shaper::NormalizedCoord::from_bits),
+    );
+    let data = scratch
+        .data
+        .entry(cache::ResourceKey(run.font.clone()), || {
+            surgeist_shaper::ShaperData::new(&font)
+        });
+    let style = &input.styles[run.style].style;
+    let shaper = data
+        .shaper(&font)
+        .instance(Some(&instance))
+        .point_size(Some(style.font_size))
+        .build();
+    let language = style
+        .locale
+        .as_ref()
+        .map(|locale| {
+            locale
+                .language()
+                .parse::<surgeist_shaper::Language>()
+                .map_err(|_| {
+                    Error::new(
+                        ErrorCode::InvalidStyle,
+                        "validated language is not representable by the shaper",
+                    )
+                })
+        })
+        .transpose()?;
+    // These width tags are native policy requests, not provider-classified
+    // OptionalDefault features. Preserve later authored precedence and order.
+    let mut features = Vec::new();
+    account::push(
+        ledger,
+        &mut features,
+        surgeist_shaper::Feature::new(observation.feature.tag(), 1, ..),
+    )?;
+    for feature in &style.font_features {
+        account::push(
+            ledger,
+            &mut features,
+            surgeist_shaper::Feature::new(
+                surgeist_shaper::Tag::new(&feature.tag.to_bytes()),
+                u32::from(feature.value),
+                ..,
+            ),
+        )?;
+    }
+    let plan = surgeist_shaper::ShapePlan::new(
+        &shaper,
+        provider_direction(run.level),
+        Some(provider_script(run.script)),
+        language.as_ref(),
+        &features,
+    );
+    let mut symbols = Vec::new();
+    for (local, atom) in input.projection.atoms[run.atoms.clone()].iter().enumerate() {
+        account::work(ledger, 1)?;
+        if crate::control::is_visible(atom.code_point) {
+            account::push(
+                ledger,
+                &mut symbols,
+                u32::try_from(local).map_err(|_| {
+                    super::shaping_refused(surgeist_shaper::ShapingRefusal::GrowthLimit)
+                })?,
+            )?;
+        }
+    }
+    let mut buffer = scratch
+        .buffer
+        .take()
+        .expect("a shape invocation returns its reusable buffer");
+    buffer.clear();
+    buffer.observe_width_feature(observation.feature);
+    let result = (|| {
+        let count = request.atoms.len();
+        if count
+            .checked_sub(1)
+            .is_some_and(|last| u32::try_from(last).is_err())
+        {
+            return Err(Error::new(
+                ErrorCode::SourceLengthOverflow,
+                "cell input exceeds provider indices",
+            ));
+        }
+        buffer.reserve(count);
+        for (local, atom) in input.projection.atoms[request.atoms.clone()]
+            .iter()
+            .enumerate()
+        {
+            buffer.add(
+                atom.glyph,
+                u32::try_from(local).expect("admitted provider ordinal"),
+            );
+        }
+        buffer
+            .set_ordinary_symbol_positions(&symbols)
+            .map_err(|error| {
+                super::shaping_refused(match error {
+                    surgeist_shaper::OrdinarySymbolInputError::GrowthLimit => {
+                        surgeist_shaper::ShapingRefusal::GrowthLimit
+                    }
+                    surgeist_shaper::OrdinarySymbolInputError::WorkLimit => {
+                        surgeist_shaper::ShapingRefusal::WorkLimit
+                    }
+                    _ => surgeist_shaper::ShapingRefusal::OrdinarySymbolInput,
+                })
+            })?;
+        let grapheme =
+            operations::partition_point(&input.analysis.graphemes, ledger.as_mut(), |g| {
+                g.end <= request.atoms.start
+            })?;
+        let continuation = input
+            .analysis
+            .graphemes
+            .get(grapheme)
+            .is_some_and(|g| g.start < request.atoms.start && request.atoms.start < g.end);
+        buffer.set_flags(if continuation {
+            surgeist_shaper::BufferFlags::DO_NOT_INSERT_DOTTED_CIRCLE
+        } else {
+            surgeist_shaper::BufferFlags::empty()
+        });
+        buffer.set_pre_context(request.context.before);
+        buffer.set_post_context(request.context.after);
+        buffer.set_direction(provider_direction(run.level));
+        buffer.set_script(provider_script(run.script));
+        if let Some(language) = language {
+            buffer.set_language(language);
+        }
+        Ok(())
+    })();
+    if let Err(error) = result {
+        scratch.buffer = Some(buffer);
+        account::drop_vec(ledger, symbols)?;
+        account::drop_vec(ledger, features)?;
+        return Err(error);
+    }
+    #[cfg(test)]
+    observe_provider_call();
+    let glyphs = shaper.shape_with_plan(&plan, buffer, &features);
+    let result = (|| {
+        if let surgeist_shaper::ShapingStatus::Refused(reason) = glyphs.shaping_status() {
+            return Err(super::shaping_refused(reason));
+        }
+        observation.record(request.atoms.clone(), &glyphs, ledger)?;
+        extract_run(&request, &glyphs, shaper.coords(), output, ledger)
+    })();
+    scratch.buffer = Some(glyphs.clear());
+    let symbols_dropped = account::drop_vec(ledger, symbols);
+    let features_dropped = account::drop_vec(ledger, features);
+    result?;
+    symbols_dropped?;
+    features_dropped
+}
+
 fn append_request(
     mut request: RunRequest<'_, '_>,
     scratch: &mut ShapeContext,
@@ -1435,12 +1817,12 @@ fn append_request(
         .point_size(Some(style.font_size))
         .build();
     if capture_only {
-        let (run, _, _) = resolved_run(&request, shaper.coords())?;
+        let (run, _, _) = resolved_run(&request, shaper.coords(), None)?;
         output.runs.push(run);
         return Ok(());
     }
     if request.upright() && request.atoms.is_empty() {
-        let (run, _, _) = resolved_run(&request, shaper.coords())?;
+        let (run, _, _) = resolved_run(&request, shaper.coords(), None)?;
         output.empty_run = Some(run);
         return Ok(());
     }
@@ -1481,20 +1863,38 @@ fn append_request(
             .filter_map(|unit| unit.upright())
             .any(|unit| unit.isolate() && unit.atoms.contains(&request.atoms.start));
     let mut features = provider_features(style, native_isolated, request.role());
+    let mut funded_features = false;
     if let Some(graph) = request.input.characters {
-        for range in graph.masks(request.atoms.clone()) {
+        let masks = graph.masks(request.atoms.clone(), scope_budget)?;
+        if graph.funded() && !masks.is_empty() {
+            if let Some(budget) = scope_budget.as_mut() {
+                budget.work(features.len())?;
+                budget.add_records(features.len())?;
+                budget.retain_bytes(super::scope_alignment::accounting::bytes(&features)?)?;
+            }
+            funded_features = true;
+        }
+        for range in &masks {
             for tag in [b"liga", b"clig", b"dlig", b"hlig"] {
                 u32::try_from(range.start)
                     .and_then(|_| u32::try_from(range.end))
                     .map_err(|_| {
                         Error::new(ErrorCode::SourceLengthOverflow, "optional feature range")
                     })?;
-                features.push(surgeist_shaper::Feature::optional_default(
+                let feature = surgeist_shaper::Feature::optional_default(
                     surgeist_shaper::Tag::new(tag),
                     0,
                     range.clone(),
-                ));
+                );
+                if funded_features {
+                    super::scope_alignment::accounting::push(scope_budget, &mut features, feature)?;
+                } else {
+                    features.push(feature);
+                }
             }
+        }
+        if graph.funded() {
+            super::scope_alignment::accounting::drop_vec(scope_budget, masks)?;
         }
     }
     let mut plan_key = key;
@@ -1624,7 +2024,7 @@ fn append_request(
     }
     if request.upright() {
         let shaped = vertical::shape(&request, &shaper, plan, buffer, &features);
-        return match shaped {
+        let result = match shaped {
             Ok(glyph_buffer) => {
                 let result = extract_vertical_run(
                     &request,
@@ -1643,6 +2043,10 @@ fn append_request(
                 Err(error)
             }
         };
+        if funded_features {
+            super::scope_alignment::accounting::drop_vec(scope_budget, features)?;
+        }
+        return result;
     }
     #[cfg(test)]
     observe_provider_call();
@@ -1661,6 +2065,9 @@ fn append_request(
         scope_budget,
     );
     scratch.buffer = Some(glyph_buffer.clear());
+    if funded_features {
+        super::scope_alignment::accounting::drop_vec(scope_budget, features)?;
+    }
     result
 }
 
@@ -1770,10 +2177,18 @@ fn component_line_height(
 fn resolved_run(
     request: &RunRequest<'_, '_>,
     coords: &[surgeist_shaper::NormalizedCoord],
+    ledger: Option<&mut super::scope_alignment::accounting::Ledger>,
 ) -> Result<(PreparedRun, f64, f64)> {
     let input = request.input;
     let style = &input.styles[request.style].style;
-    let stored_coords: Vec<_> = coords.iter().map(|coord| coord.to_bits()).collect();
+    let stored_coords: Vec<_> = if let Some(ledger) = ledger {
+        super::scope_alignment::accounting::collect(
+            ledger,
+            coords.iter().map(|coord| coord.to_bits()),
+        )?
+    } else {
+        coords.iter().map(|coord| coord.to_bits()).collect()
+    };
     let instance = crate::EffectiveFontInstance::qualify_synthesized(
         request.font.face(),
         style.font_size,
@@ -2191,16 +2606,21 @@ fn extract_run(
     let receipt = glyph_buffer
         .default_ignorable_receipt()
         .map_err(super::shaping_refused)?;
-    let positions: Vec<_> = glyph_buffer
+    let funded = output.cell_arenas == super::layout::data::CellArenaOwnership::Owned;
+    let values = glyph_buffer
         .glyph_positions()
         .iter()
         .map(|position| ProviderPosition {
             advance: f64::from(position.x_advance),
             x: f64::from(position.x_offset),
             y: -f64::from(position.y_offset),
-        })
-        .collect();
-    extract_output(
+        });
+    let positions: Vec<_> = if funded {
+        super::scope_alignment::accounting::collect(scope_budget, values)?
+    } else {
+        values.collect()
+    };
+    let result = extract_output(
         request,
         glyph_buffer.glyph_infos(),
         &positions,
@@ -2211,7 +2631,15 @@ fn extract_run(
             data: output,
             scope_budget,
         },
-    )
+    );
+    let dropped = if funded {
+        super::scope_alignment::accounting::drop_vec(scope_budget, positions)
+    } else {
+        drop(positions);
+        Ok(())
+    };
+    result?;
+    dropped
 }
 
 struct ProviderPosition {
@@ -2456,7 +2884,15 @@ impl GlyphWriter<'_> {
         }
         // Preserve provider validation and reservation order: numeric glyph
         // construction follows custody admission, exactly as ordinary extraction.
-        self.data.glyphs.push(glyph()?);
+        if self.data.cell_arenas == super::layout::data::CellArenaOwnership::Owned {
+            super::scope_alignment::accounting::push(
+                self.scope_budget,
+                &mut self.data.glyphs,
+                glyph()?,
+            )?;
+        } else {
+            self.data.glyphs.push(glyph()?);
+        }
         Ok(())
     }
 }
@@ -2471,7 +2907,9 @@ fn extract_output(
     mut writer: GlyphWriter<'_>,
 ) -> Result<()> {
     let input = request.input;
-    let (run, scale, normal_extent) = resolved_run(request, coords)?;
+    let funded = writer.data.cell_arenas == super::layout::data::CellArenaOwnership::Owned;
+    let (run, scale, normal_extent) =
+        resolved_run(request, coords, funded.then_some(&mut *writer.scope_budget))?;
     let font_ref = skrifa::FontRef::from_index(request.font.bytes(), request.font.index())
         .map_err(|_| Error::new(ErrorCode::FontLoadFailed, "invalid selected font face"))?;
     if request.atoms.is_empty() {
@@ -2518,41 +2956,125 @@ fn extract_output(
             if local >= count {
                 return Err(invalid_output(local, count));
             }
-            std::sync::Arc::make_mut(&mut writer.data.character_exclusions)
-                .insert(request.atoms.start + local, kind);
+            if funded {
+                super::scope_alignment::accounting::insert(
+                    writer.scope_budget,
+                    std::sync::Arc::get_mut(&mut writer.data.character_exclusions)
+                        .expect("private trial exclusion owner"),
+                    request.atoms.start + local,
+                    kind,
+                )?;
+            } else {
+                std::sync::Arc::make_mut(&mut writer.data.character_exclusions)
+                    .insert(request.atoms.start + local, kind);
+            }
         }
     }
-    let zero_input = |local: usize| {
-        let ordinal = u32::try_from(local).expect("invocation scalar indices were admitted");
-        receipt
-            .residual_input_positions()
-            .binary_search(&ordinal)
+    let zero_input =
+        |local: usize, ledger: &mut super::scope_alignment::accounting::Ledger| -> Result<bool> {
+            let ordinal = u32::try_from(local).expect("invocation scalar indices were admitted");
+            if !funded {
+                return Ok(receipt
+                    .residual_input_positions()
+                    .binary_search(&ordinal)
+                    .is_ok()
+                    || receipt
+                        .deleted_input_positions()
+                        .binary_search(&ordinal)
+                        .is_ok());
+            }
+            use crate::processing::contextual::alignment::operations;
+            if operations::binary_search_by(
+                receipt.residual_input_positions(),
+                ledger.as_mut(),
+                |value| value.cmp(&ordinal),
+            )?
             .is_ok()
-            || receipt
-                .deleted_input_positions()
-                .binary_search(&ordinal)
-                .is_ok()
-    };
-    let mut groups = BTreeMap::new();
+            {
+                return Ok(true);
+            }
+            Ok(operations::binary_search_by(
+                receipt.deleted_input_positions(),
+                ledger.as_mut(),
+                |value| value.cmp(&ordinal),
+            )?
+            .is_ok())
+        };
+    // One grouping algorithm for native and funded Cell extraction. The actual
+    // cluster-key rows are visible Vec storage, including funded sorting scratch.
+    let mut groups = Vec::new();
     let mut next = 0;
     while next < infos.len() {
+        if funded {
+            super::scope_alignment::accounting::work(writer.scope_budget, 1)?;
+        }
         let cluster = infos[next].cluster as usize;
         if cluster >= count {
             return Err(invalid_output(cluster, count));
         }
         let first = next;
         next += 1;
-        while next < infos.len() && infos[next].cluster as usize == cluster {
+        while next < infos.len() {
+            if funded {
+                super::scope_alignment::accounting::work(writer.scope_budget, 1)?;
+            }
+            if infos[next].cluster as usize != cluster {
+                break;
+            }
             next += 1;
         }
-        if groups.insert(cluster, first..next).is_some() {
-            return Err(invalid_output(cluster, cluster));
+        if funded {
+            super::scope_alignment::accounting::push(
+                writer.scope_budget,
+                &mut groups,
+                (cluster, first..next),
+            )?;
+        } else {
+            groups.push((cluster, first..next));
         }
     }
-    let mut starts: Vec<_> = groups.keys().copied().collect();
-    starts.push(0);
-    starts.push(count);
-    starts.sort_unstable();
+    if funded {
+        crate::processing::contextual::alignment::operations::order_by(
+            &mut groups,
+            writer.scope_budget.as_mut(),
+            |a, b| a.0.cmp(&b.0),
+        )?;
+    } else {
+        groups.sort_unstable_by_key(|row| row.0);
+    }
+    for pair in groups.windows(2) {
+        if funded {
+            super::scope_alignment::accounting::work(writer.scope_budget, 1)?;
+        }
+        if pair[0].0 == pair[1].0 {
+            return Err(invalid_output(pair[0].0, pair[1].0));
+        }
+    }
+    let mut starts: Vec<_> = if funded {
+        super::scope_alignment::accounting::collect(
+            writer.scope_budget,
+            groups.iter().map(|row| row.0),
+        )?
+    } else {
+        groups.iter().map(|row| row.0).collect()
+    };
+    for cut in [0, count] {
+        if funded {
+            super::scope_alignment::accounting::push(writer.scope_budget, &mut starts, cut)?;
+        } else {
+            starts.push(cut);
+        }
+    }
+    if funded {
+        crate::processing::contextual::alignment::operations::order_by(
+            &mut starts,
+            writer.scope_budget.as_mut(),
+            Ord::cmp,
+        )?;
+        super::scope_alignment::accounting::work(writer.scope_budget, starts.len())?;
+    } else {
+        starts.sort_unstable();
+    }
     starts.dedup();
     let run_index = writer.data.runs.len();
     let first_run_glyph = writer.data.glyphs.len();
@@ -2563,10 +3085,27 @@ fn extract_output(
         let end = pair[1];
         let atom_start = request.atoms.start + start;
         let atom_end = request.atoms.start + end;
+        if funded {
+            // Admit this separate source-span walk, including its first seed,
+            // before original_extent inspects any of the actual atom rows.
+            super::scope_alignment::accounting::work(writer.scope_budget, end - start)?;
+        }
         let cluster_source = original_extent(&input.projection.atoms[atom_start..atom_end]);
         let first_glyph = writer.data.glyphs.len();
         let mut advance = 0.0_f64;
-        let provider_glyphs = groups.get(&start).cloned().unwrap_or(0..0);
+        let found = if funded {
+            crate::processing::contextual::alignment::operations::binary_search_by(
+                &groups,
+                writer.scope_budget.as_mut(),
+                |row| row.0.cmp(&start),
+            )?
+        } else {
+            groups.binary_search_by_key(&start, |row| row.0)
+        };
+        let provider_glyphs = found
+            .ok()
+            .map(|index| groups[index].1.clone())
+            .unwrap_or(0..0);
         for glyph_index in provider_glyphs {
             let ordinal = u32::try_from(glyph_index).map_err(|_| {
                 Error::new(
@@ -2574,11 +3113,20 @@ fn extract_output(
                     "provider glyph index exceeds receipt range",
                 )
             })?;
-            if receipt
-                .residual_glyph_positions()
-                .binary_search(&ordinal)
+            let residual = if funded {
+                crate::processing::contextual::alignment::operations::binary_search_by(
+                    receipt.residual_glyph_positions(),
+                    writer.scope_budget.as_mut(),
+                    |value| value.cmp(&ordinal),
+                )?
                 .is_ok()
-            {
+            } else {
+                receipt
+                    .residual_glyph_positions()
+                    .binary_search(&ordinal)
+                    .is_ok()
+            };
+            if residual {
                 continue;
             }
             let info = &infos[glyph_index];
@@ -2624,16 +3172,34 @@ fn extract_output(
             .separator_geometry
             .then_some(writer.data.provider_groups.len());
         if input.separator_geometry {
-            writer.data.provider_groups.push(ProviderGroup {
+            let group = ProviderGroup {
                 run: run_index,
                 atoms: atom_start..atom_end,
                 glyphs: glyphs.clone(),
                 advance,
-            });
+            };
+            if funded {
+                super::scope_alignment::accounting::push(
+                    writer.scope_budget,
+                    &mut writer.data.provider_groups,
+                    group,
+                )?;
+            } else {
+                writer.data.provider_groups.push(group);
+            }
         }
         let components = end - start;
-        let eligible_components = (start..end).filter(|local| !zero_input(*local)).count();
-        let last_eligible = (start..end).rfind(|local| !zero_input(*local));
+        let mut eligible_components = 0;
+        let mut last_eligible = None;
+        for local in start..end {
+            if funded {
+                super::scope_alignment::accounting::work(writer.scope_budget, 1)?;
+            }
+            if !zero_input(local, writer.scope_budget)? {
+                eligible_components += 1;
+                last_eligible = Some(local);
+            }
+        }
         if eligible_components == 0 && advance != 0.0 {
             return Err(Error::new(
                 ErrorCode::LayoutFailed,
@@ -2651,7 +3217,7 @@ fn extract_output(
             let (info, style_index) = input.analysis.infos[atom];
             let whitespace = whitespace(original.code_point);
             let local = atom - request.atoms.start;
-            let excluded = zero_input(local);
+            let excluded = zero_input(local, writer.scope_budget)?;
             let base_advance = if excluded {
                 0.0
             } else if Some(local) == last_eligible {
@@ -2662,7 +3228,7 @@ fn extract_output(
             distributed_base += base_advance;
             let style = &input.styles[style_index].style;
 
-            writer.data.clusters.push(PreparedCluster {
+            let cluster = PreparedCluster {
                 line_height: component_line_height(style, &run.metrics, normal_extent)?,
                 shaped_advance: base_advance,
                 logical_adjustments: [0.0, 0.0, 0.0],
@@ -2684,7 +3250,16 @@ fn extract_output(
                 is_whitespace: whitespace != Whitespace::None,
                 ligature_start: !glyphs.is_empty() && components > 1 && atom == atom_start,
                 ligature_component: !glyphs.is_empty() && atom != atom_start,
-            });
+            };
+            if funded {
+                super::scope_alignment::accounting::push(
+                    writer.scope_budget,
+                    &mut writer.data.clusters,
+                    cluster,
+                )?;
+            } else {
+                writer.data.clusters.push(cluster);
+            }
         }
     }
     if input.is_mixed() && request.upright() && writer.data.glyphs.len() != first_run_glyph {
@@ -2696,7 +3271,13 @@ fn extract_output(
             }
         }
     }
-    writer.data.runs.push(run);
+    if funded {
+        super::scope_alignment::accounting::push(writer.scope_budget, &mut writer.data.runs, run)?;
+        super::scope_alignment::accounting::drop_vec(writer.scope_budget, groups)?;
+        super::scope_alignment::accounting::drop_vec(writer.scope_budget, starts)?;
+    } else {
+        writer.data.runs.push(run);
+    }
     Ok(())
 }
 

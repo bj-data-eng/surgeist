@@ -61,6 +61,7 @@ fn captured(effects: bool) -> Arc<text::ProcessedSource> {
     };
     Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: Some(text::ScopeAlignmentLimits::new(
                 4096, 4096, 1_000_000, 16_777_216,
             )),
@@ -96,6 +97,8 @@ fn captured(effects: bool) -> Arc<text::ProcessedSource> {
             replacements: vec![],
             scopes: vec![
                 text::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     topology: text::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: authored(effects),
@@ -103,6 +106,7 @@ fn captured(effects: bool) -> Arc<text::ProcessedSource> {
                     font_reference: Some(reference(*b"Latn")),
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     trim: Default::default(),
                     style: Some(authored(effects)),
                     boundaries: None,
@@ -110,6 +114,7 @@ fn captured(effects: bool) -> Arc<text::ProcessedSource> {
                     font_reference: Some(reference(*b"Grek")),
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     trim: Default::default(),
                     style: Some(authored(effects)),
                     boundaries: None,
@@ -189,6 +194,7 @@ fn native(orientation: text::LineOrientation, effects: bool) -> text::Layout {
         .handle();
     let selected = prepared
         .select(text::LineSelectionRequest {
+            segment: prepared.source_segments().next().unwrap(),
             start: prepared.boundary_views().next().unwrap().handle(),
             end: terminal.view().boundary(),
             termination: text::PreparedTermination::Ordinary(terminal),

@@ -141,7 +141,15 @@ fn complete_original_content_not_origin_size_kind_or_resource_identity_owns_elig
         );
         for (row, piece) in a.inner.transform.rows.iter().enumerate() {
             assert_eq!(piece.source, Range::new(row, row + 1));
-            assert_eq!(a.inner.transform.original_pieces(row)[0].origin, row);
+            assert_eq!(
+                a.inner
+                    .paragraph
+                    .origin_map
+                    .view_origin(a.inner.transform.original_pieces(row)[0].origin)
+                    .expect("original contribution belongs to this view")
+                    .get(),
+                row
+            );
         }
     }
     for text in ["1", "∞", "𝑐", "c\u{301}", "c\u{fe0f}", "", "\u{1d400}"] {

@@ -53,8 +53,10 @@ pub(crate) mod placement;
 pub(crate) mod prefix;
 pub(crate) mod prepared;
 pub(crate) mod readback;
+pub(crate) mod segments;
 pub(crate) mod selection;
 pub use continuation::HyphenationContinuation;
+pub use segments::PreparedSourceSegment;
 
 pub use conditional::{
     ConditionalDisposition, ConditionalPurpose, ConditionalStage, PhraseOverflowDecision,
@@ -263,6 +265,7 @@ prepared_handle!(
     PreparedScope,
     PreparedVirtualSeparator,
     PreparedUnit,
+    PreparedCell,
     PreparedAtomic,
     PreparedControl,
     PreparedComputedLineBoundary,
@@ -277,6 +280,7 @@ prepared_handle!(
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum PreparedParticipant {
     Text(PreparedUnit),
+    Cell(PreparedCell),
     Atomic(PreparedAtomic),
     Control(PreparedControl),
     ComputedLineBoundary(PreparedComputedLineBoundary),
@@ -546,6 +550,8 @@ pub enum PreparedTermination {
 /// together by `PreparedText::select` before a selected result is issued.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LineSelectionRequest {
+    /// The genuine prepared structural interval owning this selection.
+    pub segment: PreparedSourceSegment,
     pub start: PreparedBoundary,
     pub end: PreparedBoundary,
     pub participants: Vec<PreparedParticipant>,
@@ -923,9 +929,11 @@ pub struct AtomicSlotFeedback {
 /// Semantic capability kind used by an exact protocol admission diagnostic.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProtocolHandleKind {
+    SourceSegment,
     WordPortion,
     Origin,
     Unit,
+    Cell,
     Atomic,
     Control,
     ComputedLineBoundary,
@@ -954,6 +962,13 @@ pub enum ProtocolContextField {
 /// Actual invalid association or incomplete input; no caller ordinal issues a capability.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ProtocolError {
+    InvalidSourceSegment {
+        segment: usize,
+    },
+    MismatchedSourceSegment {
+        expected: usize,
+        actual: usize,
+    },
     WrappingScopeQuery {
         reason: WrappingScopeQueryError,
     },

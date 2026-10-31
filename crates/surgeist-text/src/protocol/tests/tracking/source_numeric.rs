@@ -500,6 +500,7 @@ fn phrase_analysis(source: &Source, tracking: f64) -> AnalyzedSource {
     use crate::SourceProcessingEvent as E;
     let processed = std::sync::Arc::new(
         crate::process_contextual_source(crate::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
@@ -511,6 +512,8 @@ fn phrase_analysis(source: &Source, tracking: f64) -> AnalyzedSource {
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![crate::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: crate::SourceProcessingTopology::Complete,
                 trim: Default::default(),
@@ -588,7 +591,11 @@ fn actual_phrase_separator_remains_a_virtual_endpoint_and_out_of_original_source
             PreparationOptions::default(),
         )
         .unwrap();
-    assert!(prepared.captured_paragraph().is_some());
+    assert!(
+        prepared
+            .captured_owner()
+            .is_some_and(|owner| owner.members().next().is_some())
+    );
     let virtuals = prepared.virtual_separators().collect::<Vec<_>>();
     assert_eq!(virtuals.len(), 1);
     let owner = virtuals[0].clone();

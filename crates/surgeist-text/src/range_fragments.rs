@@ -43,6 +43,14 @@ pub enum SourceRangeFragmentError {
         line: usize,
         unit: usize,
     },
+    /// Exact original custody intersects a placed Cell whose range geometry is
+    /// not supported by this observer.
+    UnsupportedCell {
+        /// Actual placed-line ordinal in this Layout.
+        line: usize,
+        /// Actual finalized Cell ordinal within that line.
+        cell: usize,
+    },
     MissingFontMetrics {
         line: usize,
         unit: usize,
@@ -51,7 +59,8 @@ pub enum SourceRangeFragmentError {
 fn failure(reason: SourceRangeFragmentError) -> Error {
     let code = match reason {
         SourceRangeFragmentError::MissingFontMetrics { .. }
-        | SourceRangeFragmentError::UnsupportedPartition { .. } => ErrorCode::UnsupportedFeature,
+        | SourceRangeFragmentError::UnsupportedPartition { .. }
+        | SourceRangeFragmentError::UnsupportedCell { .. } => ErrorCode::UnsupportedFeature,
         SourceRangeFragmentError::MissingOriginalMapping { .. }
         | SourceRangeFragmentError::AmbiguousOriginalMapping { .. }
         | SourceRangeFragmentError::MissingUnitGeometry { .. } => ErrorCode::LayoutFailed,
@@ -434,6 +443,9 @@ impl Layout {
     /// Observe a nonempty original-local interval of this exact issued origin.
     /// This neither chooses a line nor resolves fonts. Partial grapheme units expand;
     /// removed custody and source-less occurrences do not acquire rectangles.
+    /// A request intersecting an actual placed Cell's original pieces returns
+    /// [`SourceRangeFragmentError::UnsupportedCell`]; disjoint ordinary ranges
+    /// in the same placement remain available.
     pub fn source_range_fragments(
         &self,
         origin: &PreparedOrigin,
@@ -463,6 +475,13 @@ impl Layout {
             view.aggregate_range().start + (local.end - captured.start),
         );
         let analyzed = &self.inner.prepared.analyzed;
+        let origin_key = analyzed.paragraph.origin_map.flow_origin(
+            analyzed
+                .paragraph
+                .origin_map
+                .view(origin.index)
+                .expect("admitted placed origin belongs to its actual view"),
+        );
         analyzed
             .paragraph
             .admit(analyzed.processed.source(), aggregate)?;
@@ -472,6 +491,22 @@ impl Layout {
             return Err(failure(SourceRangeFragmentError::OutsidePlacement {
                 aggregate,
             }));
+        }
+        // Only actual placed Cells participate. Original-local pieces retain
+        // removed/zero custody; equal hulls, resources or glyph ranges do not.
+        for (line, placed) in self.inner.lines.iter().enumerate() {
+            for (cell, _) in placed.finalized.data.cells.iter().enumerate() {
+                if placed
+                    .finalized
+                    .source_cell(cell)
+                    .intersects_original_range(origin_key, local)
+                {
+                    return Err(failure(SourceRangeFragmentError::UnsupportedCell {
+                        line,
+                        cell,
+                    }));
+                }
+            }
         }
         // Custody is checked independently of eligibility. Removed units retain
         // their original intervals, while alternatives/control anchors own none.
@@ -502,7 +537,7 @@ impl Layout {
                     crate::transform::relation::RelationEvent::Text { atom } => {
                         map.original_row_for_atom(atom)
                     }
-                    crate::transform::relation::RelationEvent::Removal { row } => Some(row),
+                    crate::transform::relation::RelationEvent::Removal { row, .. } => Some(row),
                     _ => None,
                 };
                 if let Some(row) = row {
@@ -510,7 +545,7 @@ impl Layout {
                         custody.extend(
                             map.original_pieces(row)
                                 .iter()
-                                .filter(|piece| piece.origin == origin.index)
+                                .filter(|piece| piece.origin == origin_key)
                                 .filter_map(|piece| overlap(piece.aggregate, aggregate)),
                         );
                     }

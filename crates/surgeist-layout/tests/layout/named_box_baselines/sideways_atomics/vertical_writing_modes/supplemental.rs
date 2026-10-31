@@ -24,6 +24,7 @@ fn standalone(parent: &Captured, kind: Option<t::InlineBoxKind>) -> t::Finalized
     let rtl = p.analyzed_source().direction() == t::Direction::RightToLeft;
     let line = p
         .select(t::LineSelectionRequest {
+            segment: p.source_segments().next().unwrap(),
             start: p.boundary_views().next().unwrap().handle(),
             end: end.view().boundary(),
             termination: t::PreparedTermination::Ordinary(end),
@@ -673,6 +674,7 @@ fn forced_line(
     parent
         .prepared
         .select(t::LineSelectionRequest {
+            segment: parent.prepared.source_segments().next().unwrap(),
             start,
             end,
             termination: t::PreparedTermination::Ordinary(offer),

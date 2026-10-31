@@ -8,6 +8,7 @@ fn input(left: Text, right: Text) -> ContextualSourceInput {
     let source = Source::new(Text::from_code_units(units));
     let end = source.text().len();
     ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         computed_line_boundaries: Vec::new(),
         source: source.clone(),
@@ -38,6 +39,8 @@ fn input(left: Text, right: Text) -> ContextualSourceInput {
         replacements: Vec::new(),
         scopes: vec![
             SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: SourceProcessingTopology::Complete,
                 trim: WhiteSpaceTrim::default(),
@@ -45,6 +48,7 @@ fn input(left: Text, right: Text) -> ContextualSourceInput {
                 used_direction: ParagraphBaseDirection::LeftToRight,
             },
             SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
                 trim: WhiteSpaceTrim::default(),
@@ -282,6 +286,7 @@ fn real_native_finalization_consumes_computed_forces_without_host_control_or_fra
             }
             let selected = prepared
                 .select(LineSelectionRequest {
+                    segment: crate::test_wrapping::only_source_segment(&prepared),
                     start,
                     end: end.clone(),
                     participants: prepared.participants().skip(from).take(to - from).collect(),

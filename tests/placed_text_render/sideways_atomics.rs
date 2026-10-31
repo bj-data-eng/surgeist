@@ -70,6 +70,7 @@ fn prepare(
         vec![text::Range::new(0, 1)]
     };
     let capture = text::process_contextual_source(text::ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         source: source.clone(),
         segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -114,6 +115,8 @@ fn prepare(
         replacements: vec![],
         computed_line_boundaries: vec![],
         scopes: vec![text::SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: text::SourceProcessingTopology::Complete,
             used_direction: text::ParagraphBaseDirection::LeftToRight,
@@ -179,7 +182,14 @@ fn prepare(
             text::PreparationOptions::default().with_orientation(orientation),
         )
         .unwrap();
-    assert_eq!(prepared.captured_paragraph(), capture.captured_paragraph(0));
+    assert_eq!(
+        prepared
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        [capture.captured_paragraph(0).unwrap()]
+    );
     prepared
 }
 

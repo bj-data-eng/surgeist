@@ -44,6 +44,7 @@ fn fixture() -> Fixture {
     let mut source = Source::identified("XXX", Id::from_u64(1578070), 41);
     source.span(Range::new(0, 3), style.clone());
     let input = ContextualSourceInput {
+        joint_flows: Vec::new(),
         source: source.clone(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
         envelope: SourceProcessingEnvelope::Complete,
@@ -80,6 +81,8 @@ fn fixture() -> Fixture {
         computed_line_boundaries: vec![],
         scopes: vec![
             SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 topology: SourceProcessingTopology::Complete,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style.clone(),
@@ -87,6 +90,7 @@ fn fixture() -> Fixture {
                 font_reference: Some(reference),
             },
             SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
                 trim: WhiteSpaceTrim::default(),
                 style: Some(style.clone()),
                 boundaries: None,
@@ -94,6 +98,7 @@ fn fixture() -> Fixture {
                 font_reference: Some(reference),
             },
             SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
                 trim: WhiteSpaceTrim::default(),
                 style: Some(style),
                 boundaries: None,

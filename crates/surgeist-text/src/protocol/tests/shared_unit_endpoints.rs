@@ -67,6 +67,7 @@ fn capture(endpoints: bool, anywhere: bool) -> PreparedText {
     }
     let processed = Arc::new(
         crate::process_contextual_source(ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: Source::identified("A\u{301}B", Id::from_u64(1_507_000), 7),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -111,6 +112,8 @@ fn capture(endpoints: bool, anywhere: bool) -> PreparedText {
             replacements: vec![],
             scopes: vec![
                 SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: SourceProcessingTopology::Complete,
                     trim: Default::default(),
@@ -118,6 +121,7 @@ fn capture(endpoints: bool, anywhere: bool) -> PreparedText {
                     used_direction: ParagraphBaseDirection::LeftToRight,
                 },
                 SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),
@@ -437,6 +441,7 @@ fn nested_capture(text: &str) -> PreparedText {
     };
     let processed = Arc::new(
         crate::process_contextual_source(ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: input.source.clone(),
             segment_breaks: input.segment_breaks,
@@ -475,6 +480,8 @@ fn nested_capture(text: &str) -> PreparedText {
             replacements: vec![],
             scopes: vec![
                 SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: SourceProcessingTopology::Complete,
                     trim: Default::default(),
@@ -482,6 +489,7 @@ fn nested_capture(text: &str) -> PreparedText {
                     used_direction: ParagraphBaseDirection::LeftToRight,
                 },
                 SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),
@@ -489,6 +497,7 @@ fn nested_capture(text: &str) -> PreparedText {
                     boundaries: Some(SourceProcessingScopeBoundaries { start: 0, end: 3 }),
                 },
                 SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),
@@ -543,10 +552,15 @@ fn nested_physical_pairs_retain_distinct_coincident_end_events_and_shared_glyphs
     assert_eq!(controls.len(), 4);
     assert_eq!(units.len(), 3);
     let scopes = p
-        .captured_paragraph()
+        .captured_owner()
         .unwrap()
-        .scope_intersections()
-        .map(|intersection| intersection.scope())
+        .members()
+        .flat_map(|member| {
+            member
+                .scope_intersections()
+                .map(|intersection| intersection.scope())
+                .collect::<Vec<_>>()
+        })
         .filter(|scope| scope.role() == crate::ScopeRole::Inline)
         .collect::<Vec<_>>();
     assert_eq!(scopes.len(), 2);
@@ -960,10 +974,15 @@ fn odd_shared_unit_keeps_each_nested_end_interval_on_its_actual_visual_side() {
     // Exact canonical pairs are retained even though their source positions
     // coincide. No array/source-offset pairing convention supplies authority.
     let scopes = p
-        .captured_paragraph()
+        .captured_owner()
         .unwrap()
-        .scope_intersections()
-        .map(|i| i.scope())
+        .members()
+        .flat_map(|member| {
+            member
+                .scope_intersections()
+                .map(|i| i.scope())
+                .collect::<Vec<_>>()
+        })
         .filter(|s| s.role() == crate::ScopeRole::Inline)
         .collect::<Vec<_>>();
     assert_eq!(scopes.len(), 2);

@@ -146,6 +146,8 @@ fn capture(
         vec![]
     };
     let mut scopes = vec![text::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         font_reference: None,
         trim: text::WhiteSpaceTrim::default(),
         base_style: owner.clone(),
@@ -158,6 +160,7 @@ fn capture(
     ];
     if inline {
         scopes.push(text::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             trim: text::WhiteSpaceTrim::default(),
@@ -191,6 +194,7 @@ fn capture(
     ]);
     let processed = std::sync::Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),

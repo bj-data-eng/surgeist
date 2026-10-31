@@ -283,15 +283,18 @@ fn frame_identity_is_semantic_but_conditional_candidates_may_use_their_actual_fr
         .unwrap()
         .handle();
     let search = |frame: &FinalizedLine| {
-        p.conditional_search(
-            &start,
-            None,
-            &ceiling,
-            ConditionalPurpose::Overflow,
-            &[],
-            Some(frame),
-        )
-        .unwrap()
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &start,
+                None,
+                &ceiling,
+                ConditionalPurpose::Overflow,
+                &[],
+                Some(frame),
+            )
+            .unwrap()
     };
     assert_eq!(search(&first), search(&first));
     assert_ne!(search(&first), search(&other));

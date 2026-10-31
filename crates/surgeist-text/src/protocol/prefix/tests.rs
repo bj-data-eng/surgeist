@@ -54,6 +54,15 @@ fn selected_end(
         .collect();
     prepared
         .select(LineSelectionRequest {
+            segment: {
+                let mut segments = prepared.source_segments();
+                assert_eq!(
+                    segments.len(),
+                    1,
+                    "this fixture has one genuine source segment"
+                );
+                segments.next().unwrap()
+            },
             boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
@@ -458,6 +467,15 @@ fn finalized_prefix_optional_unit_failure_does_not_poison_other_actual_queries()
     };
     let selected = prepared
         .select(LineSelectionRequest {
+            segment: {
+                let mut segments = prepared.source_segments();
+                assert_eq!(
+                    segments.len(),
+                    1,
+                    "this fixture has one genuine source segment"
+                );
+                segments.next().unwrap()
+            },
             boundary_context: vec![],
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
@@ -531,6 +549,7 @@ fn finalized_prefix_optional_unit_failure_does_not_poison_other_actual_queries()
                     (0, atoms.start, atoms.end)
                 }
                 ShapedItem::InlineBox { occurrence, .. } => (1, occurrence, occurrence),
+                ShapedItem::Cell(_) => panic!("this source has no combined cell"),
                 ShapedItem::Anchor { unit } => {
                     let PresentationUnitKind::Control { occurrence } =
                         selected.inner.presentation.units[unit].kind

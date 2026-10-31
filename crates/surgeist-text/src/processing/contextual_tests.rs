@@ -2,8 +2,25 @@
 use crate::*;
 use std::sync::Arc;
 
+mod combination_facts;
+mod continuity;
+mod domain_analysis;
+mod domain_cell_bidi;
+mod domain_cell_forces;
+mod domain_cell_outer_levels;
+mod domain_combination;
+mod domain_digit_eligibility;
+mod domain_exact_scope;
+mod domain_segment_custody;
+mod domain_segment_search;
+mod domain_structural_bidi;
+mod domain_used_payload;
+mod joint_flow;
 mod math;
 mod phase_two;
+mod source_connections;
+mod transform_context;
+mod transform_context_contracts;
 mod wbr_connections;
 mod wbr_decoding;
 mod wbr_decoding_continuity;
@@ -37,6 +54,7 @@ fn contextual_space_preservation_uses_emitted_token_facts_and_real_trim() {
     }
     let mut capture = input("  A  ", WhiteSpace::Preserve);
     capture.scopes.push(SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         style: None,
@@ -104,7 +122,19 @@ fn full_width_parent_projection_keeps_real_child_holes_and_each_domain_style() {
                         .transform
                         .original_pieces(row)
                         .iter()
-                        .map(|piece| (piece.origin, piece.aggregate, piece.local))
+                        .map(|piece| {
+                            (
+                                analyzed
+                                    .inner
+                                    .paragraph
+                                    .origin_map
+                                    .view_origin(piece.origin)
+                                    .expect("original contribution belongs to this view")
+                                    .get(),
+                                piece.aggregate,
+                                piece.local,
+                            )
+                        })
                 })
                 .collect::<Vec<_>>()
         };
@@ -171,6 +201,7 @@ fn input(text: impl Into<Text>, mode: WhiteSpace) -> ContextualSourceInput {
     let source = Source::new(text);
     let len = source.text().len();
     ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),
@@ -182,6 +213,8 @@ fn input(text: impl Into<Text>, mode: WhiteSpace) -> ContextualSourceInput {
         boundary_policies: vec![],
         replacements: vec![],
         scopes: vec![SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: SourceProcessingTopology::Unknown,
             used_direction: crate::ParagraphBaseDirection::LeftToRight,
@@ -295,6 +328,7 @@ fn line(prepared: &PreparedText) -> FinalizedLine {
     };
     let selected = prepared
         .select(LineSelectionRequest {
+            segment: crate::test_wrapping::only_source_segment(prepared),
             boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
@@ -389,6 +423,8 @@ fn block_inner_trim_keeps_indentation_while_inline_inner_trim_removes_it() {
         let mut capture = input("\n  X\n\n  ", WhiteSpace::Preserve);
         if block {
             capture.scopes[0] = SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,
@@ -400,6 +436,7 @@ fn block_inner_trim_keeps_indentation_while_inline_inner_trim_removes_it() {
             };
         } else {
             capture.scopes.push(SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
                 style: None,
@@ -463,6 +500,7 @@ fn check_exterior_inline_trim(value: &str, mode: WhiteSpace) {
         .map(|i| policy(ParagraphBoundaryDefinition::Connection(i)))
         .collect();
     capture.scopes.push(SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         style: None,
@@ -563,6 +601,8 @@ fn hole(kind: InlineBoxKind) -> ContextualSourceInput {
     }
     capture.scopes.push(if kind == InlineBoxKind::InFlow {
         SourceProcessingScope::AtomicBlock {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: SourceProcessingTopology::Unknown,
             used_direction: crate::ParagraphBaseDirection::LeftToRight,
@@ -572,6 +612,8 @@ fn hole(kind: InlineBoxKind) -> ContextualSourceInput {
         }
     } else {
         SourceProcessingScope::OutOfFlowBlock {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: SourceProcessingTopology::Unknown,
             used_direction: crate::ParagraphBaseDirection::LeftToRight,
@@ -753,6 +795,7 @@ fn trim_does_not_fuse_removed_original_surrogate_neighbors() {
         .map(|i| policy(ParagraphBoundaryDefinition::Connection(i)))
         .collect();
     capture.scopes.push(SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         style: None,
@@ -896,6 +939,7 @@ fn same_offset_nested_empty_scopes_and_consecutive_controls_retain_actual_order_
     capture.paragraphs[0] = facts(ParagraphBaseDirection::RightToLeft);
     capture.scopes.extend([
         SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             style: None,
@@ -906,6 +950,7 @@ fn same_offset_nested_empty_scopes_and_consecutive_controls_retain_actual_order_
             },
         },
         SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
             alignment_boundary: None,
             font_reference: None,
             style: None,
@@ -1012,6 +1057,8 @@ fn empty_internal_domain_keeps_its_captured_font_and_direction() {
         .origins
         .push(origin(&capture.source, Range::new(0, 0)));
     capture.scopes.push(SourceProcessingScope::OutOfFlowBlock {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         font_reference: None,
         topology: SourceProcessingTopology::Unknown,
         used_direction: crate::ParagraphBaseDirection::LeftToRight,
@@ -1153,6 +1200,7 @@ fn contextual_source_defined_replacement_remains_presentation_only() {
     let termination = alternative.view().opportunity().unwrap();
     let selected = prepared
         .select(LineSelectionRequest {
+            segment: crate::test_wrapping::only_source_segment(&prepared),
             boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
@@ -1215,6 +1263,7 @@ fn delimiter_crossing_scope_or_domain_is_rejected_atomically() {
     }];
     capture.boundary_policies = vec![policy(ParagraphBoundaryDefinition::Connection(0))];
     capture.scopes.push(SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         style: None,
@@ -1378,6 +1427,7 @@ fn actual_inline_trim_scope_survives_block_in_inline_paragraph_cuts_once() {
         ];
         capture.scopes.extend([
             SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
                 style: None,
@@ -1388,6 +1438,8 @@ fn actual_inline_trim_scope_survives_block_in_inline_paragraph_cuts_once() {
                 },
             },
             SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,
@@ -1548,6 +1600,7 @@ fn sole_stream_orders_paragraphs_and_same_offset_atomics_independently_of_fact_t
 fn all_whitespace_inline_trim_keeps_original_endpoints_and_real_empty_line_strut() {
     let mut capture = input(" \t ", WhiteSpace::Preserve);
     capture.scopes.push(SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         style: None,
@@ -1599,6 +1652,7 @@ fn selected_soft_wrap_does_not_reset_plaintext_context_or_copy_line_edge_deletio
     let count = boundary.view().participant_offset();
     let selected = prepared
         .select(LineSelectionRequest {
+            segment: crate::test_wrapping::only_source_segment(&prepared),
             boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
@@ -1648,6 +1702,8 @@ fn block_exterior_trim_crosses_its_own_boundary_and_stops_at_a_genuine_forced_co
             origin(&capture.source, Range::new(4, 7)),
         ];
         capture.scopes.push(SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: SourceProcessingTopology::Unknown,
             used_direction: crate::ParagraphBaseDirection::LeftToRight,
@@ -1891,6 +1947,8 @@ fn empty_domain_at_nonzero_original_offset_has_source_and_placed_accessibility()
         .origins
         .push(origin(&capture.source, Range::new(1, 1)));
     capture.scopes.push(SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         font_reference: None,
         topology: SourceProcessingTopology::Unknown,
         used_direction: crate::ParagraphBaseDirection::LeftToRight,
@@ -1992,6 +2050,7 @@ fn right_line(prepared: &PreparedText) -> FinalizedLine {
     };
     let selected = prepared
         .select(LineSelectionRequest {
+            segment: crate::test_wrapping::only_source_segment(prepared),
             boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().nth(2).unwrap().handle(),
@@ -2381,6 +2440,8 @@ fn consecutive_child_holes(empty: bool, control: bool) -> ContextualSourceInput 
         .collect();
     for atomic in [0, 1] {
         capture.scopes.push(SourceProcessingScope::OutOfFlowBlock {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: SourceProcessingTopology::Unknown,
             used_direction: crate::ParagraphBaseDirection::LeftToRight,

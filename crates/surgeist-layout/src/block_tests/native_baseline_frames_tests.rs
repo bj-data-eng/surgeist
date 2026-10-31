@@ -679,7 +679,7 @@ impl<S: LayoutScalar> LayoutTree for MemoTree<S> {
 }
 impl<S: LayoutScalar> MemoTree<S> {
     fn new(paragraph: &Paragraph, root: NodeInputOf<S>) -> Self {
-        assert!(paragraph.prepared.captured_paragraph().is_none());
+        assert!(paragraph.prepared.captured_owner().is_none());
         let binding = paragraph.binding();
         Self {
             tree: PublicLayoutTreeOf::new()

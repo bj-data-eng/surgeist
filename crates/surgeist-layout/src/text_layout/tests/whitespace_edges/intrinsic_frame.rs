@@ -15,19 +15,37 @@ fn observed<S: LayoutScalar>(
     );
     let binding = paragraph.binding(0);
     let size = Size::new(S::from_f64(100.0), S::from_f64(10.0));
+    let tree = paragraph.flat_text_tree::<S>(
+        0,
+        NodeInputOf {
+            display: Display::Block,
+            writing_mode: WritingMode::HorizontalTb,
+            direction: Direction::Rtl,
+            line_box_direction_policy: crate::LineBoxDirectionPolicy::Normal,
+            ..NodeInputOf::default()
+        },
+    );
+    let flow = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![binding],
+        crate::WrappingInput::default(),
+        Vec::new(),
+    )
+    .unwrap();
+    let [row] = flow.associations.runs() else {
+        panic!("flat intrinsic fixture has one actual admitted native run");
+    };
+    let admitted = flow.associations.admitted_run(&flow.paragraphs, row);
+    let binding = admitted.binding;
     let output = super::super::super::run::layout(
-        &binding,
-        &Default::default(),
+        &admitted,
+        &flow.associations,
         &[],
         &[],
         super::super::super::run::Context {
             scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
-                crate::text_layout::scope_alignment::ScopeAlignmentSnapshot::admit(
-                    Vec::new(),
-                    std::slice::from_ref(&binding),
-                )
-                .unwrap()
-                .freeze(),
+                flow.scope_alignments.clone(),
             ),
             orientation: super::super::super::run::text_orientation(
                 WritingMode::HorizontalTb,

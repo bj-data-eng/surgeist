@@ -287,6 +287,18 @@ impl PrefixData {
         let mut values = Vec::new();
         for item in &shaped.items {
             let unit = match *item {
+                ShapedItem::Cell(cell) => {
+                    let binding = shaped.cells[cell].binding;
+                    loop {
+                        account::work(ledger, 1)?;
+                        if matches!(units[owner].kind, PresentationUnitKind::Cell { cell }
+                            if selected.prepared.shaped.cells[cell].binding == binding)
+                        {
+                            break owner;
+                        }
+                        owner += 1;
+                    }
+                }
                 ShapedItem::Anchor { unit, .. } => unit,
                 ShapedItem::TextCluster(index) => {
                     let atom = shaped.clusters[index].atoms.start;
@@ -332,6 +344,35 @@ impl PrefixData {
             result.has_in_flow_content |= content;
             let next = *result.content_prefix.last().unwrap() || content;
             account::push(ledger, &mut result.content_prefix, next)?;
+            if let ShapedItem::Cell(cell) = *item {
+                let output = selected
+                    .prepared
+                    .analyzed
+                    .combination
+                    .as_deref()
+                    .expect("selected cells retain actual source bindings");
+                let binding = &output.bindings[shaped.cells[cell].binding];
+                let group = &output.plan.groups[binding.group];
+                for part in &output.plan.parts[group.parts.clone()] {
+                    account::work(ledger, 1)?;
+                    for piece in &part.pieces {
+                        if retained {
+                            account::push(
+                                ledger,
+                                &mut result.retained_sources[unit],
+                                piece.aggregate,
+                            )?;
+                        }
+                        if content {
+                            account::push(
+                                ledger,
+                                &mut result.content_sources[unit],
+                                piece.aggregate,
+                            )?;
+                        }
+                    }
+                }
+            }
             if content && let ShapedItem::TextCluster(index) = *item {
                 for source in selected.presentation.projection.atoms
                     [shaped.clusters[index].atoms.clone()]
@@ -346,6 +387,7 @@ impl PrefixData {
             account::push(ledger, &mut result.retained_prefix, next)?;
             account::push(ledger, &mut item_units, unit)?;
             let value = match *item {
+                ShapedItem::Cell(cell) => shaped.cells[cell].advance,
                 ShapedItem::TextCluster(index)
                     if shaped.clusters[index].whitespace != Whitespace::Newline =>
                 {
@@ -446,6 +488,15 @@ impl PrefixData {
         let count = selected.presentation.projection.atoms.len();
         let mut atom_items = account::filled(ledger, count, 0)?;
         for (item, value) in shaped.items.iter().enumerate() {
+            if let ShapedItem::Cell(_) = *value {
+                // The first fold already admitted this exact item's selected
+                // unit. Reuse that issuance, including provider-empty cells.
+                let unit = &units[item_units[item]];
+                account::work(ledger, unit.atoms.len())?;
+                for atom in unit.atoms.clone() {
+                    atom_items[atom] = item;
+                }
+            }
             if let ShapedItem::TextCluster(i) = *value {
                 for atom in shaped.clusters[i].atoms.clone() {
                     atom_items[atom] = item;
@@ -550,6 +601,7 @@ impl FinalizedLine {
             TextSeam::BeforeParticipant(p) | TextSeam::AfterParticipant(p) => {
                 if match p {
                     PreparedParticipant::Text(p) => p.prepared_text(),
+                    PreparedParticipant::Cell(p) => p.prepared_text(),
                     PreparedParticipant::Atomic(p) => p.prepared_text(),
                     PreparedParticipant::Control(p) => p.prepared_text(),
                     PreparedParticipant::ComputedLineBoundary(p) => p.prepared_text(),
@@ -660,6 +712,7 @@ impl FinalizedLine {
 fn participant_key(participant: &PreparedParticipant) -> (u8, usize) {
     match participant {
         PreparedParticipant::Text(value) => (0, value.index),
+        PreparedParticipant::Cell(value) => (4, value.index),
         PreparedParticipant::Atomic(value) => (1, value.index),
         PreparedParticipant::Control(value) => (2, value.index),
         PreparedParticipant::ComputedLineBoundary(value) => (3, value.index),
@@ -681,6 +734,7 @@ pub(crate) fn in_flow_item(
 ) -> bool {
     let retained = retained_item(input, item, atomics, controls, dispositions);
     match *item {
+        ShapedItem::Cell(_) => true,
         ShapedItem::TextCluster(index) => {
             retained && shaped.clusters[index].whitespace != Whitespace::Newline
         }
@@ -697,6 +751,7 @@ pub(crate) fn retained_item(
     dispositions: &[super::SpacingSlotDisposition],
 ) -> bool {
     match *item {
+        ShapedItem::Cell(_) => true,
         ShapedItem::TextCluster(index) => !matches!(
             dispositions[index],
             super::SpacingSlotDisposition::DiscardedAtLineEdge

@@ -22,6 +22,7 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
     let ancestor_wrap = style.wrap;
     let capture = std::sync::Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -39,6 +40,8 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![text::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: text::SourceProcessingTopology::Unknown,
                 used_direction: text::ParagraphBaseDirection::LeftToRight,
@@ -83,7 +86,14 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
                 .with_orientation(text::LineOrientation::SidewaysClockwise),
         )
         .unwrap();
-    assert_eq!(prepared.captured_paragraph(), capture.captured_paragraph(0));
+    assert_eq!(
+        prepared
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        [capture.captured_paragraph(0).unwrap()]
+    );
     let origin = prepared.origin_views().next().unwrap().handle();
     let tree = Tree {
         inputs: [

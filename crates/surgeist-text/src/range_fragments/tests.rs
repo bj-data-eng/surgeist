@@ -111,6 +111,7 @@ fn select(
         .collect();
     prepared
         .select(LineSelectionRequest {
+            segment: crate::test_wrapping::only_source_segment(prepared),
             boundary_context: Vec::new(),
             incoming: None,
             start,
@@ -990,6 +991,7 @@ fn contextual_holes_remain_real_pieces_of_shared_units_and_generated_origins_are
         Size::new(5.0, 10.0),
     ));
     let capture = ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),
@@ -1019,6 +1021,8 @@ fn contextual_holes_remain_real_pieces_of_shared_units_and_generated_origins_are
         replacements: vec![],
         scopes: vec![
             SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: crate::SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,
@@ -1026,6 +1030,8 @@ fn contextual_holes_remain_real_pieces_of_shared_units_and_generated_origins_are
                 base_style: style(10.0),
             },
             SourceProcessingScope::OutOfFlowBlock {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: crate::SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,

@@ -407,6 +407,9 @@ fn conditional_prefix_can_resolve_opposite_to_its_failed_ordinary_frame_and_keep
     let other_frame = finish(&p, context(&p, BOXES[1], Some(25.0), 0.0, Alignment::Start));
     assert_eq!(ordinary.feedback().advance, 40.0);
     let search = p
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &start,
             None,
@@ -417,6 +420,9 @@ fn conditional_prefix_can_resolve_opposite_to_its_failed_ordinary_frame_and_keep
         )
         .unwrap();
     let other = p
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &start,
             None,

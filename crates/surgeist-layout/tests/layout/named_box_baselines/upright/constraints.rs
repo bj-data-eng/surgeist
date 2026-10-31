@@ -48,6 +48,7 @@ fn native(raw: &str, height: f64, forced: bool, whitespace: t::WhiteSpace) -> Na
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     let capture = Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
@@ -65,6 +66,8 @@ fn native(raw: &str, height: f64, forced: bool, whitespace: t::WhiteSpace) -> Na
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![t::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: t::SourceProcessingTopology::Complete,
                 trim: Default::default(),
@@ -109,7 +112,14 @@ fn native(raw: &str, height: f64, forced: bool, whitespace: t::WhiteSpace) -> Na
             t::PreparationOptions::default().with_orientation(t::LineOrientation::Vertical),
         )
         .unwrap();
-    assert_eq!(prepared.captured_paragraph(), capture.captured_paragraph(0));
+    assert_eq!(
+        prepared
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        vec![capture.captured_paragraph(0).unwrap()]
+    );
     assert_eq!(prepared.analyzed_source().source(), &source);
     assert_eq!(prepared.control_views().count(), usize::from(forced));
     assert_eq!(prepared.atomic_views().count(), 0);
@@ -149,6 +159,7 @@ fn qualify(native: &Native, expected: (f64, f64, f64)) {
         .collect();
     let line = prepared
         .select(t::LineSelectionRequest {
+            segment: prepared.source_segments().next().unwrap(),
             start: prepared.boundary_views().next().unwrap().handle(),
             end: boundary,
             participants: prepared.participants().take(to).collect(),

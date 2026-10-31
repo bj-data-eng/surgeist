@@ -53,6 +53,8 @@ fn processed() -> Arc<t::ProcessedSource> {
     let mut source = t::Source::identified("AXB", t::Id::from_u64(658100), 31);
     source.span(t::Range::new(0, 3), base.clone());
     let block = || t::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         font_reference: None,
         topology: t::SourceProcessingTopology::Complete,
         trim: Default::default(),
@@ -69,6 +71,7 @@ fn processed() -> Arc<t::ProcessedSource> {
     };
     Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
@@ -99,6 +102,7 @@ fn processed() -> Arc<t::ProcessedSource> {
             scopes: vec![
                 block(),
                 t::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),

@@ -120,7 +120,9 @@ impl ScopeCutIndex {
             .scope_topology
             .as_ref()
             .expect("query authenticates capture");
-        let paragraph = topology.capture.paragraphs[topology.paragraph];
+        let first_paragraph = topology.capture.paragraphs[topology.owner.member(0).index];
+        let last_paragraph =
+            topology.capture.paragraphs[topology.owner.member(topology.owner.len() - 1).index];
         let len = core
             .transform
             .events
@@ -148,28 +150,55 @@ impl ScopeCutIndex {
                         }
                     }
                 }
-                RelationEvent::Removal { row } => original(core, row),
+                RelationEvent::Removal { row, .. } => original(core, row),
+                RelationEvent::GeneratedSuppression { component, .. } => {
+                    match core.transform.components[component].owner {
+                        ComponentOwner::Original(row) => original(core, row),
+                        ComponentOwner::Wbr(control) => known(topology.control_orders[control]),
+                        ComponentOwner::Virtual(index) => {
+                            let point = Position(core.transform.virtuals[index].capture_cut, false);
+                            EventWitness::Known(Witness {
+                                first: point,
+                                last: point,
+                            })
+                        }
+                    }
+                }
                 RelationEvent::PhaseIDeleted { source, .. } => {
                     let mut orders = core
                         .paragraph
                         .origin_intersections(&core.processed, source)
                         .filter(|piece| !piece.aggregate.is_empty())
-                        .map(|piece| topology.origin_orders[piece.origin]);
+                        .map(|piece| {
+                            core.paragraph
+                                .captured_origin_event(piece.origin)
+                                .expect("captured deletion retains its original occurrence")
+                        });
                     witness_orders(&mut orders)
                 }
                 RelationEvent::Anchor { order } => match core.paragraph.anchor_order[order].item {
-                    SemanticAnchorItem::EmptyOrigin(origin) => {
-                        known(topology.origin_orders[origin])
-                    }
+                    SemanticAnchorItem::EmptyOrigin(origin) => known(
+                        core.paragraph
+                            .captured_origin_event(origin)
+                            .expect("captured empty origin retains its event"),
+                    ),
                     SemanticAnchorItem::Atomic(atomic) => {
                         known(topology.capture.atomic_orders[atomic])
                     }
                     SemanticAnchorItem::ComputedLineBoundary(index) => {
-                        let point =
-                            Position(core.paragraph.computed_boundaries[index].capture_cut, false);
+                        let mut cuts = core.paragraph.computed_boundaries[index]
+                            .causes
+                            .iter()
+                            .map(|&cause| topology.capture.computed[cause].capture_cut);
+                        let mut first = cuts.next().expect("admitted computed cause");
+                        let mut last = first;
+                        for cut in cuts {
+                            first = first.min(cut);
+                            last = last.max(cut);
+                        }
                         EventWitness::Known(Witness {
-                            first: point,
-                            last: point,
+                            first: Position(first, false),
+                            last: Position(last, false),
                         })
                     }
                     SemanticAnchorItem::Control(control) => {
@@ -191,7 +220,7 @@ impl ScopeCutIndex {
         let mut left = Vec::new();
         left.try_reserve_exact(len)
             .map_err(|_| ScopeIndexCapacity)?;
-        let mut value = Some(Position(paragraph.enter, true));
+        let mut value = Some(Position(first_paragraph.enter, true));
         left.push(value);
         for witness in &witnesses {
             match witness {
@@ -206,7 +235,7 @@ impl ScopeCutIndex {
             .try_reserve_exact(len)
             .map_err(|_| ScopeIndexCapacity)?;
         right.resize(len, None);
-        value = Some(Position(paragraph.exit, true));
+        value = Some(Position(last_paragraph.exit, true));
         right[len - 1] = value;
         for (index, witness) in witnesses.iter().enumerate().rev() {
             match witness {
@@ -228,6 +257,41 @@ impl ScopeCutIndex {
     pub(crate) fn inside(&self, cut: usize, enter: usize, exit: usize) -> Option<bool> {
         let left = (*self.left.get(cut)?)?;
         let right = (*self.right.get(cut)?)?;
+        let inside = |position| Position(enter, true) < position && position < Position(exit, true);
+        Some(inside(left) && inside(right))
+    }
+
+    /// Genuine structural frontiers provide the exterior side of this slice.
+    /// Interior unknown contributions remain unknown; equal numeric cuts in a
+    /// different slice do not supply source context.
+    pub(crate) fn inside_in(
+        &self,
+        cut: usize,
+        enter: usize,
+        exit: usize,
+        section: &crate::engine::analysis::structural::Section,
+    ) -> Option<bool> {
+        if cut < section.events.start || section.events.end < cut {
+            return None;
+        }
+        let (Some(first), Some(last)) = (section.entry, section.exit) else {
+            return self.inside(cut, enter, exit);
+        };
+        let first = Position(first, false);
+        let last = Position(last, false);
+        let left = if cut == section.events.start {
+            first
+        } else {
+            (*self.left.get(cut)?)?.max(first)
+        };
+        let right = if cut == section.events.end {
+            last
+        } else {
+            (*self.right.get(cut)?)?.min(last)
+        };
+        if left > last || right < first {
+            return None;
+        }
         let inside = |position| Position(enter, true) < position && position < Position(exit, true);
         Some(inside(left) && inside(right))
     }
@@ -253,15 +317,15 @@ fn witness_orders(orders: &mut impl Iterator<Item = usize>) -> EventWitness {
 }
 
 fn original(core: &AnalyzedCore, row: usize) -> EventWitness {
-    let topology = core
-        .paragraph
-        .scope_topology
-        .as_ref()
-        .expect("captured index");
     witness_orders(
         &mut core.transform.pieces[core.transform.rows[row].pieces.clone()]
             .iter()
-            .map(|piece| topology.origin_orders[piece.origin]),
+            .map(|piece| {
+                piece
+                    .origin
+                    .captured_event()
+                    .expect("captured transform origin retains its event")
+            }),
     )
 }
 
@@ -339,6 +403,7 @@ mod tests {
             })
             .collect();
         let input = ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source,
@@ -364,6 +429,8 @@ mod tests {
             replacements: vec![],
             scopes: vec![
                 SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     topology: SourceProcessingTopology::Unknown,
                     trim: WhiteSpaceTrim::default(),
                     base_style: Style {
@@ -374,6 +441,7 @@ mod tests {
                     font_reference: None,
                 },
                 SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: WhiteSpaceTrim::default(),

@@ -104,6 +104,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
         events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
         let capture = Arc::new(
             t::process_contextual_source(t::ContextualSourceInput {
+                joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 source: source.clone(),
                 segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
@@ -148,6 +149,8 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 replacements: vec![],
                 computed_line_boundaries: vec![],
                 scopes: vec![t::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: t::SourceProcessingTopology::Complete,
                     trim: Default::default(),
@@ -186,7 +189,14 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 t::PreparationOptions::default(),
             )
             .unwrap();
-        assert_eq!(prepared.captured_paragraph(), capture.captured_paragraph(0));
+        assert_eq!(
+            prepared
+                .captured_owner()
+                .unwrap()
+                .members()
+                .collect::<Vec<_>>(),
+            vec![capture.captured_paragraph(0).unwrap()]
+        );
         assert_eq!(prepared.origin_views().count(), ranges.len());
         assert_eq!(prepared.control_views().count(), usize::from(forced_groups));
         assert_eq!(prepared.atomic_views().count(), 0);
@@ -449,7 +459,12 @@ fn characterize<S: l::LayoutScalar>(
     expected: &[(t::Range, f64, t::LineEnd)],
 ) {
     let fixture = Fixture::<S>::new(direction, wrap, forced);
-    let before = fixture.prepared.captured_paragraph();
+    let before = fixture
+        .prepared
+        .captured_owner()
+        .unwrap()
+        .members()
+        .collect::<Vec<_>>();
     let batch = fixture.compute();
     fixture.assert_lines(&batch, expected, direction);
     let replay = fixture.compute();
@@ -458,7 +473,15 @@ fn characterize<S: l::LayoutScalar>(
         batch.placed_text()[0].layout().key(),
         replay.placed_text()[0].layout().key()
     );
-    assert_eq!(fixture.prepared.captured_paragraph(), before);
+    assert_eq!(
+        fixture
+            .prepared
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        before
+    );
     fixture.assert_lines(&batch, expected, direction);
 }
 #[test]

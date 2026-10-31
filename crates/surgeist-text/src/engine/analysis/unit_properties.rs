@@ -16,11 +16,16 @@ use super::capacity;
 
 /// Appendix E's exception uses raw ScriptExtensions, not a shaping-run script.
 pub(crate) fn has_common_enclosing_mark(atoms: &[OriginalAtom]) -> bool {
+    has_common_enclosing_mark_in(atoms.iter().map(|atom| atom.code_point))
+}
+
+/// The same raw Unicode predicate for source-only transformed scalar streams.
+pub(crate) fn has_common_enclosing_mark_in(values: impl IntoIterator<Item = u32>) -> bool {
     let categories = CodePointMapData::<GeneralCategory>::new();
     let scripts = ScriptWithExtensions::new();
-    atoms.iter().any(|atom| {
-        categories.get32(atom.code_point) == GeneralCategory::EnclosingMark
-            && scripts.has_script32(atom.code_point, Script::Common)
+    values.into_iter().any(|code_point| {
+        categories.get32(code_point) == GeneralCategory::EnclosingMark
+            && scripts.has_script32(code_point, Script::Common)
     })
 }
 
@@ -57,21 +62,29 @@ pub(in crate::engine) fn base(atoms: &[OriginalAtom]) -> Option<&OriginalAtom> {
 /// Possible governors under arbitrary final DI exclusions, within this original
 /// EGC. A mandatory candidate stops its tier and makes lower tiers unreachable.
 /// This predicts operands only; it neither excludes input nor segments text.
-pub(in crate::engine) fn possible_bases(atoms: &[OriginalAtom]) -> Vec<usize> {
+pub(in crate::engine) enum BaseVisit {
+    Inspect,
+    Candidate(usize),
+}
+
+pub(in crate::engine) fn visit_possible_bases(
+    atoms: &[OriginalAtom],
+    mut visit: impl FnMut(BaseVisit) -> Result<()>,
+) -> Result<()> {
     let di = CodePointSetData::new::<DefaultIgnorableCodePoint>();
-    let mut output = Vec::new();
     for tier in 0..3 {
         for (index, atom) in atoms.iter().enumerate() {
+            visit(BaseVisit::Inspect)?;
             if base_tier(atom) != tier {
                 continue;
             }
-            output.push(index);
+            visit(BaseVisit::Candidate(index))?;
             if !di.contains32(atom.code_point) {
-                return output;
+                return Ok(());
             }
         }
     }
-    output
+    Ok(())
 }
 
 /// Proof fence for source-conditioned planning, using the canonical projection
@@ -134,6 +147,7 @@ pub(in crate::engine) fn vertical_orientation(cp: u32) -> VerticalOrientation {
     CodePointMapData::<VerticalOrientation>::new().get32(cp)
 }
 
+#[cfg(test)]
 pub(super) fn scalar_properties(cp: u32) -> Result<Properties> {
     let set = ScriptWithExtensions::new().get_script_extensions_val32(cp);
     let mut scripts = Vec::new();
@@ -154,27 +168,102 @@ pub(super) fn scalar_properties(cp: u32) -> Result<Properties> {
 }
 
 pub(in crate::engine) fn properties(atoms: &[OriginalAtom]) -> Result<Properties> {
-    let base = base(atoms).expect("a nonempty EGC has an actual scalar or opaque source unit");
-    let base_index = atoms
-        .iter()
-        .position(|atom| std::ptr::eq(atom, base))
-        .expect("actual EGC base");
-    let base = scalar_properties(base.code_point)?;
-    let common_enclosing = has_common_enclosing_mark(atoms);
-    let first_mark = if !common_enclosing && base.category == GeneralCategory::SpaceSeparator {
-        let categories = CodePointMapData::<GeneralCategory>::new();
-        atoms[base_index + 1..]
-            .iter()
-            .find(|atom| GeneralCategoryGroup::Mark.contains(categories.get32(atom.code_point)))
-            .map(|atom| scalar_properties(atom.code_point))
-            .transpose()?
-    } else {
-        None
-    };
-    resolve_properties(base, common_enclosing, first_mark)
+    let mut scripts = Vec::new();
+    let facts = visit_properties(atoms, |visit| {
+        if let PropertyVisit::Script(script) = visit {
+            scripts.try_reserve(1).map_err(|_| capacity())?;
+            scripts.push(script);
+        }
+        Ok(())
+    })?;
+    Ok(Properties {
+        category: facts.category,
+        width: facts.width,
+        vertical_orientation: facts.vertical_orientation,
+        scripts,
+    })
+}
+
+pub(in crate::engine) enum PropertyVisit {
+    Inspect,
+    Script(Script),
+}
+
+/// Raw facts and script emission share the canonical Appendix-E decision. The
+/// observer admits its own storage before receiving a script, without making
+/// this Unicode owner depend on an operation's resource policy.
+pub(in crate::engine) fn visit_properties(
+    atoms: &[OriginalAtom],
+    mut visit: impl FnMut(PropertyVisit) -> Result<()>,
+) -> Result<PropertyFacts> {
+    let mut selected = None;
+    for (index, atom) in atoms.iter().enumerate() {
+        visit(PropertyVisit::Inspect)?;
+        let tier = base_tier(atom);
+        if selected.is_none_or(|(_, old)| tier < old) {
+            selected = Some((index, tier));
+        }
+    }
+    let index = selected
+        .expect("a nonempty EGC has an actual source unit")
+        .0;
+    let categories = CodePointMapData::<GeneralCategory>::new();
+    let scripts = ScriptWithExtensions::new();
+    visit(PropertyVisit::Inspect)?;
+    let base = atoms[index].code_point;
+    let mut target = base;
+    let mut category = categories.get32(base);
+    let mut common = false;
+    for atom in atoms {
+        visit(PropertyVisit::Inspect)?;
+        if categories.get32(atom.code_point) == GeneralCategory::EnclosingMark
+            && scripts.has_script32(atom.code_point, Script::Common)
+        {
+            common = true;
+            break;
+        }
+    }
+    let mut width = CodePointMapData::<EastAsianWidth>::new().get32(base);
+    if common {
+        target = 0xfffd;
+        category = categories.get32(target);
+        width = CodePointMapData::<EastAsianWidth>::new().get32(target);
+    } else if category == GeneralCategory::SpaceSeparator {
+        for atom in &atoms[index + 1..] {
+            visit(PropertyVisit::Inspect)?;
+            if GeneralCategoryGroup::Mark.contains(categories.get32(atom.code_point)) {
+                target = atom.code_point;
+                category = GeneralCategory::ModifierSymbol;
+                break;
+            }
+        }
+    }
+    visit(PropertyVisit::Inspect)?;
+    let mut any = false;
+    for script in scripts.get_script_extensions_val32(target).iter() {
+        visit(PropertyVisit::Script(script))?;
+        any = true;
+    }
+    if !any {
+        visit(PropertyVisit::Script(
+            CodePointMapData::<Script>::new().get32(target),
+        ))?;
+    }
+    Ok(PropertyFacts {
+        category,
+        width,
+        vertical_orientation: vertical_orientation(target),
+    })
+}
+
+pub(in crate::engine) struct PropertyFacts {
+    pub(in crate::engine) category: GeneralCategory,
+    pub(in crate::engine) width: EastAsianWidth,
+    pub(in crate::engine) vertical_orientation: VerticalOrientation,
 }
 
 /// Pure Appendix E mapping; fact qualification remains in `properties`.
+#[cfg(test)]
 pub(super) fn resolve_properties(
     base: Properties,
     common_enclosing: bool,

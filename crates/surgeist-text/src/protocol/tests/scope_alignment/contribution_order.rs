@@ -174,6 +174,7 @@ fn nested_direct_and_common_chains_preserve_signed_rows_and_global_descendant_or
     }
     let capture = Arc::new(
         process_contextual_source(ContextualSourceInput {
+            joint_flows: Vec::new(),
             source: source.clone(),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
             envelope: SourceProcessingEnvelope::Complete,
@@ -209,6 +210,8 @@ fn nested_direct_and_common_chains_preserve_signed_rows_and_global_descendant_or
             // Actual source entry order, not these ordinals, determines frames.
             scopes: vec![
                 SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     topology: SourceProcessingTopology::Complete,
                     trim: WhiteSpaceTrim::default(),
                     base_style: style(10.0, 4.0),
@@ -216,6 +219,7 @@ fn nested_direct_and_common_chains_preserve_signed_rows_and_global_descendant_or
                     font_reference: Some(reference()),
                 },
                 SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     trim: WhiteSpaceTrim::default(),
                     style: Some(style(10.0, 6.0)),
                     boundaries: None,
@@ -223,6 +227,7 @@ fn nested_direct_and_common_chains_preserve_signed_rows_and_global_descendant_or
                     font_reference: Some(reference()),
                 },
                 SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     trim: WhiteSpaceTrim::default(),
                     style: Some(style(10.0, 2.0)),
                     boundaries: None,
@@ -230,6 +235,7 @@ fn nested_direct_and_common_chains_preserve_signed_rows_and_global_descendant_or
                     font_reference: Some(reference()),
                 },
                 SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     trim: WhiteSpaceTrim::default(),
                     style: Some(style(10.0, 10.0)),
                     boundaries: None,

@@ -32,6 +32,10 @@ mod canonical;
 mod computed_line_boundaries;
 #[path = "tests/conditional_overflow.rs"]
 mod conditional_overflow;
+#[path = "tests/domain_empty_segments.rs"]
+mod domain_empty_segments;
+#[path = "tests/domain_output_segments.rs"]
+mod domain_output_segments;
 #[path = "tests/float_fit.rs"]
 mod float_fit;
 #[path = "tests/hanging_punctuation.rs"]
@@ -322,9 +326,13 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
         Some(20.0)
     );
     let size = Size::new(S::from_f64(20.0), S::from_f64(10.0));
+    let [row] = capture.associations.runs() else {
+        panic!("actual intrinsic fixture has one admitted native run");
+    };
+    let admitted = capture.associations.admitted_run(&capture.paragraphs, row);
     let output = super::run::layout(
-        &binding,
-        &Default::default(),
+        &admitted,
+        &capture.associations,
         &[],
         &[],
         super::run::Context {

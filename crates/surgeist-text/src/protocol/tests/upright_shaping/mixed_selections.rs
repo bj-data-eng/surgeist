@@ -27,6 +27,7 @@ fn captured(text: &str, at: usize, style: Style, force: bool) -> Arc<crate::Proc
     let source = Source::new(text);
     let ranges = [Range::new(0, at), Range::new(at, source.text().len())];
     let input = ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         source: source.clone(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -64,6 +65,8 @@ fn captured(text: &str, at: usize, style: Style, force: bool) -> Arc<crate::Proc
         replacements: vec![],
         scopes: vec![
             SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: SourceProcessingTopology::Complete,
                 trim: WhiteSpaceTrim::default(),
@@ -71,6 +74,7 @@ fn captured(text: &str, at: usize, style: Style, force: bool) -> Arc<crate::Proc
                 used_direction: ParagraphBaseDirection::LeftToRight,
             },
             SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
                 trim: WhiteSpaceTrim::default(),

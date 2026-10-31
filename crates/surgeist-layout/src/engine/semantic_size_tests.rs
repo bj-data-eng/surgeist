@@ -10,6 +10,7 @@ fn fixture<S: LayoutScalar>(
 ) -> (PublicLayoutTreeOf<S>, t::PreparedText, WrappingInput<u32>) {
     use t::SourceProcessingEvent as E;
     let inline = || t::SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         trim: Default::default(),
@@ -18,6 +19,7 @@ fn fixture<S: LayoutScalar>(
     };
     let captured = std::sync::Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: t::Source::identified("", t::Id::from_u64(658300), 51),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
@@ -37,6 +39,8 @@ fn fixture<S: LayoutScalar>(
             },
             scopes: vec![
                 t::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: t::SourceProcessingTopology::Complete,
                     trim: Default::default(),

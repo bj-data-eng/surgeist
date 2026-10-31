@@ -185,7 +185,16 @@ fn math_auto_identity_is_the_actual_post_mapping_scalar_with_original_custody() 
     assert_eq!(map.rows.len(), 1);
     assert_eq!(map.rows[0].code_point, 0x61);
     assert_eq!(map.original_pieces(0).len(), 1);
-    assert_eq!(map.original_pieces(0)[0].origin, 0);
+    assert_eq!(
+        analyzed
+            .inner
+            .paragraph
+            .origin_map
+            .view_origin(map.original_pieces(0)[0].origin)
+            .expect("original contribution belongs to this view")
+            .get(),
+        0
+    );
     assert_eq!(map.original_pieces(0)[0].aggregate, Range::new(0, 1));
     assert_eq!(map.original_pieces(0)[0].local, Range::new(0, 1));
     assert_eq!(
@@ -268,7 +277,7 @@ fn delayed_iota_preserves_repeated_noncontiguous_correspondence_and_real_removal
         [
             RelationEvent::Text { atom: 0 },
             RelationEvent::Text { atom: 1 },
-            RelationEvent::Removal { row: 2 },
+            RelationEvent::Removal { row: 2, .. },
             RelationEvent::Text { atom: 2 }
         ]
     ));

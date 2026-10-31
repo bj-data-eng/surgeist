@@ -387,6 +387,7 @@ fn unexpanded_wbr_keeps_split_origin_capture_order_and_original_typography_separ
                 1
             }
             PreparedParticipant::Atomic(_) => panic!("capture has no atomic"),
+            PreparedParticipant::Cell(_) => panic!("capture has no combined cell"),
             PreparedParticipant::ComputedLineBoundary(_) => {
                 panic!("capture has no computed boundaries")
             }

@@ -100,6 +100,7 @@ fn request(
         .unwrap()
         .handle();
     LineSelectionRequest {
+        segment: crate::test_wrapping::only_source_segment(prepared),
         boundary_context: vec![],
         incoming: None,
         start: prepared.boundary_views().next().unwrap().handle(),

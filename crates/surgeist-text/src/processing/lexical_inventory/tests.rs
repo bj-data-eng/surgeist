@@ -95,6 +95,7 @@ fn contextual(text: &str, mode: WhiteSpace) -> ContextualSourceInput {
     let source = Source::new(text);
     let len = source.text().len();
     ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),
@@ -106,6 +107,8 @@ fn contextual(text: &str, mode: WhiteSpace) -> ContextualSourceInput {
         boundary_policies: vec![],
         replacements: vec![],
         scopes: vec![SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: SourceProcessingTopology::Unknown,
             used_direction: ParagraphBaseDirection::LeftToRight,
@@ -351,6 +354,7 @@ fn preserved_converted_discarded_and_collapsed_spaces_retain_their_real_modes() 
 fn contextual_trim_is_genuine_elimination_even_for_preserved_spaces() {
     let mut input = contextual(" A ", WhiteSpace::Preserve);
     input.scopes.push(SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         style: None,
@@ -415,6 +419,7 @@ fn continuous_origins_and_scope_markers_do_not_split_the_collapse_context() {
         ancestor_wrap: Wrap::Word,
     }];
     input.scopes.push(SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         style: None,
@@ -537,6 +542,8 @@ fn actual_atomic_child_domains_keep_their_own_modes_and_canonical_event_provenan
     })
     .collect();
     input.scopes.push(SourceProcessingScope::AtomicBlock {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         font_reference: None,
         topology: SourceProcessingTopology::Unknown,
         used_direction: ParagraphBaseDirection::LeftToRight,

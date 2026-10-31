@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 pub(crate) mod contextual;
-mod lexical;
+pub(crate) mod lexical;
 pub(crate) mod lexical_inventory;
 pub use contextual::*;
 

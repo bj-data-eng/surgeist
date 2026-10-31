@@ -158,6 +158,9 @@ fn search(prepared: &PreparedText, frame: &FinalizedLine) -> PreparedConditional
         unreachable!()
     };
     prepared
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &original.request().start,
             None,
@@ -432,7 +435,7 @@ fn actual_phrase_flow_target_owns_its_query_frame_before_native_observation() {
     let query = search(&prepared, &frame);
     let phrase = phrase_request(&prepared, &query);
     let flow = prepared
-        .measurement_flow(&phrase.start, None, &phrase.termination)
+        .measurement_flow(&phrase.segment, &phrase.start, None, &phrase.termination)
         .unwrap();
     let segments = flow.segments().collect::<Vec<_>>();
     assert_eq!(segments.len(), 1);

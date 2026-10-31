@@ -26,6 +26,8 @@ fn capture(count: usize) -> Arc<ProcessedSource> {
     let mut source = Source::identified(raw.as_str(), Id::from_u64(1578078), 67);
     source.span(Range::new(0, units), style.clone());
     let mut scopes = vec![SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         topology: SourceProcessingTopology::Complete,
         trim: WhiteSpaceTrim::default(),
         base_style: style.clone(),
@@ -33,6 +35,7 @@ fn capture(count: usize) -> Arc<ProcessedSource> {
         font_reference: Some(reference),
     }];
     scopes.extend((0..count).map(|_| SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         trim: WhiteSpaceTrim::default(),
         style: Some(style.clone()),
         boundaries: None,
@@ -67,6 +70,7 @@ fn capture(count: usize) -> Arc<ProcessedSource> {
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     Arc::new(
         process_contextual_source(ContextualSourceInput {
+            joint_flows: Vec::new(),
             source: source.clone(),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
             envelope: SourceProcessingEnvelope::Complete,

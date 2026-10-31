@@ -300,6 +300,7 @@ fn source(before: bool, direction: layout::Direction) -> text::ContextualSourceI
     }
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     text::ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         source,
         segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -331,6 +332,8 @@ fn source(before: bool, direction: layout::Direction) -> text::ContextualSourceI
         replacements: vec![],
         scopes: vec![
             text::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: text::SourceProcessingTopology::Complete,
                 trim: Default::default(),
@@ -338,6 +341,7 @@ fn source(before: bool, direction: layout::Direction) -> text::ContextualSourceI
                 used_direction: base,
             },
             text::SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
                 trim: Default::default(),
@@ -699,6 +703,7 @@ fn semantic_source(
     // Each source occurrence selects its real half-range from the same exact
     // aggregate source, matching the lower Text scalar/delimiter fixture.
     text::ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         source: source.clone(),
         segment_breaks: delimiters,
@@ -729,6 +734,8 @@ fn semantic_source(
         replacements: vec![],
         scopes: vec![
             text::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: text::SourceProcessingTopology::Complete,
                 trim: Default::default(),
@@ -736,6 +743,7 @@ fn semantic_source(
                 used_direction: text::ParagraphBaseDirection::LeftToRight,
             },
             text::SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
                 trim: Default::default(),

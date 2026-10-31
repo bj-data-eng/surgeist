@@ -169,6 +169,7 @@ fn select_line_in_direction(
     let terminal = offer.view().kind() == t::PreparedBreakKind::ParagraphEnd;
     prepared
         .select(t::LineSelectionRequest {
+            segment: prepared.source_segments().next().unwrap(),
             start,
             end,
             participants: prepared.participants().skip(from).take(to - from).collect(),
@@ -275,6 +276,7 @@ fn fixture_in_direction(direction: l::Direction) -> Fixture {
     use t::SourceProcessingEvent as E;
     let capture = Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
@@ -292,6 +294,8 @@ fn fixture_in_direction(direction: l::Direction) -> Fixture {
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![t::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: t::SourceProcessingTopology::Complete,
                 trim: Default::default(),

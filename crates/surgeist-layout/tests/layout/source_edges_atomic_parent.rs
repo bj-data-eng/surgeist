@@ -200,6 +200,7 @@ fn source(siblings_inside: bool, direction: layout::Direction) -> text::Contextu
         ancestor_wrap: text::Wrap::None,
     };
     text::ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         source,
         segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -230,6 +231,8 @@ fn source(siblings_inside: bool, direction: layout::Direction) -> text::Contextu
         ],
         scopes: vec![
             text::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
                 font_reference: None,
                 topology: text::SourceProcessingTopology::Complete,
                 trim: Default::default(),
@@ -241,6 +244,7 @@ fn source(siblings_inside: bool, direction: layout::Direction) -> text::Contextu
                 used_direction: base,
             },
             text::SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
                 trim: Default::default(),

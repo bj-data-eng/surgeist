@@ -371,6 +371,7 @@ fn source(case: Case) -> t::ContextualSourceInput {
     let mut source = t::Source::identified("PAQ", t::Id::from_u64(658000), 21);
     source.span(t::Range::new(0, 3), style.clone());
     let inline = |boundaries| t::SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         trim: Default::default(),
@@ -379,6 +380,8 @@ fn source(case: Case) -> t::ContextualSourceInput {
     };
     let mut scopes = vec![
         t::SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: t::SourceProcessingTopology::Complete,
             trim: Default::default(),
@@ -428,6 +431,7 @@ fn source(case: Case) -> t::ContextualSourceInput {
         E::ExitScope(0),
     ]);
     t::ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         source,
         segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,

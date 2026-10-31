@@ -78,6 +78,8 @@ fn capture() -> (
         kind: text::ParagraphOriginKind::Authored,
     };
     let block = || text::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
         font_reference: None,
         topology: text::SourceProcessingTopology::Complete,
         trim: text::WhiteSpaceTrim::default(),
@@ -95,6 +97,7 @@ fn capture() -> (
     };
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
@@ -117,6 +120,7 @@ fn capture() -> (
             scopes: vec![
                 block(),
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: text::WhiteSpaceTrim::default(),
@@ -203,18 +207,26 @@ fn capture() -> (
     }
     let canonical = first.captured_scope();
     assert_eq!(
-        canonical.entry_control().unwrap().paragraph(),
-        prepared[0].captured_paragraph().unwrap()
+        prepared[0]
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        [canonical.entry_control().unwrap().paragraph()]
     );
     assert_eq!(
-        canonical.exit_control().unwrap().paragraph(),
-        prepared[2].captured_paragraph().unwrap()
+        prepared[2]
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        [canonical.exit_control().unwrap().paragraph()]
     );
     assert!(first.view().entry_control().is_some());
     assert!(first.view().exit_control().is_none());
     assert!(last.view().entry_control().is_none());
     assert!(last.view().exit_control().is_some());
-    let child = prepared[1].captured_paragraph().unwrap();
+    let child = prepared[1].captured_owner().unwrap();
     assert_ne!(child.domain(), canonical.domain());
     assert_eq!(child.domain().parent(), Some(canonical));
     assert_eq!(

@@ -89,6 +89,7 @@ impl Fixture {
         events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
         let processed = Arc::new(
             text::process_contextual_source(text::ContextualSourceInput {
+                joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 computed_line_boundaries: vec![],
                 source,
@@ -114,6 +115,8 @@ impl Fixture {
                 replacements: vec![],
                 scopes: vec![
                     text::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
                         font_reference: None,
                         topology: text::SourceProcessingTopology::Complete,
                         trim: Default::default(),
@@ -121,6 +124,7 @@ impl Fixture {
                         used_direction: ParagraphBaseDirection::LeftToRight,
                     },
                     text::SourceProcessingScope::Inline {
+                        horizontal_inner_direction: None,
                         alignment_boundary: None,
                         font_reference: None,
                         trim: Default::default(),
@@ -151,9 +155,13 @@ impl Fixture {
         let prepared = system
             .prepare(&analyzed, text::PreparationOptions::default())
             .unwrap();
-        let scope = prepared
-            .captured_paragraph()
+        let members = prepared
+            .captured_owner()
             .unwrap()
+            .members()
+            .collect::<Vec<_>>();
+        assert_eq!(members.len(), 1);
+        let scope = members[0]
             .scope_intersections()
             .map(|row| row.scope())
             .find(|scope| scope.role() == text::ScopeRole::Inline)
@@ -569,9 +577,10 @@ fn cross_origin_snapped_pair_admits_but_keeps_precise_edge_incidence_limits() {
                 .find(|offer| offer.kind() == text::PreparedBreakKind::Allowed)
                 .unwrap()
                 .handle();
-            let search = fixture
-                .binding
-                .prepared
+            let mut source_segments = fixture.binding.prepared.source_segments();
+            let source_segment = source_segments.next().expect("fixture source segment");
+            assert_eq!(source_segments.count(), 0, "one structural fixture segment");
+            let search = source_segment
                 .conditional_search(
                     &start,
                     None,
@@ -596,7 +605,7 @@ fn cross_origin_snapped_pair_admits_but_keeps_precise_edge_incidence_limits() {
                 let incidences = fixture
                     .binding
                     .prepared
-                    .boundary_incidences(&offer.boundary())
+                    .boundary_incidences(&source_segment, &offer.boundary())
                     .unwrap();
                 assert!(!incidences.is_empty());
                 for incidence in incidences {
@@ -717,6 +726,9 @@ fn authentic_logical_edge_supports_soft_incidence_and_late_line_requires_source_
             // edge even without physical controls. Authenticate that exact
             // shared cut instead of reconstructing an edge from UTF-16 alone.
             let prepared = &logical.binding.prepared;
+            let mut source_segments = prepared.source_segments();
+            let source_segment = source_segments.next().expect("fixture source segment");
+            assert_eq!(source_segments.count(), 0, "one structural fixture segment");
             let boundary = prepared
                 .opportunity_views()
                 .find(|offer| {
@@ -733,7 +745,7 @@ fn authentic_logical_edge_supports_soft_incidence_and_late_line_requires_source_
             };
             assert!(
                 prepared
-                    .boundary_incidences(&boundary)
+                    .boundary_incidences(&source_segment, &boundary)
                     .unwrap()
                     .iter()
                     .any(|incidence| prepared

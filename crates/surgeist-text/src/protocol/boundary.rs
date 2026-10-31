@@ -41,6 +41,8 @@ struct Incidence {
     control: usize,
     atom: usize,
     participant: usize,
+    /// Exact transform event, retaining order around raw-empty cells.
+    relation: usize,
 }
 
 fn incidences(prepared: &PreparedData) -> Vec<Incidence> {
@@ -62,6 +64,11 @@ fn incidences(prepared: &PreparedData) -> Vec<Incidence> {
             if !is_endpoint(&prepared.analyzed.paragraph.controls[occurrence].kind) {
                 return None;
             }
+            let control = prepared.tables.control_rows[occurrence];
+            let order = prepared.tables.controls[control].anchor;
+            let relation = prepared.analyzed.transform.events().iter().position(|event| {
+                matches!(*event, crate::transform::relation::RelationEvent::Anchor { order: actual } if actual == order)
+            })?;
             let position = projection
                 .atoms
                 .get(event.atom)
@@ -74,6 +81,7 @@ fn incidences(prepared: &PreparedData) -> Vec<Incidence> {
                     control: prepared.tables.control_rows[occurrence],
                     atom: event.atom,
                     participant,
+                    relation,
                 })
         })
         .collect()
@@ -103,6 +111,12 @@ pub(crate) fn groups_accounted(
     use crate::engine::scope_alignment::accounting as account;
     let count = selected.presentation.projection.atoms.len();
     let mut ends = account::collect(ledger, 1..=count)?;
+    for unit in &selected.presentation.units {
+        account::work(ledger, 1)?;
+        if matches!(unit.kind, PresentationUnitKind::Cell { .. }) && !unit.atoms.is_empty() {
+            ends[unit.atoms.start] = ends[unit.atoms.start].max(unit.atoms.end);
+        }
+    }
     for range in selected.presentation.analysis.graphemes.iter().chain(
         shaped
             .clusters
@@ -214,6 +228,24 @@ pub(crate) fn original_seed(
         Attachment::Before { participant, atom } => (participant, atom, true),
         Attachment::After { participant, atom } => (participant, atom, false),
     };
+    if let ParticipantData::Cell(cell) = prepared.tables.participants[participant] {
+        let output = prepared
+            .analyzed
+            .combination
+            .as_deref()
+            .ok_or_else(|| protocol_error(ProtocolError::InvalidWordPortion))?;
+        let binding = &output.bindings[prepared.tables.cells[cell].binding];
+        return Ok(Seed {
+            atoms: binding.atoms.end..binding.atoms.end,
+            before: binding.participants.end,
+            after: binding.participants.end,
+            preceding,
+        });
+    }
+    let participant = prepared
+        .tables
+        .source_prefix(participant)
+        .ok_or_else(|| protocol_error(ProtocolError::InvalidWordPortion))?;
     let atoms = atom.map_or_else(
         || {
             let atom = prepared.analyzed.logical.events[participant].atom;
@@ -309,6 +341,7 @@ pub(crate) fn extent(seed: &Seed, length: usize, barriers: &BTreeSet<usize>) -> 
 }
 
 fn presentation_cut(
+    prepared: &PreparedData,
     presentation: &SelectedPresentation,
     incidence: Incidence,
     selected_start: usize,
@@ -316,7 +349,20 @@ fn presentation_cut(
     let mut cut = 0;
     for (index, unit) in presentation.units.iter().enumerate() {
         let preceding = if let Some(participant) = unit.participant {
-            selected_start + participant < incidence.participant
+            let outer = selected_start + participant;
+            if let PresentationUnitKind::Cell { cell } = unit.kind {
+                let output = prepared.analyzed.combination.as_deref()?;
+                let binding = &output.bindings[prepared.shaped.cells[cell].binding];
+                if incidence.relation < binding.events.start {
+                    false
+                } else if incidence.relation >= binding.events.end {
+                    true
+                } else {
+                    return None;
+                }
+            } else {
+                prepared.tables.source_prefix(outer)? < incidence.participant
+            }
         } else {
             let attachment = presentation
                 .domains
@@ -328,7 +374,15 @@ fn presentation_cut(
                     participant
                 }
             };
-            participant < incidence.participant
+            if let ParticipantData::Cell(cell) = prepared.tables.participants[participant] {
+                let output = prepared.analyzed.combination.as_deref()?;
+                output.bindings[prepared.tables.cells[cell].binding]
+                    .events
+                    .end
+                    <= incidence.relation
+            } else {
+                prepared.tables.source_prefix(participant)? < incidence.participant
+            }
         };
         if !preceding {
             break;
@@ -412,10 +466,14 @@ pub(crate) fn resolve(
         }
     }
     let incidences = incidences(data);
+    let source_context = crate::transform::context::SourceContext::exact(
+        &data.analyzed.processed,
+        &data.analyzed.paragraph,
+    )?;
     let mut stops: Vec<_> = crate::transform::separators::connection_seams(
         &data.analyzed.projection,
         &data.analyzed.logical.events,
-        &data.analyzed.paragraph,
+        &source_context,
     )?
     .into_iter()
     .map(|seam| ContextStop {
@@ -470,7 +528,27 @@ pub(crate) fn resolve(
         positive: Vec::new(),
         stops,
     };
-    let selected_start = data.tables.boundaries[request.start.index].participant;
+    if let Some(output) = data.analyzed.combination.as_deref() {
+        for cell in &data.tables.cells {
+            let binding = &output.bindings[cell.binding];
+            for atom in [binding.atoms.start, binding.atoms.end] {
+                result.original.insert(atom);
+                result.stops.push(ContextStop {
+                    before: binding.participants.start,
+                    after: binding.participants.end,
+                    atom,
+                });
+            }
+        }
+    }
+    for unit in &presentation.units {
+        if matches!(unit.kind, PresentationUnitKind::Cell { .. }) {
+            result.presentation.insert(unit.atoms.start);
+            result.presentation.insert(unit.atoms.end);
+        }
+    }
+    let selected_outer_start = data.tables.boundaries[request.start.index].participant;
+    let selected_start = data.tables.boundaries[request.start.index].source_participant;
     for incidence in &incidences {
         if known
             .get(&incidence.control)
@@ -478,7 +556,9 @@ pub(crate) fn resolve(
         {
             result.positive.push(*incidence);
             result.original.insert(incidence.atom);
-            if let Some(cut) = presentation_cut(presentation, *incidence, selected_start) {
+            if let Some(cut) =
+                presentation_cut(data, presentation, *incidence, selected_outer_start)
+            {
                 result.presentation.insert(cut);
             }
         }
@@ -576,7 +656,9 @@ pub(crate) fn resolve(
                         result.positive.push(incidence);
                     }
                     result.original.insert(incidence.atom);
-                    if let Some(cut) = presentation_cut(presentation, incidence, selected_start) {
+                    if let Some(cut) =
+                        presentation_cut(data, presentation, incidence, selected_outer_start)
+                    {
                         result.presentation.insert(cut);
                     }
                     if side != 0 {
@@ -591,11 +673,13 @@ pub(crate) fn resolve(
         // only genuine event cuts, never interior expansion/grapheme cuts.
         for incidence in &incidences {
             if incidence.participant < selected_start
-                || incidence.participant >= data.tables.boundaries[request.end.index].participant
+                || incidence.participant
+                    >= data.tables.boundaries[request.end.index].source_participant
             {
                 continue;
             }
-            if let Some(cut) = presentation_cut(presentation, *incidence, selected_start)
+            if let Some(cut) =
+                presentation_cut(data, presentation, *incidence, selected_outer_start)
                 && assignment.atoms.start <= cut
                 && cut <= assignment.atoms.end
                 && known

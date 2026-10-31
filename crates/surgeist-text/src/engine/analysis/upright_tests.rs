@@ -70,6 +70,7 @@ fn native(source: Source) -> ParagraphInput {
 }
 fn contextual(source: Source) -> ContextualSourceInput {
     ContextualSourceInput {
+        joint_flows: Vec::new(),
         scope_alignment_limits: None,
         origins: vec![origin(&source, Range::new(0, source.text().len()))],
         source,
@@ -81,6 +82,8 @@ fn contextual(source: Source) -> ContextualSourceInput {
         boundary_policies: vec![],
         replacements: vec![],
         scopes: vec![SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: SourceProcessingTopology::Unknown,
             used_direction: LTR,
@@ -166,7 +169,10 @@ fn used_ltr_is_executed_before_uba_while_computed_rtl_and_raw_properties_survive
                 horizontal.inner.analysis.infos[i].0.script
             );
         }
-        assert_eq!(analyzed.inner.direction.query(0, 5), Some((Some(0), true)));
+        assert_eq!(
+            analyzed.inner.direction.query_in(0, 0, 5),
+            Some((Some(0), true))
+        );
         assert_eq!(analyzed.identity(), analyzed.clone().identity());
         assert_ne!(analyzed.identity(), horizontal.identity());
         let equal = AnalyzedSource::new(original.clone(), style(), typography).unwrap();
@@ -202,7 +208,10 @@ fn literal_direction_instructions_keep_original_classes_and_invisibility_without
             assert!(!info.contributes_to_shaping());
         }
         assert!(analyzed.inner.paragraph.controls.is_empty());
-        assert_eq!(analyzed.inner.direction.query(0, 4), Some((Some(0), true)));
+        assert_eq!(
+            analyzed.inner.direction.query_in(0, 0, 4),
+            Some((Some(0), true))
+        );
     }
     let old = AnalyzedSource::from_paragraph(native(source("\u{202e}AB\u{202c}")), H).unwrap();
     assert_eq!(&old.inner.analysis.levels[1..3], [1, 1]);
@@ -279,7 +288,9 @@ fn captured_direction_instructions_keep_source_free_owners_pairing_and_chronolog
             .collect();
         assert_eq!(controls, [0, 1]);
         assert_eq!(
-            a.inner.direction.query(0, a.inner.logical.events.len()),
+            a.inner
+                .direction
+                .query_in(0, 0, a.inner.logical.events.len()),
             Some((Some(0), true))
         );
         if open == ParagraphControlKind::RightToLeftOverride {
@@ -303,13 +314,13 @@ fn source_bodies_and_terminal_empty_context_survive_strong_l_projection() {
         a.inner.analysis.infos[3].0.bidi_class,
         BidiClass::ParagraphSeparator
     );
-    assert_eq!(a.inner.direction.query(0, 2), Some((Some(0), true)));
-    assert_eq!(a.inner.direction.query(2, 4), Some((Some(0), true)));
-    assert_eq!(a.inner.direction.query(4, 4), Some((None, false)));
-    assert_eq!(a.inner.direction.query(0, 3), None);
+    assert_eq!(a.inner.direction.query_in(0, 0, 2), Some((Some(0), true)));
+    assert_eq!(a.inner.direction.query_in(0, 2, 4), Some((Some(0), true)));
+    assert_eq!(a.inner.direction.query_in(0, 4, 4), Some((None, false)));
+    assert_eq!(a.inner.direction.query_in(0, 0, 3), None);
     let empty = AnalyzedSource::new(source(""), style(), upright(RTL)).unwrap();
     zero_levels(&empty, 0);
-    assert_eq!(empty.inner.direction.query(0, 0), Some((None, false)));
+    assert_eq!(empty.inner.direction.query_in(0, 0, 0), Some((None, false)));
 }
 
 #[test]
@@ -333,11 +344,11 @@ fn consecutive_native_forces_retain_distinct_empty_body_and_terminal_custody() {
     assert_eq!(a.inner.analysis.control_levels, [0, 0, 0]);
     assert_eq!(a.source().text().code_units(), [65, 0x5d0]);
     assert_eq!(a.inner.logical.events.len(), 5);
-    assert_eq!(a.inner.direction.query(0, 2), Some((Some(0), true)));
-    assert_eq!(a.inner.direction.query(2, 3), Some((None, false)));
-    assert_eq!(a.inner.direction.query(3, 5), Some((Some(0), true)));
-    assert_eq!(a.inner.direction.query(5, 5), Some((None, false)));
-    assert_eq!(a.inner.direction.query(1, 4), None);
+    assert_eq!(a.inner.direction.query_in(0, 0, 2), Some((Some(0), true)));
+    assert_eq!(a.inner.direction.query_in(0, 2, 3), Some((None, false)));
+    assert_eq!(a.inner.direction.query_in(0, 3, 5), Some((Some(0), true)));
+    assert_eq!(a.inner.direction.query_in(0, 5, 5), Some((None, false)));
+    assert_eq!(a.inner.direction.query_in(0, 1, 4), None);
     assert_eq!(text_cuts(&a), [0, 3]);
 }
 
@@ -367,9 +378,9 @@ fn native_override_crossing_a_force_cannot_merge_bodies_or_affect_either_content
     let a = AnalyzedSource::from_paragraph(input, upright(RTL)).unwrap();
     zero_levels(&a, 2);
     assert_eq!(a.inner.analysis.control_levels, [0, 0, 0]);
-    assert_eq!(a.inner.direction.query(0, 3), Some((Some(0), true)));
-    assert_eq!(a.inner.direction.query(3, 5), Some((Some(0), true)));
-    assert_eq!(a.inner.direction.query(0, 5), None);
+    assert_eq!(a.inner.direction.query_in(0, 0, 3), Some((Some(0), true)));
+    assert_eq!(a.inner.direction.query_in(0, 3, 5), Some((Some(0), true)));
+    assert_eq!(a.inner.direction.query_in(0, 0, 5), None);
 }
 
 #[test]
@@ -444,6 +455,7 @@ fn actual_contextual_computed_edges_cut_used_bodies_without_inserting_source_tex
         ancestor_wrap: Wrap::Word,
     }];
     input.scopes.push(SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
         alignment_boundary: None,
         font_reference: None,
         trim: WhiteSpaceTrim::default(),
@@ -490,10 +502,10 @@ fn actual_contextual_computed_edges_cut_used_bodies_without_inserting_source_tex
     assert_eq!(a.source(), &original);
     assert!(a.inner.paragraph.controls.is_empty());
     assert_eq!(text_cuts(&a), [0, 2]);
-    assert_eq!(a.inner.direction.query(0, 2), Some((Some(0), true)));
-    assert_eq!(a.inner.direction.query(2, 4), Some((Some(0), true)));
-    assert_eq!(a.inner.direction.query(4, 4), Some((None, false)));
-    assert_eq!(a.inner.direction.query(0, 3), None);
+    assert_eq!(a.inner.direction.query_in(0, 0, 2), Some((Some(0), true)));
+    assert_eq!(a.inner.direction.query_in(0, 2, 4), Some((Some(0), true)));
+    assert_eq!(a.inner.direction.query_in(0, 4, 4), Some((None, false)));
+    assert_eq!(a.inner.direction.query_in(0, 0, 3), None);
 }
 
 #[test]
@@ -683,7 +695,10 @@ fn wrapping_derivation_preserves_actual_typography_body_and_source_with_new_pair
             derived.graphemes().collect::<Vec<_>>(),
             [Range::new(0, 1), Range::new(1, 2)]
         );
-        assert_eq!(derived.inner.direction.query(0, 2), Some((Some(0), true)));
+        assert_eq!(
+            derived.inner.direction.query_in(0, 0, 2),
+            Some((Some(0), true))
+        );
         assert!(
             derived
                 .wrapping_relations()
@@ -851,7 +866,7 @@ fn empty_physical_endpoint_scope_does_not_invent_strong_characters_or_source() {
     assert!(a.source().text().is_empty());
     assert!(text_cuts(&a).is_empty());
     assert_eq!(a.inner.logical.events.len(), 3);
-    assert_eq!(a.inner.direction.query(0, 3), Some((None, false)));
+    assert_eq!(a.inner.direction.query_in(0, 0, 3), Some((None, false)));
     assert_eq!(a.inner.analysis.control_levels, [0, 0]);
     assert_eq!(a.inner.paragraph.anchor_order.len(), 3);
 }

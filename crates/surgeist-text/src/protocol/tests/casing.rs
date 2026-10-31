@@ -65,6 +65,9 @@ fn split(p: &PreparedText, at: usize) -> (FinalizedLine, FinalizedLine) {
         unreachable!()
     };
     let offers = p
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &first.start,
             None,
@@ -195,6 +198,7 @@ fn authored_forced_origin_seam_stops_lithuanian_dot_removal_and_unit_context() {
         ]);
         let processed = Arc::new(
             crate::process_contextual_source(ContextualSourceInput {
+                joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 computed_line_boundaries: vec![],
                 source: source.clone(),
@@ -231,6 +235,8 @@ fn authored_forced_origin_seam_stops_lithuanian_dot_removal_and_unit_context() {
                 }],
                 replacements: Vec::new(),
                 scopes: vec![SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: SourceProcessingTopology::Complete,
                     used_direction: ParagraphBaseDirection::LeftToRight,
@@ -258,7 +264,19 @@ fn authored_forced_origin_seam_stops_lithuanian_dot_removal_and_unit_context() {
         );
         let correspondence = (0..analyzed.inner.transform.rows.len())
             .flat_map(|row| analyzed.inner.transform.original_pieces(row))
-            .map(|piece| (piece.origin, piece.aggregate, piece.local))
+            .map(|piece| {
+                (
+                    analyzed
+                        .inner
+                        .paragraph
+                        .origin_map
+                        .view_origin(piece.origin)
+                        .expect("original contribution belongs to this view")
+                        .get(),
+                    piece.aggregate,
+                    piece.local,
+                )
+            })
             .collect::<Vec<_>>();
         assert_eq!(
             correspondence,
@@ -576,6 +594,9 @@ fn expansion_preserves_normal_alphabetic_no_break_and_distinct_conditional_permi
         let start = p.boundary_views().next().unwrap().handle();
         let ceiling = p.opportunity_views().next().unwrap().handle();
         let offers = p
+            .source_segments()
+            .next()
+            .unwrap()
             .conditional_search(
                 &start,
                 None,
@@ -974,8 +995,14 @@ fn consecutive_greek_removals_retain_distinct_relation_cuts_and_exact_source() {
         p.analyzed_source().inner.transform.events(),
         [
             crate::transform::relation::RelationEvent::Text { atom: 0 },
-            crate::transform::relation::RelationEvent::Removal { row: 1 },
-            crate::transform::relation::RelationEvent::Removal { row: 2 },
+            crate::transform::relation::RelationEvent::Removal {
+                row: 1,
+                selection_part: _
+            },
+            crate::transform::relation::RelationEvent::Removal {
+                row: 2,
+                selection_part: _
+            },
         ]
     ));
     let line = p

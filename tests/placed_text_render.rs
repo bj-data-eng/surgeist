@@ -318,6 +318,7 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
     let analyzed = if contextual {
         let processed = std::sync::Arc::new(
             text::process_contextual_source(text::ContextualSourceInput {
+                joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 computed_line_boundaries: vec![],
                 source: source.clone(),
@@ -330,6 +331,8 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
                 replacements: vec![],
                 scopes: vec![
                     text::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
                         font_reference: None,
                         topology: text::SourceProcessingTopology::Unknown,
                         used_direction: text::ParagraphBaseDirection::LeftToRight,
@@ -337,6 +340,7 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
                         base_style: style,
                     },
                     text::SourceProcessingScope::Inline {
+                        horizontal_inner_direction: None,
                         alignment_boundary: None,
                         font_reference: None,
                         style: None,

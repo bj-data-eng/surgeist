@@ -205,6 +205,7 @@ fn fixture(case: Case<'_>) -> Fixture {
         use text::SourceProcessingEvent as E;
         let processed = Arc::new(
             text::process_contextual_source(text::ContextualSourceInput {
+                joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 computed_line_boundaries: vec![],
                 source,
@@ -217,6 +218,8 @@ fn fixture(case: Case<'_>) -> Fixture {
                 replacements: vec![],
                 scopes: vec![
                     text::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
                         font_reference: None,
                         topology: text::SourceProcessingTopology::Unknown,
                         trim: text::WhiteSpaceTrim::default(),
@@ -224,6 +227,7 @@ fn fixture(case: Case<'_>) -> Fixture {
                         used_direction: direction,
                     },
                     text::SourceProcessingScope::Inline {
+                        horizontal_inner_direction: None,
                         alignment_boundary: None,
                         font_reference: None,
                         style: None,
@@ -782,6 +786,7 @@ fn collapsed_sibling_space_permission_controls_actual_narrow_layout() {
             use text::SourceProcessingEvent as E;
             let processed = Arc::new(
                 text::process_contextual_source(text::ContextualSourceInput {
+                    joint_flows: Vec::new(),
                     scope_alignment_limits: None,
                     computed_line_boundaries: vec![],
                     source: source.clone(),
@@ -803,6 +808,8 @@ fn collapsed_sibling_space_permission_controls_actual_narrow_layout() {
                     replacements: vec![],
                     scopes: vec![
                         text::SourceProcessingScope::Block {
+                            writing_axis: None,
+                            horizontal_inner_direction: None,
                             font_reference: None,
                             topology: text::SourceProcessingTopology::Unknown,
                             trim: text::WhiteSpaceTrim::default(),
@@ -810,6 +817,7 @@ fn collapsed_sibling_space_permission_controls_actual_narrow_layout() {
                             used_direction: text::ParagraphBaseDirection::LeftToRight,
                         },
                         text::SourceProcessingScope::Inline {
+                            horizontal_inner_direction: None,
                             alignment_boundary: None,
                             font_reference: None,
                             trim: text::WhiteSpaceTrim::default(),
@@ -817,6 +825,7 @@ fn collapsed_sibling_space_permission_controls_actual_narrow_layout() {
                             boundaries: None,
                         },
                         text::SourceProcessingScope::Inline {
+                            horizontal_inner_direction: None,
                             alignment_boundary: None,
                             font_reference: None,
                             trim: text::WhiteSpaceTrim::default(),

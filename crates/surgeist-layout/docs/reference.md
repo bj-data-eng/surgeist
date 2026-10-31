@@ -282,7 +282,15 @@ unsupported producer named authority.
 Prepared Text participation carries actual issued origin, atomic, control and scope
 handles. Capture validates complete inventories against the same borrowed tree;
 equal characters from another preparation cannot replace that basis. Layout
-selects actual issued break opportunities and alternatives, then consumes Text's
+retains one `TextParagraphBinding` per complete analyzed output. Its `nodes`
+inventory contains all participating nodes in order, including native windows
+separated by actual child blocks. Text-issued source segments identify those
+windows and metadata-only gaps; raw member seams create no native run. Layout
+completes the segments into one placed output while traversing child blocks
+independently. Independent preparations cannot split one uninterrupted native
+run; admission returns `RunMembership` for that unsupported association.
+
+Layout selects actual issued break opportunities and alternatives, then consumes Text's
 finalized metrics, fragments, control slots, and atomic slots. At a discretionary
 endpoint it tries alternatives in declaration order and uses the first that fits;
 it keeps the first alternative when an indivisible candidate must overflow.

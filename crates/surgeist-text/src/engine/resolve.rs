@@ -73,7 +73,7 @@ pub(crate) fn analyze_styles(
     source: &Source,
     spans: &[crate::source_model::ValidatedSpan],
     default_style: &ValidatedStyle,
-    paragraph: &crate::protocol::paragraph::ParagraphData,
+    paragraph: &crate::protocol::paragraph::ParagraphContext,
 ) -> Vec<AnalyzedStyleRun> {
     let extent = paragraph.extent_in(source);
     let mut boundaries = vec![extent.start, extent.end];
@@ -86,10 +86,7 @@ pub(crate) fn analyze_styles(
     let mut result: Vec<AnalyzedStyleRun> = Vec::new();
     for endpoints in boundaries.windows(2) {
         for range in paragraph.intersections(Range::new(endpoints[0], endpoints[1])) {
-            let style = spans
-                .iter()
-                .rev()
-                .find(|span| span.range().start <= range.start && span.range().end >= range.end)
+            let style = winning_span(spans, range, |span| span.range())
                 .map_or(default_style, |span| span.style());
             // A transparent child hole contributes no parent style transition.
             // Equal actual styles therefore retain one shaping row across it;
@@ -116,6 +113,19 @@ pub(crate) fn analyze_styles(
         });
     }
     result
+}
+
+/// Authored order is the one source-span winner rule. A transform-only reader
+/// borrows the winner without executing unrelated font or paint admission.
+pub(crate) fn winning_span<T>(
+    spans: &[T],
+    range: Range,
+    extent: impl Fn(&T) -> Range,
+) -> Option<&T> {
+    spans.iter().rev().find(|span| {
+        let own = extent(span);
+        own.start <= range.start && own.end >= range.end
+    })
 }
 
 pub(crate) fn resolve(
@@ -526,7 +536,12 @@ fn scaled(value: f32, scale: f32, positive: bool, field: &'static str) -> Result
     Ok(result)
 }
 
-fn scaled_logical(value: f64, scale: f32, positive: bool, field: &'static str) -> Result<f64> {
+pub(in crate::engine) fn scaled_logical(
+    value: f64,
+    scale: f32,
+    positive: bool,
+    field: &'static str,
+) -> Result<f64> {
     let result = value * f64::from(scale);
     let category = if !result.is_finite() {
         Some(TextNumericError::NonFinite)

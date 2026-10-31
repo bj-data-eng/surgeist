@@ -71,6 +71,8 @@ impl Case {
             2
         };
         let mut scopes = vec![text::SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
             font_reference: None,
             topology: text::SourceProcessingTopology::Complete,
             trim: Default::default(),
@@ -79,6 +81,7 @@ impl Case {
         }];
         for _ in 0..count {
             scopes.push(text::SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
                 alignment_boundary: None,
                 font_reference: None,
                 trim: Default::default(),
@@ -133,6 +136,7 @@ impl Case {
         ]);
         let processed = Arc::new(
             text::process_contextual_source(text::ContextualSourceInput {
+                joint_flows: Vec::new(),
                 scope_alignment_limits: None,
                 source,
                 segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -662,7 +666,14 @@ fn custody_case<S: LayoutScalar>() {
             text::CapturedScopeIncidence::AtAfter,
         ]) {
             let boundary = offer.view().boundary();
-            let incidences = f.binding.prepared.boundary_incidences(&boundary).unwrap();
+            let mut source_segments = f.binding.prepared.source_segments();
+            let source_segment = source_segments.next().expect("fixture source segment");
+            assert_eq!(source_segments.count(), 0, "one structural fixture segment");
+            let incidences = f
+                .binding
+                .prepared
+                .boundary_incidences(&source_segment, &boundary)
+                .unwrap();
             assert_eq!(incidences.len(), 1);
             assert_eq!(incidences[0].boundary(), boundary);
             assert_eq!(
@@ -1112,6 +1123,7 @@ fn pinned_after_s(direction: Direction) -> Case {
     source.span(text::Range::new(0, 2), style.clone());
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source,
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -1146,6 +1158,8 @@ fn pinned_after_s(direction: Direction) -> Case {
             }],
             scopes: vec![
                 text::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: text::SourceProcessingTopology::Complete,
                     trim: Default::default(),
@@ -1153,6 +1167,7 @@ fn pinned_after_s(direction: Direction) -> Case {
                     used_direction: base,
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),
@@ -1160,6 +1175,7 @@ fn pinned_after_s(direction: Direction) -> Case {
                     boundaries: None,
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),
@@ -1234,7 +1250,12 @@ fn pinned_after_s(direction: Direction) -> Case {
         .unwrap();
     assert!(force.computed_line_boundary().is_some());
     let boundary = force.boundary();
-    let incidences = prepared.boundary_incidences(&boundary).unwrap();
+    let mut source_segments = prepared.source_segments();
+    let source_segment = source_segments.next().expect("fixture source segment");
+    assert_eq!(source_segments.count(), 0, "one structural fixture segment");
+    let incidences = prepared
+        .boundary_incidences(&source_segment, &boundary)
+        .unwrap();
     assert_eq!(incidences.len(), 1);
     assert_eq!(
         prepared
@@ -1409,7 +1430,14 @@ fn actual_control_alignment<S: LayoutScalar>() {
             text::CapturedScopeIncidence::AtAfter,
         ]) {
             let boundary = offer.view().boundary();
-            let incidences = f.binding.prepared.boundary_incidences(&boundary).unwrap();
+            let mut source_segments = f.binding.prepared.source_segments();
+            let source_segment = source_segments.next().expect("fixture source segment");
+            assert_eq!(source_segments.count(), 0, "one structural fixture segment");
+            let incidences = f
+                .binding
+                .prepared
+                .boundary_incidences(&source_segment, &boundary)
+                .unwrap();
             assert_eq!(incidences.len(), 1);
             assert_eq!(incidences[0].boundary(), boundary);
             assert_eq!(
@@ -1595,6 +1623,7 @@ fn realization_case(direction: Direction, force: bool) -> Case {
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source,
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -1637,6 +1666,8 @@ fn realization_case(direction: Direction, force: bool) -> Case {
             }],
             scopes: vec![
                 text::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: text::SourceProcessingTopology::Complete,
                     trim: Default::default(),
@@ -1644,6 +1675,7 @@ fn realization_case(direction: Direction, force: bool) -> Case {
                     used_direction: base,
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),
@@ -1651,6 +1683,7 @@ fn realization_case(direction: Direction, force: bool) -> Case {
                     boundaries: None,
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),
@@ -1705,7 +1738,12 @@ fn realization_case(direction: Direction, force: bool) -> Case {
     let offer = prepared.opportunity_views().next().unwrap();
     assert_eq!(offer.computed_line_boundary().is_some(), force);
     let boundary = offer.boundary();
-    let incidences = prepared.boundary_incidences(&boundary).unwrap();
+    let mut source_segments = prepared.source_segments();
+    let source_segment = source_segments.next().expect("fixture source segment");
+    assert_eq!(source_segments.count(), 0, "one structural fixture segment");
+    let incidences = prepared
+        .boundary_incidences(&source_segment, &boundary)
+        .unwrap();
     let relations = incidences
         .iter()
         .map(|i| {
@@ -2001,6 +2039,7 @@ fn exterior_case(direction: Direction, trailing: bool) -> Case {
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
             scope_alignment_limits: None,
             source,
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -2036,6 +2075,8 @@ fn exterior_case(direction: Direction, trailing: bool) -> Case {
             }],
             scopes: vec![
                 text::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
                     font_reference: None,
                     topology: text::SourceProcessingTopology::Complete,
                     trim: Default::default(),
@@ -2043,6 +2084,7 @@ fn exterior_case(direction: Direction, trailing: bool) -> Case {
                     used_direction: base,
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
                     alignment_boundary: None,
                     font_reference: None,
                     trim: Default::default(),
@@ -2109,7 +2151,12 @@ fn exterior_case(direction: Direction, trailing: bool) -> Case {
         exterior.view().participant_offset(),
         if trailing { 2 } else { 0 }
     );
-    let incidences = prepared.boundary_incidences(&exterior).unwrap();
+    let mut source_segments = prepared.source_segments();
+    let source_segment = source_segments.next().expect("fixture source segment");
+    assert_eq!(source_segments.count(), 0, "one structural fixture segment");
+    let incidences = prepared
+        .boundary_incidences(&source_segment, &exterior)
+        .unwrap();
     assert_eq!(
         incidences
             .iter()
@@ -2124,7 +2171,9 @@ fn exterior_case(direction: Direction, trailing: bool) -> Case {
         ]
     );
     let soft = prepared.opportunity_views().next().unwrap().boundary();
-    let soft_incidences = prepared.boundary_incidences(&soft).unwrap();
+    let soft_incidences = prepared
+        .boundary_incidences(&source_segment, &soft)
+        .unwrap();
     assert_eq!(soft_incidences.len(), 1);
     assert_eq!(
         prepared
@@ -2286,7 +2335,14 @@ fn nested_auto_coupling<S: LayoutScalar>() {
             .find(|o| o.kind() == text::PreparedBreakKind::Allowed)
             .unwrap()
             .boundary();
-        let incidences = f.binding.prepared.boundary_incidences(&soft).unwrap();
+        let mut source_segments = f.binding.prepared.source_segments();
+        let source_segment = source_segments.next().expect("fixture source segment");
+        assert_eq!(source_segments.count(), 0, "one structural fixture segment");
+        let incidences = f
+            .binding
+            .prepared
+            .boundary_incidences(&source_segment, &soft)
+            .unwrap();
         use text::CapturedScopeIncidence as R;
         assert_eq!(
             incidences

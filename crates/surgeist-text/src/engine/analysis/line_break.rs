@@ -177,7 +177,7 @@ impl<'a> BreakAll<'a> {
         // boundary may intersect an EGC but cannot change its CSS properties.
         let first = graphemes.partition_point(|egc| egc.end <= component.start);
         let last = graphemes.partition_point(|egc| egc.start < component.end);
-        for unit in units.ranges(&graphemes[first..last]) {
+        for unit in units.content_ranges(&graphemes[first..last]) {
             let egc = &graphemes[graphemes.partition_point(|egc| egc.start < unit.start)];
             let atoms = &projection.atoms[egc.clone()];
             let base = unit_properties::base(atoms).expect("a complete TCU has a base");
@@ -894,7 +894,7 @@ mod tests {
             &styles,
             LineRules {
                 policies: &policies(&styles).unwrap(),
-                units: &super::super::line_units::LineBreakUnits::new(&projection).unwrap(),
+                units: &super::super::line_units::LineBreakUnits::new(&projection, None).unwrap(),
                 graphemes: &graphemes(&projection),
             },
             &offsets,
@@ -1064,7 +1064,8 @@ mod tests {
                 &styles,
                 LineRules {
                     policies: &policies(&styles).unwrap(),
-                    units: &super::super::line_units::LineBreakUnits::new(&projection).unwrap(),
+                    units: &super::super::line_units::LineBreakUnits::new(&projection, None)
+                        .unwrap(),
                     graphemes: &graphemes(&projection),
                 },
                 &offsets,
@@ -1114,7 +1115,8 @@ mod tests {
                 &styles,
                 LineRules {
                     policies: &policies(&styles).unwrap(),
-                    units: &super::super::line_units::LineBreakUnits::new(&projection).unwrap(),
+                    units: &super::super::line_units::LineBreakUnits::new(&projection, None)
+                        .unwrap(),
                     graphemes: &graphemes(&projection),
                 },
                 &offsets,

@@ -124,6 +124,15 @@ fn select(prepared: &PreparedText, alternative: Option<PreparedAlternative>) -> 
     };
     prepared
         .select(LineSelectionRequest {
+            segment: {
+                let mut segments = prepared.source_segments();
+                assert_eq!(
+                    segments.len(),
+                    1,
+                    "this fixture has one genuine source segment"
+                );
+                segments.next().unwrap()
+            },
             boundary_context: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),

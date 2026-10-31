@@ -495,6 +495,7 @@ fn finish(
         })
         .collect();
     p.select(t::LineSelectionRequest {
+        segment: p.source_segments().next().unwrap(),
         start,
         end: boundary,
         participants,

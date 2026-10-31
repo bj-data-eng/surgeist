@@ -123,7 +123,8 @@ fn every_final_ic_endpoint_was_covered(selected: &SelectedLine) {
     for (edge, boundary) in basis.characters.boundaries.iter().enumerate() {
         let movement = basis
             .characters
-            .movement_geometry(edge, &basis.shaped.character_invocations);
+            .movement_geometry(edge, &basis.shaped.character_invocations, &mut None)
+            .unwrap();
         if matches!(
             movement,
             crate::SpacingBoundaryGeometry::ProtectedRequired

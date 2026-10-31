@@ -1,7 +1,9 @@
 //! Operation-local allocation accounting for scope finalization and replay.
 //! Native input resources stay with their retained owner. Every new buffer is
 //! reserved before mutation; dropped scratch releases bytes, never record work.
-use crate::engine::layout::data::{OrdinalMap, PreparedRun, ShapedData};
+use crate::engine::layout::data::{
+    CellArenaOwnership, CellPayload, OrdinalMap, PreparedCell, PreparedRun, ShapedData,
+};
 use crate::processing::contextual::alignment::ScopeAlignmentBudget;
 use crate::{Result, ScopeAlignmentError, ScopeAlignmentLimitKind};
 
@@ -29,6 +31,148 @@ pub(crate) fn header<T>(ledger: &mut Ledger) -> Result<()> {
     }
     Ok(())
 }
+/// The Cell-created outer item arena has one persistent header and one actual
+/// shared backing. Prepared body payloads otherwise retain native ownership.
+pub(crate) fn visit_cell_items(
+    shaped: &ShapedData,
+    visit: &mut super::census::AllocationVisitor<'_>,
+) -> Result<()> {
+    use super::census::AllocationWitness as W;
+    visit(W::object(&shaped.items, 0))?;
+    visit(W::buffer(&shaped.items, shaped.items.len())?)
+}
+
+/// Actual payload backings, excluding the separately built outer item arena.
+/// Coordinate headers are embedded in the run backing; only their buffers are
+/// additional allocations. A consuming rebuild can move those funded buffers
+/// while releasing only its drained old outer vectors.
+pub(crate) fn visit_cell_payload_arenas(
+    shaped: &ShapedData,
+    visit: &mut super::census::AllocationVisitor<'_>,
+) -> Result<()> {
+    use super::census::AllocationWitness as W;
+    visit(W::object(&shaped.runs, 0))?;
+    visit(W::buffer(&shaped.runs, shaped.runs.len())?)?;
+    for run in &shaped.runs {
+        visit(W::buffer(&run.coords, run.coords.len())?)?;
+    }
+    visit(W::object(&shaped.clusters, 0))?;
+    visit(W::buffer(&shaped.clusters, shaped.clusters.len())?)?;
+    visit(W::object(&shaped.glyphs, 0))?;
+    visit(W::buffer(&shaped.glyphs, shaped.glyphs.len())?)?;
+    visit(W::object(&shaped.provider_groups, 0))?;
+    visit(W::buffer(
+        &shaped.provider_groups,
+        shaped.provider_groups.len(),
+    )?)?;
+    Ok(())
+}
+
+/// Canonical selected Cell ownership inventory. Once Cell copies enter these
+/// arenas, each whole shared allocation is owned, including ordinary rows that
+/// already occupy its capacity.
+pub(crate) fn visit_cell_arenas(
+    shaped: &ShapedData,
+    visit: &mut super::census::AllocationVisitor<'_>,
+) -> Result<()> {
+    visit_cell_payload_arenas(shaped, visit)?;
+    visit_cell_items(shaped, visit)
+}
+
+/// The one canonical winning DI map is shared by replay, rather than cloned
+/// into a second tree or retained as an overlay of rejected invocations.
+pub(crate) fn visit_cell_exclusions(
+    shaped: &ShapedData,
+    visit: &mut super::census::AllocationVisitor<'_>,
+) -> Result<()> {
+    use super::census::AllocationWitness as W;
+    visit(W::object(shaped.character_exclusions.as_ref(), 0))?;
+    visit(W::buffer(
+        &shaped.character_exclusions.rows,
+        shaped.character_exclusions.rows.len(),
+    )?)
+}
+
+fn admit_allocations(
+    ledger: &mut Ledger,
+    emit: impl FnOnce(&mut super::census::AllocationVisitor<'_>) -> Result<()>,
+) -> Result<()> {
+    let Some(budget) = ledger else { return Ok(()) };
+    emit(&mut |allocation| {
+        let inspections = allocation.records().checked_add(1).ok_or_else(|| {
+            super::refusal(ScopeAlignmentError::Overflow {
+                kind: ScopeAlignmentLimitKind::StructuralWork,
+            })
+        })?;
+        budget.work(inspections)?;
+        budget.add_records(allocation.records())?;
+        budget.retain_bytes(allocation.payload_bytes())
+    })
+}
+
+/// Adopt the live native normal payload at the first actual width-trial
+/// operation. This includes old/new reconstruction coexistence and remains
+/// owned when qualified negative trials choose compressed normal output.
+/// Normal-fit preparation never enters this transition.
+pub(crate) fn adopt_prepared_cell_arenas(
+    ledger: &mut Ledger,
+    scopes: &super::PreparedScopes,
+    shaped: &mut ShapedData,
+) -> Result<()> {
+    if shaped.cell_arenas == CellArenaOwnership::Owned {
+        return Ok(());
+    }
+    if ledger.is_none() {
+        return Err(super::refusal(ScopeAlignmentError::LimitsRequired));
+    }
+    admit_allocations(ledger, |visit| {
+        visit_cell_payload_arenas(shaped, visit)?;
+        visit_cell_exclusions(shaped, visit)
+    })?;
+    let budget = ledger.as_mut().expect("admitted cell width ledger");
+    for (index, run) in shaped.runs.iter().enumerate() {
+        budget.work(1)?;
+        let bytes = run.font.bytes();
+        let mut pinned = false;
+        for metric in &scopes.metrics {
+            budget.work(1)?;
+            let other = metric.font.bytes();
+            if bytes.as_ptr() == other.as_ptr() && bytes.len() == other.len() {
+                pinned = true;
+                break;
+            }
+        }
+        if !pinned {
+            for previous in &shaped.runs[..index] {
+                budget.work(1)?;
+                let other = previous.font.bytes();
+                if bytes.as_ptr() == other.as_ptr() && bytes.len() == other.len() {
+                    pinned = true;
+                    break;
+                }
+            }
+        }
+        if !pinned {
+            budget.retain_bytes(bytes.len())?;
+        }
+    }
+    shaped.cell_arenas = CellArenaOwnership::Owned;
+    Ok(())
+}
+
+/// Selected ordinary payload arenas already have their existing admission.
+/// Width-cell reuse additionally adopts its actual winning DI map once.
+pub(crate) fn adopt_cell_exclusions(ledger: &mut Ledger, shaped: &ShapedData) -> Result<()> {
+    admit_allocations(ledger, |visit| visit_cell_exclusions(shaped, visit))
+}
+
+/// Transfer the actual existing selected shared arenas to Cell ownership once,
+/// before their first Cell copy or growth. Subsequent mutation uses reserve/push
+/// on this same ledger; no capacity that preceded adoption is debited unfunded.
+pub(crate) fn adopt_cell_arenas(ledger: &mut Ledger, shaped: &ShapedData) -> Result<()> {
+    admit_allocations(ledger, |visit| visit_cell_arenas(shaped, visit))
+}
+
 pub(crate) fn reserve_vec<T>(
     ledger: &mut Ledger,
     values: &mut Vec<T>,
@@ -115,6 +259,39 @@ pub(crate) fn clone_run(ledger: &mut Ledger, row: &PreparedRun) -> Result<Prepar
         metrics: row.metrics,
     })
 }
+fn clone_cell(ledger: &mut Ledger, row: &PreparedCell) -> Result<PreparedCell> {
+    work(ledger, 1)?;
+    let payload = match &row.payload {
+        CellPayload::NoProviderInput => CellPayload::NoProviderInput,
+        CellPayload::Shaped {
+            runs,
+            clusters,
+            glyphs,
+            scope_relations,
+            advance,
+            positions,
+            frame,
+        } => CellPayload::Shaped {
+            runs: runs.clone(),
+            clusters: clusters.clone(),
+            glyphs: glyphs.clone(),
+            scope_relations: scope_relations.clone(),
+            advance: advance.clone(),
+            positions: clone_vec(ledger, positions)?,
+            frame: *frame,
+        },
+    };
+    Ok(PreparedCell {
+        binding: row.binding,
+        metrics: row.metrics,
+        level: row.level,
+        extent: row.extent,
+        advance: row.advance,
+        before: row.before,
+        after: row.after,
+        payload,
+    })
+}
 pub(crate) fn clone_shaped(ledger: &mut Ledger, source: &ShapedData) -> Result<ShapedData> {
     header::<ShapedData>(ledger)?;
     let mut runs = Vec::new();
@@ -169,7 +346,18 @@ pub(crate) fn clone_shaped(ledger: &mut Ledger, source: &ShapedData) -> Result<S
         };
         push(ledger, &mut word_spacing, row)?;
     }
+    let mut cells = Vec::new();
+    for row in &source.cells {
+        let row = clone_cell(ledger, row)?;
+        push(ledger, &mut cells, row)?;
+    }
     Ok(ShapedData {
+        character_gap_ownership: if ledger.is_some() {
+            crate::engine::spacing::character::GapArenaOwnership::Funded
+        } else {
+            crate::engine::spacing::character::GapArenaOwnership::Native
+        },
+        cell_arenas: source.cell_arenas,
         scope_glyph_custody: clone_vec(ledger, &source.scope_glyph_custody)?,
         scope_relations: clone_vec(ledger, &source.scope_relations)?,
         // Font-query witnesses remain in the immutable selected basis. Geometry
@@ -188,6 +376,7 @@ pub(crate) fn clone_shaped(ledger: &mut Ledger, source: &ShapedData) -> Result<S
         },
         word_spacing,
         items: clone_vec(ledger, &source.items)?,
+        cells,
         empty_run: source
             .empty_run
             .as_ref()
@@ -227,6 +416,12 @@ pub(crate) fn drop_shaped(ledger: &mut Ledger, source: ShapedData) -> Result<()>
         for row in &source.word_spacing {
             include(bytes(&row.components)?)?;
         }
+        for row in &source.cells {
+            work(ledger, 1)?;
+            if let CellPayload::Shaped { positions, .. } = &row.payload {
+                include(bytes(positions)?)?;
+            }
+        }
         include(bytes(&source.scope_glyph_custody)?)?;
         include(bytes(&source.scope_relations)?)?;
         include(bytes(&source.runs)?)?;
@@ -238,6 +433,7 @@ pub(crate) fn drop_shaped(ledger: &mut Ledger, source: ShapedData) -> Result<()>
         include(bytes(&source.atomic_gaps.rows)?)?;
         include(bytes(&source.word_spacing)?)?;
         include(bytes(&source.items)?)?;
+        include(bytes(&source.cells)?)?;
         total
     } else {
         0
@@ -270,13 +466,34 @@ pub(crate) fn insert<T>(
     key: usize,
     value: T,
 ) -> Result<()> {
-    work(ledger, map.rows.len().saturating_add(1))?;
-    if map.get(&key).is_none() {
-        if let Some(budget) = ledger {
-            budget.add_records(1)?;
+    let found = crate::processing::contextual::alignment::operations::binary_search_by(
+        &map.rows,
+        ledger.as_mut(),
+        |row| row.0.cmp(&key),
+    )?;
+    match found {
+        Ok(index) => {
+            work(ledger, 1)?;
+            map.rows[index].1 = value;
         }
-        reserve_vec(ledger, &mut map.rows, 1)?;
+        Err(index) => {
+            if let Some(budget) = ledger {
+                budget.add_records(1)?;
+            }
+            reserve_vec(ledger, &mut map.rows, 1)?;
+            let moved = map
+                .rows
+                .len()
+                .checked_sub(index)
+                .and_then(|n| n.checked_add(1))
+                .ok_or_else(|| {
+                    super::refusal(ScopeAlignmentError::Overflow {
+                        kind: ScopeAlignmentLimitKind::StructuralWork,
+                    })
+                })?;
+            work(ledger, moved)?;
+            map.rows.insert(index, (key, value));
+        }
     }
-    map.insert(key, value);
     Ok(())
 }

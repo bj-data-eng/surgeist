@@ -229,15 +229,18 @@ fn conditional_identity_retains_box_alignment_without_freezing_candidate_geometr
     let start = p.boundary_views().next().unwrap().handle();
     let ceiling = p.opportunity_views().next().unwrap().handle();
     let query = |frame: &FinalizedLine| {
-        p.conditional_search(
-            &start,
-            None,
-            &ceiling,
-            ConditionalPurpose::Overflow,
-            &[],
-            Some(frame),
-        )
-        .unwrap()
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &start,
+                None,
+                &ceiling,
+                ConditionalPurpose::Overflow,
+                &[],
+                Some(frame),
+            )
+            .unwrap()
     };
     let a = query(&top);
     let equivalent = query(&top_again);

@@ -129,7 +129,10 @@ fn conditional(
     purpose: t::ConditionalPurpose,
 ) -> Vec<t::PreparedConditionalOpportunity> {
     let start = begin(p);
-    p.conditional_search(&start, None, &first_after(p, &start), purpose, &[], None)
+    p.source_segments()
+        .next()
+        .unwrap()
+        .conditional_search(&start, None, &first_after(p, &start), purpose, &[], None)
         .and_then(|search| search.begin(&[]))
         .map(|batch| batch.opportunities().to_vec())
         .unwrap()
@@ -189,6 +192,7 @@ fn finish(
         })
         .collect();
     p.select(t::LineSelectionRequest {
+        segment: p.source_segments().next().unwrap(),
         start,
         end,
         participants,
@@ -417,6 +421,9 @@ fn intrinsic_conditional_pieces_measure_one_cell_while_maximum_keeps_four() {
             loop {
                 let ceiling = first_after(&p, &start);
                 let offers = p
+                    .source_segments()
+                    .next()
+                    .unwrap()
                     .conditional_search(
                         &start,
                         None,
@@ -501,7 +508,10 @@ fn complete_phantom_disposition_authenticates_a_later_conditional_interval() {
             assert_eq!(first.view().boundary().view().source_after().get(), 1);
             let ceiling = terminal(&p);
             assert!(
-                p.conditional_search(&start, None, &ceiling, purpose, &[], None)
+                p.source_segments()
+                    .next()
+                    .unwrap()
+                    .conditional_search(&start, None, &ceiling, purpose, &[], None)
                     .and_then(|search| search.begin(&[]))
                     .map(|batch| batch.opportunities().to_vec())
                     .is_err(),
@@ -517,6 +527,9 @@ fn complete_phantom_disposition_authenticates_a_later_conditional_interval() {
             );
             assert!(!phantom.has_in_flow_content());
             let offers = p
+                .source_segments()
+                .next()
+                .unwrap()
                 .conditional_search(
                     &start,
                     None,
@@ -568,6 +581,7 @@ fn declared_tuple_survives_validation_source_spans_and_contextual_capture() {
             use t::SourceProcessingEvent as E;
             let processed = Arc::new(
                 t::process_contextual_source(t::ContextualSourceInput {
+                    joint_flows: Vec::new(),
                     scope_alignment_limits: None,
                     computed_line_boundaries: vec![],
                     source: request.source,
@@ -579,6 +593,8 @@ fn declared_tuple_survives_validation_source_spans_and_contextual_capture() {
                     boundary_policies: vec![],
                     replacements: vec![],
                     scopes: vec![t::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
                         font_reference: None,
                         topology: t::SourceProcessingTopology::Complete,
                         trim: t::WhiteSpaceTrim::default(),
@@ -609,7 +625,7 @@ fn declared_tuple_survives_validation_source_spans_and_contextual_capture() {
             .unwrap();
             let captured = prepare_analyzed(analyzed, t::Wrap::Word);
             assert_eq!(
-                captured.captured_paragraph().unwrap().domain().style(),
+                captured.captured_owner().unwrap().domain().style(),
                 Some(&base)
             );
             assert_eq!(captured.analyzed_source().style(), &base);

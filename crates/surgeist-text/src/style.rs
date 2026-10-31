@@ -264,6 +264,36 @@ impl HangingPunctuation {
     }
 }
 
+/// Computed text-combine-upright value, independent of font/provider output.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum TextCombineUpright {
+    #[default]
+    None,
+    All,
+    Digits(TextCombineUprightDigits),
+}
+
+/// The closed computed digit limit. A CSS producer resolves an omitted limit
+/// to Two; integers outside 2–4 cannot be represented by this native value.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum TextCombineUprightDigits {
+    Two,
+    Three,
+    Four,
+}
+
+impl TextCombineUprightDigits {
+    /// Maximum number of eligible combination-stage typographic units.
+    #[must_use]
+    pub const fn max_units(self) -> usize {
+        match self {
+            Self::Two => 2,
+            Self::Three => 3,
+            Self::Four => 4,
+        }
+    }
+}
+
 /// Resolved text style accepted by the text layout engine.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Style {
@@ -289,6 +319,9 @@ pub struct Style {
     pub wrap: Wrap,
     pub overflow_wrap: OverflowWrap,
     pub text_transform: TextTransform,
+    /// Effective combination declaration. Writing-axis and inner-direction
+    /// evidence belong to the actual captured source scopes, not font axes.
+    pub text_combine_upright: TextCombineUpright,
     pub word_space_transform: WordSpaceTransform,
     /// Defaults to Manual; Auto also permits Text's qualified en-US resource.
     pub hyphens: crate::Hyphens,
@@ -375,6 +408,7 @@ impl Default for Style {
             wrap: Wrap::Word,
             overflow_wrap: OverflowWrap::Normal,
             text_transform: TextTransform::none(),
+            text_combine_upright: TextCombineUpright::None,
             word_space_transform: WordSpaceTransform::None,
             tab_size: crate::TabSize::default(),
             hyphens: crate::Hyphens::Manual,
@@ -785,6 +819,11 @@ impl ValidatedStyle {
     #[must_use]
     pub fn text_transform(&self) -> TextTransform {
         self.authored.text_transform
+    }
+
+    #[must_use]
+    pub const fn text_combine_upright(&self) -> TextCombineUpright {
+        self.authored.text_combine_upright
     }
 
     pub(crate) const fn font_locale(&self) -> Option<Language> {
