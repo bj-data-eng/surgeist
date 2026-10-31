@@ -6,8 +6,7 @@
 //! on every element violates it.
 
 use surgeist_html_parser::{
-    HtmlDocumentParseRequest, HtmlParseLimits, HtmlParseResource, HtmlParseWorkCategory,
-    HtmlSource,
+    HtmlDocumentParseRequest, HtmlParseLimits, HtmlParseResource, HtmlParseWorkCategory, HtmlSource,
 };
 
 /// One element subtree with attributes, nested elements and two text nodes.
@@ -55,32 +54,36 @@ fn parse_work(repeats: usize) -> (u64, u64) {
 }
 
 #[test]
-fn doubling_the_document_at_most_doubles_total_and_reservation_work() {
-    // Linear work W(n) = a*n + b with b >= 0 satisfies W(2n) <= 2*W(n). Geometric
-    // vector growth keeps that bound: each vector's capacity sequence doubles
-    // from a fixed base, so its capacity for a document twice the size is at
-    // most twice as large, and the old-plus-new bytes charged per growth step
-    // are a fixed multiple of that capacity. A term growing as n^2 instead
-    // approaches a ratio of four.
+fn work_added_by_each_doubling_of_the_document_is_near_double_the_previous() {
+    // Let D(n) = W(2n) - W(n) be the work a doubling adds. Linear work
+    // W(n) = a*n + b gives D(n) = a*n, so D(2n) = 2*D(n) whatever the constant b
+    // is; quadratic work W(n) = c*n^2 gives D(2n) = 4*D(n). Three is the
+    // midpoint, so a quadratic term is rejected once it dominates the growth
+    // while geometric capacity steps, which vary the ratio around two, and
+    // the child-order walks that grow with one parent's fanout, a small share
+    // of the work, are tolerated.
+    const BOUND: u64 = 3;
     let sizes = [50_usize, 100, 200, 400];
     let measured: Vec<(u64, u64)> = sizes.iter().map(|&n| parse_work(n)).collect();
-    for (pair, window) in sizes.windows(2).zip(measured.windows(2)) {
-        let (small, large) = (window[0], window[1]);
-        assert!(
-            large.0 <= 2 * small.0,
-            "total work grew faster than linearly from {} to {} repeats: {} -> {}",
-            pair[0],
-            pair[1],
-            small.0,
-            large.0
-        );
-        assert!(
-            large.1 <= 2 * small.1,
-            "reservation work grew faster than linearly from {} to {} repeats: {} -> {}",
-            pair[0],
-            pair[1],
-            small.1,
-            large.1
-        );
+    for (name, pick) in [
+        (
+            "total work",
+            (|m: &(u64, u64)| m.0) as fn(&(u64, u64)) -> u64,
+        ),
+        ("reservation work", |m| m.1),
+    ] {
+        let work: Vec<u64> = measured.iter().map(pick).collect();
+        for (pair, window) in sizes.windows(3).zip(work.windows(3)) {
+            let (first, second) = (window[1] - window[0], window[2] - window[1]);
+            assert!(
+                second <= BOUND * first,
+                "{name} grew faster than linearly: doubling {} -> {} repeats added {first}, \
+                 doubling {} -> {} repeats added {second}",
+                pair[0],
+                pair[1],
+                pair[1],
+                pair[2],
+            );
+        }
     }
 }
