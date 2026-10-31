@@ -776,8 +776,8 @@ fn clamp_inner_size(size: Size, bounds: InnerSizeBounds) -> Size {
 }
 
 pub(crate) fn set_snapshot_size(snapshot: &mut WindowSnapshot, size: Size) -> Result<()> {
-    let metrics = snapshot.metrics();
-    let scale = metrics.scale_factor();
+    let existing = snapshot.metrics();
+    let scale = existing.scale_factor();
     let metrics = Metrics::from_physical_size(
         snapshot.id(),
         PhysicalSize {
@@ -785,8 +785,13 @@ pub(crate) fn set_snapshot_size(snapshot: &mut WindowSnapshot, size: Size) -> Re
             height: (size.height * scale).round().max(0.0) as u32,
         },
         scale,
-    )?
-    .with_outer_geometry(metrics.outer_position(), metrics.outer_size())?;
+    )?;
+    let outer_size = if metrics.physical_size() == existing.physical_size() {
+        existing.outer_size()
+    } else {
+        None
+    };
+    let metrics = metrics.with_outer_geometry(existing.outer_position(), outer_size)?;
     snapshot.set_metrics(metrics)
 }
 

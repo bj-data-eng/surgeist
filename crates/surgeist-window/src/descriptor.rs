@@ -542,6 +542,7 @@ pub struct WindowSnapshot {
     fullscreen: bool,
     theme: Option<Theme>,
     role: Role,
+    environment: crate::HostEnvironment,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -578,6 +579,7 @@ impl WindowSnapshot {
             fullscreen: false,
             theme: None,
             role: Role::Root,
+            environment: crate::HostEnvironment::default(),
         }
     }
 
@@ -595,7 +597,25 @@ impl WindowSnapshot {
             fullscreen: seed.fullscreen,
             theme: seed.theme,
             role: seed.role,
+            environment: crate::HostEnvironment::default(),
         }
+    }
+
+    /// Adds coherent host observations to this snapshot.
+    #[must_use]
+    pub fn with_environment(mut self, environment: crate::HostEnvironment) -> Self {
+        self.environment = environment;
+        self
+    }
+
+    /// Returns baseline host observations; missing facts remain explicit.
+    #[must_use]
+    pub const fn environment(&self) -> &crate::HostEnvironment {
+        &self.environment
+    }
+
+    pub(crate) fn set_environment(&mut self, environment: crate::HostEnvironment) {
+        self.environment = environment;
     }
 
     /// Adds an optional live lookup/uniqueness label to this snapshot.
@@ -715,13 +735,23 @@ impl WindowSnapshot {
             .with_id(metrics_id));
         }
 
+        if self.metrics != metrics {
+            // These observations belong to the prior complete geometry basis.
+            // A producer can supply a fresh capture with the same transition.
+            self.environment.native_scale = None;
+            self.environment.page_zoom = None;
+            self.environment.output = crate::OutputDevice::Unavailable;
+            self.environment.screen = None;
+            self.environment.viewport = None;
+            self.environment.client_area = None;
+            self.environment.blending = None;
+        }
         self.metrics = metrics;
         Ok(())
     }
 
     pub(crate) fn set_position(&mut self, position: Option<Point>) -> Result<()> {
-        self.metrics = self.metrics.clone().with_outer_position(position)?;
-        Ok(())
+        self.set_metrics(self.metrics.clone().with_outer_position(position)?)
     }
 
     pub(crate) const fn set_focused(&mut self, focused: bool) {

@@ -61,6 +61,13 @@ pub enum EventKind {
         /// Observed appearance, or `None` when the host supplies no preference.
         theme: Option<Theme>,
     },
+    /// Produced after coherent host observations have committed.
+    EnvironmentChanged {
+        /// Identity of the affected window.
+        id: Id,
+        /// Complete baseline host observations after the change.
+        environment: crate::HostEnvironment,
+    },
     /// Produced by lossless native file-drag transitions.
     FileDrag(FileDragEvent),
     /// Produced by typed native input lowering.
@@ -80,7 +87,8 @@ impl EventKind {
             Self::Focused { id, .. }
             | Self::Moved { id, .. }
             | Self::Occluded { id, .. }
-            | Self::ThemeChanged { id, .. } => *id,
+            | Self::ThemeChanged { id, .. }
+            | Self::EnvironmentChanged { id, .. } => *id,
             Self::Resized(metrics) | Self::ScaleFactorChanged(metrics) => metrics.id(),
             Self::FileDrag(event) => event.id(),
             Self::Input(event) => event.id(),
