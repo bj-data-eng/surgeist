@@ -1585,12 +1585,19 @@ fn captured_effect_owner() -> (
 
 #[test]
 fn captured_current_frame_survives_stops_before_and_after_identity_clone_admission() {
-    for after_provider in [false, true] {
-        let (mut c, mut owner, document) = captured_effect_owner();
-        let storage = owner.active_mut().unwrap();
-        storage
+    // The work a complete drain needs is measured from an unconstrained
+    // drain. Every smaller budget stops somewhere inside it, so the contract
+    // is checked at each reachable stop instead of at offsets computed from
+    // the frame's layout. The identity clone is a provider call: whether a
+    // stop came before or after its admission is read from that count.
+    let start = |c: &mut ParseControl,
+                 owner: &mut ParserArenaSession,
+                 document: &crate::HtmlCaptureDocumentId| {
+        owner
+            .active_mut()
+            .unwrap()
             .start_effect(
-                &mut c,
+                c,
                 EffectFrame::AdoptSubtree {
                     root: 0,
                     next: None,
@@ -1598,38 +1605,98 @@ fn captured_current_frame_survives_stops_before_and_after_identity_clone_admissi
                 },
             )
             .unwrap();
-        // Two header visits and the complete frame layout precede the clone.
-        // The next cut admits the clone but refuses its publication receiver.
-        let credit = 2 + mem::size_of::<EffectFrame>() as u64 + u64::from(after_provider);
-        let remaining =
-            limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, remaining - credit)
-            .unwrap();
-        let error = storage.drain_construction_effects(&mut c).unwrap_err();
-        let first = c.stop().unwrap();
-        assert_eq!(error, SessionError::Stop(first));
-        assert!(matches!(storage.effects.current.as_ref(),
-            Some(EffectFrame::AdoptSubtree { next: None, document: DocumentRef::Captured(id), .. }) if id == &document));
-        assert!(storage.effects.transfer.is_none());
+    };
+    let needed = {
+        let (mut c, mut owner, document) = captured_effect_owner();
+        start(&mut c, &mut owner, &document);
+        let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
+        let storage = owner.active_mut().unwrap();
+        storage.drain_construction_effects(&mut c).unwrap();
+        assert!(storage.effects.current.is_none());
+        let needed = c.usage().resource(HtmlParseResource::WorkCredits).current - before;
+        assert!(c.usage().work(WorkCategory::ProviderCall) > 0);
         owner.release(&mut c).unwrap();
         storage_zero(&c);
-        assert_eq!(c.stop(), Some(first));
+        needed
+    };
+    assert!(needed > 2);
+    #[derive(Debug, Eq, PartialEq)]
+    enum Stopped {
+        /// The current frame is still owned with its captured identity.
+        BeforeClone,
+        AfterClone,
+        /// The frame was fully applied; only later bookkeeping was refused.
+        Applied,
     }
-    let (mut c, mut owner, document) = captured_effect_owner();
-    let storage = owner.active_mut().unwrap();
-    storage
-        .start_effect(
-            &mut c,
-            EffectFrame::AdoptSubtree {
-                root: 0,
+    let mut observed = Vec::new();
+    for remaining in 0..needed {
+        let (mut c, mut owner, document) = captured_effect_owner();
+        start(&mut c, &mut owner, &document);
+        let spare =
+            limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
+        c.charge(WorkCategory::StateStep, spare - remaining)
+            .unwrap();
+        let providers = c.usage().work(WorkCategory::ProviderCall);
+        let storage = owner.active_mut().unwrap();
+        let error = storage.drain_construction_effects(&mut c).unwrap_err();
+        let first = c.stop().unwrap();
+        assert_eq!(error, SessionError::Stop(first), "remaining {remaining}");
+        assert!(matches!(
+            first,
+            ParseStop::LimitExceeded {
+                resource: HtmlParseResource::WorkCredits,
+                ..
+            }
+        ));
+        // Nothing is ever half-transferred.
+        assert!(storage.effects.transfer.is_none(), "remaining {remaining}");
+        let stopped = match storage.effects.current.as_ref() {
+            Some(EffectFrame::AdoptSubtree {
                 next: None,
-                document: DocumentRef::Captured(document),
-            },
-        )
-        .unwrap();
+                document: DocumentRef::Captured(id),
+                ..
+            }) if id == &document => {
+                if c.usage().work(WorkCategory::ProviderCall) == providers {
+                    Stopped::BeforeClone
+                } else {
+                    Stopped::AfterClone
+                }
+            }
+            None => Stopped::Applied,
+            Some(_) => panic!("remaining {remaining}: the current frame changed"),
+        };
+        observed.push(stopped);
+        owner.release(&mut c).unwrap();
+        storage_zero(&c);
+        assert_eq!(c.stop(), Some(first), "remaining {remaining}");
+    }
+    // Stops advance through the drain in order and reach every stage: a
+    // larger budget never stops earlier.
+    assert_eq!(observed.first(), Some(&Stopped::BeforeClone));
+    assert!(observed.contains(&Stopped::AfterClone));
+    assert_eq!(observed.last(), Some(&Stopped::Applied));
+    let rank = |stopped: &Stopped| match stopped {
+        Stopped::BeforeClone => 0,
+        Stopped::AfterClone => 1,
+        Stopped::Applied => 2,
+    };
+    assert!(observed.windows(2).all(|w| rank(&w[0]) <= rank(&w[1])));
+
+    // The exact budget completes and leaves no current frame.
+    let (mut c, mut owner, document) = captured_effect_owner();
+    start(&mut c, &mut owner, &document);
+    let spare =
+        limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
+    c.charge(WorkCategory::StateStep, spare - needed).unwrap();
+    let storage = owner.active_mut().unwrap();
     storage.drain_construction_effects(&mut c).unwrap();
     assert!(storage.effects.current.is_none());
-    owner.release(&mut c).unwrap();
+    assert_eq!(c.stop(), None);
+    // The exact budget leaves nothing for release; a refused release latches
+    // the stop, after which cleanup is free.
+    if owner.release(&mut c).is_err() {
+        owner.release(&mut c).unwrap();
+    }
     storage_zero(&c);
 }
 
