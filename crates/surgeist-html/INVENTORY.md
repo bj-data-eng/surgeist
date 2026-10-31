@@ -653,9 +653,10 @@ URL validity or resource acquisition. A present sizes/imagesizes value is never
 certified: its source-size-list grammar is unvalidated, so the context author
 state stays unchecked unless a decisive violation makes it nonconforming. A
 complete sizes/imagesizes list parser, auto-size applicability, source-size
-selection and actual image candidate selection are not supplied by this report. CSS length/media expressions and
-environment require a source-qualified CSS/host consumer; their surrounding HTML
-list grammar/ordering remains HTML-owned work, not excused by CSS delegation.
+selection and actual image candidate selection are not supplied by this report.
+CSS length/media expressions and environment require a source-qualified CSS/host
+consumer; their surrounding HTML list grammar/ordering remains HTML-owned work,
+not excused by CSS delegation.
 
 ## Sandbox
 
