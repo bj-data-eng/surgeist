@@ -109,8 +109,10 @@ fn work_added_by_each_doubling_of_the_document_is_near_double_the_previous() {
 
 #[test]
 fn reservation_work_added_by_each_doubling_of_one_elements_attributes_is_near_double() {
+    // Larger counts than the other documents: the attribute vector's own share
+    // of the reserved bytes is small until the count is in the hundreds.
     assert_doublings_add_near_double(
-        [50, 100, 200, 400],
+        [200, 400, 800, 1600],
         |attributes| {
             let names: String = (0..attributes).map(|i| format!(" a{i}=v")).collect();
             format!("<!doctype html><div{names}></div>")
