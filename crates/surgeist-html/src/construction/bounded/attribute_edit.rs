@@ -903,19 +903,6 @@ fn minus(a: usize, b: usize) -> Result<usize, HtmlConstructionError> {
     a.checked_sub(b)
         .ok_or(HtmlConstructionError::ReleaseUnderflow)
 }
-fn units(attribute: &Attribute) -> Result<usize, HtmlConstructionError> {
-    let name = attribute.name();
-    plus(
-        plus(
-            plus(
-                name.local_name().len(),
-                name.prefix().map_or(0, DocumentString::len),
-            )?,
-            name.namespace().uri().map_or(0, DocumentString::len),
-        )?,
-        attribute.value().len(),
-    )
-}
 fn identical_name(left: &QualifiedName, right: &QualifiedName) -> bool {
     let namespace = match (left.namespace().uri(), right.namespace().uri()) {
         (None, None) => true,
@@ -1070,7 +1057,8 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                             return Err(HtmlConstructionError::CapacityMismatch);
                         }
                         s.usage.attributes = plus(s.usage.attributes, 1)?;
-                        s.usage.utf16_units = plus(s.usage.utf16_units, units(attribute)?)?;
+                        s.usage.utf16_units =
+                            plus(s.usage.utf16_units, attribute_units(attribute)?)?;
                         if matches!(
                             s.edit.mode,
                             HtmlConstructionAttributeEditMode::NamedMerge { .. }
@@ -1093,8 +1081,10 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                         let new = incoming
                             .as_ref()
                             .ok_or(HtmlConstructionError::CapacityMismatch)?;
-                        s.usage.utf16_units =
-                            plus(minus(s.usage.utf16_units, units(old)?)?, units(new)?)?;
+                        s.usage.utf16_units = plus(
+                            minus(s.usage.utf16_units, attribute_units(old)?)?,
+                            attribute_units(new)?,
+                        )?;
                         SlotPhase::SameName
                     }
                     SlotInput::Swap(index) => {
@@ -1110,7 +1100,7 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                             .last()
                             .ok_or(HtmlConstructionError::CapacityMismatch)?;
                         s.usage.attributes = minus(s.usage.attributes, 1)?;
-                        s.usage.utf16_units = minus(s.usage.utf16_units, units(old)?)?;
+                        s.usage.utf16_units = minus(s.usage.utf16_units, attribute_units(old)?)?;
                         SlotPhase::Layout
                     }
                 },

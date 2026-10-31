@@ -764,7 +764,7 @@ fn name_units(name: &QualifiedName) -> Result<usize, HtmlConstructionError> {
         name.namespace().uri().map_or(0, DocumentString::len),
     )
 }
-fn attribute_units(attribute: &Attribute) -> Result<usize, HtmlConstructionError> {
+pub(super) fn attribute_units(attribute: &Attribute) -> Result<usize, HtmlConstructionError> {
     add(name_units(attribute.name())?, attribute.value().len())
 }
 fn processing_instruction_units(
