@@ -29,7 +29,7 @@ Canonical revision 1 is little endian:
 | 164..end | exactly that payload, with no trailing bytes |
 
 Lanes are 0 arbitrary/general, 1 pre-cancelled, 2 nonempty source denial,
-3 work denial, 4 independent literal (ID 0..7), 5 missing captured scripting.
+3 work denial, 4 independent literal (ID 0..8), 5 missing captured scripting.
 The two denial lanes keep other caps at the documented generous envelope;
 literals require their exact input and that envelope. General cases can lower
 any cap through the checked constructor. A case always preserves all nineteen
@@ -57,8 +57,13 @@ wall time or whole-process memory. Owner observations additionally bound native
 nodes and D1/diagnostic rows at 100000; observation exhaustion is Resource,
 not a normative semantic violation.
 
-One quarter of generated recipes select independent literal successes. Other
-entropy maps to exact little-endian UTF16 pairs (odd final high byte zero), or
+One quarter of generated recipes select independent literal successes: when the
+first entropy byte is a multiple of four, the literal ID is that byte divided by
+four, modulo nine (bytes 0, 4, ..., 32 select IDs 0..8 and byte 36 wraps to 0).
+Generator revision 2 introduced literal 8 into this mapping; revision 1 used
+modulo eight. The codec stays at revision 1: it still decodes every revision-1
+case identically and only additionally accepts literal ID 8.
+Other entropy maps to exact little-endian UTF16 pairs (odd final high byte zero), or
 to valid UTF8 by explicitly mapping bytes to Unicode U+0000..U+00FF. This is
 Unicode generation, not decoding malformed byte transports. Overlarge generated
 source is a separate GenerationRejected outcome before source allocation; each
@@ -70,11 +75,11 @@ including isolated surrogates. No lossy UTF8 conversion occurs.
 
 Literal seeds independently cover duplicate attribute first occurrence/order,
 references, CRLF, literal BOM, isolated surrogate input, NUL recovery, qualified
-SVG attributes, template association, HTML 877d processing instructions,
+SVG attributes, template association, HTML 877d processing instructions ending in `?>` and in `>`,
 malformed paragraph recovery and foster parenting. Expected native values and
 selected exact source/diagnostic intervals are handwritten from the pinned HTML
 contract and existing public source-qualified examples, not sampled parser
-output. Each target has eight canonical `.case` files in its seed directory.
+output. Each target has nine canonical `.case` files in its seed directory.
 The descriptor records both directories for provider hashing; select the matching
 target directory for replay/check. No fabricated defect regression is bundled.
 
@@ -116,7 +121,7 @@ cargo fmt --all -- --check
 ```
 
 Use bounded `pisct run` and an isolated target for concurrent package changes.
-Tests exercise actual workers, registry, strict codec, all 16 literal successes,
+Tests exercise actual workers, registry, strict codec, all 18 literal successes,
 resource/cancel evidence, canonical replay/reduction, and (when selected) finite
 property and coverage drivers. Coverage-driver parity is not an instrumented
 libFuzzer campaign. The normal worker's capture precedes evaluator execution.
