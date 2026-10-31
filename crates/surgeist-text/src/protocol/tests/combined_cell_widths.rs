@@ -7,7 +7,7 @@ use super::*;
 fn source_with_full_coverage(
     text: &str,
 ) -> (System, Arc<ProcessedSource>, AnalyzedSource, Vec<u8>) {
-    assert!(!text.is_empty() && text.chars().all(|character| character == 'A'));
+    assert!(!text.is_empty() && text.chars().all(|character| matches!(character, 'A' | 'B')));
     let extent = Range::new(0, text.encode_utf16().count());
     let parent_style = Style {
         font: Font::new().family("Ahem"),
@@ -26,7 +26,7 @@ fn source_with_full_coverage(
         ..parent_style.clone()
     };
     let mut source = Source::identified(text, Id::from_u64(784_905), 75);
-    // The entire real source, including every repeated A, belongs to this
+    // The entire real source, including every authored A/B, belongs to this
     // actual Inline style and original. The single-A helper is not reused.
     source.span(extent, child_style.clone());
     let processed = Arc::new(
@@ -123,7 +123,7 @@ fn source_with_full_coverage(
     assert_eq!(cell.used_unit_count(), extent.len());
     assert_eq!(
         cell.used_code_points().collect::<Vec<_>>(),
-        vec![0x41; extent.len()]
+        text.chars().map(u32::from).collect::<Vec<_>>()
     );
     assert_eq!(
         cell.source_pieces()
@@ -324,4 +324,150 @@ fn four_as_compress_the_narrowest_covered_overwide_candidate_horizontally() {
     // and compressed by10/12=5/6; compressed-normal glyph35 is not permitted.
     // Raw advances3 and pens0/3/6/9 remain unchanged while the outer E stays10.
     chosen_payload("AAAA", 16, 3.0, 5.0 / 6.0, 0.0, 105.0);
+}
+
+fn width_actions_cover_only_original_a(bytes: &[u8]) {
+    use skrifa::{GlyphId, MetadataProvider};
+    let font = skrifa::FontRef::new(bytes).unwrap();
+    assert_eq!(font.charmap().map('A'), Some(GlyphId::new(35)));
+    assert_eq!(font.charmap().map('B'), Some(GlyphId::new(36)));
+    // Read the real qualified font, not an output-glyph coverage heuristic.
+    // Each optional tag owns exactly one GSUB1/SingleSubst2 covering35 ONLY.
+    // Authored B36 is therefore an unacted source root under every width tag,
+    // although hwid's distinct successful A35 action also produces glyph36.
+    let gsub = sfnt::table(bytes, *b"GSUB");
+    let features = usize::from(sfnt::u16_at(gsub, 6));
+    let lookups = usize::from(sfnt::u16_at(gsub, 8));
+    assert_eq!(sfnt::u16_at(gsub, features), 3);
+    assert_eq!(sfnt::u16_at(gsub, lookups), 3);
+    for (index, (tag, target)) in [(*b"hwid", 36), (*b"qwid", 16), (*b"twid", 58)]
+        .into_iter()
+        .enumerate()
+    {
+        let row = features + 2 + index * 6;
+        assert_eq!(&gsub[row..row + 4], &tag);
+        let feature = features + usize::from(sfnt::u16_at(gsub, row + 4));
+        assert_eq!(sfnt::u16_at(gsub, feature + 2), 1);
+        let lookup_index = usize::from(sfnt::u16_at(gsub, feature + 4));
+        let lookup = lookups + usize::from(sfnt::u16_at(gsub, lookups + 2 + lookup_index * 2));
+        assert_eq!(sfnt::u16_at(gsub, lookup), 1);
+        assert_eq!(sfnt::u16_at(gsub, lookup + 4), 1);
+        let sub = lookup + usize::from(sfnt::u16_at(gsub, lookup + 6));
+        assert_eq!(sfnt::u16_at(gsub, sub), 2);
+        assert_eq!(sfnt::u16_at(gsub, sub + 4), 1);
+        assert_eq!(sfnt::u16_at(gsub, sub + 6), target);
+        let coverage = sub + usize::from(sfnt::u16_at(gsub, sub + 2));
+        assert_eq!(&gsub[coverage..coverage + 6], &[0, 1, 0, 1, 0, 35]);
+    }
+}
+
+#[test]
+fn an_unacted_b_root_prevents_width_acceptance_even_when_its_glyph_matches_hwid_output() {
+    let (mut system, processed, analyzed, body) = source_with_full_coverage("AB");
+    width_actions_cover_only_original_a(&body);
+    // Normal A35/B36 have advances10/5: W15. Width trials have widths10/9/8
+    // under hwid/twid/qwid, but NONE covers the actual original B operand.
+    // Retain NORMAL A/B and scale its15-unit interval by2/3 to the fixed E10.
+    let prepared = system
+        .prepare(
+            &analyzed,
+            PreparationOptions::default().with_orientation(LineOrientation::Vertical),
+        )
+        .unwrap();
+    assert_eq!(prepared.analyzed_source().identity(), analyzed.identity());
+    let line = finalize(&prepared);
+    one_em(&line);
+    assert_eq!(
+        line.run_views()
+            .flat_map(|run| run
+                .glyphs()
+                .map(|glyph| (glyph.id(), glyph.advance()))
+                .collect::<Vec<_>>())
+            .collect::<Vec<_>>(),
+        [(35, 10.0), (36, 5.0)]
+    );
+    let layout = placed_vertical_cell(&prepared, line);
+    assert_eq!(layout.source(), processed.source());
+    assert_eq!(layout.source().text(), &Text::from("AB"));
+    assert_eq!(layout.lines().len(), 1);
+    assert_eq!(
+        layout.lines()[0].bounds(),
+        Rect::new(95.0, 20.0, 10.0, 10.0)
+    );
+    let views = layout
+        .run_views()
+        .filter(|run| run.glyphs().next().is_some())
+        .collect::<Vec<_>>();
+    let packets = layout
+        .glyph_runs()
+        .into_iter()
+        .filter(|run| !run.glyphs().is_empty())
+        .collect::<Vec<_>>();
+    assert_eq!(views.len(), 1);
+    assert_eq!(packets.len(), 1);
+    let view = &views[0];
+    let packet = &packets[0];
+    assert_eq!(view.face().bytes(), body.as_slice());
+    assert_eq!(packet.font().bytes(), body.as_slice());
+    assert_eq!(view.range(), Range::new(0, 2));
+    assert_eq!(packet.range(), Range::new(0, 2));
+    assert_eq!(view.glyph_basis(), GlyphBasis::Unrotated);
+    assert_eq!(packet.glyph_basis(), GlyphBasis::Unrotated);
+    let frame = view.glyph_frame();
+    assert_eq!(packet.glyph_frame(), frame);
+    close(frame.origin().x, 95.0);
+    close(frame.origin().y, 28.0);
+    close(frame.outline_x().x, 2.0 / 3.0);
+    assert_eq!(frame.outline_x().y, 0.0);
+    assert_eq!(frame.outline_y(), Point::new(0.0, 1.0));
+    assert_eq!(frame.pen_direction(), Point::new(1.0, 0.0));
+    assert_eq!(
+        view.glyphs()
+            .map(|glyph| (
+                glyph.id(),
+                glyph.pen(),
+                glyph.x(),
+                glyph.y(),
+                glyph.advance()
+            ))
+            .collect::<Vec<_>>(),
+        [(35, 0.0, 0.0, 0.0, 10.0), (36, 10.0, 0.0, 0.0, 5.0),]
+    );
+    assert_eq!(
+        packet
+            .glyphs()
+            .iter()
+            .map(|glyph| (glyph.id(), glyph.pen(), glyph.advance(), glyph.range()))
+            .collect::<Vec<_>>(),
+        [
+            (35, 0.0, 10.0, Range::new(0, 1)),
+            (36, 10.0, 5.0, Range::new(1, 2)),
+        ]
+    );
+    let last = packet.glyphs().last().unwrap();
+    close(
+        frame.origin().x + frame.outline_x().x * (last.pen() + f64::from(last.advance())),
+        105.0,
+    );
+    let retained = prepared.analyzed_source();
+    let cell = retained.combined_cells().next().unwrap();
+    assert_eq!(cell.used_code_points().collect::<Vec<_>>(), [0x41, 0x42]);
+    assert_eq!(
+        cell.source_pieces()
+            .map(|piece| {
+                assert_eq!(piece.source(), processed.source());
+                assert_eq!(
+                    piece.origin_position(),
+                    processed.captured_origin(0).unwrap()
+                );
+                assert_eq!(piece.paragraph(), processed.captured_paragraph(0).unwrap());
+                (piece.local(), piece.aggregate())
+            })
+            .collect::<Vec<_>>(),
+        [
+            (Range::new(0, 1), Range::new(0, 1)),
+            (Range::new(1, 2), Range::new(1, 2))
+        ]
+    );
+    assert_eq!(processed.processed_text(), &Text::from("AB"));
 }
