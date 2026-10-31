@@ -4,6 +4,9 @@
 
 use super::*;
 
+#[path = "combined_cell_range.rs"]
+mod ranges;
+
 #[path = "combined_cell_observation_geometry.rs"]
 mod geometry;
 
