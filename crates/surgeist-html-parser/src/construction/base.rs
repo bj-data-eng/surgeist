@@ -75,11 +75,14 @@ impl ParserArenaSession {
         c.charge(WorkCategory::ProviderCall, 1)?;
         payload_write::<HtmlParseBaseFacts>(c, 1)?;
         storage.prepare_payload_slot_owned(c)?;
-        storage.payloads.values.push(RetainedPayload::BaseDocument {
-            node: 0,
-            facts: facts.clone(),
-            first: None,
-        });
+        storage
+            .payloads
+            .push_row(RetainedPayload::BaseDocument {
+                node: 0,
+                facts: facts.clone(),
+                first: None,
+            })
+            .map_err(|_| latch_registry_row(c))?;
         Ok(())
     }
     pub(super) fn qualify_base_response(
@@ -93,7 +96,7 @@ impl ParserArenaSession {
             self.active()?
                 .construction
                 .node_at(index)
-                .expect("retained construction position"),
+                .ok_or_else(|| latch_registry_row(c))?,
         ) {
             return Ok(());
         }
@@ -107,8 +110,9 @@ impl ParserArenaSession {
         let storage = self.active_mut()?;
         let slot = storage.base_slot(c, index)?;
         payload_write::<ResponseDomain>(c, 1)?;
-        let RetainedPayload::Base { domain, .. } = &mut storage.payloads.values[slot] else {
-            unreachable!()
+        let Some(RetainedPayload::Base { domain, .. }) = storage.payloads.values.get_mut(slot)
+        else {
+            return Err(latch_registry_row(c));
         };
         *domain = ResponseDomain::ClosedOwned;
         Ok(())
@@ -125,16 +129,18 @@ impl SessionStorage {
         if !is_base(
             self.construction
                 .node_at(node)
-                .expect("retained construction position"),
+                .ok_or_else(|| latch_registry_row(c))?,
         ) {
             return Ok(());
         }
-        self.prepare_payload_slot_owned(c)?;
-        self.payloads.values.push(RetainedPayload::Base {
-            node: Some(node),
-            domain,
-            frozen: BaseValue::Unfrozen,
-        });
+        self.prepare_payload_slot_for(c, Some(KindList::Base))?;
+        self.payloads
+            .push_row(RetainedPayload::Base {
+                node: Some(node),
+                domain,
+                frozen: BaseValue::Unfrozen,
+            })
+            .map_err(|_| latch_registry_row(c))?;
         Ok(())
     }
     pub(super) fn base_slot(
@@ -142,9 +148,9 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
     ) -> Result<usize, SessionError> {
-        for (slot, payload) in self.payloads.values.iter().enumerate() {
+        if let Some(slot) = self.payloads.joined(c, node, Join::Base)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(payload, RetainedPayload::Base { node: Some(bound), .. } if *bound == node)
+            if matches!(self.payloads.values.get(slot), Some(RetainedPayload::Base { node: Some(bound), .. }) if *bound == node)
             {
                 return Ok(slot);
             }
@@ -156,9 +162,10 @@ impl SessionStorage {
         c: &mut ParseControl,
         document: usize,
     ) -> Result<Option<usize>, SessionError> {
-        for (slot, payload) in self.payloads.values.iter().enumerate() {
+        if let Some(slot) = self.payloads.joined(c, document, Join::BaseDocument)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(payload, RetainedPayload::BaseDocument { node, .. } if *node == document) {
+            if matches!(self.payloads.values.get(slot), Some(RetainedPayload::BaseDocument { node, .. }) if *node == document)
+            {
                 return Ok(Some(slot));
             }
         }
@@ -176,7 +183,7 @@ impl SessionStorage {
             if is_base(
                 self.construction
                     .node_at(node)
-                    .expect("retained construction position"),
+                    .ok_or_else(|| latch_registry_row(c))?,
             ) && self.form_attribute(c, node, "href")?.is_some()
             {
                 return Ok(Some(node));
@@ -215,7 +222,7 @@ impl SessionStorage {
         if !is_base(
             self.construction
                 .node_at(node)
-                .expect("retained construction position"),
+                .ok_or_else(|| latch_registry_row(c))?,
         ) {
             return Ok(());
         }
@@ -233,9 +240,10 @@ impl SessionStorage {
         let missing_policy = self.meta_policy_missing(c, document)?;
         if let Some(missing) = missing_policy {
             let previous_first = if let Some(slot) = self.base_document_slot(c, document)? {
-                let RetainedPayload::BaseDocument { first, .. } = &self.payloads.values[slot]
+                let Some(RetainedPayload::BaseDocument { first, .. }) =
+                    self.payloads.values.get(slot)
                 else {
-                    unreachable!()
+                    return Err(latch_registry_row(c));
                 };
                 *first
             } else {
@@ -246,10 +254,10 @@ impl SessionStorage {
             }
             if let Some(slot) = self.base_document_slot(c, document)? {
                 payload_write::<Option<usize>>(c, 1)?;
-                let RetainedPayload::BaseDocument { first: binding, .. } =
-                    &mut self.payloads.values[slot]
+                let Some(RetainedPayload::BaseDocument { first: binding, .. }) =
+                    self.payloads.values.get_mut(slot)
                 else {
-                    unreachable!()
+                    return Err(latch_registry_row(c));
                 };
                 *binding = first;
             }
@@ -260,8 +268,9 @@ impl SessionStorage {
                     self.base_slot(c, first)?
                 };
                 payload_write::<BaseValue>(c, 1)?;
-                let RetainedPayload::Base { frozen, .. } = &mut self.payloads.values[slot] else {
-                    unreachable!()
+                let Some(RetainedPayload::Base { frozen, .. }) = self.payloads.values.get_mut(slot)
+                else {
+                    return Err(latch_registry_row(c));
                 };
                 let previous = match mem::replace(frozen, BaseValue::Unfrozen) {
                     BaseValue::Unfrozen => None,
@@ -278,21 +287,21 @@ impl SessionStorage {
             }
             return Ok(());
         };
-        let RetainedPayload::BaseDocument {
+        let Some(RetainedPayload::BaseDocument {
             facts, first: old, ..
-        } = &self.payloads.values[document_slot]
+        }) = self.payloads.values.get(document_slot)
         else {
-            unreachable!()
+            return Err(latch_registry_row(c));
         };
         if first == *old && !(href_changed && first == Some(node)) {
             return Ok(());
         }
         let Some(first) = first else {
             payload_write::<Option<usize>>(c, 1)?;
-            let RetainedPayload::BaseDocument { first, .. } =
-                &mut self.payloads.values[document_slot]
+            let Some(RetainedPayload::BaseDocument { first, .. }) =
+                self.payloads.values.get_mut(document_slot)
             else {
-                unreachable!()
+                return Err(latch_registry_row(c));
             };
             *first = None;
             return Ok(());
@@ -348,17 +357,17 @@ impl SessionStorage {
                 Response::Returned
             },
         };
-        let RetainedPayload::BaseDocument { first: binding, .. } =
-            &mut self.payloads.values[document_slot]
+        let Some(RetainedPayload::BaseDocument { first: binding, .. }) =
+            self.payloads.values.get_mut(document_slot)
         else {
-            unreachable!()
+            return Err(latch_registry_row(c));
         };
         *binding = Some(first);
-        let RetainedPayload::Base {
+        let Some(RetainedPayload::Base {
             frozen: binding, ..
-        } = &mut self.payloads.values[chosen_slot]
+        }) = self.payloads.values.get_mut(chosen_slot)
         else {
-            unreachable!()
+            return Err(latch_registry_row(c));
         };
         *binding = BaseValue::Frozen(frozen);
         #[cfg(test)]
@@ -370,20 +379,20 @@ impl SessionStorage {
         if respond {
             // This real checkpoint is after assignment and before response.
             c.charge(WorkCategory::RecordVisit, 1)?;
-            let RetainedPayload::Base {
+            let Some(RetainedPayload::Base {
                 domain: ResponseDomain::ClosedOwned,
                 ..
-            } = &self.payloads.values[chosen_slot]
+            }) = self.payloads.values.get(chosen_slot)
             else {
                 return Err(c.stop_base_facts(HtmlBaseMissing::ResponseDomain).into());
             };
             payload_write::<Response>(c, 1)?;
-            let RetainedPayload::Base {
+            let Some(RetainedPayload::Base {
                 frozen: BaseValue::Frozen(frozen),
                 ..
-            } = &mut self.payloads.values[chosen_slot]
+            }) = self.payloads.values.get_mut(chosen_slot)
             else {
-                unreachable!()
+                return Err(latch_registry_row(c));
             };
             frozen.response = Response::Finished;
         }
@@ -424,7 +433,7 @@ impl SessionStorage {
                 if !is_base(
                     self.construction
                         .node_at(node)
-                        .expect("retained construction position"),
+                        .ok_or_else(|| latch_registry_row(c))?,
                 ) || frozen.response == Response::Pending
                 {
                     return Err(c
@@ -434,9 +443,10 @@ impl SessionStorage {
                 let slot = self
                     .base_document_slot(c, frozen.document)?
                     .ok_or(SessionError::WrongToken)?;
-                let RetainedPayload::BaseDocument { facts, .. } = &self.payloads.values[slot]
+                let Some(RetainedPayload::BaseDocument { facts, .. }) =
+                    self.payloads.values.get(slot)
                 else {
-                    unreachable!()
+                    return Err(latch_registry_row(c));
                 };
                 c.charge(WorkCategory::ProviderCall, 1)?;
                 if !facts.same_owner(&frozen.environment) {
@@ -534,6 +544,38 @@ mod tests {
     ) -> ParserNode {
         let mut incoming = Some(tag(lexer, c));
         session.allocate_html_tag(c, &mut incoming).unwrap()
+    }
+    // A parsed base element inserted at the root, ready for its intrinsic hook.
+    macro_rules! inserted_base_fixture {
+        ($request:ident, $c:ident, $session:ident, $root:ident, $lexer:ident, $base:ident) => {
+            let (mut $c, mut $session, capability) =
+                super::super::tests::fresh_script_owner(&$request);
+            let $root = $session.root(&mut $c).unwrap();
+            let mut $lexer =
+                LexerFixture::new($request.source(), State::Data, None, &mut $c).unwrap();
+            let $base = node(&mut $session, &mut $c, &mut $lexer);
+            $session
+                .qualify_base_response(&mut $c, &$base, &capability)
+                .unwrap();
+            {
+                let storage = $session.active_mut().unwrap();
+                let before = storage
+                    .construction
+                    .node_at($root.index)
+                    .unwrap()
+                    .child_at(0)
+                    .map(|n| n.position());
+                storage
+                    .insert_indices_with_cause(
+                        &mut $c,
+                        $root.index,
+                        $base.index,
+                        before,
+                        InsertionCause::Parser,
+                    )
+                    .unwrap();
+            }
+        };
     }
     fn attribute(
         lexer: &mut LexerFixture<'_>,
@@ -806,36 +848,39 @@ mod tests {
 
     #[test]
     fn original_base_wrapper_association_rows_exact_one_short_and_cleanup() {
+        // The wrapper retains a measured number of owned logical rows (one
+        // Document summary, one occurrence receiver and their registry
+        // entries); the Base input and provider already belong to this
+        // original owner.
+        let needed = {
+            let request = request("<base href=A>");
+            inserted_base_fixture!(request, c, session, root, lexer, base);
+            let storage = session.active_mut().unwrap();
+            storage
+                .base_change_inner(&mut c, base.index, None, false)
+                .unwrap();
+            let prior = c
+                .usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current;
+            storage
+                .base_change(&mut c, base.index, None, false)
+                .unwrap();
+            let needed = c
+                .usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current
+                - prior;
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            super::super::tests::storage_zero(&c);
+            needed
+        };
         for short in [false, true] {
             let request = request("<base href=A>");
-            let (mut c, mut session, capability) =
-                super::super::tests::fresh_script_owner(&request);
-            let root = session.root(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
-            let base = node(&mut session, &mut c, &mut lexer);
-            session
-                .qualify_base_response(&mut c, &base, &capability)
-                .unwrap();
+            inserted_base_fixture!(request, c, session, root, lexer, base);
             let storage = session.active_mut().unwrap();
-            let before = storage
-                .construction
-                .node_at(root.index)
-                .unwrap()
-                .child_at(0)
-                .map(|n| n.position());
-            storage
-                .insert_indices_with_cause(
-                    &mut c,
-                    root.index,
-                    base.index,
-                    before,
-                    InsertionCause::Parser,
-                )
-                .unwrap();
-            // Finish the existing intrinsic owner first. The wrapper must then
-            // retain exactly one Document summary, one actual occurrence receiver,
-            // and its one registry location. These are three owned logical rows;
-            // the Base input and provider already belong to this original owner.
+            // Finish the existing intrinsic owner first.
             storage
                 .base_change_inner(&mut c, base.index, None, false)
                 .unwrap();
@@ -847,7 +892,7 @@ mod tests {
             // than this retained prefix. Keep that original prefix and cap, and
             // use real controlled fixture storage to select the later boundary.
             let mut pressure = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
-            let available = 3 - u64::from(short);
+            let available = needed - u64::from(short);
             let pressure_rows = request.limits().auxiliary_entries() - prior - available;
             for _ in 0..pressure_rows {
                 pressure.try_push(&mut c, 0u8).unwrap();
@@ -880,7 +925,7 @@ mod tests {
                     c.usage()
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .current,
-                    prior + pressure_rows + 3
+                    prior + pressure_rows + needed
                 );
                 assert_eq!(
                     storage
@@ -902,35 +947,31 @@ mod tests {
 
     #[test]
     fn actual_first_href_exact_one_short_and_pre_cancel_preserve_binding_and_cleanup() {
+        // The immediate intrinsic base hook's whole cost is measured from an
+        // unconstrained twin; the exact budget completes it and one credit less
+        // stops it with the binding still pending.
+        let total = {
+            let request = request("<base href=A>");
+            inserted_base_fixture!(request, c, session, root, lexer, base);
+            let storage = session.active_mut().unwrap();
+            let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
+            storage
+                .base_change_inner(&mut c, base.index, None, false)
+                .unwrap();
+            let total = c.usage().resource(HtmlParseResource::WorkCredits).current - before;
+            assert_value(&session, &base, "https://base.test/A");
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            super::super::tests::storage_zero(&c);
+            total
+        };
         for short in [false, true] {
             let request = request("<base href=A>");
-            let (mut c, mut session, capability) =
-                super::super::tests::fresh_script_owner(&request);
-            let root = session.root(&mut c).unwrap();
-            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
-            let base = node(&mut session, &mut c, &mut lexer);
-            session
-                .qualify_base_response(&mut c, &base, &capability)
-                .unwrap();
-            let storage = session.active_mut().unwrap();
             // Real pre-insert owner commits topology/effect retention. This test
             // then selects its immediate intrinsic base hook, not a public
             // insertion total or an invented checkpoint.
-            let before = storage
-                .construction
-                .node_at(root.index)
-                .expect("retained construction position")
-                .child_at(0)
-                .map(|node| node.position());
-            storage
-                .insert_indices_with_cause(
-                    &mut c,
-                    root.index,
-                    base.index,
-                    before,
-                    InsertionCause::Parser,
-                )
-                .unwrap();
+            inserted_base_fixture!(request, c, session, root, lexer, base);
+            let storage = session.active_mut().unwrap();
             assert_eq!(
                 storage
                     .construction
@@ -950,47 +991,6 @@ mod tests {
                     .map(|node| node.position()),
                 Some(root.index)
             );
-            let position = |predicate: fn(&RetainedPayload) -> bool| {
-                storage.payloads.values.iter().position(predicate).unwrap() as u64 + 1
-            };
-            let base_slot = storage.base_slot(&mut c, base.index).unwrap() as u64 + 1;
-            let node_document = storage.payloads.values.iter().position(|p| matches!(p, RetainedPayload::NodeDocument { node: Some(n), .. } if *n == base.index)).unwrap() as u64 + 1;
-            let document =
-                position(|p| matches!(p, RetainedPayload::Document { node: Some(0), .. }));
-            let environment =
-                position(|p| matches!(p, RetainedPayload::BaseDocument { node: 0, .. }));
-            // Source-derived cost: each registry prefix visits exactly its
-            // admitted slots. NodeDocument adds document header+prefix+fixed
-            // copy; ordinary root has two parent reads. First selection has
-            // root,next-child,base visits4 + href lookup16 =20. The second
-            // href lookup costs16; observation header+3 providers+2 headers+
-            // one UTF16 pair costs sizeof(observation)+10. Finally two
-            // provider clones and two actual binding receivers commit before
-            // the response's visit+fixed receiver. Current-policy qualification
-            // adds a Document header+prefix and one history observation (the
-            // extra document+2). The binding receiver is the actual BaseValue
-            // enum, not the former nullable frozen slot. No usage sample is oracle.
-            let total = base_slot
-                + node_document
-                + 1
-                + document
-                + mem::size_of::<DocumentRef>() as u64
-                + 2
-                + 20
-                + environment
-                + document
-                + 2
-                + 16
-                + mem::size_of::<crate::HtmlBaseParseObservation>() as u64
-                + 10
-                + 2
-                + mem::size_of::<BaseValue>() as u64
-                + 1
-                + mem::size_of::<Option<usize>>() as u64
-                + 1
-                + 1
-                + mem::size_of::<Response>() as u64
-                + 1;
             let remaining = request.limits().work_credits()
                 - c.usage().resource(HtmlParseResource::WorkCredits).current;
             c.charge(

@@ -126,33 +126,45 @@ pub(super) struct Occurrence {
     may_have_sheet: bool,
 }
 
+/// The subject of a style occurrence row: one that carries style inputs.
+#[cfg(test)]
+pub(super) fn style_occurrence_subject(row: &RetainedPayload) -> Option<usize> {
+    match row {
+        RetainedPayload::AssociationOccurrence(values) => {
+            let first = &values.as_slice()[0];
+            first.inputs.is_some().then_some(first.subject)
+        }
+        _ => None,
+    }
+}
+
 impl SessionStorage {
     fn association_document(
         &mut self,
         c: &mut ParseControl,
         document: &DocumentRef,
     ) -> Result<usize, SessionError> {
-        for (slot, row) in self.payloads.values.iter().enumerate() {
+        for &slot in self.payloads.kind_list(KindList::AssociationDocument) {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(row, RetainedPayload::AssociationDocument(value) if &value.document == document)
+            if matches!(self.payloads.values.get(slot), Some(RetainedPayload::AssociationDocument(value)) if &value.document == document)
             {
                 return Ok(slot);
             }
         }
         let document = document.try_clone(c)?;
         payload_write::<DocumentCapture>(c, 1)?;
-        self.prepare_payload_slot_owned(c)?;
+        self.prepare_payload_slot_for(c, Some(KindList::AssociationDocument))?;
         let slot = self.payloads.values.len();
         self.payloads
-            .values
-            .push(RetainedPayload::AssociationDocument(DocumentCapture {
+            .push_row(RetainedPayload::AssociationDocument(DocumentCapture {
                 document,
                 count: 0,
                 obligations: 0,
                 last: None,
                 missing: None,
                 missing_at: None,
-            }));
+            }))
+            .map_err(|_| latch_registry_row(c))?;
         Ok(slot)
     }
     /// A reference never adds a strong alias to mutable/reclaimable backing.
@@ -161,8 +173,9 @@ impl SessionStorage {
         c: &mut ParseControl,
         slot: usize,
     ) -> Result<OriginGroupRef, SessionError> {
-        let RetainedPayload::String { value, origins, .. } = &self.payloads.values[slot] else {
-            return Err(SessionError::WrongToken);
+        let Some(RetainedPayload::String { value, origins, .. }) = self.payloads.values.get(slot)
+        else {
+            return Err(latch_registry_row(c));
         };
         if let Some(group) = origins {
             return self
@@ -177,8 +190,9 @@ impl SessionStorage {
         evidence.bind_leaf_value(c, &group, slot)?;
         let retained = evidence.copy_group_reference(c, &group)?;
         payload_write::<Option<OriginGroupRef>>(c, 1)?;
-        let RetainedPayload::String { origins, .. } = &mut self.payloads.values[slot] else {
-            unreachable!()
+        let Some(RetainedPayload::String { origins, .. }) = self.payloads.values.get_mut(slot)
+        else {
+            return Err(latch_registry_row(c));
         };
         *origins = Some(retained);
         Ok(group)
@@ -210,9 +224,47 @@ impl SessionStorage {
         let Some(position) = position else {
             return Ok(None);
         };
-        let container = self.element_attribute_container(c, node)?;
-        let slot = self.field_slot(c, StringLocation::AttributeValue(container, position))?;
+        // The value row is the one sharing the attribute's backing; creation's
+        // hint finds it without a scan, and test builds compare it with the
+        // row registered at the attribute value's location.
+        let slot = self.attribute_value_slot(c, node, position)?;
+        #[cfg(test)]
+        {
+            let container = self.element_attribute_container(c, node)?;
+            // An uncharged scan, so the cross-check does not enter the work.
+            assert_eq!(
+                self.payloads.values.iter().position(|row| matches!(
+                    row,
+                    RetainedPayload::String {
+                        location: StringLocation::AttributeValue(owner, at),
+                        ..
+                    } if *owner == container && *at == position
+                )),
+                Some(slot)
+            );
+        }
         self.association_string(c, slot).map(Some)
+    }
+    /// The internal nonce row's value, separate from the potentially hidden
+    /// authored attribute. One join cell and one row, whatever else is retained.
+    fn association_nonce(
+        &mut self,
+        c: &mut ParseControl,
+        node: usize,
+    ) -> Result<Option<OriginGroupRef>, SessionError> {
+        if let Some(slot) = self.payloads.joined(c, node, Join::Nonce)? {
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            if let Some(RetainedPayload::Nonce {
+                node: Some(owner),
+                raw,
+            }) = self.payloads.values.get(slot)
+                && *owner == node
+            {
+                let raw = *raw;
+                return self.association_string(c, raw).map(Some);
+            }
+        }
+        Ok(None)
     }
     fn association_style_inputs(
         &mut self,
@@ -224,12 +276,12 @@ impl SessionStorage {
             return Ok(None);
         }
         let mut state = None;
-        for row in &self.payloads.values {
+        if let Some(slot) = self.payloads.joined(c, node, Join::Style)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::Style {
+            if let Some(RetainedPayload::Style {
                 node: owner,
                 state: value,
-            } = row
+            }) = self.payloads.values.get(slot)
                 && *owner == node
             {
                 state = Some((
@@ -240,7 +292,6 @@ impl SessionStorage {
                         .map(|d| d.try_clone(c))
                         .transpose()?,
                 ));
-                break;
             }
         }
         let (state, parser_document) = state.ok_or(SessionError::WrongToken)?;
@@ -268,18 +319,8 @@ impl SessionStorage {
                 attributes[index] = self.association_attribute(c, node, local)?;
             }
             // Internal nonce is separate from the potentially hidden authored attribute.
-            for row in &self.payloads.values {
-                c.charge(WorkCategory::RecordVisit, 1)?;
-                if let RetainedPayload::Nonce {
-                    node: Some(owner),
-                    raw,
-                } = row
-                    && *owner == node
-                {
-                    let raw = *raw;
-                    attributes[4] = Some(self.association_string(c, raw)?);
-                    break;
-                }
+            if let Some(nonce) = self.association_nonce(c, node)? {
+                attributes[4] = Some(nonce);
             }
             let mut next = self
                 .construction
@@ -433,8 +474,9 @@ impl SessionStorage {
                 };
                 context.mode = *mode;
                 let slot = self.document_slot(c, *document)?;
-                let RetainedPayload::Document { class, .. } = &self.payloads.values[slot] else {
-                    unreachable!()
+                let Some(RetainedPayload::Document { class, .. }) = self.payloads.values.get(slot)
+                else {
+                    return Err(latch_registry_row(c));
                 };
                 context.class = *class;
                 // First document Element and only its direct body/frameset child.
@@ -485,30 +527,31 @@ impl SessionStorage {
                     }
                 }
                 context.policy_missing = self.meta_policy_missing(c, *document)?.is_some();
-                for (slot, row) in self.payloads.values.iter().enumerate() {
+                if let Some(slot) = self.payloads.joined(c, *document, Join::BaseDocument)? {
                     c.charge(WorkCategory::RecordVisit, 1)?;
-                    if let RetainedPayload::BaseDocument { node, first, .. } = row
+                    if let Some(RetainedPayload::BaseDocument { node, first, .. }) =
+                        self.payloads.values.get(slot)
                         && node == document
                     {
                         context.base_document = Some(slot);
                         context.first_base = *first;
-                        break;
                     }
                 }
                 if let Some(first) = context.first_base {
                     context.base_input = self.association_attribute(c, first, "href")?;
                     let slot = self.base_slot(c, first)?;
-                    let RetainedPayload::Base { frozen, .. } = &self.payloads.values[slot] else {
-                        unreachable!()
+                    let Some(RetainedPayload::Base { frozen, .. }) = self.payloads.values.get(slot)
+                    else {
+                        return Err(latch_registry_row(c));
                     };
                     if let base::BaseValue::Frozen(value) = frozen {
                         let Some(facts_slot) = context.base_document else {
                             return Err(SessionError::WrongToken);
                         };
-                        let RetainedPayload::BaseDocument { facts, .. } =
-                            &self.payloads.values[facts_slot]
+                        let Some(RetainedPayload::BaseDocument { facts, .. }) =
+                            self.payloads.values.get(facts_slot)
                         else {
-                            unreachable!()
+                            return Err(latch_registry_row(c));
                         };
                         let raw = self
                             .form_attribute(c, first, "href")?
@@ -576,21 +619,13 @@ impl SessionStorage {
         let inputs = self.association_style_inputs(c, node, detached)?;
         let result = (|| {
             let root = self.ordinary_root(c, node, detached)?;
-            let mut prior_style = None;
-            for (index, row) in self.payloads.values.iter().enumerate().rev() {
-                c.charge(WorkCategory::RecordVisit, 1)?;
-                if matches!(row, RetainedPayload::AssociationOccurrence(values) if values.as_slice()[0].subject == node && values.as_slice()[0].inputs.is_some())
-                {
-                    prior_style = Some(index);
-                    break;
-                }
-            }
+            let prior_style = self.payloads.joined(c, node, Join::StyleOccurrence)?;
             let cause = self.associated_cause(c)?;
-            let prior_sheet = prior_style.is_some_and(|slot| matches!(&self.payloads.values[slot], RetainedPayload::AssociationOccurrence(values) if values.as_slice()[0].may_have_sheet));
-            let RetainedPayload::AssociationDocument(summary) =
-                &self.payloads.values[document_slot]
+            let prior_sheet = prior_style.is_some_and(|slot| matches!(self.payloads.values.get(slot), Some(RetainedPayload::AssociationOccurrence(values)) if values.as_slice().first().is_some_and(|first| first.may_have_sheet)));
+            let Some(RetainedPayload::AssociationDocument(summary)) =
+                self.payloads.values.get(document_slot)
             else {
-                unreachable!()
+                return Err(latch_registry_row(c));
             };
             let count = summary
                 .count
@@ -656,6 +691,7 @@ impl SessionStorage {
                 requires_processing,
                 may_have_sheet,
             )) => {
+                let styled = inputs.is_some();
                 let value = Occurrence {
                     subject: node,
                     document,
@@ -686,10 +722,15 @@ impl SessionStorage {
                 self.payloads
                     .values
                     .push(RetainedPayload::AssociationOccurrence(values));
-                let RetainedPayload::AssociationDocument(summary) =
-                    &mut self.payloads.values[document_slot]
+                if styled {
+                    self.payloads
+                        .join_latest(node, Join::StyleOccurrence, slot)
+                        .map_err(|_| latch_registry_row(c))?;
+                }
+                let Some(RetainedPayload::AssociationDocument(summary)) =
+                    self.payloads.values.get_mut(document_slot)
                 else {
-                    unreachable!()
+                    return Err(latch_registry_row(c));
                 };
                 summary.count = count;
                 summary.obligations = obligations;
@@ -708,6 +749,15 @@ impl SessionStorage {
                 Err(error)
             }
         }
+    }
+    /// Test harness: reads the association nonce of `node`.
+    #[cfg(test)]
+    pub(super) fn association_nonce_present(
+        &mut self,
+        c: &mut ParseControl,
+        node: usize,
+    ) -> Result<bool, SessionError> {
+        Ok(self.association_nonce(c, node)?.is_some())
     }
     pub(super) fn association_style_trigger(
         &mut self,
@@ -740,8 +790,8 @@ impl SessionStorage {
             let Some(slot) = self.style_slot(c, node)? else {
                 return Ok(());
             };
-            let RetainedPayload::Style { state, .. } = &self.payloads.values[slot] else {
-                unreachable!()
+            let Some(RetainedPayload::Style { state, .. }) = self.payloads.values.get(slot) else {
+                return Err(latch_registry_row(c));
             };
             let on_parser_stack = state.state.on_parser_stack();
             let connected = self.shadow_including_connected(c, node, detached)?;
@@ -776,8 +826,8 @@ impl SessionStorage {
         let Some(slot) = self.style_slot(c, parent)? else {
             return Ok(());
         };
-        let RetainedPayload::Style { state, .. } = &self.payloads.values[slot] else {
-            unreachable!()
+        let Some(RetainedPayload::Style { state, .. }) = self.payloads.values.get(slot) else {
+            return Err(latch_registry_row(c));
         };
         self.association_style_trigger(
             c,
@@ -1222,13 +1272,15 @@ pub struct ContextView<'a> {
 }
 impl<'a> ContextView<'a> {
     /// The exact association applicable at this occurrence, never final policy.
+    /// The policy row was qualified as a CSP policy at publication (`qualify`),
+    /// so `None` here means the occurrence has no association.
     pub fn csp_association(&self) -> Option<&'a surgeist_html::HtmlCspAssociation> {
         if self.value.policy_missing {
             return None;
         }
         let slot = self.value.csp?;
-        let RetainedPayload::CspPolicy(value) = &self.storage.payloads.values[slot] else {
-            unreachable!("qualified policy")
+        let Some(RetainedPayload::CspPolicy(value)) = self.storage.payloads.values.get(slot) else {
+            return None;
         };
         value.value.as_ref()
     }
@@ -1330,22 +1382,26 @@ impl<'a> ContextView<'a> {
                 .context,
         })
     }
+    /// The provider row was qualified as base facts of this document at
+    /// publication (`qualify`), so `None` here means the occurrence has none.
     pub fn base_facts(&self) -> Option<&'a crate::HtmlParseBaseFacts> {
         self.value
             .base_document
-            .map(|slot| match &self.storage.payloads.values[slot] {
-                RetainedPayload::BaseDocument { facts, .. } => facts,
-                _ => unreachable!("qualified base provider"),
+            .and_then(|slot| match self.storage.payloads.values.get(slot) {
+                Some(RetainedPayload::BaseDocument { facts, .. }) => Some(facts),
+                _ => None,
             })
     }
+    /// The provider row was qualified as this document's captured context at
+    /// publication (`qualify`), so `None` here means the occurrence has none.
     pub fn captured_context(
         &self,
     ) -> Option<&'a surgeist_html_semantics::HtmlDocumentEncodingUrlContext> {
         self.value
             .captured
-            .map(|slot| match &self.storage.payloads.values[slot] {
-                RetainedPayload::AssociationCapturedContext(value) => &value.value,
-                _ => unreachable!("qualified captured provider"),
+            .and_then(|slot| match self.storage.payloads.values.get(slot) {
+                Some(RetainedPayload::AssociationCapturedContext(value)) => Some(&value.value),
+                _ => None,
             })
     }
     pub fn first_base(&self) -> Option<HtmlNode<'a>> {
@@ -1414,13 +1470,13 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                     .last
                     .is_some_and(|index| index <= slot || index >= storage.payloads.values.len())
                 {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 }
             }
             RetainedPayload::AssociationOccurrence(values) => {
                 values.require_disposal_owner(c)?;
                 if values.len() != 1 {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 }
                 let value = &values.as_slice()[0];
                 if value.context.input_document >= slot
@@ -1429,7 +1485,7 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                         Some(RetainedPayload::AssociationDocument(summary)) if summary.document == value.document
                     )
                 {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 }
                 storage.validate_association_document(c, &value.document)?;
                 if let Some(document) = &value.previous_document {
@@ -1438,7 +1494,7 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                 if storage.view.node_at(value.subject).is_none()
                     || storage.view.node_at(value.root).is_none()
                 {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 }
                 for prior in [value.prior_document, value.prior_style]
                     .into_iter()
@@ -1450,14 +1506,17 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                             Some(RetainedPayload::AssociationOccurrence(_))
                         )
                     {
-                        return Err(SessionError::WrongToken);
+                        return Err(latch_registry_row(c));
                     }
                 }
-                let evidence = storage.evidence.as_ref().ok_or(SessionError::WrongToken)?;
+                let evidence = storage
+                    .evidence
+                    .as_ref()
+                    .ok_or_else(|| latch_registry_row(c))?;
                 if let Some(cause) = &value.cause
                     && evidence.retained_cause(cause).is_none()
                 {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 }
                 for reference in [
                     value.preferred.as_ref(),
@@ -1476,7 +1535,7 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                     for node in inputs.order.as_slice() {
                         c.charge(WorkCategory::RecordVisit, 1)?;
                         if storage.view.node_at(*node).is_none() {
-                            return Err(SessionError::WrongToken);
+                            return Err(latch_registry_row(c));
                         }
                     }
                     for reference in inputs
@@ -1495,12 +1554,22 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                 if let Some(provider) = value.context.base_document
                     && !matches!((&value.document, storage.payloads.values.get(provider)), (DocumentRef::Owned(document), Some(RetainedPayload::BaseDocument { node, facts, .. })) if node == document && value.context.base_observation.is_none_or(|index| index < facts.observations().len()))
                 {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
+                }
+                // `ContextView::csp_association` reads this row without a controller,
+                // so its kind is established here, at publication.
+                if let Some(policy) = value.context.csp
+                    && !matches!(
+                        storage.payloads.values.get(policy),
+                        Some(RetainedPayload::CspPolicy(_))
+                    )
+                {
+                    return Err(latch_registry_row(c));
                 }
                 if let Some(provider) = value.context.captured
                     && !matches!((&value.document, storage.payloads.values.get(provider)), (DocumentRef::Captured(document), Some(RetainedPayload::AssociationCapturedContext(context))) if context.value.document() == document)
                 {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 }
             }
             _ => {}

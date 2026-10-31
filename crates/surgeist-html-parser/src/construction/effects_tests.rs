@@ -104,7 +104,7 @@ fn next(
 
 /// The actual fresh-driver issuance is reused, then its same controller and
 /// arena consume real lexical records. The Vec is test observation/setup only.
-fn graph<'a>(
+pub(in crate::construction) fn graph<'a>(
     request: &'a crate::HtmlDocumentParseRequest,
 ) -> (
     ParseControl,
@@ -247,7 +247,11 @@ fn graph<'a>(
     lexer.release(&mut c).unwrap();
     (c, session, proof, nodes)
 }
-fn named(nodes: &[(String, ParserNode)], name: &str, occurrence: usize) -> ParserNode {
+pub(in crate::construction) fn named(
+    nodes: &[(String, ParserNode)],
+    name: &str,
+    occurrence: usize,
+) -> ParserNode {
     nodes
         .iter()
         .filter(|(local, _)| local == name)
@@ -268,7 +272,7 @@ fn children(session: &ParserArenaSession, node: &ParserNode) -> Vec<usize> {
         .collect::<Vec<_>>()
         .clone()
 }
-fn request(source: &str) -> crate::HtmlDocumentParseRequest {
+pub(in crate::construction) fn request(source: &str) -> crate::HtmlDocumentParseRequest {
     crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8(source), limits())
 }
 fn update(session: &mut ParserArenaSession, c: &mut ParseControl, option: &ParserNode) {
@@ -876,12 +880,48 @@ fn select_fifo_stopped_current_task_and_static_lists_remain_owned_without_pendin
 
 #[test]
 fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slot_caps() {
-    // Document/html retain16 slots including html's independent creation row.
-    // Select's document binding fills17 before its own creation/state/nonce rows
-    // and native fields. At17 the tag remains owned; completed Select needs30
+    // The document and html retain `held` entries before the select, whose
+    // document binding takes one more. At that cap the tag remains owned; the completed select needs a measured total of
     // coexisting entries including its creation row and empty-option snapshot.
-    // At29 it stops after take at that snapshot, preserving all actual owners.
-    for cap in [17, 29, 30] {
+    // One entry short it stops after the take at that snapshot, preserving all
+    // actual owners.
+    let (held, needed) = {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8("<select>"), limits());
+        let (mut c, mut session, proof) = fresh_script_owner(&request);
+        let parent = session.active().unwrap().node(&mut c, 1).unwrap();
+        let held = c
+            .usage()
+            .resource(HtmlParseResource::AuxiliaryEntries)
+            .current;
+        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let token = next(&mut lexer, &mut c);
+        let TokenKind::Tag(tag) = token.kind else {
+            panic!("actual select")
+        };
+        session
+            .allocate_select_family_for_creation(
+                &mut c,
+                &mut Some(tag),
+                crate::construction::CreationLocation {
+                    intended_parent: &parent,
+                    current_form: None,
+                    context: crate::construction::CreationContext::Ordinary,
+                },
+                &token.source,
+                &proof,
+            )
+            .unwrap();
+        let needed = c
+            .usage()
+            .resource(HtmlParseResource::AuxiliaryEntries)
+            .current;
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        (held, needed)
+    };
+    for cap in [held + 1, needed - 1, needed] {
         let caps = limits()
             .into_builder()
             .auxiliary_entries(cap)
@@ -908,7 +948,7 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
             &token.source,
             &proof,
         );
-        if cap == 30 {
+        if cap == needed {
             let node = result.unwrap();
             assert!(input.is_none());
             assert!(
@@ -922,7 +962,7 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                30
+                needed
             );
             assert_eq!(
                 c.usage().resource(HtmlParseResource::ManagedNodes).current,
@@ -935,7 +975,7 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
             assert!(
                 matches!(first, ParseStop::LimitExceeded { resource: HtmlParseResource::AuxiliaryEntries, limit, .. } if limit == cap)
             );
-            assert_eq!(input.is_some(), cap == 17);
+            assert_eq!(input.is_some(), cap == held + 1);
             assert_eq!(
                 session.freeze(&mut c).err(),
                 Some(SessionError::Stop(first))
@@ -1772,18 +1812,177 @@ fn captured_current_frame_survives_stops_before_and_after_identity_clone_admissi
     storage_zero(&c);
 }
 
+/// Lookup work is the record visits the controller charged: every registry
+/// scan charges one per row it passes. Reservation growth charges provider
+/// calls and byte copies when a vector's capacity doubles, which depends on the
+/// current length and is not a lookup.
+fn lookup_work(c: &ParseControl) -> u64 {
+    c.usage().work(WorkCategory::RecordVisit)
+}
+
+/// Builds `unrelated` sibling subtrees, each retaining several payload rows,
+/// then returns the lookup work the parser spent on `element` alone: the
+/// difference between parsing the document with and without that element at
+/// the end. Everything outside the element cancels, so a difference between
+/// two `unrelated` counts is work the element's own lookups spent on payloads
+/// that are not its own.
+fn lookup_work_of_element(unrelated: usize, element: &str) -> u64 {
+    // The element goes into a fresh container, so inserting it does not walk
+    // the unrelated siblings of that container's parent.
+    let prefix = format!("<body>{}<section>", "<i>t</i>".repeat(unrelated));
+    let measure = |source: &str| {
+        let request = request(source);
+        let (mut c, mut session, _proof, _nodes) = graph(&request);
+        let work = lookup_work(&c);
+        session.release(&mut c).unwrap();
+        work
+    };
+    measure(&format!("{prefix}{element}")) - measure(&prefix)
+}
+
 #[test]
-fn adopting_one_node_does_not_grow_faster_than_the_payloads_it_scans() {
-    // Adopting a leaf looks up and rewrites its document binding by scanning
-    // the retained payloads (set_node_document in template.rs charges one
-    // record visit per scanned payload, and start_img_update in
-    // associated.rs scans every payload for the node's image), so the cost
-    // may grow with the payloads already retained, but not faster than that.
-    // The per-payload constant is a count of such scans across the whole
-    // adoption step that this test does not derive, so the bound is only that
-    // the cost added per payload does not rise as the document doubles. A
-    // lower bound is deliberately not asserted: indexing payloads by kind may
-    // legitimately remove the scans.
+fn per_element_lookup_work_stays_constant_as_unrelated_payloads_grow() {
+    // Each element exercises the payload lookups its kind performs while it is
+    // created, attributed and inserted: attribute containers, ids, the node's
+    // document binding, attribute values read by identity (nonce, href), and
+    // script/style/dialog/image/form/details/output metadata. Input and select
+    // creation is not measured here: it runs the full-registry alias check
+    // (`check_aliases`, construction.rs, input/select creation and the
+    // named-attribute merge), which protects the registry's integrity
+    // guarantee and is deliberately linear; the indexed lookups they use are
+    // covered by the lookup-level test below. Elements that walk the document
+    // in tree order (meta theme color, style with text) scale with tree nodes,
+    // not with payloads, and are not measured here.
+    let elements = [
+        "<div id=a class=b>x</div>",
+        "<script src=a id=b async></script>",
+        "<script src=a id=b nonce=c async></script>",
+        "<a id=h href=a>x</a>",
+        "<script id=b>x</script>",
+        "<dialog open id=e></dialog>",
+        "<img src=a id=f alt=g>",
+        "<a id=h>x</a>",
+        "<form id=i></form>",
+        "<textarea id=l>x</textarea>",
+        "<details id=o open><summary>s</summary></details>",
+        "<output id=r></output>",
+        "<svg id=s><circle></circle></svg>",
+        "<link rel=stylesheet href=a>",
+        "<p>text<!--c--></p>",
+        "<table><tr><td>x</td></tr></table>",
+    ];
+    let mut failures = vec![];
+    for element in elements {
+        let small = lookup_work_of_element(8, element);
+        let large = lookup_work_of_element(32, element);
+        if small != large {
+            failures.push(format!(
+                "{element}: {small} with 8 unrelated, {large} with 32"
+            ));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "lookup work grew with unrelated payloads: {failures:#?}"
+    );
+}
+
+#[test]
+fn each_payload_lookup_of_one_node_costs_the_same_however_many_payloads_are_unrelated() {
+    // One call per lookup, on an element that has the payload, measured in a
+    // document with 8 and with 32 unrelated subtrees. They sit in one wrapper
+    // so the measured elements keep the same few siblings: tree-order parent
+    // and sibling walks scale with children, not with payloads.
+    let measure = |siblings: usize| -> Vec<(&'static str, u64)> {
+        let source = format!(
+            "<body><div>{}</div><script nonce=n src=a></script><style nonce=m></style><dialog></dialog>\
+             <img src=a><form id=f><input type=radio name=r></form>\
+             <select><option>x</option></select><div id=d></div>",
+            "<i>t</i>".repeat(siblings)
+        );
+        let request = request(&source);
+        let (mut c, mut session, _proof, nodes) = graph(&request);
+        let script = named(&nodes, "script", 0).index;
+        let style = named(&nodes, "style", 0).index;
+        let img = named(&nodes, "img", 0).index;
+        let input = named(&nodes, "input", 0).index;
+        let select = named(&nodes, "select", 0).index;
+        let div = named(&nodes, "div", 0).index;
+        let storage = session.active_mut().unwrap();
+        let mut work = vec![];
+        let mut record = |name: &'static str, c: &ParseControl, before: u64| {
+            work.push((name, lookup_work(c) - before));
+        };
+        macro_rules! measured {
+            ($name:expr, $c:ident, $call:expr) => {{
+                let before = lookup_work(&$c);
+                $call.unwrap();
+                record($name, &$c, before);
+            }};
+        }
+        measured!(
+            "frozen attribute container",
+            c,
+            storage.element_attribute_container(&mut c, div)
+        );
+        measured!("node document", c, storage.node_document_ref(&mut c, div));
+        measured!(
+            "set node document",
+            c,
+            storage.set_node_document(&mut c, div, DocumentRef::Owned(0))
+        );
+        measured!(
+            "script metadata",
+            c,
+            script_metadata(&storage.payloads, &mut c, script)
+        );
+        measured!("nonce", c, storage.nonce_slot(&mut c, script));
+        measured!("style", c, storage.style_slot(&mut c, style));
+        // The association step reads the style's nonce row on its own.
+        measured!(
+            "association nonce",
+            c,
+            storage.association_nonce_present(&mut c, style)
+        );
+        measured!(
+            "image update",
+            c,
+            storage.start_img_update(
+                &mut c,
+                img,
+                surgeist_html::HtmlImageUpdateFlags::new(false, false)
+            )
+        );
+        measured!(
+            "form association",
+            c,
+            find_form_association_state(&storage.payloads, &mut c, input)
+        );
+        measured!("radio input", c, storage.radio_input(&mut c, input));
+        measured!(
+            "select metadata",
+            c,
+            storage.select_metadata(&mut c, select)
+        );
+        session.release(&mut c).unwrap();
+        work
+    };
+    let small = measure(8);
+    let large = measure(32);
+    assert_eq!(small.len(), 11);
+    for ((name, small), (_, large)) in small.iter().zip(&large) {
+        assert_eq!(
+            small, large,
+            "{name} lookup work grew with unrelated payloads"
+        );
+    }
+}
+
+#[test]
+fn adopting_one_node_costs_the_same_lookup_work_however_many_payloads_are_unrelated() {
+    // Adoption looks up the node's document binding and its image state, among
+    // others. Both are keyed by the node, so the work must not depend on how
+    // many other payloads the document retains.
     let measure = |siblings: usize| {
         let source = format!("<body>{}<b>x</b>", "<i>t</i>".repeat(siblings));
         let request = request(&source);
@@ -1801,26 +2000,24 @@ fn adopting_one_node_does_not_grow_faster_than_the_payloads_it_scans() {
                 },
             )
             .unwrap();
-        let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
+        let before = lookup_work(&c);
         storage.drain_construction_effects(&mut c).unwrap();
         assert!(storage.effects.current.is_none());
-        let needed = c.usage().resource(HtmlParseResource::WorkCredits).current - before;
-        // Release charges only its alias check in the running state
-        // (construction.rs ParserArenaSession::release), far below the spare
-        // work left, so it must succeed at once.
+        let adoption = lookup_work(&c) - before;
         session.release(&mut c).unwrap();
-        (payloads, needed)
+        (payloads, adoption)
     };
     let (small_payloads, small) = measure(8);
     let (medium_payloads, medium) = measure(16);
     let (large_payloads, large) = measure(32);
     assert!(small_payloads < medium_payloads && medium_payloads < large_payloads);
-    assert!(small <= medium && medium <= large);
-    // Cost added per payload does not increase: compare the two slopes by
-    // cross-multiplication.
-    assert!(
-        (large - medium) * (medium_payloads - small_payloads)
-            <= (medium - small) * (large_payloads - medium_payloads)
+    assert_eq!(
+        small, medium,
+        "{small_payloads} vs {medium_payloads} payloads"
+    );
+    assert_eq!(
+        medium, large,
+        "{medium_payloads} vs {large_payloads} payloads"
     );
 }
 
@@ -1863,4 +2060,175 @@ fn captured_parent_and_child_transfer_remain_owned_when_parent_clone_or_push_sto
         storage_zero(&c);
         assert_eq!(c.stop(), Some(first));
     }
+}
+
+#[test]
+fn attribute_value_lookup_uses_the_creation_hint_then_falls_back_after_edits() {
+    use super::super::mutation::ManagedFamily;
+    let request = request("<body><i>a</i><i>b</i><dialog open id=e class=k data-x=y>");
+    let (mut c, mut session, _proof, nodes) = graph(&request);
+    let dialog = named(&nodes, "dialog", 0);
+    // The row a front-to-back scan finds for each current attribute value,
+    // computed independently of the lookup under test.
+    let expected = |session: &ParserArenaSession| -> Vec<usize> {
+        let storage = session.active().unwrap();
+        let HtmlNodeKind::Element(element) =
+            storage.construction.node_at(dialog.index).unwrap().kind()
+        else {
+            panic!("dialog element")
+        };
+        element
+            .attributes()
+            .as_slice()
+            .iter()
+            .map(|attribute| {
+                storage
+                    .payloads
+                    .values
+                    .iter()
+                    .position(|row| {
+                        matches!(row, RetainedPayload::String { value, .. }
+                            if Arc::ptr_eq(value.shared_code_units(), attribute.value().shared_code_units()))
+                    })
+                    .unwrap()
+            })
+            .collect()
+    };
+    let lookups = |session: &ParserArenaSession, c: &mut ParseControl, count: usize| {
+        let storage = session.active().unwrap();
+        (0..count)
+            .map(|position| {
+                let before = lookup_work(c);
+                let slot = storage
+                    .attribute_value_slot(c, dialog.index, position)
+                    .unwrap();
+                (slot, lookup_work(c) - before)
+            })
+            .collect::<Vec<_>>()
+    };
+    // As created: the hint is present and every lookup is a bounded hit.
+    assert!(
+        session.active().unwrap().payloads.node_joins[dialog.index]
+            .attribute_strings
+            .is_some()
+    );
+    let found = lookups(&session, &mut c, 4);
+    assert_eq!(
+        found.iter().map(|(slot, _)| *slot).collect::<Vec<_>>(),
+        expected(&session)
+    );
+    assert!(found.iter().all(|(_, work)| *work <= 4), "{found:?}");
+    // A real attribute removal shifts the later attributes and drops the hint;
+    // the fallback scan still finds each remaining value's row.
+    session
+        .remove_managed_attribute(&mut c, &dialog, "open", ManagedFamily::Dialog)
+        .unwrap();
+    assert!(
+        session.active().unwrap().payloads.node_joins[dialog.index]
+            .attribute_strings
+            .is_none()
+    );
+    let after = lookups(&session, &mut c, 3);
+    assert_eq!(
+        after.iter().map(|(slot, _)| *slot).collect::<Vec<_>>(),
+        expected(&session)
+    );
+    // Restoring the stale creation hint by hand cannot make a lookup return a
+    // row whose identity differs: every candidate is verified before use.
+    let stale = found[0].0 - 1;
+    session
+        .active_mut()
+        .unwrap()
+        .payloads
+        .record_attribute_strings(dialog.index, stale)
+        .unwrap();
+    let verified = lookups(&session, &mut c, 3);
+    assert_eq!(
+        verified.iter().map(|(slot, _)| *slot).collect::<Vec<_>>(),
+        expected(&session)
+    );
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn a_join_naming_no_row_fails_typed_instead_of_panicking() {
+    let request = request("<body><img src=a>");
+    let (mut c, mut session, _proof, nodes) = graph(&request);
+    let img = named(&nodes, "img", 0).index;
+    let storage = session.active_mut().unwrap();
+    let good = storage.payloads.node_joins[img];
+    // A join past the registry names no row: the lookup reports a typed error.
+    storage.payloads.node_joins[img].rows[Join::Image as usize] =
+        Some(joined_cell(u32::MAX as usize - 1).unwrap());
+    assert_eq!(
+        storage.start_img_update(
+            &mut c,
+            img,
+            surgeist_html::HtmlImageUpdateFlags::new(false, false)
+        ),
+        Err(SessionError::Stop(ParseStop::InternalInvariant(
+            crate::parser::control::Invariant::RegistryRow
+        )))
+    );
+    // The invariant is latched as the controller's first stop.
+    assert_eq!(
+        c.stop(),
+        Some(ParseStop::InternalInvariant(
+            crate::parser::control::Invariant::RegistryRow
+        ))
+    );
+    // A slot whose successor does not exist is refused, never wrapped.
+    assert_eq!(
+        joined_cell(u32::MAX as usize),
+        Err(SessionError::registry_row())
+    );
+    assert_eq!(joined_cell(usize::MAX), Err(SessionError::registry_row()));
+    storage.payloads.node_joins[img] = good;
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn a_refused_attribute_replacement_hands_the_edit_back_and_cleans_up() {
+    let request = request("<body><div id=a>");
+    let (mut c, mut session, _proof, nodes) = graph(&request);
+    let div = named(&nodes, "div", 0).index;
+    let storage = session.active_mut().unwrap();
+    // The container row does not exist: the refusal comes after the edit began
+    // and its group was taken, and must give the group back and abort it.
+    let refused = storage.replace_attribute_storage(&mut c, div, usize::MAX / 2, 0, &mut None, &[]);
+    let invariant = ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+    assert_eq!(refused.err(), Some(SessionError::Stop(invariant)));
+    assert_eq!(c.stop(), Some(invariant));
+    assert!(!storage.construction.has_attribute_edit());
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn a_replacement_on_a_non_element_is_refused_with_the_container_frozen() {
+    let request = request("<body><div id=a>");
+    let (mut c, mut session, _proof, nodes) = graph(&request);
+    let div = named(&nodes, "div", 0).index;
+    let storage = session.active_mut().unwrap();
+    let container = storage.element_attribute_container(&mut c, div).unwrap();
+    // Node 0 is the document, not an element: the edit cannot be about it.
+    let refused = storage.replace_attribute_storage(&mut c, 0, container, 0, &mut None, &[]);
+    // The edit's own begin refuses a document first; either way the refusal is
+    // an invariant stop and the container still holds its frozen attributes.
+    let Some(SessionError::Stop(stop @ ParseStop::InternalInvariant(_))) = refused.err() else {
+        panic!("expected an invariant stop")
+    };
+    assert_eq!(c.stop(), Some(stop));
+    assert!(matches!(
+        storage.payloads.values.get(container),
+        Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
+            element: Some(owner),
+            ..
+        }))) if *owner == div
+    ));
+    assert!(!storage.construction.has_attribute_edit());
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
 }

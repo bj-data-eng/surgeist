@@ -72,7 +72,7 @@ impl SessionStorage {
                     || !matches!(
                         self.construction
                             .node_at(0)
-                            .expect("retained construction position")
+                            .ok_or_else(|| latch_registry_row(c))?
                             .kind(),
                         HtmlNodeKind::Document(_)
                     )
@@ -105,7 +105,7 @@ impl ParserArenaSession {
             storage
                 .construction
                 .node_at(0)
-                .expect("retained construction position")
+                .ok_or_else(|| latch_registry_row(c))?
                 .kind(),
             HtmlNodeKind::Document(_)
         ) {

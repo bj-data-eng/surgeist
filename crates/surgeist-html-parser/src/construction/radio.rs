@@ -17,13 +17,13 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
     ) -> Result<Option<(usize, InputState)>, SessionError> {
-        for slot in 0..self.payloads.values.len() {
+        if let Some(slot) = self.payloads.joined(c, node, Join::Input)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::Input {
+            if let Some(RetainedPayload::Input {
                 node: Some(owner),
                 state,
                 ..
-            } = &self.payloads.values[slot]
+            }) = self.payloads.values.get(slot)
                 && *owner == node
             {
                 c.charge(WorkCategory::CopyByte, mem::size_of::<InputState>() as u64)?;
@@ -61,7 +61,7 @@ impl SessionStorage {
             && self
                 .construction
                 .node_at(node)
-                .expect("retained construction position")
+                .ok_or_else(|| latch_registry_row(c))?
                 .child_count()
                 == 0
         {

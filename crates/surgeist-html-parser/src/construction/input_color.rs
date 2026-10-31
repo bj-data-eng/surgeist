@@ -233,7 +233,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             return Err(integrity(c));
@@ -351,7 +351,7 @@ impl SessionStorage {
         payload_write::<usize>(c, 1)?;
         payload_write::<RetainedPayload>(c, 2)?;
         self.retire_field_group(c, previous)?;
-        let RetainedPayload::Input { raw, .. } = &mut self.payloads.values[slot] else {
+        let Some(RetainedPayload::Input { raw, .. }) = self.payloads.values.get_mut(slot) else {
             return Err(integrity(c));
         };
         *raw = next;

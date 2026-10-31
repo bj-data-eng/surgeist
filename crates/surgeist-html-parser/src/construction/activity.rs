@@ -19,11 +19,11 @@ impl SessionStorage {
                 let slot = self.document_slot(c, document)?;
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 if matches!(
-                    self.payloads.values[slot],
-                    RetainedPayload::Document {
+                    self.payloads.values.get(slot),
+                    Some(RetainedPayload::Document {
                         state: template::DocumentState::InertTemplate,
                         ..
-                    }
+                    })
                 ) {
                     // The actual template-owner constructor creates this
                     // independent Document without a navigable or host ingress.

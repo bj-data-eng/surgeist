@@ -19,7 +19,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             return Err(SessionError::WrongToken);
@@ -77,10 +77,10 @@ impl SessionStorage {
         } else {
             let slot = self.completion_slot(c)?;
             c.charge(WorkCategory::RecordVisit, 1)?;
-            let RetainedPayload::StandaloneDocumentCompletion { state, .. } =
-                &self.payloads.values[slot]
+            let Some(RetainedPayload::StandaloneDocumentCompletion { state, .. }) =
+                self.payloads.values.get(slot)
             else {
-                unreachable!("checked completion fact")
+                return Err(latch_registry_row(c));
             };
             let _ = state;
             // Only the admitted fresh offline prologue issues this fact; the

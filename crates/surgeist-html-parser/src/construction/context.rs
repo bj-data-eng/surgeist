@@ -246,19 +246,23 @@ impl SessionStorage {
         )?;
         self.prepare_payload_slot_owned(c)?;
         let fact = self.payloads.values.len();
-        self.payloads.values.push(RetainedPayload::Document {
-            node: None,
-            state: template::DocumentState::InertTemplate,
-            class,
-            meta: meta::MetaHistory::offline(),
-            interaction: dialog::InteractionHistory::new(),
-        });
+        self.payloads
+            .push_row(RetainedPayload::Document {
+                node: None,
+                state: template::DocumentState::InertTemplate,
+                class,
+                meta: meta::MetaHistory::offline(),
+                interaction: dialog::InteractionHistory::new(),
+            })
+            .map_err(|_| latch_registry_row(c))?;
         self.prepare_payload_slot_owned(c)?;
         let binding = self.payloads.values.len();
-        self.payloads.values.push(RetainedPayload::NodeDocument {
-            node: None,
-            document: DocumentRef::Owned(self.construction.storage().len()),
-        });
+        self.payloads
+            .push_row(RetainedPayload::NodeDocument {
+                node: None,
+                document: DocumentRef::Owned(self.construction.storage().len()),
+            })
+            .map_err(|_| latch_registry_row(c))?;
         payload_write::<Option<usize>>(c, 3)?;
         let node = self.allocate_native(
             c,
@@ -267,15 +271,24 @@ impl SessionStorage {
             0,
             0,
         )?;
-        let RetainedPayload::Document { node: bound, .. } = &mut self.payloads.values[fact] else {
-            unreachable!()
-        };
-        *bound = Some(node.index);
-        let RetainedPayload::NodeDocument { node: bound, .. } = &mut self.payloads.values[binding]
+        let Some(RetainedPayload::Document { node: bound, .. }) =
+            self.payloads.values.get_mut(fact)
         else {
-            unreachable!()
+            return Err(latch_registry_row(c));
         };
         *bound = Some(node.index);
+        self.payloads
+            .join_row(fact)
+            .map_err(|_| latch_registry_row(c))?;
+        let Some(RetainedPayload::NodeDocument { node: bound, .. }) =
+            self.payloads.values.get_mut(binding)
+        else {
+            return Err(latch_registry_row(c));
+        };
+        *bound = Some(node.index);
+        self.payloads
+            .join_row(binding)
+            .map_err(|_| latch_registry_row(c))?;
         let ContextEffect::TemplateCache { inert, .. } = self
             .fragment
             .as_mut()
@@ -339,7 +352,7 @@ impl ParserArenaSession {
                 storage
                     .construction
                     .node_at(0)
-                    .expect("retained construction position")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .kind(),
                 HtmlNodeKind::Document(_)
             )
@@ -399,8 +412,7 @@ impl ParserArenaSession {
         storage.prepare_payload_slot_owned(c)?;
         storage
             .payloads
-            .values
-            .push(RetainedPayload::LookupRegistry {
+            .push_row(RetainedPayload::LookupRegistry {
                 node: Some(root.index),
                 registry,
                 creation: Some(ElementCreationState {
@@ -408,7 +420,8 @@ impl ParserArenaSession {
                     state: crate::HtmlCustomElementState::Uncustomized,
                     saved_is: None,
                 }),
-            });
+            })
+            .map_err(|_| latch_registry_row(c))?;
         let document = self.root(c)?;
         self.insert(c, &document, &root, None, None)?;
         let storage = self.active_mut()?;
@@ -490,7 +503,7 @@ impl ParserArenaSession {
                 storage
                     .construction
                     .node_at(output)
-                    .expect("retained construction position")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .kind(),
                 HtmlNodeKind::Fragment
             )
@@ -532,19 +545,19 @@ impl ParserArenaSession {
         // Both qualified replacements are admitted before either canonical
         // slot changes. Superseded source-less causes stay in the sole issuer.
         payload_write::<[provenance::ConstructionCauseRef; 2]>(c, 2)?;
-        let RetainedPayload::ConstructionCause {
+        let Some(RetainedPayload::ConstructionCause {
             cause: root_cause, ..
-        } = &mut storage.payloads.values[root_slot]
+        }) = storage.payloads.values.get_mut(root_slot)
         else {
-            unreachable!()
+            return Err(latch_registry_row(c));
         };
         *root_cause = cause;
-        let RetainedPayload::ConstructionCause {
+        let Some(RetainedPayload::ConstructionCause {
             cause: output_cause,
             ..
-        } = &mut storage.payloads.values[output_slot]
+        }) = storage.payloads.values.get_mut(output_slot)
         else {
-            unreachable!()
+            return Err(latch_registry_row(c));
         };
         *output_cause = copy;
         Ok(())
@@ -691,13 +704,13 @@ impl SessionStorage {
         node: usize,
     ) -> Result<RegistryRef, SessionError> {
         c.require_identity(&self.control)?;
-        for payload in &self.payloads.values {
+        if let Some(slot) = self.payloads.joined(c, node, Join::LookupRegistry)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::LookupRegistry {
+            if let Some(RetainedPayload::LookupRegistry {
                 node: Some(bound),
                 registry,
                 ..
-            } = payload
+            }) = self.payloads.values.get(slot)
                 && *bound == node
             {
                 return registry.try_clone(c);
@@ -707,7 +720,7 @@ impl SessionStorage {
         if matches!(
             self.construction
                 .node_at(node)
-                .expect("retained construction position")
+                .ok_or_else(|| latch_registry_row(c))?
                 .kind(),
             HtmlNodeKind::Fragment
         ) {
@@ -726,13 +739,13 @@ impl SessionStorage {
         node: usize,
     ) -> Result<ElementCreationState, SessionError> {
         c.require_identity(&self.control)?;
-        for payload in &self.payloads.values {
+        if let Some(slot) = self.payloads.joined(c, node, Join::LookupRegistry)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::LookupRegistry {
+            if let Some(RetainedPayload::LookupRegistry {
                 node: Some(bound),
                 creation: Some(state),
                 ..
-            } = payload
+            }) = self.payloads.values.get(slot)
                 && *bound == node
             {
                 c.charge(
@@ -846,19 +859,21 @@ impl SessionStorage {
         payload_write::<Option<usize>>(c, 1)?;
         self.prepare_payload_slot_owned(c)?;
         let slot = self.payloads.values.len();
-        self.payloads.values.push(RetainedPayload::LookupRegistry {
-            node: None,
-            registry,
-            creation: Some(ElementCreationState {
-                common_scope: if html {
-                    surgeist_html::HtmlCommonScope::Html
-                } else {
-                    surgeist_html::HtmlCommonScope::Element
-                },
-                state,
-                saved_is,
-            }),
-        });
+        self.payloads
+            .push_row(RetainedPayload::LookupRegistry {
+                node: None,
+                registry,
+                creation: Some(ElementCreationState {
+                    common_scope: if html {
+                        surgeist_html::HtmlCommonScope::Html
+                    } else {
+                        surgeist_html::HtmlCommonScope::Element
+                    },
+                    state,
+                    saved_is,
+                }),
+            })
+            .map_err(|_| latch_registry_row(c))?;
         prepared
             .as_mut()
             .ok_or(SessionError::NodeDocumentUnavailable)?
@@ -879,13 +894,13 @@ impl SessionStorage {
         let shadow = if matches!(
             self.construction
                 .node_at(node)
-                .expect("retained construction position")
+                .ok_or_else(|| latch_registry_row(c))?
                 .kind(),
             HtmlNodeKind::Fragment
         ) && matches!(
             self.construction
                 .node_at(node)
-                .expect("retained construction position")
+                .ok_or_else(|| latch_registry_row(c))?
                 .fragment_owner(),
             Some(HtmlFragmentOwner::ShadowHost(_))
         ) {
@@ -897,7 +912,7 @@ impl SessionStorage {
             && !matches!(
                 self.construction
                     .node_at(node)
-                    .expect("retained construction position")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .kind(),
                 HtmlNodeKind::Element(_)
             )
@@ -946,7 +961,7 @@ impl SessionStorage {
                     && !matches!(
                         self.construction
                             .node_at(parent)
-                            .expect("retained construction position")
+                            .ok_or_else(|| latch_registry_row(c))?
                             .kind(),
                         HtmlNodeKind::Fragment
                     ) =>
@@ -967,15 +982,15 @@ impl SessionStorage {
             },
         };
         let effective = self.effective_global_registry(c, registry)?;
-        for slot in 0..self.payloads.values.len() {
+        if let Some(slot) = self.payloads.joined(c, node, Join::LookupRegistry)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(self.payloads.values[slot],RetainedPayload::LookupRegistry {node:Some(bound),..} if bound==node)
+            if matches!(self.payloads.values.get(slot),Some(RetainedPayload::LookupRegistry {node:Some(bound),..}) if *bound==node)
             {
                 payload_write::<RegistryRef>(c, 1)?;
-                let RetainedPayload::LookupRegistry { registry, .. } =
-                    &mut self.payloads.values[slot]
+                let Some(RetainedPayload::LookupRegistry { registry, .. }) =
+                    self.payloads.values.get_mut(slot)
                 else {
-                    unreachable!()
+                    return Err(latch_registry_row(c));
                 };
                 *registry = effective;
                 return Ok(());
@@ -1093,7 +1108,7 @@ impl FragmentContextStorage {
         c: &mut ParseControl,
         owner: &ControlIdentity,
     ) -> Result<(), ParseStop> {
-        release_logical(
+        let logical = release_logical(
             c,
             owner,
             HtmlParseResource::SourceMapEntries,
@@ -1101,9 +1116,15 @@ impl FragmentContextStorage {
         );
         // Public handles exist only after successful report publication. This
         // original cleanup owner retires its actual identity ticket on failure.
-        c.release_zero_sized_shared(self.origin.0, self.origin_allocation)
-            .unwrap_or_else(|_| panic!("original fragment origin owner/ticket"));
-        self.effects.release(c)
+        let origin = c
+            .release_zero_sized_shared(self.origin.0, self.origin_allocation)
+            .map_err(|error| error.into_parts().0);
+        let effects = self.effects.release(c);
+        if let Err(SessionError::Stop(stop)) = logical {
+            return Err(stop);
+        }
+        origin?;
+        effects
     }
 }
 impl ParserArenaSession {
@@ -1134,7 +1155,7 @@ impl ParserArenaSession {
         let HtmlNodeKind::Element(element) = &storage
             .construction
             .node_at(template)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             unreachable!()
@@ -1190,7 +1211,7 @@ impl ParserArenaSession {
                 let HtmlNodeKind::Element(element) = &storage
                     .construction
                     .node_at(host)
-                    .expect("retained construction position")
+                    .ok_or_else(|| latch_registry_row(c))?
                     .kind()
                 else {
                     return Ok(false);
@@ -1200,7 +1221,7 @@ impl ParserArenaSession {
                     || storage
                         .construction
                         .node_at(host)
-                        .expect("retained construction position")
+                        .ok_or_else(|| latch_registry_row(c))?
                         .shadow_root()
                         .is_some()
                 {
@@ -1209,7 +1230,8 @@ impl ParserArenaSession {
                 let creation = storage.element_creation_state(c, host)?;
                 let saved_is = if let Some(slot) = creation.saved_is {
                     c.charge(WorkCategory::RecordVisit, 1)?;
-                    let RetainedPayload::String { value, .. } = &storage.payloads.values[slot]
+                    let Some(RetainedPayload::String { value, .. }) =
+                        storage.payloads.values.get(slot)
                     else {
                         return Err(SessionError::ContextUnavailable);
                     };
@@ -1346,7 +1368,9 @@ impl ParserArenaSession {
             source: source.clone(),
         };
         if let Err((stop, _)) = fragment.effects.try_push_recover(c, effect) {
-            release_logical(c, &storage.control, HtmlParseResource::SourceMapEntries, 1);
+            // The push refusal is the error reported; a refused release latched
+            // its own stop.
+            let _ = release_logical(c, &storage.control, HtmlParseResource::SourceMapEntries, 1);
             return Err(stop.into());
         }
         fragment.source_entries += 1;
@@ -1363,21 +1387,21 @@ impl ParserArenaSession {
             });
             payload_write::<Option<usize>>(c, 1)?;
             let root = storage.allocate_shadow_contents(c, properties, document)?;
-            let RetainedPayload::Shadow { root: bound, .. } =
-                &mut storage.payloads.values[shadow_slot]
+            let Some(RetainedPayload::Shadow { root: bound, .. }) =
+                storage.payloads.values.get_mut(shadow_slot)
             else {
-                unreachable!()
+                return Err(latch_registry_row(c));
             };
             *bound = Some(root.index);
             storage.prepare_payload_slot_owned(c)?;
             storage
                 .payloads
-                .values
-                .push(RetainedPayload::LookupRegistry {
+                .push_row(RetainedPayload::LookupRegistry {
                     node: Some(root.index),
                     registry,
                     creation: None,
-                });
+                })
+                .map_err(|_| latch_registry_row(c))?;
             let local_host = match &storage
                 .fragment
                 .as_ref()
@@ -1447,10 +1471,10 @@ impl ParserArenaSession {
             *declarative = true;
             *available_to_internals = true;
             *keep_registry_null = keep_null;
-            let RetainedPayload::Template { state, .. } =
-                &mut storage.payloads.values[template_slot]
+            let Some(RetainedPayload::Template { state, .. }) =
+                storage.payloads.values.get_mut(template_slot)
             else {
-                unreachable!("preflighted template metadata")
+                return Err(latch_registry_row(c));
             };
             state.contents = root.index;
             Ok::<(), SessionError>(())
@@ -1776,7 +1800,7 @@ impl SessionStorage {
         let Some(shadow) = self
             .construction
             .node_at(source)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .shadow_root()
         else {
             return Ok(None);
@@ -1851,23 +1875,30 @@ impl SessionStorage {
             .push(RetainedPayload::Shadow { root: None, state });
         self.prepare_payload_slot_owned(c)?;
         let lookup = self.payloads.values.len();
-        self.payloads.values.push(RetainedPayload::LookupRegistry {
-            node: None,
-            registry,
-            creation: None,
-        });
+        self.payloads
+            .push_row(RetainedPayload::LookupRegistry {
+                node: None,
+                registry,
+                creation: None,
+            })
+            .map_err(|_| latch_registry_row(c))?;
         payload_write::<Option<usize>>(c, 2)?;
         let document = document.try_clone(c)?;
         let root = self.allocate_shadow_contents(c, properties, document)?;
-        let RetainedPayload::Shadow { root: bound, .. } = &mut self.payloads.values[fact] else {
-            unreachable!()
-        };
-        *bound = Some(root.index);
-        let RetainedPayload::LookupRegistry { node: bound, .. } = &mut self.payloads.values[lookup]
+        let Some(RetainedPayload::Shadow { root: bound, .. }) = self.payloads.values.get_mut(fact)
         else {
-            unreachable!()
+            return Err(latch_registry_row(c));
         };
         *bound = Some(root.index);
+        let Some(RetainedPayload::LookupRegistry { node: bound, .. }) =
+            self.payloads.values.get_mut(lookup)
+        else {
+            return Err(latch_registry_row(c));
+        };
+        *bound = Some(root.index);
+        self.payloads
+            .join_row(lookup)
+            .map_err(|_| latch_registry_row(c))?;
         c.charge(WorkCategory::ProviderCall, 2)?;
         let host = self
             .construction
@@ -1984,7 +2015,8 @@ impl ParserArenaSession {
         let state = storage.element_creation_state(c, index)?;
         let saved = if let Some(slot) = state.saved_is {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            let RetainedPayload::String { value, .. } = &storage.payloads.values[slot] else {
+            let Some(RetainedPayload::String { value, .. }) = storage.payloads.values.get(slot)
+            else {
                 return Err(SessionError::ContextUnavailable);
             };
             Some(value)
@@ -2032,7 +2064,8 @@ impl FrozenArena {
                 )?;
                 let saved = if let Some(slot) = state.saved_is {
                     c.charge(WorkCategory::RecordVisit, 1)?;
-                    let RetainedPayload::String { value, .. } = &storage.payloads.values[slot]
+                    let Some(RetainedPayload::String { value, .. }) =
+                        storage.payloads.values.get(slot)
                     else {
                         return Err(SessionError::ContextUnavailable);
                     };

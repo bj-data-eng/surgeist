@@ -58,6 +58,9 @@ pub enum Invariant {
     SharedAllocationAliased,
     PendingFormEffects,
     IncompleteFormAssociationCreation,
+    /// A retained record, child or payload row that internal state names is
+    /// missing, out of range or of another kind.
+    RegistryRow,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2697,10 +2700,11 @@ mod tests {
             token::{Event, TokenKind},
         };
         use crate::parser::tree_builder::StandaloneDocumentDriver;
-        // One node-document binding precedes the unchanged four Hidden
-        // metadata slots and one independent creation row. Five extra slots stop before lexical take; six
-        // reach the first lexical String-slot admission after take.
-        for additional in [5, 6] {
+        // Creation holds a measured number of auxiliary entries beyond those
+        // already retained. Any smaller allowance refuses with the first
+        // auxiliary stop, either before the lexical take (the tag keeps its own
+        // backing) or after it, and a larger allowance never refuses earlier.
+        let attempt = |additional: Option<u64>| {
             let request = crate::HtmlDocumentParseRequest::offline(
                 crate::HtmlSource::utf8("<html><head></head><input type=hidden>"),
                 limits()
@@ -2755,25 +2759,22 @@ mod tests {
                 .usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current;
-            c.limits[HtmlParseResource::AuxiliaryEntries as usize] = slots + additional;
-            assert!(matches!(
-                session.allocate_input_for_creation(
-                    &mut c,
-                    &mut input,
-                    crate::construction::CreationLocation {
-                        intended_parent: &parent,
-                        current_form: None,
-                        context: crate::construction::CreationContext::Ordinary
-                    },
-                    &token_source,
-                    &capability
-                ),
-                Err(SessionError::Stop(ParseStop::LimitExceeded {
-                    resource: HtmlParseResource::AuxiliaryEntries,
-                    ..
-                }))
-            ));
-            if additional == 5 {
+            if let Some(additional) = additional {
+                c.limits[HtmlParseResource::AuxiliaryEntries as usize] = slots + additional;
+            }
+            let result = session.allocate_input_for_creation(
+                &mut c,
+                &mut input,
+                crate::construction::CreationLocation {
+                    intended_parent: &parent,
+                    current_form: None,
+                    context: crate::construction::CreationContext::Ordinary,
+                },
+                &token_source,
+                &capability,
+            );
+            let taken = input.is_none();
+            if !taken {
                 assert_eq!(
                     input
                         .as_ref()
@@ -2783,21 +2784,19 @@ mod tests {
                         .text()
                         .code_units()
                         .as_ptr(),
-                    pointer
+                    pointer,
+                    "a tag refused before the take keeps its own name backing"
                 );
-            } else {
-                assert!(input.is_none());
+                assert_eq!(
+                    c.usage().resource(HtmlParseResource::ManagedNodes).current,
+                    nodes
+                );
             }
-            assert_eq!(
-                c.usage().resource(HtmlParseResource::ManagedNodes).current,
-                nodes
-            );
-            assert_eq!(
-                c.usage()
-                    .resource(HtmlParseResource::AuxiliaryEntries)
-                    .current,
-                slots + additional
-            );
+            let held = c
+                .usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current
+                - slots;
             let first = c.stop();
             if let Some(tag) = input.take() {
                 release_token_kind(&mut Some(TokenKind::Tag(tag)), &mut c).unwrap();
@@ -2815,7 +2814,48 @@ mod tests {
             ] {
                 assert_eq!(c.usage().resource(resource).current, 0);
             }
+            (result.map(|_| ()), first, taken, held)
+        };
+        let (created, stop, _, needed) = attempt(None);
+        created.unwrap();
+        assert_eq!(stop, None);
+        let mut taken_before = false;
+        let mut refused_before_take = 0;
+        for additional in 0..needed {
+            let (result, stop, taken, held) = attempt(Some(additional));
+            assert!(
+                matches!(
+                    (&result, stop),
+                    (
+                        Err(SessionError::Stop(ParseStop::LimitExceeded {
+                            resource: HtmlParseResource::AuxiliaryEntries,
+                            ..
+                        })),
+                        Some(ParseStop::LimitExceeded {
+                            resource: HtmlParseResource::AuxiliaryEntries,
+                            ..
+                        })
+                    )
+                ),
+                "allowance {additional}: {result:?}"
+            );
+            assert!(held <= additional, "allowance {additional} holds {held}");
+            assert!(
+                taken || !taken_before,
+                "allowance {additional} refused earlier than a smaller allowance"
+            );
+            taken_before |= taken;
+            refused_before_take += usize::from(!taken);
         }
+        assert!(
+            refused_before_take > 0,
+            "the metadata slots are admitted before the lexical take"
+        );
+        assert!(taken_before, "the creation row follows the lexical take");
+        let (created, stop, _, held) = attempt(Some(needed));
+        created.unwrap();
+        assert_eq!(stop, None);
+        assert_eq!(held, needed);
     }
 
     fn bound_string(

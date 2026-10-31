@@ -249,6 +249,7 @@ pub surgeist_html_parser::HtmlParseInvariant::MissingSource
 pub surgeist_html_parser::HtmlParseInvariant::NonReclaimableNodes
 pub surgeist_html_parser::HtmlParseInvariant::NonStorageResource
 pub surgeist_html_parser::HtmlParseInvariant::PendingFormEffects
+pub surgeist_html_parser::HtmlParseInvariant::RegistryRow
 pub surgeist_html_parser::HtmlParseInvariant::ReleaseUnderflow
 pub surgeist_html_parser::HtmlParseInvariant::SharedAllocationAliased
 pub surgeist_html_parser::HtmlParseInvariant::ZeroSizedStorage

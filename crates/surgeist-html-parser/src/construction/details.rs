@@ -64,7 +64,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             return Err(SessionError::WrongToken);
@@ -132,7 +132,7 @@ impl SessionStorage {
             && self
                 .construction
                 .node_at(node)
-                .expect("retained construction position")
+                .ok_or_else(|| latch_registry_row(c))?
                 .child_count()
                 == 0
         {
@@ -218,6 +218,7 @@ impl SessionStorage {
         container: usize,
         position: Option<usize>,
     ) -> Result<(), SessionError> {
+        self.payloads.forget_attribute_strings(node);
         c.charge(WorkCategory::ProviderCall, 2)?;
         payload_write::<Option<AttributeStorage>>(c, 2)?;
         c.charge(
@@ -226,10 +227,23 @@ impl SessionStorage {
         )?;
         payload_write::<usize>(c, 1)?;
         payload_write::<bool>(c, 1)?;
-        let RetainedPayload::Attributes(storage) = &mut self.payloads.values[container] else {
-            unreachable!()
+        // Everything that can refuse is checked before ownership leaves the
+        // container; the node stays an element while its attributes change.
+        if !matches!(
+            self.construction
+                .storage()
+                .node_at(node)
+                .map(|record| record.kind()),
+            Some(HtmlNodeKind::Element(_))
+        ) {
+            return Err(latch_registry_row(c));
+        }
+        let Some(RetainedPayload::Attributes(storage)) = self.payloads.values.get_mut(container)
+        else {
+            return Err(latch_registry_row(c));
         };
-        let AttributeStorage::Removing {
+        let taken = storage.take();
+        let Some(AttributeStorage::Removing {
             values,
             mut allocation,
             mut shared,
@@ -238,9 +252,10 @@ impl SessionStorage {
             mut shifted,
             mut popped,
             rebound,
-        } = storage.take().expect("real removal")
+        }) = taken
         else {
-            unreachable!()
+            *storage = taken;
+            return Err(latch_registry_row(c));
         };
         drop(values);
         let result = (|| {
@@ -270,14 +285,13 @@ impl SessionStorage {
                 popped = true;
             }
         }
-        let HtmlNodeKind::Element(element_record) = self
+        let Some(HtmlNodeKind::Element(element_record)) = self
             .construction
             .storage()
             .node_at(node)
-            .expect("retained element")
-            .kind()
+            .map(|record| record.kind())
         else {
-            unreachable!()
+            return Err(latch_registry_row(c));
         };
         c.restore_attribute_weak(element_record.attributes().shared_attributes(), &mut shared);
         let values = element_record.attributes().clone();

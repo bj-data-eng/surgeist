@@ -62,6 +62,12 @@ pub(super) struct MetaHistory {
     pub(super) first: Option<MetaDomain>,
 }
 impl MetaHistory {
+    /// The first unsatisfied operation recorded for `domain`; the array has one
+    /// cell per `MetaDomain`.
+    /// `None` only when `domain` has no cell, which `index` rules out.
+    fn gap(&self, domain: MetaDomain) -> Option<Option<usize>> {
+        self.gaps.get(domain.index()).copied()
+    }
     pub(super) fn offline() -> Self {
         Self {
             language: None,
@@ -104,17 +110,21 @@ fn after_commit(point: CancelPoint) {
     });
 }
 impl SessionStorage {
-    pub(super) fn meta_history(&self, slot: usize) -> &MetaHistory {
-        let RetainedPayload::Document { meta, .. } = &self.payloads.values[slot] else {
-            unreachable!("qualified actual Document row")
+    pub(super) fn meta_history(&self, slot: usize) -> Result<&MetaHistory, SessionError> {
+        let Some(RetainedPayload::Document { meta, .. }) = self.payloads.values.get(slot) else {
+            return Err(SessionError::registry_row());
         };
-        meta
+        Ok(meta)
     }
-    pub(super) fn meta_history_mut(&mut self, slot: usize) -> &mut MetaHistory {
-        let RetainedPayload::Document { meta, .. } = &mut self.payloads.values[slot] else {
-            unreachable!("qualified actual Document row")
+    pub(super) fn meta_history_mut(
+        &mut self,
+        slot: usize,
+    ) -> Result<&mut MetaHistory, SessionError> {
+        let Some(RetainedPayload::Document { meta, .. }) = self.payloads.values.get_mut(slot)
+        else {
+            return Err(SessionError::registry_row());
         };
-        meta
+        Ok(meta)
     }
     pub(super) fn meta_policy_missing(
         &self,
@@ -123,7 +133,10 @@ impl SessionStorage {
     ) -> Result<Option<usize>, SessionError> {
         let slot = self.document_slot(c, document)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        Ok(self.meta_history(slot).gaps[MetaDomain::Csp.index()])
+        self.meta_history(slot)
+            .map_err(|_| latch_registry_row(c))?
+            .gap(MetaDomain::Csp)
+            .ok_or_else(|| latch_registry_row(c))
     }
     pub(super) fn meta_missing(
         &mut self,
@@ -135,11 +148,21 @@ impl SessionStorage {
         let slot = self.document_slot(c, document)?;
         let domain = kind.domain();
         c.charge(WorkCategory::RecordVisit, 1)?;
-        if self.meta_history(slot).gaps[domain.index()].is_some() {
+        if self
+            .meta_history(slot)
+            .map_err(|_| latch_registry_row(c))?
+            .gap(domain)
+            .ok_or_else(|| latch_registry_row(c))?
+            .is_some()
+        {
             return Ok(());
         }
         let cause = self.associated_cause(c)?;
-        let first = self.meta_history(slot).first.is_none();
+        let first = self
+            .meta_history(slot)
+            .map_err(|_| latch_registry_row(c))?
+            .first
+            .is_none();
         payload_write::<Option<usize>>(c, 1)?;
         if first {
             payload_write::<Option<MetaDomain>>(c, 1)?;
@@ -152,8 +175,14 @@ impl SessionStorage {
             kind,
             cause,
         });
-        let meta = self.meta_history_mut(slot);
-        meta.gaps[domain.index()] = Some(gap);
+        let meta = self
+            .meta_history_mut(slot)
+            .map_err(|_| latch_registry_row(c))?;
+        let cell = meta
+            .gaps
+            .get_mut(domain.index())
+            .ok_or_else(|| latch_registry_row(c))?;
+        *cell = Some(gap);
         if first {
             meta.first = Some(domain);
         }
@@ -254,7 +283,11 @@ impl SessionStorage {
                 drop(handle);
                 let slot = self.document_slot(c, document)?;
                 payload_write::<Option<usize>>(c, 1)?;
-                let old = self.meta_history_mut(slot).language.replace(value);
+                let old = self
+                    .meta_history_mut(slot)
+                    .map_err(|_| latch_registry_row(c))?
+                    .language
+                    .replace(value);
                 #[cfg(test)]
                 after_commit(CancelPoint::Language);
                 if let Some(old) = old {
@@ -264,8 +297,16 @@ impl SessionStorage {
             Pragma::Refresh if !content.is_empty() => {
                 let slot = self.document_slot(c, document)?;
                 c.charge(WorkCategory::RecordVisit, 1)?;
-                if self.meta_history(slot).gaps[MetaDomain::Refresh.index()].is_some()
-                    || self.meta_history(slot).refresh
+                if self
+                    .meta_history(slot)
+                    .map_err(|_| latch_registry_row(c))?
+                    .gap(MetaDomain::Refresh)
+                    .ok_or_else(|| latch_registry_row(c))?
+                    .is_some()
+                    || self
+                        .meta_history(slot)
+                        .map_err(|_| latch_registry_row(c))?
+                        .refresh
                 {
                     return Ok(());
                 }
@@ -287,7 +328,9 @@ impl SessionStorage {
                     Ok(false) => (),
                     Ok(true) => {
                         payload_write::<bool>(c, 1)?;
-                        self.meta_history_mut(slot).refresh = true;
+                        self.meta_history_mut(slot)
+                            .map_err(|_| latch_registry_row(c))?
+                            .refresh = true;
                     }
                     Err(missing) => {
                         self.meta_missing(c, document, node, MetaMissingKind::RefreshUrl(missing))?
@@ -387,7 +430,9 @@ impl SessionStorage {
         {
             let slot = self.document_slot(c, document)?;
             payload_write::<HtmlReferrerPolicy>(c, 1)?;
-            self.meta_history_mut(slot).referrer = policy;
+            self.meta_history_mut(slot)
+                .map_err(|_| latch_registry_row(c))?
+                .referrer = policy;
         }
         Ok(())
     }
@@ -404,7 +449,14 @@ impl SessionStorage {
             (theme, "theme-color", MetaDomain::ThemeColor),
             (scheme, "color-scheme", MetaDomain::ColorScheme),
         ] {
-            if !enabled || self.meta_history(slot).gaps[domain.index()].is_some() {
+            if !enabled
+                || self
+                    .meta_history(slot)
+                    .map_err(|_| latch_registry_row(c))?
+                    .gap(domain)
+                    .ok_or_else(|| latch_registry_row(c))?
+                    .is_some()
+            {
                 continue;
             }
             let mut selected_theme = None;
@@ -473,11 +525,18 @@ impl SessionStorage {
             }
             if domain == MetaDomain::ThemeColor {
                 payload_write::<Option<surgeist_color::Color>>(c, 1)?;
-                self.meta_history_mut(slot).theme = selected_theme;
+                self.meta_history_mut(slot)
+                    .map_err(|_| latch_registry_row(c))?
+                    .theme = selected_theme;
                 // This original constructor has no associated UI recipients.
                 // Selection above still performed all reached CSS work.
                 #[cfg(test)]
-                if self.meta_history(slot).theme.is_some() {
+                if self
+                    .meta_history(slot)
+                    .map_err(|_| latch_registry_row(c))?
+                    .theme
+                    .is_some()
+                {
                     after_commit(CancelPoint::Theme);
                 }
             } else {
@@ -490,10 +549,20 @@ impl SessionStorage {
                     }
                     return Err(stop);
                 }
-                let old =
-                    std::mem::replace(&mut self.meta_history_mut(slot).scheme, selected_scheme);
+                let old = std::mem::replace(
+                    &mut self
+                        .meta_history_mut(slot)
+                        .map_err(|_| latch_registry_row(c))?
+                        .scheme,
+                    selected_scheme,
+                );
                 #[cfg(test)]
-                if self.meta_history(slot).scheme.is_some() {
+                if self
+                    .meta_history(slot)
+                    .map_err(|_| latch_registry_row(c))?
+                    .scheme
+                    .is_some()
+                {
                     after_commit(CancelPoint::Scheme);
                 }
                 if let Some(old) = old {
