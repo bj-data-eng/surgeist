@@ -6,7 +6,7 @@ pub use collections::*;
 
 use super::*;
 use crate::HtmlCapturedChildIds;
-use surgeist_html::bounded as numeric;
+use surgeist_html::{HtmlTableHeaderScope, HtmlTableHeaderScopeState};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlTableCellKind {
@@ -198,14 +198,29 @@ struct Scratch<'a> {
     block: Vec<usize>,
     document: Vec<HtmlCapturedChildIds<'a>>,
 }
-#[derive(Clone, Copy, Eq, PartialEq)]
-enum Scope {
-    Auto,
-    Row,
-    Column,
-    RowGroup,
-    ColumnGroup,
+/// Which HTML-owned span rule applies; the rule itself owns caps and defaults.
+#[derive(Clone, Copy)]
+enum TableSpan {
+    Colspan,
+    Rowspan,
+    ColSpan,
+    ColgroupSpan,
 }
+impl TableSpan {
+    fn attribute(self) -> &'static str {
+        match self {
+            Self::Colspan => "colspan",
+            Self::Rowspan => "rowspan",
+            Self::ColSpan | Self::ColgroupSpan => "span",
+        }
+    }
+}
+/// Upper bound on whole-value passes one span rule makes: the nonnegative
+/// syntax check, prefix recovery, digit copies, the author range comparison
+/// and the cap conversion.
+const TABLE_SPAN_VALUE_PASSES: usize = 6;
+/// The th scope rule compares its value with four keywords.
+const TABLE_SCOPE_KEYWORDS: usize = 4;
 
 impl<'a> HtmlSemanticSession<'a> {
     /// HTML 877d §4.9.1, the first caption element child, or null:
@@ -361,29 +376,26 @@ impl<'a> HtmlSemanticSession<'a> {
             .map_err(|e| TableStop::Failure(self.stop(HtmlSemanticFailureKind::Attribute(e))))?;
         Ok(raw)
     }
-    fn table_span(
-        &mut self,
-        id: &HtmlCaptureSubjectId,
-        local: &str,
-        cap: usize,
-        zero: bool,
-    ) -> TableResult<usize> {
+    /// Reads one span quantity through the HTML-owned rule for `span`; the caps,
+    /// zero handling and absence default live there, not here.
+    fn table_span(&mut self, id: &HtmlCaptureSubjectId, span: TableSpan) -> TableResult<usize> {
         let element = self.table_element(id)?;
-        let Some(raw) = self.table_raw(element, local)? else {
-            return Ok(1);
-        };
-        let work = raw
-            .value()
-            .len()
-            .checked_mul(2)
-            .and_then(|n| n.checked_add(8))
-            .ok_or_else(|| {
-                TableStop::Failure(self.stop(HtmlSemanticFailureKind::RepresentationExhausted))
-            })?;
-        self.charge(work)?;
-        let value = numeric::parse_nonnegative_integer_capped(raw.value(), cap).unwrap_or(1);
+        let raw = self.table_raw(element, span.attribute())?;
+        // The rule's recognition searches plus the passes it makes over the
+        // value (syntax check, recovery, author range and cap), admitted as
+        // one atomic bounded operation before the rule runs.
+        self.admit_intrinsic(element, raw, TABLE_SPAN_VALUE_PASSES)?;
+        let report = match span {
+            TableSpan::Colspan => self.interpreter.cell_colspan(element.name(), raw),
+            TableSpan::Rowspan => self.interpreter.cell_rowspan(element.name(), raw),
+            TableSpan::ColSpan => self.interpreter.col_span(element.name(), raw),
+            TableSpan::ColgroupSpan => self.interpreter.colgroup_span(element.name(), raw),
+        }
+        .map_err(|e| TableStop::Failure(self.stop(HtmlSemanticFailureKind::Attribute(e))))?;
         self.poll()?;
-        Ok(if value == 0 && !zero { 1 } else { value })
+        report.intrinsic().copied().map(usize::from).ok_or_else(|| {
+            TableStop::Failure(self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable))
+        })
     }
     fn table_width(
         &mut self,
@@ -421,13 +433,13 @@ impl<'a> HtmlSemanticSession<'a> {
         while let Some((column, kind)) = self.table_next(&mut children)? {
             if kind == Some(KnownHtmlElement::Col) {
                 has_column = true;
-                let span = self.table_span(&column, "span", 1000, false)?;
+                let span = self.table_span(&column, TableSpan::ColSpan)?;
                 let width = self.table_add(model.width(), span)?;
                 self.table_width(model, width, Some(&column))?;
             }
         }
         if !has_column {
-            let span = self.table_span(id, "span", 1000, false)?;
+            let span = self.table_span(id, TableSpan::ColgroupSpan)?;
             let width = self.table_add(model.width(), span)?;
             self.table_width(model, width, None)?;
         }
@@ -526,8 +538,8 @@ impl<'a> HtmlSemanticSession<'a> {
                 let width = self.table_add(x, 1)?;
                 self.table_width(model, width, None)?;
             }
-            let width = self.table_span(&id, "colspan", 1000, false)?;
-            let mut height = self.table_span(&id, "rowspan", 65534, true)?;
+            let width = self.table_span(&id, TableSpan::Colspan)?;
+            let mut height = self.table_span(&id, TableSpan::Rowspan)?;
             let grows = height == 0;
             if grows {
                 height = 1;
@@ -693,38 +705,27 @@ impl<'a> HtmlSemanticSession<'a> {
         self.poll()?;
         Ok(model)
     }
-    fn table_scope(&mut self, model: &HtmlTableModel, index: usize) -> TableResult<Scope> {
+    fn table_scope(
+        &mut self,
+        model: &HtmlTableModel,
+        index: usize,
+    ) -> TableResult<HtmlTableHeaderScopeState> {
         let element = self.table_element(&model.cells[index].subject)?;
-        let Some(raw) = self.table_raw(element, "scope")? else {
-            return Ok(Scope::Auto);
-        };
-        for (keyword, scope) in [
-            ("row", Scope::Row),
-            ("col", Scope::Column),
-            ("rowgroup", Scope::RowGroup),
-            ("colgroup", Scope::ColumnGroup),
-        ] {
-            if raw.value().len() != keyword.len() {
-                continue;
-            }
-            let mut equal = true;
-            for (unit, byte) in raw.value().code_units().iter().zip(keyword.bytes()) {
-                self.charge(1)?;
-                if *unit > 127 || (*unit as u8).to_ascii_lowercase() != byte {
-                    equal = false;
-                    break;
-                }
-            }
-            if equal {
-                return Ok(scope);
-            }
-        }
-        Ok(Scope::Auto)
+        let raw = self.table_raw(element, "scope")?;
+        self.admit_intrinsic(element, raw, TABLE_SCOPE_KEYWORDS)?;
+        let report = self
+            .interpreter
+            .th_scope(element.name(), raw)
+            .map_err(|e| TableStop::Failure(self.stop(HtmlSemanticFailureKind::Attribute(e))))?;
+        self.poll()?;
+        report.intrinsic().copied().ok_or_else(|| {
+            TableStop::Failure(self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable))
+        })
     }
     fn table_column_header(&mut self, model: &HtmlTableModel, index: usize) -> TableResult<bool> {
         match self.table_scope(model, index)? {
-            Scope::Column => Ok(true),
-            Scope::Auto => {
+            HtmlTableHeaderScopeState::Keyword(HtmlTableHeaderScope::Column) => Ok(true),
+            HtmlTableHeaderScopeState::Auto => {
                 let header = &model.cells[index];
                 let bottom = self.table_add(header.y, header.height)?;
                 for cell in &model.cells {
@@ -743,8 +744,8 @@ impl<'a> HtmlSemanticSession<'a> {
     }
     fn table_row_header(&mut self, model: &HtmlTableModel, index: usize) -> TableResult<bool> {
         match self.table_scope(model, index)? {
-            Scope::Row => Ok(true),
-            Scope::Auto if !self.table_column_header(model, index)? => {
+            HtmlTableHeaderScopeState::Keyword(HtmlTableHeaderScope::Row) => Ok(true),
+            HtmlTableHeaderScopeState::Auto if !self.table_column_header(model, index)? => {
                 let header = &model.cells[index];
                 let right = self.table_add(header.x, header.width)?;
                 for cell in &model.cells {
@@ -959,7 +960,10 @@ impl<'a> HtmlSemanticSession<'a> {
                                 && header.y - group.y < group.height
                                 && header.x < right
                                 && header.y < bottom
-                                && self.table_scope(model, index)? == Scope::RowGroup
+                                && self.table_scope(model, index)?
+                                    == HtmlTableHeaderScopeState::Keyword(
+                                        HtmlTableHeaderScope::RowGroup,
+                                    )
                             {
                                 self.table_scratch(&mut scratch.headers, index)?;
                             }
@@ -976,7 +980,10 @@ impl<'a> HtmlSemanticSession<'a> {
                                 && header.x - group.x < group.width
                                 && header.x < right
                                 && header.y < bottom
-                                && self.table_scope(model, index)? == Scope::ColumnGroup
+                                && self.table_scope(model, index)?
+                                    == HtmlTableHeaderScopeState::Keyword(
+                                        HtmlTableHeaderScope::ColumnGroup,
+                                    )
                             {
                                 self.table_scratch(&mut scratch.headers, index)?;
                             }
