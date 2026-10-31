@@ -24,7 +24,7 @@ type Measure = (&'static str, fn(&Work) -> u64);
 
 /// Limits that no measured document reaches, so only the work model differs
 /// between sizes.
-fn roomy_limits() -> HtmlParseLimits {
+pub(super) fn roomy_limits() -> HtmlParseLimits {
     HtmlParseLimits::builder()
         .source_units(1_000_000)
         .buffered_utf16_units(1_000_000)
