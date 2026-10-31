@@ -8,7 +8,7 @@ use super::{
 };
 use crate::engine::{
     PlacedLine, PreparedData, editing,
-    layout::data::{FinalizedCell, FinalizedRunFrame, PlacedLayout},
+    layout::data::{FinalizedCell, FinalizedRunFrame, PlacedLayout, cell_geometry},
 };
 use crate::{Layout, Point, Range, Rect, Result, TextNumericError, TextNumericPhase};
 
@@ -470,14 +470,22 @@ pub(crate) fn place_request(
                     extent,
                 ));
             }
+            include(
+                &mut bounds,
+                crate::layout::line_rect(
+                    &placed,
+                    Rect::new(
+                        cell.inline.start,
+                        cell.under.start,
+                        cell.inline.end - cell.inline.start,
+                        cell.under.end - cell.under.start,
+                    ),
+                ),
+            )?;
+            cell_geometry::qualify_edge_rect(cell, &metrics, TextNumericPhase::Placement)?;
             qualify_rect(crate::layout::line_rect(
                 &placed,
-                Rect::new(
-                    cell.inline.start,
-                    cell.under.start,
-                    cell.inline.end - cell.inline.start,
-                    cell.under.end - cell.under.start,
-                ),
+                cell_geometry::edge_rect(cell, &metrics),
             ))?;
         }
         for run in &placed.finalized.data.runs {
@@ -614,6 +622,23 @@ pub(crate) fn place_request(
             }
         }
         for cluster in &placed.finalized.data.clusters {
+            if let FinalizedRunFrame::Cell(index) = cluster.frame {
+                qualify_cell_frame(
+                    &placed,
+                    &placed.finalized.data.cells[index],
+                    Point::new(0.0, 0.0),
+                )?;
+                cell_geometry::qualify_cluster_rect(
+                    &placed.finalized.data,
+                    cluster,
+                    placed.orientation,
+                    Some(&placed),
+                    TextNumericPhase::Placement,
+                )?;
+                qualify_rect(cell_geometry::placed_cluster_rect(&placed, cluster))?;
+                // The inner metric allocation is qualified, never a second outer box.
+                continue;
+            }
             let x0 = cluster.x.min(cluster.x + cluster.advance);
             let width = cluster.advance.abs();
             include(

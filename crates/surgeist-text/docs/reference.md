@@ -661,6 +661,13 @@ glyph frame retain their intrinsic geometry. Inner letter spacing is suppressed
 before width selection; authored font settings remain effective. A lone cell has
 no outside tracking at line edges.
 
+The cell's fixed square contributes once to placed metric bounds. Cluster views
+retain the inner horizontal font-metric allocations through the executed cell
+frame; they can extend outside that square. `edge_units()` observes the whole
+cell, including glyph-free input, with its signed executed flow contribution and
+the full line metric band. `outline_ink()` reports same-instance outline ink in
+logical line coordinates; compression does not clip overflowing ink to the square.
+
 Inner [authored word spacing](#authored-word-separator-spacing) is applied before
 each candidate's width is measured. Logical edges and the shifted raw advance
 intervals determine fitting and compression; the selected payload retains its

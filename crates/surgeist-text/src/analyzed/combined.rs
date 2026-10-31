@@ -109,7 +109,9 @@ impl<'a> AnalyzedCombinedCell<'a> {
     /// Exact original pieces, retaining repeated expansion ancestry. Generated
     /// separators have no invented authored piece. Suppressed source parts are
     /// retained and identify their final used disposition independently.
-    pub fn source_pieces(&self) -> impl Iterator<Item = AnalyzedCombinedSourcePiece<'a>> + 'a {
+    pub fn source_pieces(
+        &self,
+    ) -> impl Iterator<Item = AnalyzedCombinedSourcePiece<'a>> + 'a + use<'a> {
         let plan = &self.output.plan;
         let core = self.core;
         plan.groups[self.group()]

@@ -298,13 +298,8 @@ impl Layout {
                 line.finalized.data.clusters.iter().map(move |cluster| {
                     Cluster::new(
                         cluster.source,
-                        line_rect(
-                            line,
-                            line.finalized.data.cell_rect(
-                                cluster.x,
-                                cluster.advance,
-                                cluster.reference,
-                            ),
+                        crate::engine::layout::data::cell_geometry::placed_cluster_rect(
+                            line, cluster,
                         ),
                     )
                 })

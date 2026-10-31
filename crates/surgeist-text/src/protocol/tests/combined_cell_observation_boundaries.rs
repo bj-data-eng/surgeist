@@ -10,6 +10,9 @@ mod geometry;
 #[path = "combined_cell_observation_guard_cases.rs"]
 mod guard_cases;
 
+#[path = "combined_cell_observation_resources.rs"]
+mod resources;
+
 fn prepared_cell(
     text: &str,
 ) -> (

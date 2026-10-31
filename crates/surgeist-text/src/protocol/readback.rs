@@ -1257,13 +1257,42 @@ impl FinalizedLine {
                 let Some(bounds) = geometry.bounds() else {
                     continue;
                 };
-                let x = outline_add("outline logical pen", origin.x, glyph.pen())?;
-                let x = outline_add("outline glyph x offset", x, f64::from(glyph.x()))?;
-                let y = outline_add("outline glyph y offset", origin.y, f64::from(glyph.y()))?;
-                let left = outline_add("outline left", x, bounds.origin.x)?;
-                let top = outline_add("outline top", y, bounds.origin.y)?;
-                let right = outline_add("outline right", left, bounds.size.width)?;
-                let bottom = outline_add("outline bottom", top, bounds.size.height)?;
+                let (left, top, right, bottom) = match run.run.frame {
+                    crate::engine::layout::data::FinalizedRunFrame::Line => {
+                        let x = outline_add("outline logical pen", origin.x, glyph.pen())?;
+                        let x = outline_add("outline glyph x offset", x, f64::from(glyph.x()))?;
+                        let y =
+                            outline_add("outline glyph y offset", origin.y, f64::from(glyph.y()))?;
+                        let left = outline_add("outline left", x, bounds.origin.x)?;
+                        let top = outline_add("outline top", y, bounds.origin.y)?;
+                        let right = outline_add("outline right", left, bounds.size.width)?;
+                        let bottom = outline_add("outline bottom", top, bounds.size.height)?;
+                        (left, top, right, bottom)
+                    }
+                    crate::engine::layout::data::FinalizedRunFrame::Cell(index) => {
+                        let rect = crate::engine::layout::data::cell_geometry::outline_rect(
+                            &self.inner.data.cells[index],
+                            run.run,
+                            glyph.glyph,
+                            bounds,
+                            self.inner.selected.request.context.orientation,
+                        )?;
+                        (
+                            rect.origin.x,
+                            rect.origin.y,
+                            outline_add(
+                                "cell outline union right",
+                                rect.origin.x,
+                                rect.size.width,
+                            )?,
+                            outline_add(
+                                "cell outline union bottom",
+                                rect.origin.y,
+                                rect.size.height,
+                            )?,
+                        )
+                    }
+                };
                 ink = Some(match ink {
                     None => (left, top, right, bottom),
                     Some((x0, y0, x1, y1)) => (

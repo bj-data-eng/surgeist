@@ -434,9 +434,9 @@ fn execute(
         &mut metrics,
         &mut ledger,
     )?;
-    let width = selection.available_inline.unwrap_or_else(|| {
-        (measurements.alignment().advance() + selection.indent.max(0.0)).max(0.0)
-    });
+    let width = selection
+        .available_inline
+        .unwrap_or_else(|| (measurements.alignment.advance() + selection.indent.max(0.0)).max(0.0));
     finite(
         "line available width",
         TextNumericPhase::Finalization,
@@ -446,7 +446,7 @@ fn execute(
     metrics.inline_max = width;
     metrics.offset = {
         let mut measured = metrics;
-        measured.advance = measurements.alignment().advance();
+        measured.advance = measurements.alignment.advance();
         measured.trailing_whitespace = 0.0;
         let offset = alignment_offset(selection, base, width, &measured)?;
         add(
@@ -458,7 +458,7 @@ fn execute(
     };
 
     let mut data = FinalizedLineData {
-        measurements: Some(measurements),
+        measurements: None,
         spacing_slots,
         spacing_amounts: account::collect(
             &mut ledger,
@@ -472,6 +472,7 @@ fn execute(
             shaped.clusters.iter().enumerate().map(
                 |(index, cluster)| -> Result<FinalizedCluster> {
                     Ok(FinalizedCluster {
+                        frame: FinalizedRunFrame::Line,
                         reference: scope_cell_band
                             .map(|_| {
                                 scoped_reference(
@@ -1072,9 +1073,9 @@ fn execute(
     operations::order_by(&mut owned_fragments, ledger.as_mut(), |left, right| {
         left.cmp(right)
     })?;
-    for (cluster_index, cluster) in data.clusters.iter().enumerate() {
+    for cluster in &data.clusters {
         account::work(&mut ledger, 1)?;
-        if cell_for_cluster(&shaped, cluster_index, &mut ledger)?.is_some() {
+        if matches!(cluster.frame, FinalizedRunFrame::Cell(_)) {
             continue;
         }
         let end = add(
@@ -1355,6 +1356,22 @@ fn execute(
             )?;
         }
     }
+    if !data.cells.is_empty() {
+        for cluster in &data.clusters {
+            account::work(&mut ledger, 1)?;
+            cell_geometry::qualify_cluster_rect(
+                &data,
+                cluster,
+                selected.request.context.orientation,
+                None,
+                TextNumericPhase::Finalization,
+            )?;
+        }
+        for cell in &data.cells {
+            account::work(&mut ledger, 1)?;
+            cell_geometry::qualify_edge_rect(cell, &data.metrics, TextNumericPhase::Finalization)?;
+        }
+    }
     account::drop_vec(&mut ledger, source_fragments)?;
     account::drop_vec(&mut ledger, owned_fragments)?;
     account::drop_vec(&mut ledger, groups)?;
@@ -1369,30 +1386,13 @@ fn execute(
     account::drop_vec(&mut ledger, dispositions)?;
     account::drop_vec(&mut ledger, levels)?;
     account::drop_vec(&mut ledger, participants)?;
+    data.measurements = Some(measurements.seal(&data.cells, shaped.cells.len(), &mut ledger)?);
     account::drop_shaped(&mut ledger, shaped)?;
     account::drop_vec(&mut ledger, atomics.rows)?;
     account::drop_vec(&mut ledger, controls.rows)?;
     scopes.budget = ledger;
     super::super::scope_alignment::finish_frames(&selected, &mut data, scopes)?;
     Ok(FinalizedLine { selected, data })
-}
-
-/// Execute a retained horizontal payload inside its genuine outer square.
-/// Inner pens and font origins stay intrinsic; the owning cell frame is applied
-/// only by physical placement, after this one enclosing-scope displacement.
-fn cell_for_cluster(
-    shaped: &ShapedData,
-    cluster: usize,
-    ledger: &mut Ledger,
-) -> Result<Option<usize>> {
-    for (index, cell) in shaped.cells.iter().enumerate() {
-        account::work(ledger, 1)?;
-        if matches!(&cell.payload, CellPayload::Shaped { clusters, .. } if clusters.contains(&cluster))
-        {
-            return Ok(Some(index));
-        }
-    }
-    Ok(None)
 }
 
 /// A genuine selected Cell paired with its canonical exterior gap receipt.
@@ -1465,6 +1465,14 @@ fn append_cell(
         }
     }
     let unit = unit.ok_or_else(|| invalid("cell has no actual selected participant"))?;
+    let participant = selected.presentation.units[unit]
+        .participant
+        .and_then(|index| selected.request.participants.get(index));
+    if !matches!(participant, Some(crate::PreparedParticipant::Cell(_))) {
+        return Err(invalid(
+            "cell selected unit has no genuine Cell participant",
+        ));
+    }
     let owner = selected
         .scopes
         .unit_owners
@@ -1543,6 +1551,7 @@ fn append_cell(
             reference,
             inline: origin.x..end,
             flow_end,
+            advance: cell.advance,
             under: top..bottom,
             scope_displacement: shift,
             level: selected.presentation.units[unit].line_level,
@@ -1568,6 +1577,7 @@ fn append_cell(
     for position in positions {
         account::work(ledger, 1)?;
         let cluster = &shaped.clusters[position.cluster];
+        data.clusters[position.cluster].frame = FinalizedRunFrame::Cell(index);
         data.clusters[position.cluster].x = position.pen;
         data.clusters[position.cluster].reference = Some(reference);
         let word_half = position.word.half;

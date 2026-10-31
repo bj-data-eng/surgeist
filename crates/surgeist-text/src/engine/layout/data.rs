@@ -12,6 +12,9 @@ use crate::{FontData, FontSynthesis, Range, Rect};
 
 use super::super::{PlacedLine, PreparedData, analysis::Boundary};
 
+#[path = "cell_geometry.rs"]
+pub(crate) mod cell_geometry;
+
 /// Canonical provider glyph offsets and advance, with its authentic source unit extent.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct GlyphData {
@@ -376,6 +379,8 @@ pub(crate) struct FinalizedCell {
     pub(crate) inline: IndexRange<f64>,
     /// Executed outer flow endpoint, distinct from the square's trailing edge.
     pub(crate) flow_end: f64,
+    /// Exact working Cell contribution after finalization restores/reapplies spacing.
+    pub(crate) advance: f64,
     pub(crate) under: IndexRange<f64>,
     pub(crate) scope_displacement: crate::BaselineShift,
     pub(crate) level: u8,
@@ -405,6 +410,7 @@ pub(crate) struct SpacingDisplacement {
 
 #[derive(Clone, Debug)]
 pub(crate) struct FinalizedCluster {
+    pub(crate) frame: FinalizedRunFrame,
     pub(crate) reference: Option<f64>,
     /// The actually selected component's resolved font-backed line height.
     pub(crate) line_height: f64,
@@ -564,7 +570,7 @@ impl FinalizedLineData {
         )?)?;
         visit(W::buffer(&self.fragments, self.fragments.len())?)?;
         if let Some(measurements) = &self.measurements {
-            visit(W::buffer(&measurements.edges, measurements.edges.len())?)?;
+            measurements.edges.visit_scope_allocations(visit)?;
         }
         self.prefix.visit_scope_allocations(visit)
     }

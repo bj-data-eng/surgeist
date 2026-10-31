@@ -243,3 +243,102 @@ fn cell_outline_ink_uses_logical_line_axes_and_real_scaled_outline_overflow() {
     // inline=I0+v, under=U1-h. This5/5 Cell-only line has I0=0/U1=10.
     assert_eq!(logical_outline(&line), Rect::new(0.0, 0.0, 10.0, 10.0));
 }
+
+#[test]
+fn nonzero_outer_inline_offset_is_applied_once_to_cell_metrics_and_logical_ink() {
+    let (processed, _, prepared, original, font) = prepared_cell("AA");
+    horizontal_metric_premises(&processed, &font);
+    let mut request = original.selected_line().request().clone();
+    request.context.indent = 7.0;
+    let line = prepared
+        .select(request)
+        .unwrap()
+        .finalize(LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: ScopeAllocations::None,
+        })
+        .unwrap();
+    canonical_outline_premises(&line, &font, &[35]);
+    let cells = line.cell_views().collect::<Vec<_>>();
+    let [cell] = cells.as_slice() else {
+        panic!("one genuine offset Cell");
+    };
+    assert_eq!(cell.square().origin.x, 7.0);
+    assert_eq!(cell.square().size, Size::new(10.0, 10.0));
+    // The actual Cell starts at inline7. Its horizontal h0..10/v0..10
+    // footprint maps to logical inline7..17/under0..10. Placement adds
+    // the real inline20 anchor exactly once; the cross baseline stays100.
+    assert_eq!(logical_outline(&line), Rect::new(7.0, 0.0, 10.0, 10.0));
+    let layout = placed_vertical_cell(&prepared, line.clone());
+    let mut rows = layout
+        .clusters()
+        .into_iter()
+        .map(|row| (row.range(), row.bounds()))
+        .collect::<Vec<_>>();
+    rows.sort_by_key(|(range, _)| range.start);
+    assert_eq!(
+        rows,
+        [
+            (Range::new(0, 1), Rect::new(95.0, 27.0, 5.0, 10.0)),
+            (Range::new(1, 2), Rect::new(100.0, 27.0, 5.0, 10.0)),
+        ]
+    );
+    let edges = line.edge_units().collect::<Vec<_>>();
+    let [edge] = edges.as_slice() else {
+        panic!("one authentic offset outer edge");
+    };
+    assert_eq!(edge.advance(), 10.0);
+    assert_eq!(edge.bounds(), Rect::new(7.0, 0.0, 10.0, 10.0));
+}
+
+#[test]
+fn a_cell_metric_allocation_that_absorbs_at_a_finite_anchor_is_refused_before_publication() {
+    let (processed, _, prepared, line, font) = prepared_cell("AA");
+    horizontal_metric_premises(&processed, &font);
+    let retained = placed_cell(&prepared, line.clone(), &font, 0.5);
+    let retained_clusters = retained.clusters();
+    let retained_bounds = retained.bounds();
+    // At this exact binade boundary, the existing square path survives:
+    // line_point(under0) rounds B+5 to B, then line_rect subtracts10 to B-8.
+    // Its stored positive10 extent still has a strictly greater right edge.
+    const B: f64 = 72_057_594_037_927_936.0; // exactly2^56
+    assert!(B.is_finite());
+    assert_eq!(B + 5.0, B);
+    assert_eq!(B - 10.0, B - 8.0);
+    const {
+        assert!((B - 8.0) + 10.0 > B - 8.0);
+    }
+    // The actual placed Cell frame instead starts at line_point(under10),
+    // B-5 -> B-8. Directly mapping AA's scaled horizontal h0/5/10 endpoints yields
+    // B-8/B/B: the second real5-wide allocation has lost its entire span.
+    assert_eq!(B - 5.0, B - 8.0);
+    assert_eq!((B - 8.0) + 5.0, B);
+    assert_eq!((B - 8.0) + 10.0, B);
+    let error = Layout::from_finalized_lines(PlacementRequest {
+        prepared: prepared.clone(),
+        coverage: PlacementCoverage::WholeParagraph,
+        entries: vec![PlacementEntry::Formatted(LinePlacement {
+            line: line.clone(),
+            anchor: LineAnchor {
+                inline_origin: 20.0,
+                baseline: B,
+            },
+            orientation: LineOrientation::Vertical,
+            atomics: vec![],
+        })],
+    })
+    .expect_err("a surviving outer square does not authorize a collapsed inner metric allocation");
+    assert_eq!(error.code, ErrorCode::InvalidTextNumeric);
+    assert!(
+        matches!(error.detail(), Some(ErrorDetail::InvalidTextNumeric {
+        field: "cell cluster horizontal metric span",
+        phase: TextNumericPhase::Placement,
+        category: TextNumericError::PositiveLost,
+        value,
+    }) if *value == 5.0),
+        "unexpected refusal: {error:?}"
+    );
+    assert_eq!(retained.clusters(), retained_clusters);
+    assert_eq!(retained.bounds(), retained_bounds);
+    assert_eq!(retained.source(), processed.source());
+}

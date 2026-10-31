@@ -1624,7 +1624,7 @@ pub fn surgeist_text::AnalyzedCombinedCell<'a>::parent_scope(&self) -> core::opt
 pub fn surgeist_text::AnalyzedCombinedCell<'a>::presentation_code_points(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = u32> + 'a
 pub fn surgeist_text::AnalyzedCombinedCell<'a>::scope(&self) -> surgeist_text::CapturedScope
 pub fn surgeist_text::AnalyzedCombinedCell<'a>::selection_unit_count(&self) -> usize
-pub fn surgeist_text::AnalyzedCombinedCell<'a>::source_pieces(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::AnalyzedCombinedSourcePiece<'a>> + 'a
+pub fn surgeist_text::AnalyzedCombinedCell<'a>::source_pieces(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::AnalyzedCombinedSourcePiece<'a>> + 'a + use<'a>
 pub fn surgeist_text::AnalyzedCombinedCell<'a>::used_code_points(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = u32> + 'a
 pub fn surgeist_text::AnalyzedCombinedCell<'a>::used_unit_count(&self) -> usize
 impl core::fmt::Debug for surgeist_text::AnalyzedCombinedCell<'_>

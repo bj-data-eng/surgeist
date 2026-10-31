@@ -4,6 +4,9 @@
 
 use super::*;
 
+#[path = "combined_cell_observation_geometry_tracking.rs"]
+mod observation_geometry;
+
 fn selected_at_indent(prepared: &PreparedText, indent: f64) -> SelectedLine {
     let mut segments = prepared.source_segments();
     let segment = segments.next().unwrap();

@@ -63,6 +63,43 @@ pub(crate) struct EdgeRow {
     pub(crate) overlap: f64,
 }
 
+/// Published targets are real outer contributions. The ordinary branch retains
+/// its original cluster-indexed allocation; Cell lines exclude inner rows.
+#[derive(Clone, Debug)]
+pub(crate) enum EdgeRows {
+    Clusters(Vec<EdgeRow>),
+    Outer(Vec<OuterEdge>),
+}
+#[derive(Clone, Debug)]
+pub(crate) enum OuterEdge {
+    Cluster {
+        cluster: usize,
+        row: EdgeRow,
+    },
+    /// The actual opaque Cell result issued by Phase II and sealed by finalization.
+    Cell {
+        cell: usize,
+    },
+}
+impl EdgeRows {
+    pub(crate) fn len(&self) -> usize {
+        match self {
+            Self::Clusters(rows) => rows.len(),
+            Self::Outer(rows) => rows.len(),
+        }
+    }
+    pub(crate) fn visit_scope_allocations(
+        &self,
+        visit: &mut crate::engine::scope_alignment::census::AllocationVisitor<'_>,
+    ) -> crate::Result<()> {
+        use crate::engine::scope_alignment::census::AllocationWitness as W;
+        match self {
+            Self::Clusters(rows) => visit(W::buffer(rows, rows.len())?),
+            Self::Outer(rows) => visit(W::buffer(rows, rows.len())?),
+        }
+    }
+}
+
 /// Text-owned measurements of this exact selected/finalized line. Intrinsic
 /// contributions are not a complete paragraph's min/max-content result.
 #[derive(Clone, Debug)]
@@ -72,7 +109,7 @@ pub struct LineMeasurements {
     pub(crate) alignment: InlineMeasure,
     pub(crate) minimum: InlineMeasure,
     pub(crate) maximum: InlineMeasure,
-    pub(crate) edges: Vec<EdgeRow>,
+    pub(crate) edges: EdgeRows,
 }
 impl LineMeasurements {
     pub const fn formatted_line_usage(&self) -> super::FormattedLineUsage {
@@ -111,8 +148,9 @@ impl FinalizedLine {
             metrics.block_max - metrics.block_min,
         )
     }
-    /// Observations of genuine finalized text rows; never admission or replay
-    /// capabilities. Shared glyphs keep their actual per-contribution custody.
+    /// Observations of genuine outer text contributions; never admission or replay
+    /// capabilities. A Cell is one opaque contribution, including provider-empty Cells.
+    /// Shared ordinary glyphs keep their actual per-contribution custody.
     pub fn edge_units(&self) -> impl ExactSizeIterator<Item = LineEdgeUnitView<'_>> {
         (0..self.measurements().edges.len()).map(|index| LineEdgeUnitView { line: self, index })
     }
@@ -129,44 +167,88 @@ pub struct LineEdgeUnitView<'a> {
     line: &'a FinalizedLine,
     index: usize,
 }
+enum EdgeTarget<'a> {
+    Cluster(usize, &'a EdgeRow),
+    Cell(usize, &'a crate::engine::layout::data::FinalizedCell),
+}
 impl LineEdgeUnitView<'_> {
+    fn target(&self) -> EdgeTarget<'_> {
+        match &self.line.measurements().edges {
+            EdgeRows::Clusters(rows) => EdgeTarget::Cluster(self.index, &rows[self.index]),
+            EdgeRows::Outer(rows) => match &rows[self.index] {
+                OuterEdge::Cluster { cluster, row } => EdgeTarget::Cluster(*cluster, row),
+                OuterEdge::Cell { cell } => {
+                    EdgeTarget::Cell(*cell, &self.line.inner.data.cells[*cell])
+                }
+            },
+        }
+    }
     pub fn punctuation_unit(&self) -> Option<super::PresentationRange> {
-        self.line.measurements().edges[self.index].punctuation_unit
+        match self.target() {
+            EdgeTarget::Cluster(_, row) => row.punctuation_unit,
+            EdgeTarget::Cell(..) => None,
+        }
     }
     pub fn finalized_line(&self) -> &FinalizedLine {
         self.line
     }
     pub fn disposition(&self) -> LineEdgeDisposition {
-        self.line.measurements().edges[self.index].disposition
+        match self.target() {
+            EdgeTarget::Cluster(_, row) => row.disposition,
+            EdgeTarget::Cell(..) => LineEdgeDisposition::Ordinary,
+        }
     }
     /// Final allocated signed exclusion; it can be negative.
     pub fn excluded_contribution(&self) -> f64 {
-        self.line.measurements().edges[self.index].excluded
+        match self.target() {
+            EdgeTarget::Cluster(_, row) => row.excluded,
+            EdgeTarget::Cell(..) => 0.0,
+        }
     }
     /// Nonnegative physical intersection of this classified edge row with the
-    /// outward half-line in its prealignment frame. It is not omitted advance;
-    /// even an unconditionally hanging row can be physically inside the frame.
-    /// Ordinary/removed rows have no Phase II outward assignment.
+    /// outward half-line in its prealignment frame. It is not omitted advance.
+    /// Ordinary/removed rows and opaque Cells have no Phase II outward assignment.
     pub fn outward_overlap(&self) -> f64 {
-        self.line.measurements().edges[self.index].overlap
+        match self.target() {
+            EdgeTarget::Cluster(_, row) => row.overlap,
+            EdgeTarget::Cell(..) => 0.0,
+        }
     }
     /// Actual allocated signed contribution, before any measurement exclusion.
+    /// Cell tracking is included; the fixed Cell square is a separate observation.
     pub fn advance(&self) -> f64 {
-        self.line.inner.data.clusters[self.index].advance
+        match self.target() {
+            EdgeTarget::Cluster(index, _) => self.line.inner.data.clusters[index].advance,
+            EdgeTarget::Cell(_, cell) => cell.advance,
+        }
     }
-    /// Actual final line-local geometry after alignment, before placement.
+    /// Allocated contribution across the full final line metric band, after
+    /// alignment and before placement. This is neither inner ink nor the Cell square.
     pub fn bounds(&self) -> crate::Rect {
-        let cluster = &self.line.inner.data.clusters[self.index];
-        let metrics = self.line.metric_bounds();
-        crate::Rect::new(
-            cluster.x.min(cluster.x + cluster.advance),
-            metrics.origin.y,
-            cluster.advance.abs(),
-            metrics.size.height,
-        )
+        match self.target() {
+            EdgeTarget::Cluster(index, _) => {
+                let cluster = &self.line.inner.data.clusters[index];
+                let metrics = self.line.metric_bounds();
+                crate::Rect::new(
+                    cluster.x.min(cluster.x + cluster.advance),
+                    metrics.origin.y,
+                    cluster.advance.abs(),
+                    metrics.size.height,
+                )
+            }
+            EdgeTarget::Cell(_, cell) => crate::engine::layout::data::cell_geometry::edge_rect(
+                cell,
+                &self.line.inner.data.metrics,
+            ),
+        }
     }
     pub fn presentation_range(&self) -> PresentationRange {
-        let range = self.line.inner.data.clusters[self.index].presentation;
+        let range = match self.target() {
+            EdgeTarget::Cluster(index, _) => self.line.inner.data.clusters[index].presentation,
+            EdgeTarget::Cell(_, cell) => {
+                self.line.inner.selected.presentation.units[cell.unit].presentation
+            }
+        };
         PresentationRange {
             start: range.start,
             end: range.end,
@@ -174,20 +256,35 @@ impl LineEdgeUnitView<'_> {
     }
     /// Actual positive original pieces; the enclosing hull grants no custody.
     pub fn source_pieces(&self) -> impl Iterator<Item = Range> + '_ {
-        let row = &self.line.measurements().edges[self.index];
-        self.line.inner.selected.presentation.projection.atoms[row.atoms.clone()]
+        let (atoms, cell) = match self.target() {
+            EdgeTarget::Cluster(_, row) => (row.atoms.clone(), None),
+            EdgeTarget::Cell(index, _) => (0..0, Some(self.line.inner.source_cell(index))),
+        };
+        self.line.inner.selected.presentation.projection.atoms[atoms]
             .iter()
-            .map(|a| a.source)
-            .filter(|r| !r.is_empty())
+            .map(|atom| atom.source)
+            .filter(|range| !range.is_empty())
+            .chain(
+                cell.into_iter()
+                    .flat_map(|cell| cell.source_pieces().map(|piece| piece.aggregate()))
+                    .filter(|range| !range.is_empty()),
+            )
     }
     pub fn owners(&self) -> impl Iterator<Item = LineEdgeOwner> + '_ {
         let selected = &self.line.inner.selected;
-        let atoms = &self.line.measurements().edges[self.index].atoms;
-        selected
-            .presentation
-            .units
+        let (atoms, cell_unit) = match self.target() {
+            EdgeTarget::Cluster(_, row) => (row.atoms.clone(), None),
+            EdgeTarget::Cell(_, cell) => (0..0, Some(cell.unit)),
+        };
+        let units = match cell_unit {
+            Some(index) => &selected.presentation.units[index..index + 1],
+            None => &selected.presentation.units[..],
+        };
+        units
             .iter()
-            .filter(move |unit| unit.atoms.start < atoms.end && atoms.start < unit.atoms.end)
+            .filter(move |unit| {
+                cell_unit.is_some() || unit.atoms.start < atoms.end && atoms.start < unit.atoms.end
+            })
             .filter_map(|unit| {
                 if let super::prepared::PresentationUnitKind::Replacement { alternative, .. } =
                     unit.kind
