@@ -19,6 +19,9 @@ struct Work {
     reserved: u64,
 }
 
+/// A named measure of one parse's work.
+type Measure = (&'static str, fn(&Work) -> u64);
+
 /// Limits that no measured document reaches, so only the work model differs
 /// between sizes.
 fn roomy_limits() -> HtmlParseLimits {
@@ -71,7 +74,7 @@ fn parse_work(raw: String) -> Work {
 fn assert_doublings_add_near_double(
     sizes: [usize; 4],
     document: impl Fn(usize) -> String,
-    measures: &[(&str, fn(&Work) -> u64)],
+    measures: &[Measure],
 ) {
     const BOUND: u64 = 3;
     let measured: Vec<Work> = sizes.iter().map(|&n| parse_work(document(n))).collect();
