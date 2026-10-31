@@ -5711,6 +5711,106 @@ mod tests {
         );
     }
 
+    fn runner_with_observed_outer_geometry() -> (WinitRunner<NoopHandler>, Id) {
+        let id = Id::from_u64(32);
+        let metrics = Metrics::from_physical_size(
+            id,
+            PhysicalSize {
+                width: 400,
+                height: 300,
+            },
+            1.0,
+        )
+        .unwrap()
+        .with_outer_geometry(
+            Some(Point { x: 20.0, y: 40.0 }),
+            Some(Size {
+                width: 416.0,
+                height: 338.0,
+            }),
+        )
+        .unwrap();
+        let mut window_loop = Loop::new(NoopHandler);
+        window_loop
+            .registry
+            .insert(Instance::new(WindowSnapshot::new("observed", metrics)))
+            .unwrap();
+        (WinitRunner::from_loop(window_loop), id)
+    }
+
+    fn clamped_resize_after_native_resize(width: u32, height: u32) -> NativeGeometryOutcome {
+        let (mut runner, id) = runner_with_observed_outer_geometry();
+        let transition = runner
+            .metrics_transition(id, width, height, MetricsEvent::Resized)
+            .unwrap();
+        runner
+            .apply_native_transition_state(id, transition)
+            .unwrap();
+        let basis = NativeGeometryBasis::new(Point::default(), 1.0).unwrap();
+        let authorization = NativeGeometryAuthorization::clamp_to(Rect {
+            origin: Point::default(),
+            size: Size {
+                width: 1000.0,
+                height: 800.0,
+            },
+        })
+        .unwrap();
+        NativeGeometryRequest::resize_to(1000, 800)
+            .resolve_against(
+                runner.registry.get(id).unwrap().instance.state(),
+                basis,
+                authorization,
+            )
+            .unwrap()
+    }
+
+    #[test]
+    fn native_resize_growth_without_fresh_outer_extent_keeps_clamp_unavailable() {
+        let outcome = clamped_resize_after_native_resize(800, 600);
+        assert_eq!(
+            outcome.disposition(),
+            NativeGeometryDisposition::NoAction(NativeGeometryNoAction::UnavailableGeometry)
+        );
+    }
+
+    #[test]
+    fn native_resize_shrink_without_fresh_outer_extent_keeps_clamp_unavailable() {
+        let outcome = clamped_resize_after_native_resize(200, 150);
+        assert_eq!(
+            outcome.disposition(),
+            NativeGeometryDisposition::NoAction(NativeGeometryNoAction::UnavailableGeometry)
+        );
+    }
+
+    #[test]
+    fn native_scale_change_without_fresh_outer_extent_keeps_clamp_unavailable() {
+        let (mut runner, id) = runner_with_observed_outer_geometry();
+        let transition = runner.scale_factor_transition(id, 2.0).unwrap();
+        runner
+            .apply_native_transition_state(id, transition)
+            .unwrap();
+        let basis = NativeGeometryBasis::new(Point::default(), 1.0).unwrap();
+        let authorization = NativeGeometryAuthorization::clamp_to(Rect {
+            origin: Point::default(),
+            size: Size {
+                width: 1000.0,
+                height: 800.0,
+            },
+        })
+        .unwrap();
+        let outcome = NativeGeometryRequest::resize_to(1000, 800)
+            .resolve_against(
+                runner.registry.get(id).unwrap().instance.state(),
+                basis,
+                authorization,
+            )
+            .unwrap();
+        assert_eq!(
+            outcome.disposition(),
+            NativeGeometryDisposition::NoAction(NativeGeometryNoAction::UnavailableGeometry)
+        );
+    }
+
     #[test]
     fn moved_then_resized_preserves_canonical_logical_position() {
         let id = Id::from_u64(33);
@@ -5748,7 +5848,7 @@ mod tests {
     }
 
     #[test]
-    fn moved_then_scale_factor_change_preserves_canonical_logical_position() {
+    fn native_scale_change_without_fresh_position_discards_old_logical_basis() {
         let id = Id::from_u64(34);
         let mut window_loop = Loop::new(NoopHandler);
         window_loop
@@ -5779,7 +5879,7 @@ mod tests {
                 .expect("window remains live")
                 .metrics()
                 .outer_position(),
-            Some(Point { x: 100.0, y: 50.0 })
+            None
         );
     }
 
