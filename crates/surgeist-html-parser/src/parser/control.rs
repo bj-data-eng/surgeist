@@ -777,6 +777,19 @@ impl ParseControl {
         allocation: &mut VectorCapacity<T>,
         additional: usize,
     ) -> Result<(), ParseStop> {
+        self.reserve_vector_geometric_toward(vector, allocation, additional, usize::MAX)
+    }
+    /// Geometric growth for a vector whose final length is known to be at most
+    /// `final_len`: spare capacity never exceeds that length, so a vector that
+    /// fills reaches exactly the capacity an exact policy would have retained.
+    /// A required length above `final_len` is still reserved in full.
+    pub(crate) fn reserve_vector_geometric_toward<T>(
+        &mut self,
+        vector: &mut Vec<T>,
+        allocation: &mut VectorCapacity<T>,
+        additional: usize,
+        final_len: usize,
+    ) -> Result<(), ParseStop> {
         self.checkpoint()?;
         if !Arc::ptr_eq(&allocation.owner, &self.identity) {
             return self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
@@ -785,7 +798,13 @@ impl ParseControl {
         if allocation.capacity != vector.capacity() {
             return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
         }
-        let plan = match self.geometric_plan(vector, additional) {
+        let plan = match self.geometric_sized(
+            size_of::<T>(),
+            vector.len(),
+            vector.capacity(),
+            additional,
+            final_len,
+        ) {
             Ok(Some(plan)) => plan,
             Ok(None) => return Ok(()),
             Err(stop) => return self.fail(stop),
@@ -809,13 +828,40 @@ impl ParseControl {
     ) -> Result<Option<ReservationPlan>, ParseStop> {
         self.geometric_capacity::<T>(vector.len(), vector.capacity(), additional)
     }
+    fn geometric_plan_toward<T>(
+        &self,
+        vector: &Vec<T>,
+        additional: usize,
+        final_len: usize,
+    ) -> Result<Option<ReservationPlan>, ParseStop> {
+        self.geometric_sized(
+            size_of::<T>(),
+            vector.len(),
+            vector.capacity(),
+            additional,
+            final_len,
+        )
+    }
     fn geometric_capacity<T>(
         &self,
         len: usize,
         capacity: usize,
         additional: usize,
     ) -> Result<Option<ReservationPlan>, ParseStop> {
-        let Some(exact) = ReservationPlan::for_capacity::<T>(len, capacity, additional)? else {
+        self.geometric_sized(size_of::<T>(), len, capacity, additional, usize::MAX)
+    }
+    /// Geometric growth of a bank whose element layout is only known by size.
+    /// Spare capacity beyond `final_len` slots is never planned.
+    fn geometric_sized(
+        &self,
+        element_size: usize,
+        len: usize,
+        capacity: usize,
+        additional: usize,
+        final_len: usize,
+    ) -> Result<Option<ReservationPlan>, ParseStop> {
+        let Some(exact) = ReservationPlan::for_sized(element_size, len, capacity, additional)?
+        else {
             return Ok(None);
         };
         let current = self
@@ -839,17 +885,19 @@ impl ParseControl {
         if exact.new_bytes > ceiling {
             return Ok(Some(exact));
         }
-        let slots = (ceiling / size_of::<T>() as u64) as usize;
+        let slots = (ceiling / element_size as u64) as usize;
         let representation = || ParseStop::RepresentationExhausted {
             resource: HtmlParseResource::ManagedCapacityBytes,
         };
         let required = len.checked_add(additional).ok_or_else(representation)?;
-        let target = required.max(capacity.saturating_mul(2)).min(slots);
+        let target = required
+            .max(capacity.saturating_mul(2).min(final_len))
+            .min(slots);
         Ok(Some(ReservationPlan {
             additional: target.checked_sub(len).ok_or_else(representation)?,
             old_bytes: exact.old_bytes,
             new_bytes: target
-                .checked_mul(size_of::<T>())
+                .checked_mul(element_size)
                 .and_then(|bytes| u64::try_from(bytes).ok())
                 .ok_or_else(representation)?,
         }))
@@ -1672,7 +1720,15 @@ impl ReservationPlan {
         capacity: usize,
         additional: usize,
     ) -> Result<Option<Self>, ParseStop> {
-        if size_of::<T>() == 0 {
+        Self::for_sized(size_of::<T>(), len, capacity, additional)
+    }
+    fn for_sized(
+        element_size: usize,
+        len: usize,
+        capacity: usize,
+        additional: usize,
+    ) -> Result<Option<Self>, ParseStop> {
+        if element_size == 0 {
             return Err(ParseStop::InternalInvariant(Invariant::ZeroSizedStorage));
         }
         let length = len
@@ -1685,7 +1741,7 @@ impl ReservationPlan {
         }
         let layout = |slots: usize| {
             slots
-                .checked_mul(size_of::<T>())
+                .checked_mul(element_size)
                 .filter(|bytes| *bytes <= isize::MAX as usize)
                 .and_then(|bytes| u64::try_from(bytes).ok())
                 .ok_or(ParseStop::RepresentationExhausted {
@@ -1698,6 +1754,16 @@ impl ReservationPlan {
             new_bytes: layout(length)?,
         }))
     }
+}
+
+/// How a full vector reserves room for its next entry.
+#[derive(Clone, Copy)]
+enum Growth {
+    /// Exactly the slots required.
+    Exact,
+    /// Spare capacity that at least doubles it, clamped to the finite limits
+    /// and never planned beyond the given final length (`usize::MAX`: unknown).
+    Geometric(usize),
 }
 
 /// Private variable storage. No mutable Vec escape can bypass fallible growth.
@@ -1859,9 +1925,16 @@ impl<T> OwnedVec<T> {
         additional: usize,
         copy_bytes: u64,
         writes: u64,
+        growth: Growth,
     ) -> Result<(), ParseStop> {
         self.require_owner(control)?;
-        let plan = match ReservationPlan::for_vec(&self.vector, additional) {
+        let plan = match growth {
+            Growth::Exact => ReservationPlan::for_vec(&self.vector, additional),
+            Growth::Geometric(final_len) => {
+                control.geometric_plan_toward(&self.vector, additional, final_len)
+            }
+        };
+        let plan = match plan {
             Ok(plan) => plan,
             Err(reason) => return control.fail(reason),
         };
@@ -1986,9 +2059,38 @@ impl<T> OwnedVec<T> {
         control: &mut ParseControl,
         value: T,
     ) -> Result<(), ParseStop> {
+        self.push_with(control, value, Growth::Exact)
+    }
+    /// `try_push` for a list that grows with the document: the same admission
+    /// in the same order, but a full vector reserves geometric spare capacity
+    /// (charged and clamped to the limits) instead of exactly one more slot.
+    pub(crate) fn try_push_geometric(
+        &mut self,
+        control: &mut ParseControl,
+        value: T,
+    ) -> Result<(), ParseStop> {
+        self.push_with(control, value, Growth::Geometric(usize::MAX))
+    }
+    /// `try_push_geometric` for a list whose final length is known to be at most
+    /// `final_len`: spare capacity never exceeds it, so a list that fills ends
+    /// with exactly the capacity an exact policy would have retained.
+    pub(crate) fn try_push_geometric_toward(
+        &mut self,
+        control: &mut ParseControl,
+        value: T,
+        final_len: usize,
+    ) -> Result<(), ParseStop> {
+        self.push_with(control, value, Growth::Geometric(final_len))
+    }
+    fn push_with(
+        &mut self,
+        control: &mut ParseControl,
+        value: T,
+        growth: Growth,
+    ) -> Result<(), ParseStop> {
         control.checkpoint()?;
         let bytes = size_of::<T>() as u64;
-        self.prepare(control, 1, bytes, 1)?;
+        self.prepare(control, 1, bytes, 1, growth)?;
         if size_of::<T>() >= WORK_QUANTUM {
             control.check_value(HtmlParseResource::AtomicLayoutBytes, bytes, bytes)?;
             control.set(HtmlParseResource::AtomicLayoutBytes, bytes);
@@ -2055,10 +2157,26 @@ impl<T> OwnedVec<T> {
         control: &mut ParseControl,
         value: T,
     ) -> Result<(), (ParseStop, T)> {
+        self.recover_with(control, value, Growth::Exact)
+    }
+    /// `try_push_recover` with the geometric growth of `try_push_geometric`.
+    pub(crate) fn try_push_recover_geometric(
+        &mut self,
+        control: &mut ParseControl,
+        value: T,
+    ) -> Result<(), (ParseStop, T)> {
+        self.recover_with(control, value, Growth::Geometric(usize::MAX))
+    }
+    fn recover_with(
+        &mut self,
+        control: &mut ParseControl,
+        value: T,
+        growth: Growth,
+    ) -> Result<(), (ParseStop, T)> {
         let admission = (|| {
             control.checkpoint()?;
             let bytes = size_of::<T>() as u64;
-            self.prepare(control, 1, bytes, 1)?;
+            self.prepare(control, 1, bytes, 1, growth)?;
             if size_of::<T>() >= WORK_QUANTUM {
                 control.check_value(HtmlParseResource::AtomicLayoutBytes, bytes, bytes)?;
                 control.set(HtmlParseResource::AtomicLayoutBytes, bytes);
@@ -2108,7 +2226,7 @@ impl<T: Copy> OwnedVec<T> {
         values: &[T],
     ) -> Result<(), ParseStop> {
         control.checkpoint()?;
-        self.prepare(control, values.len(), 0, 0)?;
+        self.prepare(control, values.len(), 0, 0, Growth::Exact)?;
         let stride = (WORK_QUANTUM / size_of::<T>()).max(1);
         for chunk in values.chunks(stride) {
             let bytes = std::mem::size_of_val(chunk) as u64;
@@ -2627,6 +2745,134 @@ mod tests {
         assert_eq!(c.usage().actual_capacity_bytes, 0);
         assert_eq!(c.first_stop_usage(), Some(&at_stop));
         assert_eq!(c.usage().work, at_stop.work);
+    }
+
+    #[test]
+    fn sized_geometric_growth_doubles_clamps_to_limits_and_defers_to_the_exact_gate() {
+        // A bank described only by its element size: sixteen-byte elements,
+        // room for six, so the clamp falls at ninety-six bytes.
+        let caps = limits()
+            .into_builder()
+            .managed_capacity_bytes(96)
+            .peak_transient_bytes(200)
+            .atomic_layout_bytes(96)
+            .finish()
+            .unwrap();
+        let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
+        let mut additional = |held: u64, len: usize, capacity: usize| {
+            c.set(HtmlParseResource::ManagedCapacityBytes, held);
+            c.geometric_sized(16, len, capacity, 1, usize::MAX)
+                .unwrap()
+                .map(|plan| plan.additional)
+        };
+        // Spare room still fits: no reservation is planned.
+        assert_eq!(additional(32, 1, 2), None);
+        // Doubling two slots to four.
+        assert_eq!(additional(32, 2, 2), Some(2));
+        // Doubling four slots would exceed the limit, so six slots are asked.
+        assert_eq!(additional(64, 4, 4), Some(2));
+        // The required layout alone is over the limit: it is submitted
+        // unchanged so the reserve gate reports its own refusal.
+        assert_eq!(additional(96, 6, 6), Some(1));
+        assert_eq!(
+            c.geometric_sized(0, 0, 0, 1, usize::MAX).unwrap_err(),
+            ParseStop::InternalInvariant(Invariant::ZeroSizedStorage)
+        );
+    }
+
+    #[test]
+    fn geometric_push_doubles_capacity_and_admits_one_logical_entry_per_push() {
+        let mut c = control();
+        let mut values = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
+        let mut capacities = Vec::new();
+        for value in 0..9u32 {
+            values.try_push_geometric(&mut c, value).unwrap();
+            if capacities.last() != Some(&values.capacity()) {
+                capacities.push(values.capacity());
+            }
+        }
+        assert_eq!(capacities, [1, 2, 4, 8, 16]);
+        assert_eq!(values.as_slice(), [0, 1, 2, 3, 4, 5, 6, 7, 8]);
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
+            9
+        );
+        // Old plus new bytes of each growth: 4 + (4+8) + (8+16) + (16+32) + (32+64).
+        assert_eq!(c.usage().work(WorkCategory::ReserveByte), 184);
+        values.release(&mut c).unwrap();
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
+    }
+
+    #[test]
+    fn bounded_geometric_push_ends_at_exactly_the_known_final_length() {
+        let mut c = control();
+        let mut values = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
+        let mut capacities = Vec::new();
+        for value in 0..11u32 {
+            values.try_push_geometric_toward(&mut c, value, 11).unwrap();
+            if capacities.last() != Some(&values.capacity()) {
+                capacities.push(values.capacity());
+            }
+        }
+        // Doubling stops at the known length instead of reaching sixteen.
+        assert_eq!(capacities, [1, 2, 4, 8, 11]);
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
+            11
+        );
+        values.release(&mut c).unwrap();
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
+    }
+
+    #[test]
+    fn geometric_push_checks_logical_admission_before_the_physical_reserve() {
+        // One logical entry is allowed and the vector is full. The refusal is
+        // the logical one, exactly as for an exact push, and nothing is reserved.
+        let caps = limits()
+            .into_builder()
+            .auxiliary_entries(1)
+            .finish()
+            .unwrap();
+        let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
+        let mut values = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
+        values.try_push_geometric(&mut c, 1u32).unwrap();
+        let capacity = values.capacity();
+        assert!(matches!(
+            values.try_push_geometric(&mut c, 2u32),
+            Err(ParseStop::LimitExceeded {
+                resource: HtmlParseResource::AuxiliaryEntries,
+                ..
+            })
+        ));
+        assert_eq!(values.capacity(), capacity);
+        assert_eq!(values.as_slice(), [1]);
+    }
+
+    #[test]
+    fn bounded_geometric_growth_never_plans_spare_capacity_beyond_the_final_length() {
+        let mut c = control();
+        let (mut values, mut ticket) = c.new_vector::<u16>().unwrap();
+        let mut capacities = Vec::new();
+        for value in 0..11u16 {
+            c.reserve_vector_geometric_toward(&mut values, &mut ticket, 1, 11)
+                .unwrap();
+            if capacities.last() != Some(&values.capacity()) {
+                capacities.push(values.capacity());
+            }
+            values.push(value);
+        }
+        // Doubling stops at the known final length instead of reaching sixteen.
+        assert_eq!(capacities, [1, 2, 4, 8, 11]);
+        // A required length above the stated bound is still reserved in full.
+        c.reserve_vector_geometric_toward(&mut values, &mut ticket, 1, 3)
+            .unwrap();
+        assert_eq!(values.capacity(), 12);
+        c.release_vector(values, ticket).unwrap();
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
     }
 
     #[test]

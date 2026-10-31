@@ -543,11 +543,7 @@ impl SessionStorage {
                 (2 * native + facts) as u64,
             ),
         ])?;
-        self.construction.apply(
-            c,
-            bounded::HtmlConstructionCommand::ReserveRecords { additional: native },
-            &[],
-        )?;
+        self.construction.reserve_records(c, native)?;
         self.construction.reserve_child_tickets(c, native)?;
         c.reserve_vector(
             &mut self.payloads.values,

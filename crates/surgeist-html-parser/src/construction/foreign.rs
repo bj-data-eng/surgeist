@@ -1085,7 +1085,7 @@ impl SessionStorage {
                 else {
                     unreachable!()
                 };
-                control.reserve_vector(values, allocation, 1)?;
+                control.reserve_vector_geometric_toward(values, allocation, 1, original_len)?;
                 payload_write::<Attribute>(control, 1)?;
                 payload_write::<[StringLocation; 2]>(control, 2)?;
                 if namespace_ticket.is_some() {

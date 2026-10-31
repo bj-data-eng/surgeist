@@ -138,6 +138,34 @@ impl ParseControl {
         ])?;
         self.preflight_construction_capacity(old_bytes, new_bytes)
     }
+    /// The record count to request so the HTML-owned bank grows geometrically.
+    /// `additional` is returned unchanged when the bank already holds it, and
+    /// also when its exact layout cannot be admitted, so the existing reserve
+    /// gate reports that layout's concrete limit and stop. The bank is
+    /// described by its actual ticket; no bank exists before the first reserve.
+    pub(crate) fn geometric_construction_additional(
+        &mut self,
+        ticket: Option<&ConstructionAllocation>,
+        len: usize,
+        additional: usize,
+    ) -> Result<usize, ParseStop> {
+        self.charge(WorkCategory::RecordVisit, 1)?;
+        let Some(ticket) = ticket else {
+            return Ok(additional);
+        };
+        let snapshot = ticket.snapshot();
+        match self.geometric_sized(
+            snapshot.element_size(),
+            len,
+            snapshot.capacity(),
+            additional,
+            usize::MAX,
+        ) {
+            Ok(Some(plan)) => Ok(plan.additional),
+            Ok(None) => Ok(additional),
+            Err(stop) => self.fail(stop),
+        }
+    }
     pub(crate) fn prepare_construction_share(
         &mut self,
         payload_bytes: usize,

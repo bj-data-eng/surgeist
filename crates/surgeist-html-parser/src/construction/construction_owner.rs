@@ -192,10 +192,30 @@ impl ConstructionOwner {
         control: &mut ParseControl,
         additional: usize,
     ) -> Result<(), SessionError> {
-        control.reserve_vector(
+        control.reserve_vector_geometric(
             &mut self.children,
             &mut self.children_allocation,
             additional,
+        )?;
+        Ok(())
+    }
+    /// Reserves HTML-owned record storage for `additional` new records with
+    /// geometric spare capacity, so a document of N records costs O(N) bytes of
+    /// reservation work instead of O(N^2).
+    pub(super) fn reserve_records(
+        &mut self,
+        control: &mut ParseControl,
+        additional: usize,
+    ) -> Result<(), SessionError> {
+        let additional = control.geometric_construction_additional(
+            self.records.as_ref(),
+            self.len(),
+            additional,
+        )?;
+        self.apply(
+            control,
+            HtmlConstructionCommand::ReserveRecords { additional },
+            &[],
         )?;
         Ok(())
     }
@@ -404,7 +424,11 @@ impl ConstructionOwner {
                 position,
                 ..
             } => {
-                control.reserve_vector(&mut self.children, &mut self.children_allocation, 1)?;
+                control.reserve_vector_geometric(
+                    &mut self.children,
+                    &mut self.children_allocation,
+                    1,
+                )?;
                 control.charge(WorkCategory::CopyByte, copied_bytes as u64)?;
                 control.charge(WorkCategory::RecordWrite, record_writes as u64)?;
                 control.charge(

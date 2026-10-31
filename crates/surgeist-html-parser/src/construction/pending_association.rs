@@ -341,13 +341,13 @@ impl SessionStorage {
                 if matches!(record.kind(), HtmlNodeKind::Text(_)) {
                     let slot = self.field_slot(c, StringLocation::Text(child))?;
                     let group = self.association_string(c, slot)?;
-                    text.try_push(c, group)?;
+                    text.try_push_geometric(c, group)?;
                 }
             }
             let mut next = Some(root);
             while let Some(candidate) = next {
                 if self.html_local(c, candidate, "style")? {
-                    order.try_push(c, candidate)?;
+                    order.try_push_geometric(c, candidate)?;
                 }
                 next = self.next_view_node(c, root, candidate, detached)?;
             }
