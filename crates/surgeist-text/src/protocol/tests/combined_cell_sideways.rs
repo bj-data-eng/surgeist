@@ -17,6 +17,7 @@ fn horizontal_reference() -> ScopeFontReference {
 fn context() -> ContainerContext {
     ContainerContext {
         typography: AnalysisTypography::HorizontalComposition,
+        direction: ParagraphBaseDirection::LeftToRight,
         writing_axis: SourceWritingAxis::Vertical,
         root_reference: horizontal_reference(),
         container_reference: Some(horizontal_reference()),
@@ -36,6 +37,7 @@ fn select(prepared: &PreparedText) -> SelectedLine {
     let mut segments = prepared.source_segments();
     let segment = segments.next().unwrap();
     assert!(segments.next().is_none());
+    let rtl = prepared.analyzed_source().direction() == Direction::RightToLeft;
     prepared
         .select(LineSelectionRequest {
             segment: segment.clone(),
@@ -53,8 +55,16 @@ fn select(prepared: &PreparedText) -> SelectedLine {
             context: LineContext {
                 alignment_insets: LineAlignmentInsets::ZERO,
                 formatted_line: FormattedLineContext::default(),
-                base_direction: ParagraphBaseDirection::LeftToRight,
-                line_box_direction: LineBoxDirection::LeftToRight,
+                base_direction: if rtl {
+                    ParagraphBaseDirection::RightToLeft
+                } else {
+                    ParagraphBaseDirection::LeftToRight
+                },
+                line_box_direction: if rtl {
+                    LineBoxDirection::RightToLeft
+                } else {
+                    LineBoxDirection::LeftToRight
+                },
                 orientation: prepared.orientation(),
                 start: LineStart::Paragraph,
                 end: LineEnd::Paragraph,
@@ -269,16 +279,35 @@ fn cell_case(
     empty: bool,
     named: Option<FontBaseline>,
     displacement: Option<f64>,
+    direction: ParagraphBaseDirection,
 ) {
     let mut fixture = fixture(
         shape,
         if empty { " " } else { "A" },
         ContainerContext {
+            direction,
             alignment: displacement.map(|_| ScopeAlignmentBoundary::NonInitial),
             ..context()
         },
     );
     source_custody(&fixture, empty);
+    assert_eq!(
+        fixture.analyzed.direction(),
+        if direction == ParagraphBaseDirection::RightToLeft {
+            Direction::RightToLeft
+        } else {
+            Direction::LeftToRight
+        }
+    );
+    assert_eq!(
+        fixture
+            .analyzed
+            .combined_cells()
+            .next()
+            .unwrap()
+            .inner_direction(),
+        ParagraphBaseDirection::LeftToRight
+    );
     let prepared = fixture.system.prepare(&fixture.analyzed, options(orientation, named))
         .expect("a genuine vertical Source Cell with matching horizontal typography must admit sideways preparation");
     let cells = prepared.cell_views().collect::<Vec<_>>();
@@ -339,6 +368,12 @@ fn cell_case(
     };
     let verify = |line: FinalizedLine| {
         assert_eq!(line.feedback().advance, 10.0);
+        if direction == ParagraphBaseDirection::RightToLeft {
+            // One upright-L Cell in a base-level1 paragraph resolves to even
+            // level2. Its issued source edges and explicit inner LTR packet
+            // are not reversed by the outer paragraph or CCW physical map.
+            assert_eq!(line.cell_views().next().unwrap().level().get(), 2);
+        }
         assert_eq!(
             line.cell_views().next().unwrap().scope_displacement().get(),
             d
@@ -427,26 +462,42 @@ fn cell_case(
 #[test]
 fn clockwise_cell_preparation_retains_horizontal_parent_metrics_and_frame() {
     ordinary_controls(CW);
-    cell_case(CW, ContainerShape::Inline, false, None, None);
+    cell_case(
+        CW,
+        ContainerShape::Inline,
+        false,
+        None,
+        None,
+        ParagraphBaseDirection::LeftToRight,
+    );
     cell_case(
         CW,
         ContainerShape::Inline,
         false,
         Some(FontBaseline::Alphabetic),
         None,
+        ParagraphBaseDirection::LeftToRight,
     );
 }
 
 #[test]
 fn counterclockwise_cell_preparation_retains_horizontal_parent_metrics_and_frame() {
     ordinary_controls(CCW);
-    cell_case(CCW, ContainerShape::Inline, false, None, None);
+    cell_case(
+        CCW,
+        ContainerShape::Inline,
+        false,
+        None,
+        None,
+        ParagraphBaseDirection::LeftToRight,
+    );
     cell_case(
         CCW,
         ContainerShape::Inline,
         false,
         Some(FontBaseline::Alphabetic),
         None,
+        ParagraphBaseDirection::LeftToRight,
     );
 }
 
@@ -457,7 +508,14 @@ fn sideways_derived_root_and_nearest_computed_inline_keep_their_real_metric_owne
             ContainerShape::RootInline,
             ContainerShape::NestedComputedAll,
         ] {
-            cell_case(orientation, shape, false, None, None);
+            cell_case(
+                orientation,
+                shape,
+                false,
+                None,
+                None,
+                ParagraphBaseDirection::LeftToRight,
+            );
         }
     }
 }
@@ -465,7 +523,14 @@ fn sideways_derived_root_and_nearest_computed_inline_keep_their_real_metric_owne
 #[test]
 fn sideways_provider_empty_cell_keeps_the_real_square_source_and_two_outer_edges() {
     for orientation in [CW, CCW] {
-        cell_case(orientation, ContainerShape::Inline, true, None, None);
+        cell_case(
+            orientation,
+            ContainerShape::Inline,
+            true,
+            None,
+            None,
+            ParagraphBaseDirection::LeftToRight,
+        );
     }
 }
 
@@ -473,7 +538,14 @@ fn sideways_provider_empty_cell_keeps_the_real_square_source_and_two_outer_edges
 fn sideways_noninitial_inline_displacement_moves_the_cell_once_in_the_signed_cross_axis() {
     for orientation in [CW, CCW] {
         for d in [-3.0, 3.0] {
-            cell_case(orientation, ContainerShape::Inline, false, None, Some(d));
+            cell_case(
+                orientation,
+                ContainerShape::Inline,
+                false,
+                None,
+                Some(d),
+                ParagraphBaseDirection::LeftToRight,
+            );
         }
     }
 }
@@ -576,5 +648,19 @@ fn sideways_cell_requires_its_exact_container_reference_and_matching_axis() {
                 Some(&ErrorDetail::ScopeAlignment { reason: expected })
             );
         }
+    }
+}
+
+#[test]
+fn rtl_sideways_cells_keep_their_upright_l_role_and_explicit_horizontal_inner_direction() {
+    for orientation in [CW, CCW] {
+        cell_case(
+            orientation,
+            ContainerShape::Inline,
+            false,
+            None,
+            None,
+            ParagraphBaseDirection::RightToLeft,
+        );
     }
 }

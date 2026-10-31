@@ -8,6 +8,7 @@ mod sideways;
 #[derive(Clone, Copy)]
 struct ContainerContext {
     typography: AnalysisTypography,
+    direction: ParagraphBaseDirection,
     writing_axis: SourceWritingAxis,
     root_reference: ScopeFontReference,
     container_reference: Option<ScopeFontReference>,
@@ -19,6 +20,7 @@ impl ContainerContext {
     fn vertical() -> Self {
         Self {
             typography: AnalysisTypography::Mixed,
+            direction: ParagraphBaseDirection::LeftToRight,
             writing_axis: SourceWritingAxis::Vertical,
             root_reference: font_reference(),
             container_reference: Some(font_reference()),
@@ -89,7 +91,7 @@ fn fixture(shape: ContainerShape, text: &str, context: ContainerContext) -> Cont
         topology: SourceProcessingTopology::Complete,
         trim: WhiteSpaceTrim::default(),
         base_style: root_style,
-        used_direction: ParagraphBaseDirection::LeftToRight,
+        used_direction: context.direction,
         writing_axis: Some(context.writing_axis),
         horizontal_inner_direction: Some(ParagraphBaseDirection::LeftToRight),
         font_reference: Some(context.root_reference),
@@ -176,7 +178,7 @@ fn fixture(shape: ContainerShape, text: &str, context: ContainerContext) -> Cont
             )),
             scopes,
             paragraphs: vec![SourceProcessingParagraph {
-                base_direction: ParagraphBaseDirection::LeftToRight,
+                base_direction: context.direction,
                 paragraph_strut: ParagraphStrut::AllocatedContributions,
             }],
             events,
