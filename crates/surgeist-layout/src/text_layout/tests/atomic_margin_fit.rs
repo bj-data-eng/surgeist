@@ -407,3 +407,6 @@ fn direct_native_allocation_keeps_occupied10_when_its_unrelated_flow_is6() {
     // an opaque6px caller band may accept10px. It pins the independent10px
     // native requirement until the FUTURE owner-aware fit observation exists.
 }
+
+#[path = "atomic_margin_fit/indent.rs"]
+mod indent;
