@@ -215,9 +215,10 @@ impl TableSpan {
         }
     }
 }
-/// Upper bound on whole-value passes one span rule makes: the nonnegative
-/// syntax check, prefix recovery, digit copies, the author range comparison
-/// and the cap conversion.
+/// Estimated whole-value passes one span rule makes: the nonnegative syntax
+/// check, prefix recovery, digit copies, the author range comparison and the
+/// cap conversion. HTML publishes no work bound for the span rules yet; this
+/// local estimate is replaced by the owner's bound under #1599.
 const TABLE_SPAN_VALUE_PASSES: usize = 6;
 /// The th scope rule compares its value with four keywords.
 const TABLE_SCOPE_KEYWORDS: usize = 4;
