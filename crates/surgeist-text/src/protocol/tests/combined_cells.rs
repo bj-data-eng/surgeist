@@ -741,3 +741,6 @@ mod script_context;
 
 #[path = "combined_cell_spacing.rs"]
 mod spacing;
+
+#[path = "combined_cell_inner_controls.rs"]
+mod inner_controls;

@@ -47,22 +47,13 @@ pub(super) fn admit(analyzed: &AnalyzedData, tabs: crate::TabPreparation) -> Res
         {
             return Err(unsupported());
         }
-        if output.plan.groups[binding.group].parts.clone().any(|part| {
-            icu_properties::CodePointSetData::new::<icu_properties::props::BidiControl>()
-                .contains32(output.plan.parts[part].identity)
-        }) {
-            return Err(unsupported());
-        }
+        // Source has already resolved inner directional controls into used
+        // levels and removed literal control scalars from provider input.
         for event in &analyzed.transform.events[binding.events.clone()] {
             if let RelationEvent::Anchor { order } = event {
                 match analyzed.paragraph.anchor_order[*order].item {
                     SemanticAnchorItem::Control(control) => {
                         let kind = &analyzed.paragraph.controls[control].kind;
-                        // Such a role is genuine bidi input, although it is
-                        // not an authored scalar. It is not an empty receipt.
-                        if kind.code_point().is_some() {
-                            return Err(unsupported());
-                        }
                         if matches!(
                             kind,
                             crate::ParagraphControlKind::InlineBoundaryStart
