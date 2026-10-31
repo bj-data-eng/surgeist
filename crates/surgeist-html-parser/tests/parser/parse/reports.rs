@@ -329,6 +329,17 @@ fn public_resource_and_cancel_failures_retain_original_source_without_partial_ou
     assert_eq!(failure.cleanup_error(), None);
 }
 
+/// Observable stage of an ordinary document parse that a work stop reached.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum ReachedStage {
+    /// The original request is retained but no execution owner exists yet.
+    Initialization,
+    /// Execution owns diagnostic evidence and the tree is still being built.
+    Construction,
+    /// Every node is allocated and closed; only publication work remains.
+    Transfer,
+}
+
 #[test]
 fn selected_ordinary_work_cuts_retain_first_stop_and_cleanup_evidence() {
     let literal =
@@ -340,48 +351,140 @@ fn selected_ordinary_work_cuts_retain_first_stop_and_cleanup_evidence() {
         .usage()
         .resource(HtmlParseResource::WorkCredits)
         .current();
-    // The exhaustive draft probe reached the transfer failure at 539305.
-    // Preserve both discovered boundaries and cover the short initialization
-    // prefix plus the final fixed receiver writes without repeating every
-    // previously exercised tokenizer/tree prefix on each suite run.
-    let cuts = (0..2048)
-        .chain([199_922, 199_923, 199_924, 539_304, 539_305, 539_306])
-        .chain(total.saturating_sub(32)..total);
-    for work in cuts {
-        let request = HtmlDocumentParseRequest::offline(
+    // HTML 877d tree construction yields Document, doctype, html, head, body,
+    // form, input, textarea and the textarea's one text node. The allocation
+    // count is the contract that identifies a finished tree at a work stop.
+    let tree_nodes = complete
+        .usage()
+        .resource(HtmlParseResource::ManagedNodes)
+        .current();
+    assert_eq!(tree_nodes, 9);
+
+    let reached = |failure: &surgeist_html_parser::HtmlParseFailure| {
+        let at_stop = failure
+            .at_stop()
+            .expect("every work stop keeps its snapshot");
+        if failure.diagnostics().is_none() {
+            ReachedStage::Initialization
+        } else if at_stop.resource(HtmlParseResource::ManagedNodes).current() == tree_nodes
+            && at_stop.resource(HtmlParseResource::OpenElements).current() == 0
+        {
+            ReachedStage::Transfer
+        } else {
+            ReachedStage::Construction
+        }
+    };
+    let cut = |work: u64| {
+        HtmlDocumentParseRequest::offline(
             HtmlSource::utf8(literal),
             limits().into_builder().work_credits(work).finish().unwrap(),
-        );
-        let failure = request.parse().unwrap_err();
-        assert!(
-            matches!(
-                failure.reason(),
-                HtmlParseFailureReason::Stop(HtmlParseStop::LimitExceeded {
-                    resource: HtmlParseResource::WorkCredits,
-                    ..
-                })
-            ),
-            "{work}: {:?}",
-            failure.reason()
-        );
-        assert_eq!(failure.cleanup_error(), None, "work {work}");
-        if let Some(usage) = failure.after_cleanup() {
-            for resource in [
-                HtmlParseResource::BufferedUtf16Units,
-                HtmlParseResource::TokenAttributes,
-                HtmlParseResource::ManagedEdges,
-                HtmlParseResource::ManagedAttributes,
-                HtmlParseResource::ManagedUtf16Units,
-                HtmlParseResource::OpenElements,
-            ] {
-                assert_eq!(
-                    usage.resource(resource).current(),
-                    0,
-                    "work {work}: {resource:?}"
-                );
+        )
+        .parse()
+        .unwrap_err()
+    };
+    // Locate each stage boundary at run time: the first budget whose stop
+    // reaches the stage. Stages only advance as the budget grows.
+    let first_reaching = |stage: ReachedStage| {
+        assert!(reached(&cut(0)) < stage, "{stage:?} needs work");
+        assert!(reached(&cut(total - 1)) >= stage, "{stage:?} is reachable");
+        let (mut short, mut enough) = (0, total - 1);
+        while short + 1 < enough {
+            let middle = short + (enough - short) / 2;
+            if reached(&cut(middle)) >= stage {
+                enough = middle;
+            } else {
+                short = middle;
             }
         }
+        enough
+    };
+    let construction = first_reaching(ReachedStage::Construction);
+    let transfer = first_reaching(ReachedStage::Transfer);
+    assert!(0 < construction && construction < transfer && transfer < total);
+
+    // The short initialization prefix, both stage boundaries, 32 evenly
+    // spaced cuts across initialization's remainder, construction and
+    // publication, and the final writes, without every intermediate prefix.
+    let spaced = |from: u64, to: u64| (0..32).map(move |i| from + (to - from) * i / 32);
+    let cuts = (0..2048)
+        .chain(construction.saturating_sub(2)..construction + 2)
+        .chain(transfer.saturating_sub(2)..transfer + 2)
+        .chain(spaced(2048, construction))
+        .chain(spaced(construction, transfer))
+        .chain(spaced(transfer, total))
+        .chain(total - 32..total);
+    for work in cuts {
+        let failure = cut(work);
+        let expected = if work < construction {
+            ReachedStage::Initialization
+        } else if work < transfer {
+            ReachedStage::Construction
+        } else {
+            ReachedStage::Transfer
+        };
+        assert_eq!(reached(&failure), expected, "work {work}");
+        let first = failure
+            .first_stop()
+            .expect("a work stop is an execution stop");
+        assert!(
+            matches!(
+                first,
+                HtmlParseStop::LimitExceeded {
+                    resource: HtmlParseResource::WorkCredits,
+                    limit,
+                    ..
+                } if limit == work
+            ),
+            "work {work}: {first:?}"
+        );
+        assert_eq!(failure.reason(), HtmlParseFailureReason::Stop(first));
+        assert!(
+            failure
+                .at_stop()
+                .unwrap()
+                .resource(HtmlParseResource::WorkCredits)
+                .current()
+                <= work,
+            "work {work}: the budget is never overspent"
+        );
+        assert_eq!(failure.cleanup_error(), None, "work {work}");
+        // Cleanup is the contract on every cut, so its evidence must exist.
+        let after = failure
+            .after_cleanup()
+            .unwrap_or_else(|| panic!("work {work}: cleanup evidence is missing"));
+        for resource in [
+            HtmlParseResource::BufferedUtf16Units,
+            HtmlParseResource::TokenAttributes,
+            HtmlParseResource::AuxiliaryEntries,
+            HtmlParseResource::ManagedEdges,
+            HtmlParseResource::ManagedAttributes,
+            HtmlParseResource::ManagedUtf16Units,
+            HtmlParseResource::SourceMapEntries,
+            HtmlParseResource::SourceMapPayloadUnits,
+            HtmlParseResource::Diagnostics,
+            HtmlParseResource::DiagnosticPayloadUnits,
+            HtmlParseResource::ContextEffects,
+            HtmlParseResource::OpenElements,
+            HtmlParseResource::ManagedCapacityBytes,
+        ] {
+            assert_eq!(
+                after.resource(resource).current(),
+                0,
+                "work {work}: {resource:?}"
+            );
+        }
     }
+    // The budget the complete parse consumed is sufficient.
+    HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8(literal),
+        limits()
+            .into_builder()
+            .work_credits(total)
+            .finish()
+            .unwrap(),
+    )
+    .parse()
+    .unwrap();
 }
 
 #[test]
