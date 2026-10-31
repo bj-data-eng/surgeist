@@ -10,7 +10,10 @@ const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
 mod casing;
 #[path = "combined_width.rs"]
 mod combined_width;
-pub(crate) use combined_width::{COMBINED_WIDTH_FAMILY, combined_width_ahem};
+pub(crate) use combined_width::{
+    COMBINED_TAB_WIDTH_FAMILY, COMBINED_WIDTH_FAMILY, combined_tab_width_ahem, combined_width_ahem,
+    qualify_combined_tab_width,
+};
 #[path = "kana.rs"]
 mod kana;
 #[path = "math.rs"]
