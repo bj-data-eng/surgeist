@@ -270,6 +270,15 @@ pub use system_fonts::{
 };
 pub use transition::{MetricsEvent, NativeEventTransition, WindowStatePatch};
 
+/// Platform monotonic clock shared by Window deadlines and input receipt times.
+///
+/// On native targets this is exactly [`std::time::Instant`]. Browser Wasm uses
+/// the host context's `Performance.now()` clock and requires its `Performance`
+/// object. This is not a DOM timestamp or a universal epoch shared by unrelated
+/// contexts; atomics-enabled browser workers use the upstream time-origin
+/// adjustment. Callers must create deadlines in the owning host clock domain.
+pub use web_time::Instant;
+
 pub(crate) use registry::UserEvent;
 pub(crate) use scheduler::DrawScheduler;
 

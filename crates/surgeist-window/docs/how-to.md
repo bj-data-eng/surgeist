@@ -23,6 +23,38 @@ preference mapping and callback publication without a display.
 See [host observations](explanation.md#host-observations-and-consumer-inputs) for
 the supported values, sampling opportunities and unavailable observations.
 
+## Verify the platform clock
+
+Use the Window clock when creating a deadline:
+
+```rust
+use std::time::Duration;
+use surgeist_window::Instant;
+
+let deadline = Instant::now() + Duration::from_millis(20);
+```
+
+Pass the resulting instant to a callback scope's `at` method or to `Proxy::at`.
+Native callers may also pass `std::time::Instant` directly because it is the
+same type there. Browser callers use `surgeist_window::Instant` from the owning
+host context; no conversion from a native clock is provided. The
+[clock contract](explanation.md#platform-monotonic-clock) explains the separate
+host and DOM domains.
+
+With the `wasm32-unknown-unknown` target already installed, check the complete
+Window library and test targets:
+
+```sh
+cargo check --offline --locked -j 1 -p surgeist-window --target wasm32-unknown-unknown --lib --tests
+cargo check --offline --locked -j 1 -p surgeist-window --target wasm32-unknown-unknown --lib --tests --features accessibility
+```
+
+These commands compile the browser clock contract without executing it. Real
+browser qualification additionally needs compatible Wasm bindings and a browser
+host to observe clock sampling and deadline wakeups. Use binding tools matching
+the versions resolved in [Cargo.lock](../../../Cargo.lock). These compilation
+checks provide no browser runtime harness or runtime evidence.
+
 ## Reproduce original-unit word navigation
 
 Run the real AccessKit consumer-tree regression without a display:

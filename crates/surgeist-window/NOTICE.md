@@ -2,7 +2,7 @@
 
 ## Dependencies
 
-This notice covers the nine direct production dependencies and the
+This notice covers the ten direct production dependencies and the
 `accesskit_consumer` development dependency pinned in [Cargo.toml](Cargo.toml),
 including the optional `accessibility` feature and dependency material for all
 declared platforms. The maintained consumer is bundled under
@@ -96,6 +96,15 @@ This product depends on raw-window-handle, distributed by Osspial:
 
 * License: [MIT](licenses/raw-window-handle/LICENSE-MIT.md) OR [Apache-2.0](licenses/raw-window-handle/LICENSE-APACHE.md) OR [Zlib](licenses/raw-window-handle/LICENSE-ZLIB.md)
 * Homepage: [raw-window-handle](https://github.com/rust-windowing/raw-window-handle)
+
+### web-time 1.1.0
+
+This product depends on web-time, distributed by dAxpeDDa. It supplies the
+platform monotonic clock shared by Window deadlines and receipt timestamps.
+
+* License: [MIT](licenses/web-time/LICENSE-MIT) OR [Apache-2.0](licenses/web-time/LICENSE-APACHE)
+* Homepage: [web-time](https://github.com/daxpedda/web-time)
+* Legal source: [exact package revision](https://github.com/daxpedda/web-time/tree/2d200ded30bbcab66f6a4bfa277ac546685728db)
 
 ### winit 0.30.13
 

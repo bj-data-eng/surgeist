@@ -28,6 +28,7 @@ adapters and planning implementation types remain private except for the public
 | `Loop`, `Handler` | Native event-loop ownership and consumer callbacks | [loop](../src/loop_.rs), [handler](../src/handler.rs) |
 | `Context`, callback scopes, `Target`, `Command` | Queued window commands, draw/close/exit actions, and host services | [context](../src/context.rs), [DSL](../src/dsl.rs), [commands](../src/command.rs) |
 | `WindowSnapshot`, `Metrics`, `EventKind`, `InputEvent` | Observed state, metrics, and event payloads | [descriptors](../src/descriptor.rs), [events](../src/event.rs) |
+| `Instant` | Shared platform monotonic clock for deadlines and input receipt times | [clock contract](explanation.md#platform-monotonic-clock) |
 | `MagnificationEvent`, `MagnificationGesture`, `MagnificationDelta` | Raw native pinch or smart intent, with explicit unavailable pinch delta | [magnification input](explanation.md#native-magnification-input), [events](../src/event.rs) |
 | `HostEnvironment`, viewport, screen, input and preference values | Captured host facts with explicit unavailable observations | [environment](../src/environment.rs) |
 | `NativeGeometryRequest`, `NativeOpenFeatures` | Host-authorized CSS-pixel geometry resolved into ordinary window commands | [native geometry](../src/native_geometry.rs) |

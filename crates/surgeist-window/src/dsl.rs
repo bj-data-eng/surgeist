@@ -1,9 +1,8 @@
 use super::{
     Command, Context, Controls, Cursor, CursorGrab, EventKind, Fullscreen, Handle, Id, ImeRequest,
-    InputEvent, Level, Metrics, Modality, Point, Proxy, Rect, Ref, Result, Role, Size, Theme,
-    WindowRequest, WindowRequestBuilder, WindowSnapshot, command::Action,
+    InputEvent, Instant, Level, Metrics, Modality, Point, Proxy, Rect, Ref, Result, Role, Size,
+    Theme, WindowRequest, WindowRequestBuilder, WindowSnapshot, command::Action,
 };
-use std::time::Instant;
 
 #[must_use]
 /// Creates a logical point from horizontal and vertical coordinates.

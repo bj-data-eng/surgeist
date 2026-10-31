@@ -107,6 +107,38 @@ state only, with no live target or handle. The contract is implemented by
 [handle access](../src/registry.rs), [lease ownership](../src/lease.rs), and
 [native closing](../src/winit_adapter.rs).
 
+## Platform monotonic clock
+
+Use `surgeist_window::Instant` for draw deadlines and input receipt timestamps.
+Every Window scheduler, callback scope, proxy and adapter uses this same clock;
+`std::time::Duration` remains the elapsed-time unit. Native targets retain exact
+`std::time::Instant` identity, so native callers pass their existing instants
+directly without conversion.
+
+On browser Wasm targets, the shared clock is the host context's
+`Performance.now()` clock supplied by the pinned web-time implementation. This
+also matches winit's browser deadline type. It requires a `Performance` object;
+contexts such as worklets that lack one are unsupported. The clock makes no
+promise to advance while a browser context is asleep or suspended.
+
+Create deadlines in the owning event loop's clock domain. The upstream clock
+adds `Performance.timeOrigin` for atomics-enabled workers; without that mode,
+independent contexts do not establish a shared epoch. Window neither rebases
+native and browser instants nor converts them through an elapsed duration.
+Browser timestamps and deadlines use the browser type, rather than accepting
+`std::time::Instant` as a second clock.
+
+Window receipt times are host observations, not DOM performance timestamps.
+Runtime retains ownership of its separate DOM epoch, source identity and
+coarsening policy. Selecting the Window clock changes none of those contracts,
+and does not establish browser support for unrelated consumer clocks.
+
+The [scheduler](../src/scheduler.rs), [input payloads](../src/event.rs) and
+[native deadline mapping](../src/winit_mapping.rs) consume the public clock.
+Installed-target compilation qualifies their type agreement; it does not prove
+browser event-loop wakeup or runtime behavior. See the
+[verification boundary](how-to.md#verify-the-platform-clock).
+
 ## Native magnification input
 
 Handle `InputEvent::Magnification` in `Handler::input` to receive native

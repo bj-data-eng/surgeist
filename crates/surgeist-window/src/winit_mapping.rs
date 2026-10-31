@@ -1,9 +1,10 @@
+#[cfg(target_os = "macos")]
+use super::Instant;
 use super::{
     Controls, DrawScheduler, Error, ErrorCode, Fullscreen, Level, Rect, Result, Role, Theme,
     WindowRequest,
     planning::{ResolvedImePurpose, ResolvedImeRequest},
 };
-use std::time::Instant;
 
 pub(crate) fn window_attributes_from_request(
     request: &WindowRequest,
