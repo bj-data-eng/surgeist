@@ -28,6 +28,10 @@ adapters and planning implementation types remain private except for the public
 | `Loop`, `Handler` | Native event-loop ownership and consumer callbacks | [loop](../src/loop_.rs), [handler](../src/handler.rs) |
 | `Context`, callback scopes, `Target`, `Command` | Queued window commands, draw/close/exit actions, and host services | [context](../src/context.rs), [DSL](../src/dsl.rs), [commands](../src/command.rs) |
 | `WindowSnapshot`, `Metrics`, `EventKind`, `InputEvent` | Observed state, metrics, and event payloads | [descriptors](../src/descriptor.rs), [events](../src/event.rs) |
+| `HostEnvironment`, viewport, screen, input and preference values | Captured host facts with explicit unavailable observations | [environment](../src/environment.rs) |
+| `NativeGeometryRequest`, `NativeOpenFeatures` | Host-authorized CSS-pixel geometry resolved into ordinary window commands | [native geometry](../src/native_geometry.rs) |
+| `NativePointerCoordinates` | Fractional native client, desktop and screen-relative pointer observations | [pointer coordinates](../src/pointer_coordinates.rs) |
+| `SystemFontEnvironment` | Actual native UI font preferences and metrics | [system fonts](../src/system_fonts.rs) |
 | `HostCapabilities`, `HostCommandPlan` | Immutable host support report and planned diagnostics | [capabilities](../src/capability.rs), [planning](../src/planning.rs) |
 | `Registry`, `Id`, `Ref`, `Handle`, `Access`, `Proxy` | Live lookup, runtime identity, native access, and queued ingress | [registry](../src/registry.rs), [geometry](../src/geometry.rs) |
 | `Clipboard`, `MemoryClipboard`, image types | Loop-owned text and image service | [clipboard](../src/clipboard.rs) |
@@ -45,7 +49,7 @@ adapters and planning implementation types remain private except for the public
 | Successful creation | `event` with `Created`, then `ready` while still live |
 | Resize or scale-factor change | `resize`, after committed metrics |
 | Normalized input | `input` |
-| Focus, move, occlusion, theme, file drag, optional accessibility | `event` |
+| Focus, move, occlusion, theme, environment, file drag, optional accessibility | `event` |
 | Draw delivery | `draw` |
 | Close request | `close`; default accepts |
 | Completed closing | `closed`, once, with historical state |
