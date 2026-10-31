@@ -4,6 +4,13 @@ use crate::{
     UserPreferences, ViewportMetrics, ViewportSizes,
 };
 
+/// Determines whether winit observations describe native content or a browser canvas.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CaptureProfile {
+    NativeContent,
+    BrowserCanvas,
+}
+
 /// Captures the native content host: logical units are CSS pixels at page zoom
 /// one; there is no retractable UA chrome in this adapter. This does not infer
 /// primary input, color depth, work area, blending or browsing presentation.
@@ -13,6 +20,7 @@ pub(crate) fn observe_environment(
     window: &winit::window::Window,
     metrics: &crate::Metrics,
     baseline_theme: Option<Theme>,
+    profile: CaptureProfile,
 ) -> Result<HostEnvironment> {
     let native = NativeObservation {
         scale: metrics.scale_factor(),
@@ -37,7 +45,7 @@ pub(crate) fn observe_environment(
         }),
         baseline_theme,
     };
-    native.into_environment()
+    native.into_environment(profile)
 }
 
 struct NativeObservation {
@@ -49,7 +57,18 @@ struct NativeObservation {
 }
 
 impl NativeObservation {
-    fn into_environment(self) -> Result<HostEnvironment> {
+    fn into_environment(self, profile: CaptureProfile) -> Result<HostEnvironment> {
+        if profile == CaptureProfile::BrowserCanvas {
+            // Canvas size/position and devicePixelRatio cannot establish browser
+            // viewport, desktop coordinates, native scale or separate page zoom.
+            return Ok(HostEnvironment {
+                preferences: UserPreferences {
+                    color_scheme: self.baseline_theme,
+                    ..UserPreferences::default()
+                },
+                ..HostEnvironment::default()
+            });
+        }
         let scale = ScaleFactor::new(self.scale)?;
         let size = |size: PhysicalSize| Size {
             width: f64::from(size.width) / scale.get(),
@@ -129,7 +148,7 @@ mod tests {
             )),
             baseline_theme: Some(Theme::Dark),
         }
-        .into_environment()
+        .into_environment(CaptureProfile::NativeContent)
         .unwrap();
         let screen = environment.screen.as_ref().unwrap();
         assert_eq!(screen.area().origin, Point { x: -1920.0, y: 0.0 });
@@ -165,6 +184,35 @@ mod tests {
     }
 
     #[test]
+    fn browser_canvas_observations_do_not_claim_desktop_or_viewport_facts() {
+        let environment = NativeObservation {
+            scale: 3.0,
+            content: PhysicalSize {
+                width: 1200,
+                height: 900,
+            },
+            client_origin: Some(PhysicalPoint { x: 40, y: 80 }),
+            screen: Some((
+                PhysicalPoint { x: 0, y: 0 },
+                PhysicalSize {
+                    width: 3840,
+                    height: 2160,
+                },
+            )),
+            baseline_theme: Some(Theme::Dark),
+        }
+        .into_environment(CaptureProfile::BrowserCanvas)
+        .unwrap();
+        assert_eq!(environment.native_scale, None);
+        assert_eq!(environment.page_zoom, None);
+        assert_eq!(environment.viewport, None);
+        assert_eq!(environment.screen, None);
+        assert_eq!(environment.client_area, None);
+        assert_eq!(environment.output, OutputDevice::Unavailable);
+        assert_eq!(environment.preferences.color_scheme, Some(Theme::Dark));
+    }
+
+    #[test]
     fn unavailable_native_observations_do_not_become_os_facts() {
         let environment = NativeObservation {
             scale: 1.0,
@@ -176,7 +224,7 @@ mod tests {
             screen: None,
             baseline_theme: None,
         }
-        .into_environment()
+        .into_environment(CaptureProfile::NativeContent)
         .unwrap();
         assert_eq!(environment.screen, None);
         assert_eq!(environment.client_area, None);

@@ -122,6 +122,9 @@ chrome, so its large, small and dynamic viewport sizes coincide. Hosts supplying
 their own observations can retain distinct viewport variants and visual
 magnification. Layout-dependent initial containing block, scroll offsets, paged
 area and root scrollbar facts remain explicit inputs from their owning consumer.
+The Web canvas adapter leaves browser viewport variants, page zoom and desktop
+origins unavailable: a canvas's viewport-relative position and dimensions do not
+establish those browser or desktop facts.
 
 An unavailable observation is distinct from a known absent device or a known
 `no-preference` value. The winit adapter supplies monitor and client geometry,
@@ -141,6 +144,9 @@ substitute display scale or page zoom. Admission can allow, deny or clamp a
 request. A successful resolution produces an existing `Command` for ordinary
 normalization, capability planning and application. Denied, unchanged and
 unavailable geometry have explicit no-action outcomes.
+Metric changes refresh native outer geometry where the host can observe it.
+An unavailable fresh outer extent stays unavailable, so clamp admission cannot
+mistake a prior window size for the current decoration extent.
 
 Absolute movement uses the selected output-device origin; open features use
 the selected exposed-screen origin. Relative movement uses the

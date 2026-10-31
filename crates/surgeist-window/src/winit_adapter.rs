@@ -6,6 +6,7 @@ use super::{
     capability::CapabilityProvider,
     command::Action,
     descriptor::WindowSnapshotSeed,
+    environment_native::CaptureProfile,
     event::EventKind,
     lease::{LeaseWeak, ReleaseNotifier},
     loop_::PreparedLoop,
@@ -645,6 +646,7 @@ pub(crate) struct WinitRunner<H> {
     capabilities: Option<HostCapabilities>,
     clipboard: Box<dyn Clipboard>,
     system_theme: Option<Theme>,
+    capture_profile: CaptureProfile,
     #[cfg(test)]
     pub(crate) commands: Vec<Command>,
     #[cfg(test)]
@@ -715,6 +717,7 @@ impl<H> WinitRunner<H> {
             capabilities: None,
             clipboard: window_loop.clipboard,
             system_theme: None,
+            capture_profile: CaptureProfile::NativeContent,
             #[cfg(test)]
             commands: window_loop.commands,
             #[cfg(test)]
@@ -1327,6 +1330,7 @@ impl<H: Handler> WinitRunner<H> {
         callbacks: &mut Vec<BackendCallback>,
     ) -> Result<()> {
         self.system_theme = event_loop.system_theme().map(Into::into);
+        self.capture_profile = capture_profile_for_target(winit_target(event_loop));
         let resolved = take_resolved_host_command(plan);
         let ime_request = resolved.ime_request;
         #[cfg(feature = "accessibility")]
@@ -1360,11 +1364,13 @@ impl<H: Handler> WinitRunner<H> {
                             Error::new(ErrorCode::WindowCreateFailed, "failed to create window")
                                 .with_source(source)
                         })?;
-                        let state = state_from_winit(id, &request, &window)?;
+                        let profile = capture_profile_for_target(winit_target(event_loop));
+                        let state = state_from_winit(id, &request, &window, profile)?;
                         let environment = crate::environment_native::observe_environment(
                             &window,
                             state.metrics(),
                             event_loop.system_theme().map(Into::into),
+                            profile,
                         )?;
                         let state = state.with_environment(environment);
                         let window_id = window.id();
@@ -2232,6 +2238,7 @@ fn with_planned_open_reservation<T>(
 
 impl<H: Handler> winit::application::ApplicationHandler<UserEvent> for WinitRunner<H> {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        self.capture_profile = capture_profile_for_target(winit_target(event_loop));
         let mut provider = WinitCapabilityProvider { event_loop };
         self.resolve_capabilities_once(&mut provider);
         match self.stage_first_resume() {
@@ -2334,6 +2341,9 @@ impl<H: Handler> winit::application::ApplicationHandler<UserEvent> for WinitRunn
                 }
             }
             winit::event::WindowEvent::Moved(position) => {
+                if self.capture_profile == CaptureProfile::BrowserCanvas {
+                    return;
+                }
                 match self.moved_transition(
                     id,
                     PhysicalPoint {
@@ -2719,8 +2729,8 @@ impl<H: Handler> WinitRunner<H> {
             id,
             PhysicalSize { width, height },
             existing.scale_factor(),
-        )?
-        .with_outer_geometry(existing.outer_position(), existing.outer_size())?;
+        )?;
+        let metrics = self.refresh_outer_geometry(id, metrics, existing.outer_position())?;
         let transition = match event {
             MetricsEvent::Resized => NativeEventTransition::resized(metrics.clone()),
             MetricsEvent::ScaleFactorChanged => {
@@ -2736,8 +2746,11 @@ impl<H: Handler> WinitRunner<H> {
             .get(id)
             .map(|window| window.metrics())
             .ok_or_else(|| Error::new(ErrorCode::CommandFailed, "unknown window").with_id(id))?;
-        let metrics = Metrics::from_physical_size(id, existing.physical_size(), scale_factor)?
-            .with_outer_geometry(existing.outer_position(), existing.outer_size())?;
+        let metrics = Metrics::from_physical_size(id, existing.physical_size(), scale_factor)?;
+        let position = (scale_factor == existing.scale_factor())
+            .then(|| existing.outer_position())
+            .flatten();
+        let metrics = self.refresh_outer_geometry(id, metrics, position)?;
         self.attach_environment(
             id,
             &metrics,
@@ -2762,6 +2775,35 @@ impl<H: Handler> WinitRunner<H> {
         )
     }
 
+    fn refresh_outer_geometry(
+        &self,
+        id: Id,
+        metrics: Metrics,
+        retained_position: Option<Point>,
+    ) -> Result<Metrics> {
+        let window = self
+            .registry
+            .get(id)
+            .ok_or_else(|| Error::new(ErrorCode::StaleWindow, "unknown window").with_id(id))?;
+        let Some(handle) = window.instance.handle.as_ref() else {
+            let position = if self.capture_profile == CaptureProfile::NativeContent {
+                retained_position
+            } else {
+                None
+            };
+            return metrics.with_outer_geometry(position, None);
+        };
+        let (position, size) = handle.with_winit(observe_outer_geometry)?;
+        metrics_from_profile_geometry(
+            self.capture_profile,
+            id,
+            metrics.physical_size(),
+            position,
+            size,
+            metrics.scale_factor(),
+        )
+    }
+
     fn attach_environment(
         &self,
         id: Id,
@@ -2776,7 +2818,12 @@ impl<H: Handler> WinitRunner<H> {
             return Ok(transition);
         };
         let environment = handle.with_winit(|native| {
-            crate::environment_native::observe_environment(native, metrics, self.system_theme)
+            crate::environment_native::observe_environment(
+                native,
+                metrics,
+                self.system_theme,
+                self.capture_profile,
+            )
         })??;
         Ok(transition.with_environment(environment))
     }
@@ -2886,24 +2933,19 @@ pub(crate) fn state_from_winit(
     id: Id,
     request: &WindowRequest,
     window: &winit::window::Window,
+    profile: CaptureProfile,
 ) -> Result<WindowSnapshot> {
     let inner_size = window.inner_size();
-    let outer_position = window.outer_position().ok().map(|position| PhysicalPoint {
-        x: position.x,
-        y: position.y,
-    });
-    let outer_size = window.outer_size();
-    let metrics = metrics_from_winit_geometry(
+    let (outer_position, outer_size) = observe_outer_geometry(window);
+    let metrics = metrics_from_profile_geometry(
+        profile,
         id,
         PhysicalSize {
             width: inner_size.width,
             height: inner_size.height,
         },
         outer_position,
-        Some(PhysicalSize {
-            width: outer_size.width,
-            height: outer_size.height,
-        }),
+        outer_size,
         window.scale_factor(),
     )?;
     Ok(WindowSnapshot::from_seed(WindowSnapshotSeed {
@@ -2919,6 +2961,47 @@ pub(crate) fn state_from_winit(
         role: request.role().clone(),
         metrics,
     }))
+}
+
+fn capture_profile_for_target(target: WinitTarget) -> CaptureProfile {
+    if target == WinitTarget::Web {
+        CaptureProfile::BrowserCanvas
+    } else {
+        CaptureProfile::NativeContent
+    }
+}
+
+fn observe_outer_geometry(
+    window: &winit::window::Window,
+) -> (Option<PhysicalPoint>, Option<PhysicalSize>) {
+    let position = window
+        .outer_position()
+        .ok()
+        .map(|p| PhysicalPoint { x: p.x, y: p.y });
+    let size = window.outer_size();
+    (
+        position,
+        Some(PhysicalSize {
+            width: size.width,
+            height: size.height,
+        }),
+    )
+}
+
+fn metrics_from_profile_geometry(
+    profile: CaptureProfile,
+    id: Id,
+    inner_size: PhysicalSize,
+    outer_position: Option<PhysicalPoint>,
+    outer_size: Option<PhysicalSize>,
+    scale_factor: f64,
+) -> Result<Metrics> {
+    let (position, size) = if profile == CaptureProfile::BrowserCanvas {
+        (None, None)
+    } else {
+        (outer_position, outer_size)
+    };
+    metrics_from_winit_geometry(id, inner_size, position, size, scale_factor)
 }
 
 fn metrics_from_winit_geometry(
@@ -5709,6 +5792,96 @@ mod tests {
                 .outer_position(),
             Some(Point { x: 100.0, y: 50.0 })
         );
+    }
+
+    #[test]
+    fn fresh_native_outer_geometry_uses_event_size_and_scale_for_clamping() {
+        let id = Id::from_u64(31);
+        let metrics = metrics_from_profile_geometry(
+            capture_profile_for_target(WinitTarget::MacOs),
+            id,
+            PhysicalSize {
+                width: 1600,
+                height: 1200,
+            },
+            Some(PhysicalPoint { x: 200, y: 100 }),
+            Some(PhysicalSize {
+                width: 1632,
+                height: 1276,
+            }),
+            2.0,
+        )
+        .unwrap();
+        assert_eq!(
+            metrics.logical_size(),
+            Size {
+                width: 800.0,
+                height: 600.0
+            }
+        );
+        assert_eq!(metrics.outer_position(), Some(Point { x: 100.0, y: 50.0 }));
+        assert_eq!(
+            metrics.outer_size(),
+            Some(Size {
+                width: 816.0,
+                height: 638.0
+            })
+        );
+        let snapshot = WindowSnapshot::new("fresh", metrics);
+        let authorization = NativeGeometryAuthorization::clamp_to(Rect {
+            origin: Point::default(),
+            size: Size {
+                width: 1000.0,
+                height: 800.0,
+            },
+        })
+        .unwrap();
+        let outcome = NativeGeometryRequest::resize_to(1000, 800)
+            .resolve_against(
+                &snapshot,
+                NativeGeometryBasis::new(Point::default(), 1.0).unwrap(),
+                authorization,
+            )
+            .unwrap();
+        assert_eq!(
+            outcome.command(),
+            Some(&Command::SetInnerSize {
+                id,
+                size: Size {
+                    width: 984.0,
+                    height: 762.0
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn web_profile_canvas_outer_geometry_does_not_become_desktop_geometry() {
+        let id = Id::from_u64(31);
+        let metrics = metrics_from_profile_geometry(
+            capture_profile_for_target(WinitTarget::Web),
+            id,
+            PhysicalSize {
+                width: 800,
+                height: 600,
+            },
+            Some(PhysicalPoint { x: 20, y: 40 }),
+            Some(PhysicalSize {
+                width: 800,
+                height: 600,
+            }),
+            2.0,
+        )
+        .unwrap();
+        assert_eq!(
+            metrics.logical_size(),
+            Size {
+                width: 400.0,
+                height: 300.0
+            }
+        );
+        assert_eq!(metrics.outer_position(), None);
+        assert_eq!(metrics.outer_size(), None);
     }
 
     fn runner_with_observed_outer_geometry() -> (WinitRunner<NoopHandler>, Id) {
