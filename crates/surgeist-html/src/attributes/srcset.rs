@@ -812,6 +812,11 @@ fn check_context(
     } else {
         "sizes"
     };
+    if attribute(attributes, sizes_name).is_some() {
+        // A present value must be a valid source size list, a grammar no owner
+        // validates yet; it can never be certified here, even when empty.
+        unchecked = true;
+    }
     if present && attribute(attributes, sizes_name).is_some() {
         required = true;
         match all_width {
