@@ -4,6 +4,9 @@
 
 use super::*;
 
+#[path = "combined_cell_observation_geometry.rs"]
+mod geometry;
+
 fn prepared_cell(
     text: &str,
 ) -> (
