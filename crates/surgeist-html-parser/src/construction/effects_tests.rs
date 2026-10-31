@@ -1775,16 +1775,21 @@ fn captured_current_frame_survives_stops_before_and_after_identity_clone_admissi
 #[test]
 fn adopting_one_node_does_not_grow_faster_than_the_payloads_it_scans() {
     // Adopting a leaf looks up and rewrites its document binding by scanning
-    // the retained payloads (node_document_ref and set_node_document in
-    // template.rs charge one record visit per payload), so the cost may grow
-    // with the number of unrelated elements already retained, but not faster
-    // than that. The work is measured for three document sizes and its
-    // growth must not be super-linear.
-    let needed = |siblings: usize| {
+    // the retained payloads (set_node_document in template.rs charges one
+    // record visit per scanned payload, and start_img_update in
+    // associated.rs scans every payload for the node's image), so the cost
+    // may grow with the payloads already retained, but not faster than that.
+    // The per-payload constant is a count of such scans across the whole
+    // adoption step that this test does not derive, so the bound is only that
+    // the cost added per payload does not rise as the document doubles. A
+    // lower bound is deliberately not asserted: indexing payloads by kind may
+    // legitimately remove the scans.
+    let measure = |siblings: usize| {
         let source = format!("<body>{}<b>x</b>", "<i>t</i>".repeat(siblings));
         let request = request(&source);
         let (mut c, mut session, _proof, nodes) = graph(&request);
         let leaf = named(&nodes, "b", 0);
+        let payloads = session.active().unwrap().payloads.values.len() as u64;
         let storage = session.active_mut().unwrap();
         storage
             .start_effect(
@@ -1800,16 +1805,23 @@ fn adopting_one_node_does_not_grow_faster_than_the_payloads_it_scans() {
         storage.drain_construction_effects(&mut c).unwrap();
         assert!(storage.effects.current.is_none());
         let needed = c.usage().resource(HtmlParseResource::WorkCredits).current - before;
-        if session.release(&mut c).is_err() {
-            session.release(&mut c).unwrap();
-        }
-        needed
+        // Release charges only its alias check in the running state
+        // (construction.rs ParserArenaSession::release), far below the spare
+        // work left, so it must succeed at once.
+        session.release(&mut c).unwrap();
+        (payloads, needed)
     };
-    let (small, medium, large) = (needed(8), needed(16), needed(32));
+    let (small_payloads, small) = measure(8);
+    let (medium_payloads, medium) = measure(16);
+    let (large_payloads, large) = measure(32);
+    assert!(small_payloads < medium_payloads && medium_payloads < large_payloads);
     assert!(small <= medium && medium <= large);
-    // Doubling the input twice, the second increase is at most twice the
-    // first (linear), never more.
-    assert!(large - medium <= 2 * (medium - small));
+    // Cost added per payload does not increase: compare the two slopes by
+    // cross-multiplication.
+    assert!(
+        (large - medium) * (medium_payloads - small_payloads)
+            <= (medium - small) * (large_payloads - medium_payloads)
+    );
 }
 
 #[test]
